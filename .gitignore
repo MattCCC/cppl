@@ -67,3 +67,9 @@ vcpkg_installed/
 # test output & cache
 Testing/
 .cache/
+
+# other dirs & files
+.git
+bin
+tmp
+dist

@@ -1,0 +1,504 @@
+# C++L Mathematical Foundations
+
+C++L does not invent a new foundation for mathematics. I want to credit original authors here and thank those great people for their work.
+
+Its proof system builds on established ideas from mathematical logic, type theory, program verification, and automated reasoning.
+
+## Central idea: Curry–Howard
+
+The central principle is the **Curry–Howard correspondence**:
+
+```text
+proposition ≈ type
+proof       ≈ program/value inhabiting that type
+```
+
+A theorem such as:
+
+```text
+∀ x : Nat,
+    add(x, Zero) = x
+```
+
+can be represented as a dependent function type:
+
+```text
+Π (x : Nat),
+    Eq(add(x, Zero), x)
+```
+
+A valid proof is a program whose type is exactly that proposition.
+
+Conceptually:
+
+```text
+add_zero :
+    Π (x : Nat),
+        Eq(add(x, Zero), x)
+```
+
+If the C++L proof kernel verifies that the proof term has this type, the theorem is established.
+
+The theorem is not established by trying many values of `x`.
+
+It is established symbolically.
+
+## Intellectual lineage
+
+C++L stands on decades of work in logic, programming-language theory, theorem proving, and program verification.
+
+Particular intellectual credit is due to:
+
+- **Gerhard Gentzen** - natural deduction and structural proof systems.
+- **Alonzo Church** - lambda calculus and foundational connections between logic and computation.
+- **Haskell Curry** - early correspondence between logical propositions and types.
+- **William Alvin Howard** - the explicit propositions-as-types / proofs-as-programs correspondence.
+- **Nicolaas de Bruijn** - AUTOMATH and early machine-checked formal mathematics.
+- **Per Martin-Löf** - intuitionistic dependent type theory, identity types, inductive types, and constructive type theory.
+- **Robert W. Floyd** - formal reasoning about program correctness.
+- **C. A. R. Hoare** - axiomatic program semantics and Hoare logic.
+- **Edsger W. Dijkstra** - weakest preconditions and predicate-transformer semantics.
+- **Thierry Coquand** and **Gérard Huet** - the Calculus of Constructions and foundational work leading to modern proof assistants.
+- **Tim Freeman** and **Frank Pfenning** - early practical refinement typing, together with later refinement-type research.
+- Researchers behind SAT/SMT decision procedures, including the Nelson–Oppen tradition and the teams behind Z3, cvc5, and related systems.
+- The designers and communities behind modern proof-oriented systems such as Rocq/Coq, Lean, Agda, Idris, F\*, Dafny, and related projects.
+
+C++L does not claim invention of these mathematical foundations.
+
+Its intended contribution is integrating them into a source-compatible C++ superset whose proof layer can be erased before normal native compilation.
+
+## Foundations by C++L feature
+
+| C++L concept                       | Mathematical foundation              | Key contributors                                  |
+| ---------------------------------- | ------------------------------------ | ------------------------------------------------- |
+| Proofs as typed values             | Curry–Howard correspondence          | Haskell Curry, William A. Howard                  |
+| Formal proof rules                 | Natural deduction                    | Gerhard Gentzen                                   |
+| Functional computation             | Lambda calculus                      | Alonzo Church                                     |
+| Machine-checked formal mathematics | AUTOMATH                             | Nicolaas de Bruijn                                |
+| Dependent types                    | Intuitionistic dependent type theory | Per Martin-Löf                                    |
+| Identity/equality types            | Martin-Löf type theory               | Per Martin-Löf                                    |
+| Inductive types                    | Constructive type theory             | Per Martin-Löf and related type-theory tradition  |
+| Preconditions/postconditions       | Hoare logic                          | C. A. R. Hoare                                    |
+| Program correctness logic          | Floyd–Hoare reasoning                | Robert W. Floyd, C. A. R. Hoare                   |
+| Weakest preconditions              | Predicate-transformer semantics      | Edsger W. Dijkstra                                |
+| Calculus of Constructions          | Higher-order dependent type theory   | Thierry Coquand, Gérard Huet                      |
+| Refinement types                   | Refinement typing                    | Tim Freeman, Frank Pfenning and later researchers |
+| Automated logical reasoning        | SAT/SMT and decision procedures      | Nelson, Oppen, Z3/cvc5 and related communities    |
+
+## Propositions as types
+
+For example:
+
+```cpp
+Proof<x == x> reflexivity(x);
+```
+
+means that `reflexivity(x)` must construct valid evidence for:
+
+```text
+x = x
+```
+
+A false proposition has no valid inhabitant in the verified language.
+
+This should therefore be impossible:
+
+```cpp
+Proof<1 == 2> impossible;
+```
+
+unless the trusted foundation itself is inconsistent.
+
+This differs fundamentally from:
+
+```cpp
+bool theorem = (1 == 2);
+```
+
+A `bool` is a runtime truth value.
+
+A proposition type expresses a logical statement whose inhabitants constitute proofs.
+
+## Dependent type theory
+
+Ordinary types classify values:
+
+```text
+x : int
+```
+
+Dependent types allow types to depend on values.
+
+Examples:
+
+```text
+Vector<T, n>
+Fin<n>
+```
+
+`Fin<n>` represents a value known to satisfy:
+
+```text
+0 <= value < n
+```
+
+A function can therefore express relationships that ordinary C++ signatures cannot:
+
+```cpp
+T get<T, n>(
+    const Vector<T, n>& xs,
+    Fin<n> index
+);
+```
+
+The relationship between `index` and `n` is checked formally rather than left as documentation.
+
+## Universal quantification
+
+To prove:
+
+```text
+∀ x : T,
+    P(x)
+```
+
+the proof must construct:
+
+```text
+P(x)
+```
+
+for an arbitrary `x : T`.
+
+Under Curry–Howard, universal quantification corresponds to a dependent function:
+
+```text
+Π (x : T), P(x)
+```
+
+This is why C++L does not need to enumerate every possible value.
+
+## Existential quantification
+
+An existential proposition:
+
+```text
+∃ x : T,
+    P(x)
+```
+
+contains:
+
+```text
+a witness x
++
+proof that P(x)
+```
+
+Conceptually:
+
+```text
+Exists<T, P>
+=
+(x : T, Proof<P(x)>)
+```
+
+An existential theorem must provide both a witness and evidence.
+
+## Induction
+
+Universal properties over recursively defined types are proven structurally.
+
+For natural numbers:
+
+```text
+Nat =
+    Zero
+  | Succ(Nat)
+```
+
+to prove:
+
+```text
+∀ n : Nat,
+    P(n)
+```
+
+it is sufficient to establish:
+
+```text
+P(Zero)
+```
+
+and:
+
+```text
+∀ n,
+    P(n) → P(Succ(n))
+```
+
+This proves the property for every natural number without enumerating:
+
+```text
+0, 1, 2, 3, ...
+```
+
+The same principle applies to:
+
+- lists
+- trees
+- syntax trees
+- recursive state machines
+- algebraic data types
+- other inductive structures
+
+## Equality
+
+C++L distinguishes two important forms of equality.
+
+### Definitional equality
+
+Two terms are definitionally equal when computation reduces them to the same canonical form.
+
+For example:
+
+```text
+add(Zero, x)
+```
+
+may normalize to:
+
+```text
+x
+```
+
+so:
+
+```text
+add(Zero, x) ≡ x
+```
+
+can be established directly.
+
+No separate theorem is required.
+
+### Propositional equality
+
+Some equalities require explicit evidence:
+
+```text
+Eq<T>(a, b)
+```
+
+or conceptually:
+
+```cpp
+Proof<a == b>
+```
+
+C++L must support reasoning principles such as:
+
+- reflexivity
+- symmetry
+- transitivity
+- substitution
+- rewriting
+- congruence
+- transport across dependent types
+
+## Hoare logic
+
+C++L contracts draw from Hoare-style program logic.
+
+A Hoare triple has the form:
+
+```text
+{ P } C { Q }
+```
+
+meaning:
+
+> If precondition `P` holds before executing program `C`, then postcondition `Q` holds afterward under the verified execution semantics.
+
+Example:
+
+```cpp
+pure int divide(int a, int b)
+    expects b != 0
+    ensures result * b == a;
+```
+
+corresponds conceptually to:
+
+```text
+{ b != 0 }
+
+divide(a, b)
+
+{ result * b == a }
+```
+
+This makes preconditions and postconditions formal proof obligations rather than documentation.
+
+## Weakest preconditions
+
+C++L may use Dijkstra-style weakest-precondition reasoning when verifying imperative code.
+
+Conceptually:
+
+```text
+wp(C, Q) = P
+```
+
+means:
+
+> `P` is the condition that must hold before executing `C` in order to guarantee `Q` afterward.
+
+This allows the verifier to reason backward from a desired postcondition through:
+
+- assignments
+- branches
+- loops
+- function calls
+- state updates
+
+## Refinement typing
+
+A refinement type augments a base type with a predicate.
+
+For example:
+
+```cpp
+type Percentage =
+    int where self >= 0 && self <= 100;
+```
+
+corresponds mathematically to:
+
+```text
+{ x : Int | 0 <= x <= 100 }
+```
+
+A function returning `Percentage` must produce an integer together with sufficient evidence that the predicate is true.
+
+Simple refinement obligations may be discharged automatically by arithmetic solvers.
+
+## Termination and consistency
+
+Proof-producing computation cannot be allowed to justify arbitrary propositions by never returning.
+
+For example, a hypothetical function:
+
+```text
+prove_false() : Proof<False>
+```
+
+cannot be accepted merely because its implementation loops forever.
+
+Therefore C++L requires verified proof-producing recursion to be:
+
+- structurally decreasing,
+- well-founded,
+- or accompanied by a proved termination measure.
+
+This connects program termination directly to logical consistency.
+
+## Trusted proof kernel
+
+C++L follows the small-kernel philosophy used by major proof systems.
+
+Complex components may generate proofs:
+
+```text
+AI
+tactics
+rewriters
+SMT solvers
+elaborator
+automation
+proof search
+```
+
+but they should not independently define what is true.
+
+The intended architecture is:
+
+```text
+        complex automation
+               ↓
+          proof evidence
+               ↓
+      ┌─────────────────┐
+      │ trusted kernel  │
+      │                 │
+      │ small           │
+      │ deterministic   │
+      │ auditable       │
+      └────────┬────────┘
+               ↓
+          valid / invalid
+```
+
+The kernel is the final authority.
+
+This matters especially for AI-generated software.
+
+An AI should not be able to claim:
+
+```text
+I proved the Law.
+```
+
+The compiler must independently verify the proof.
+
+Likewise, an SMT solver should ideally generate checkable evidence rather than becoming the permanent definition of truth.
+
+## Automated reasoning
+
+Not every proof should require manual construction.
+
+C++L may use:
+
+- SMT solving
+- SAT solving
+- rewriting
+- normalization
+- congruence closure
+- arithmetic decision procedures
+- bitvector reasoning
+- proof search
+- simplification
+
+The mathematical role of automation is to construct or discharge proof obligations.
+
+The trusted kernel remains responsible for accepting proof evidence whenever practical.
+
+## C++L mathematical summary
+
+C++L combines several established traditions:
+
+```text
+Curry–Howard
++
+Dependent Type Theory
++
+Induction
++
+Hoare / Floyd Program Logic
++
+Dijkstra Weakest Preconditions
++
+Refinement Types
++
+Automated Reasoning
++
+Machine-Checked Proof
++
+C++ Runtime Semantics
+=
+C++L
+```
+
+The central objective is:
+
+> Express intent as mathematics, prove implementation against that intent, erase the proof layer, and execute ordinary optimized C++.
