@@ -27,6 +27,8 @@ When these rules conflict with convenience, speed, local test success, or milest
 
 C++L is a source-compatible C++ superset for expressing formal intent as machine-checkable Laws, proving that implementations satisfy those Laws, and erasing proof-only information before ordinary native compilation through Clang/LLVM.
 
+Existing valid supported C++ should compile under C++L with zero source changes unless the user explicitly opts into verification features.
+
 The target pipeline is:
 
 ```text
