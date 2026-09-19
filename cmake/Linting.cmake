@@ -5,8 +5,11 @@
 # Provides:
 #
 #   lint
-#       Run clang-tidy over all project C/C++ translation units using the
-#       compilation database produced by CMake.
+#       Run clang-tidy over all project C/C++ translation units.
+#
+#   tidy
+#       Run clang-tidy with automatic fixes over all project C/C++
+#       translation units.
 #
 # clang-tidy is resolved by LLVMToolchain.cmake and must come from the same
 # LLVM installation as the Clang driver selected by C++L.
@@ -68,7 +71,8 @@ file(
     "${PROJECT_SOURCE_DIR}/*.cxx"
 )
 
-# Never lint generated or externally-owned code.
+# Never lint generated, temporary, fixture, or externally-owned code.
+
 list(
     FILTER CPPL_LINT_FILES
     EXCLUDE REGEX
@@ -100,11 +104,23 @@ list(
 )
 
 list(
+    FILTER CPPL_LINT_FILES
+    EXCLUDE REGEX
+    "/tmp/"
+)
+
+list(
+    FILTER CPPL_LINT_FILES
+    EXCLUDE REGEX
+    "/tests/fixtures/"
+)
+
+list(
     SORT CPPL_LINT_FILES
 )
 
 # -----------------------------------------------------------------------------
-# Target
+# Targets
 # -----------------------------------------------------------------------------
 
 if(CPPL_LINT_FILES)
@@ -129,6 +145,27 @@ if(CPPL_LINT_FILES)
         COMMAND_EXPAND_LISTS
     )
 
+    add_custom_target(
+        tidy
+
+        COMMAND
+            "${CPPL_CLANG_TIDY}"
+            -p
+            "${CMAKE_BINARY_DIR}"
+            --config-file=${CPPL_CLANG_TIDY_CONFIG}
+            --fix
+            ${CPPL_LINT_FILES}
+
+        WORKING_DIRECTORY
+            "${PROJECT_SOURCE_DIR}"
+
+        COMMENT
+            "Applying clang-tidy fixes to C++L sources"
+
+        VERBATIM
+        COMMAND_EXPAND_LISTS
+    )
+
 else()
 
     add_custom_target(
@@ -136,6 +173,14 @@ else()
         COMMAND
             "${CMAKE_COMMAND}" -E echo
             "No C/C++ translation units found to lint."
+        VERBATIM
+    )
+
+    add_custom_target(
+        tidy
+        COMMAND
+            "${CMAKE_COMMAND}" -E echo
+            "No C/C++ translation units found to tidy."
         VERBATIM
     )
 

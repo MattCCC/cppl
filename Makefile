@@ -40,6 +40,7 @@ endif
 	check \
 	format \
 	format-check \
+	tidy \
 	lint \
 	asan \
 	ubsan \
@@ -68,6 +69,7 @@ help:
 		'Quality:' \
 		'  format            Apply source formatting' \
 		'  format-check      Verify source formatting without modifying files' \
+		'  tidy            	 Apply source formatting' \
 		'  lint              Run static analysis / lint checks' \
 		'' \
 		'Sanitizers:' \
@@ -136,6 +138,10 @@ format-check: configure
 ## lint: Run static analysis
 lint: configure
 	$(CMAKE) --build $(BUILD_DIR) --target lint
+
+## tidy: Run clang-tidy with automatic fixes
+tidy:
+	$(CMAKE) --build $(BUILD_DIR) --target tidy
 
 ## asan: Run AddressSanitizer configuration
 asan:
