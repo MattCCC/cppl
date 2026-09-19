@@ -146,39 +146,13 @@ The exact compatibility commitment is defined in `COMPATIBILITY.md`.
 
 # 4. Why C++L is a language rather than only a verifier
 
-An external verification tool could attach specifications to C++ without changing the language.
+C++L is not intended to replace C++ with a new programming model.
 
-That approach has advantages, but it tends to create two separate artifacts:
+It is a conservative extension of C++ that introduces a compile-time logical
+language for expressing and proving properties that ordinary C++ does not
+represent as part of its language semantics.
 
-```text
-program
-```
-
-and:
-
-```text
-specification about the program
-```
-
-C++L instead treats formal intent as part of the source language.
-
-The motivation is proximity.
-
-A function, its contract, the Laws concerning it, and proofs about it can evolve together.
-
-This also gives tools a common representation of:
-
-```text
-what executes
-what is claimed
-what has been established
-```
-
-rather than requiring conventions connecting separate languages.
-
-## 4.1 Language relationship
-
-The intended relationship is:
+The fundamental relationship is:
 
 $$
 C++ \subset C++L
@@ -207,6 +181,530 @@ $$
 
 Thus C++L extends the language used to state and prove program properties
 without introducing a second runtime semantics.
+
+Every ordinary C++ program is therefore also a C++L program.
+
+For a C++L program that uses laws, propositions, and proofs, erasure removes
+the proof layer and produces ordinary C++ while preserving the runtime meaning
+of the program.
+
+C++L does not exist merely to add another assertion mechanism, contract
+syntax, static analyzer, or verification frontend.
+
+Its purpose is to make propositions, laws, and their proofs part of the
+language itself.
+
+## 4.1 Why this cannot just be a C++ library
+
+C++ can already express many verification-related ideas using templates,
+concepts, `constexpr`, `static_assert`, attributes, macros, tests, and external
+tools.
+
+For example:
+
+```cpp
+template<class T>
+concept Addable = requires(T a, T b) {
+    a + b;
+};
+
+static_assert(sizeof(int) >= 4);
+```
+
+A library can also approximate mathematical laws:
+
+```cpp
+template<class T>
+constexpr bool associative(T a, T b, T c) {
+    return (a + b) + c == a + (b + c);
+}
+```
+
+and evaluate particular instances:
+
+```cpp
+static_assert(associative(1, 2, 3));
+```
+
+But this proves only that the expression evaluates to `true` for those
+particular values.
+
+It does not establish the proposition:
+
+```text
+∀ a, b, c : T,
+    (a + b) + c = a + (b + c)
+```
+
+The distinction is fundamental.
+
+C++ expressions compute values.
+
+C++ has no built-in semantic category for a mathematical proposition and no
+built-in notion that an object constitutes evidence proving such a
+proposition.
+
+Ordinary C++ does not provide first-class language semantics for:
+
+- propositions;
+- universally quantified statements;
+- existentially quantified statements;
+- proof terms;
+- assumptions;
+- implication;
+- conjunction and disjunction as proof objects;
+- quantified introduction and elimination;
+- equality reasoning;
+- substitution;
+- reusable theorem evidence;
+- kernel-checked composition of proofs.
+
+These concepts can be encoded with templates, macros, `constexpr`, or external
+tooling, but such encodings remain conventions built on top of C++.
+
+The C++ language itself does not assign them proof-theoretic meaning.
+
+A sufficiently elaborate library could introduce types resembling:
+
+```cpp
+Proof<ForAll<X, P<X>>>
+```
+
+and implement operations over those types using template metaprogramming.
+
+At that point, however, the library has effectively implemented another
+logical language indirectly inside the C++ type system.
+
+Its correctness depends on the encoding machinery, compiler behaviour,
+template implementation, and conventions of that particular library.
+
+C++L instead gives these constructs language-defined meaning.
+
+A proposition is a proposition.
+
+A proof term is evidence.
+
+A law is a reusable theorem.
+
+The C++L kernel checks whether the supplied evidence derives the claimed
+proposition according to the rules of the language.
+
+For example, given evidence for:
+
+```text
+∀ x : T, P(x)
+```
+
+and a term:
+
+```text
+a : T
+```
+
+the kernel can derive:
+
+```text
+P(a)
+```
+
+through universal elimination:
+
+```text
+proof : ∀ x : T, P(x)
+a     : T
+────────────────────
+proof(a) : P(a)
+```
+
+This is not equivalent to evaluating a Boolean C++ expression.
+
+It is a proof rule applied to proof evidence.
+
+The kernel, rather than the program being verified, determines whether the
+derivation is valid.
+
+## 4.2 Proofs as interfaces
+
+Giving proofs common language semantics also allows independently developed
+code to exchange mathematical guarantees.
+
+Conceptually:
+
+```text
+Library A
+    proves P
+       │
+       ▼
+ proof : P
+       │
+       ▼
+Library B
+    requires P
+       │
+       ▼
+C++L kernel checks the composition
+```
+
+Without common proof semantics, two ordinary C++ libraries may independently
+implement concepts called `law`, `proof`, `theorem`, or `verified`.
+
+Those concepts do not automatically interoperate.
+
+For example:
+
+```cpp
+library_a::Proof<P>
+```
+
+and:
+
+```cpp
+library_b::Theorem<P>
+```
+
+have no shared meaning merely because both libraries intend them to represent
+proofs.
+
+Their interpretation is determined by library code and convention.
+
+In C++L, proof validity is defined by the language and checked by the same
+kernel.
+
+This allows laws to become part of an interface rather than merely part of an
+implementation's testing strategy.
+
+A library may provide:
+
+```text
+proof : P
+```
+
+and another library may require:
+
+```text
+P
+```
+
+without either library needing to trust the other's verification
+implementation.
+
+They trust the C++L kernel.
+
+## 4.3 Why verification alone is insufficient
+
+Existing verification tools can analyze C++ programs, generate verification
+conditions, invoke SMT solvers, perform symbolic execution, model-check
+program behaviour, or attach contracts to declarations.
+
+Those approaches are valuable and C++L does not attempt to replace them.
+
+But a verifier and a proof language solve different problems.
+
+A verifier primarily answers:
+
+```text
+Does this program satisfy property P?
+```
+
+C++L additionally needs to represent:
+
+```text
+P
+```
+
+and:
+
+```text
+proof : P
+```
+
+as language-level objects whose relationship can be checked and whose evidence
+can be reused by other proofs.
+
+The distinction is:
+
+```text
+verification condition
+        │
+        ▼
+     solver
+        │
+        ▼
+    yes / no
+```
+
+versus:
+
+```text
+proposition
+    │
+    ▼
+proof term
+    │
+    ▼
+small kernel
+    │
+    ▼
+checked derivation
+```
+
+C++L may eventually use automation, SMT solvers, proof search, or external
+provers to construct proof terms.
+
+Those tools may help discover a proof.
+
+They must not define what constitutes a valid proof.
+
+The kernel remains the authority that checks the resulting evidence.
+
+This keeps the trusted computing base substantially smaller than the complete
+verification toolchain.
+
+## 4.4 The boundary between C++ and C++L
+
+C++L should not absorb features merely because they are useful for writing
+safer programs.
+
+If a feature can be expressed naturally and completely using existing C++
+facilities, it should remain ordinary C++.
+
+For example:
+
+```text
+concepts
++ constexpr
++ static_assert
++ contracts
++ type constraints
++ property tests
+```
+
+do not by themselves justify a new language.
+
+C++L becomes justified only when the requirement crosses into a logical layer
+that C++ itself does not possess:
+
+```text
+C++
++ propositions
++ laws
++ explicit proof objects
++ proof composition
++ quantified reasoning
++ machine-checked derivations
++ a small trusted kernel
+```
+
+This gives the project an important design test:
+
+> If a proposed C++L feature can be implemented naturally and completely as
+> an ordinary C++ library without introducing separate logical semantics, that
+> feature does not justify extending the language.
+
+Conversely, functionality requiring first-class propositions, proofs, proof
+composition, or kernel-defined derivation rules belongs in the C++L layer.
+
+This boundary prevents C++L from becoming a second general-purpose programming
+language layered unnecessarily on top of C++.
+
+## 4.5 Erasure and runtime transparency
+
+Proofs exist to establish facts about programs, not to silently redefine their
+runtime execution.
+
+C++L therefore maintains an explicit erasure boundary:
+
+```text
+erase : C++L → C++
+```
+
+For a C++L program `p`, erasure removes constructs that exist only for logical
+reasoning.
+
+The intended invariant is:
+
+```text
+⟦erase(p)⟧runtime = ⟦p⟧runtime
+```
+
+The proof layer may affect whether compilation succeeds.
+
+It must not introduce hidden runtime behaviour merely by existing.
+
+This means that:
+
+```text
+proof checking
+law checking
+logical normalization
+proof elaboration
+```
+
+belong to compilation, while ordinary program execution remains governed by
+C++ semantics.
+
+The resulting model is:
+
+```text
+C++L source
+    │
+    ├── C++ program
+    │
+    └── logical layer
+            │
+            ▼
+        elaboration
+            │
+            ▼
+       proof kernel
+            │
+       accepted / rejected
+            │
+            ▼
+          erase
+            │
+            ▼
+      ordinary C++
+            │
+            ▼
+      C++ toolchain
+```
+
+The logical layer disappears from the runtime program unless a construct has
+an explicit runtime C++ meaning independent of its role in proof checking.
+
+## 4.6 The trusted kernel
+
+The correctness of C++L should not require trusting every component of the
+compiler.
+
+Parsing, elaboration, proof search, diagnostics, optimization, IDE tooling,
+SMT integration, and other automation may all contain bugs.
+
+The final acceptance of a proof should depend on a substantially smaller
+component: the proof kernel.
+
+The kernel receives explicit propositions and proof terms and checks whether
+the proof term establishes the proposition.
+
+Conceptually:
+
+```text
+check(proof : P) = valid
+```
+
+means that the kernel independently validates the derivation represented by
+`proof`.
+
+Elaboration may construct:
+
+```text
+proof : P
+```
+
+but the kernel must not trust the elaborator's conclusion.
+
+Automation may construct:
+
+```text
+proof : P
+```
+
+but the kernel must not trust the automation.
+
+An SMT solver may help construct:
+
+```text
+proof : P
+```
+
+but the kernel must not accept `P` merely because the solver returned
+`sat`, `unsat`, or `valid`.
+
+The evidence must ultimately reduce to rules understood by the kernel.
+
+This creates the intended trust boundary:
+
+```text
+untrusted / complex
+────────────────────────────────
+parser
+elaborator
+proof search
+SMT integration
+IDE
+optimizer
+diagnostics
+automation
+────────────────────────────────
+            │
+            │ explicit proof
+            ▼
+────────────────────────────────
+trusted / small
+────────────────────────────────
+proof kernel
+────────────────────────────────
+```
+
+Keeping this kernel small, deterministic, and independently testable is a
+central architectural requirement.
+
+## 4.7 What C++L is
+
+C++L is therefore not merely:
+
+```text
+C++ + assertions
+```
+
+nor:
+
+```text
+C++ + contracts
+```
+
+nor:
+
+```text
+C++ + an SMT solver
+```
+
+nor:
+
+```text
+C++ + static analysis
+```
+
+Its intended model is:
+
+```text
+C++L
+=
+C++
++
+a compile-time logical language
++
+first-class propositions
++
+first-class laws
++
+explicit proof evidence
++
+proof composition
++
+a small trusted proof kernel
++
+semantics-preserving erasure to C++
+```
+
+The defining idea is not that C++ programs can be verified.
+
+C++ programs can already be verified by external tools.
+
+The defining idea is that C++ programs can carry reusable, language-defined,
+kernel-checked mathematical evidence while remaining ordinary C++ after the
+logical layer is erased.
 
 ---
 
