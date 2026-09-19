@@ -192,11 +192,11 @@ Exit criterion:
 
 Current sequence: single-return verified functions and verified-call contract
 composition, conditionals with path obligations and integer comparisons, and
-straight-line locals and assignments are prototyped. Next comes arithmetic
-normalization (subtraction, associativity/commutativity, and useful integer
-identities under the appropriate machine semantics), then loops with explicit
-invariants. Recursion and termination/induction, memory/reference reasoning, and
-SMT remain later work. See `STATUS.md` for the supported fragment.
+straight-line locals and assignments, and unsigned machine arithmetic with
+kernel-checked linear order reasoning are prototyped. Next come loops with
+explicit invariants. Recursion and termination/induction, memory/reference
+reasoning, signed arithmetic with overflow obligations, and SMT remain later
+work. See `STATUS.md` for the supported fragment.
 
 Implement:
 
@@ -258,7 +258,8 @@ Implement, over ordinary C++ types:
 - impossible cases
 - recursive proofs
 - termination checking
-- proof-only mathematical domains (ℕ, ℤ, sequences, sets, maps), once their source spelling is fixed by RFC
+- residual cases (`unnamed`, `valueless`, `empty`, `nonnull`), with no wildcard arm
+- proof-only mathematical domains `@N`, `@Z`, `@Seq<T>`, `@Set<T>`, `@Map<K, V>`, and explicit conversions into them from machine values
 
 Example:
 

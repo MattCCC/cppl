@@ -126,7 +126,8 @@ A C++L implementation MUST NOT introduce runtime constructs unavailable in the s
 
 C++L introduces contextual language words.
 
-They are not globally reserved identifiers.
+They are not globally reserved identifiers. Outside the grammatical contexts
+defined by this specification, they remain ordinary C++ identifiers.
 
 The core contextual words defined by this specification are:
 
@@ -170,6 +171,10 @@ induction
 ```
 
 C++L does not define `data` or `match`. It introduces no algebraic data types and no runtime pattern matching (§19).
+
+The mathematical-domain spellings `@N`, `@Z`, `@Seq`, `@Set` and `@Map` are C++L tokens (§19.1). No valid C++ program contains them outside literals and comments.
+
+Residual case labels such as `unnamed` and `valueless` have meaning only as arm labels of the construct that defines them (§20.1). They are not reserved identifiers.
 
 Existing C++ keywords retain their existing C++ meaning.
 
@@ -216,6 +221,8 @@ Therefore existing macros remain meaningful.
 A macro MAY expand into C++L syntax.
 
 C++L MUST NOT change ordinary preprocessor token semantics merely because a token has contextual C++L meaning after preprocessing.
+
+There is one exception. Each mathematical-domain spelling `@N`, `@Z`, `@Seq`, `@Set` and `@Map` is lexed as a single preprocessing token (§19.1), so a macro named `N`, `Z`, `Seq`, `Set` or `Map` does not expand inside it. `@` cannot appear in valid C++ outside literals and comments. The only programs whose meaning this could change are those that stringize such a spelling after macro expansion.
 
 ---
 
@@ -390,6 +397,41 @@ x
 
 if `identity` is defined to return its argument.
 
+### 7.1.1 Machine-integer arithmetic
+
+The formal core's wrapping addition, subtraction and multiplication of a
+machine integer type of width `w` are the operations of the ring of integers
+modulo `2^w`, whatever the type's signedness. Normalization MUST read a term
+built from them as a polynomial over its non-arithmetic subterms, with
+coefficients modulo `2^w`, and MUST render that polynomial in one canonical
+form. Two such terms are therefore definitionally equal exactly when they are
+equal as polynomials; every commutative-ring identity, including associativity,
+commutativity, distributivity, the identities of zero and one, cancellation of
+addition, and exact folding of constants, is definitional. Such equality implies
+equality of machine values under every assignment, never the converse: a
+polynomial identity that holds only for particular widths is not definitional.
+
+Comparisons MUST be normalized only by rewrites that are identities of the
+machine type:
+
+```text
+a > b   is  b < a
+a <= b  is  !(b < a)
+a >= b  is  !(a < b)
+a != b  is  !(a == b)
+!!c     is  c
+a == b  is  (a - b) == 0, stated of the difference or its negation
+```
+
+`a < b` is decided only when both operands are literals, when they are
+identical, or at the bounds of the type (`a < min` and `max < b` are false). No
+arithmetic is moved across `<`: order is not cancellative under wrapping, so
+`x + 1 < y + 1` and `x < y` stay distinct. A selection whose arms are equal is
+that arm; a selection on a negated condition exchanges its arms.
+
+Normalization MUST fail rather than approximate when a polynomial exceeds the
+implementation's size bounds.
+
 ---
 
 ## 7.2 Propositional equality
@@ -452,6 +494,38 @@ transport
 where applicable.
 
 Approximate equality MUST NOT silently become formal equality.
+
+---
+
+## 7.5 Linear arithmetic over machine integers
+
+Order consequences such as `i < n -> i + 1 <= n` are not identities and are
+not definitional. They are established by a proof rule whose premises are facts,
+each an equality or comparison with its own evidence, and whose conclusion is an
+equality or comparison.
+
+The kernel MUST state the facts and the negation of the conclusion as integer
+linear constraints itself:
+
+```text
+each distinct monomial m of type T      an integer variable v, min(T) <= v <= max(T)
+a term t of type T whose polynomial     sum(c_m * v_m) + c - 2^w * k,
+  is not a single monomial                with k a fresh integer variable,
+                                          bounded by min(T) and max(T)
+a == b  (values)                        L_a = L_b
+(a < b) == 1,  (a < b) == 0              L_a + 1 <= L_b,  L_b <= L_a
+(a == b) == 0                           L_a + 1 <= L_b  or  L_b + 1 <= L_a
+```
+
+This encoding is exact for two's-complement arithmetic: the machine value of
+`t` is the only value within the bounds of `T` that differs from its polynomial
+by a multiple of `2^w`. A certificate MUST then show that the system has no
+integer solution, by a tree of Farkas sums (nonnegative multiples of standing
+constraints whose sum has no variable and a positive constant), integer splits
+(a linear form is at most zero or at least one) and case splits on disjunctions.
+The kernel MUST check every step with exact arithmetic and MUST refuse, never
+wrap, on overflow. Contradictory facts establish any arithmetic conclusion, as
+they do in any sound logic. The rule adds no assumption.
 
 ---
 
@@ -923,11 +997,14 @@ This fragment adds zero kernel rules and zero logical assumptions.
 The initial implementation accepts namespace-scope functions with an explicit
 built-in integer return type, integer value parameters, one `ensures` equality,
 and at most one `expects` equality. Bodies contain exactly one return of a
-modeled pure expression: parameters, integer literals, unsigned addition, or
-calls to admitted pure definitions or verified functions under section 12.6.
-Clang remains authoritative for overloads,
-integer widths, and conversions; unsupported conversions and signed addition
-are rejected. Type aliases are resolved by Clang.
+modeled pure expression: parameters, integer literals, unsigned addition,
+subtraction and multiplication, or calls to admitted pure definitions or
+verified functions under section 12.6. Unsigned `+`, `-` and `*` denote the
+core's wrapping operations (section 7.1.1), which C++ defines them to be for
+unsigned operands of one type (section 29.2). Clang remains authoritative for
+overloads, integer widths, and conversions; unsupported conversions, signed
+arithmetic, division, remainder, shifts and bitwise operators are rejected. Type
+aliases are resolved by Clang.
 
 Branches and multiple returns extend this fragment under section 12.7, and
 straight-line locals and assignments under section 12.8.
@@ -972,7 +1049,9 @@ dependencies, and calls with neither an admitted pure definition nor a verified
 contract fail closed. Specification
 expressions retain the existing pure-definition model. Equality and unsigned
 addition are the original composition fragment; comparisons extend it under
-section 12.7. Subtraction remains unsupported.
+section 12.7, and unsigned subtraction and multiplication under section 7.1.1.
+A precondition that follows from the caller's facts only by order reasoning is
+established under section 7.5.
 
 ## 12.7 Path-sensitive verification
 
@@ -994,16 +1073,18 @@ No path condition is an axiom. Each call precondition MUST be established using
 only conditions encountered before the call and previously justified call
 summaries on that path. In particular, a call within a condition cannot use
 that condition to justify itself. All paths require proof, even when their
-conditions appear contradictory; this slice introduces no unreachable-path
-solver. A contract is available to callers only after every path and required
-call precondition is proven and their evidence is linked to the complete body.
+conditions appear contradictory: such a path is proven from the contradiction
+itself under section 7.5, never skipped as unreachable. A contract is available
+to callers only after every path and required call precondition is proven and
+their evidence is linked to the complete body.
 
 Contracts, Laws, and conditions support built-in integer `==`, `!=`, `<`, `<=`,
 `>`, `>=`, and logical negation of these predicates. Operands MUST have the same
 Clang-resolved modeled integer type. Identical path predicates can close goals;
 existing equality rewriting remains available. Concrete integer comparisons
-compute with their stated signedness and width. No general order implications,
-subtraction, algebraic reassociation, or signed arithmetic are inferred.
+compute with their stated signedness and width. Comparisons are normalized under
+section 7.1.1, and order consequences of path conditions, preconditions and
+summaries are established under section 7.5. Signed arithmetic is not inferred.
 
 The core represents comparisons as total boolean computations, with boolean
 values encoded as unsigned one-bit integers. A declared `bool` parameter or
@@ -1438,36 +1519,50 @@ The rationale is recorded in `docs/rfcs/0005-cxx-types-case-analysis-induction.m
 
 ## 19.1 Proof-only mathematical domains
 
-Specifications and proofs MAY use mathematical domains such as:
+Specifications and proofs MAY use these mathematical domains:
 
 ```text
-ℕ          natural numbers
-ℤ          mathematical integers
-Seq⟨T⟩     finite sequences
-Set⟨T⟩     sets
-Map⟨K,V⟩   finite maps
+@N           natural numbers: 0, 1, 2, ...
+@Z           mathematical integers: ..., -1, 0, 1, ...
+@Seq<T>      finite sequences of T
+@Set<T>      sets of T
+@Map<K, V>   finite maps from K to V
 ```
 
-These names are metanotation. They are not C++L source syntax and are not reserved identifiers.
+The set is closed. `@` does not introduce a general identifier namespace. Any other `@` spelling MUST be rejected unless a later specification adds user-defined mathematical domains.
 
-The source-level spelling of mathematical domains is not specified. Any future spelling MUST:
+`T`, `K` and `V` are verification types. A verification type is either a C++ type or another mathematical domain, as in `@Seq<int>` or `@Map<@N, @Z>`.
+
+A mathematical domain MUST be accepted only where a verification type is expected:
 
 ```text
-not reuse a C++ keyword
-not ambiguously shadow common C++ or std names
-keep mathematical and machine integers visibly distinct
-remain verification-only
+Law and proof parameters
+quantifier binders
+ghost declarations
+arguments of another mathematical domain
 ```
 
-A mathematical domain has no runtime representation. Its values MUST NOT appear in executable code, runtime object layout, or ABI.
+Mathematical domains are verification-only. They have no object representation, storage, ABI, lifetime, address, `sizeof`, alignment, constructor, or destructor. Uses such as:
 
-A C++ value is never silently a mathematical value. A machine integer type is neither ℕ nor ℤ (§29.1). Relating a C++ value to a mathematical one requires an explicit, defined mapping whose side conditions are proof obligations.
+```cpp
+@Z runtime_value;
+sizeof(@Z);
+new @Seq<int>();
+```
+
+MUST be rejected.
+
+Each spelling `@N`, `@Z`, `@Seq`, `@Set` and `@Map` is a single token written without internal whitespace (§3.2). Objective-C++ also uses `@`-prefixed constructs. Objective-C++ compatibility lies outside the core C++L grammar and may require a separate frontend mode.
+
+A C++ value is never silently a mathematical value. `int` is a machine integer; `@Z` is not (§29.1). Relating a C++ value to a mathematical one requires an explicit, defined mapping whose side conditions are proof obligations. The spelling of that mapping is not yet specified.
+
+Explanatory material may also write ℕ, ℤ, Seq⟨T⟩, Set⟨T⟩ and Map⟨K,V⟩ as metanotation for the same domains.
 
 ---
 
 ## 19.2 Abstract models
 
-A specification MAY relate a C++ object to an abstract mathematical value, such as a `std::vector<int>` to a sequence of `int`.
+A specification MAY relate a C++ object to an abstract mathematical value, such as a `std::vector<int>` to an `@Seq<int>`.
 
 The function relating them is proof-only.
 
@@ -1482,15 +1577,25 @@ What that function states about a C++ type MUST be established by proof or decla
 Example:
 
 ```cpp
-proof foo(Result r)
+enum class State { idle, running, failed };
+
+proof foo(State s)
     proves(...)
 {
-    cases r {
-        Result::ok => {
+    cases s {
+        State::idle => {
             ...
         }
 
-        Result::error => {
+        State::running => {
+            ...
+        }
+
+        State::failed => {
+            ...
+        }
+
+        unnamed(value) => {
             ...
         }
     }
@@ -1505,7 +1610,26 @@ proof foo(Result r)
 
 The cases of a value are determined by its C++ type under the selected C++ semantics.
 
-An arm label names one case, for example one enumerator of an enumeration.
+They cover the type's complete semantic state space. This includes states that have no ordinary named alternative, which are called residual cases:
+
+```text
+enumeration      each enumerator
+                 + unnamed(value), if its values exceed its enumerators
+std::variant     each alternative(value)
+                 + valueless
+std::optional    engaged(value)
+                 + empty
+pointer          null
+                 + nonnull(p)
+```
+
+Enumerator labels are written qualified, as in `State::idle`. Enumerators with the same value name the same case.
+
+Residual labels are defined by the verifier. They have meaning only as arm labels of the corresponding construct and are not reserved identifiers. Because enumerator labels are qualified, an enumerator named `unnamed` cannot collide with the residual label.
+
+`unnamed(value)` binds the underlying integer value, which equals the value of no enumerator.
+
+`nonnull(p)` establishes only that `p` is not null. It establishes nothing about the lifetime of the object `p` points to (§32).
 
 Case analysis over a type whose cases the verifier does not model MUST be rejected.
 
@@ -1513,27 +1637,51 @@ Case analysis over a type whose cases the verifier does not model MUST be reject
 
 ## 20.2 Exhaustiveness
 
-Case analysis MUST be exhaustive over the type's C++ value set, not merely over its declared names.
+Case analysis MUST be exhaustive over the type's complete state space, not merely over its declared names.
 
-For example:
+Every case MUST either have an arm or be proven impossible from the proof context (§20.4). Otherwise the proof is rejected.
 
-```text
-an enumeration with a fixed underlying type
-    may hold values other than its enumerators
+There is no wildcard arm. A catch-all label such as `_` MUST be rejected. A proof written before an enumerator was added therefore stops checking when it is added, instead of silently covering it.
 
-a std::variant
-    may be valueless_by_exception()
+For example, a Law can rule out the residual case of a variant:
+
+```cpp
+using PaymentResult = std::variant<Receipt, Error>;
+
+law settles(PaymentResult r)
+    expects(!r.valueless_by_exception())
+    ensures(...);
+
+proof settles_holds(PaymentResult r)
+    proves(settles(r))
+{
+    assume intact : !r.valueless_by_exception();
+
+    cases r {
+        Receipt(receipt) => {
+            ...
+        }
+
+        Error(error) => {
+            ...
+        }
+    }
+}
 ```
 
-When the labelled arms do not cover the full value set by construction, `cases` generates an additional exhaustiveness obligation. That obligation MUST be discharged from the proof context, or the proof is rejected.
+The `valueless` case has no arm because `intact` proves it impossible.
 
 ---
 
-## 20.3 Arm hypotheses
+## 20.3 Arm binders and hypotheses
 
-Within an arm, the fact that the value belongs to that arm's case is a hypothesis.
+An arm label MAY be followed by binders that name the structural components of its case, such as the value a variant alternative holds.
 
-It is available only inside that arm and MUST NOT escape it.
+Binders name values only, never proof evidence. The number and meaning of an arm's binders are defined by its case.
+
+Within an arm, the fact that the value belongs to that arm's case is a premise. `assume` MAY name it. The kernel MUST reject an `assume` whose proposition does not exactly match a premise the arm received.
+
+Binders and premises are available only inside their arm and MUST NOT escape it.
 
 Every arm must establish the enclosing goal.
 
@@ -1554,22 +1702,42 @@ Impossibility MUST be established formally rather than guessed from control-flow
 Example:
 
 ```cpp
-proof property(Node* n)
-    proves(...)
+proof add_zero(unsigned x)
+    proves(add(x, 0u) == x)
 {
-    induction n {
-        null => {
-            ...
+    induction x {
+        zero => {
+            refl;
         }
 
-        node => {
+        successor(pred) => {
+            assume below : pred < UINT_MAX;
+            assume ih    : add(pred, 0u) == pred;
             ...
         }
     }
 }
 ```
 
-Each arm establishes one case of the principle. In a step case, the induction hypothesis is available as a hypothesis.
+Each arm establishes one case of the principle. Arm binders name the case's structural components (§20.3).
+
+A step case receives its premises in its proof context: any range condition, and one induction hypothesis per recursive component. `assume` names them, and the kernel MUST reject an `assume` whose proposition does not exactly match a supplied premise. Given a well-founded tree principle (§21.3):
+
+```cpp
+induction tree {
+    empty => {
+        ...
+    }
+
+    node(value, left, right) => {
+        assume left_ih  : P(left);
+        assume right_ih : P(right);
+        ...
+    }
+}
+```
+
+Induction hypotheses come from the principle. A proof does not obtain one by invoking itself.
 
 The short form:
 
@@ -1617,6 +1785,8 @@ therefore:
     P(n)
 ```
 
+Its cases are `zero` and `successor(pred)`. The `successor` arm receives the premises `pred < max` and `P(pred)`.
+
 The successor step applies only below `max`. It never wraps.
 
 Principles for other integer types MUST likewise respect their machine range and defined behavior (§29).
@@ -1633,11 +1803,13 @@ Induction over a pointer-linked structure MUST be justified by an explicit well-
 
 Without such a premise it MUST be rejected.
 
+The labels and premises of such a principle follow from the premise that justifies it. Their exact form is not yet specified.
+
 ---
 
 ## 21.4 Mathematical domains
 
-For ℕ the principle has the conceptual form:
+For `@N` the cases are `zero` and `successor(pred)`, with no range condition. The principle has the conceptual form:
 
 ```text
 P(0)
@@ -2034,6 +2206,15 @@ unsigned modular arithmetic
 signed arithmetic with undefined overflow
 checked arithmetic
 ```
+
+C++ defines `+`, `-` and `*` on two unsigned operands of one type, after the
+usual arithmetic conversions, as the result reduced modulo `2^w`. That is
+exactly the core's wrapping arithmetic (section 7.1.1), so those operators MAY
+be modeled by it. Operands narrower than `int` are promoted to `int` first, and
+the promoted operation is signed: it MUST NOT be modeled as unsigned wrapping.
+Signed `+`, `-` and `*` MUST NOT be modeled by wrapping arithmetic at all;
+until their no-overflow obligations are generated and discharged (section 31),
+a verified body using them MUST be rejected.
 
 ---
 

@@ -80,6 +80,10 @@ induction
 
 have special meaning only as statements inside a proof body (§5).
 
+The mathematical-domain spellings `@N`, `@Z`, `@Seq`, `@Set` and `@Map` are
+single tokens that name proof-only domains (§20). They are never valid C++, so
+they change the meaning of no ordinary program.
+
 Ordinary C++ remains valid:
 
 ```cpp
@@ -319,6 +323,12 @@ P → Q
 
 the premise `P` may become available as an assumption.
 
+Inside a `cases` or `induction` arm (§5.8), the premises the arm received can be
+named the same way. They are the case fact, and for induction also any range
+condition and one induction hypothesis per recursive component. The stated
+proposition must match a supplied premise exactly. Otherwise the proof is
+rejected.
+
 `assume` is not equivalent to `trusted`.
 
 ---
@@ -450,27 +460,39 @@ cases-statement
 ```
 
 `cases x { ... }` splits the current goal into one obligation for every case of
-`x`. Each arm proves the goal for one case, with that case as a hypothesis.
+`x`. Each arm proves the goal for one case, with that case as a premise.
 
 ```cpp
-proof foo(Result r)
+enum class State { idle, running, failed };
+
+proof foo(State s)
     proves(...)
 {
-    cases r {
-        Result::ok => {
+    cases s {
+        State::idle => {
             ...
         }
 
-        Result::error => {
+        State::running => {
+            ...
+        }
+
+        State::failed => {
+            ...
+        }
+
+        unnamed(value) => {
             ...
         }
     }
 }
 ```
 
-The cases come from the C++ type of `x`, and exhaustiveness is judged against
-that type's full C++ value set (SPEC.md 20). `cases` is not runtime control flow
-and generates no runtime code.
+The cases come from the C++ type of `x`. They include residual cases such as
+`unnamed`, for enumeration values that match no enumerator (§18). Every case
+needs an arm unless the proof context proves it impossible. There is no wildcard
+arm (SPEC.md 20). `cases` is not runtime control flow and generates no runtime
+code.
 
 ---
 
@@ -487,20 +509,25 @@ induction-statement
 induction principle of its domain. Each arm proves one case of that principle.
 
 ```cpp
-proof property(Node* n)
-    proves(...)
+proof add_zero(unsigned x)
+    proves(add(x, 0u) == x)
 {
-    induction n {
-        null => {
-            ...
+    induction x {
+        zero => {
+            refl;
         }
 
-        node => {
+        successor(pred) => {
+            assume below : pred < UINT_MAX;
+            assume ih    : add(pred, 0u) == pred;
             ...
         }
     }
 }
 ```
+
+The binder `pred` names the predecessor. The premises `pred < UINT_MAX` and the
+induction hypothesis come from the principle, and `assume` names them (§5.4).
 
 `induction x;` leaves every case to proof automation, which must still produce
 kernel-checked evidence:
@@ -524,17 +551,28 @@ A domain without a defined, well-founded principle is rejected (SPEC.md 21).
 
 ```ebnf
 proof-arm
-    ::= proof-arm-label "=>" proof-body
+    ::= proof-arm-label
+        ["(" proof-binder-list ")"]
+        "=>" proof-body
 
 proof-arm-label
     ::= id-expression
+
+proof-binder-list
+    ::= identifier {"," identifier}
 ```
 
-`id-expression` is the C++ category covering both `Result::ok` and `null`. The
-enclosing construct determines which labels are valid (§18). Each label may
-appear at most once. An arm body is an ordinary proof body, so arms nest.
+`id-expression` is the C++ category covering both `State::idle` and `null`. The
+enclosing construct determines which labels are valid and how many binders each
+takes (§18). Each case may have at most one arm. An arm body is an ordinary proof
+body, so arms nest.
 
-The C++ keyword `case` is not part of this grammar.
+Binders name the structural components of a case only, such as a variant
+alternative's value or a predecessor. They never bind proof evidence. The
+premises an arm receives are named with `assume` (§5.4).
+
+There is no wildcard arm, and `_` is not a label. The C++ keyword `case` is not
+part of this grammar.
 
 ---
 
@@ -959,21 +997,38 @@ A `proof-arm-label` (§5.8) names one case of the construct that encloses it:
 
 ```text
 cases over an enumeration
-    its enumerators, as qualified-ids
+    each enumerator, qualified          State::idle
+    + unnamed(value), if its values exceed its enumerators
 
 cases over a std::variant
-    its alternative types
+    each alternative type               Receipt(receipt)
+    + valueless
 
-induction
-    the case names of the domain's induction principle
+cases over a std::optional
+    engaged(value)
+    + empty
+
+cases over a pointer
+    null
+    + nonnull(p)
+
+induction over an unsigned integer type or @N
+    zero
+    successor(pred)
+
+induction over another domain
+    the case names of that domain's principle
 ```
 
-A label that does not name a case of the enclosing construct is an error.
+Labels after a `+` are residual cases. They cover C++ states that have no
+ordinary named alternative. They have meaning only as labels of the matching
+construct and are not reserved identifiers.
 
-Where a construct's labels do not cover the value's full C++ value set, the
-construct generates an exhaustiveness obligation rather than assuming coverage
-(SPEC.md 20.2). The syntax of an arm covering the remaining values is not yet
-specified.
+A label that does not name a case of the enclosing construct is an error. So is
+a label with the wrong number of binders.
+
+Every case needs an arm unless the proof context proves it impossible
+(SPEC.md 20.2). No label covers several cases.
 
 ---
 
@@ -999,14 +1054,48 @@ executable code and have no runtime representation.
 
 ---
 
-# 20. Mathematical domains are not source syntax
+# 20. Mathematical domains
 
-Specifications may eventually use proof-only mathematical domains, written in
-documentation as ℕ, ℤ, Seq⟨T⟩, Set⟨T⟩, and Map⟨K,V⟩.
+```ebnf
+mathematical-domain
+    ::= "@N"
+     | "@Z"
+     | "@Seq" "<" verification-type ">"
+     | "@Set" "<" verification-type ">"
+     | "@Map" "<" verification-type "," verification-type ">"
 
-Those names are metanotation. This grammar defines no source spelling for them,
-and none of them is a reserved or contextual C++L word. In particular, C++ `int`
-never denotes mathematical integers. See SPEC.md 19.1.
+verification-type
+    ::= type-id
+     | mathematical-domain
+```
+
+`@N`, `@Z`, `@Seq`, `@Set` and `@Map` are each one token, written without
+internal whitespace. They are lexed before macro expansion, so a macro named `N`
+does not expand inside `@N` (SPEC.md 3.2). The set is closed: `@Foo` is an
+error.
+
+A mathematical domain may appear only where a verification type is expected:
+
+- as the type of a Law or proof parameter
+- as the type of a quantifier binder
+- as the type of a ghost declaration
+- as an argument of another domain
+
+```cpp
+proof sums(@Seq<int> xs)
+    proves(...)
+{
+    ...
+}
+
+forall(@N k) { ... }
+
+ghost @Z total;
+```
+
+`int` is a C++ machine integer and never denotes a mathematical integer. `@Z` is
+the mathematical integers. Documentation may write ℕ, ℤ, Seq⟨T⟩, Set⟨T⟩ and
+Map⟨K,V⟩ as metanotation for the same domains. See SPEC.md 19.1.
 
 ---
 
@@ -1818,6 +1907,24 @@ A global reinterpretation of contextual words:
 int law = 1; // MUST remain ordinary C++
 ```
 
+A mathematical domain in a runtime position, or an unknown domain:
+
+```cpp
+@Z runtime_value;
+sizeof(@Z);
+new @Seq<int>();
+@Foo x;
+```
+
+A wildcard arm:
+
+```cpp
+cases s {
+    State::idle => { ... }
+    _ => { ... }
+}
+```
+
 ---
 
 # 51. Minimal complete example
@@ -1913,10 +2020,26 @@ induction-statement
         "{" proof-arm {proof-arm} "}"
 
 proof-arm
-    ::= proof-arm-label "=>" proof-body
+    ::= proof-arm-label
+        ["(" proof-binder-list ")"]
+        "=>" proof-body
 
 proof-arm-label
     ::= id-expression
+
+proof-binder-list
+    ::= identifier {"," identifier}
+
+mathematical-domain
+    ::= "@N"
+     | "@Z"
+     | "@Seq" "<" verification-type ">"
+     | "@Set" "<" verification-type ">"
+     | "@Map" "<" verification-type "," verification-type ">"
+
+verification-type
+    ::= type-id
+     | mathematical-domain
 
 ghost-declaration
     ::= "ghost" simple-declaration

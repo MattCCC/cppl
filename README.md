@@ -105,23 +105,23 @@ induction
 
 while ordinary supported C++ remains valid C++L. C++L adds no new data types: Laws and proofs reason directly over the C++ types a program already uses.
 
-| C++ | C++L |
-| --- | --- |
-| types | C++ types |
-| concepts | C++ concepts |
-| `constexpr` | C++ `constexpr` |
-| | **+** |
-| | Laws |
-| | contracts |
-| | proofs |
-| | quantified propositions |
-| | ghost state |
-| | refinement and dependent types |
-| | proof-only case analysis |
-| | induction |
-| | equality rewriting |
-| | termination checking |
-| | verified functions, with explicit `trusted` and `unsafe` boundaries |
+| C++         | C++L                                                                |
+| ----------- | ------------------------------------------------------------------- |
+| types       | C++ types                                                           |
+| concepts    | C++ concepts                                                        |
+| `constexpr` | C++ `constexpr`                                                     |
+|             | **+**                                                               |
+|             | Laws                                                                |
+|             | contracts                                                           |
+|             | proofs                                                              |
+|             | quantified propositions                                             |
+|             | ghost state                                                         |
+|             | refinement and dependent types                                      |
+|             | proof-only case analysis                                            |
+|             | induction                                                           |
+|             | equality rewriting                                                  |
+|             | termination checking                                                |
+|             | verified functions, with explicit `trusted` and `unsafe` boundaries |
 
 The additions are checked at compile time and erased before code generation.
 
@@ -281,7 +281,7 @@ proof increment_is_itself_holds(unsigned x)
 }
 ```
 
-A premise is worth supposing because it can be *used*. `rewrite` transforms the goal with an equality that has already been established:
+A premise is worth supposing because it can be _used_. `rewrite` transforms the goal with an equality that has already been established:
 
 ```cpp cppl-example
 pure unsigned identity(unsigned x) {
@@ -377,9 +377,7 @@ verified unsigned clamp(unsigned x)
 The first path uses `x <= 10u` as evidence; the second computes `10u <= 10u`.
 Both paths must pass the kernel. The runtime `if` and returns stay unchanged.
 All six integer comparisons are supported, including in call preconditions.
-General order implications, subtraction, signed addition, and algebraic
-reassociation remain unsupported. See [SPEC.md](SPEC.md#127-path-sensitive-verification)
-for the boundary.
+See [SPEC.md](SPEC.md#127-path-sensitive-verification) for the boundary.
 
 Bodies may also use ordinary locals and assignments:
 
@@ -402,6 +400,35 @@ verified once per arm, so nothing merges and no kernel rule is added. A call
 bound to a local proves its precondition where the body makes the call, not
 where the value is read. See [SPEC.md](SPEC.md#128-locals-and-assignments) for
 the boundary.
+
+Unsigned arithmetic is reasoned about as the machine performs it, modulo
+`2^32` here:
+
+```cpp cppl-example
+verified unsigned distance_below(unsigned x, unsigned y)
+    ensures(result <= x)
+{
+    if (y <= x)
+        return x - y;
+    return x;
+}
+
+verified unsigned next_index(unsigned i, unsigned n)
+    expects(i < n)
+    ensures(result <= n)
+{
+    return i + 1u;
+}
+```
+
+Every ring identity of `+`, `-` and `*` holds definitionally, so `(x + y) - y`
+is `x` and `x * (y + 1u)` is `x * y + x`. Order consequences are not identities:
+that `i < n` gives `i + 1u <= n` is proven by a linear-arithmetic certificate
+the kernel checks against constraints it derives itself, including the
+possibility that `i + 1u` wraps. Without `y <= x`, `x - y` could wrap past `x`,
+and the contract would be rejected. Signed arithmetic is rejected until its
+overflow obligations exist. See [SPEC.md](SPEC.md#711-machine-integer-arithmetic)
+for the rules.
 
 The remaining examples use features this implementation does not accept yet.
 Laws are meant to state domain requirements over user-defined types:
@@ -441,7 +468,7 @@ C++L does not enumerate every `unsigned` value.
 
 `induction x;` applies the induction principle for `unsigned`: prove the case `0u`, then prove the case `n + 1u` from the case `n` for every `n` below the type's maximum, so the step never wraps.
 
-Case analysis works the same way. `cases r { Result::ok => { ... } Result::error => { ... } }` creates one proof obligation for each case of a C++ value.
+Case analysis works the same way. `cases r { ... }` creates one proof obligation for each case of a C++ value. That includes states C++ permits beyond the named ones, such as an `enum class` value that matches no enumerator or a valueless `std::variant`. There is no catch-all arm.
 
 Neither `induction` nor `cases` is runtime control flow. Both are erased before runtime code generation and leave no runtime representation.
 

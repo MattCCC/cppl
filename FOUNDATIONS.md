@@ -37,7 +37,7 @@ add_zero :
         Eq(add(x, 0), x)
 ```
 
-Here ℕ is mathematical notation, not C++L source syntax. The same shape applies when `x` is a C++ `unsigned`, under machine semantics (`SPEC.md` §21.2).
+Here ℕ is mathematical notation; C++L source writes it `@N`. The same shape applies when `x` is a C++ `unsigned`, under machine semantics (`SPEC.md` §21.2).
 
 If the C++L proof kernel verifies that the proof term has this type, the theorem is established.
 
@@ -241,9 +241,9 @@ C++L applies this principle to the values a C++ program already has. It does not
 
 - machine integers, over their actual range, where the successor step never wraps
 - pointer-linked lists and trees, given an explicit well-founded premise such as finite acyclic reachability
-- proof-only mathematical domains such as ℕ, sequences, sets, and maps
+- proof-only mathematical domains: `@N`, `@Z`, `@Seq<T>`, `@Set<T>`, `@Map<K, V>`
 
-Case analysis is the non-recursive form of the same idea: one obligation per case of a value.
+Case analysis is the non-recursive form of the same idea: one obligation per case of a value. The cases cover every state the C++ type permits, including residual states such as an enumeration value that matches no enumerator.
 
 The normative rules are in `SPEC.md` §20–§21.
 

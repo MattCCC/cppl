@@ -1172,6 +1172,7 @@ reasons directly over C++ types
 adds proof-only constructs
     cases       one proof obligation per case
     induction   the domain's induction principle
+    @N @Z @Seq<T> @Set<T> @Map<K, V>
 
 erases all of them
     zero runtime representation
@@ -1179,7 +1180,11 @@ erases all of them
 
 Structural induction remains; the `Nat` datatype syntax does not.
 
-Mathematical domains such as ℕ, ℤ, sequences, sets, and maps may still be needed. A vector's contract is much easier to state over an abstract sequence than over its buffer. Such domains are proof-only and have no runtime representation. Their source spelling is deliberately left open. C++ `int` must not stand for ℤ, and names such as `set` or `map` would collide with ordinary C++.
+Arms bind structural components only, as in `successor(pred)` or `node(value, left, right)`. Induction hypotheses are not bound by position. The principle supplies them, and the existing `assume` names them, so program values and proof evidence stay separate. A mismatched `assume` is rejected rather than trusted.
+
+Case analysis covers the full C++ state space. An `enum class` value can match no enumerator (`unnamed(value)`), and a `std::variant` can be `valueless`. These residual cases are named and explicit. There is no wildcard arm, because a wildcard would silently absorb an enumerator added later. With named residual cases, adding an enumerator makes every proof that ignores it stop checking.
+
+Mathematical domains are still needed. A vector's contract is much easier to state over an `@Seq<int>` than over its buffer. The `@` spellings make the boundary visible: `int` is a machine integer and `@Z` is not. `std::set<int>` is a runtime container and `@Set<int>` is not. `@` never forms valid C++, so the spellings cannot collide with existing code. The set of domains is closed, and domains have no storage, ABI, lifetime, or `sizeof`. Other candidates were rejected. A `math` introducer is ambiguous when a type named `math` is in scope. Reserved `_Name` spellings look like ordinary C++ types and overlap names standard libraries already use.
 
 The normative semantics are in `SPEC.md` §19–§21. The decision is recorded in `docs/rfcs/0005-cxx-types-case-analysis-induction.md`.
 
