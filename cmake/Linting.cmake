@@ -116,7 +116,7 @@ if(CPPL_LINT_FILES)
             "${CPPL_CLANG_TIDY}"
             -p
             "${CMAKE_BINARY_DIR}"
-            --config-file="${CPPL_CLANG_TIDY_CONFIG}"
+            --config-file=${CPPL_CLANG_TIDY_CONFIG}
             ${CPPL_LINT_FILES}
 
         WORKING_DIRECTORY
