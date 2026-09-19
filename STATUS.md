@@ -61,29 +61,37 @@ declares Laws it:
 2. projects the unit into an analysis text and a runtime text in one pass;
 3. resolves the C++ semantics of the analysis text through libclang;
 4. elaborates the resolved semantics into typed VIR;
-5. lowers VIR into core definitions and a universally quantified equality goal,
-   and lowers each written proof into a kernel proof term;
+5. lowers VIR into core definitions and a universally quantified goal — an
+   equality, or an implication from the Law's precondition to it — and lowers
+   each written proof into a kernel proof term;
 6. submits the author's evidence, or its own when none was written, to the
    trusted kernel;
 7. reports `PROVEN` only on kernel acceptance, and fails the build otherwise;
 8. checks that erasure only deleted text, and hands the runtime program to Clang.
 
 The verified fragment is deliberately small: a Law is one equality between two
-built-in integer expressions, universally quantified over its parameters, over
+built-in integer expressions, optionally stated under one `expects`
+precondition of the same shape, universally quantified over its parameters, over
 functions declared `pure` whose bodies are a single `return` of a modeled
-expression. A proof declaration claims such a Law at arguments of its choosing
-and has a body of exactly one statement: `refl`, `exact` or `apply`, the latter
-two optionally instantiating the proof they name at terms, as in
+expression. A proof declaration claims such a Law at arguments of its choosing,
+and its body is a sequence of `refl`, `exact`, `apply` and `assume` statements;
+`exact` and `apply` may instantiate the evidence they name at terms, as in
 `exact q(41u);`. A proof discharges the Law itself when what it claims is the
 Law's own proposition; otherwise it proves one instance, which other proofs may
 use. Everything else is reported as unsupported and produces no obligation. See
 `ARCHITECTURE.md` 97 for the implemented structure and `TRUST.md` 41 for what
 must be trusted today.
 
+A precondition is supposed, never granted: `expects(P) ensures(Q)` states
+`P -> Q`, and the premise reaches a proof only through implication
+introduction. Because the core still has no rule for using an equality to
+rewrite, a hypothesis closes a goal only where it is that goal; a conditional
+Law whose conclusion needs the premise to be *used* is not yet provable.
+
 This slice does **not** implement induction, dependent types, refinement types,
-contracts, ghost state, `unsafe`, `trusted`, `assume`, proof `let` or `match`,
-implication, solvers, proof caching, or any verification of the C++ memory
-model. Those remain `SPECIFIED` below.
+contracts, ghost state, `unsafe`, `trusted`, conjunction, proof `let` or
+`match`, solvers, proof caching, or any verification of the C++ memory model.
+Those remain `SPECIFIED` below.
 
 ---
 
@@ -123,11 +131,12 @@ IMPLEMENTED
 # Current milestone
 
 The first vertical slice is in place, developers can write the proof of a Law
-themselves, and quantified evidence can be instantiated at a term. The next
-priority is to widen the formal core deliberately rather than to widen the
-language surface: preconditions as implications, induction, and the obligations
-that justify signed arithmetic are each a prerequisite for the Laws people will
-actually want to state.
+themselves, quantified evidence can be instantiated at a term, and a Law can be
+stated under a precondition and proven under it. The next priority is to widen
+the formal core deliberately rather than to widen the language surface:
+rewriting with an equality, induction, and the obligations that justify signed
+arithmetic are each a prerequisite for the Laws people will actually want to
+state.
 
 Original target, for reference:
 
@@ -163,9 +172,14 @@ The project should not claim broad language implementation before the proof sema
 | proof declarations           | `PROTOTYPE` |
 | `refl` / `exact` / `apply`   | `PROTOTYPE` |
 | proof instantiation `q(t)`   | `PROTOTYPE` |
-| `assume`, proof `let`/`match` | `SPECIFIED` |
+| `expects` clauses on laws    | `PROTOTYPE` |
+| `assume`                     | `PROTOTYPE` |
+| multi-statement proof bodies | `PROTOTYPE` |
+| proof `let` / `match`        | `SPECIFIED` |
 | proposition types            | `PROTOTYPE` |
 | universal quantification     | `PROTOTYPE` |
+| implication                  | `PROTOTYPE` |
+| conjunction / disjunction    | `SPECIFIED` |
 | existential quantification   | `SPECIFIED` |
 | dependent types              | `SPECIFIED` |
 | refinement types             | `SPECIFIED` |
@@ -178,7 +192,7 @@ The project should not claim broad language implementation before the proof sema
 | structural induction         | `SPECIFIED` |
 | well-founded recursion       | `SPECIFIED` |
 | termination checking         | `SPECIFIED` |
-| `expects`                    | `SPECIFIED` |
+| `expects` on functions       | `SPECIFIED` |
 | `ensures` on functions       | `SPECIFIED` |
 | `pure`                       | `PROTOTYPE` |
 | `verified`                   | `SPECIFIED` |
@@ -205,7 +219,11 @@ The project should not claim broad language implementation before the proof sema
 | Dependent application                | `NOT STARTED` |
 | Universal introduction               | `PROTOTYPE`   |
 | Universal elimination                | `PROTOTYPE`   |
+| Implication introduction             | `PROTOTYPE`   |
+| Implication elimination              | `PROTOTYPE`   |
+| Hypothesis context                   | `PROTOTYPE`   |
 | Existential introduction/elimination | `NOT STARTED` |
+| Equality elimination (rewriting)     | `NOT STARTED` |
 | Induction checking                   | `NOT STARTED` |
 | Refinement introduction/elimination  | `NOT STARTED` |
 | Normalization engine                 | `PROTOTYPE`   |
@@ -214,22 +232,31 @@ The project should not claim broad language implementation before the proof sema
 | Kernel fuzzing                       | `NOT STARTED` |
 | Kernel property testing              | `NOT STARTED` |
 | Kernel rejection tests               | `PROTOTYPE`   |
+| Mechanized core calculus             | `NOT STARTED` |
+| Meta-theory / soundness proofs       | `NOT STARTED` |
 
-The kernel implements three rules — reflexivity, universal introduction and
-universal elimination — over propositions built from equality and universal
-quantification. Its terms are variables, machine-integer literals, applications
-of admitted definitions and one primitive, wrapping addition. It admits no
-recursion, which is why it needs no termination checker yet
-(`ARCHITECTURE.md` 97.7).
+The kernel implements six rules — reflexivity, universal introduction,
+universal elimination, implication introduction, implication elimination and
+the use of a hypothesis — over propositions built from equality, universal
+quantification and implication. Its terms are variables, machine-integer
+literals, applications of admitted definitions and one primitive, wrapping
+addition. It admits no recursion, which is why it needs no termination checker
+yet (`ARCHITECTURE.md` 97.7).
 
 Universal elimination instantiates quantified evidence at a term. The kernel
 checks the evidence against the proposition it is eliminated from, derives the
 argument's type itself, and obtains the resulting proposition by its own
 capture-safe substitution. Several arguments are several eliminations; there is
-no multi-argument rule. Written proof declarations added no rule of their own:
-`refl`, `exact` and `apply` elaborate into terms built from these three.
-| Mechanized core calculus             | `NOT STARTED` |
-| Meta-theory / soundness proofs       | `NOT STARTED` |
+no multi-argument rule.
+
+Implication introduction supposes a premise and puts it in the kernel's own
+hypothesis context; implication elimination discharges one against evidence for
+it. A hypothesis is usable only where an enclosing introduction placed it, and
+is restated for the binders it is used beneath. No rule anywhere admits a
+premise on its own.
+
+Written proof declarations added no rule of their own: `refl`, `exact`, `apply`
+and `assume` elaborate into terms built from these six.
 
 ---
 

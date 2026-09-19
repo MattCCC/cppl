@@ -15,6 +15,12 @@ namespace cppl::kernel {
 // binders its variables denote.
 [[nodiscard]] Term shift(const Term& term, std::uint32_t amount, std::uint32_t cutoff = 0);
 
+// The same restatement for a proposition, needed where one is carried across a
+// binder: a premise assumed outside a quantifier is used underneath it.
+[[nodiscard]] Proposition shift(const Proposition& proposition,
+                                std::uint32_t amount,
+                                std::uint32_t cutoff = 0);
+
 // Replaces the binder `depth` levels out with `argument`, lowering the
 // variables above it to close the gap the binder leaves.
 //

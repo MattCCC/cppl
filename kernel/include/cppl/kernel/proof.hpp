@@ -45,10 +45,76 @@ struct ForallElimination {
     friend bool operator==(const ForallElimination&, const ForallElimination&) = default;
 };
 
+// A premise the proof may use, counted outwards from the most recently
+// introduced one. Hypotheses have their own indices: they are proof-level
+// bindings and never denote a term variable.
+struct HypothesisIndex {
+    std::uint32_t value = 0;
+
+    friend bool operator==(const HypothesisIndex&, const HypothesisIndex&) = default;
+};
+
+// Use of a premise standing in the proof context (GRAMMAR.md 5.4).
+//
+// A hypothesis is not an assumption the kernel grants: it exists only because
+// an enclosing implication introduction put it there, and the kernel checks
+// that the premise it names really is the goal.
+struct Hypothesis {
+    HypothesisIndex index;
+
+    friend bool operator==(const Hypothesis&, const Hypothesis&) = default;
+};
+
+// Introduction of an implication: evidence for the conclusion, free to use the
+// premise. The premise is restated by the evidence and is checked against the
+// goal, exactly as a universal introduction restates its binder.
+struct ImplicationIntroduction {
+    Box<Proposition> premise;
+    Box<ProofTerm> body;
+
+    friend bool operator==(const ImplicationIntroduction&, const ImplicationIntroduction&) =
+        default;
+};
+
+// Elimination of an implication: evidence for `premise -> conclusion` together
+// with evidence for the premise (SPEC.md 7.2).
+//
+// Like universal elimination, the implication eliminated from is restated so
+// that the kernel can check that step itself rather than infer it. Both pieces
+// of evidence are checked; the conclusion is then the kernel's own.
+struct ImplicationElimination {
+    Box<Proposition> implication;
+    Box<ProofTerm> evidence;
+    Box<ProofTerm> premise;
+
+    friend bool operator==(const ImplicationElimination&, const ImplicationElimination&) = default;
+};
+
 struct ProofTerm {
-    std::variant<Reflexivity, ForallIntroduction, ForallElimination> node;
+    std::variant<Reflexivity,
+                 ForallIntroduction,
+                 ForallElimination,
+                 Hypothesis,
+                 ImplicationIntroduction,
+                 ImplicationElimination>
+        node;
 
     static ProofTerm reflexivity() { return ProofTerm{Reflexivity{}}; }
+
+    static ProofTerm hypothesis(HypothesisIndex index) { return ProofTerm{Hypothesis{index}}; }
+
+    static ProofTerm implication_introduction(Proposition premise, ProofTerm body) {
+        return ProofTerm{ImplicationIntroduction{Box<Proposition>{std::move(premise)},
+                                                 Box<ProofTerm>{std::move(body)}}};
+    }
+
+    static ProofTerm implication_elimination(Proposition implication,
+                                             ProofTerm evidence,
+                                             ProofTerm premise) {
+        return ProofTerm{ImplicationElimination{Box<Proposition>{std::move(implication)},
+                                                Box<ProofTerm>{std::move(evidence)},
+                                                Box<ProofTerm>{std::move(premise)}}};
+    }
 
     static ProofTerm forall_introduction(Type binder, ProofTerm body) {
         return ProofTerm{ForallIntroduction{std::move(binder), Box<ProofTerm>{std::move(body)}}};

@@ -47,13 +47,18 @@ struct Function {
 };
 
 // A Law: a universally quantified proposition over its parameters.
+//
+// A Law with a precondition states an implication. The premise is not a claim
+// the Law makes: it is what the conclusion is stated under (GRAMMAR.md 3).
 struct Law {
     LawId id;
     std::string name;
     std::vector<Parameter> parameters;
     Expr proposition;
+    std::optional<Expr> premise;
     source::SourceRange range;
     source::SourceRange proposition_range;
+    source::SourceRange premise_range;
 };
 
 // The written proof steps of GRAMMAR.md 5, resolved.
@@ -67,30 +72,60 @@ struct ReflexivityStep {
     friend bool operator==(const ReflexivityStep&, const ReflexivityStep&) = default;
 };
 
+// Evidence a step names: a proof declared in this unit, or a premise this proof
+// has assumed. Which of the two it is is settled when the name is resolved, and
+// is never re-decided from the spelling afterwards.
+struct ProofRef {
+    ProofId proof;
+
+    friend bool operator==(const ProofRef&, const ProofRef&) = default;
+};
+
+struct HypothesisRef {
+    std::uint32_t assumption = 0;  // which `assume` in this body bound the name
+
+    friend bool operator==(const HypothesisRef&, const HypothesisRef&) = default;
+};
+
+struct Reference {
+    std::variant<ProofRef, HypothesisRef> node;
+    std::string name;
+
+    friend bool operator==(const Reference&, const Reference&) = default;
+};
+
 // `exact p;` - p's proposition must be the goal itself.
 //
 // `arguments` are the terms p is instantiated at before it is compared with the
 // goal, one universal elimination each, in written order.
 struct ExactStep {
-    ProofId target;
-    std::string target_name;
+    Reference evidence;
     std::vector<Expr> arguments;
 
     friend bool operator==(const ExactStep&, const ExactStep&) = default;
 };
 
 // `apply p;` - p's conclusion, instantiated at `arguments`, must be applicable
-// to the goal.
+// to the goal. Each premise it carries becomes a goal of its own.
 struct ApplyStep {
-    ProofId target;
-    std::string target_name;
+    Reference evidence;
     std::vector<Expr> arguments;
 
     friend bool operator==(const ApplyStep&, const ApplyStep&) = default;
 };
 
+// `assume h : P;` - names the premise of the goal being proven (GRAMMAR.md
+// 5.4). It introduces nothing of its own: the proposition must be the premise
+// the goal already supposes.
+struct AssumeStep {
+    std::string name;
+    Expr proposition;
+
+    friend bool operator==(const AssumeStep&, const AssumeStep&) = default;
+};
+
 struct ProofStep {
-    std::variant<ReflexivityStep, ExactStep, ApplyStep> node;
+    std::variant<ReflexivityStep, ExactStep, ApplyStep, AssumeStep> node;
     source::SourceLocation location;
 };
 
@@ -101,7 +136,7 @@ struct Proof {
     LawId law;
     std::vector<Parameter> parameters;
     Expr proposition;  // the resolved `proves` clause
-    ProofStep step;
+    std::vector<ProofStep> steps;
     source::SourceRange range;
 };
 

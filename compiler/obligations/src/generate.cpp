@@ -139,6 +139,42 @@ private:
     std::size_t parameter_count_;
 };
 
+// Lowers a specification expression into a core proposition.
+//
+// A C++ equality between built-in integer values denotes propositional equality
+// of those values. The correspondence holds for this operand type only, and is
+// established here rather than assumed anywhere else (SPEC.md 7.3).
+std::expected<kernel::Proposition, Failure> lower_proposition(const vir::Expr& expression,
+                                                              const DefinitionMap& definitions,
+                                                              std::size_t parameter_count) {
+    const source::SourceLocation& location = expression.provenance.range.begin;
+
+    const auto* equality = std::get_if<vir::Binary>(&expression.node);
+    if (equality == nullptr || equality->op != vir::BinaryOp::Equal ||
+        equality->operands.size() != 2) {
+        return fail("it does not state an equality", location);
+    }
+
+    const std::optional<kernel::Type> left = lower_type(equality->operands[0].type);
+    const std::optional<kernel::Type> right = lower_type(equality->operands[1].type);
+    if (!left.has_value() || !right.has_value() || !(*left == *right)) {
+        return fail("it compares values this implementation does not model as equal-typed "
+                    "integers",
+                    location);
+    }
+
+    const TermLowering lowering(definitions, parameter_count);
+    std::expected<kernel::Term, Failure> lhs = lowering.lower(equality->operands[0]);
+    if (!lhs) {
+        return std::unexpected(lhs.error());
+    }
+    std::expected<kernel::Term, Failure> rhs = lowering.lower(equality->operands[1]);
+    if (!rhs) {
+        return std::unexpected(rhs.error());
+    }
+    return kernel::Proposition::equality(*left, std::move(*lhs), std::move(*rhs));
+}
+
 void collect_callees(const vir::Expr& expr, std::set<std::string>& callees) {
     if (const auto* call = std::get_if<vir::Call>(&expr.node)) {
         callees.insert(call->callee.usr);
@@ -203,6 +239,12 @@ void encode(source::Hasher& hasher, const kernel::Proposition& proposition) {
         encode(hasher, *quantified->body);
         return;
     }
+    if (const auto* implication = std::get_if<kernel::Implies>(&proposition.node)) {
+        hasher.update_u8(22);
+        encode(hasher, *implication->premise);
+        encode(hasher, *implication->conclusion);
+        return;
+    }
     const auto& equality = std::get<kernel::Eq>(proposition.node);
     hasher.update_u8(21);
     encode(hasher, equality.type);
@@ -230,6 +272,11 @@ void collect_dependencies(const kernel::Context& context,
                           std::set<std::uint32_t>& reached) {
     if (const auto* quantified = std::get_if<kernel::Forall>(&proposition.node)) {
         collect_dependencies(context, *quantified->body, reached);
+        return;
+    }
+    if (const auto* implication = std::get_if<kernel::Implies>(&proposition.node)) {
+        collect_dependencies(context, *implication->premise, reached);
+        collect_dependencies(context, *implication->conclusion, reached);
         return;
     }
     const auto& equality = std::get<kernel::Eq>(proposition.node);
@@ -306,6 +353,23 @@ bool conclusion_is_applicable(const kernel::Proposition& available,
 
     if (available_forall != nullptr || goal_forall != nullptr) {
         reason = "it quantifies over a different number of variables than the goal";
+        return false;
+    }
+
+    const auto* available_implies = std::get_if<kernel::Implies>(&available.node);
+    const auto* goal_implies = std::get_if<kernel::Implies>(&goal.node);
+
+    if (available_implies != nullptr && goal_implies != nullptr) {
+        return conclusion_is_applicable(*available_implies->premise, *goal_implies->premise,
+                                        reason) &&
+               conclusion_is_applicable(*available_implies->conclusion, *goal_implies->conclusion,
+                                        reason);
+    }
+
+    if (available_implies != nullptr || goal_implies != nullptr) {
+        reason = available_implies != nullptr
+                     ? "it supposes a premise the goal does not"
+                     : "the goal supposes a premise it does not";
         return false;
     }
 
@@ -399,11 +463,11 @@ struct Instantiation {
 };
 
 std::optional<Instantiation> instantiate_evidence(const vir::Proof& proof,
-                                                  const WrittenProof& evidence,
+                                                  const std::string& evidence,
+                                                  Instantiation state,
                                                   const std::vector<vir::Expr>& arguments,
                                                   const DefinitionMap& definitions,
                                                   diagnostics::Engine& engine) {
-    Instantiation state{evidence.goal, evidence.term};
     const TermLowering lowering(definitions, proof.parameters.size());
 
     for (const vir::Expr& argument : arguments) {
@@ -412,7 +476,7 @@ std::optional<Instantiation> instantiate_evidence(const vir::Proof& proof,
         const auto* quantified = std::get_if<kernel::Forall>(&state.proposition.node);
         if (quantified == nullptr) {
             report(engine, diagnostics::Category::ProofFailure, location,
-                   "proof '" + evidence.name + "' is instantiated at more arguments than it "
+                   "proof '" + evidence + "' is instantiated at more arguments than it "
                    "quantifies over",
                    "at this argument it establishes " + kernel::describe(state.proposition) +
                        ", which quantifies over nothing");
@@ -422,7 +486,7 @@ std::optional<Instantiation> instantiate_evidence(const vir::Proof& proof,
         const std::optional<kernel::Type> type = lower_type(argument.type);
         if (!type.has_value() || !(*type == quantified->binder)) {
             report(engine, diagnostics::Category::ProofFailure, location,
-                   "proof '" + evidence.name + "' quantifies over '" +
+                   "proof '" + evidence + "' quantifies over '" +
                        kernel::describe(quantified->binder) +
                        "' and cannot be instantiated at a term of type '" +
                        vir::describe(argument.type) + "'");
@@ -432,7 +496,7 @@ std::optional<Instantiation> instantiate_evidence(const vir::Proof& proof,
         std::expected<kernel::Term, Failure> term = lowering.lower(argument);
         if (!term) {
             report(engine, diagnostics::Category::UnsupportedSemantics, term.error().location,
-                   "proof '" + proof.name + "' instantiates '" + evidence.name +
+                   "proof '" + proof.name + "' instantiates '" + evidence +
                        "' at a term the formal core cannot state: " + term.error().reason);
             return std::nullopt;
         }
@@ -446,20 +510,251 @@ std::optional<Instantiation> instantiate_evidence(const vir::Proof& proof,
     return state;
 }
 
-// The same evidence, with this proof's parameters quantified back over it.
-//
-// An argument may mention the proof's parameters, in which case the statement
-// the elimination leaves is open in them and the claim is its closure. An
-// argument may equally be a closed term, in which case the statement stands on
-// its own. Both are readings of one written statement; which one the claim
-// asks for is settled by comparing propositions, never by searching.
-Instantiation close_over(const std::vector<vir::Parameter>& parameters, Instantiation state) {
-    for (auto parameter = parameters.rbegin(); parameter != parameters.rend(); ++parameter) {
-        const kernel::Type binder = *lower_type(parameter->type);
-        state.term = kernel::ProofTerm::forall_introduction(binder, std::move(state.term));
-        state.proposition = kernel::Proposition::for_all(binder, std::move(state.proposition));
+// The statement a goal makes underneath the quantifiers it leads with, and the
+// binders passed on the way.
+const kernel::Proposition* under_quantifiers(const kernel::Proposition& goal,
+                                             std::vector<kernel::Type>& binders) {
+    const kernel::Proposition* inner = &goal;
+    while (const auto* quantified = std::get_if<kernel::Forall>(&inner->node)) {
+        binders.push_back(quantified->binder);
+        inner = &*quantified->body;
     }
-    return state;
+    return inner;
+}
+
+kernel::ProofTerm quantify(const std::vector<kernel::Type>& binders, kernel::ProofTerm term) {
+    for (auto binder = binders.rbegin(); binder != binders.rend(); ++binder) {
+        term = kernel::ProofTerm::forall_introduction(*binder, std::move(term));
+    }
+    return term;
+}
+
+// How many premises stand between a statement's evidence and the goal.
+//
+// Deciding this needs the two propositions and nothing else, so it is settled
+// before any statement is consumed to discharge them. `exact` offers the goal
+// itself and so discharges nothing: peeling a premise is what `apply` means.
+std::optional<std::size_t> premises_before_the_goal(const kernel::Proposition& available,
+                                                    const kernel::Proposition& goal,
+                                                    bool exact,
+                                                    std::string& reason) {
+    if (exact) {
+        return available == goal ? std::optional<std::size_t>{0} : std::nullopt;
+    }
+
+    const kernel::Proposition* current = &available;
+    std::size_t discharged = 0;
+    while (true) {
+        if (conclusion_is_applicable(*current, goal, reason)) {
+            return discharged;
+        }
+        const auto* implication = std::get_if<kernel::Implies>(&current->node);
+        if (implication == nullptr) {
+            return std::nullopt;
+        }
+        current = &*implication->conclusion;
+        ++discharged;
+    }
+}
+
+// A proof body under lowering: the evidence already built for the proofs it
+// names, the premises standing in scope, and how far through the statement
+// sequence the lowering has got.
+//
+// Statements are read once, in written order. A statement that leaves a goal
+// behind is followed by the statements that close it, so the sequence is walked
+// exactly as it was written and is never searched.
+struct Body {
+    const vir::Proof& proof;
+    const DefinitionMap& definitions;
+    const std::vector<WrittenProof>& built;
+    const std::map<std::uint32_t, std::size_t>& built_index;
+    std::vector<std::pair<std::uint32_t, kernel::Proposition>> assumptions;
+    std::uint32_t assumed = 0;
+    std::size_t cursor = 0;
+};
+
+std::optional<kernel::ProofTerm> prove(Body& body,
+                                       const kernel::Proposition& goal,
+                                       diagnostics::Engine& engine);
+
+// `assume h : P;` names the premise the goal supposes. It introduces the
+// quantifiers standing in front of that premise, because a premise stated of
+// the proof's parameters is only visible underneath them.
+//
+// Nothing is assumed that the goal did not already suppose: the proposition
+// written here is compared with the goal's own premise, and the hypothesis
+// exists only because the implication introduction below puts it there.
+std::optional<kernel::ProofTerm> suppose(Body& body,
+                                         const vir::ProofStep& step,
+                                         const vir::AssumeStep& assumed,
+                                         const kernel::Proposition& goal,
+                                         diagnostics::Engine& engine) {
+    const std::uint32_t position = body.assumed++;
+
+    std::vector<kernel::Type> binders;
+    const kernel::Proposition* inner = under_quantifiers(goal, binders);
+
+    const auto* implication = std::get_if<kernel::Implies>(&inner->node);
+    if (implication == nullptr) {
+        report(engine, diagnostics::Category::ProofFailure, step.location,
+               "'" + assumed.name + "' has no premise to stand for",
+               "the goal here is " + kernel::describe(*inner) + ", which supposes nothing");
+        return std::nullopt;
+    }
+
+    std::expected<kernel::Proposition, Failure> written =
+        lower_proposition(assumed.proposition, body.definitions, body.proof.parameters.size());
+    if (!written) {
+        report(engine, diagnostics::Category::UnsupportedSemantics,
+               written.error().location.is_valid() ? written.error().location : step.location,
+               "proof '" + body.proof.name +
+                   "' assumes a proposition the formal core cannot state: " +
+                   written.error().reason);
+        return std::nullopt;
+    }
+
+    if (!(*written == *implication->premise)) {
+        report(engine, diagnostics::Category::ProofFailure, step.location,
+               "'" + assumed.name + "' does not name the premise this goal supposes",
+               "it states " + kernel::describe(*written) + ", and the premise is " +
+                   kernel::describe(*implication->premise));
+        return std::nullopt;
+    }
+
+    body.assumptions.emplace_back(position, *implication->premise);
+    std::optional<kernel::ProofTerm> rest = prove(body, *implication->conclusion, engine);
+    body.assumptions.pop_back();
+    if (!rest.has_value()) {
+        return std::nullopt;
+    }
+
+    return quantify(binders, kernel::ProofTerm::implication_introduction(*implication->premise,
+                                                                         std::move(*rest)));
+}
+
+// The evidence a statement names, before it is instantiated: a proof this unit
+// has already built, or a premise standing in scope.
+std::optional<Instantiation> named_evidence(const Body& body,
+                                            const vir::ProofStep& step,
+                                            const vir::Reference& reference,
+                                            diagnostics::Engine& engine) {
+    if (const auto* assumed = std::get_if<vir::HypothesisRef>(&reference.node)) {
+        const auto found = std::ranges::find_if(
+            body.assumptions,
+            [&assumed](const auto& entry) { return entry.first == assumed->assumption; });
+        if (found == body.assumptions.end()) {
+            report(engine, diagnostics::Category::ProofFailure, step.location,
+                   "the premise '" + reference.name + "' names is not in scope here",
+                   "it was assumed for a goal that has already been closed");
+            return std::nullopt;
+        }
+
+        // A premise is named from the inside out, so its index counts back from
+        // the most recently assumed one.
+        const auto position = static_cast<std::uint32_t>(
+            body.assumptions.size() - 1 -
+            static_cast<std::size_t>(std::distance(body.assumptions.begin(), found)));
+        return Instantiation{found->second,
+                             kernel::ProofTerm::hypothesis(kernel::HypothesisIndex{position})};
+    }
+
+    const auto source =
+        body.built_index.find(std::get<vir::ProofRef>(reference.node).proof.value);
+    const WrittenProof& used = body.built[source->second];
+    return Instantiation{used.goal, used.term};
+}
+
+std::optional<kernel::ProofTerm> prove(Body& body,
+                                       const kernel::Proposition& goal,
+                                       diagnostics::Engine& engine) {
+    const vir::Proof& proof = body.proof;
+
+    if (body.cursor >= proof.steps.size()) {
+        report(engine, diagnostics::Category::ProofFailure, proof.range.begin,
+               "proof '" + proof.name + "' leaves a goal open",
+               "nothing in its body establishes " + kernel::describe(goal));
+        return std::nullopt;
+    }
+
+    const vir::ProofStep& step = proof.steps[body.cursor++];
+
+    if (std::holds_alternative<vir::ReflexivityStep>(step.node)) {
+        return definitional_evidence(goal);
+    }
+
+    if (const auto* assumed = std::get_if<vir::AssumeStep>(&step.node)) {
+        return suppose(body, step, *assumed, goal, engine);
+    }
+
+    const auto* exact = std::get_if<vir::ExactStep>(&step.node);
+    const vir::Reference& reference =
+        exact != nullptr ? exact->evidence : std::get<vir::ApplyStep>(step.node).evidence;
+    const std::vector<vir::Expr>& arguments =
+        exact != nullptr ? exact->arguments : std::get<vir::ApplyStep>(step.node).arguments;
+
+    std::optional<Instantiation> evidence = named_evidence(body, step, reference, engine);
+    if (!evidence.has_value()) {
+        return std::nullopt;
+    }
+
+    std::optional<Instantiation> instantiated = instantiate_evidence(
+        proof, reference.name, std::move(*evidence), arguments, body.definitions, engine);
+    if (!instantiated.has_value()) {
+        return std::nullopt;
+    }
+
+    // Two readings of the statement, in a fixed order: the goal as it stands,
+    // then the goal with its own quantifiers introduced. An argument may be a
+    // closed term, or it may mention the proof's parameters, in which case the
+    // statement it leaves is open in them. Which reading the goal asks for is
+    // settled by comparing propositions, never by searching.
+    std::vector<kernel::Type> binders;
+    const kernel::Proposition* inner = under_quantifiers(goal, binders);
+
+    std::string reason;
+    std::optional<std::size_t> discharge =
+        premises_before_the_goal(instantiated->proposition, goal, exact != nullptr, reason);
+    if (discharge.has_value()) {
+        binders.clear();
+    } else if (!binders.empty()) {
+        std::string deeper;
+        discharge =
+            premises_before_the_goal(instantiated->proposition, *inner, exact != nullptr, deeper);
+    }
+
+    if (!discharge.has_value()) {
+        report(engine, diagnostics::Category::ProofFailure, step.location,
+               exact != nullptr
+                   ? "'" + reference.name + "' does not prove what proof '" + proof.name +
+                         "' claims"
+                   : "the conclusion of '" + reference.name +
+                         "' cannot be applied to what proof '" + proof.name + "' claims: " +
+                         reason,
+               "it establishes " + kernel::describe(instantiated->proposition) +
+                   ", and the goal is " + kernel::describe(goal));
+        return std::nullopt;
+    }
+
+    kernel::ProofTerm term = std::move(instantiated->term);
+    kernel::Proposition current = std::move(instantiated->proposition);
+    for (std::size_t remaining = *discharge; remaining > 0; --remaining) {
+        const auto& implication = std::get<kernel::Implies>(current.node);
+        kernel::Proposition premise = *implication.premise;
+        kernel::Proposition conclusion = *implication.conclusion;
+
+        // The premise this application leaves is a goal like any other, and the
+        // statements that follow are what close it.
+        std::optional<kernel::ProofTerm> discharged = prove(body, premise, engine);
+        if (!discharged.has_value()) {
+            return std::nullopt;
+        }
+        term = kernel::ProofTerm::implication_elimination(std::move(current), std::move(term),
+                                                          std::move(*discharged));
+        current = std::move(conclusion);
+    }
+
+    return quantify(binders, std::move(term));
 }
 
 // Lowers each written proof into a kernel proof term.
@@ -499,14 +794,53 @@ void lower_proofs(const vir::Module& module,
             const vir::Proof& proof = **candidate;
             const Obligation& obligation = *goals.at(proof.law.value);
 
-            const auto* exact = std::get_if<vir::ExactStep>(&proof.step.node);
-            const auto* apply = std::get_if<vir::ApplyStep>(&proof.step.node);
-
             const auto refuse = [&] {
                 program.refused_proofs.push_back(proof.law);
                 candidate = pending.erase(candidate);
                 progress = true;
             };
+
+            // Evidence is built in dependency order: a statement's proof must
+            // already have a term before this body can be lowered at all, which
+            // is what keeps circular evidence from ever producing one.
+            bool admitted = true;
+            bool ready = true;
+            for (const vir::ProofStep& step : proof.steps) {
+                const vir::Reference* reference = nullptr;
+                if (const auto* used = std::get_if<vir::ExactStep>(&step.node)) {
+                    reference = &used->evidence;
+                } else if (const auto* applied = std::get_if<vir::ApplyStep>(&step.node)) {
+                    reference = &applied->evidence;
+                }
+                if (reference == nullptr) {
+                    continue;
+                }
+                const auto* named = std::get_if<vir::ProofRef>(&reference->node);
+                if (named == nullptr) {
+                    continue;  // a premise, which needs nothing built
+                }
+                if (!declared.contains(named->proof.value)) {
+                    report(engine, diagnostics::Category::ProofFailure, step.location,
+                           "proof '" + reference->name + "' was not admitted, so proof '" +
+                               proof.name + "' has no evidence",
+                           "the reason it was not admitted is reported above");
+                    admitted = false;
+                    break;
+                }
+                if (!lowered.contains(named->proof.value)) {
+                    ready = false;
+                    break;
+                }
+            }
+
+            if (!admitted) {
+                refuse();
+                continue;
+            }
+            if (!ready) {
+                ++candidate;  // its evidence is not built yet
+                continue;
+            }
 
             const std::optional<kernel::Proposition> claimed =
                 claimed_proposition(proof, obligation, definitions, engine);
@@ -515,87 +849,25 @@ void lower_proofs(const vir::Module& module,
                 continue;
             }
 
-            std::optional<kernel::ProofTerm> term;
-            WrittenProofKind kind = WrittenProofKind::Reflexivity;
+            Body body{proof, definitions, program.proofs, lowered, {}, 0, 0};
+            std::optional<kernel::ProofTerm> term = prove(body, *claimed, engine);
 
-            if (exact == nullptr && apply == nullptr) {
-                term = definitional_evidence(*claimed);
-            } else {
-                kind = exact != nullptr ? WrittenProofKind::Exact : WrittenProofKind::Apply;
-                const std::string& name =
-                    exact != nullptr ? exact->target_name : apply->target_name;
-                const std::uint32_t used =
-                    exact != nullptr ? exact->target.value : apply->target.value;
-
-                if (!declared.contains(used)) {
-                    report(engine, diagnostics::Category::ProofFailure, proof.step.location,
-                           "proof '" + name + "' was not admitted, so proof '" + proof.name +
-                               "' has no evidence",
-                           "the reason it was not admitted is reported above");
-                    refuse();
-                    continue;
-                }
-
-                const auto source = lowered.find(used);
-                if (source == lowered.end()) {
-                    ++candidate;  // its evidence is not built yet
-                    continue;
-                }
-
-                const std::vector<vir::Expr>& arguments =
-                    exact != nullptr ? exact->arguments : apply->arguments;
-                std::optional<Instantiation> instantiated = instantiate_evidence(
-                    proof, program.proofs[source->second], arguments, definitions, engine);
-                if (!instantiated.has_value()) {
-                    refuse();
-                    continue;
-                }
-
-                std::vector<Instantiation> readings;
-                readings.push_back(*instantiated);
-                if (!arguments.empty() && !proof.parameters.empty()) {
-                    readings.push_back(close_over(proof.parameters, std::move(*instantiated)));
-                }
-
-                std::string reason;
-                const Instantiation* accepted = nullptr;
-                for (const Instantiation& reading : readings) {
-                    std::string why;
-                    const bool matches =
-                        exact != nullptr
-                            ? reading.proposition == *claimed
-                            : conclusion_is_applicable(reading.proposition, *claimed, why);
-                    if (matches) {
-                        accepted = &reading;
-                        break;
-                    }
-                    if (reason.empty()) {
-                        reason = why;  // the reading the note below shows
-                    }
-                }
-
-                if (accepted == nullptr) {
-                    report(engine, diagnostics::Category::ProofFailure, proof.step.location,
-                           exact != nullptr
-                               ? "proof '" + name + "' does not prove what proof '" + proof.name +
-                                     "' claims"
-                               : "the conclusion of proof '" + name +
-                                     "' cannot be applied to what proof '" + proof.name +
-                                     "' claims: " + reason,
-                           "it establishes " + kernel::describe(readings.front().proposition) +
-                               ", and the claim is " + kernel::describe(*claimed));
-                    refuse();
-                    continue;
-                }
-
-                term = accepted->term;
+            if (term.has_value() && body.cursor < proof.steps.size()) {
+                report(engine, diagnostics::Category::ProofFailure,
+                       proof.steps[body.cursor].location,
+                       "proof '" + proof.name + "' has already closed every goal it states",
+                       "the statements before this one leave nothing to prove");
+                term.reset();
+            }
+            if (!term.has_value()) {
+                refuse();
+                continue;
             }
 
             WrittenProof written;
             written.id = proof.id;
             written.name = proof.name;
             written.law = proof.law;
-            written.kind = kind;
             written.goal = *claimed;
             written.closes_law = *claimed == obligation.goal;
             written.term = std::move(*term);
@@ -635,7 +907,7 @@ void lower_proofs(const vir::Module& module,
     }
 
     for (const vir::Proof* proof : pending) {
-        report(engine, diagnostics::Category::ProofFailure, proof->step.location,
+        report(engine, diagnostics::Category::ProofFailure, proof->steps.front().location,
                "proof '" + proof->name + "' depends on itself through the proofs it uses",
                "this formal core has no induction rule, so written proofs must be acyclic");
         program.refused_proofs.push_back(proof->law);
@@ -766,60 +1038,57 @@ Program generate(const vir::Module& module,
                                  function->range.begin, {}});
     }
 
+    // Why a definition a law reaches for is not available to the core.
+    const auto explain = [&elaborated, &deferred](const Failure& failure) {
+        std::string note;
+        if (failure.missing_symbol.empty()) {
+            return note;
+        }
+        if (const elaboration::FunctionRejection* rejection =
+                elaborated.rejection(vir::SymbolId{failure.missing_symbol})) {
+            note = "'" + rejection->name + "' was not admitted because " + rejection->reason;
+        } else if (const auto deferral = deferred.find(failure.missing_symbol);
+                   deferral != deferred.end()) {
+            note = deferral->second.reason;
+        } else {
+            note = "it is not marked pure, so it is not a definition the formal core may unfold";
+        }
+        return note;
+    };
+
     for (const vir::Law& law : module.laws) {
-        const auto* equality = std::get_if<vir::Binary>(&law.proposition.node);
-        if (equality == nullptr || equality->op != vir::BinaryOp::Equal ||
-            equality->operands.size() != 2) {
+        std::expected<kernel::Proposition, Failure> conclusion =
+            lower_proposition(law.proposition, definitions, law.parameters.size());
+        if (!conclusion) {
             report(engine, diagnostics::Category::UnsupportedSemantics,
-                   law.proposition_range.begin,
-                   "law '" + law.name + "' does not state an equality",
-                   "this implementation proves propositions of the form 'a == b' over "
-                   "built-in integer values");
+                   conclusion.error().location.is_valid() ? conclusion.error().location
+                                                          : law.proposition_range.begin,
+                   "law '" + law.name +
+                       "' cannot be stated to the formal core: " + conclusion.error().reason,
+                   explain(conclusion.error()));
             continue;
         }
 
-        // A C++ equality between built-in integer values denotes propositional
-        // equality of those values. The correspondence holds for this operand
-        // type only, and is established here rather than assumed anywhere else
-        // (SPEC.md 7.3).
-        const std::optional<kernel::Type> left_type = lower_type(equality->operands[0].type);
-        const std::optional<kernel::Type> right_type = lower_type(equality->operands[1].type);
-        if (!left_type.has_value() || !right_type.has_value() || !(*left_type == *right_type)) {
-            report(engine, diagnostics::Category::UnsupportedSemantics,
-                   law.proposition_range.begin,
-                   "law '" + law.name + "' compares values this implementation does not model as "
-                   "equal-typed integers");
-            continue;
-        }
+        kernel::Proposition goal = std::move(*conclusion);
 
-        const TermLowering lowering(definitions, law.parameters.size());
-        std::expected<kernel::Term, Failure> lhs = lowering.lower(equality->operands[0]);
-        std::expected<kernel::Term, Failure> rhs =
-            lhs ? lowering.lower(equality->operands[1]) : std::unexpected(lhs.error());
-        if (!lhs || !rhs) {
-            const Failure& failure = lhs ? rhs.error() : lhs.error();
-            std::string note;
-            if (!failure.missing_symbol.empty()) {
-                if (const elaboration::FunctionRejection* rejection =
-                        elaborated.rejection(vir::SymbolId{failure.missing_symbol})) {
-                    note = "'" + rejection->name + "' was not admitted because " +
-                           rejection->reason;
-                } else if (const auto deferral = deferred.find(failure.missing_symbol);
-                           deferral != deferred.end()) {
-                    note = deferral->second.reason;
-                } else {
-                    note = "it is not marked pure, so it is not a definition the formal core "
-                           "may unfold";
-                }
+        // A precondition asserts nothing. It is what the conclusion is stated
+        // under, so a law that has one states the implication between them
+        // (GRAMMAR.md 3).
+        if (law.premise.has_value()) {
+            std::expected<kernel::Proposition, Failure> premise =
+                lower_proposition(*law.premise, definitions, law.parameters.size());
+            if (!premise) {
+                report(engine, diagnostics::Category::UnsupportedSemantics,
+                       premise.error().location.is_valid() ? premise.error().location
+                                                           : law.premise_range.begin,
+                       "the precondition of law '" + law.name +
+                           "' cannot be stated to the formal core: " + premise.error().reason,
+                       explain(premise.error()));
+                continue;
             }
-            report(engine, diagnostics::Category::UnsupportedSemantics,
-                   failure.location.is_valid() ? failure.location : law.range.begin,
-                   "law '" + law.name + "' cannot be stated to the formal core: " + failure.reason,
-                   note);
-            continue;
+            goal = kernel::Proposition::implication(std::move(*premise), std::move(goal));
         }
 
-        kernel::Proposition goal = kernel::Proposition::equality(*left_type, *lhs, *rhs);
         bool quantified = true;
         for (auto parameter = law.parameters.rbegin(); parameter != law.parameters.rend();
              ++parameter) {

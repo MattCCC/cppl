@@ -14,6 +14,17 @@ std::unexpected<Rejection> reject(RejectionKind kind, std::string detail) {
     return std::unexpected(Rejection{kind, std::move(detail)});
 }
 
+// A premise standing in the proof context, with the number of term binders that
+// enclosed it when it was introduced.
+//
+// A proposition assumed outside a quantifier states something different
+// underneath it, so it is restated for the depth it is used at rather than
+// being compared as it was written.
+struct Assumption {
+    Proposition proposition;
+    std::size_t binders = 0;
+};
+
 // A goal is checked only after it is known to be a well-formed proposition:
 // both sides of every equality must type-check at the stated type under the
 // binders that enclose them.
@@ -34,6 +45,17 @@ std::unexpected<Rejection> reject(RejectionKind kind, std::string detail) {
         return body;
     }
 
+    // An implication binds nothing, so both sides are stated under the binders
+    // that enclose the implication itself.
+    if (const auto* implication = std::get_if<Implies>(&proposition.node)) {
+        if (auto premise = validate_proposition(context, locals, *implication->premise, limits,
+                                                depth + 1);
+            !premise) {
+            return premise;
+        }
+        return validate_proposition(context, locals, *implication->conclusion, limits, depth + 1);
+    }
+
     const auto& equality = std::get<Eq>(proposition.node);
     for (const Term* side : {&equality.lhs, &equality.rhs}) {
         auto type = type_of(context, locals, *side, limits);
@@ -52,6 +74,7 @@ std::unexpected<Rejection> reject(RejectionKind kind, std::string detail) {
 
 [[nodiscard]] std::expected<void, Rejection> check_under(const Context& context,
                                                          std::vector<Type>& locals,
+                                                         std::vector<Assumption>& assumptions,
                                                          const Proposition& proposition,
                                                          const ProofTerm& proof,
                                                          const CoreLimits& limits,
@@ -80,7 +103,7 @@ std::unexpected<Rejection> reject(RejectionKind kind, std::string detail) {
                               ", which quantifies over nothing");
         }
 
-        if (auto evidence = check_under(context, locals, *elimination->quantified,
+        if (auto evidence = check_under(context, locals, assumptions, *elimination->quantified,
                                         *elimination->evidence, limits, depth + 1);
             !evidence) {
             return evidence;
@@ -107,6 +130,67 @@ std::unexpected<Rejection> reject(RejectionKind kind, std::string detail) {
         return {};
     }
 
+    // Implication elimination closes a goal of any shape for the same reason,
+    // and is decided on the evidence it discharges rather than on the goal.
+    if (const auto* application = std::get_if<ImplicationElimination>(&proof.node)) {
+        if (auto well_formed = validate_proposition(context, locals, *application->implication,
+                                                    limits, depth + 1);
+            !well_formed) {
+            return well_formed;
+        }
+
+        const auto* implication = std::get_if<Implies>(&application->implication->node);
+        if (implication == nullptr) {
+            return reject(RejectionKind::ProofShapeMismatch,
+                          "a premise was discharged against evidence for " +
+                              describe(*application->implication) + ", which is not an implication");
+        }
+
+        if (auto evidence = check_under(context, locals, assumptions, *application->implication,
+                                        *application->evidence, limits, depth + 1);
+            !evidence) {
+            return evidence;
+        }
+
+        if (auto premise = check_under(context, locals, assumptions, *implication->premise,
+                                       *application->premise, limits, depth + 1);
+            !premise) {
+            return premise;
+        }
+
+        if (!(*implication->conclusion == proposition)) {
+            return reject(RejectionKind::ProofShapeMismatch,
+                          "discharging that premise establishes " +
+                              describe(*implication->conclusion) + ", which is not the goal " +
+                              describe(proposition));
+        }
+        return {};
+    }
+
+    // A hypothesis stands for a premise an enclosing introduction placed in the
+    // context. The kernel holds that context itself, so evidence can never name
+    // a premise that is not there.
+    if (const auto* assumed = std::get_if<Hypothesis>(&proof.node)) {
+        if (assumed->index.value >= assumptions.size()) {
+            return reject(RejectionKind::MalformedProofTerm,
+                          "evidence names hypothesis " + std::to_string(assumed->index.value) +
+                              ", and " + std::to_string(assumptions.size()) +
+                              " premises are in scope");
+        }
+
+        const Assumption& assumption =
+            assumptions[assumptions.size() - 1 - assumed->index.value];
+        const Proposition available =
+            shift(assumption.proposition,
+                  static_cast<std::uint32_t>(locals.size() - assumption.binders));
+        if (!(available == proposition)) {
+            return reject(RejectionKind::ProofShapeMismatch,
+                          "that hypothesis is " + describe(available) + ", which is not the goal " +
+                              describe(proposition));
+        }
+        return {};
+    }
+
     if (const auto* quantified = std::get_if<Forall>(&proposition.node)) {
         const auto* introduction = std::get_if<ForallIntroduction>(&proof.node);
         if (introduction == nullptr) {
@@ -120,16 +204,39 @@ std::unexpected<Rejection> reject(RejectionKind kind, std::string detail) {
         }
 
         locals.push_back(quantified->binder);
-        auto body = check_under(context, locals, *quantified->body, *introduction->body, limits,
-                                depth + 1);
+        auto body = check_under(context, locals, assumptions, *quantified->body,
+                                *introduction->body, limits, depth + 1);
         locals.pop_back();
+        return body;
+    }
+
+    // An implication is introduced by assuming its premise. The premise becomes
+    // available to the evidence for the conclusion and to nothing else: it is
+    // popped again here, and the kernel never treats it as established.
+    if (const auto* implication = std::get_if<Implies>(&proposition.node)) {
+        const auto* introduction = std::get_if<ImplicationIntroduction>(&proof.node);
+        if (introduction == nullptr) {
+            return reject(RejectionKind::ProofShapeMismatch,
+                          "an implication goal requires implication-introduction");
+        }
+        if (!(*introduction->premise == *implication->premise)) {
+            return reject(RejectionKind::ProofShapeMismatch,
+                          "evidence assumes " + describe(*introduction->premise) +
+                              " but the goal supposes " + describe(*implication->premise));
+        }
+
+        assumptions.push_back(Assumption{*implication->premise, locals.size()});
+        auto body = check_under(context, locals, assumptions, *implication->conclusion,
+                                *introduction->body, limits, depth + 1);
+        assumptions.pop_back();
         return body;
     }
 
     const auto& equality = std::get<Eq>(proposition.node);
     if (!std::holds_alternative<Reflexivity>(proof.node)) {
         return reject(RejectionKind::ProofShapeMismatch,
-                      "an equality goal is not introduced by forall-introduction");
+                      "an equality goal is established by reflexivity, by a hypothesis, or by "
+                      "eliminating evidence for it");
     }
 
     auto lhs = normalize(context, equality.lhs, limits);
@@ -182,8 +289,12 @@ std::expected<Acceptance, Rejection> check(const Context& context,
         return std::unexpected(well_formed.error());
     }
 
+    // Nothing is assumed to begin with. Every premise a proof uses has to have
+    // been introduced by the proof itself.
     locals.clear();
-    if (auto checked = check_under(context, locals, proposition, proof, limits, 0); !checked) {
+    std::vector<Assumption> assumptions;
+    if (auto checked = check_under(context, locals, assumptions, proposition, proof, limits, 0);
+        !checked) {
         return std::unexpected(checked.error());
     }
 

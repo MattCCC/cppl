@@ -90,31 +90,45 @@ Projection project(const TokenStream& stream,
             continue;
         }
 
-        edits.push_back(Edit{law.range.span,
-                             emit(law.name, law.parameters, proposition->expression,
-                                  law.keyword_location, law.end_line)});
-        projection.specification_functions.push_back(SpecificationFunction{law.name, index});
+        SpecificationFunction projected{law.name, index, {}};
+        std::string replacement = emit(law.name, law.parameters, proposition->expression,
+                                       law.keyword_location, law.end_line);
+
+        // A precondition is a specification expression of the Law's own
+        // parameters, so it is projected exactly like the conclusion, under a
+        // generated name: the Law's name states what the Law concludes.
+        if (const Clause* premise = law.premise(); premise != nullptr) {
+            projected.premise_name = options.generated_prefix + "premise_" +
+                                     std::to_string(index) +
+                                     (options.unit_key.empty() ? "" : "_" + options.unit_key);
+            replacement += emit(projected.premise_name, law.parameters, premise->expression,
+                                premise->location, law.end_line);
+        }
+
+        edits.push_back(Edit{law.range.span, std::move(replacement)});
+        projection.specification_functions.push_back(std::move(projected));
     }
 
     // An instantiation argument is an ordinary C++ expression written in the
     // proof's own scope, so it is projected as a function returning it. The
     // deduced return type is the type Clang gives the expression, with no
     // conversion imposed on the way out.
-    const auto emit_argument = [&stream](std::string_view name,
-                                         const source::ByteSpan& parameters,
-                                         const ProofArgument& argument) {
+    const auto emit_expression = [&stream](std::string_view name,
+                                           const source::ByteSpan& parameters,
+                                           const source::ByteSpan& expression,
+                                           const source::SourceLocation& location) {
         std::string head = "[[maybe_unused]] static auto ";
         head += name;
         head += "(";
         head += stream.spelling(parameters);
         head += ") { return (";
-        // The argument's bytes are copied verbatim, so aligning the start of
+        // The expression's bytes are copied verbatim, so aligning the start of
         // the copy with the column it came from makes every column inside it
         // land where the author wrote it.
-        if (argument.location.column > head.size() + 1) {
-            head.append(argument.location.column - 1 - head.size(), ' ');
+        if (location.column > head.size() + 1) {
+            head.append(location.column - 1 - head.size(), ' ');
         }
-        head += stream.spelling(argument.span);
+        head += stream.spelling(expression);
         head += "); }\n";
         return head;
     };
@@ -138,10 +152,23 @@ Projection project(const TokenStream& stream,
                 std::string name = options.generated_prefix + "argument_" + suffix + "_" +
                                    std::to_string(projected.argument_names.size());
                 replacement += line_directive(argument.location.line, proof.keyword_location.file);
-                replacement += emit_argument(name, proof.parameters, argument);
+                replacement += emit_expression(name, proof.parameters, argument.span,
+                                               argument.location);
                 replacement += line_directive(proof.end_line, proof.keyword_location.file);
                 projected.argument_names.push_back(std::move(name));
             }
+
+            if (statement.kind != ProofStatementKind::Assume) {
+                continue;
+            }
+            std::string name = options.generated_prefix + "assumption_" + suffix + "_" +
+                               std::to_string(projected.assumption_names.size());
+            replacement +=
+                line_directive(statement.proposition_location.line, proof.keyword_location.file);
+            replacement += emit_expression(name, proof.parameters, statement.proposition,
+                                           statement.proposition_location);
+            replacement += line_directive(proof.end_line, proof.keyword_location.file);
+            projected.assumption_names.push_back(std::move(name));
         }
 
         edits.push_back(Edit{proof.range.span, std::move(replacement)});

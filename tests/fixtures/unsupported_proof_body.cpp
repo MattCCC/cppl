@@ -14,7 +14,7 @@ law identity_returns_input(int x)
 proof identity_returns_input_holds(int x)
     proves(identity_returns_input(x))
 {
-    assume h : identity(x) == x;
+    let y = identity(x);
 }
 
 int main() {

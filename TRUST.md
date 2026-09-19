@@ -1118,22 +1118,33 @@ For a false proposition to be accepted, one of these would have to be wrong:
 
 ```text
 kernel/   the proof checker, the normalizer, the type checker of core terms,
-          the capture-safe substitution used by universal elimination, and the
-          admission rules of the definition context
+          the capture-safe substitution used by universal elimination and by the
+          hypothesis context, and the admission rules of the definition context
 ```
 
 That is the whole logical TCB. It links no other component, includes no header
 outside itself, and holds no global state. `tests/architecture` checks both
 properties on every run.
 
-The core has three rules: reflexivity, universal introduction and universal
-elimination. Universal elimination is the most recent, and it is a capability,
-not an assumption. Eliminating a quantifier requires evidence for a proposition
-the kernel checks for itself, an argument whose type the kernel derives for
-itself, and a resulting proposition the kernel obtains by substituting for
-itself. The proof term it is given restates the proposition being eliminated
-from, and that restatement is checked, never believed: evidence for a false
-statement is refused before any instance of it can be taken.
+The core has six rules: reflexivity, universal introduction, universal
+elimination, implication introduction, implication elimination, and the use of a
+hypothesis. Each is a capability, not an assumption.
+
+Eliminating a quantifier requires evidence for a proposition the kernel checks
+for itself, an argument whose type the kernel derives for itself, and a
+resulting proposition the kernel obtains by substituting for itself. The proof
+term it is given restates the proposition being eliminated from, and that
+restatement is checked, never believed: evidence for a false statement is
+refused before any instance of it can be taken. Discharging a premise works the
+same way — the implication is restated, checked, and the conclusion is the
+kernel's own.
+
+**A premise is supposed, never granted.** `expects(P) ensures(Q)` does not mean
+that `P` is trusted; it means that `Q` is to be proved under the supposition
+`P`, and what is established is `P -> Q`. The hypothesis exists for exactly as
+long as the implication introduction that placed it in the context, the kernel
+holds that context itself, and evidence can never name a premise that is not
+standing in it. Nothing anywhere admits `P` on its own.
 
 There are **no axioms**. The core has no rule that introduces a proposition
 without evidence, and no `trusted` mechanism is implemented, so no proposition
@@ -1181,7 +1192,15 @@ weight are deliberately few and are stated explicitly in the implementation:
   proof of one instance discharges nothing;
 - the terms a proof reference is instantiated at are ordinary C++ expressions,
   resolved by Clang from the projected text like every other expression, and
-  lowered by the same rules as any other value.
+  lowered by the same rules as any other value;
+- a Law's `expects` clause is its premise and its `ensures` clause its
+  conclusion, and the Law is the implication from the one to the other, under
+  its parameters. A precondition asserts nothing on its own, and a Law that
+  states one is proven only when that implication is;
+- `assume h : P;` names a premise the goal already supposes. It introduces
+  nothing: the proposition written there is compared with the goal's own
+  premise, and the hypothesis the kernel then holds is the goal's premise, not
+  the written text.
 
 Anything outside those rules is reported as unsupported and yields no
 obligation. No construct is approximated.
@@ -1195,6 +1214,10 @@ Every written proof reaches the kernel. The one that discharges a Law is
 submitted as that Law's evidence and checked there; a proof of an instance has
 no obligation of its own and is checked against its own claim where it is
 lowered. Neither is left standing on the author's word.
+
+A premise an `apply` leaves behind is a goal like any other. It is closed by the
+statements that follow, by evidence the kernel checks; a body that ends with one
+still open is refused, and no strategy of the compiler's own is offered for it.
 
 ## 41.3 Runtime trust
 

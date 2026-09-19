@@ -31,18 +31,6 @@ std::string describe(Origin origin) {
     return "obligation";
 }
 
-std::string describe(WrittenProofKind kind) {
-    switch (kind) {
-        case WrittenProofKind::Reflexivity:
-            return "refl";
-        case WrittenProofKind::Exact:
-            return "exact";
-        case WrittenProofKind::Apply:
-            return "apply";
-    }
-    return "unknown";
-}
-
 const WrittenProof* Program::proof_for(vir::LawId law) const {
     for (const WrittenProof& proof : proofs) {
         if (proof.law == law && proof.closes_law) {
@@ -60,6 +48,13 @@ kernel::ProofTerm definitional_evidence(const kernel::Proposition& goal) {
     if (const auto* quantified = std::get_if<kernel::Forall>(&goal.node)) {
         return kernel::ProofTerm::forall_introduction(quantified->binder,
                                                       definitional_evidence(*quantified->body));
+    }
+    // A precondition is supposed and then left alone. This evidence establishes
+    // the conclusion outright, which is a claim about the conclusion and never
+    // an appeal to the premise: the hypothesis it introduces is not used.
+    if (const auto* implication = std::get_if<kernel::Implies>(&goal.node)) {
+        return kernel::ProofTerm::implication_introduction(
+            *implication->premise, definitional_evidence(*implication->conclusion));
     }
     return kernel::ProofTerm::reflexivity();
 }

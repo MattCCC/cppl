@@ -8,15 +8,6 @@ namespace {
 
 constexpr std::string_view kDefinitionalStrategy = "definitional-equality";
 
-// What a goal still asks for once its quantifiers have been introduced. Used to
-// name the subgoal an `apply` did not close.
-const kernel::Proposition& conclusion(const kernel::Proposition& goal) {
-    if (const auto* quantified = std::get_if<kernel::Forall>(&goal.node)) {
-        return conclusion(*quantified->body);
-    }
-    return goal;
-}
-
 }  // namespace
 
 std::optional<Evidence> propose(const kernel::Context&, const kernel::Proposition& goal) {
@@ -82,12 +73,6 @@ std::vector<obligations::ObligationResult> verify(const obligations::Program& pr
             diagnostic.location = location;
             diagnostic.notes.push_back(
                 diagnostics::Note{"goal: " + kernel::describe(obligation.goal), location});
-            if (written != nullptr &&
-                written->kind == obligations::WrittenProofKind::Apply) {
-                diagnostic.notes.push_back(diagnostics::Note{
-                    "apply left the subgoal: " + kernel::describe(conclusion(obligation.goal)),
-                    location});
-            }
             diagnostic.notes.push_back(
                 diagnostics::Note{"the kernel did not accept the evidence: " + verdict.reason(),
                                   location});

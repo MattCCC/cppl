@@ -2970,27 +2970,56 @@ That is why C++L still has no parser for C++ expressions, and why an argument's
 diagnostics carry the line and column the author wrote it at — the argument's
 bytes are copied into the generated function at the column they came from.
 
+A Law's `expects` clause is projected the same way, under a generated name
+rather than the Law's own: the Law's name states what the Law concludes. So is
+the proposition an `assume` statement names. Every specification expression in
+the language reaches Clang by the one mechanism.
+
 Elaboration resolves what the author wrote — which Law, at which arguments,
-using which other proof, instantiated at which terms — into typed VIR steps.
+using which other proof or assumed premise, instantiated at which terms — into
+typed VIR steps. A name an `exact` or `apply` uses is resolved against the
+premises the body has assumed before it is resolved against the unit's proof
+declarations, because a premise is the more local binding.
+
 `compiler/obligations` lowers those steps into kernel proof terms. The
 proposition a proof claims is the Law's proposition instantiated at the
-arguments of its `proves` clause and closed over the proof's own parameters.
-`refl` becomes that proposition's quantifier introductions followed by
-reflexivity; `exact` and `apply` become the named proof's evidence wrapped in
-one universal elimination per argument. Steps are lowered in dependency order,
-so circular evidence never produces a term.
+arguments of its `proves` clause and closed over the proof's own parameters; a
+Law that states a precondition claims the implication from it to the conclusion.
+`refl` becomes that proposition's quantifier and premise introductions followed
+by reflexivity; `exact` and `apply` become the named evidence wrapped in one
+universal elimination per argument. Steps are lowered in dependency order, so
+circular evidence never produces a term.
 
-An instantiated statement is compared with the claim as it stands, and, failing
-that, closed over the proof's parameters and compared again. Both are readings
+An instantiated statement is compared with the goal as it stands, and, failing
+that, with the goal underneath the quantifiers it leads with. Both are readings
 of one written statement, they are tried in that fixed order, and neither is a
 search: an argument may be a closed term, in which case the statement stands on
-its own, or it may mention the proof's parameters, in which case the claim is
-its closure.
+its own, or it may mention the proof's parameters, in which case the goal is its
+closure.
+
+### The body is a sequence, and a premise is a goal
+
+A proof body is a statement sequence, walked once, in written order
+(`GRAMMAR.md` 4). Each statement acts on the goal standing at that point:
+
+- `refl` closes it by definitional equality;
+- `exact e` closes it with evidence for the goal itself;
+- `assume h : P` names the premise the goal supposes, introduces the
+  implication, and leaves the conclusion as the goal;
+- `apply e` discharges the premises between `e`'s conclusion and the goal, each
+  of which becomes a goal that the statements after it close.
+
+How many premises an application has to discharge is settled from the two
+propositions alone, before any statement is consumed for them, so the walk stays
+deterministic. A body that ends with a goal still open is refused; so is one
+with a statement left over after every goal is closed.
 
 The term then goes to the kernel like any other. No step is admitted because of
-what it is called. A Law whose written proof was refused is left open, and so is
-a Law that written proofs name but none of them discharges: the compiler does
-not look for evidence the author did not ask for.
+what it is called, and a premise is never admitted at all: the hypothesis a
+proof uses exists only because an implication introduction the kernel checked
+placed it in the kernel's own context. A Law whose written proof was refused is
+left open, and so is a Law that written proofs name but none of them discharges:
+the compiler does not look for evidence the author did not ask for.
 
 ## 97.6 The Clang bridge is libclang, in process
 
