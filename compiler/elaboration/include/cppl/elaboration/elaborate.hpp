@@ -26,6 +26,14 @@ struct Result {
     vir::Module module;
     std::vector<FunctionRejection> rejected_functions;
 
+    // Laws an author wrote a proof for, where that proof was refused.
+    //
+    // The law is not left to be closed by the compiler's own strategy: an
+    // author who wrote evidence has said how the law is to be established, and
+    // a refused proof is a failure of the law, not an invitation to try
+    // something else.
+    std::vector<vir::LawId> laws_with_refused_proofs;
+
     [[nodiscard]] const FunctionRejection* rejection(const vir::SymbolId& symbol) const;
 };
 

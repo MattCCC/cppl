@@ -23,9 +23,12 @@ Erased erase(const frontend::TokenStream& stream,
     const std::string_view runtime = projection.runtime;
 
     std::vector<source::ByteSpan> spans;
-    spans.reserve(syntax.laws.size() + syntax.pure_markers.size());
+    spans.reserve(syntax.laws.size() + syntax.proofs.size() + syntax.pure_markers.size());
     for (const frontend::LawDeclaration& law : syntax.laws) {
         spans.push_back(law.range.span);
+    }
+    for (const frontend::ProofDeclaration& proof : syntax.proofs) {
+        spans.push_back(proof.range.span);
     }
     for (const frontend::PureMarker& marker : syntax.pure_markers) {
         spans.push_back(marker.keyword);

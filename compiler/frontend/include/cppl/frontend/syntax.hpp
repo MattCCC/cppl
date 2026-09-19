@@ -36,6 +36,33 @@ struct LawDeclaration {
     [[nodiscard]] const Clause* proposition() const;
 };
 
+// The primitive proof statements of GRAMMAR.md 5.1 - 5.3.
+enum class ProofStatementKind : std::uint8_t {
+    Reflexivity,
+    Exact,
+    Apply,
+};
+
+std::string describe(ProofStatementKind kind);
+
+struct ProofStatement {
+    ProofStatementKind kind = ProofStatementKind::Reflexivity;
+    std::string reference;  // the proof named by `exact` or `apply`
+    source::SourceLocation location;
+};
+
+// proof name(parameters) proves(proposition) { statements }   (GRAMMAR.md 4)
+struct ProofDeclaration {
+    std::string name;
+    source::SourceRange range;  // the whole declaration, including its body
+    source::SourceLocation keyword_location;
+    std::uint32_t end_line = 0;  // presumed line of the closing '}'
+    source::ByteSpan parameters;
+    source::ByteSpan proposition;
+    source::SourceLocation proposition_location;
+    std::vector<ProofStatement> statements;
+};
+
 // The `pure` declaration specifier and the function it applies to (SPEC.md 13).
 struct PureMarker {
     source::ByteSpan keyword;
@@ -46,10 +73,11 @@ struct PureMarker {
 
 struct Syntax {
     std::vector<LawDeclaration> laws;
+    std::vector<ProofDeclaration> proofs;
     std::vector<PureMarker> pure_markers;
 
     [[nodiscard]] bool empty() const noexcept {
-        return laws.empty() && pure_markers.empty();
+        return laws.empty() && proofs.empty() && pure_markers.empty();
     }
 };
 

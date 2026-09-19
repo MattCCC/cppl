@@ -1143,6 +1143,16 @@ compiler/elaboration/   the VIR built from those semantics
 compiler/obligations/   the lowering of VIR into core terms and propositions
 ```
 
+Written proof declarations are part of this layer and **do not enlarge the
+logical TCB**. A proof statement is surface syntax that elaboration turns into a
+kernel proof term; the kernel then checks that term against the goal exactly as
+it checks any other. `exact` and `apply` reuse a term that was itself checked
+against its own goal, and neither admits a proposition on the strength of the
+author's word. A defect in this lowering can only produce a term the kernel
+refuses, or a term for a goal that is not the one the Law states — and the
+second is caught separately, because `Verdict::proven` compares the proposition
+the kernel accepted with the proposition of the obligation being discharged.
+
 A defect here cannot make the kernel accept an invalid derivation. It can make
 the kernel check the wrong statement. The lowering rules that carry the most
 weight are deliberately few and are stated explicitly in the implementation:
@@ -1153,10 +1163,17 @@ weight are deliberately few and are stated explicitly in the implementation:
   unsigned operands, where C++ arithmetic is modular and the two agree exactly.
   Signed addition is refused, because C++ leaves its overflow undefined;
 - a function's value may be unfolded during checking only when it was declared
-  `pure` and its body was checked against the purity rules.
+  `pure` and its body was checked against the purity rules;
+- a written proof discharges the Law its `proves` clause names, at that proof's
+  own parameters. Instantiating a quantifier at any other term is refused,
+  because the core has no rule for it.
 
 Anything outside those rules is reported as unsupported and yields no
 obligation. No construct is approximated.
+
+A Law that an author wrote a proof for is never closed by the compiler's own
+strategy if that proof was refused. Writing a proof narrows how a Law may be
+established; it can never widen it.
 
 ## 41.3 Runtime trust
 

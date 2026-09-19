@@ -24,6 +24,11 @@ const std::string kUnit =
     "}\n"
     "law identity_returns_input(int x)\n"
     "    ensures(identity(x) == x);\n"
+    "proof identity_returns_input_holds(int x)\n"
+    "    proves(identity_returns_input(x))\n"
+    "{\n"
+    "    refl;\n"
+    "}\n"
     "int main() { return identity(0); }\n";
 
 std::size_t count_newlines(std::string_view text) {
@@ -91,6 +96,9 @@ CPPL_TEST(the_runtime_program_carries_no_formal_syntax) {
         CPPL_CHECK(token.text != "law");
         CPPL_CHECK(token.text != "ensures");
         CPPL_CHECK(token.text != "pure");
+        CPPL_CHECK(token.text != "proof");
+        CPPL_CHECK(token.text != "proves");
+        CPPL_CHECK(token.text != "refl");
     }
 }
 
@@ -102,10 +110,30 @@ CPPL_TEST(the_analysis_program_carries_the_proposition_for_clang_to_resolve) {
         cppl::frontend::project(stream, syntax, cppl::frontend::ProjectionOptions{});
 
     CPPL_CHECK_EQ(projection.specification_functions.size(), std::size_t{1});
-    const std::string& name = projection.specification_functions[0].name;
-    CPPL_CHECK(projection.analysis.find(name) != std::string::npos);
+    // A law is projected under its own name, so a proof can name it through
+    // ordinary C++ lookup (GRAMMAR.md 46).
+    CPPL_CHECK_EQ(projection.specification_functions[0].name,
+                  std::string("identity_returns_input"));
+    CPPL_CHECK(projection.analysis.find("bool identity_returns_input(int x)") !=
+               std::string::npos);
     CPPL_CHECK(projection.analysis.find("identity(x) == x") != std::string::npos);
     CPPL_CHECK(projection.analysis.find("#line") != std::string::npos);
+}
+
+CPPL_TEST(the_analysis_program_carries_the_proposition_a_proof_claims) {
+    cppl::diagnostics::Engine engine;
+    const cppl::frontend::TokenStream stream = cppl::frontend::lex(kUnit, "main.cpp");
+    const cppl::frontend::Syntax syntax = cppl::frontend::recognize(stream, engine);
+    const cppl::frontend::Projection projection =
+        cppl::frontend::project(stream, syntax, cppl::frontend::ProjectionOptions{});
+
+    CPPL_CHECK_EQ(projection.proof_functions.size(), std::size_t{1});
+    const std::string& name = projection.proof_functions[0].name;
+    CPPL_CHECK(projection.analysis.find(name) != std::string::npos);
+    CPPL_CHECK(projection.analysis.find("identity_returns_input(x)") != std::string::npos);
+
+    // The proof statements are C++L and are never projected into C++.
+    CPPL_CHECK(projection.analysis.find("refl") == std::string::npos);
 }
 
 CPPL_TEST(erasure_reports_the_properties_it_checked) {
@@ -120,7 +148,7 @@ CPPL_TEST(erasure_reports_the_properties_it_checked) {
 
     CPPL_CHECK(erased.report.only_deletions);
     CPPL_CHECK(erased.report.lines_preserved);
-    CPPL_CHECK(erased.report.erased_spans == 2);
+    CPPL_CHECK(erased.report.erased_spans == 3);
     CPPL_CHECK(erased.report.erased_bytes > 0);
     CPPL_CHECK(!engine.has_errors());
 }

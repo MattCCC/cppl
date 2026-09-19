@@ -63,9 +63,11 @@ add_test(NAME conformance_readme_examples
 
 cppl_add_script_test(e2e_valid_law e2e/valid_law.sh)
 cppl_add_script_test(e2e_invalid_law e2e/invalid_law.sh)
+cppl_add_script_test(e2e_written_proof e2e/written_proof.sh)
 
 cppl_add_script_test(negative_broken_implementation negative/broken_implementation.sh)
 cppl_add_script_test(negative_unproven_dependencies negative/unproven_dependencies.sh)
+cppl_add_script_test(negative_written_proofs negative/written_proofs.sh)
 
 cppl_add_script_test(integration_header_law integration/header_law.sh)
 cppl_add_script_test(integration_determinism integration/determinism.sh)

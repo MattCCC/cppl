@@ -46,6 +46,23 @@ std::size_t matching_parenthesis(const std::vector<Token>& tokens, std::size_t o
     return tokens.size();
 }
 
+std::size_t matching_brace(const std::vector<Token>& tokens, std::size_t open) {
+    std::size_t depth = 0;
+    for (std::size_t index = open; index < tokens.size(); ++index) {
+        if (tokens[index].is_punctuator("{")) {
+            ++depth;
+        } else if (tokens[index].is_punctuator("}")) {
+            --depth;
+            if (depth == 0) {
+                return index;
+            }
+        } else if (tokens[index].kind == TokenKind::EndOfFile) {
+            break;
+        }
+    }
+    return tokens.size();
+}
+
 std::optional<ClauseKind> clause_kind(const Token& token) {
     if (token.is_identifier("ensures")) {
         return ClauseKind::Ensures;
@@ -185,6 +202,163 @@ bool try_law(const TokenStream& stream,
     return true;
 }
 
+// Reads the primitive proof statements of GRAMMAR.md 5 out of a proof body.
+//
+// A proof statement names proof-level entities only. No C++ expression is read
+// here: the proposition a proof discharges is resolved by Clang from the
+// projected text, never by this recognizer.
+bool read_proof_statements(const TokenStream& stream,
+                           std::size_t body_open,
+                           std::size_t body_close,
+                           diagnostics::Engine& engine,
+                           std::vector<ProofStatement>& statements) {
+    const std::vector<Token>& tokens = stream.tokens();
+
+    std::size_t cursor = body_open + 1;
+    while (cursor < body_close) {
+        const Token& token = tokens[cursor];
+
+        if (token.is_identifier("refl") && cursor + 1 < body_close &&
+            tokens[cursor + 1].is_punctuator(";")) {
+            statements.push_back(ProofStatement{ProofStatementKind::Reflexivity, {},
+                                                stream.location_of(token)});
+            cursor += 2;
+            continue;
+        }
+
+        const bool is_exact = token.is_identifier("exact");
+        if ((is_exact || token.is_identifier("apply")) && cursor + 2 < body_close &&
+            tokens[cursor + 1].kind == TokenKind::Identifier) {
+            if (tokens[cursor + 2].is_punctuator(";")) {
+                statements.push_back(ProofStatement{
+                    is_exact ? ProofStatementKind::Exact : ProofStatementKind::Apply,
+                    std::string(tokens[cursor + 1].text), stream.location_of(token)});
+                cursor += 3;
+                continue;
+            }
+            if (tokens[cursor + 2].is_punctuator("(")) {
+                report(engine, stream, tokens[cursor + 2],
+                       diagnostics::Category::UnsupportedSemantics,
+                       "explicit proof arguments are not supported by this implementation",
+                       "a proof is applied at the parameters of the proof that uses it; "
+                       "instantiating a quantifier at an arbitrary term is not part of this "
+                       "formal core");
+                return false;
+            }
+        }
+
+        report(engine, stream, token, diagnostics::Category::UnsupportedSemantics,
+               "'" + std::string(token.text) + "' does not begin a proof statement this "
+               "implementation supports",
+               "the supported proof statements are 'refl;', 'exact <proof>;' and "
+               "'apply <proof>;'");
+        return false;
+    }
+
+    return true;
+}
+
+// `proof` introduces a proof declaration only when `proves` follows the
+// parameter list. Until then the token sequence is still ordinary C++ - a
+// function returning a type named `proof`, for instance (SPEC.md 3.1).
+bool try_proof(const TokenStream& stream,
+               std::size_t index,
+               diagnostics::Engine& engine,
+               ProofDeclaration& proof,
+               std::size_t& next_index) {
+    const std::vector<Token>& tokens = stream.tokens();
+
+    if (index + 2 >= tokens.size()) {
+        return false;
+    }
+    if (tokens[index + 1].kind != TokenKind::Identifier ||
+        !tokens[index + 2].is_punctuator("(")) {
+        return false;
+    }
+
+    const std::size_t close = matching_parenthesis(tokens, index + 2);
+    if (close >= tokens.size() || close + 1 >= tokens.size() ||
+        !tokens[close + 1].is_identifier("proves")) {
+        return false;  // still ordinary C++
+    }
+
+    const std::size_t proves = close + 1;
+    if (proves + 1 >= tokens.size() || !tokens[proves + 1].is_punctuator("(")) {
+        report(engine, stream, tokens[proves], diagnostics::Category::CpplSyntax,
+               "'proves' must be followed by a parenthesized specification expression");
+        next_index = proves + 1;
+        return true;
+    }
+
+    const std::size_t proves_close = matching_parenthesis(tokens, proves + 1);
+    if (proves_close >= tokens.size()) {
+        report(engine, stream, tokens[proves + 1], diagnostics::Category::CpplSyntax,
+               "unterminated specification expression");
+        next_index = proves + 2;
+        return true;
+    }
+
+    if (proves_close + 1 >= tokens.size() || !tokens[proves_close + 1].is_punctuator("{")) {
+        report(engine, stream, tokens[index], diagnostics::Category::CpplSyntax,
+               "a proof declaration has a body",
+               "a proof constructs evidence, so it ends with '{ ... }' rather than ';'");
+        next_index = proves_close + 1;
+        return true;
+    }
+
+    const std::size_t body_open = proves_close + 1;
+    const std::size_t body_close = matching_brace(tokens, body_open);
+    if (body_close >= tokens.size()) {
+        report(engine, stream, tokens[body_open], diagnostics::Category::CpplSyntax,
+               "unterminated proof body");
+        next_index = body_open + 1;
+        return true;
+    }
+
+    next_index = body_close + 1;
+
+    proof.name = std::string(tokens[index + 1].text);
+    proof.range.begin = stream.location_of(tokens[index + 1]);
+    proof.range.span = source::ByteSpan{tokens[index].span.offset,
+                                        tokens[body_close].span.end() - tokens[index].span.offset};
+    proof.keyword_location = stream.location_of(tokens[index]);
+    proof.end_line = tokens[body_close].line;
+    proof.parameters = source::ByteSpan{tokens[index + 2].span.end(),
+                                        tokens[close].span.offset - tokens[index + 2].span.end()};
+    proof.proposition =
+        source::ByteSpan{tokens[proves + 1].span.end(),
+                         tokens[proves_close].span.offset - tokens[proves + 1].span.end()};
+    proof.proposition_location = stream.location_of(tokens[proves]);
+
+    bool malformed = stream.spelling(proof.proposition).find_first_not_of(" \t\r\n") ==
+                     std::string_view::npos;
+    if (malformed) {
+        report(engine, stream, tokens[proves], diagnostics::Category::CpplSyntax,
+               "'proves' requires a proposition");
+    }
+
+    if (!read_proof_statements(stream, body_open, body_close, engine, proof.statements)) {
+        malformed = true;
+    } else if (proof.statements.empty()) {
+        report(engine, stream, tokens[index], diagnostics::Category::ProofFailure,
+               "proof '" + proof.name + "' has an empty body",
+               "a proof body must close the goal it states");
+        malformed = true;
+    } else if (proof.statements.size() > 1) {
+        report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
+               "proof '" + proof.name + "' has " + std::to_string(proof.statements.size()) +
+                   " statements",
+               "this implementation accepts a proof body containing exactly one statement");
+        malformed = true;
+    }
+
+    if (malformed) {
+        proof.name.clear();
+        proof.statements.clear();
+    }
+    return true;
+}
+
 // `pure` and `verified` are declaration specifiers only where the following
 // tokens cannot begin an ordinary declaration whose type carries that name.
 bool specifier_introduces_declaration(const std::vector<Token>& tokens, std::size_t index) {
@@ -308,6 +482,18 @@ std::string describe(ClauseKind kind) {
     return "unknown";
 }
 
+std::string describe(ProofStatementKind kind) {
+    switch (kind) {
+        case ProofStatementKind::Reflexivity:
+            return "refl";
+        case ProofStatementKind::Exact:
+            return "exact";
+        case ProofStatementKind::Apply:
+            return "apply";
+    }
+    return "unknown";
+}
+
 const Clause* LawDeclaration::proposition() const {
     for (const Clause& clause : clauses) {
         if (clause.kind == ClauseKind::Ensures) {
@@ -383,16 +569,21 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine) {
         }
 
         // proof name(...) proves(...) { ... }  (GRAMMAR.md 4)
-        if (tokens[index].is_identifier("proof") && index + 2 < tokens.size() &&
-            tokens[index + 1].kind == TokenKind::Identifier &&
-            tokens[index + 2].is_punctuator("(")) {
-            const std::size_t close = matching_parenthesis(tokens, index + 2);
-            if (close + 1 < tokens.size() && tokens[close + 1].is_identifier("proves")) {
-                report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
-                       "proof declarations are not supported by this implementation",
-                       "this implementation discharges law obligations by definitional "
-                       "equality only; written proof terms are not accepted yet");
-                index = close + 2;
+        if (tokens[index].is_identifier("proof")) {
+            ProofDeclaration proof;
+            std::size_t next = index + 1;
+            if (try_proof(stream, index, engine, proof, next)) {
+                if (!proof.name.empty()) {
+                    if (at_namespace_scope()) {
+                        syntax.proofs.push_back(std::move(proof));
+                    } else {
+                        report(engine, stream, tokens[index],
+                               diagnostics::Category::UnsupportedSemantics,
+                               "proof '" + proof.name + "' is declared outside namespace scope",
+                               "this implementation recognizes proofs at namespace scope only");
+                    }
+                }
+                index = next;
                 continue;
             }
         }

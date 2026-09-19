@@ -280,6 +280,44 @@ ObligationId identify(const kernel::Context& context,
     return ObligationId{hasher.finish()};
 }
 
+// Whether evidence for `available` can stand as evidence for `goal`.
+//
+// The quantifier prefix and the type of the equality must agree: a proof term
+// restates its binders, so a term built for one prefix is not a term for
+// another. Whether the two equalities themselves coincide is left to the
+// kernel, which is the point of `apply`.
+bool conclusion_is_applicable(const kernel::Proposition& available,
+                              const kernel::Proposition& goal,
+                              std::string& reason) {
+    const auto* available_forall = std::get_if<kernel::Forall>(&available.node);
+    const auto* goal_forall = std::get_if<kernel::Forall>(&goal.node);
+
+    if (available_forall != nullptr && goal_forall != nullptr) {
+        if (!(available_forall->binder == goal_forall->binder)) {
+            reason = "it quantifies over '" + kernel::describe(available_forall->binder) +
+                     "' where the goal quantifies over '" +
+                     kernel::describe(goal_forall->binder) + "'";
+            return false;
+        }
+        return conclusion_is_applicable(*available_forall->body, *goal_forall->body, reason);
+    }
+
+    if (available_forall != nullptr || goal_forall != nullptr) {
+        reason = "it quantifies over a different number of variables than the goal";
+        return false;
+    }
+
+    const auto& available_equality = std::get<kernel::Eq>(available.node);
+    const auto& goal_equality = std::get<kernel::Eq>(goal.node);
+    if (!(available_equality.type == goal_equality.type)) {
+        reason = "it is an equality at '" + kernel::describe(available_equality.type) +
+                 "' where the goal is an equality at '" + kernel::describe(goal_equality.type) +
+                 "'";
+        return false;
+    }
+    return true;
+}
+
 void report(diagnostics::Engine& engine,
             diagnostics::Category category,
             const source::SourceLocation& location,
@@ -294,6 +332,130 @@ void report(diagnostics::Engine& engine,
         diagnostic.notes.push_back(diagnostics::Note{std::move(note), location});
     }
     engine.report(std::move(diagnostic));
+}
+
+// Lowers each written proof into a kernel proof term.
+//
+// A step is lowered only once the proof it names has been lowered, so the
+// dependency graph is traversed in order and anything left over is circular.
+// No step is admitted on the strength of what it is called: `exact` must offer
+// the goal's own proposition, and `apply` must offer a conclusion the goal can
+// accept. Both then go to the kernel like any other evidence.
+void lower_proofs(const vir::Module& module,
+                  const elaboration::Result& elaborated,
+                  Program& program,
+                  diagnostics::Engine& engine) {
+    program.refused_proofs = elaborated.laws_with_refused_proofs;
+
+    std::map<std::uint32_t, const Obligation*> goals;
+    for (const Obligation& obligation : program.obligations) {
+        goals.emplace(obligation.law.value, &obligation);
+    }
+
+    std::set<std::uint32_t> declared;
+    std::vector<const vir::Proof*> pending;
+    for (const vir::Proof& proof : module.proofs) {
+        declared.insert(proof.id.value);
+        if (goals.contains(proof.law.value)) {
+            pending.push_back(&proof);
+        }
+    }
+
+    std::map<std::uint32_t, std::size_t> lowered;  // proof id -> index in program.proofs
+
+    bool progress = true;
+    while (progress) {
+        progress = false;
+        for (auto candidate = pending.begin(); candidate != pending.end();) {
+            const vir::Proof& proof = **candidate;
+            const Obligation& obligation = *goals.at(proof.law.value);
+
+            const auto* exact = std::get_if<vir::ExactStep>(&proof.step.node);
+            const auto* apply = std::get_if<vir::ApplyStep>(&proof.step.node);
+            const std::uint32_t used =
+                exact != nullptr ? exact->target.value
+                                 : (apply != nullptr ? apply->target.value : 0);
+
+            std::optional<kernel::ProofTerm> term;
+            WrittenProofKind kind = WrittenProofKind::Reflexivity;
+
+            if (exact == nullptr && apply == nullptr) {
+                term = definitional_evidence(obligation.goal);
+            } else {
+                kind = exact != nullptr ? WrittenProofKind::Exact : WrittenProofKind::Apply;
+                const std::string& name =
+                    exact != nullptr ? exact->target_name : apply->target_name;
+
+                if (!declared.contains(used)) {
+                    report(engine, diagnostics::Category::ProofFailure, proof.step.location,
+                           "proof '" + name + "' was not admitted, so proof '" + proof.name +
+                               "' has no evidence",
+                           "the reason it was not admitted is reported above");
+                    program.refused_proofs.push_back(proof.law);
+                    candidate = pending.erase(candidate);
+                    progress = true;
+                    continue;
+                }
+
+                const auto source = lowered.find(used);
+                if (source == lowered.end()) {
+                    ++candidate;  // its evidence is not built yet
+                    continue;
+                }
+
+                const WrittenProof& evidence = program.proofs[source->second];
+                const Obligation& proved = *goals.at(evidence.law.value);
+
+                if (exact != nullptr) {
+                    if (!(proved.goal == obligation.goal)) {
+                        report(engine, diagnostics::Category::ProofFailure, proof.step.location,
+                               "proof '" + name + "' does not prove the goal of law '" +
+                                   obligation.law_name + "'",
+                               "'exact' requires evidence for the goal itself; it proves " +
+                                   kernel::describe(proved.goal));
+                        program.refused_proofs.push_back(proof.law);
+                        candidate = pending.erase(candidate);
+                        progress = true;
+                        continue;
+                    }
+                } else {
+                    std::string reason;
+                    if (!conclusion_is_applicable(proved.goal, obligation.goal, reason)) {
+                        report(engine, diagnostics::Category::ProofFailure, proof.step.location,
+                               "the conclusion of proof '" + name +
+                                   "' cannot be applied to the goal of law '" +
+                                   obligation.law_name + "': " + reason);
+                        program.refused_proofs.push_back(proof.law);
+                        candidate = pending.erase(candidate);
+                        progress = true;
+                        continue;
+                    }
+                }
+
+                term = evidence.term;
+            }
+
+            WrittenProof written;
+            written.id = proof.id;
+            written.name = proof.name;
+            written.law = proof.law;
+            written.kind = kind;
+            written.term = std::move(*term);
+            written.range = proof.range;
+            lowered.emplace(proof.id.value, program.proofs.size());
+            program.proofs.push_back(std::move(written));
+
+            candidate = pending.erase(candidate);
+            progress = true;
+        }
+    }
+
+    for (const vir::Proof* proof : pending) {
+        report(engine, diagnostics::Category::ProofFailure, proof->step.location,
+               "proof '" + proof->name + "' depends on itself through the proofs it uses",
+               "this formal core has no induction rule, so written proofs must be acyclic");
+        program.refused_proofs.push_back(proof->law);
+    }
 }
 
 }  // namespace
@@ -467,6 +629,7 @@ Program generate(const vir::Module& module,
         program.obligations.push_back(std::move(obligation));
     }
 
+    lower_proofs(module, elaborated, program, engine);
     return program;
 }
 

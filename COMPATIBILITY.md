@@ -307,6 +307,16 @@ law make_law(int x);
 law value = compute();
 ```
 
+`proof` is recognized on the same principle: it introduces a proof declaration
+only when a `proves` clause follows the parameter list. So these remain ordinary
+C++:
+
+```cpp
+void proof();
+proof make_proof(int x);
+proof* holder(int x);
+```
+
 `pure` and `verified` are recognized only where the following tokens cannot
 begin an ordinary declaration whose type carries that name. `pure f(int);` is
 therefore left alone, because it may declare `f` returning a type named `pure`.
@@ -315,6 +325,14 @@ One known gap: if a program declares a type named `pure` or `verified` and then
 declares a variable of that type qualified by `const` or `volatile`, for example
 `pure const value;`, the declaration is diagnosed rather than compiled. The
 construct is rejected, never silently reinterpreted.
+
+A second: a Law is analysed as a C++ function carrying the Law's own name, so
+that a proof can name it through ordinary lookup. A Law whose name already
+belongs to a function in the same scope is therefore reported by Clang as a
+redeclaration, pointing at the Law. The name clash is real — `GRAMMAR.md` 46
+puts Law names in a declaration namespace associated with C++ scope — and it is
+reported rather than resolved silently. Nothing is emitted into the runtime
+program either way.
 
 ## Inputs
 

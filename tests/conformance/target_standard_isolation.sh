@@ -37,4 +37,28 @@ if [ "$(cat "$run/output")" != "41" ]; then
     exit 1
 fi
 
-echo "the c++17 runtime projection is free of formal syntax and compiles as c++17"
+# The same for a unit whose Laws are discharged by written proofs. `apply` is
+# left out of the pattern: libc++ declares std::apply, and the point here is
+# that nothing of the proof survives, not that the word is unspellable.
+proofs="$run/written_proof.runtime.cpp"
+"$CPPL" -std=c++17 "$FIXTURES/written_proof.cpp" -o "$run/written_proof" \
+    "--cppl-emit-projection=$proofs"
+
+if grep -Eq '(^|[^[:alnum:]_])(law|ensures|expects|pure|proof|proves|ghost|refl|exact)([^[:alnum:]_]|$)' \
+        "$proofs"; then
+    echo "the runtime program still contains proof syntax" >&2
+    grep -nE '(^|[^[:alnum:]_])(law|ensures|expects|pure|proof|proves|ghost|refl|exact)([^[:alnum:]_]|$)' \
+        "$proofs" >&2
+    exit 1
+fi
+
+"$CLANG" -std=c++17 -pedantic-errors -Wall -Werror -x c++-cpp-output "$proofs" \
+    -o "$run/written_proof_direct"
+"$run/written_proof_direct" > "$run/proof_output"
+
+if [ "$(cat "$run/proof_output")" != "41" ]; then
+    echo "the erased proof program did not behave like the original" >&2
+    exit 1
+fi
+
+echo "the c++17 runtime projections are free of formal syntax and compile as c++17"

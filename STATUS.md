@@ -56,26 +56,31 @@ cppl -std=c++17|c++20|c++23 main.cpp -o main
 compiles ordinary supported C++ with no source changes, and for a unit that
 declares Laws it:
 
-1. preprocesses with Clang and recognizes `law` and `pure` contextually;
+1. preprocesses with Clang and recognizes `law`, `proof` and `pure`
+   contextually;
 2. projects the unit into an analysis text and a runtime text in one pass;
 3. resolves the C++ semantics of the analysis text through libclang;
 4. elaborates the resolved semantics into typed VIR;
-5. lowers VIR into core definitions and a universally quantified equality goal;
-6. proposes evidence and submits it to the trusted kernel;
+5. lowers VIR into core definitions and a universally quantified equality goal,
+   and lowers each written proof into a kernel proof term;
+6. submits the author's evidence, or its own when none was written, to the
+   trusted kernel;
 7. reports `PROVEN` only on kernel acceptance, and fails the build otherwise;
 8. checks that erasure only deleted text, and hands the runtime program to Clang.
 
 The verified fragment is deliberately small: a Law is one equality between two
 built-in integer expressions, universally quantified over its parameters, over
 functions declared `pure` whose bodies are a single `return` of a modeled
-expression. Everything else is reported as unsupported and produces no
-obligation. See `ARCHITECTURE.md` 97 for the implemented structure and
-`TRUST.md` 41 for what must be trusted today.
+expression. A proof declaration discharges one such Law at its own parameters,
+with a body of exactly one statement: `refl`, `exact` or `apply`. Everything
+else is reported as unsupported and produces no obligation. See
+`ARCHITECTURE.md` 97 for the implemented structure and `TRUST.md` 41 for what
+must be trusted today.
 
 This slice does **not** implement induction, dependent types, refinement types,
-contracts, ghost state, `unsafe`, `trusted`, written proofs, solvers, proof
-caching, or any verification of the C++ memory model. Those remain `SPECIFIED`
-below.
+contracts, ghost state, `unsafe`, `trusted`, `assume`, proof `let` or `match`,
+explicit proof arguments, solvers, proof caching, or any verification of the
+C++ memory model. Those remain `SPECIFIED` below.
 
 ---
 
@@ -114,9 +119,10 @@ IMPLEMENTED
 
 # Current milestone
 
-The first vertical slice is in place. The next priority is to widen the formal
-core deliberately rather than to widen the language surface: written proofs,
-preconditions as implications, and the obligations that justify signed
+The first vertical slice is in place, and developers can now write the proof of
+a Law themselves. The next priority is to widen the formal core deliberately
+rather than to widen the language surface: preconditions as implications,
+universal instantiation, induction, and the obligations that justify signed
 arithmetic are each a prerequisite for the Laws people will actually want to
 state.
 
@@ -150,8 +156,10 @@ The project should not claim broad language implementation before the proof sema
 | Genuine C++ superset model   | `PROTOTYPE` |
 | `law` declarations           | `PROTOTYPE` |
 | `ensures` clauses on laws    | `PROTOTYPE` |
-| `proves` clauses             | `SPECIFIED` |
-| proof declarations           | `SPECIFIED` |
+| `proves` clauses             | `PROTOTYPE` |
+| proof declarations           | `PROTOTYPE` |
+| `refl` / `exact` / `apply`   | `PROTOTYPE` |
+| `assume`, proof `let`/`match` | `SPECIFIED` |
 | proposition types            | `PROTOTYPE` |
 | universal quantification     | `PROTOTYPE` |
 | existential quantification   | `SPECIFIED` |
@@ -208,6 +216,11 @@ propositions built from equality and universal quantification. Its terms are
 variables, machine-integer literals, applications of admitted definitions and
 one primitive, wrapping addition. It admits no recursion, which is why it needs
 no termination checker yet (`ARCHITECTURE.md` 97.7).
+
+Written proof declarations added no rule to it. `refl`, `exact` and `apply`
+elaborate into terms built from the two rules above; universal elimination is
+still absent, which is why a proof discharges its Law at its own parameters
+rather than at an arbitrary term.
 | Mechanized core calculus             | `NOT STARTED` |
 | Meta-theory / soundness proofs       | `NOT STARTED` |
 

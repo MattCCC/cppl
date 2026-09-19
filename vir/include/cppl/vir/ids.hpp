@@ -21,6 +21,12 @@ struct LawId {
     friend auto operator<=>(const LawId&, const LawId&) = default;
 };
 
+struct ProofId {
+    std::uint32_t value = 0;
+
+    friend auto operator<=>(const ProofId&, const ProofId&) = default;
+};
+
 struct ExprId {
     std::uint32_t value = 0;
 

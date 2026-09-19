@@ -4,15 +4,18 @@
 
 # C++L - C++ with Laws
 
-<b>C++L</b> is <b>C++ with Laws</b>: an ambiguity-free, proof-carrying superset of C++ in which humans or AIs can specify intent as machine-checkable Laws, implementations are accepted only when those Laws are proven, and all proof machinery erases to ordinary optimized C++ compiled by Clang/LLVM.
+<b>C++L</b> is <b>C++ with Laws</b>: an ambiguity-free, proof-carrying superset of C++ in which humans or Agentic AIs can specify intent as machine-checkable Laws, implementations are accepted only when those Laws are proven, and all proof machinery erases to ordinary optimized C++ compiled by Clang/LLVM.
 
 C++L makes formal intent and proof <b>first-class language constructs</b> while remaining a source-compatible C++ superset, then erases that formal layer into normal native C++.
 
 It means that the C++L keeps <b>standard C++ as the runtime language</b> and adds a formal compile-time layer for intent, proof, and correctness. What we do here is a true C++ source-compatible superset with first-class Laws, propositions/proofs, dependent/refinement types, termination checking, proof erasure, and ordinary Clang/LLVM runtime output.
 
-Therefore: <b>C++ ⊂ C++L</b>
-
-The goal is to solve the underlying problem:
+<p align="center">
+C++L makes semantic laws first-class program declarations and requires evidence that they actually hold.<br>
+  <b>C++ ⊂ C++L</b><br>
+  <b>C++L = C++ + Laws</b><br>
+  <b>Laws → Obligations → Evidence</b>
+</p>
 
 ## Motivation
 
@@ -22,7 +25,7 @@ The project started from a simple chain of thought:
 > Humans and AIs need an ambiguity-free language for specifying what software must do, a mechanically checkable way to prove that an implementation satisfies that intent, and a path to high-performance native execution. Can we do that without creating entirely new language and work with existing tooling?
 > What if these requirements could be part of the C++ language itself rather than remaining in tests, comments, fixtures, and engineering conventions?
 
-C++L is an attempt to answer that question while preserving the C++ runtime, ABI, ecosystem, and Clang/LLVM toolchain. The project was initiated by Mateusz Czapliński from this practical need.
+C++L is an attempt to answer that question while preserving the C++ runtime, ABI, ecosystem, and Clang/LLVM toolchain. The project was initiated by Mateusz Czapliński equipped with AI, from this practical need.
 
 ## Core idea
 
@@ -151,6 +154,23 @@ pure int identity(int x) {
 
 law identity_returns_input(int x)
     ensures(identity(x) == x);
+```
+
+A Law states a proposition. A proof declaration supplies the evidence for one, and the kernel decides whether that evidence holds:
+
+```cpp cppl-example
+pure int identity(int x) {
+    return x;
+}
+
+law identity_returns_input(int x)
+    ensures(identity(x) == x);
+
+proof identity_returns_input_holds(int x)
+    proves(identity_returns_input(x))
+{
+    refl;
+}
 ```
 
 Contracts written on the function itself are part of the language, but are not accepted by this implementation yet:

@@ -1,5 +1,8 @@
 #include "cppl/obligations/status.hpp"
 
+#include <algorithm>
+#include <variant>
+
 namespace cppl::obligations {
 
 std::string describe(Status status) {
@@ -26,6 +29,39 @@ std::string describe(Origin origin) {
             return "law proposition";
     }
     return "obligation";
+}
+
+std::string describe(WrittenProofKind kind) {
+    switch (kind) {
+        case WrittenProofKind::Reflexivity:
+            return "refl";
+        case WrittenProofKind::Exact:
+            return "exact";
+        case WrittenProofKind::Apply:
+            return "apply";
+    }
+    return "unknown";
+}
+
+const WrittenProof* Program::proof_for(vir::LawId law) const {
+    for (const WrittenProof& proof : proofs) {
+        if (proof.law == law) {
+            return &proof;
+        }
+    }
+    return nullptr;
+}
+
+bool Program::proof_refused(vir::LawId law) const {
+    return std::ranges::find(refused_proofs, law) != refused_proofs.end();
+}
+
+kernel::ProofTerm definitional_evidence(const kernel::Proposition& goal) {
+    if (const auto* quantified = std::get_if<kernel::Forall>(&goal.node)) {
+        return kernel::ProofTerm::forall_introduction(quantified->binder,
+                                                      definitional_evidence(*quantified->body));
+    }
+    return kernel::ProofTerm::reflexivity();
 }
 
 Verdict Verdict::proven(const kernel::Acceptance& acceptance, const Obligation& obligation) {

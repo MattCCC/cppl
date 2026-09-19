@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "cppl/source/location.hpp"
@@ -55,9 +56,53 @@ struct Law {
     source::SourceRange proposition_range;
 };
 
+// The written proof steps of GRAMMAR.md 5, resolved.
+//
+// A step is a typed node naming the proof it uses, not a tactic name to be
+// interpreted later. What each step means as evidence is decided when it is
+// lowered to a kernel proof term; whether that evidence holds is decided by the
+// kernel alone.
+
+struct ReflexivityStep {
+    friend bool operator==(const ReflexivityStep&, const ReflexivityStep&) = default;
+};
+
+// `exact p;` - p's proposition must be the goal itself.
+struct ExactStep {
+    ProofId target;
+    std::string target_name;
+
+    friend bool operator==(const ExactStep&, const ExactStep&) = default;
+};
+
+// `apply p;` - p's conclusion must be applicable to the goal.
+struct ApplyStep {
+    ProofId target;
+    std::string target_name;
+
+    friend bool operator==(const ApplyStep&, const ApplyStep&) = default;
+};
+
+struct ProofStep {
+    std::variant<ReflexivityStep, ExactStep, ApplyStep> node;
+    source::SourceLocation location;
+};
+
+// A written proof: evidence an author supplied for one Law.
+struct Proof {
+    ProofId id;
+    std::string name;
+    LawId law;
+    std::vector<Parameter> parameters;
+    Expr proposition;  // the resolved `proves` clause
+    ProofStep step;
+    source::SourceRange range;
+};
+
 struct Module {
     std::vector<Function> functions;
     std::vector<Law> laws;
+    std::vector<Proof> proofs;
 
     [[nodiscard]] const Function* find(const SymbolId& symbol) const;
 };

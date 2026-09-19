@@ -98,11 +98,68 @@ CPPL_TEST(a_trusted_law_is_refused_rather_than_treated_as_proven) {
     CPPL_CHECK(result.syntax.laws.empty());
 }
 
-CPPL_TEST(a_proof_declaration_is_refused_rather_than_ignored) {
+CPPL_TEST(a_proof_declaration_is_recognized) {
     Recognized result;
-    recognize("proof reflexive(int x)\n    proves(Eq<int>(x, x))\n{\n    refl;\n}\n", result);
+    recognize("proof holds(int x)\n    proves(identity_law(x))\n{\n    refl;\n}\n", result);
+
+    CPPL_CHECK(!result.engine.has_errors());
+    CPPL_CHECK_EQ(result.syntax.proofs.size(), std::size_t{1});
+    CPPL_CHECK_EQ(result.syntax.proofs[0].name, std::string("holds"));
+    CPPL_CHECK_EQ(result.syntax.proofs[0].statements.size(), std::size_t{1});
+    CPPL_CHECK(result.syntax.proofs[0].statements[0].kind ==
+               cppl::frontend::ProofStatementKind::Reflexivity);
+}
+
+CPPL_TEST(a_proof_statement_naming_another_proof_is_recognized) {
+    Recognized result;
+    recognize(
+        "proof a(int x)\n    proves(first(x))\n{\n    refl;\n}\n"
+        "proof b(int x)\n    proves(second(x))\n{\n    exact a;\n}\n"
+        "proof c(int x)\n    proves(third(x))\n{\n    apply a;\n}\n",
+        result);
+
+    CPPL_CHECK(!result.engine.has_errors());
+    CPPL_CHECK_EQ(result.syntax.proofs.size(), std::size_t{3});
+    CPPL_CHECK(result.syntax.proofs[1].statements[0].kind ==
+               cppl::frontend::ProofStatementKind::Exact);
+    CPPL_CHECK_EQ(result.syntax.proofs[1].statements[0].reference, std::string("a"));
+    CPPL_CHECK(result.syntax.proofs[2].statements[0].kind ==
+               cppl::frontend::ProofStatementKind::Apply);
+}
+
+CPPL_TEST(a_function_returning_a_type_named_proof_is_not_a_proof) {
+    Recognized result;
+    recognize("proof make(int x);\nproof* holder(int x) { return nullptr; }\n", result);
+
+    CPPL_CHECK(!result.engine.has_errors());
+    CPPL_CHECK(result.syntax.proofs.empty());
+}
+
+CPPL_TEST(an_unsupported_proof_statement_is_refused_rather_than_ignored) {
+    Recognized result;
+    recognize("proof holds(int x)\n    proves(identity_law(x))\n{\n    assume h : x == x;\n}\n",
+              result);
 
     CPPL_CHECK(result.engine.has_errors());
+    CPPL_CHECK(result.syntax.proofs.empty());
+}
+
+CPPL_TEST(an_empty_proof_body_is_refused_rather_than_treated_as_evidence) {
+    Recognized result;
+    recognize("proof holds(int x)\n    proves(identity_law(x))\n{\n}\n", result);
+
+    CPPL_CHECK(result.engine.has_errors());
+    CPPL_CHECK(result.syntax.proofs.empty());
+}
+
+CPPL_TEST(a_proof_inside_a_class_is_refused_rather_than_half_handled) {
+    Recognized result;
+    recognize("struct S {\n    proof holds(int x)\n        proves(l(x))\n    {\n        refl;\n"
+              "    }\n};\n",
+              result);
+
+    CPPL_CHECK(result.engine.has_errors());
+    CPPL_CHECK(result.syntax.proofs.empty());
 }
 
 CPPL_TEST(a_verified_function_is_refused_rather_than_ignored) {

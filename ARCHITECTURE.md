@@ -2950,6 +2950,30 @@ the Law occupies, and lets Clang resolve it: name lookup, overload resolution,
 implicit conversions and canonical types all come from Clang. The elaborator
 then reads the resolved expression. Nothing in C++L parses C++ expressions.
 
+The generated function carries the Law's own name, so a Law occupies a formal
+declaration namespace associated with its C++ scope (`GRAMMAR.md` 46). That is
+what lets a proof name a Law: `proves(L(x))` is an ordinary call, bound by
+Clang, and the elaborator meets the Law again through the symbol Clang
+resolved rather than through the spelling the author used.
+
+## 97.5.1 A written proof is elaborated, never believed
+
+A proof declaration is projected the same way. Its `proves` clause becomes the
+body of a generated function, so the proposition it claims is resolved by
+Clang; its statements are C++L and are never projected into C++ at all.
+
+Elaboration resolves what the author wrote — which Law, at which arguments,
+using which other proof — into typed VIR steps. `compiler/obligations` lowers
+those steps into kernel proof terms: `refl` into the goal's quantifier
+introductions followed by reflexivity, `exact` into the evidence of a proof
+whose proposition is the goal itself, `apply` into the evidence of a proof
+whose conclusion the goal can accept. Steps are lowered in dependency order, so
+circular evidence never produces a term.
+
+The term then goes to the kernel like any other. No step is admitted because of
+what it is called, and a Law whose written proof was refused is left open: the
+compiler does not look for evidence the author did not ask for.
+
 ## 97.6 The Clang bridge is libclang, in process
 
 The bridge uses libclang, Clang's stable C API, and translates the facts C++L

@@ -53,12 +53,33 @@ Projection project(const TokenStream& stream,
     projection.runtime.assign(text);
 
     std::vector<Edit> edits;
-    edits.reserve(syntax.laws.size() + syntax.pure_markers.size());
+    edits.reserve(syntax.laws.size() + syntax.proofs.size() + syntax.pure_markers.size());
 
     for (const PureMarker& marker : syntax.pure_markers) {
         blank(projection.runtime, marker.keyword);
         edits.push_back(Edit{marker.keyword, std::string(marker.keyword.length, ' ')});
     }
+
+    // A declaration becomes an ordinary C++ function stating the proposition it
+    // carries, emitted where the declaration stood. Everything after this point
+    // in the analysis text is C++ that Clang resolves on its own.
+    const auto emit = [&stream](std::string_view name,
+                                const source::ByteSpan& parameters,
+                                const source::ByteSpan& expression,
+                                const source::SourceLocation& begin,
+                                std::uint32_t end_line) {
+        std::string replacement = "\n";
+        replacement += line_directive(begin.line, begin.file);
+        replacement += "[[maybe_unused]] static bool ";
+        replacement += name;
+        replacement += "(";
+        replacement += stream.spelling(parameters);
+        replacement += ") { return (";
+        replacement += stream.spelling(expression);
+        replacement += "); }\n";
+        replacement += line_directive(end_line, begin.file);
+        return replacement;
+    };
 
     for (std::size_t index = 0; index < syntax.laws.size(); ++index) {
         const LawDeclaration& law = syntax.laws[index];
@@ -69,24 +90,25 @@ Projection project(const TokenStream& stream,
             continue;
         }
 
-        std::string name = options.specification_prefix + std::to_string(index);
+        edits.push_back(Edit{law.range.span,
+                             emit(law.name, law.parameters, proposition->expression,
+                                  law.keyword_location, law.end_line)});
+        projection.specification_functions.push_back(SpecificationFunction{law.name, index});
+    }
+
+    for (std::size_t index = 0; index < syntax.proofs.size(); ++index) {
+        const ProofDeclaration& proof = syntax.proofs[index];
+        blank(projection.runtime, proof.range.span);
+
+        std::string name = options.generated_prefix + "proof_" + std::to_string(index);
         if (!options.unit_key.empty()) {
             name += "_" + options.unit_key;
         }
 
-        std::string replacement = "\n";
-        replacement += line_directive(law.keyword_location.line, law.keyword_location.file);
-        replacement += "[[maybe_unused]] static bool ";
-        replacement += name;
-        replacement += "(";
-        replacement += stream.spelling(law.parameters);
-        replacement += ") { return (";
-        replacement += stream.spelling(proposition->expression);
-        replacement += "); }\n";
-        replacement += line_directive(law.end_line, law.keyword_location.file);
-
-        edits.push_back(Edit{law.range.span, std::move(replacement)});
-        projection.specification_functions.push_back(SpecificationFunction{std::move(name), index});
+        edits.push_back(Edit{proof.range.span,
+                             emit(name, proof.parameters, proof.proposition,
+                                  proof.keyword_location, proof.end_line)});
+        projection.proof_functions.push_back(ProofFunction{std::move(name), index});
     }
 
     std::ranges::sort(edits, [](const Edit& lhs, const Edit& rhs) {

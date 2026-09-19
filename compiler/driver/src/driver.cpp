@@ -31,6 +31,7 @@ namespace {
 struct Summary {
     std::size_t laws = 0;
     std::size_t proven = 0;
+    std::size_t proven_by_written_proof = 0;
     std::size_t unresolved = 0;
     std::size_t units_verified = 0;
 };
@@ -229,9 +230,16 @@ UnitOutcome compile_unit(const Options& options,
     request.arguments.emplace_back("-x");
     request.arguments.emplace_back("c++-cpp-output");
     request.arguments.emplace_back("-w");
-    request.selection.specification_prefix = projection_options.specification_prefix;
+    request.selection.specification_prefix = projection_options.generated_prefix;
     for (const frontend::PureMarker& marker : syntax.pure_markers) {
         request.selection.locations.push_back(marker.function_location);
+    }
+    // A law is projected under its own name, so it is selected by the line it
+    // was declared on rather than by a generated prefix.
+    for (const frontend::LawDeclaration& law : syntax.laws) {
+        source::SourceLocation location = law.keyword_location;
+        location.column = 0;
+        request.selection.locations.push_back(std::move(location));
     }
 
     const std::expected<clangbridge::TranslationUnit, std::string> unit =
@@ -270,6 +278,9 @@ UnitOutcome compile_unit(const Options& options,
     for (const obligations::ObligationResult& result : results) {
         if (result.verdict.is_proven()) {
             ++summary.proven;
+            if (program.proof_for(result.obligation.law) != nullptr) {
+                ++summary.proven_by_written_proof;
+            }
         } else {
             ++summary.unresolved;
         }
@@ -310,6 +321,7 @@ void print_diagnostics(const diagnostics::Engine& engine) {
 void print_trust_report(const Options& options, const Summary& summary) {
     std::cout << "C++L Trust Report\n\n";
     std::cout << "Laws proven:                 " << summary.proven << "\n";
+    std::cout << "  by a written proof:        " << summary.proven_by_written_proof << "\n";
     std::cout << "Laws trusted:                0\n";
     std::cout << "Unresolved obligations:      " << summary.unresolved << "\n\n";
     std::cout << "Unsafe regions:              0\n";
