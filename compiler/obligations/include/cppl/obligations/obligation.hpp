@@ -32,6 +32,8 @@ enum class Origin : std::uint8_t {
     FunctionContract,
     CallPrecondition,
     ReturnPath,
+    LoopEntry,        // a loop invariant holds when the loop is entered
+    LoopPreservation, // an iteration re-establishes a loop invariant
 };
 
 std::string describe(Origin origin);

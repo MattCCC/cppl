@@ -1251,6 +1251,13 @@ for (std::size_t i = 0; i < values.size(); ++i)
 }
 ```
 
+Implementation note. The clauses are recognized only inside a verified
+function and only when a block follows them: `while (c) invariant(x);` is an
+ordinary call, and a lone `invariant(name)` before a block that `;` follows is
+left to C++, where it declares `name` if `invariant` names a type (§1,
+SPEC.md 3.1). `decreases` on a loop is currently refused, because loop
+termination is not yet verified (SPEC.md 24.3).
+
 ---
 
 # 27. `decreases`

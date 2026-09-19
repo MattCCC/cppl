@@ -2,6 +2,7 @@
 
 #include "cppl/kernel/substitution.hpp"
 
+#include <algorithm>
 #include <variant>
 
 namespace cppl::automation {
@@ -110,7 +111,14 @@ std::expected<kernel::ProofTerm, std::string> assemble(const obligations::Progra
 } // namespace
 
 Composition::Composition(const obligations::Program& program) : program_(program) {
-    for (const auto& function : program.contracts) {
+    for (std::size_t index = 0; index < program.contracts.size(); ++index) {
+        const auto& function = program.contracts[index];
+        if (function.partial) {
+            for (const auto& condition : function.conditions) {
+                conditions_.emplace(condition.obligation, Condition{index, &condition});
+            }
+            continue;
+        }
         for (const auto& path : function.paths) {
             for (std::size_t prefix = 0; prefix < path.calls.size(); ++prefix) {
                 const auto& call = path.calls[prefix];
@@ -129,10 +137,38 @@ Composition::Composition(const obligations::Program& program) : program_(program
 }
 
 bool Composition::owns(std::size_t obligation) const {
-    return stages_.contains(obligation);
+    return stages_.contains(obligation) || conditions_.contains(obligation);
+}
+
+// A total contract is established once its theorem about the callee's
+// definition has been exported; a partial one once every one of its
+// conditions has been accepted.
+bool Composition::established(std::size_t contract) const {
+    const auto& function = program_.contracts[contract];
+    return function.partial ? partial_established_.contains(contract) : callees_.contains(function.function.value);
+}
+
+// A condition supposes the postconditions of the contracts its path calls, so
+// it is not offered to the kernel until each of those is established. What it
+// states is then decided by the kernel like any other goal.
+std::expected<Evidence, std::string> Composition::propose_condition(const Condition& condition,
+                                                                    std::size_t obligation) const {
+    for (const std::size_t callee : condition.condition->callees) {
+        if (!established(callee)) {
+            return std::unexpected("callee '" + program_.contracts[callee].name + "' is not proven");
+        }
+    }
+    const auto candidate = automation::propose(program_.context, program_.obligations[obligation].goal);
+    if (!candidate.has_value()) {
+        return std::unexpected("no strategy produced candidate evidence");
+    }
+    return Evidence{candidate->proof, "partial-correctness condition by " + candidate->strategy};
 }
 
 std::expected<Evidence, std::string> Composition::propose(std::size_t obligation) const {
+    if (const auto condition = conditions_.find(obligation); condition != conditions_.end()) {
+        return propose_condition(condition->second, obligation);
+    }
     const auto& stage = stages_.at(obligation);
     const auto& function = *stage.function;
     if (stage.path == nullptr) {
@@ -219,6 +255,16 @@ std::expected<void, std::string> Composition::accept(std::size_t obligation, con
                                                      const kernel::Acceptance& acceptance) {
     if (!(acceptance.proposition() == program_.obligations[obligation].goal)) {
         return std::unexpected("the kernel accepted a different contract obligation");
+    }
+    if (const auto condition = conditions_.find(obligation); condition != conditions_.end()) {
+        proven_.emplace(obligation, proof);
+        const auto& contract = program_.contracts[condition->second.contract];
+        if (std::ranges::all_of(contract.conditions, [this](const obligations::VerificationCondition& each) {
+                return proven_.contains(each.obligation);
+            })) {
+            partial_established_.insert(condition->second.contract);
+        }
+        return {};
     }
     const auto& stage = stages_.at(obligation);
     if (obligation == stage.function->obligation) {

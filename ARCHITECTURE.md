@@ -3193,6 +3193,41 @@ The lowering maps C++ `+`, `-`, `*` onto `add_wrap`, `sub_wrap`, `mul_wrap`
 only for unsigned operands of the expression's own modeled type, and refuses
 signed operands and every other arithmetic operator.
 
+### Loops and partial-correctness contracts
+
+The recognizer takes `invariant(...)` clauses between a `while` or `for` header
+and a block body inside a verified function. The projector blanks them from
+both texts and inserts, just inside the body's `{`, one generated `bool`
+declaration per invariant, so Clang resolves each invariant in the scope the
+loop head sees; `#line` directives return the body's own text to its line and
+column. The bridge reads those declarations back as the loop's invariants and
+never as statements; an unconsumed one rejects the body, and elaboration checks
+that every projected invariant of a function was consumed.
+
+The bridge lowers a loop into `vir::Loop` and `vir::Iterate`. It scans the loop
+for the locals it writes; each is carried and takes a fresh head version. The
+loop node holds the carried locals' entry values, the invariants read at the
+head, and a conditional on the loop condition whose true arm is one iteration
+and whose false arm is what follows the loop. An iteration ends in `Iterate`
+(after a `for` increment, and at `continue`), in a return, or at `break` in what
+follows the loop under the versions current there. Every `Iterate` checks that
+each uncarried local still has its head version, so a write the scan missed
+rejects the body.
+
+A body with a loop has no total core term, so its contract cannot be a theorem
+about a definition. `compiler/obligations` therefore states such a contract
+through verification conditions (`ContractVerification::partial`): walking the
+tree, it binds each verified call's result and each loop head as a fresh
+variable followed by the proposition supposed of it, and emits a loop-entry
+condition per invariant, a preservation condition per invariant at every
+`Iterate` (the invariant with the head values abstracted and then instantiated
+at the next values by the kernel's substitution), a precondition per call, and
+a postcondition per return. A caller of a partial contract is partial too.
+Partial functions are never admitted to the kernel context, so no specification
+or Law can mention one. `Composition` offers a condition to the kernel only once
+every contract it supposes is established, and establishes a partial contract
+once all its conditions are accepted.
+
 ## 97.6 The Clang bridge is libclang, in process
 
 The bridge uses libclang, Clang's stable C API, and translates the facts C++L
@@ -3220,6 +3255,12 @@ defence in depth, and exhausting any bound rejects.
 
 When recursive definitions are admitted, this argument disappears and a
 termination checker becomes a prerequisite, not an improvement.
+
+Loops do not weaken it. A function whose body contains a loop, or calls one
+that does, is never admitted as a definition, so the kernel never normalizes a
+loop and never holds a theorem about a value a divergent loop would denote.
+Its contract is partial correctness, established from conditions each of which
+is an ordinary proposition over total terms.
 
 ## 97.8 Intermediate artifacts
 

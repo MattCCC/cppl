@@ -235,6 +235,40 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         projection.contract_functions.push_back(std::move(projected));
     }
 
+    // A loop's clauses are not C++ either. Each invariant becomes a `bool`
+    // declaration at the start of the body, in the scope the loop head sees,
+    // and the text after the brace resumes at its own line and column.
+    for (std::size_t index = 0; index < syntax.loops.size(); ++index) {
+        const LoopSpecification& loop = syntax.loops[index];
+        blank(projection.runtime, loop.clause_region);
+        edits.push_back(
+            Edit{loop.clause_region, projection.runtime.substr(loop.clause_region.offset, loop.clause_region.length)});
+
+        std::string replacement = "\n";
+        for (std::size_t position = 0; position < loop.invariants.size(); ++position) {
+            LoopInvariantMarker marker;
+            marker.name = options.generated_prefix + "invariant_" + std::to_string(projection.loop_invariants.size()) +
+                          (options.unit_key.empty() ? "" : "_" + options.unit_key);
+            marker.loop_index = index;
+            marker.function_index = loop.function_index;
+            marker.location = loop.invariants[position].location;
+
+            const source::SourceLocation& at = loop.expression_locations[position];
+            replacement += line_directive(at.line, loop.keyword_location.file);
+            std::string head = "[[maybe_unused]] bool " + marker.name + " = (";
+            if (at.column > head.size() + 1) {
+                head.append(at.column - 1 - head.size(), ' ');
+            }
+            replacement += head;
+            replacement += stream.spelling(loop.invariants[position].expression);
+            replacement += ");\n";
+            projection.loop_invariants.push_back(std::move(marker));
+        }
+        replacement += line_directive(loop.body_open_line, loop.keyword_location.file);
+        replacement.append(loop.body_open_column - 1, ' ');
+        edits.push_back(Edit{source::ByteSpan{loop.body_open, 0}, std::move(replacement)});
+    }
+
     std::ranges::sort(edits, [](const Edit& lhs, const Edit& rhs) {
         if (lhs.span.offset != rhs.span.offset)
             return lhs.span.offset < rhs.span.offset;

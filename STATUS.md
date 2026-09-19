@@ -137,8 +137,22 @@ rejected. Every value is modeled where it is written, read or not. Each read rep
 local's value, so bodies whose stated terms exceed a fixed size are rejected
 too. Locals add no kernel rule and no runtime change.
 
+`while` and `for` loops with a block body may state `invariant(...)` clauses
+(`SPEC.md` 24.3). Each local the loop writes is carried: at the head it is a
+fresh value of which only the invariants and the condition are known. Every
+invariant is proven on entry and at the end of every iteration path, including
+`continue` and the `for` step; what follows the loop, and any `break`, is
+verified from what those paths suppose. Calls in the condition and body prove
+their preconditions where the loop makes them. A function with a loop, or
+calling one, has a **partial-correctness** contract: it is proven from these
+conditions, reported separately, and never admitted as a core definition, so no
+Law or specification can mention it and nontermination cannot reach the
+kernel. Termination is not proven; `decreases`, `do`/`while`, range-based `for`
+and `for` without a condition are rejected. Loops add no kernel rule; the loop
+rule is correspondence trust (`TRUST.md` 41.2).
+
 This slice does **not** implement induction, case analysis (`cases`), dependent
-types, refinement types, loops, ghost state, `unsafe`, `trusted`, conjunction,
+types, refinement types, loop termination, ghost state, `unsafe`, `trusted`, conjunction,
 proof `let`, solvers, proof caching, or any verification of the C++ memory model.
 Those remain `SPECIFIED` below.
 
@@ -180,15 +194,18 @@ IMPLEMENTED
 # Current milestone
 
 Verified functions now verify every return path through `if`/`else`, including
-compositional calls in guards and returns, and ordinary straight-line locals and
-assignments within those paths. All six integer comparisons are
+compositional calls in guards and returns, locals, assignments and their
+updates, and `while`/`for` loops against explicit invariants (partial
+correctness). All six integer comparisons are
 represented structurally. The original function/call slices use seven rules;
 path composition adds one conditional-elimination rule, and machine arithmetic
 adds one linear-arithmetic rule, bringing the core to nine, with zero logical
-assumptions and zero runtime checks. Locals add none. Unsigned arithmetic is
+assumptions and zero runtime checks. Locals and loops add none. Unsigned arithmetic is
 normalized as a ring modulo `2^width`, and order consequences are kernel-checked.
-Next are loops with explicit invariants. Recursion with induction/termination,
-memory and reference reasoning, and SMT automation come later.
+This completes the imperative foundation (ROADMAP large slice 1). Next is the
+formal language and proof core: propositions, proofs, dependent and refinement
+types, induction and termination. Memory and reference reasoning, and SMT
+automation come later.
 
 Original target, for reference:
 
@@ -254,6 +271,8 @@ The project should not claim broad language implementation before the proof sema
 | path-sensitive `if`/`else`    | `PROTOTYPE` |
 | integer comparison predicates | `PROTOTYPE` |
 | locals and assignments        | `PROTOTYPE` |
+| `invariant` on loops          | `PROTOTYPE` |
+| partial-correctness contracts | `PROTOTYPE` |
 | `ghost`                      | `SPECIFIED` |
 | `unsafe`                     | `SPECIFIED` |
 | `trusted`                    | `SPECIFIED` |
@@ -472,8 +491,10 @@ is not implemented.
 | Preconditions (supported fragment)      | `PROTOTYPE`   |
 | Postconditions (supported fragment)     | `PROTOTYPE`   |
 | Function invariants                     | `SPECIFIED`   |
-| Loop invariants                         | `SPECIFIED`   |
+| Loop invariants                         | `PROTOTYPE`   |
+| Loop termination (`decreases`)          | `SPECIFIED`   |
 | Verification-condition generation (returns/paths) | `PROTOTYPE` |
+| Verification-condition generation (loops) | `PROTOTYPE` |
 | Local versioning (declarations/assignments) | `PROTOTYPE` |
 | Weakest-precondition engine             | `NOT STARTED` |
 | Contract composition                    | `PROTOTYPE`   |
@@ -772,7 +793,8 @@ AI output must always be independently verified.
 
 The driver is Clang-compatible rather than subcommand-based: `cppl` takes the
 arguments `clang++` takes. Trust reporting exists as `--cppl-trust-report`; the
-subcommand forms above are not implemented.
+subcommand forms above are not implemented. The report counts partial-
+correctness contracts and loop-invariant obligations separately.
 
 ---
 

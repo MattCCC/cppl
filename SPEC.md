@@ -1006,9 +1006,9 @@ overloads, integer widths, and conversions; unsupported conversions, signed
 arithmetic, division, remainder, shifts and bitwise operators are rejected. Type
 aliases are resolved by Clang.
 
-Branches and multiple returns extend this fragment under section 12.7, and
-straight-line locals and assignments under section 12.8.
-Loops, references, pointers, floating point,
+Branches and multiple returns extend this fragment under section 12.7,
+locals and assignments under section 12.8, and `while` and `for` loops under
+section 24.3. References, pointers, floating point,
 exceptions, side effects, recursion, and unsupported declarators are rejected.
 An ordinary parameter named `result` is currently unsupported on a verified
 definition because that name binds the returned value in its postcondition.
@@ -1058,9 +1058,10 @@ established under section 7.5.
 Verified bodies MAY contain ordinary `if`/`else`, nested blocks, and returns.
 Clang MUST resolve each condition and operand type. Every modeled path MUST end
 in a return; an omitted `else` continues with the following statements. Locals
-and assignments are specified in section 12.8. Loops, switches, jumps,
-exceptions, side effects, implicit type conversions, and trailing unreachable
-statements remain unsupported.
+and assignments are specified in section 12.8, and loops, with their `break`
+and `continue`, in section 24.3. Switches, other jumps, exceptions, side
+effects, implicit type conversions, and trailing unreachable statements remain
+unsupported.
 
 For each return term R, the compiler MUST generate and kernel-prove:
 
@@ -1134,8 +1135,10 @@ Each write gives the local its next logical **version**. A version belongs to
 the declaration Clang resolved, not to a spelling, so shadowing and nested
 scopes follow C++ name lookup and never C++L's own. A read denotes the version
 current where the read stands, and the value a version denotes is the modeled
-expression that established it. A version is never an unknown: nothing is
-assumed about a local. That expression MUST be modeled where the version is
+expression that established it. Outside a loop a version is never an unknown:
+nothing is assumed about a local. The one exception is a loop head (§24.3),
+where a local the loop writes denotes a value of which only the loop's
+invariants and condition are known. A value MUST be modeled where the version is
 established, whether or not any later expression reads it, because C++
 evaluates it there: an unread signed overflow is still undefined behavior.
 C++ scoping forbids a read before the declaration but
@@ -1914,6 +1917,17 @@ This does not by itself prove termination.
 
 A total-correctness claim additionally requires termination.
 
+A verified function whose body contains a loop, or calls a verified function
+whose contract is partial, has a **partial-correctness contract**. Its body is
+not a total formal function, so it MUST NOT be admitted as a definition the
+formal core may unfold, and no Law or specification expression may mention it.
+Its contract is established from verification conditions (§24.3), each of which
+is an ordinary proposition requiring kernel-checked evidence. A verified caller
+uses such a contract only as it uses any other: the call's result is a fresh
+value of which the postcondition is supposed, after the precondition has been
+proven, and the caller's own contract is then partial as well. Reports MUST
+distinguish partial-correctness contracts from total ones.
+
 ---
 
 # 24. Loop invariants
@@ -1957,6 +1971,50 @@ decreases(measure)
 ```
 
 The measure MUST strictly decrease on each continuing iteration under a well-founded ordering.
+
+---
+
+## 24.3 Verified loops
+
+A verified body MAY contain `while (c) invariant(I1) ... invariant(In) { body }`
+and `for (init; c; step) invariant(I1) ... { body }`, with zero or more
+invariant clauses and a block body. The invariants are specification
+expressions resolved by Clang in the scope of the loop head, and conjoin.
+
+Every local that the loop's condition, step or body writes is **carried**. At
+the head, each carried local denotes a fresh value; every other local keeps the
+version it had. The following conditions MUST each be proven, under everything
+the path supposes where they stand:
+
+```text
+entry:         for each invariant Ij, Ij holds of the carried locals' values
+               where the loop is entered
+preservation:  for each Ij and each way an iteration can end — the end of the
+               body followed by the step, or `continue` followed by the step —
+               Ij holds of the values the carried locals then hold, supposing
+               every invariant and the condition at the head of that iteration
+exit:          what follows the loop is verified supposing every invariant and
+               the negated condition of the fresh head values
+```
+
+A `break` continues with what follows the loop under the versions current at
+the `break`, supposing what the path supposes there and nothing more; a
+`return` in the body is a return path under the same suppositions. Calls in the
+condition, the step and the body are verified calls under section 12.6, proven
+where the loop makes them. Multiple invariants are proven one by one and
+supposed one by one, which is their conjunction; no conjunction connective is
+required.
+
+Loops establish partial correctness only (§23): nothing here proves that a loop
+terminates, and the function containing it has a partial-correctness contract.
+`decreases` on a loop is rejected until termination is verified rather than
+accepted unchecked. `do`/`while`, range-based `for`, a `for` without a
+condition, a condition that declares a variable, an invariant clause not
+followed by a block, and loop invariants outside a verified function are
+rejected. The generated conditions add no kernel rule and no logical
+assumption; the loop rule that generates them is part of the correspondence
+layer (`TRUST.md` 41.2). Erasure removes the invariant clauses and preserves
+every loop, condition, step, body statement, `break` and `continue` as written.
 
 ---
 

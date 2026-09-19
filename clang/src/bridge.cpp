@@ -201,7 +201,9 @@ bool promoted_before_arithmetic(CXType type) {
 }
 
 std::string unmodeled_statement(const std::string& found) {
-    return "only if/else, blocks, local declarations, assignments, and return statements are modeled; found " + found;
+    return "only if/else, while and for loops, blocks, local declarations, assignments, and return statements are "
+           "modeled; found " +
+           found;
 }
 
 Expr build_expression(CXCursor cursor, const std::vector<CXCursor>& parameters, const Locals& locals, unsigned depth);
@@ -401,7 +403,138 @@ std::size_t return_paths(const Expr& expression) {
     if (const auto* bound = std::get_if<LocalVersion>(&expression.node)) {
         return return_paths(bound->operands[1]);
     }
+    if (const auto* loop = std::get_if<Loop>(&expression.node)) {
+        return return_paths(loop->operands.back());
+    }
     return 1;
+}
+
+std::size_t file_offset(CXSourceLocation location) {
+    unsigned offset = 0;
+    clang_getFileLocation(location, nullptr, nullptr, nullptr, &offset);
+    return offset;
+}
+
+// The parts of a `for` header. libclang omits an empty part instead of marking
+// it, so each part is placed by where it starts relative to the header's two
+// top-level semicolons.
+struct ForParts {
+    std::optional<CXCursor> initialization;
+    std::optional<CXCursor> condition;
+    std::optional<CXCursor> increment;
+    CXCursor body{};
+};
+
+std::optional<ForParts> for_parts(CXCursor statement) {
+    const std::vector<CXCursor> children = children_of(statement);
+    if (children.empty()) {
+        return std::nullopt;
+    }
+    CXTranslationUnit unit = clang_Cursor_getTranslationUnit(statement);
+    CXToken* tokens = nullptr;
+    unsigned count = 0;
+    clang_tokenize(unit, clang_getCursorExtent(statement), &tokens, &count);
+    struct Release {
+        CXTranslationUnit unit;
+        CXToken* tokens;
+        unsigned count;
+        ~Release() {
+            if (tokens != nullptr) {
+                clang_disposeTokens(unit, tokens, count);
+            }
+        }
+    } release{unit, tokens, count};
+
+    std::vector<std::size_t> separators;
+    int nesting = 0;
+    for (unsigned index = 0; index < count; ++index) {
+        if (clang_getTokenKind(tokens[index]) != CXToken_Punctuation) {
+            continue;
+        }
+        const std::string spelling = take(clang_getTokenSpelling(unit, tokens[index]));
+        if (spelling == "(" || spelling == "[" || spelling == "{") {
+            ++nesting;
+        } else if (spelling == ")" || spelling == "]" || spelling == "}") {
+            if (--nesting == 0) {
+                break;
+            }
+        } else if (spelling == ";" && nesting == 1) {
+            separators.push_back(file_offset(clang_getTokenLocation(unit, tokens[index])));
+        }
+    }
+    if (separators.size() != 2) {
+        return std::nullopt;
+    }
+
+    ForParts parts;
+    parts.body = children.back();
+    for (std::size_t index = 0; index + 1 < children.size(); ++index) {
+        const std::size_t start = file_offset(clang_getRangeStart(clang_getCursorExtent(children[index])));
+        std::optional<CXCursor>& part = start < separators[0]   ? parts.initialization
+                                        : start < separators[1] ? parts.condition
+                                                                : parts.increment;
+        if (part.has_value()) {
+            return std::nullopt;
+        }
+        part = children[index];
+    }
+    return parts;
+}
+
+// Marks each local in `locals` that the statement or expression writes by
+// assignment, compound assignment, increment or decrement. Any other way of
+// writing a local is refused when the body is lowered, and a local this misses
+// is caught at the end of every iteration, so the scan only has to be complete
+// for the writes the lowering accepts.
+struct WriteScan {
+    const Locals* locals;
+    std::vector<bool>* written;
+};
+
+void mark_write(CXCursor cursor, const WriteScan& scan) {
+    const CXCursorKind kind = clang_getCursorKind(cursor);
+    const bool assigns =
+        (kind == CXCursor_BinaryOperator && clang_getCursorBinaryOperatorKind(cursor) == CXBinaryOperator_Assign) ||
+        kind == CXCursor_CompoundAssignOperator;
+    bool updates = false;
+    if (kind == CXCursor_UnaryOperator) {
+        const enum CXUnaryOperatorKind op = clang_getCursorUnaryOperatorKind(cursor);
+        updates = op == CXUnaryOperator_PreInc || op == CXUnaryOperator_PostInc || op == CXUnaryOperator_PreDec ||
+                  op == CXUnaryOperator_PostDec;
+    }
+    if (!assigns && !updates) {
+        return;
+    }
+    const std::vector<CXCursor> operands = children_of(cursor);
+    if (operands.empty()) {
+        return;
+    }
+    CXCursor target = operands[0];
+    while (clang_getCursorKind(target) == CXCursor_ParenExpr) {
+        const std::vector<CXCursor> inner = children_of(target);
+        if (inner.size() != 1) {
+            return;
+        }
+        target = inner[0];
+    }
+    if (clang_getCursorKind(target) != CXCursor_DeclRefExpr) {
+        return;
+    }
+    if (const std::optional<std::size_t> local = find_local(*scan.locals, clang_getCursorReferenced(target))) {
+        (*scan.written)[*local] = true;
+    }
+}
+
+void mark_writes(CXCursor root, const Locals& locals, std::vector<bool>& written) {
+    WriteScan scan{&locals, &written};
+    mark_write(root, scan);
+    clang_visitChildren(
+        root,
+        [](CXCursor child, CXCursor, CXClientData data) {
+            mark_write(child, *static_cast<const WriteScan*>(data));
+            return CXChildVisit_Recurse;
+        },
+        &scan);
 }
 
 // Whether control leaves the function rather than reaching what follows. It
@@ -412,7 +545,7 @@ bool terminates(CXCursor statement, unsigned depth) {
         return false;
     }
     const CXCursorKind kind = clang_getCursorKind(statement);
-    if (kind == CXCursor_ReturnStmt) {
+    if (kind == CXCursor_ReturnStmt || kind == CXCursor_BreakStmt || kind == CXCursor_ContinueStmt) {
         return true;
     }
     if (kind == CXCursor_CompoundStmt) {
@@ -430,10 +563,39 @@ bool terminates(CXCursor statement, unsigned depth) {
 // its block, and whatever follows the blocks enclosing it. A branch lowers this
 // continuation once per arm, under the versions that arm established, which is
 // what makes a local's value path-sensitive without any merge rule.
+struct LoopFrame;
+struct LoopHeader;
+
 struct Continuation {
     const Continuation* outer = nullptr;
     const std::vector<CXCursor>* statements = nullptr;
     std::size_t index = 0;
+
+    // In place of statements: the end of one iteration of a loop, before or
+    // after its increment, or a `for` loop whose initialization is done.
+    const LoopFrame* iteration = nullptr;
+    bool after_increment = false;
+    const LoopHeader* header = nullptr;
+};
+
+// A loop about to be entered.
+struct LoopHeader {
+    CXCursor statement{};
+    CXCursor condition{};
+    CXCursor body{};
+    std::optional<CXCursor> increment;
+    const Continuation* exit = nullptr; // what follows the loop
+};
+
+// A loop whose body is being lowered.
+struct LoopFrame {
+    std::uint32_t id = 0;
+    CXCursor statement{};
+    Locals head;                      // the locals at the head, each carried one at its head version
+    std::vector<std::size_t> carried; // positions in `head` that the loop writes
+    std::optional<CXCursor> increment;
+    const Continuation* exit = nullptr;
+    std::size_t frames_outside = 0; // the enclosing loops, for a `break` into what follows
 };
 
 // Lowers a resolved function body into the value it returns.
@@ -445,7 +607,12 @@ struct Continuation {
 // model of the body Clang resolved (SPEC.md 12.8).
 struct BodyLowering {
     const std::vector<CXCursor>& parameters;
+    Type result_type;
+    std::string invariant_prefix; // the projector's generated invariant declarations
     std::uint32_t next_version = 0;
+    std::uint32_t next_loop = 0;
+    std::vector<const LoopFrame*> frames;
+    std::vector<std::string> consumed_invariants;
     std::string rejection;
 
     std::nullopt_t reject(std::string reason) {
@@ -469,6 +636,12 @@ struct BodyLowering {
         if (depth > kMaxExpressionDepth) {
             return reject("more than " + std::to_string(kMaxExpressionDepth) +
                           " nested or consecutive statements on one path are not modeled");
+        }
+        if (from.header != nullptr) {
+            return lower_loop(*from.header, locals, depth + 1);
+        }
+        if (from.iteration != nullptr) {
+            return end_iteration(*from.iteration, from.after_increment, locals, depth + 1);
         }
         if (from.index == from.statements->size()) {
             if (from.outer == nullptr) {
@@ -513,7 +686,231 @@ struct BodyLowering {
             clang_isExpression(clang_getCursorKind(parts[0])) != 0) {
             return lower_branch(statement, parts, next, locals, depth);
         }
+        if (kind == CXCursor_WhileStmt) {
+            if (parts.size() != 2 || clang_isExpression(clang_getCursorKind(parts[0])) == 0) {
+                return reject("a while loop whose condition declares a variable is not modeled");
+            }
+            const LoopHeader header{statement, parts[0], parts[1], std::nullopt, &next};
+            return lower_loop(header, locals, depth);
+        }
+        if (kind == CXCursor_ForStmt) {
+            return lower_for(statement, next, locals, depth);
+        }
+        if (kind == CXCursor_BreakStmt) {
+            return lower_break(locals, depth);
+        }
+        if (kind == CXCursor_ContinueStmt) {
+            if (frames.empty()) {
+                return reject("'continue' outside a modeled loop");
+            }
+            return end_iteration(*frames.back(), false, locals, depth);
+        }
+        if (kind == CXCursor_DoStmt) {
+            return reject("do-while loops are not modeled");
+        }
+        if (kind == CXCursor_CXXForRangeStmt) {
+            return reject("range-based for loops are not modeled");
+        }
         return reject(unmodeled_statement("'" + take(clang_getCursorKindSpelling(kind)) + "'"));
+    }
+
+    std::optional<Expr> lower_for(CXCursor statement, const Continuation& next, const Locals& locals, unsigned depth) {
+        const std::optional<ForParts> parts = for_parts(statement);
+        if (!parts) {
+            return reject("the parts of this for loop could not be resolved");
+        }
+        if (!parts->condition) {
+            return reject("a for loop without a condition is not modeled");
+        }
+        if (clang_isExpression(clang_getCursorKind(*parts->condition)) == 0) {
+            return reject("a for loop whose condition declares a variable is not modeled");
+        }
+        const LoopHeader header{statement, *parts->condition, parts->body, parts->increment, &next};
+        if (!parts->initialization) {
+            return lower_loop(header, locals, depth);
+        }
+        // The initialization runs once, before the loop, with the loop as what
+        // follows it.
+        Continuation entered;
+        entered.header = &header;
+        return lower_statement(*parts->initialization, entered, locals, depth);
+    }
+
+    // The generated declaration a loop invariant was projected into, if the
+    // statement is one.
+    [[nodiscard]] std::optional<CXCursor> invariant_marker(CXCursor statement) const {
+        if (invariant_prefix.empty() || clang_getCursorKind(statement) != CXCursor_DeclStmt) {
+            return std::nullopt;
+        }
+        const std::vector<CXCursor> declared = children_of(statement);
+        if (declared.size() != 1 || clang_getCursorKind(declared[0]) != CXCursor_VarDecl ||
+            !take(clang_getCursorSpelling(declared[0])).starts_with(invariant_prefix)) {
+            return std::nullopt;
+        }
+        return declared[0];
+    }
+
+    Expr local_read(const Local& local, CXCursor at) {
+        Expr read;
+        read.type = local.type;
+        read.location = presumed_location(clang_getCursorLocation(at));
+        read.node = LocalRef{local.version, take(clang_getCursorSpelling(local.declaration))};
+        return read;
+    }
+
+    // A loop, as its entry, its head, one iteration, and what follows it
+    // (SPEC.md 24). Every local the loop writes is carried: from the head on it
+    // denotes a fresh version, of which only the invariants and the condition
+    // are known. A local the loop does not write keeps the version it had.
+    std::optional<Expr> lower_loop(const LoopHeader& header, const Locals& locals, unsigned depth) {
+        if (depth > kMaxExpressionDepth) {
+            return reject("more than " + std::to_string(kMaxExpressionDepth) +
+                          " nested or consecutive statements on one path are not modeled");
+        }
+        std::vector<CXCursor> statements;
+        if (clang_getCursorKind(header.body) == CXCursor_CompoundStmt) {
+            statements = children_of(header.body);
+        } else {
+            statements.push_back(header.body);
+        }
+        std::vector<CXCursor> markers;
+        std::size_t first = 0;
+        while (first < statements.size()) {
+            const std::optional<CXCursor> marker = invariant_marker(statements[first]);
+            if (!marker) {
+                break;
+            }
+            markers.push_back(*marker);
+            ++first;
+        }
+
+        LoopFrame frame;
+        frame.id = next_loop++;
+        frame.statement = header.statement;
+        frame.head = locals;
+        frame.increment = header.increment;
+        frame.exit = header.exit;
+        frame.frames_outside = frames.size();
+        std::vector<bool> written(locals.size(), false);
+        mark_writes(header.condition, locals, written);
+        if (header.increment) {
+            mark_writes(*header.increment, locals, written);
+        }
+        mark_writes(header.body, locals, written);
+        for (std::size_t index = 0; index < locals.size(); ++index) {
+            if (written[index]) {
+                frame.carried.push_back(index);
+                frame.head[index].version = next_version++;
+            }
+        }
+
+        std::vector<Expr> invariants;
+        for (const CXCursor marker : markers) {
+            const CXCursor initializer = clang_Cursor_getVarDeclInitializer(marker);
+            if (clang_Cursor_isNull(initializer) != 0) {
+                return reject("a loop invariant was not resolved");
+            }
+            Expr invariant = build_expression(initializer, parameters, frame.head, 0);
+            if (!std::holds_alternative<Unsupported>(invariant.node) && invariant.type.kind != TypeKind::Bool) {
+                return reject("a loop invariant must be a condition");
+            }
+            invariants.push_back(std::move(invariant));
+            consumed_invariants.push_back(take(clang_getCursorSpelling(marker)));
+        }
+        Expr condition = build_expression(header.condition, parameters, frame.head, 0);
+
+        frames.push_back(&frame);
+        const std::vector<CXCursor> rest(statements.begin() + static_cast<std::ptrdiff_t>(first), statements.end());
+        Continuation iteration;
+        iteration.iteration = &frame;
+        std::optional<Expr> once = lower_statements(Continuation{&iteration, &rest, 0}, frame.head, depth + 1);
+        frames.pop_back();
+        if (!once) {
+            return std::nullopt;
+        }
+        std::optional<Expr> after = lower_statements(*header.exit, frame.head, depth + 1);
+        if (!after) {
+            return std::nullopt;
+        }
+        if (return_paths(*once) + return_paths(*after) > kMaxReturnPaths) {
+            return reject("more than " + std::to_string(kMaxReturnPaths) + " return paths are not modeled");
+        }
+
+        const source::SourceLocation location = presumed_location(clang_getCursorLocation(header.statement));
+        Expr head;
+        head.type = result_type;
+        head.location = location;
+        head.node = Conditional{{std::move(condition), std::move(*once), std::move(*after)}};
+
+        Loop loop;
+        loop.loop = frame.id;
+        for (const std::size_t index : frame.carried) {
+            loop.heads.push_back(frame.head[index].version);
+            loop.names.push_back(take(clang_getCursorSpelling(locals[index].declaration)));
+            loop.operands.push_back(local_read(locals[index], header.statement));
+        }
+        loop.invariants = static_cast<std::uint32_t>(invariants.size());
+        for (Expr& invariant : invariants) {
+            loop.operands.push_back(std::move(invariant));
+        }
+        loop.operands.push_back(std::move(head));
+
+        Expr lowered;
+        lowered.type = result_type;
+        lowered.location = location;
+        lowered.node = std::move(loop);
+        return lowered;
+    }
+
+    // The end of an iteration: the increment, then the next iteration with
+    // each carried local at the version it holds here. A local the loop does
+    // not carry must still hold its head version, or the scan that decided
+    // what the loop carries missed a write.
+    std::optional<Expr> end_iteration(const LoopFrame& frame, bool after_increment, const Locals& locals,
+                                      unsigned depth) {
+        if (frame.increment && !after_increment) {
+            Continuation incremented;
+            incremented.iteration = &frame;
+            incremented.after_increment = true;
+            return lower_statement(*frame.increment, incremented, locals, depth + 1);
+        }
+        if (locals.size() < frame.head.size()) {
+            return reject("a loop's locals went out of step with its head");
+        }
+        Iterate next;
+        next.loop = frame.id;
+        for (std::size_t index = 0; index < frame.head.size(); ++index) {
+            if (clang_equalCursors(locals[index].declaration, frame.head[index].declaration) == 0) {
+                return reject("a loop's locals went out of step with its head");
+            }
+            const bool carried = std::ranges::find(frame.carried, index) != frame.carried.end();
+            if (!carried && locals[index].version != frame.head[index].version) {
+                return reject("'" + take(clang_getCursorSpelling(locals[index].declaration)) +
+                              "' is written inside a loop in a way this implementation does not track");
+            }
+            if (carried) {
+                next.operands.push_back(local_read(locals[index], frame.statement));
+            }
+        }
+        Expr iterated;
+        iterated.type = result_type;
+        iterated.location = presumed_location(clang_getCursorLocation(frame.statement));
+        iterated.node = std::move(next);
+        return iterated;
+    }
+
+    // `break` continues with what follows the innermost loop, under the
+    // versions current here, and outside that loop.
+    std::optional<Expr> lower_break(const Locals& locals, unsigned depth) {
+        if (frames.empty()) {
+            return reject("'break' outside a modeled loop");
+        }
+        const LoopFrame& frame = *frames.back();
+        const std::vector<const LoopFrame*> inside = frames;
+        frames.resize(frame.frames_outside);
+        std::optional<Expr> after = lower_statements(*frame.exit, locals, depth + 1);
+        frames = inside;
+        return after;
     }
 
     std::optional<Expr> lower_branch(CXCursor statement, const std::vector<CXCursor>& parts, const Continuation& next,
@@ -548,6 +945,11 @@ struct BodyLowering {
         if (clang_getCursorKind(declaration) != CXCursor_VarDecl) {
             return reject("only variable declarations are modeled inside a verified body; found '" +
                           take(clang_getCursorKindSpelling(clang_getCursorKind(declaration))) + "'");
+        }
+        // An invariant the loop lowering did not take is never read as a
+        // statement of the body: that would drop it without a word.
+        if (!invariant_prefix.empty() && name.starts_with(invariant_prefix)) {
+            return reject("a loop invariant is attached only to a while or for loop whose body is a block");
         }
         const enum CX_StorageClass storage = clang_Cursor_getStorageClass(declaration);
         if (storage != CX_SC_None && storage != CX_SC_Auto) {
@@ -720,7 +1122,8 @@ struct BodyLowering {
     }
 };
 
-void extract_body(Function& function, CXCursor cursor, const std::vector<CXCursor>& parameters) {
+void extract_body(Function& function, CXCursor cursor, const std::vector<CXCursor>& parameters,
+                  const std::string& invariant_prefix) {
     const std::vector<CXCursor> members = children_of(cursor);
 
     std::size_t body_index = members.size();
@@ -737,11 +1140,12 @@ void extract_body(Function& function, CXCursor cursor, const std::vector<CXCurso
     function.has_body = true;
 
     const std::vector<CXCursor> statements = children_of(members[body_index]);
-    BodyLowering lowering{parameters, 0, {}};
+    BodyLowering lowering{parameters, function.result, invariant_prefix, 0, 0, {}, {}, {}};
     function.returned_value = lowering.lower_statements(Continuation{nullptr, &statements, 0}, {}, 0);
     if (!function.returned_value) {
         function.body_rejection = lowering.rejection.empty() ? "every path must return a value" : lowering.rejection;
     }
+    function.loop_invariants = std::move(lowering.consumed_invariants);
 }
 
 std::size_t physical_offset(CXCursor cursor) {
@@ -897,7 +1301,12 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
                 Parameter{take(clang_getCursorSpelling(parameter)), convert_type(clang_getCursorType(parameter))});
         }
 
-        extract_body(function, cursor, parameter_cursors);
+        // The projector's invariant declarations share the generated prefix,
+        // which no ordinary declaration may use.
+        extract_body(function, cursor, parameter_cursors,
+                     request.selection.specification_prefix.empty()
+                         ? std::string()
+                         : request.selection.specification_prefix + "invariant_");
         result.functions.push_back(std::move(function));
     }
 

@@ -108,6 +108,10 @@ std::vector<obligations::ObligationResult> verify(const obligations::Program& pr
                 diagnostic.message = "call-site precondition for '" + obligation.subject + "' is not proven";
             } else if (obligation.origin == obligations::Origin::ReturnPath) {
                 diagnostic.message = "return path '" + obligation.subject + "' does not satisfy its contract";
+            } else if (obligation.origin == obligations::Origin::LoopEntry) {
+                diagnostic.message = "loop invariant '" + obligation.subject + "' does not hold on entry";
+            } else if (obligation.origin == obligations::Origin::LoopPreservation) {
+                diagnostic.message = "loop invariant '" + obligation.subject + "' is not preserved by an iteration";
             } else {
                 diagnostic.message = "law '" + obligation.subject + "' is not proven";
             }

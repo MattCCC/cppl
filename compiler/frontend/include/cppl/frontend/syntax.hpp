@@ -14,6 +14,7 @@ namespace cppl::frontend {
 enum class ClauseKind : std::uint8_t {
     Ensures,
     Expects,
+    Invariant,
 };
 
 std::string describe(ClauseKind kind);
@@ -115,6 +116,27 @@ struct VerifiedFunction {
     [[nodiscard]] const Clause* precondition() const;
 };
 
+// while (condition) invariant(P)... { body }
+// for (init; condition; increment) invariant(P)... { body }   (GRAMMAR.md 25, 26)
+//
+// The clauses stand between the loop header and its body. They are not C++, so
+// they leave both texts; Clang is instead given one declaration per invariant
+// at the start of the body, where every name the invariant may use is in scope
+// and nothing the body declares is yet.
+struct LoopSpecification {
+    std::size_t function_index = 0; // the verified function whose body holds the loop
+    source::SourceLocation keyword_location;
+    std::vector<Clause> invariants;
+    std::vector<source::SourceLocation> expression_locations; // one per invariant
+    source::ByteSpan clause_region;
+
+    // Just past the body's '{', where the invariant declarations are inserted,
+    // and the presumed position the text after it resumes at.
+    std::size_t body_open = 0;
+    std::uint32_t body_open_line = 0;
+    std::uint32_t body_open_column = 0;
+};
+
 // The `pure` declaration specifier and the function it applies to (SPEC.md 13).
 struct PureMarker {
     source::ByteSpan keyword;
@@ -129,9 +151,10 @@ struct Syntax {
     std::vector<ProofDeclaration> proofs;
     std::vector<PureMarker> pure_markers;
     std::vector<VerifiedFunction> verified_functions;
+    std::vector<LoopSpecification> loops;
 
     [[nodiscard]] bool empty() const noexcept {
-        return laws.empty() && proofs.empty() && pure_markers.empty() && verified_functions.empty();
+        return laws.empty() && proofs.empty() && pure_markers.empty() && verified_functions.empty() && loops.empty();
     }
 };
 

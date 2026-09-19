@@ -70,6 +70,18 @@ std::string describe(const Expr& expr) {
                                                  : "<malformed-local>";
             } else if constexpr (std::is_same_v<Node, LocalRef>) {
                 return node.name + "#" + std::to_string(node.version);
+            } else if constexpr (std::is_same_v<Node, Loop>) {
+                std::string text = "loop#" + std::to_string(node.loop) + "(";
+                for (std::size_t index = 0; index < node.operands.size(); ++index) {
+                    text += (index != 0 ? ", " : "") + describe(node.operands[index]);
+                }
+                return text + ")";
+            } else if constexpr (std::is_same_v<Node, Iterate>) {
+                std::string text = "next#" + std::to_string(node.loop) + "(";
+                for (std::size_t index = 0; index < node.operands.size(); ++index) {
+                    text += (index != 0 ? ", " : "") + describe(node.operands[index]);
+                }
+                return text + ")";
             } else {
                 if (node.operands.size() != 2) {
                     return "<malformed-binary>";

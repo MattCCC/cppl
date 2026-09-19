@@ -36,6 +36,10 @@ std::string describe(Origin origin) {
             return "function contract";
         case Origin::LawProposition:
             return "law proposition";
+        case Origin::LoopEntry:
+            return "loop invariant on entry";
+        case Origin::LoopPreservation:
+            return "loop invariant preservation";
     }
     return "obligation";
 }

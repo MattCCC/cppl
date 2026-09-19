@@ -174,6 +174,30 @@ class ExpressionElaborator {
             result.node = vir::LocalRef{local->version, local->name};
             return result;
         }
+
+        if (const auto* loop = std::get_if<clangbridge::Loop>(&expr.node)) {
+            vir::Loop converted{loop->loop, loop->heads, loop->names, loop->invariants, {}};
+            for (const auto& operand : loop->operands) {
+                auto value = convert(operand);
+                if (!value)
+                    return std::nullopt;
+                converted.operands.push_back(std::move(*value));
+            }
+            result.node = std::move(converted);
+            return result;
+        }
+
+        if (const auto* next = std::get_if<clangbridge::Iterate>(&expr.node)) {
+            vir::Iterate converted{next->loop, {}};
+            for (const auto& operand : next->operands) {
+                auto value = convert(operand);
+                if (!value)
+                    return std::nullopt;
+                converted.operands.push_back(std::move(*value));
+            }
+            result.node = std::move(converted);
+            return result;
+        }
         const auto& unsupported = std::get<clangbridge::Unsupported>(expr.node);
         failure_ = Failure{unsupported.reason, expr.location};
         return std::nullopt;
@@ -211,6 +235,14 @@ void collect_callees(const vir::Expr& expr, std::vector<vir::SymbolId>& callees)
     }
     if (const auto* negation = std::get_if<vir::Negation>(&expr.node)) {
         for (const auto& operand : negation->operands)
+            collect_callees(operand, callees);
+    }
+    if (const auto* loop = std::get_if<vir::Loop>(&expr.node)) {
+        for (const auto& operand : loop->operands)
+            collect_callees(operand, callees);
+    }
+    if (const auto* next = std::get_if<vir::Iterate>(&expr.node)) {
+        for (const auto& operand : next->operands)
             collect_callees(operand, callees);
     }
 }
@@ -401,8 +433,21 @@ void elaborate_contract(const Request& request, const frontend::VerifiedFunction
                    "' has a body this implementation cannot state as a value" +
                    (body_rejection.empty() ? "" : ": " + body_rejection),
                "a contract is discharged from the body, and this implementation models a body "
-               "using only modeled if/else, blocks, and returned expressions");
+               "using only modeled if/else, loops, blocks, and returned expressions");
         return;
+    }
+
+    // Every invariant written in this body must have become an invariant of a
+    // lowered loop. One that did not would be an obligation silently dropped.
+    for (const frontend::LoopInvariantMarker& marker : request.projection.loop_invariants) {
+        if (marker.function_index == projected.function_index &&
+            std::ranges::find(function.loop_invariants, marker.name) == function.loop_invariants.end()) {
+            report(engine, diagnostics::Category::UnsupportedSemantics, marker.location,
+                   "this loop invariant of verified function '" + function.qualified_name +
+                       "' is not attached to a modeled loop",
+                   "an invariant applies to the while or for loop whose body block follows it");
+            return;
+        }
     }
 
     const frontend::Clause* postcondition = declaration.postcondition();
@@ -667,7 +712,8 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
                                 "a mathematical function of its arguments";
                 } else if (candidate.pure && calls_only_pure &&
                            !std::holds_alternative<vir::Conditional>(converted.returned_value->node) &&
-                           !std::holds_alternative<vir::LocalVersion>(converted.returned_value->node)) {
+                           !std::holds_alternative<vir::LocalVersion>(converted.returned_value->node) &&
+                           !std::holds_alternative<vir::Loop>(converted.returned_value->node)) {
                     converted.purity = vir::Purity::Pure;
                 } else if (candidate.pure && candidate.contract == nullptr) {
                     rejection = "pure specification helpers require a single return expression";

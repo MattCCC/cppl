@@ -676,6 +676,94 @@ ScopeKind scope_kind_before(const std::vector<Token>& tokens, std::size_t brace)
     return ScopeKind::Block;
 }
 
+bool is_loop_clause(const std::vector<Token>& tokens, std::size_t index) {
+    return index + 1 < tokens.size() &&
+           (tokens[index].is_identifier("invariant") || tokens[index].is_identifier("decreases")) &&
+           tokens[index + 1].is_punctuator("(");
+}
+
+enum class LoopClauses : std::uint8_t {
+    None,
+    Recognized,
+    Refused,
+};
+
+// `while (c)` or `for (...)` followed by loop specification clauses and a block
+// (GRAMMAR.md 25, 26). The clauses are C++L only where the tokens cannot be
+// C++: `invariant(x) { ... };` declares `x` when `invariant` names a type, so a
+// lone single-identifier invariant before a block that `;` follows is left to
+// C++ (SPEC.md 3.1).
+LoopClauses try_loop_clauses(const TokenStream& stream, std::size_t index, diagnostics::Engine& engine,
+                             LoopSpecification& loop, std::size_t& next_index) {
+    const std::vector<Token>& tokens = stream.tokens();
+    const std::size_t close = matching_parenthesis(tokens, index + 1);
+    if (close >= tokens.size() || !is_loop_clause(tokens, close + 1)) {
+        return LoopClauses::None;
+    }
+
+    struct Written {
+        std::size_t keyword;
+        std::size_t close;
+    };
+    std::vector<Written> written;
+    std::size_t cursor = close + 1;
+    while (is_loop_clause(tokens, cursor)) {
+        const std::size_t clause_close = matching_parenthesis(tokens, cursor + 1);
+        if (clause_close >= tokens.size()) {
+            return LoopClauses::None;
+        }
+        written.push_back(Written{cursor, clause_close});
+        cursor = clause_close + 1;
+    }
+    if (cursor >= tokens.size() || !tokens[cursor].is_punctuator("{")) {
+        return LoopClauses::None;
+    }
+    const std::size_t body_close = matching_brace(tokens, cursor);
+    if (body_close >= tokens.size()) {
+        return LoopClauses::None;
+    }
+    if (written.size() == 1 && tokens[written[0].keyword].is_identifier("invariant") &&
+        written[0].close == written[0].keyword + 3 && tokens[written[0].keyword + 2].kind == TokenKind::Identifier &&
+        body_close + 1 < tokens.size() && tokens[body_close + 1].is_punctuator(";")) {
+        return LoopClauses::None;
+    }
+
+    next_index = cursor;
+    LoopClauses outcome = LoopClauses::Recognized;
+    for (const Written& clause : written) {
+        const Token& keyword = tokens[clause.keyword];
+        if (keyword.is_identifier("decreases")) {
+            report(engine, stream, keyword, diagnostics::Category::UnsupportedSemantics,
+                   "loop termination is not verified by this implementation",
+                   "a verified loop establishes partial correctness only; 'decreases' is refused rather than "
+                   "left unchecked");
+            outcome = LoopClauses::Refused;
+            continue;
+        }
+        Clause invariant;
+        invariant.kind = ClauseKind::Invariant;
+        invariant.location = stream.location_of(keyword);
+        invariant.expression =
+            source::ByteSpan{tokens[clause.keyword + 1].span.end(),
+                             tokens[clause.close].span.offset - tokens[clause.keyword + 1].span.end()};
+        if (clause.close == clause.keyword + 2) {
+            report(engine, stream, keyword, diagnostics::Category::CpplSyntax, "'invariant' requires an expression");
+            outcome = LoopClauses::Refused;
+            continue;
+        }
+        loop.invariants.push_back(invariant);
+        loop.expression_locations.push_back(stream.location_of(tokens[clause.keyword + 2]));
+    }
+
+    loop.keyword_location = stream.location_of(tokens[index]);
+    loop.clause_region = source::ByteSpan{tokens[written.front().keyword].span.offset,
+                                          tokens[cursor].span.offset - tokens[written.front().keyword].span.offset};
+    loop.body_open = tokens[cursor].span.end();
+    loop.body_open_line = tokens[cursor].line;
+    loop.body_open_column = tokens[cursor].column + 1;
+    return outcome;
+}
+
 } // namespace
 
 std::string describe(ClauseKind kind) {
@@ -684,6 +772,8 @@ std::string describe(ClauseKind kind) {
             return "ensures";
         case ClauseKind::Expects:
             return "expects";
+        case ClauseKind::Invariant:
+            return "invariant";
     }
     return "unknown";
 }
@@ -749,6 +839,15 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine) {
         return std::ranges::all_of(scopes, [](ScopeKind kind) { return kind == ScopeKind::Namespace; });
     };
 
+    // The token range of each verified body, so a loop's clauses can be tied to
+    // the function whose obligations they become.
+    struct VerifiedBody {
+        std::size_t open = 0;
+        std::size_t close = 0;
+        std::size_t function = 0;
+    };
+    std::vector<VerifiedBody> verified_bodies;
+
     std::size_t index = 0;
     while (index < tokens.size() && tokens[index].kind != TokenKind::EndOfFile) {
         if (tokens[index].is_punctuator("{")) {
@@ -762,6 +861,28 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine) {
             }
             ++index;
             continue;
+        }
+
+        if ((tokens[index].is_identifier("while") || tokens[index].is_identifier("for")) && index + 1 < tokens.size() &&
+            tokens[index + 1].is_punctuator("(")) {
+            LoopSpecification loop;
+            std::size_t next = index + 1;
+            const LoopClauses found = try_loop_clauses(stream, index, engine, loop, next);
+            if (found != LoopClauses::None) {
+                const auto body = std::ranges::find_if(verified_bodies, [index](const VerifiedBody& candidate) {
+                    return candidate.open < index && index < candidate.close;
+                });
+                if (body == verified_bodies.end()) {
+                    report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
+                           "a loop invariant outside a verified function would not be checked",
+                           "mark the enclosing function 'verified' so its loop invariants become obligations");
+                } else if (found == LoopClauses::Recognized) {
+                    loop.function_index = body->function;
+                    syntax.loops.push_back(std::move(loop));
+                }
+                index = next;
+                continue;
+            }
         }
 
         if (!at_declaration_start(tokens, index)) {
@@ -843,6 +964,8 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine) {
                         syntax.pure_markers.push_back(std::move(marker));
                     }
                     syntax.verified_functions.push_back(std::move(verified));
+                    verified_bodies.push_back(
+                        VerifiedBody{next, matching_brace(tokens, next), syntax.verified_functions.size() - 1});
                 }
             }
             index = next;

@@ -96,11 +96,38 @@ struct LocalRef {
     friend bool operator==(const LocalRef&, const LocalRef&) = default;
 };
 
+// A loop (SPEC.md 24). Each local the loop writes is carried: from the head on
+// it denotes the version in `heads`, an unknown of which only the invariants
+// and the condition are known. `operands` are each carried local's value on
+// entry, then the `invariants` stated over the head versions, then what
+// happens from the head on. Every iteration of the loop inside that last
+// operand ends in an Iterate naming this loop, in a return, or in what follows
+// the loop.
+struct Loop {
+    std::uint32_t loop = 0;
+    std::vector<std::uint32_t> heads;
+    std::vector<std::string> names;
+    std::uint32_t invariants = 0;
+    std::vector<Expr> operands; // entry values, invariants, head
+
+    friend bool operator==(const Loop&, const Loop&) = default;
+};
+
+// The end of one iteration of `loop`: the value of each carried local when the
+// next iteration begins, in the loop's carried order.
+struct Iterate {
+    std::uint32_t loop = 0;
+    std::vector<Expr> operands;
+
+    friend bool operator==(const Iterate&, const Iterate&) = default;
+};
+
 struct Expr {
     ExprId id;
     Type type;
     Provenance provenance;
-    std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, LocalVersion, LocalRef> node;
+    std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, LocalVersion, LocalRef, Loop, Iterate>
+        node;
 
     friend bool operator==(const Expr&, const Expr&) = default;
 };

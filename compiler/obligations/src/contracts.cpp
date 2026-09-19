@@ -96,7 +96,26 @@ void collect_calls(const vir::Expr& expression, const Contracts& contracts, std:
     } else if (const auto* branch = std::get_if<vir::Conditional>(&expression.node)) {
         for (const auto& operand : branch->operands)
             collect_calls(operand, contracts, calls);
+    } else if (const auto* loop = std::get_if<vir::Loop>(&expression.node)) {
+        for (const auto& operand : loop->operands)
+            collect_calls(operand, contracts, calls);
+    } else if (const auto* next = std::get_if<vir::Iterate>(&expression.node)) {
+        for (const auto& operand : next->operands)
+            collect_calls(operand, contracts, calls);
     }
+}
+
+bool contains_loop(const vir::Expr& expression) {
+    if (std::holds_alternative<vir::Loop>(expression.node)) {
+        return true;
+    }
+    if (const auto* bound = std::get_if<vir::LocalVersion>(&expression.node)) {
+        return std::ranges::any_of(bound->operands, contains_loop);
+    }
+    if (const auto* branch = std::get_if<vir::Conditional>(&expression.node)) {
+        return std::ranges::any_of(branch->operands, contains_loop);
+    }
+    return false;
 }
 
 Obligation obligation_for(const Program& program, const ReturnPath& path, Origin origin, std::string subject,
@@ -215,12 +234,12 @@ std::expected<void, Failure> append_calls(const vir::Expr& expression, const vir
     return {};
 }
 
-std::expected<ContractVerification, Failure> build(const vir::Function& function, const Contracts& contracts,
-                                                   const DefinitionMap& pure_definitions, DefinitionMap& definitions,
-                                                   const std::map<std::string, std::size_t>& established,
-                                                   Program& program) {
-    ContractVerification plan;
+// The contract itself: its types, postcondition and precondition, lowered
+// from the specification expressions alone.
+std::expected<void, Failure> state_contract(const vir::Function& function, const DefinitionMap& pure_definitions,
+                                            ContractVerification& plan) {
     plan.function = function.id;
+    plan.name = function.qualified_name;
     const auto result = core_type(function.result);
     if (!result.has_value()) {
         return std::unexpected(Failure{"the result type is not modeled", function.range.begin, {}});
@@ -245,6 +264,17 @@ std::expected<ContractVerification, Failure> build(const vir::Function& function
             return std::unexpected(pre.error());
         }
         plan.precondition = std::move(*pre);
+    }
+    return {};
+}
+
+std::expected<ContractVerification, Failure> build(const vir::Function& function, const Contracts& contracts,
+                                                   const DefinitionMap& pure_definitions, DefinitionMap& definitions,
+                                                   const std::map<std::string, std::size_t>& established,
+                                                   Program& program) {
+    ContractVerification plan;
+    if (auto stated = state_contract(function, pure_definitions, plan); !stated) {
+        return std::unexpected(stated.error());
     }
     auto returned = lower_value(*function.returned_value, definitions, plan.parameters.size());
     if (!returned) {
@@ -329,8 +359,8 @@ std::expected<ContractVerification, Failure> build(const vir::Function& function
     if (leaves.size() > 1) {
         plan.obligation = program.obligations.size() + obligations.size();
         auto goal = close(plan, {}, 0, 0, false, kernel::instantiate(plan.postcondition, plan.returned_value));
-        auto obligation =
-            obligation_for(program, {}, Origin::FunctionContract, function.qualified_name, contract.range, goal, goal);
+        auto obligation = obligation_for(program, {}, Origin::FunctionContract, function.qualified_name,
+                                         function.contract->range, goal, goal);
         source::Hasher hasher;
         hasher.update_field("verified-paths-v1");
         hasher.update_field(obligation.id.digest.to_short_hex(64));
@@ -340,6 +370,383 @@ std::expected<ContractVerification, Failure> build(const vir::Function& function
         obligations.push_back(std::move(obligation));
     }
     for (auto& obligation : obligations) {
+        program.obligations.push_back(std::move(obligation));
+    }
+    return plan;
+}
+
+// Bounds the nodes one body's conditions are generated from. The bridge
+// already bounds paths and statements; this keeps malformed VIR finite too.
+constexpr std::size_t kMaxConditionSteps = std::size_t{1} << 15;
+
+// Partial correctness (SPEC.md 23, 24).
+//
+// A body with a loop is not one total core term, so its contract cannot be a
+// theorem about a definition. It is established from verification conditions,
+// each an ordinary proposition the kernel decides: on every path, what the path
+// supposes implies what must hold where the path stands. A value the path
+// learns only through a proposition — a verified call's result, or a carried
+// local at a loop head — is a fresh variable bound where the path meets it,
+// followed by the proposition supposed of it. Which conditions a body needs is
+// decided here, by the rules for calls and loops; that is a correspondence
+// responsibility (TRUST.md 41.2). Whether each holds is the kernel's.
+class Conditions {
+  public:
+    Conditions(const vir::Function& function, const ContractVerification& plan, const Contracts& contracts,
+               const DefinitionMap& definitions, const std::map<std::string, std::size_t>& established,
+               const Program& program)
+        : function_(function),
+          plan_(plan),
+          contracts_(contracts),
+          definitions_(definitions),
+          established_(established),
+          program_(program) {}
+
+    std::expected<void, Failure> run() {
+        Scope scope;
+        scope.binders = plan_.parameters;
+        if (plan_.precondition.has_value()) {
+            scope.events.push_back(Event{std::nullopt, plan_.precondition});
+        }
+        std::vector<Active> loops;
+        return walk(*function_.returned_value, std::move(scope), loops);
+    }
+
+    std::vector<Obligation> obligations;
+    std::vector<VerificationCondition> conditions;
+
+  private:
+    // After the parameters, a path binds fresh values and supposes facts, in
+    // the order it meets them.
+    struct Event {
+        std::optional<kernel::Type> binder;
+        std::optional<kernel::Proposition> fact;
+    };
+
+    struct Scope {
+        std::vector<kernel::Type> binders; // the parameters, then each fresh value
+        std::vector<Event> events;
+        CallBindings calls;
+        VersionBindings versions;
+        OpaqueBindings opaque;
+        std::vector<std::size_t> relied_on; // contracts whose postconditions are supposed
+    };
+
+    struct Active {
+        const vir::Loop* loop;
+        std::vector<kernel::Type> carried;
+    };
+
+    static std::unexpected<Failure> fail(std::string reason, const source::SourceLocation& location) {
+        return std::unexpected(Failure{std::move(reason), location, {}});
+    }
+
+    [[nodiscard]] kernel::Proposition close(const Scope& scope, kernel::Proposition goal) const {
+        for (auto event = scope.events.rbegin(); event != scope.events.rend(); ++event) {
+            goal = event->binder.has_value() ? kernel::Proposition::for_all(*event->binder, std::move(goal))
+                                             : kernel::Proposition::implication(*event->fact, std::move(goal));
+        }
+        return quantify(plan_.parameters, std::move(goal));
+    }
+
+    [[nodiscard]] std::expected<kernel::Term, Failure> lower(const vir::Expr& expression, const Scope& scope) const {
+        return lower_value(expression, definitions_, scope.binders.size(), &scope.calls, &scope.versions,
+                           &scope.opaque);
+    }
+
+    [[nodiscard]] std::string identity_of(std::size_t index) const {
+        const ContractVerification& callee = program_.contracts[index];
+        return callee.partial ? callee.identity.to_short_hex(64)
+                              : program_.obligations[callee.obligation].id.digest.to_short_hex(64);
+    }
+
+    void emit(const Scope& scope, Origin origin, std::string subject, const source::SourceRange& range,
+              kernel::Proposition goal) {
+        Obligation obligation;
+        obligation.origin = origin;
+        obligation.subject = std::move(subject);
+        obligation.range = range;
+        obligation.goal = close(scope, std::move(goal));
+        source::Hasher hasher;
+        hasher.update_field("partial-correctness-v1");
+        hasher.update_field(
+            identify_goal(program_.context, obligation.subject, obligation.goal).digest.to_short_hex(64));
+        for (const std::size_t callee : scope.relied_on) {
+            hasher.update_field(identity_of(callee));
+        }
+        obligation.id = ObligationId{hasher.finish()};
+        conditions.push_back(VerificationCondition{program_.obligations.size() + obligations.size(), scope.relied_on});
+        obligations.push_back(std::move(obligation));
+    }
+
+    // Each verified call the expression evaluates, where it evaluates it: its
+    // precondition is a condition under what the path supposes so far, and its
+    // result is a fresh value of which the callee's postcondition is supposed.
+    std::expected<void, Failure> evaluate(const vir::Expr& expression, Scope& scope) {
+        std::vector<const vir::Expr*> sites;
+        collect_calls(expression, contracts_, sites);
+        for (const vir::Expr* site : sites) {
+            if (scope.calls.contains(site->id.value)) {
+                continue;
+            }
+            const auto& call = std::get<vir::Call>(site->node);
+            const auto found = established_.find(call.callee.usr);
+            if (found == established_.end()) {
+                return fail("'" + call.callee_name + "' has no established contract", site->provenance.range.begin);
+            }
+            const ContractVerification& callee = program_.contracts[found->second];
+            if (call.arguments.size() != callee.parameters.size()) {
+                return fail("call argument count differs from the contract", site->provenance.range.begin);
+            }
+            std::vector<kernel::Term> arguments;
+            for (const vir::Expr& argument : call.arguments) {
+                auto lowered = lower(argument, scope);
+                if (!lowered) {
+                    return std::unexpected(lowered.error());
+                }
+                arguments.push_back(std::move(*lowered));
+            }
+            if (callee.precondition.has_value()) {
+                emit(scope, Origin::CallPrecondition, function_.qualified_name + " -> " + call.callee_name,
+                     site->provenance.range, specialize(*callee.precondition, callee.parameters, arguments));
+            }
+            for (auto& argument : arguments) {
+                argument = kernel::shift(argument, 1);
+            }
+            scope.calls.emplace(site->id.value, scope.binders.size());
+            scope.binders.push_back(callee.result);
+            scope.events.push_back(Event{callee.result, std::nullopt});
+            scope.events.push_back(Event{std::nullopt, postcondition_at(callee, std::move(arguments),
+                                                                        kernel::Term::variable(kernel::VarIndex{0}))});
+            if (std::ranges::find(scope.relied_on, found->second) == scope.relied_on.end()) {
+                scope.relied_on.push_back(found->second);
+            }
+        }
+        return {};
+    }
+
+    std::expected<void, Failure> walk(const vir::Expr& expression, Scope scope, std::vector<Active>& loops) {
+        const source::SourceLocation& location = expression.provenance.range.begin;
+        if (++steps_ > kMaxConditionSteps) {
+            return fail("this body has more than " + std::to_string(kMaxConditionSteps) + " modeled steps", location);
+        }
+
+        if (const auto* bound = std::get_if<vir::LocalVersion>(&expression.node)) {
+            if (bound->operands.size() != 2 || scope.versions.contains(bound->version) ||
+                scope.opaque.contains(bound->version)) {
+                return fail("malformed local version", location);
+            }
+            if (auto evaluated = evaluate(bound->operands[0], scope); !evaluated) {
+                return evaluated;
+            }
+            // The value is evaluated where the local is written, read or not.
+            if (auto value = lower(bound->operands[0], scope); !value) {
+                return std::unexpected(value.error());
+            }
+            scope.versions.emplace(bound->version, &bound->operands[0]);
+            return walk(bound->operands[1], std::move(scope), loops);
+        }
+
+        if (const auto* branch = std::get_if<vir::Conditional>(&expression.node)) {
+            if (branch->operands.size() != 3 || !branch->operands[0].type.is_boolean()) {
+                return fail("malformed conditional", location);
+            }
+            if (auto evaluated = evaluate(branch->operands[0], scope); !evaluated) {
+                return evaluated;
+            }
+            auto condition = lower(branch->operands[0], scope);
+            if (!condition) {
+                return std::unexpected(condition.error());
+            }
+            Scope when_true = scope;
+            when_true.events.push_back(Event{std::nullopt, kernel::predicate(*condition, true)});
+            if (auto walked = walk(branch->operands[1], std::move(when_true), loops); !walked) {
+                return walked;
+            }
+            scope.events.push_back(Event{std::nullopt, kernel::predicate(*condition, false)});
+            return walk(branch->operands[2], std::move(scope), loops);
+        }
+
+        if (const auto* loop = std::get_if<vir::Loop>(&expression.node)) {
+            return enter(*loop, expression, std::move(scope), loops);
+        }
+
+        if (const auto* next = std::get_if<vir::Iterate>(&expression.node)) {
+            return iterate(*next, expression, scope, loops);
+        }
+
+        return returned(expression, std::move(scope));
+    }
+
+    [[nodiscard]] std::string invariant_subject(const vir::Expr& loop, std::uint32_t position) const {
+        return function_.qualified_name + " loop at line " + std::to_string(loop.provenance.range.begin.line) +
+               " invariant " + std::to_string(position + 1);
+    }
+
+    // Entering a loop: each invariant must hold of the carried locals' values
+    // here. From the head on, each carried local is a fresh value of which only
+    // the invariants are supposed.
+    std::expected<void, Failure> enter(const vir::Loop& loop, const vir::Expr& expression, Scope scope,
+                                       std::vector<Active>& loops) {
+        const source::SourceLocation& location = expression.provenance.range.begin;
+        const std::size_t carried = loop.heads.size();
+        if (loop.names.size() != carried || loop.operands.size() != carried + loop.invariants + 1 ||
+            std::ranges::any_of(loops, [&loop](const Active& active) { return active.loop->loop == loop.loop; })) {
+            return fail("malformed loop", location);
+        }
+        std::vector<kernel::Type> types;
+        for (std::size_t index = 0; index < carried; ++index) {
+            const std::uint32_t head = loop.heads[index];
+            if (scope.versions.contains(head) || scope.opaque.contains(head) ||
+                std::count(loop.heads.begin(), loop.heads.end(), head) != 1) {
+                return fail("malformed loop", location);
+            }
+            const std::optional<kernel::Type> type = core_type(loop.operands[index].type);
+            if (!type.has_value()) {
+                return fail("'" + loop.names[index] + "' has a type the formal core does not represent", location);
+            }
+            types.push_back(*type);
+        }
+        for (std::uint32_t position = 0; position < loop.invariants; ++position) {
+            if (!loop.operands[carried + position].type.is_boolean()) {
+                return fail("a loop invariant must be a condition", location);
+            }
+        }
+
+        for (std::uint32_t position = 0; position < loop.invariants; ++position) {
+            Scope entry = scope;
+            for (std::size_t index = 0; index < carried; ++index) {
+                entry.versions.emplace(loop.heads[index], &loop.operands[index]);
+            }
+            const vir::Expr& written = loop.operands[carried + position];
+            auto invariant = lower(written, entry);
+            if (!invariant) {
+                return std::unexpected(invariant.error());
+            }
+            emit(scope, Origin::LoopEntry, invariant_subject(expression, position), written.provenance.range,
+                 kernel::predicate(*invariant, true));
+        }
+
+        Scope head = std::move(scope);
+        for (std::size_t index = 0; index < carried; ++index) {
+            head.opaque.emplace(loop.heads[index], head.binders.size());
+            head.binders.push_back(types[index]);
+            head.events.push_back(Event{types[index], std::nullopt});
+        }
+        for (std::uint32_t position = 0; position < loop.invariants; ++position) {
+            auto invariant = lower(loop.operands[carried + position], head);
+            if (!invariant) {
+                return std::unexpected(invariant.error());
+            }
+            head.events.push_back(Event{std::nullopt, kernel::predicate(*invariant, true)});
+        }
+
+        loops.push_back(Active{&loop, types});
+        auto walked = walk(loop.operands.back(), std::move(head), loops);
+        loops.pop_back();
+        return walked;
+    }
+
+    // The end of an iteration: each invariant must hold again of the values
+    // the carried locals take into the next one. The invariant is stated with
+    // the head values abstracted, then instantiated at those values by the
+    // kernel's own substitution, so the head value an iteration started from
+    // and the value it ends with are never confused.
+    std::expected<void, Failure> iterate(const vir::Iterate& next, const vir::Expr& expression, const Scope& scope,
+                                         const std::vector<Active>& loops) {
+        const source::SourceLocation& location = expression.provenance.range.begin;
+        const auto active = std::ranges::find_if(loops.rbegin(), loops.rend(), [&next](const Active& candidate) {
+            return candidate.loop->loop == next.loop;
+        });
+        if (active == loops.rend()) {
+            return fail("an iteration ends outside the loop it belongs to", location);
+        }
+        const vir::Loop& loop = *active->loop;
+        const std::size_t carried = loop.heads.size();
+        if (next.operands.size() != carried) {
+            return fail("malformed iteration", location);
+        }
+        std::vector<kernel::Term> values;
+        for (std::size_t index = 0; index < carried; ++index) {
+            if (!(next.operands[index].type == loop.operands[index].type)) {
+                return fail("malformed iteration", location);
+            }
+            auto value = lower(next.operands[index], scope);
+            if (!value) {
+                return std::unexpected(value.error());
+            }
+            values.push_back(std::move(*value));
+        }
+        for (std::uint32_t position = 0; position < loop.invariants; ++position) {
+            OpaqueBindings holes = scope.opaque;
+            for (std::size_t index = 0; index < carried; ++index) {
+                holes[loop.heads[index]] = scope.binders.size() + index;
+            }
+            auto invariant = lower_value(loop.operands[carried + position], definitions_,
+                                         scope.binders.size() + carried, &scope.calls, &scope.versions, &holes);
+            if (!invariant) {
+                return std::unexpected(invariant.error());
+            }
+            emit(scope, Origin::LoopPreservation, invariant_subject(expression, position), expression.provenance.range,
+                 specialize(kernel::predicate(*invariant, true), active->carried, values));
+        }
+        return {};
+    }
+
+    std::expected<void, Failure> returned(const vir::Expr& expression, Scope scope) {
+        const std::optional<kernel::Type> type = core_type(expression.type);
+        if (!type.has_value() || !(*type == plan_.result)) {
+            return fail("a returned value's type differs from the declared result type",
+                        expression.provenance.range.begin);
+        }
+        if (auto evaluated = evaluate(expression, scope); !evaluated) {
+            return evaluated;
+        }
+        auto value = lower(expression, scope);
+        if (!value) {
+            return std::unexpected(value.error());
+        }
+        const auto fresh = static_cast<std::uint32_t>(scope.binders.size() - plan_.parameters.size());
+        emit(scope, Origin::ReturnPath, function_.qualified_name + " path " + std::to_string(++paths_),
+             expression.provenance.range, kernel::instantiate(kernel::shift(plan_.postcondition, fresh, 1), *value));
+        return {};
+    }
+
+    const vir::Function& function_;
+    const ContractVerification& plan_;
+    const Contracts& contracts_;
+    const DefinitionMap& definitions_;
+    const std::map<std::string, std::size_t>& established_;
+    const Program& program_;
+    std::size_t steps_ = 0;
+    std::size_t paths_ = 0;
+};
+
+std::expected<ContractVerification, Failure> build_partial(const vir::Function& function, const Contracts& contracts,
+                                                           const DefinitionMap& pure_definitions,
+                                                           const std::map<std::string, std::size_t>& established,
+                                                           Program& program) {
+    ContractVerification plan;
+    if (auto stated = state_contract(function, pure_definitions, plan); !stated) {
+        return std::unexpected(stated.error());
+    }
+    plan.partial = true;
+    Conditions generated(function, plan, contracts, pure_definitions, established, program);
+    if (auto run = generated.run(); !run) {
+        return std::unexpected(run.error());
+    }
+    if (generated.obligations.empty()) {
+        return std::unexpected(Failure{"the body produced no obligation", function.range.begin, {}});
+    }
+    source::Hasher hasher;
+    hasher.update_field("partial-contract-v1");
+    hasher.update_field(function.qualified_name);
+    for (const Obligation& obligation : generated.obligations) {
+        hasher.update_field(obligation.id.digest.to_short_hex(64));
+    }
+    plan.identity = hasher.finish();
+    plan.conditions = std::move(generated.conditions);
+    for (Obligation& obligation : generated.obligations) {
         program.obligations.push_back(std::move(obligation));
     }
     return plan;
@@ -372,7 +779,14 @@ void generate_contracts(const vir::Module& module, const DefinitionMap& pure_def
                 ++candidate;
                 continue;
             }
-            auto plan = build(function, contracts, pure_definitions, definitions, established, program);
+            // A loop, or a call whose contract is itself partial, leaves the
+            // body without a total term; its contract is then partial too.
+            const bool partial =
+                contains_loop(*function.returned_value) || std::ranges::any_of(calls, [&](const vir::Expr* call) {
+                    return program.contracts[established.at(std::get<vir::Call>(call->node).callee.usr)].partial;
+                });
+            auto plan = partial ? build_partial(function, contracts, pure_definitions, established, program)
+                                : build(function, contracts, pure_definitions, definitions, established, program);
             if (plan) {
                 established.emplace(function.symbol.usr, program.contracts.size());
                 program.contracts.push_back(std::move(*plan));

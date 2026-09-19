@@ -104,11 +104,13 @@ constexpr std::size_t kMaxTermNodes = std::size_t{1} << 14;
 class TermLowering {
   public:
     TermLowering(const DefinitionMap& definitions, std::size_t parameter_count,
-                 const detail::CallBindings* calls = nullptr, const detail::VersionBindings* versions = nullptr)
+                 const detail::CallBindings* calls = nullptr, const detail::VersionBindings* versions = nullptr,
+                 const detail::OpaqueBindings* opaque = nullptr)
         : definitions_(definitions),
           parameter_count_(parameter_count),
           calls_(calls),
-          versions_(versions != nullptr ? *versions : detail::VersionBindings{}) {}
+          versions_(versions != nullptr ? *versions : detail::VersionBindings{}),
+          opaque_(opaque) {}
 
     [[nodiscard]] std::expected<kernel::Term, Failure> lower(const vir::Expr& expr) {
         const source::SourceLocation& location = expr.provenance.range.begin;
@@ -142,6 +144,16 @@ class TermLowering {
         // are numbered below it. Replaying under that bound makes a cycle
         // through malformed VIR a refusal rather than unbounded recursion.
         if (const auto* local = std::get_if<vir::LocalRef>(&expr.node)) {
+            // A loop's head version is a bound variable: what the path states
+            // about it is all that is known.
+            if (opaque_ != nullptr) {
+                if (const auto head = opaque_->find(local->version); head != opaque_->end()) {
+                    if (head->second >= parameter_count_ || local->version >= replay_bound_) {
+                        return fail("'" + local->name + "' is read outside the loop that gives it a value", location);
+                    }
+                    return kernel::Term::variable(kernel::parameter_reference(parameter_count_, head->second));
+                }
+            }
             const auto version = versions_.find(local->version);
             if (version == versions_.end() || local->version >= replay_bound_) {
                 return fail("'" + local->name + "' is read outside the path that gives it a value", location);
@@ -281,6 +293,12 @@ class TermLowering {
             return kernel::Term::primitive(kernel::PrimOp::Select, type->integer_type(), std::move(operands));
         }
 
+        if (std::holds_alternative<vir::Loop>(expr.node) || std::holds_alternative<vir::Iterate>(expr.node)) {
+            return fail("a loop has no total core term: what it computes is established by partial-correctness "
+                        "obligations, never unfolded",
+                        location);
+        }
+
         return fail("this expression has no core representation", location);
     }
 
@@ -289,6 +307,7 @@ class TermLowering {
     std::size_t parameter_count_;
     const detail::CallBindings* calls_;
     detail::VersionBindings versions_;
+    const detail::OpaqueBindings* opaque_;
     std::uint32_t replay_bound_ = std::numeric_limits<std::uint32_t>::max();
     std::size_t nodes_ = 0;
 };
@@ -349,6 +368,14 @@ void collect_callees(const vir::Expr& expr, std::set<std::string>& callees) {
     }
     if (const auto* negation = std::get_if<vir::Negation>(&expr.node)) {
         for (const auto& operand : negation->operands)
+            collect_callees(operand, callees);
+    }
+    if (const auto* loop = std::get_if<vir::Loop>(&expr.node)) {
+        for (const auto& operand : loop->operands)
+            collect_callees(operand, callees);
+    }
+    if (const auto* next = std::get_if<vir::Iterate>(&expr.node)) {
+        for (const auto& operand : next->operands)
             collect_callees(operand, callees);
     }
 }
@@ -1195,8 +1222,9 @@ std::optional<kernel::Type> detail::core_type(const vir::Type& type) {
 std::expected<kernel::Term, detail::Failure> detail::lower_value(const vir::Expr& expression,
                                                                  const DefinitionMap& definitions, std::size_t binders,
                                                                  const CallBindings* calls,
-                                                                 const VersionBindings* versions) {
-    TermLowering lowering(definitions, binders, calls, versions);
+                                                                 const VersionBindings* versions,
+                                                                 const OpaqueBindings* opaque) {
+    TermLowering lowering(definitions, binders, calls, versions, opaque);
     return lowering.lower(expression);
 }
 

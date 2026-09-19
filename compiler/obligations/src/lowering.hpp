@@ -21,11 +21,16 @@ using CallBindings = std::map<std::uint32_t, std::size_t>;
 // The value each logical version of a local denotes, for the versions a path
 // has established before the expression being lowered.
 using VersionBindings = std::map<std::uint32_t, const vir::Expr*>;
+// The versions that denote a bound variable rather than a value to replay: a
+// loop's head versions, each at its binder position. Only what the path states
+// about them is known.
+using OpaqueBindings = std::map<std::uint32_t, std::size_t>;
 
 std::optional<kernel::Type> core_type(const vir::Type& type);
 std::expected<kernel::Term, Failure> lower_value(const vir::Expr& expression, const DefinitionMap& definitions,
                                                  std::size_t binders, const CallBindings* calls = nullptr,
-                                                 const VersionBindings* versions = nullptr);
+                                                 const VersionBindings* versions = nullptr,
+                                                 const OpaqueBindings* opaque = nullptr);
 std::expected<kernel::Proposition, Failure> lower_predicate(const vir::Expr& expression,
                                                             const DefinitionMap& definitions, std::size_t binders);
 ObligationId identify_goal(const kernel::Context& context, const std::string& subject, const kernel::Proposition& goal);

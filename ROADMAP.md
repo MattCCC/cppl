@@ -192,11 +192,13 @@ Exit criterion:
 
 Current sequence: single-return verified functions and verified-call contract
 composition, conditionals with path obligations and integer comparisons, and
-straight-line locals and assignments, and unsigned machine arithmetic with
-kernel-checked linear order reasoning are prototyped. Next come loops with
-explicit invariants. Recursion and termination/induction, memory/reference
-reasoning, signed arithmetic with overflow obligations, and SMT remain later
-work. See `STATUS.md` for the supported fragment.
+locals, assignments and their updates, unsigned machine arithmetic with
+kernel-checked linear order reasoning, and `while`/`for` loops with explicit
+invariants (partial correctness) are prototyped. Next is the formal language
+and proof core (propositions, proofs, dependent and refinement types,
+induction and termination). Memory/reference reasoning, signed arithmetic with
+overflow obligations, and SMT remain later work. See `STATUS.md` for the
+supported fragment.
 
 Implement:
 

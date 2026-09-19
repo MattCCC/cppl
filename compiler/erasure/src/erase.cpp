@@ -36,6 +36,10 @@ Erased erase(const frontend::TokenStream& stream, const frontend::Syntax& syntax
         spans.push_back(verified.keyword);
         spans.push_back(verified.clause_region);
     }
+    // A loop stays in the program; its specification clauses do not.
+    for (const frontend::LoopSpecification& loop : syntax.loops) {
+        spans.push_back(loop.clause_region);
+    }
 
     Report report;
     report.erased_spans = spans.size();

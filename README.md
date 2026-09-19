@@ -431,6 +431,29 @@ and the contract would be rejected. Signed arithmetic is rejected until its
 overflow obligations exist. See [SPEC.md](SPEC.md#711-machine-integer-arithmetic)
 for the rules.
 
+Loops are verified against the invariants written on them:
+
+```cpp cppl-example
+verified unsigned count_to(unsigned n)
+    ensures(result == n)
+{
+    unsigned i = 0u;
+    while (i < n)
+        invariant(i <= n)
+    {
+        ++i;
+    }
+    return i;
+}
+```
+
+The invariant must hold on entry and after every iteration; after the loop,
+only the invariant and `!(i < n)` are known, which together give `i == n`.
+This is partial correctness: termination is not proven, so the contract is
+reported as partial and `count_to` never becomes a definition a Law could
+unfold. The runtime loop is unchanged. See
+[SPEC.md](SPEC.md#243-verified-loops) for the boundary.
+
 The remaining examples use features this implementation does not accept yet.
 Laws are meant to state domain requirements over user-defined types:
 

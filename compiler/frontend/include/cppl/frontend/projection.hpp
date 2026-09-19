@@ -56,6 +56,18 @@ struct ContractFunctions {
     std::string precondition_name; // empty when the function states none
 };
 
+// The declaration a loop invariant is projected into: a generated `bool` local
+// at the start of the loop body, initialized with the invariant, so Clang
+// resolves it in the scope the loop head sees. It exists only in the analysis
+// text, and the bridge reads it back as the loop's invariant rather than as a
+// statement of the body.
+struct LoopInvariantMarker {
+    std::string name;
+    std::size_t loop_index = 0;
+    std::size_t function_index = 0;
+    source::SourceLocation location;
+};
+
 // One projector, two texts.
 //
 // `runtime` is the program: the scanned text with every C++L-only span blanked.
@@ -74,6 +86,7 @@ struct Projection {
     std::vector<SpecificationFunction> specification_functions;
     std::vector<ProofFunction> proof_functions;
     std::vector<ContractFunctions> contract_functions;
+    std::vector<LoopInvariantMarker> loop_invariants;
 
     // Positions of executable declarations copied into the analysis buffer.
     // Presumed file/line/column are diagnostic labels and may be repeated by

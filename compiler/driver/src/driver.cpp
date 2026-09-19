@@ -34,6 +34,8 @@ struct Summary {
     std::size_t laws = 0;
     std::size_t proven = 0;
     std::size_t contracts_proven = 0;
+    std::size_t partial_contracts_proven = 0;
+    std::size_t loop_invariants_proven = 0;
     std::size_t call_preconditions_proven = 0;
     std::size_t proven_by_written_proof = 0;
     std::size_t unresolved = 0;
@@ -313,12 +315,29 @@ UnitOutcome compile_unit(const Options& options, const Input& input, const std::
                 ++summary.call_preconditions_proven;
             } else if (result.obligation.origin == obligations::Origin::LawProposition) {
                 ++summary.proven;
+            } else if (result.obligation.origin == obligations::Origin::LoopEntry ||
+                       result.obligation.origin == obligations::Origin::LoopPreservation) {
+                ++summary.loop_invariants_proven;
             }
             if (program.proof_for(result.obligation) != nullptr) {
                 ++summary.proven_by_written_proof;
             }
         } else {
             ++summary.unresolved;
+        }
+    }
+    // A partial-correctness contract has no single obligation of its own: it is
+    // established when every one of its conditions is proven.
+    for (const obligations::ContractVerification& contract : program.contracts) {
+        if (!contract.partial) {
+            continue;
+        }
+        ++declaration_obligations;
+        if (std::ranges::all_of(contract.conditions, [&results](const obligations::VerificationCondition& condition) {
+                return results[condition.obligation].verdict.is_proven();
+            })) {
+            ++summary.contracts_proven;
+            ++summary.partial_contracts_proven;
         }
     }
     const std::size_t required = syntax.laws.size() + syntax.verified_functions.size();
@@ -364,7 +383,9 @@ void print_trust_report(const Options& options, const Summary& summary) {
     std::cout << "  by a written proof:        " << summary.proven_by_written_proof << "\n";
     std::cout << "Laws trusted:                0\n";
     std::cout << "Function contracts proven:   " << summary.contracts_proven << "\n";
+    std::cout << "  partial correctness only:  " << summary.partial_contracts_proven << "\n";
     std::cout << "Call preconditions proven:   " << summary.call_preconditions_proven << "\n";
+    std::cout << "Loop invariants proven:      " << summary.loop_invariants_proven << "\n";
     std::cout << "Unresolved obligations:      " << summary.unresolved << "\n\n";
     std::cout << "Unsafe regions:              0\n";
     std::cout << "Runtime validation sites:    0\n";

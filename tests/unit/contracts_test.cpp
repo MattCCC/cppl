@@ -409,3 +409,113 @@ CPPL_TEST(a_changed_conditional_body_cannot_reuse_assembled_evidence) {
     const auto results = cppl::automation::verify(program, engine);
     CPPL_CHECK(!results.back().verdict.is_proven());
 }
+
+namespace {
+
+v::Expr compare(v::BinaryOp op, v::Expr left, v::Expr right) {
+    v::Expr expression;
+    expression.type = v::Type::boolean();
+    expression.node = v::Binary{op, {std::move(left), std::move(right)}};
+    return expression;
+}
+
+v::Expr control(decltype(v::Expr::node) node) {
+    v::Expr expression;
+    expression.type = vUnsigned;
+    expression.node = std::move(node);
+    return expression;
+}
+
+// count(n) ensures(result == n) { unsigned i = 0u; while (i < n) invariant(I) { i = i + 1u; } return i; }
+v::Function counting(v::Expr invariant, std::uint32_t loop_id = 0) {
+    v::Function function;
+    function.id = v::FunctionId{0};
+    function.symbol = v::SymbolId{"count"};
+    function.qualified_name = "count";
+    function.parameters = {{"n", vUnsigned}};
+    function.result = vUnsigned;
+    v::Expr step;
+    step.type = vUnsigned;
+    step.node = v::Binary{v::BinaryOp::Add, {local(1), number(1)}};
+    auto iteration = control(v::LocalVersion{2, "i", {std::move(step), control(v::Iterate{loop_id, {local(2)}})}});
+    auto head =
+        control(v::Conditional{{compare(v::BinaryOp::Less, local(1), parameter(0)), std::move(iteration), local(1)}});
+    auto loop = control(v::Loop{0, {1}, {"i"}, 1, {local(0), std::move(invariant), std::move(head)}});
+    function.returned_value = control(v::LocalVersion{0, "i", {number(0), std::move(loop)}});
+    function.contract = v::Contract{std::nullopt, equality(parameter(1), parameter(0)), {}};
+    return function;
+}
+
+o::Program generate_all(std::vector<v::Function> functions, bool errors = false) {
+    cppl::elaboration::Result elaborated;
+    elaborated.module.functions = std::move(functions);
+    cppl::diagnostics::Engine engine;
+    auto program = o::generate(elaborated.module, elaborated, engine);
+    CPPL_CHECK_EQ(engine.has_errors(), errors);
+    return program;
+}
+
+} // namespace
+
+CPPL_TEST(a_loop_yields_entry_preservation_and_exit_conditions) {
+    const auto program = generate_all({counting(compare(v::BinaryOp::LessEqual, local(1), parameter(0)))});
+    CPPL_CHECK_EQ(program.contracts.size(), std::size_t{1});
+    CPPL_CHECK(program.contracts.front().partial);
+    CPPL_CHECK_EQ(program.obligations.size(), std::size_t{3});
+    CPPL_CHECK(program.obligations[0].origin == o::Origin::LoopEntry);
+    CPPL_CHECK(program.obligations[1].origin == o::Origin::LoopPreservation);
+    CPPL_CHECK(program.obligations[2].origin == o::Origin::ReturnPath);
+    cppl::diagnostics::Engine engine;
+    for (const auto& result : cppl::automation::verify(program, engine)) {
+        CPPL_CHECK(result.verdict.is_proven());
+    }
+}
+
+CPPL_TEST(a_function_with_a_loop_is_never_a_core_definition) {
+    const auto program = generate_all({counting(compare(v::BinaryOp::LessEqual, local(1), parameter(0)))});
+    CPPL_CHECK_EQ(program.context.definition_count(), std::size_t{0});
+}
+
+CPPL_TEST(an_invariant_that_does_not_hold_on_entry_leaves_the_contract_unproven) {
+    auto callee = counting(compare(v::BinaryOp::Equal, local(1), parameter(0)));
+    auto caller = first();
+    caller.id = v::FunctionId{1};
+    caller.symbol = v::SymbolId{"caller"};
+    caller.qualified_name = "caller";
+    caller.contract = v::Contract{std::nullopt, equality(parameter(2), parameter(0)), {}};
+    v::Expr call;
+    call.id = v::ExprId{9};
+    call.type = vUnsigned;
+    call.node = v::Call{callee.symbol, "count", {parameter(0)}};
+    caller.returned_value = std::move(call);
+    const auto program = generate_all({std::move(caller), std::move(callee)});
+    CPPL_CHECK_EQ(program.contracts.size(), std::size_t{2});
+    CPPL_CHECK(program.contracts[1].partial); // a caller of a partial contract is partial too
+    cppl::diagnostics::Engine engine;
+    const auto results = cppl::automation::verify(program, engine);
+    CPPL_CHECK(!results[0].verdict.is_proven()); // i == n does not hold for i = 0
+    CPPL_CHECK(!results.back().verdict.is_proven());
+    CPPL_CHECK(results.back().verdict.reason().find("is not proven") != std::string::npos);
+}
+
+CPPL_TEST(an_iteration_outside_its_loop_is_refused) {
+    const auto program = generate_all({counting(compare(v::BinaryOp::LessEqual, local(1), parameter(0)), 7)}, true);
+    CPPL_CHECK(program.contracts.empty());
+    CPPL_CHECK(program.obligations.empty());
+}
+
+CPPL_TEST(a_head_version_is_not_readable_before_its_loop) {
+    auto function = counting(compare(v::BinaryOp::LessEqual, local(1), parameter(0)));
+    auto& first_version = std::get<v::LocalVersion>(function.returned_value->node);
+    first_version.operands[0] = local(1);
+    const auto program = generate_all({std::move(function)}, true);
+    CPPL_CHECK(program.contracts.empty());
+}
+
+CPPL_TEST(a_loop_rebinding_a_live_version_is_refused) {
+    auto function = counting(compare(v::BinaryOp::LessEqual, local(1), parameter(0)));
+    auto& first_version = std::get<v::LocalVersion>(function.returned_value->node);
+    std::get<v::Loop>(first_version.operands[1].node).heads = {0};
+    const auto program = generate_all({std::move(function)}, true);
+    CPPL_CHECK(program.contracts.empty());
+}

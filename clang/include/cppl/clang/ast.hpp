@@ -92,6 +92,30 @@ struct LocalRef {
     std::string name;
 };
 
+// A loop, entered with its carried locals at their current versions.
+//
+// Each local the loop writes is carried: at the head it takes a fresh version,
+// `heads`, which denotes whatever value it holds when an iteration begins.
+// `operands` are each carried local's value on entry, then each invariant read
+// at the head, then what happens from the head on: a conditional on the loop
+// condition whose true arm is one iteration and whose false arm is what follows
+// the loop. An iteration ends in an Iterate, a return, or a `break` into what
+// follows the loop.
+struct Loop {
+    std::uint32_t loop = 0;
+    std::vector<std::uint32_t> heads;
+    std::vector<std::string> names;
+    std::uint32_t invariants = 0;
+    std::vector<Expr> operands; // entry values, invariants, head
+};
+
+// The end of one iteration of `loop`: the value each carried local holds when
+// the next iteration begins, in the loop's carried order.
+struct Iterate {
+    std::uint32_t loop = 0;
+    std::vector<Expr> operands;
+};
+
 // A construct Clang resolved but C++L does not model. Carrying the reason
 // keeps the failure explainable instead of silently dropping the expression.
 struct Unsupported {
@@ -101,7 +125,8 @@ struct Unsupported {
 struct Expr {
     Type type;
     source::SourceLocation location;
-    std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, LocalVersion, LocalRef, Unsupported>
+    std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, LocalVersion, LocalRef, Loop, Iterate,
+                 Unsupported>
         node;
 };
 
@@ -127,6 +152,10 @@ struct Function {
     // could not. Exactly one of returned_value / body_rejection is set for a
     // function that has a body.
     std::optional<std::string> body_rejection;
+
+    // The generated invariant declarations the body lowering attached to a
+    // loop. Every one the projector emitted for this function must be here.
+    std::vector<std::string> loop_invariants;
 };
 
 enum class Severity : std::uint8_t {

@@ -1365,6 +1365,39 @@ tests cover altered conditions, false/missing arms, malformed types, and motive
 capture; compiler regressions cover path leakage and failed branch dependencies.
 There are zero new logical assumptions and zero inserted runtime checks.
 
+Loops add no kernel rule and no logical assumption, and they **enlarge
+correspondence trust explicitly**. A loop has no total core term, so the
+kernel cannot check a theorem about a loop's value; it checks instead each
+verification condition a body with a loop generates (`SPEC.md` 24.3): every
+invariant on entry, every invariant at the end of every iteration path, each
+call precondition, and each return, each an ordinary proposition over total
+terms. That these conditions together establish the contract is the partial-
+correctness loop rule and call rule, applied by `compiler/obligations`, not by
+the kernel. What that layer must get right, and what covers it:
+
+- *which locals a loop carries.* The bridge scans for writes; every iteration
+  end checks that each local it did not carry still holds its head version, so
+  a missed write rejects the body instead of letting a stale value pass the
+  loop. Carrying a local the loop does not write only loses information.
+- *what the head supposes.* Only the invariants and the loop condition; entry
+  values are never visible past the head, and the exit supposes the negated
+  condition. Negative tests cover head- and entry-value leaks, a false
+  condition after exit, weak invariants, `break`, `continue`, returns inside
+  the body, calls in the condition and in the body, and nested loops.
+- *every iteration path.* Each `Iterate`, including `continue` and the path
+  through the `for` step, yields preservation conditions; an iteration ending
+  outside its loop, a rebound version and a head read before its loop are
+  refused even from malformed VIR.
+
+A function with a loop, or that calls one, is never admitted as a core
+definition, so the kernel never normalizes a loop and never holds a theorem
+about a value a divergent loop would denote: a nonterminating loop whose
+contract is vacuously true cannot reach a Law or a specification, and regression
+tests check exactly that. Its contract is reported as partial correctness only.
+Replacement path: once induction over a proof-only natural-number domain exists
+(ROADMAP Phase 7), loop partial correctness can be stated with an iteration term
+and the loop rule derived inside the kernel, removing it from this layer.
+
 ## 41.3 Runtime trust
 
 Each compiler invocation owns a fresh temporary directory until native compilation
@@ -1408,6 +1441,8 @@ Each of these requires an explicit update to this document before it is merged:
 
 - admitting recursive definitions (the termination argument in
   `ARCHITECTURE.md` 97.7 would no longer hold);
+- admitting a function with a partial-correctness contract as a core
+  definition, or stating its contract as a theorem about its value;
 - any axiom, `trusted` declaration or assumed contract;
 - trusting a solver result that is not independently checked;
 - reusing a cached proof result;

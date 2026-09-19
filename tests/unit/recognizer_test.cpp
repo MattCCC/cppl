@@ -299,3 +299,46 @@ CPPL_TEST(a_law_inside_a_namespace_is_recognized) {
     CPPL_CHECK(!result.engine.has_errors());
     CPPL_CHECK_EQ(result.syntax.laws.size(), std::size_t{1});
 }
+
+CPPL_TEST(loop_invariants_are_recognized_inside_a_verified_body) {
+    Recognized result;
+    recognize("verified unsigned f(unsigned n) ensures(result == n) { unsigned i = 0u;\n"
+              "  for (; i < n; ++i) invariant(i <= n) { } while (i < n) invariant(i <= n) invariant(n >= i) { ++i; }\n"
+              "  return i; }\n",
+              result);
+    CPPL_CHECK(!result.engine.has_errors());
+    CPPL_CHECK_EQ(result.syntax.loops.size(), std::size_t{2});
+    CPPL_CHECK_EQ(result.syntax.loops[1].invariants.size(), std::size_t{2});
+    CPPL_CHECK_EQ(result.syntax.loops[0].function_index, std::size_t{0});
+}
+
+CPPL_TEST(a_call_named_invariant_in_a_loop_body_stays_ordinary) {
+    Recognized result;
+    recognize("void invariant(int); void f(int n) { while (n > 0) invariant(n); for (;;) invariant(1); }\n", result);
+    CPPL_CHECK(!result.engine.has_errors());
+    CPPL_CHECK(result.syntax.empty());
+}
+
+CPPL_TEST(a_declaration_of_a_type_named_invariant_as_a_loop_body_stays_ordinary) {
+    Recognized result;
+    recognize("struct invariant {}; void f(int n) { while (n > 0) invariant(x){}; }\n", result);
+    CPPL_CHECK(!result.engine.has_errors());
+    CPPL_CHECK(result.syntax.empty());
+}
+
+CPPL_TEST(a_loop_invariant_outside_a_verified_function_is_refused) {
+    Recognized result;
+    recognize("unsigned f(unsigned n) { unsigned i = 0u; while (i < n) invariant(i <= n) { ++i; } return i; }\n",
+              result);
+    CPPL_CHECK(result.engine.has_errors());
+    CPPL_CHECK(result.syntax.loops.empty());
+}
+
+CPPL_TEST(a_loop_termination_measure_is_refused_rather_than_ignored) {
+    Recognized result;
+    recognize("verified unsigned f(unsigned n) ensures(result == n) { unsigned i = 0u;\n"
+              "  while (i < n) invariant(i <= n) decreases(n - i) { ++i; } return i; }\n",
+              result);
+    CPPL_CHECK(result.engine.has_errors());
+    CPPL_CHECK(result.syntax.loops.empty());
+}
