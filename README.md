@@ -17,6 +17,31 @@ C++L makes semantic laws first-class program declarations and requires evidence 
   <b>Laws → Obligations → Evidence</b>
 </p>
 
+## Project Status
+
+> **Experimental / Pre-Alpha — under active development**
+
+C++L is currently an experimental language project. The core architecture, language model, and verification foundations are defined, while the compiler, proof system, verification coverage, and developer tooling are still being implemented and refined.
+
+The project is built around one central compatibility invariant:
+
+**Every valid C++ program should remain a valid C++L program.**
+
+C++L does not attempt to replace or reimplement C++. Ordinary C++ parsing, typing, overload resolution, templates, and related language semantics are delegated to Clang-compatible infrastructure. C++L adds an optional layer for laws, proofs, contracts, and verified reasoning on top of standard C++.
+
+Current work focuses on:
+
+- stabilizing the language specification and proof semantics;
+- implementing the C++L frontend and verification pipeline;
+- expanding the practically useful subset supported inside `verified` code;
+- integrating C++ and C++L diagnostics through `cppl-lsp`;
+- preserving clean erasure/delegation boundaries with ordinary C++;
+- building conformance tests, examples, and proof fixtures.
+
+The syntax, proof rules, diagnostics, and tooling APIs should currently be considered **unstable and subject to change**.
+
+**C++L is not yet production-ready.**
+
 ## Motivation
 
 The project started from a simple chain of thought:
