@@ -329,10 +329,13 @@ bool read_proof_statements(const TokenStream& stream,
         }
 
         const bool is_exact = token.is_identifier("exact");
-        if ((is_exact || token.is_identifier("apply")) && cursor + 2 < body_close &&
+        const bool is_rewrite = token.is_identifier("rewrite");
+        if ((is_exact || is_rewrite || token.is_identifier("apply")) && cursor + 2 < body_close &&
             tokens[cursor + 1].kind == TokenKind::Identifier) {
             ProofStatement statement;
-            statement.kind = is_exact ? ProofStatementKind::Exact : ProofStatementKind::Apply;
+            statement.kind = is_exact      ? ProofStatementKind::Exact
+                             : is_rewrite ? ProofStatementKind::Rewrite
+                                          : ProofStatementKind::Apply;
             statement.reference = std::string(tokens[cursor + 1].text);
             statement.location = stream.location_of(token);
 
@@ -369,8 +372,9 @@ bool read_proof_statements(const TokenStream& stream,
                "'" + std::string(token.text) + "' does not begin a proof statement this "
                "implementation supports",
                "the supported proof statements are 'refl;', 'exact <evidence>;', "
-               "'apply <evidence>;' and 'assume <name> : <proposition>;'. Evidence may be "
-               "instantiated at arguments, as in 'exact <proof>(<expression>);'");
+               "'apply <evidence>;', 'rewrite <evidence>;' and "
+               "'assume <name> : <proposition>;'. Evidence may be instantiated at arguments, "
+               "as in 'exact <proof>(<expression>);'");
         return false;
     }
 
@@ -605,6 +609,8 @@ std::string describe(ProofStatementKind kind) {
             return "apply";
         case ProofStatementKind::Assume:
             return "assume";
+        case ProofStatementKind::Rewrite:
+            return "rewrite";
     }
     return "unknown";
 }

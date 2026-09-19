@@ -1118,17 +1118,44 @@ For a false proposition to be accepted, one of these would have to be wrong:
 
 ```text
 kernel/   the proof checker, the normalizer, the type checker of core terms,
-          the capture-safe substitution used by universal elimination and by the
-          hypothesis context, and the admission rules of the definition context
+          the capture-safe substitution used by universal elimination, by
+          equality substitution and by the hypothesis context, and the admission
+          rules of the definition context
 ```
 
 That is the whole logical TCB. It links no other component, includes no header
 outside itself, and holds no global state. `tests/architecture` checks both
 properties on every run.
 
-The core has six rules: reflexivity, universal introduction, universal
-elimination, implication introduction, implication elimination, and the use of a
-hypothesis. Each is a capability, not an assumption.
+The core has seven rules:
+
+```text
+1. Reflexivity
+2. Equality substitution
+3. Universal introduction
+4. Universal elimination
+5. Implication introduction
+6. Implication elimination
+7. Hypothesis use
+```
+
+Each is a capability, not an assumption.
+
+Equality substitution is the most recent, and it is a genuinely new logical
+capability rather than sugar over the others: without it, evidence for `a = b`
+can close a goal that already is `a = b` and can do nothing else. It transports
+evidence through a proposition context, and **the kernel performs the
+substitution itself**. The context is given to it as part of the proof term,
+with its hole type-checked against the type the equality is stated at; the
+kernel checks the equality, checks what is transported, and derives the result
+by its own capture-safe substitution. The elaborator decides which occurrences
+a context abstracts, and may not manufacture the resulting proposition and ask
+the kernel to accept it. A mistaken choice of occurrences can therefore only
+fail to prove something.
+
+Symmetry needs no rule of its own: it is equality substitution at the context
+`b = -`, whose transported case is `b = b`. Rewriting in the other direction is
+derivable the same way, and is never inferred.
 
 Eliminating a quantifier requires evidence for a proposition the kernel checks
 for itself, an argument whose type the kernel derives for itself, and a
@@ -1200,7 +1227,12 @@ weight are deliberately few and are stated explicitly in the implementation:
 - `assume h : P;` names a premise the goal already supposes. It introduces
   nothing: the proposition written there is compared with the goal's own
   premise, and the hypothesis the kernel then holds is the goal's premise, not
-  the written text.
+  the written text. A goal that supposes no premise has none to name, and the
+  statement is refused there;
+- `rewrite e;` chooses which occurrences of a term the goal's context
+  abstracts. That choice is this layer's, and it is all this layer does: the
+  context goes to the kernel, which checks the equality, checks what is
+  transported through it, and derives the resulting proposition itself.
 
 Anything outside those rules is reported as unsupported and yields no
 obligation. No construct is approximated.

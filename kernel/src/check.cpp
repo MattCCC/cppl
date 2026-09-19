@@ -167,6 +167,48 @@ struct Assumption {
         return {};
     }
 
+    // Equality elimination closes a goal of any shape too: the context it
+    // transports through decides what the result says, not the goal.
+    if (const auto* transport = std::get_if<EqualityElimination>(&proof.node)) {
+        const Proposition equality =
+            Proposition::equality(transport->type, transport->lhs, transport->rhs);
+        if (auto well_formed =
+                validate_proposition(context, locals, equality, limits, depth + 1);
+            !well_formed) {
+            return well_formed;
+        }
+        if (auto checked = check_under(context, locals, assumptions, equality,
+                                       *transport->equality, limits, depth + 1);
+            !checked) {
+            return checked;
+        }
+
+        // The hole stands for a term of the type the equality is stated at, so
+        // the context is checked under exactly that binder. A hole standing
+        // where some other type is required is not a context for this equality.
+        locals.push_back(transport->type);
+        auto motive = validate_proposition(context, locals, *transport->motive, limits, depth + 1);
+        locals.pop_back();
+        if (!motive) {
+            return motive;
+        }
+
+        const Proposition transported = instantiate(*transport->motive, transport->rhs);
+        if (auto checked = check_under(context, locals, assumptions, transported,
+                                       *transport->evidence, limits, depth + 1);
+            !checked) {
+            return checked;
+        }
+
+        const Proposition result = instantiate(*transport->motive, transport->lhs);
+        if (!(result == proposition)) {
+            return reject(RejectionKind::ProofShapeMismatch,
+                          "transporting that evidence establishes " + describe(result) +
+                              ", which is not the goal " + describe(proposition));
+        }
+        return {};
+    }
+
     // A hypothesis stands for a premise an enclosing introduction placed in the
     // context. The kernel holds that context itself, so evidence can never name
     // a premise that is not there.

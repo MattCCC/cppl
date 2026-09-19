@@ -118,6 +118,7 @@ CPPL_TEST(the_runtime_program_carries_no_formal_syntax) {
         CPPL_CHECK(token.text != "exact");
         CPPL_CHECK(token.text != "expects");
         CPPL_CHECK(token.text != "assume");
+        CPPL_CHECK(token.text != "rewrite");
     }
 }
 

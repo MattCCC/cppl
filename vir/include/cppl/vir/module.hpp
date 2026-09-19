@@ -124,8 +124,17 @@ struct AssumeStep {
     friend bool operator==(const AssumeStep&, const AssumeStep&) = default;
 };
 
+// `rewrite p;` - p's equality, instantiated at `arguments`, transforms the
+// goal, and what it leaves is a goal of its own (GRAMMAR.md 5.5).
+struct RewriteStep {
+    Reference evidence;
+    std::vector<Expr> arguments;
+
+    friend bool operator==(const RewriteStep&, const RewriteStep&) = default;
+};
+
 struct ProofStep {
-    std::variant<ReflexivityStep, ExactStep, ApplyStep, AssumeStep> node;
+    std::variant<ReflexivityStep, ExactStep, ApplyStep, AssumeStep, RewriteStep> node;
     source::SourceLocation location;
 };
 

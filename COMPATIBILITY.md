@@ -317,7 +317,7 @@ proof make_proof(int x);
 proof* holder(int x);
 ```
 
-`refl`, `exact`, `apply`, and `assume` are contextual `proof` keywords: they are interpreted specially only inside a proof body and remain ordinary identifiers elsewhere. Inside a proof body, `exact q(a, b);` names proof evidence `q` and supplies terms at which to instantiate it, and `assume h : P;` binds a name to the premise the goal supposes. Those arguments, and that proposition, are ordinary C++ expressions resolved and type-checked by Clang in the proof's lexical scope. C++L then elaborates only the expression forms and conversions that its VIR models; anything Clang accepts but C++L cannot faithfully lower is explicitly refused.
+`refl`, `exact`, `apply`, `assume`, and `rewrite` are contextual `proof` keywords: they are interpreted specially only inside a proof body and remain ordinary identifiers elsewhere. Inside a proof body, `exact q(a, b);` names proof evidence `q` and supplies terms at which to instantiate it, `assume h : P;` binds a name to the premise the goal supposes, and `rewrite h;` transforms the goal with an equality that name stands for. Those arguments, and that proposition, are ordinary C++ expressions resolved and type-checked by Clang in the proof's lexical scope. C++L then elaborates only the expression forms and conversions that its VIR models; anything Clang accepts but C++L cannot faithfully lower is explicitly refused.
 
 `expects` on a Law is recognized wherever `ensures` is, and states the Law's precondition. A Law with one states an implication, so the precondition is never an assumption C++L makes about the program. A Law with more than one `expects` clause is refused, because conjoining them is not something the formal core can yet express.
 

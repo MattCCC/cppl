@@ -74,7 +74,8 @@ built-in integer expressions, optionally stated under one `expects`
 precondition of the same shape, universally quantified over its parameters, over
 functions declared `pure` whose bodies are a single `return` of a modeled
 expression. A proof declaration claims such a Law at arguments of its choosing,
-and its body is a sequence of `refl`, `exact`, `apply` and `assume` statements;
+and its body is a sequence of `refl`, `exact`, `apply`, `assume` and `rewrite`
+statements;
 `exact` and `apply` may instantiate the evidence they name at terms, as in
 `exact q(41u);`. A proof discharges the Law itself when what it claims is the
 Law's own proposition; otherwise it proves one instance, which other proofs may
@@ -84,9 +85,9 @@ must be trusted today.
 
 A precondition is supposed, never granted: `expects(P) ensures(Q)` states
 `P -> Q`, and the premise reaches a proof only through implication
-introduction. Because the core still has no rule for using an equality to
-rewrite, a hypothesis closes a goal only where it is that goal; a conditional
-Law whose conclusion needs the premise to be *used* is not yet provable.
+introduction. `assume` names that premise and is an error where the goal
+supposes none. `rewrite` then uses an equality to transform the goal, so a
+conditional Law whose conclusion needs its premise to be *used* is provable.
 
 This slice does **not** implement induction, dependent types, refinement types,
 contracts, ghost state, `unsafe`, `trusted`, conjunction, proof `let` or
@@ -132,11 +133,11 @@ IMPLEMENTED
 
 The first vertical slice is in place, developers can write the proof of a Law
 themselves, quantified evidence can be instantiated at a term, and a Law can be
-stated under a precondition and proven under it. The next priority is to widen
-the formal core deliberately rather than to widen the language surface:
-rewriting with an equality, induction, and the obligations that justify signed
-arithmetic are each a prerequisite for the Laws people will actually want to
-state.
+stated under a precondition, proven under it, and have that precondition used
+to transform what is being proven. That is the first set of rules with which a
+contract can say more than it assumes, so the next priority is `verified`
+functions and contracts. Induction and the obligations that justify signed
+arithmetic remain prerequisites for the Laws people will want after that.
 
 Original target, for reference:
 
@@ -174,6 +175,7 @@ The project should not claim broad language implementation before the proof sema
 | proof instantiation `q(t)`   | `PROTOTYPE` |
 | `expects` clauses on laws    | `PROTOTYPE` |
 | `assume`                     | `PROTOTYPE` |
+| `rewrite`                    | `PROTOTYPE` |
 | multi-statement proof bodies | `PROTOTYPE` |
 | proof `let` / `match`        | `SPECIFIED` |
 | proposition types            | `PROTOTYPE` |
@@ -222,8 +224,8 @@ The project should not claim broad language implementation before the proof sema
 | Implication introduction             | `PROTOTYPE`   |
 | Implication elimination              | `PROTOTYPE`   |
 | Hypothesis context                   | `PROTOTYPE`   |
+| Equality substitution (rewriting)    | `PROTOTYPE`   |
 | Existential introduction/elimination | `NOT STARTED` |
-| Equality elimination (rewriting)     | `NOT STARTED` |
 | Induction checking                   | `NOT STARTED` |
 | Refinement introduction/elimination  | `NOT STARTED` |
 | Normalization engine                 | `PROTOTYPE`   |
@@ -235,13 +237,23 @@ The project should not claim broad language implementation before the proof sema
 | Mechanized core calculus             | `NOT STARTED` |
 | Meta-theory / soundness proofs       | `NOT STARTED` |
 
-The kernel implements six rules — reflexivity, universal introduction,
-universal elimination, implication introduction, implication elimination and
-the use of a hypothesis — over propositions built from equality, universal
-quantification and implication. Its terms are variables, machine-integer
-literals, applications of admitted definitions and one primitive, wrapping
-addition. It admits no recursion, which is why it needs no termination checker
-yet (`ARCHITECTURE.md` 97.7).
+The kernel implements seven rules:
+
+```text
+1. Reflexivity
+2. Equality substitution
+3. Universal introduction
+4. Universal elimination
+5. Implication introduction
+6. Implication elimination
+7. Hypothesis use
+```
+
+They act over propositions built from equality, universal quantification and
+implication. The kernel's terms are variables, machine-integer literals,
+applications of admitted definitions and one primitive, wrapping addition. It
+admits no recursion, which is why it needs no termination checker yet
+(`ARCHITECTURE.md` 97.7).
 
 Universal elimination instantiates quantified evidence at a term. The kernel
 checks the evidence against the proposition it is eliminated from, derives the
@@ -255,8 +267,17 @@ it. A hypothesis is usable only where an enclosing introduction placed it, and
 is restated for the binders it is used beneath. No rule anywhere admits a
 premise on its own.
 
-Written proof declarations added no rule of their own: `refl`, `exact`, `apply`
-and `assume` elaborate into terms built from these six.
+Equality substitution transports evidence through a proposition context. It is
+a genuinely new capability rather than sugar over the others: without it,
+evidence for `a = b` closes a goal that already is `a = b` and can do nothing
+else. The kernel performs the substitution itself — the context is given to it,
+its hole type-checked against the type the equality is stated at, and the
+resulting proposition derived rather than accepted. Symmetry, and rewriting in
+the opposite direction, are this rule at another context; neither is primitive
+and neither is inferred.
+
+Written proof declarations added no rule of their own: `refl`, `exact`,
+`apply`, `assume` and `rewrite` elaborate into terms built from these seven.
 
 ---
 

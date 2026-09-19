@@ -3005,9 +3005,21 @@ A proof body is a statement sequence, walked once, in written order
 - `refl` closes it by definitional equality;
 - `exact e` closes it with evidence for the goal itself;
 - `assume h : P` names the premise the goal supposes, introduces the
-  implication, and leaves the conclusion as the goal;
+  implication, and leaves the conclusion as the goal. A goal that supposes no
+  premise has none to name, and the statement is refused there;
 - `apply e` discharges the premises between `e`'s conclusion and the goal, each
-  of which becomes a goal that the statements after it close.
+  of which becomes a goal that the statements after it close;
+- `rewrite e` transforms the goal with an equality and leaves what it
+  transformed it into as the goal.
+
+A rewrite is where this layer decides something the kernel deliberately does
+not: which occurrences of a term the goal's context abstracts. Every occurrence
+is the rule, and that is the whole rule — nothing is searched for and nothing is
+weighed. The context is then handed to the kernel as part of the proof term,
+and the kernel checks the equality, checks what is transported through the
+context, and derives the resulting proposition by its own substitution. A choice
+made here can therefore only fail to prove something; it can never prove the
+wrong thing.
 
 How many premises an application has to discharge is settled from the two
 propositions alone, before any statement is consumed for them, so the walk stays
