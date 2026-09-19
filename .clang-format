@@ -1,4 +1,3 @@
----
 Language: Cpp
 
 BasedOnStyle: Microsoft
@@ -27,4 +26,3 @@ IncludeBlocks: Regroup
 
 FixNamespaceComments: true
 ReflowComments: true
-...
