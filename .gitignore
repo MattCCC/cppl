@@ -76,3 +76,6 @@ vcpkg_installed/
 bin
 tmp
 dist
+
+# local working notes, never tracked
+docs/CURRENT_STATUS.md
