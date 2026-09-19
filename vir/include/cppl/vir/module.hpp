@@ -50,7 +50,7 @@ struct Function {
     Purity purity = Purity::Unknown;
     std::optional<Contract> contract;
 
-    // The value a single-expression body returns. Absent when the body shape
+    // The returned expression or conditional return tree. Absent when the body shape
     // is outside the modeled fragment; such a function cannot be admitted as a
     // formal definition.
     std::optional<Expr> returned_value;

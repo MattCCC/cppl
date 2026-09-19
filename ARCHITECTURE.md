@@ -3041,7 +3041,7 @@ in the same lexical scope. The postcondition has one additional parameter,
 `result`, of the declared return type. The runtime projection contains neither
 these helpers nor the contract syntax.
 
-Elaboration retains the actual Clang-resolved return expression in
+Elaboration retains the actual Clang-resolved return expression or conditional tree in
 `vir::Function::returned_value` and the clauses in `vir::Contract`. Generation
 lowers that expression through the same term lowering used for pure definitions,
 substitutes it for the innermost postcondition binder, adds the optional
@@ -3052,8 +3052,9 @@ them accidentally. A missing or unsupported body fails compilation.
 Automatic evidence reuses the occurrence abstraction used by written rewrites.
 It first tries definitional equality, then introduces binders, uses an identical
 hypothesis or rewrites once per available equality in reverse premise order,
-and offers reflexivity. The kernel remains the only proof authority; its rules
-are unchanged. Written `refl` still performs only definitional equality.
+and offers reflexivity. Integer equality may be reversed using explicit symmetry
+evidence derived by equality elimination. The kernel remains the only proof
+authority. Written `refl` still performs only definitional equality.
 
 ### Verified-call composition
 
@@ -3086,6 +3087,34 @@ trust-report count. Caller identities include the abstract reasoning goal and
 callee obligation identities, so weakening a summary cannot reuse an identity
 based only on an unchanged executable body. Erasure remains deletion-only and
 preserves every runtime call and argument.
+
+### Path-sensitive returns
+
+The bridge converts resolved blocks, `if` statements, and returns into a finite
+return tree. It threads subsequent statements through fallthrough arms, rejects
+missing returns and unsupported statements, and bounds expansion at 128 paths.
+`vir::Conditional` retains the typed condition and both return subtrees. This
+tree becomes a core `Select` term in the actual function definition.
+
+Obligation generation creates a `ReturnPath` plan for each leaf, with its ordered
+conditions and call occurrences. Every condition records how many calls preceded
+it. A call-precondition goal therefore sees only earlier conditions and summaries,
+including when the call occurs inside a guard. Actual and abstract condition
+propositions use the same lowering as contracts and Laws. Repeated logical copies
+of a shared guard do not duplicate runtime evaluation.
+
+Automation proves each path's abstract goal, links its call evidence, and checks
+its actual body goal. It then assembles the complete body proof using conditional
+elimination at each internal node, checking both arm implications. This is the
+one new kernel rule in this slice; no axiom is added. Only the complete accepted
+body can export the callee theorem. Per-path obligations and call obligations
+cannot inflate the count of verified declarations. Root identities include all
+path obligations, guards, abstract summaries, and callee dependencies.
+
+Comparisons lower to typed total boolean primitives. Their results are unsigned
+one-bit values; positive `==` remains ordinary propositional equality so existing
+rewrites retain their meaning. Negation reverses the required comparison result.
+Literal evaluation is exact, while symbolic order implications remain unavailable.
 
 ## 97.6 The Clang bridge is libclang, in process
 

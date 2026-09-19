@@ -917,7 +917,8 @@ Clang remains authoritative for overloads,
 integer widths, and conversions; unsupported conversions and signed addition
 are rejected. Type aliases are resolved by Clang.
 
-Branches, loops, locals, multiple returns, references, pointers, floating point,
+Branches and multiple returns extend this fragment under section 12.7.
+Loops, locals, references, pointers, floating point,
 exceptions, side effects, recursion, and unsupported declarators are rejected.
 An ordinary parameter named `result` is currently unsupported on a verified
 definition because that name binds the returned value in its postcondition.
@@ -957,8 +958,55 @@ Recursion, declaration-only contracts, calls hidden behind unsupported pure
 dependencies, and calls with neither an admitted pure definition nor a verified
 contract fail closed. Specification
 expressions retain the existing pure-definition model. Equality and unsigned
-addition remain the modeled expression fragment; ordering and subtraction are
-not introduced by call composition.
+addition are the original composition fragment; comparisons extend it under
+section 12.7. Subtraction remains unsupported.
+
+## 12.7 Path-sensitive verification
+
+Verified bodies MAY contain ordinary `if`/`else`, nested blocks, and returns.
+Clang MUST resolve each condition and operand type. Every modeled path MUST end
+in a return; an omitted `else` continues with the following statements. Locals,
+assignments, loops, switches, jumps, exceptions, side effects, implicit type
+conversions, and trailing unreachable statements remain unsupported.
+
+For each return term R, the compiler MUST generate and kernel-prove:
+
+```text
+forall parameters. expects -> condition_1 -> ... -> condition_n -> Q[R/result]
+```
+
+The true arm supposes its condition; the false arm supposes its negation.
+No path condition is an axiom. Each call precondition MUST be established using
+only conditions encountered before the call and previously justified call
+summaries on that path. In particular, a call within a condition cannot use
+that condition to justify itself. All paths require proof, even when their
+conditions appear contradictory; this slice introduces no unreachable-path
+solver. A contract is available to callers only after every path and required
+call precondition is proven and their evidence is linked to the complete body.
+
+Contracts, Laws, and conditions support built-in integer `==`, `!=`, `<`, `<=`,
+`>`, `>=`, and logical negation of these predicates. Operands MUST have the same
+Clang-resolved modeled integer type. Identical path predicates can close goals;
+existing equality rewriting remains available. Concrete integer comparisons
+compute with their stated signedness and width. No general order implications,
+subtraction, algebraic reassociation, or signed arithmetic are inferred.
+
+The core represents comparisons as total boolean computations, with boolean
+values encoded as unsigned one-bit integers. A declared `bool` parameter or
+result is modeled as that same one-bit unsigned integer, because C++ `bool` has
+exactly its two values, so a condition MAY be a `bool` value itself. Integral
+promotion of `bool` and `bool` literals are not modeled and are rejected as the
+conversions they are. Positive equality retains ordinary
+propositional equality; negative equality denotes the equality comparison
+evaluating to zero. Negation reverses the required comparison outcome.
+
+One conditional-elimination kernel rule combines checked true and false cases
+into the postcondition of a typed conditional term. The kernel independently
+checks both branch premises, the proposition context, and its substitution at
+the actual condition and return terms. This adds zero logical assumptions.
+Erasure MUST preserve each runtime condition, call, return, and control-flow
+edge, and MUST insert zero runtime checks. Pure specification helpers retain
+their single-return fragment.
 
 ---
 

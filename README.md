@@ -284,7 +284,7 @@ verified int identity(int x)
 
 The obligation comes from the Clang-resolved return expression. `result` names
 that value only in the specification; every obligation must pass the kernel.
-The current fragment supports one pure return expression and integer equalities:
+The current fragment supports pure integer return expressions and contracts:
 
 ```cpp cppl-example
 verified unsigned inc(unsigned x)
@@ -329,10 +329,26 @@ verified unsigned two_from_zero(unsigned x)
 
 The inner call's proven postcondition discharges the outer call's precondition.
 The caller uses those contracts, and the kernel checks their connection to the
-actual body. Erased C++ retains both calls with no runtime checks. This fragment
-supports equality and unsigned addition; ordering and subtraction remain future
-work. Unsupported bodies and unproved call preconditions fail compilation. See
-[SPEC.md](SPEC.md#126-compositional-verified-calls) for the boundary.
+actual body. Erased C++ retains both calls with no runtime checks.
+
+Branches generate a separate proof obligation for each return path:
+
+```cpp cppl-example
+verified unsigned clamp(unsigned x)
+    ensures(result <= 10u)
+{
+    if (x <= 10u)
+        return x;
+    return 10u;
+}
+```
+
+The first path uses `x <= 10u` as evidence; the second computes `10u <= 10u`.
+Both paths must pass the kernel. The runtime `if` and returns stay unchanged.
+All six integer comparisons are supported, including in call preconditions.
+General order implications, subtraction, signed addition, and algebraic
+reassociation remain unsupported. See [SPEC.md](SPEC.md#127-path-sensitive-verification)
+for the boundary.
 
 For installation, compiler options, project integration, Laws, proofs, verification statuses, and examples, see [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md).
 

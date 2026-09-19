@@ -92,6 +92,8 @@ std::vector<obligations::ObligationResult> verify(const obligations::Program& pr
             } else if (obligation.origin == obligations::Origin::CallPrecondition) {
                 diagnostic.message = "call-site precondition for '" + obligation.subject +
                                      "' is not proven";
+            } else if (obligation.origin == obligations::Origin::ReturnPath) {
+                diagnostic.message = "return path '" + obligation.subject + "' does not satisfy its contract";
             } else {
                 diagnostic.message = "law '" + obligation.subject + "' is not proven";
             }

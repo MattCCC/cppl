@@ -22,6 +22,9 @@ endfunction()
 cppl_add_unit_test(kernel_check_test kernel/check_test.cpp)
 target_link_libraries(kernel_check_test PRIVATE cppl_kernel)
 
+cppl_add_unit_test(kernel_paths_test kernel/paths_test.cpp)
+target_link_libraries(kernel_paths_test PRIVATE cppl_kernel)
+
 cppl_add_unit_test(unit_digest_test unit/digest_test.cpp)
 target_link_libraries(unit_digest_test PRIVATE cppl_source)
 
@@ -72,12 +75,14 @@ cppl_add_script_test(e2e_conditional_proof e2e/conditional_proof.sh)
 cppl_add_script_test(e2e_rewritten_proof e2e/rewritten_proof.sh)
 cppl_add_script_test(e2e_verified_functions e2e/verified_functions.sh)
 cppl_add_script_test(e2e_verified_calls e2e/verified_calls.sh)
+cppl_add_script_test(e2e_verified_paths e2e/verified_paths.sh)
 
 cppl_add_script_test(negative_broken_implementation negative/broken_implementation.sh)
 cppl_add_script_test(negative_unproven_dependencies negative/unproven_dependencies.sh)
 cppl_add_script_test(negative_written_proofs negative/written_proofs.sh)
 cppl_add_script_test(negative_verified_functions negative/verified_functions.sh)
 cppl_add_script_test(negative_verified_calls negative/verified_calls.sh)
+cppl_add_script_test(negative_verified_paths negative/verified_paths.sh)
 
 cppl_add_script_test(integration_header_law integration/header_law.sh)
 cppl_add_script_test(integration_determinism integration/determinism.sh)

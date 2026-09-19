@@ -342,6 +342,13 @@ This makes preconditions and postconditions formal proof obligations rather than
 
 ## Weakest preconditions
 
+The implemented conditional fragment checks both implications
+`condition -> Q[true_return]` and `not condition -> Q[false_return]` before
+establishing `Q[select(condition, true_return, false_return)]`. This is a
+conditional-elimination rule, not an assumption that either path's condition
+holds globally. Comparisons compute only on concrete integer operands;
+symbolic order reasoning is outside this fragment. See `SPEC.md` 12.7.
+
 C++L may use Dijkstra-style weakest-precondition reasoning when verifying imperative code.
 
 Conceptually:

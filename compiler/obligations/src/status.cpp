@@ -30,6 +30,8 @@ std::string describe(Origin origin) {
     switch (origin) {
         case Origin::CallPrecondition:
             return "call-site precondition";
+        case Origin::ReturnPath:
+            return "return path";
         case Origin::FunctionContract:
             return "function contract";
         case Origin::LawProposition:
@@ -115,6 +117,22 @@ kernel::ProofTerm shaped_evidence(const kernel::Proposition& goal,
                 kernel::ProofTerm::hypothesis(kernel::HypothesisIndex{
                     static_cast<std::uint32_t>(supposed.size() - position)}),
                 shaped_evidence(rewritten, supposed, binders, position - 1));
+        }
+        if (!(equality->type == kernel::Type{kernel::kBoolean})) {
+            motive = rewrite_context(goal, equality->rhs);
+            if (motive.has_value()) {
+                auto symmetry = kernel::ProofTerm::equality_elimination(
+                    equality->type, equality->lhs, equality->rhs,
+                    kernel::Proposition::equality(equality->type, kernel::shift(equality->rhs, 1),
+                                                  kernel::Term::variable(kernel::VarIndex{0})),
+                    kernel::ProofTerm::hypothesis(kernel::HypothesisIndex{
+                        static_cast<std::uint32_t>(supposed.size() - position)}),
+                    kernel::ProofTerm::reflexivity());
+                const auto rewritten = kernel::instantiate(*motive, equality->lhs);
+                return kernel::ProofTerm::equality_elimination(
+                    equality->type, equality->rhs, equality->lhs, std::move(*motive),
+                    std::move(symmetry), shaped_evidence(rewritten, supposed, binders, position - 1));
+            }
         }
     }
 

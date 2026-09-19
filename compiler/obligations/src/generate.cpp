@@ -25,6 +25,12 @@ std::unexpected<Failure> fail(std::string reason, const source::SourceLocation& 
 }
 
 std::optional<kernel::Type> lower_type(const vir::Type& type) {
+    // C++ `bool` has exactly the two values the core's one-bit unsigned integer
+    // has, and no arithmetic on it is modeled: every promotion to `int` is a
+    // conversion the bridge already refuses (SPEC.md 12.7).
+    if (type.is_boolean()) {
+        return kernel::Type{kernel::kBoolean};
+    }
     if (!type.is_integer()) {
         return std::nullopt;
     }
@@ -35,6 +41,19 @@ std::optional<kernel::Type> lower_type(const vir::Type& type) {
 }
 
 using detail::DefinitionMap;
+
+std::optional<kernel::PrimOp> comparison(vir::BinaryOp op) {
+    switch (op) {
+        case vir::BinaryOp::Equal: return kernel::PrimOp::Equal;
+        case vir::BinaryOp::NotEqual: return kernel::PrimOp::NotEqual;
+        case vir::BinaryOp::Less: return kernel::PrimOp::Less;
+        case vir::BinaryOp::LessEqual: return kernel::PrimOp::LessEqual;
+        case vir::BinaryOp::Greater: return kernel::PrimOp::Greater;
+        case vir::BinaryOp::GreaterEqual: return kernel::PrimOp::GreaterEqual;
+        case vir::BinaryOp::Add: return std::nullopt;
+    }
+    return std::nullopt;
+}
 
 // Lowers a VIR value expression into a core term.
 //
@@ -100,6 +119,21 @@ public:
         }
 
         if (const auto* binary = std::get_if<vir::Binary>(&expr.node)) {
+            if (const auto op = comparison(binary->op)) {
+                if (binary->operands.size() != 2 || !expr.type.is_boolean()) {
+                    return fail("malformed comparison", location);
+                }
+                const auto left = lower_type(binary->operands[0].type);
+                const auto right = lower_type(binary->operands[1].type);
+                if (!left || !right || !(*left == *right)) {
+                    return fail("comparison requires equal-typed modeled integers", location);
+                }
+                auto lhs = lower(binary->operands[0]);
+                auto rhs = lower(binary->operands[1]);
+                if (!lhs || !rhs) return std::unexpected(!lhs ? lhs.error() : rhs.error());
+                return kernel::Term::primitive(*op, left->integer_type(),
+                                                {std::move(*lhs), std::move(*rhs)});
+            }
             if (binary->op != vir::BinaryOp::Add) {
                 return fail("'" + vir::describe(binary->op) +
                                 "' does not denote a value in the formal core",
@@ -137,6 +171,32 @@ public:
             return kernel::Term::primitive(kernel::PrimOp::AddWrap, integer, std::move(operands));
         }
 
+        if (const auto* negation = std::get_if<vir::Negation>(&expr.node)) {
+            if (negation->operands.size() != 1 || !negation->operands[0].type.is_boolean()) {
+                return fail("negation requires a comparison predicate", location);
+            }
+            auto operand = lower(negation->operands[0]);
+            if (!operand) return operand;
+            return kernel::Term::primitive(kernel::PrimOp::Not, kernel::kBoolean,
+                                           {std::move(*operand)});
+        }
+        if (const auto* branch = std::get_if<vir::Conditional>(&expr.node)) {
+            if (branch->operands.size() != 3 || !type ||
+                !branch->operands[0].type.is_boolean() ||
+                !(branch->operands[1].type == expr.type) ||
+                !(branch->operands[2].type == expr.type)) {
+                return fail("conditional requires a comparison and equal-typed returns", location);
+            }
+            std::vector<kernel::Term> operands;
+            for (const auto& operand : branch->operands) {
+                auto value = lower(operand);
+                if (!value) return value;
+                operands.push_back(std::move(*value));
+            }
+            return kernel::Term::primitive(kernel::PrimOp::Select, type->integer_type(),
+                                           std::move(operands));
+        }
+
         return fail("this expression has no core representation", location);
     }
 
@@ -156,30 +216,11 @@ std::expected<kernel::Proposition, Failure> lower_proposition(const vir::Expr& e
                                                               std::size_t parameter_count) {
     const source::SourceLocation& location = expression.provenance.range.begin;
 
-    const auto* equality = std::get_if<vir::Binary>(&expression.node);
-    if (equality == nullptr || equality->op != vir::BinaryOp::Equal ||
-        equality->operands.size() != 2) {
-        return fail("it does not state an equality", location);
-    }
-
-    const std::optional<kernel::Type> left = lower_type(equality->operands[0].type);
-    const std::optional<kernel::Type> right = lower_type(equality->operands[1].type);
-    if (!left.has_value() || !right.has_value() || !(*left == *right)) {
-        return fail("it compares values this implementation does not model as equal-typed "
-                    "integers",
-                    location);
-    }
-
+    if (!expression.type.is_boolean()) return fail("it does not state a comparison", location);
     const TermLowering lowering(definitions, parameter_count);
-    std::expected<kernel::Term, Failure> lhs = lowering.lower(equality->operands[0]);
-    if (!lhs) {
-        return std::unexpected(lhs.error());
-    }
-    std::expected<kernel::Term, Failure> rhs = lowering.lower(equality->operands[1]);
-    if (!rhs) {
-        return std::unexpected(rhs.error());
-    }
-    return kernel::Proposition::equality(*left, std::move(*lhs), std::move(*rhs));
+    auto condition = lowering.lower(expression);
+    if (!condition) return std::unexpected(condition.error());
+    return kernel::predicate(*condition, true);
 }
 
 // Closes a proposition over a declaration's parameters, outermost first.
@@ -209,6 +250,9 @@ void collect_callees(const vir::Expr& expr, std::set<std::string>& callees) {
         for (const vir::Expr& operand : binary->operands) {
             collect_callees(operand, callees);
         }
+    }
+    if (const auto* negation = std::get_if<vir::Negation>(&expr.node)) {
+        for (const auto& operand : negation->operands) collect_callees(operand, callees);
     }
 }
 

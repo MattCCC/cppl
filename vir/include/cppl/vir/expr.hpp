@@ -23,6 +23,11 @@ struct Provenance {
 enum class BinaryOp : std::uint8_t {
     Add,    // addition, at the operand type's machine semantics
     Equal,  // equality comparison, yielding bool
+    NotEqual,
+    Less,
+    LessEqual,
+    Greater,
+    GreaterEqual,
 };
 
 std::string describe(BinaryOp op);
@@ -58,11 +63,21 @@ struct Binary {
     friend bool operator==(const Binary&, const Binary&) = default;
 };
 
+struct Negation {
+    std::vector<Expr> operands;
+    friend bool operator==(const Negation&, const Negation&) = default;
+};
+
+struct Conditional {
+    std::vector<Expr> operands; // condition, true return, false return
+    friend bool operator==(const Conditional&, const Conditional&) = default;
+};
+
 struct Expr {
     ExprId id;
     Type type;
     Provenance provenance;
-    std::variant<ParameterRef, IntLiteral, Call, Binary> node;
+    std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional> node;
 
     friend bool operator==(const Expr&, const Expr&) = default;
 };

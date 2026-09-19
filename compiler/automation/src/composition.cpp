@@ -49,16 +49,28 @@ std::expected<Step, std::string> discharge(Step step, const Step& premise) {
 }
 
 std::expected<Step, std::string> under_caller(
-    Step step, const obligations::ContractVerification& caller) {
+    Step step, const obligations::ContractVerification& caller,
+    const obligations::ReturnPath* path = nullptr, std::size_t needed = 0,
+    std::size_t available = 0) {
     auto opened = instantiate(std::move(step), parameters_of(caller));
-    if (!opened || !caller.precondition.has_value()) {
-        return opened;
+    if (opened && caller.precondition.has_value()) {
+        opened = discharge(std::move(*opened), Step{*caller.precondition,
+            kernel::ProofTerm::hypothesis(kernel::HypothesisIndex{static_cast<std::uint32_t>(available)})});
     }
-    return discharge(std::move(*opened), Step{*caller.precondition,
-        kernel::ProofTerm::hypothesis(kernel::HypothesisIndex{0})});
+    for (std::size_t index = 0; opened && index < needed; ++index) {
+        opened = discharge(std::move(*opened), Step{path->conditions[index].actual,
+            kernel::ProofTerm::hypothesis(kernel::HypothesisIndex{
+                static_cast<std::uint32_t>(available - 1 - index)})});
+    }
+    return opened;
 }
 
-kernel::ProofTerm close(const obligations::ContractVerification& function, kernel::ProofTerm proof) {
+kernel::ProofTerm close(const obligations::ContractVerification& function, kernel::ProofTerm proof,
+                        const obligations::ReturnPath* path = nullptr, std::size_t conditions = 0) {
+    for (std::size_t index = conditions; index > 0; --index) {
+        proof = kernel::ProofTerm::implication_introduction(path->conditions[index - 1].actual,
+                                                           std::move(proof));
+    }
     if (function.precondition.has_value()) {
         proof = kernel::ProofTerm::implication_introduction(*function.precondition, std::move(proof));
     }
@@ -69,19 +81,52 @@ kernel::ProofTerm close(const obligations::ContractVerification& function, kerne
     return proof;
 }
 
+std::expected<kernel::ProofTerm, std::string> assemble(
+    const obligations::Program& program, const obligations::ContractVerification& function,
+    const kernel::Term& value, std::size_t depth, std::size_t& leaf,
+    const std::map<std::size_t, kernel::ProofTerm>& proven) {
+    if (const auto* branch = std::get_if<kernel::Prim>(&value.node);
+        branch != nullptr && branch->op == kernel::PrimOp::Select && branch->arguments.size() == 3) {
+        auto when_true = assemble(program, function, branch->arguments[1], depth + 1, leaf, proven);
+        if (!when_true) return when_true;
+        auto when_false = assemble(program, function, branch->arguments[2], depth + 1, leaf, proven);
+        if (!when_false) return when_false;
+        return kernel::ProofTerm::conditional_elimination(function.result, branch->arguments[0],
+            branch->arguments[1], branch->arguments[2], function.postcondition,
+            kernel::ProofTerm::implication_introduction(kernel::predicate(branch->arguments[0], true),
+                                                       std::move(*when_true)),
+            kernel::ProofTerm::implication_introduction(kernel::predicate(branch->arguments[0], false),
+                                                       std::move(*when_false)));
+    }
+    if (leaf >= function.paths.size()) return std::unexpected("missing return path");
+    const auto& path = function.paths[leaf++];
+    if (path.conditions.size() != depth || !proven.contains(path.obligation)) {
+        return std::unexpected("return path is not proven");
+    }
+    auto body = under_caller(Step{program.obligations[path.obligation].goal, proven.at(path.obligation)},
+                             function, &path, depth, depth);
+    if (!body) return std::unexpected(body.error());
+    return std::move(body->proof);
+}
+
 }  // namespace
 
 Composition::Composition(const obligations::Program& program) : program_(program) {
     for (const auto& function : program.contracts) {
-        for (std::size_t prefix = 0; prefix < function.calls.size(); ++prefix) {
-            const auto& call = function.calls[prefix];
-            if (call.precondition_obligation.has_value() && call.reasoning_goal.has_value()) {
-                stages_.emplace(*call.precondition_obligation,
-                                Stage{&function, prefix, &*call.reasoning_goal, false});
+        for (const auto& path : function.paths) {
+            for (std::size_t prefix = 0; prefix < path.calls.size(); ++prefix) {
+                const auto& call = path.calls[prefix];
+                if (call.precondition_obligation.has_value() && call.reasoning_goal.has_value()) {
+                    stages_.emplace(*call.precondition_obligation,
+                        Stage{&function, &path, prefix, call.conditions, &*call.reasoning_goal, false});
+                }
             }
+            stages_.emplace(path.obligation, Stage{&function, &path, path.calls.size(),
+                path.conditions.size(), &path.reasoning_goal, true});
         }
-        stages_.emplace(function.obligation,
-                        Stage{&function, function.calls.size(), &function.reasoning_goal, true});
+        if (!stages_.contains(function.obligation)) {
+            stages_.emplace(function.obligation, Stage{&function, nullptr, 0, 0, nullptr, false});
+        }
     }
 }
 
@@ -92,9 +137,17 @@ bool Composition::owns(std::size_t obligation) const {
 std::expected<Evidence, std::string> Composition::propose(std::size_t obligation) const {
     const auto& stage = stages_.at(obligation);
     const auto& function = *stage.function;
-    const std::size_t dependencies = stage.prefix + (stage.final ? 0 : 1);
+    if (stage.path == nullptr) {
+        std::size_t leaf = 0;
+        auto proof = assemble(program_, function, function.returned_value, 0, leaf, proven_);
+        if (!proof) return std::unexpected(proof.error());
+        if (leaf != function.paths.size()) return std::unexpected("return tree does not cover every path");
+        return Evidence{close(function, std::move(*proof)), "verified-path-composition"};
+    }
+    const auto& path = *stage.path;
+    const std::size_t dependencies = stage.prefix + (stage.path_end ? 0 : 1);
     for (std::size_t index = 0; index < dependencies; ++index) {
-        const auto& call = function.calls[index];
+        const auto& call = path.calls[index];
         if (!callees_.contains(call.callee.value)) {
             return std::unexpected("callee '" + call.callee_name + "' is not proven");
         }
@@ -118,28 +171,34 @@ std::expected<Evidence, std::string> Composition::propose(std::size_t obligation
     auto reasoning = instantiate(Step{*stage.reasoning, candidate->proof}, parameters_of(function));
     std::vector<kernel::Term> values;
     for (std::size_t index = 0; index < stage.prefix; ++index) {
-        values.push_back(function.calls[index].value);
+        values.push_back(path.calls[index].value);
     }
     if (reasoning) {
         reasoning = instantiate(std::move(*reasoning), values);
     }
     if (reasoning && function.precondition.has_value()) {
         reasoning = discharge(std::move(*reasoning), Step{*function.precondition,
-            kernel::ProofTerm::hypothesis(kernel::HypothesisIndex{0})});
+            kernel::ProofTerm::hypothesis(kernel::HypothesisIndex{
+                static_cast<std::uint32_t>(stage.conditions)})});
+    }
+    for (std::size_t index = 0; reasoning && index < stage.conditions; ++index) {
+        reasoning = discharge(std::move(*reasoning), Step{path.conditions[index].actual,
+            kernel::ProofTerm::hypothesis(kernel::HypothesisIndex{
+                static_cast<std::uint32_t>(stage.conditions - 1 - index)})});
     }
     if (!reasoning) {
         return std::unexpected(reasoning.error());
     }
 
     for (std::size_t index = 0; index < stage.prefix; ++index) {
-        const auto& call = function.calls[index];
+        const auto& call = path.calls[index];
         const auto& theorem = callees_.at(call.callee.value);
         auto postcondition = instantiate(Step{theorem.goal, theorem.proof}, call.arguments);
         if (postcondition && call.precondition_obligation.has_value()) {
             const auto precondition_index = *call.precondition_obligation;
             auto precondition = under_caller(
                 Step{program_.obligations[precondition_index].goal, proven_.at(precondition_index)},
-                function);
+                function, &path, call.conditions, stage.conditions);
             if (!precondition) {
                 return std::unexpected(precondition.error());
             }
@@ -153,7 +212,8 @@ std::expected<Evidence, std::string> Composition::propose(std::size_t obligation
             return std::unexpected(reasoning.error());
         }
     }
-    return Evidence{close(function, std::move(reasoning->proof)), "verified-call-composition"};
+    return Evidence{close(function, std::move(reasoning->proof), &path, stage.conditions),
+                    "verified-call-composition"};
 }
 
 std::expected<void, std::string> Composition::accept(
@@ -162,7 +222,7 @@ std::expected<void, std::string> Composition::accept(
         return std::unexpected("the kernel accepted a different contract obligation");
     }
     const auto& stage = stages_.at(obligation);
-    if (stage.final) {
+    if (obligation == stage.function->obligation) {
         const auto& function = *stage.function;
         auto body = under_caller(Step{program_.obligations[obligation].goal, proof}, function);
         if (!body) {

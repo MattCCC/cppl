@@ -9,8 +9,28 @@ std::string describe(PrimOp op) {
     switch (op) {
         case PrimOp::AddWrap:
             return "add_wrap";
+        case PrimOp::Equal: return "eq";
+        case PrimOp::NotEqual: return "ne";
+        case PrimOp::Less: return "lt";
+        case PrimOp::LessEqual: return "le";
+        case PrimOp::Greater: return "gt";
+        case PrimOp::GreaterEqual: return "ge";
+        case PrimOp::Not: return "not";
+        case PrimOp::Select: return "select";
     }
     return "<unknown-primitive>";
+}
+
+bool is_comparison(PrimOp op) {
+    switch (op) {
+        case PrimOp::Equal:
+        case PrimOp::NotEqual:
+        case PrimOp::Less:
+        case PrimOp::LessEqual:
+        case PrimOp::Greater:
+        case PrimOp::GreaterEqual: return true;
+        default: return false;
+    }
 }
 
 VarIndex parameter_reference(std::size_t parameter_count, std::size_t position) {

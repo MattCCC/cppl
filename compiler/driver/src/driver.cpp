@@ -322,7 +322,8 @@ UnitOutcome compile_unit(const Options& options,
     summary.laws += elaborated.module.laws.size();
     std::size_t declaration_obligations = 0;
     for (const obligations::ObligationResult& result : results) {
-        if (result.obligation.origin != obligations::Origin::CallPrecondition) {
+        if (result.obligation.origin == obligations::Origin::LawProposition ||
+            result.obligation.origin == obligations::Origin::FunctionContract) {
             ++declaration_obligations;
         }
         if (result.verdict.is_proven()) {
@@ -330,7 +331,7 @@ UnitOutcome compile_unit(const Options& options,
                 ++summary.contracts_proven;
             } else if (result.obligation.origin == obligations::Origin::CallPrecondition) {
                 ++summary.call_preconditions_proven;
-            } else {
+            } else if (result.obligation.origin == obligations::Origin::LawProposition) {
                 ++summary.proven;
             }
             if (program.proof_for(result.obligation) != nullptr) {

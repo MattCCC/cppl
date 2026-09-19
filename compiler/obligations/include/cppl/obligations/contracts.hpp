@@ -20,6 +20,21 @@ struct CallVerification {
     kernel::Proposition postcondition;
     std::optional<std::size_t> precondition_obligation;
     std::optional<kernel::Proposition> reasoning_goal;
+    std::size_t conditions = 0;
+};
+
+struct PathCondition {
+    kernel::Proposition actual;
+    kernel::Proposition abstract;
+    std::size_t calls = 0;
+};
+
+struct ReturnPath {
+    std::vector<PathCondition> conditions;
+    std::vector<CallVerification> calls;
+    kernel::Term returned_value;
+    std::size_t obligation = 0;
+    kernel::Proposition reasoning_goal;
 };
 
 struct ContractVerification {
@@ -32,9 +47,8 @@ struct ContractVerification {
     kernel::Term returned_value;
     kernel::Term named_value;
     kernel::Proposition theorem;
-    std::vector<CallVerification> calls;
+    std::vector<ReturnPath> paths;
     std::size_t obligation = 0;
-    kernel::Proposition reasoning_goal;
 };
 
 }  // namespace cppl::obligations

@@ -100,6 +100,20 @@ k::Proposition abstract_caller(bool summary, bool forged = false) {
     return goal;
 }
 
+o::Program branching() {
+    auto function = first();
+    function.returned_value->node = v::Conditional{{equality(parameter(0), parameter(1)),
+                                                   parameter(1), parameter(0)}};
+    cppl::elaboration::Result elaborated;
+    elaborated.module.functions.push_back(std::move(function));
+    cppl::diagnostics::Engine engine;
+    auto program = o::generate(elaborated.module, elaborated, engine);
+    CPPL_CHECK(!engine.has_errors());
+    CPPL_CHECK_EQ(program.obligations.size(), std::size_t{3});
+    CPPL_CHECK_EQ(program.contracts.front().paths.size(), std::size_t{2});
+    return program;
+}
+
 }  // namespace
 
 CPPL_TEST(result_substitution_closes_over_the_correct_parameter) {
@@ -163,7 +177,7 @@ CPPL_TEST(call_composition_preserves_parameter_and_result_scope) {
     const auto program = composed();
     const auto& caller = program.contracts.back();
     CPPL_CHECK(caller.function == v::FunctionId{1});
-    CPPL_CHECK(caller.reasoning_goal == abstract_caller(true));
+    CPPL_CHECK(caller.paths.front().reasoning_goal == abstract_caller(true));
     const auto x = k::Term::variable(k::VarIndex{1});
     const auto y = k::Term::variable(k::VarIndex{0});
     const auto expected = k::Proposition::for_all(kUnsigned, k::Proposition::for_all(
@@ -182,7 +196,7 @@ CPPL_TEST(caller_cannot_replace_missing_summary_evidence_with_body_unfolding) {
     auto program = composed();
     const auto& goal = program.obligations.back().goal;
     CPPL_CHECK(k::check(program.context, goal, o::automatic_evidence(goal), {}).has_value());
-    program.contracts.back().reasoning_goal = abstract_caller(false);
+    program.contracts.back().paths.front().reasoning_goal = abstract_caller(false);
     cppl::diagnostics::Engine engine;
     const auto results = cppl::automation::verify(program, engine);
     CPPL_CHECK(!results.back().verdict.is_proven());
@@ -191,8 +205,8 @@ CPPL_TEST(caller_cannot_replace_missing_summary_evidence_with_body_unfolding) {
 
 CPPL_TEST(a_proved_abstract_goal_cannot_import_a_forged_callee_summary) {
     auto program = composed();
-    program.contracts.back().reasoning_goal = abstract_caller(true, true);
-    const auto& goal = program.contracts.back().reasoning_goal;
+    program.contracts.back().paths.front().reasoning_goal = abstract_caller(true, true);
+    const auto& goal = program.contracts.back().paths.front().reasoning_goal;
     CPPL_CHECK(k::check(program.context, goal, o::automatic_evidence(goal), {}).has_value());
     cppl::diagnostics::Engine engine;
     const auto results = cppl::automation::verify(program, engine);
@@ -220,5 +234,44 @@ CPPL_TEST(caller_identity_includes_summary_changes_when_the_body_goal_is_unchang
     CPPL_CHECK(!(strong.obligations.back().id == weak.obligations.back().id));
     cppl::diagnostics::Engine engine;
     const auto results = cppl::automation::verify(weak, engine);
+    CPPL_CHECK(!results.back().verdict.is_proven());
+}
+
+CPPL_TEST(branch_paths_are_independently_proven_before_export) {
+    const auto program = branching();
+    cppl::diagnostics::Engine engine;
+    const auto results = cppl::automation::verify(program, engine);
+    for (const auto& result : results) CPPL_CHECK(result.verdict.is_proven());
+    CPPL_CHECK(!engine.has_errors());
+    CPPL_CHECK(program.obligations[0].origin == o::Origin::ReturnPath);
+    CPPL_CHECK(program.obligations[1].origin == o::Origin::ReturnPath);
+    CPPL_CHECK(program.obligations[2].origin == o::Origin::FunctionContract);
+    CPPL_CHECK(!(program.obligations[0].id == program.obligations[1].id));
+}
+
+CPPL_TEST(a_missing_path_cannot_export_a_contract) {
+    auto program = branching();
+    program.contracts.front().paths.pop_back();
+    cppl::diagnostics::Engine engine;
+    const auto results = cppl::automation::verify(program, engine);
+    CPPL_CHECK(!results.back().verdict.is_proven());
+}
+
+CPPL_TEST(a_path_cannot_borrow_the_other_arms_premise) {
+    auto program = branching();
+    auto& paths = program.contracts.front().paths;
+    paths[1].reasoning_goal = paths[0].reasoning_goal;
+    cppl::diagnostics::Engine engine;
+    const auto results = cppl::automation::verify(program, engine);
+    CPPL_CHECK(!results[1].verdict.is_proven());
+    CPPL_CHECK(!results.back().verdict.is_proven());
+}
+
+CPPL_TEST(a_changed_conditional_body_cannot_reuse_assembled_evidence) {
+    auto program = branching();
+    auto& body = std::get<k::Prim>(program.contracts.front().returned_value.node);
+    body.arguments[1] = k::Term::literal(kUnsigned.integer_type(), 0);
+    cppl::diagnostics::Engine engine;
+    const auto results = cppl::automation::verify(program, engine);
     CPPL_CHECK(!results.back().verdict.is_proven());
 }

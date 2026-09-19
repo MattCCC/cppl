@@ -65,13 +65,14 @@ declares Laws it:
    equality, or an implication from the Law's precondition to it — and lowers
    each written proof into a kernel proof term; verified functions generate
    postcondition obligations by substituting their elaborated return term, plus
-   precondition obligations for verified calls;
+   precondition obligations for verified calls and separate obligations for each
+   return path through supported `if` statements;
 6. submits the author's evidence, or its own when none was written, to the
    trusted kernel;
 7. reports `PROVEN` only on kernel acceptance, and fails the build otherwise;
 8. checks that erasure only deleted text, and hands the runtime program to Clang.
 
-The verified fragment is deliberately small: a Law is one equality between two
+The verified fragment is deliberately small: a Law is one comparison between two
 built-in integer expressions, optionally stated under one `expects`
 precondition of the same shape, universally quantified over its parameters, over
 functions declared `pure` whose bodies are a single `return` of a modeled
@@ -91,11 +92,13 @@ introduction. `assume` names that premise and is an error where the goal
 supposes none. `rewrite` then uses an equality to transform the goal, so a
 conditional Law whose conclusion needs its premise to be *used* is provable.
 
-Verified functions support one pure return expression, integer parameters and
-results, one `ensures` equality, and an optional `expects` equality. The generated
+Verified functions support pure return expressions, `if`/`else`, nested blocks,
+integer parameters and results, one `ensures` comparison, and an optional
+`expects` comparison. Comparisons are `==`, `!=`, `<`, `<=`, `>`, `>=`, with logical
+negation. The generated single-return
 goal is `forall parameters. P -> Q[R/result]`. Automatic evidence first tries
 definitional equality. If needed, it introduces binders, uses an identical
-hypothesis or rewrites once per available equality, newest first, then offers
+hypothesis or rewrites once per available equality in either direction, newest first, then offers
 reflexivity; the kernel
 checks every step. Written `refl` retains its
 definitional-equality semantics. `result` is erased specification syntax.
@@ -105,10 +108,14 @@ Caller reasoning uses abstract call results and proven summaries; kernel-checked
 evidence connects that reasoning to the executable return term. Nested calls,
 overloads, and forward declarations are supported within an acyclic translation
 unit, including headers. Ordinary runtime calls remain unchanged. See `SPEC.md`
-12.5–12.6. Ordering, subtraction, and algebraic reassociation remain unsupported.
+12.5–12.7. Each return path additionally supposes its branch conditions. Calls in
+guards prove their preconditions before that guard can be used. The kernel
+combines the checked paths into the complete function theorem. Concrete
+comparisons compute; symbolic order weakening and transitivity, subtraction,
+signed addition, and algebraic reassociation remain unsupported.
 
 This slice does **not** implement induction, dependent types, refinement types,
-control-flow contracts, ghost state, `unsafe`, `trusted`, conjunction, proof `let` or
+loops, locals, assignments, ghost state, `unsafe`, `trusted`, conjunction, proof `let` or
 `match`, solvers, proof caching, or any verification of the C++ memory model.
 Those remain `SPECIFIED` below.
 
@@ -149,12 +156,15 @@ IMPLEMENTED
 
 # Current milestone
 
-Verified functions now compose calls through kernel-proven preconditions and
-postconditions while retaining body-derived obligations. Both slices use the
-existing seven kernel rules and no logical assumptions, and add no runtime checks.
-The next slice is conditional branches with path-sensitive obligations, followed
-by locals and richer expressions. Loops with invariants, recursion with
-induction/termination, memory/reference reasoning, and SMT automation come later.
+Verified functions now verify every return path through `if`/`else`, including
+compositional calls in guards and returns. All six integer comparisons are
+represented structurally. The original function/call slices use seven rules;
+path composition adds one conditional-elimination rule, bringing the core to
+eight, with zero logical assumptions and zero runtime checks.
+Next are straight-line locals and assignments, then arithmetic normalization
+(subtraction and useful integer identities under sound machine semantics), then
+loops with explicit invariants. Recursion with induction/termination, memory and
+reference reasoning, and SMT automation come later.
 
 Original target, for reference:
 
@@ -216,6 +226,8 @@ The project should not claim broad language implementation before the proof sema
 | `pure`                       | `PROTOTYPE` |
 | `verified`                   | `PROTOTYPE` |
 | verified-call composition    | `PROTOTYPE` |
+| path-sensitive `if`/`else`    | `PROTOTYPE` |
+| integer comparison predicates | `PROTOTYPE` |
 | `ghost`                      | `SPECIFIED` |
 | `unsafe`                     | `SPECIFIED` |
 | `trusted`                    | `SPECIFIED` |
@@ -416,13 +428,13 @@ is not implemented.
 
 | Capability                              | Status        |
 | --------------------------------------- | ------------- |
-| Preconditions                           | `SPECIFIED`   |
-| Postconditions                          | `SPECIFIED`   |
+| Preconditions (supported fragment)      | `PROTOTYPE`   |
+| Postconditions (supported fragment)     | `PROTOTYPE`   |
 | Function invariants                     | `SPECIFIED`   |
 | Loop invariants                         | `SPECIFIED`   |
-| Verification-condition generation       | `NOT STARTED` |
+| Verification-condition generation (returns/paths) | `PROTOTYPE` |
 | Weakest-precondition engine             | `NOT STARTED` |
-| Contract composition                    | `NOT STARTED` |
+| Contract composition                    | `PROTOTYPE`   |
 | Contract reuse across translation units | `NOT STARTED` |
 
 ---

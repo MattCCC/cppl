@@ -18,9 +18,11 @@ public:
 private:
     struct Stage {
         const obligations::ContractVerification* function;
+        const obligations::ReturnPath* path;
         std::size_t prefix;
+        std::size_t conditions;
         const kernel::Proposition* reasoning;
-        bool final;
+        bool path_end;
     };
     struct Theorem {
         kernel::Proposition goal;
