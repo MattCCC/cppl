@@ -333,8 +333,8 @@ construct is rejected, never silently reinterpreted.
 A second: a Law is analysed as a C++ function carrying the Law's own name, so
 that a proof can name it through ordinary lookup. A Law whose name already
 belongs to a function in the same scope is therefore reported by Clang as a
-redeclaration, pointing at the Law. The name clash is real — `GRAMMAR.md` 46
-puts Law names in a declaration namespace associated with C++ scope — and it is
+redeclaration, pointing at the Law. The name clash is real - `GRAMMAR.md` 46
+puts Law names in a declaration namespace associated with C++ scope - and it is
 reported rather than resolved silently. Nothing is emitted into the runtime
 program either way.
 

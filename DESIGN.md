@@ -1,6 +1,6 @@
 # C++L Design
 
-**C++L — C++ with Laws**
+**C++L - C++ with Laws**
 
 Status: Draft design rationale
 

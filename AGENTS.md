@@ -1213,8 +1213,8 @@ Fall back to Grep/Glob/Read **only** when the graph doesn't cover what you need.
 
 | Tool                             | Use when                                               |
 | -------------------------------- | ------------------------------------------------------ |
-| `detect_changes_tool`            | Reviewing code changes — gives risk-scored analysis    |
-| `get_review_context_tool`        | Need source snippets for review — token-efficient      |
+| `detect_changes_tool`            | Reviewing code changes - gives risk-scored analysis    |
+| `get_review_context_tool`        | Need source snippets for review - token-efficient      |
 | `get_impact_radius_tool`         | Understanding blast radius of a change                 |
 | `get_affected_flows_tool`        | Finding which execution paths are impacted             |
 | `query_graph_tool`               | Tracing callers, callees, imports, tests, dependencies |

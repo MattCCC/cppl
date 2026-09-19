@@ -1149,7 +1149,7 @@ Each is a capability, not an assumption.
 TCB explicitly, and the kernel and core versions are 0.3.0. Two parts must be
 right for a `PROVEN` result to mean what it says:
 
-- *The polynomial normal form.* Wrapping addition, subtraction and
+- _The polynomial normal form._ Wrapping addition, subtraction and
   multiplication are read as polynomials modulo `2^width` and rendered in one
   canonical form, and comparisons are rewritten only by identities of the
   machine type. An error here would make reflexivity accept an equality that
@@ -1157,10 +1157,10 @@ right for a `PROVEN` result to mean what it says:
   evaluates random terms and their normal forms with an evaluator written
   independently of the kernel, over every assignment of small types and at the
   edges of 64-bit ones.
-- *The linear-arithmetic rule.* The kernel checks each fact's evidence, states
-  the facts and the goal's negation as integer constraints itself — each
+- _The linear-arithmetic rule._ The kernel checks each fact's evidence, states
+  the facts and the goal's negation as integer constraints itself - each
   wrapped value as its polynomial minus a fresh multiple of `2^width`, bounded
-  by its type — and checks a certificate of Farkas sums, integer splits and
+  by its type - and checks a certificate of Farkas sums, integer splits and
   case splits against them with overflow-checked 128-bit arithmetic. The
   producer supplies neither the translation nor any bound. An error in the
   translation would let a certificate refute a system that does not say what
@@ -1207,7 +1207,7 @@ resulting proposition the kernel obtains by substituting for itself. The proof
 term it is given restates the proposition being eliminated from, and that
 restatement is checked, never believed: evidence for a false statement is
 refused before any instance of it can be taken. Discharging a premise works the
-same way — the implication is restated, checked, and the conclusion is the
+same way - the implication is restated, checked, and the conclusion is the
 kernel's own.
 
 **A premise is supposed, never granted.** `expects(P) ensures(Q)` does not mean
@@ -1249,7 +1249,7 @@ kernel proof term; the kernel then checks that term against the goal exactly as
 it checks any other. `exact` and `apply` reuse a term that was itself checked
 against its own goal, and neither admits a proposition on the strength of the
 author's word. A defect in this lowering can only produce a term the kernel
-refuses, or a term for a goal that is not the one the Law states — and the
+refuses, or a term for a goal that is not the one the Law states - and the
 second is caught separately, because `Verdict::proven` compares the proposition
 the kernel accepted with the proposition of the obligation being discharged.
 
@@ -1351,7 +1351,7 @@ to a local is proven where the body makes it, under the conditions in force
 there, and on every path that reaches it. The kernel and core versions do not
 change, because the accepted calculus does not. Every version's value is
 lowered where it is established, read or not, so a value the core cannot
-state — an unread signed overflow, for instance — rejects the body instead of
+state - an unread signed overflow, for instance - rejects the body instead of
 vanishing from the model.
 
 Path-sensitive verification additionally trusts the Clang bridge and lowering
@@ -1375,16 +1375,16 @@ terms. That these conditions together establish the contract is the partial-
 correctness loop rule and call rule, applied by `compiler/obligations`, not by
 the kernel. What that layer must get right, and what covers it:
 
-- *which locals a loop carries.* The bridge scans for writes; every iteration
+- _which locals a loop carries._ The bridge scans for writes; every iteration
   end checks that each local it did not carry still holds its head version, so
   a missed write rejects the body instead of letting a stale value pass the
   loop. Carrying a local the loop does not write only loses information.
-- *what the head supposes.* Only the invariants and the loop condition; entry
+- _what the head supposes._ Only the invariants and the loop condition; entry
   values are never visible past the head, and the exit supposes the negated
   condition. Negative tests cover head- and entry-value leaks, a false
   condition after exit, weak invariants, `break`, `continue`, returns inside
   the body, calls in the condition and in the body, and nested loops.
-- *every iteration path.* Each `Iterate`, including `continue` and the path
+- _every iteration path._ Each `Iterate`, including `continue` and the path
   through the `for` step, yields preservation conditions; an iteration ending
   outside its loop, a rebound version and a head read before its loop are
   refused even from malformed VIR.
@@ -1444,7 +1444,7 @@ FFI contracts           none can be declared
 
 A trust report therefore shows zero trusted solvers and zero trusted external
 axioms, and says so because it is true, not because the fields are unfilled.
-Unverified FFI boundaries are reported as *not analysed* rather than as zero:
+Unverified FFI boundaries are reported as _not analysed_ rather than as zero:
 C++L does not yet look for them.
 
 ## 41.5 What would enlarge the TCB

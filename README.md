@@ -19,13 +19,9 @@ C++L makes semantic laws first-class program declarations and requires evidence 
 
 ## Project Status
 
-> **Experimental / Pre-Alpha — under active development**
+> **Experimental / Pre-Alpha - under active development**
 
-C++L is currently an experimental language project. The core architecture, language model, and verification foundations are defined, while the compiler, proof system, verification coverage, and developer tooling are still being implemented and refined.
-
-The project is built around one central compatibility invariant:
-
-**Every valid C++ program should remain a valid C++L program.**
+C++L is currently an experimental language project. The core architecture, language model, and verification foundations are defined, while the compiler, proof system, verification coverage, and developer tooling are still being implemented and refined. The project is built around one central compatibility invariant that **every valid C++ program should remain a valid C++L program.**
 
 C++L does not attempt to replace or reimplement C++. Ordinary C++ parsing, typing, overload resolution, templates, and related language semantics are delegated to Clang-compatible infrastructure. C++L adds an optional layer for laws, proofs, contracts, and verified reasoning on top of standard C++.
 
@@ -53,6 +49,131 @@ The project started from a simple chain of thought:
 C++L is an attempt to answer that question while preserving the C++ runtime, ABI, ecosystem, and Clang/LLVM toolchain. The project was initiated by Mateusz Czapliński equipped with AI, steming from this practical need. The goal is to make a Provable C++.
 
 ## Core idea
+
+### Mathematical Model
+
+C++L is designed as a conservative extension of C++: every valid C++ program remains valid C++L, while additional language constructs express Laws, proofs, refinements, and other compile-time correctness information. Verification establishes the required obligations before these proof-only constructs are erased, yielding ordinary C++ with the same runtime meaning. The equations below summarize that relationship.
+
+$$
+\forall p \in C^{++},\quad p \in C^{++}L
+$$
+
+$$
+C^{++}L = C^{++} \oplus \mathcal{L} \oplus \mathcal{P} \oplus \mathcal{R}
+$$
+
+$$
+\mathcal{L} = \text{Laws},\qquad
+\mathcal{P} = \text{Proofs},\qquad
+\mathcal{R} = \text{Refinements}
+$$
+
+$$
+L \in \mathcal{L}
+\quad\Longrightarrow\quad
+\operatorname{obligations}(L)=\{O_1,\ldots,O_n\}
+$$
+
+$$
+\forall O_i,\quad
+\Gamma \vdash e_i : O_i
+$$
+
+$$
+\Gamma \vdash e : L
+\quad\Longrightarrow\quad
+\Gamma \models L
+$$
+
+$$
+\text{Law}
+\;\longrightarrow\;
+\text{Obligation}
+\;\longrightarrow\;
+\text{Evidence}
+\;\longrightarrow\;
+\text{Theorem}
+$$
+
+$$
+\operatorname{verify}(p)=\checkmark
+\quad\Longrightarrow\quad
+\operatorname{erase}(p)\in C^{++}
+$$
+
+$$
+\operatorname{erase} :
+C^{++}L_{\mathrm{verified}}
+\longrightarrow
+C^{++}
+$$
+
+$$
+\llbracket p \rrbracket_{\mathrm{runtime}}
+=
+\llbracket \operatorname{erase}(p) \rrbracket_{\mathrm{runtime}}
+$$
+
+$$
+\operatorname{erase}
+\left(
+\text{runtime}
++
+\text{proof}
++
+\text{ghost}
++
+\text{refinement}
+\right)
+=
+\text{runtime}
+$$
+
+$$
+\operatorname{erase}(\text{proof}) =
+\operatorname{erase}(\text{ghost}) =
+\varnothing
+$$
+
+$$
+\operatorname{Sem}_{C^{++}L}
+=
+\operatorname{Sem}_{C^{++}}
+\oplus
+\operatorname{Sem}_{\mathrm{proof}}
+$$
+
+$$
+p\in C^{++}
+\quad\Longrightarrow\quad
+\llbracket p \rrbracket_{C^{++}L}
+=
+\llbracket p \rrbracket_{C^{++}}
+$$
+
+$$
+C^{++}L
+\xrightarrow{\;\mathrm{verify}\;}
+C^{++}L^{\checkmark}
+\xrightarrow{\;\mathrm{erase}\;}
+C^{++}
+\xrightarrow{\;\mathrm{Clang/LLVM}\;}
+\mathrm{Native}
+$$
+
+$$
+\boxed{
+C^{++}\subset C^{++}L
+\;\land\;
+\operatorname{erase}(C^{++}L^{\checkmark})\subseteq C^{++}
+\;\land\;
+\llbracket p\rrbracket
+=
+\llbracket\operatorname{erase}(p)\rrbracket
+}
+$$
+
+### C++L Flow
 
 ```mermaid
 flowchart TD

@@ -1,6 +1,6 @@
 # cppl-lsp
 
-`cppl-lsp` is the language server for **C++L — C++ with Laws**.
+`cppl-lsp` is the language server for **C++L - C++ with Laws**.
 
 It provides editor tooling for C++L while preserving the fundamental C++L architecture:
 

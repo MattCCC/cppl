@@ -2937,7 +2937,7 @@ spans in the same pass:
 
 This keeps the single-projection invariant of section 11: there is one lowering,
 with one output selected for code generation. The relationship is checked rather
-than asserted — `compiler/erasure` verifies that the runtime text differs from
+than asserted - `compiler/erasure` verifies that the runtime text differs from
 the analysed text only by blanking inside recorded spans, and that line
 numbering is unchanged. Because erasure can only delete, it cannot introduce a
 construct from a standard later than the one the user selected.
@@ -2987,7 +2987,7 @@ is an ordinary C++ expression, so each is projected too: one generated function
 per argument, returning that term with its type deduced from the expression, in
 the proof's own scope. Clang resolves them; the elaborator reads them back.
 That is why C++L still has no parser for C++ expressions, and why an argument's
-diagnostics carry the line and column the author wrote it at — the argument's
+diagnostics carry the line and column the author wrote it at - the argument's
 bytes are copied into the generated function at the column they came from.
 
 A Law's `expects` clause is projected the same way, under a generated name
@@ -2995,8 +2995,8 @@ rather than the Law's own: the Law's name states what the Law concludes. So is
 the proposition an `assume` statement names. Every specification expression in
 the language reaches Clang by the one mechanism.
 
-Elaboration resolves what the author wrote — which Law, at which arguments,
-using which other proof or assumed premise, instantiated at which terms — into
+Elaboration resolves what the author wrote - which Law, at which arguments,
+using which other proof or assumed premise, instantiated at which terms - into
 typed VIR steps. A name an `exact` or `apply` uses is resolved against the
 premises the body has assumed before it is resolved against the unit's proof
 declarations, because a premise is the more local binding.
@@ -3037,7 +3037,7 @@ A proof body is a statement sequence, walked once, in written order
 
 A rewrite is where this layer decides something the kernel deliberately does
 not: which occurrences of a term the goal's context abstracts. Every occurrence
-is the rule, and that is the whole rule — nothing is searched for and nothing is
+is the rule, and that is the whole rule - nothing is searched for and nothing is
 weighed. The context is then handed to the kernel as part of the proof term,
 and the kernel checks the equality, checks what is transported through the
 context, and derives the resulting proposition by its own substitution. A choice

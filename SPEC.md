@@ -1,6 +1,6 @@
 # C++L Language Specification
 
-**C++L — C++ with Laws**
+**C++L - C++ with Laws**
 
 Status: Draft specification
 
@@ -2006,8 +2006,8 @@ the path supposes where they stand:
 ```text
 entry:         for each invariant Ij, Ij holds of the carried locals' values
                where the loop is entered
-preservation:  for each Ij and each way an iteration can end — the end of the
-               body followed by the step, or `continue` followed by the step —
+preservation:  for each Ij and each way an iteration can end - the end of the
+               body followed by the step, or `continue` followed by the step -
                Ij holds of the values the carried locals then hold, supposing
                every invariant and the condition at the head of that iteration
 exit:          what follows the loop is verified supposing every invariant and

@@ -61,8 +61,8 @@ declares Laws it:
 2. projects the unit into an analysis text and a runtime text in one pass;
 3. resolves the C++ semantics of the analysis text through libclang;
 4. elaborates the resolved semantics into typed VIR;
-5. lowers VIR into core definitions and a universally quantified goal — an
-   equality, or an implication from the Law's precondition to it — and lowers
+5. lowers VIR into core definitions and a universally quantified goal - an
+   equality, or an implication from the Law's precondition to it - and lowers
    each written proof into a kernel proof term; verified functions generate
    postcondition obligations by substituting their elaborated return term, plus
    precondition obligations for verified calls and separate obligations for each
@@ -98,7 +98,7 @@ A precondition is supposed, never granted: `expects(P) ensures(Q)` states
 `P -> Q`, and the premise reaches a proof only through implication
 introduction. `assume` names that premise and is an error where the goal
 supposes none. `rewrite` then uses an equality to transform the goal, so a
-conditional Law whose conclusion needs its premise to be *used* is provable.
+conditional Law whose conclusion needs its premise to be _used_ is provable.
 
 Verified functions support pure return expressions, `if`/`else`, nested blocks,
 integer parameters and results, one `ensures` comparison, and any number of
@@ -241,55 +241,55 @@ The project should not claim broad language implementation before the proof sema
 
 # Core language status
 
-| Capability                   | Status      |
-| ---------------------------- | ----------- |
-| C++L language mission        | `SPECIFIED` |
-| Genuine C++ superset model   | `PROTOTYPE` |
-| `law` declarations           | `PROTOTYPE` |
-| `ensures` clauses on laws    | `PROTOTYPE` |
-| `proves` clauses             | `PROTOTYPE` |
-| proof declarations           | `PROTOTYPE` |
-| `refl` / `exact` / `apply`   | `PROTOTYPE` |
-| proof instantiation `q(t)`   | `PROTOTYPE` |
-| `expects` clauses on laws    | `PROTOTYPE` |
-| `assume`                     | `PROTOTYPE` |
-| `rewrite`                    | `PROTOTYPE` |
-| multi-statement proof bodies | `PROTOTYPE` |
-| proof `let`                  | `SPECIFIED` |
-| proof case analysis `cases`  | `SPECIFIED` |
-| proposition types            | `PROTOTYPE` |
-| explicit `Eq<T>` propositions | `PROTOTYPE` |
-| direct proposition proofs    | `PROTOTYPE` |
-| universal quantification     | `PROTOTYPE` |
-| implication                  | `PROTOTYPE` |
-| conjunction / disjunction    | `SPECIFIED` |
-| existential quantification   | `SPECIFIED` |
-| dependent types              | `SPECIFIED` |
-| refinement types             | `SPECIFIED` |
-| algebraic data types         | `NOT PLANNED` |
-| runtime pattern matching     | `NOT PLANNED` |
-| impossible-state elimination | `SPECIFIED` |
-| definitional equality        | `PROTOTYPE` |
-| propositional equality       | `PROTOTYPE` |
-| normalization                | `PROTOTYPE` |
-| `induction`                  | `SPECIFIED` |
-| well-founded recursion       | `SPECIFIED` |
-| termination checking         | `SPECIFIED` |
-| `expects` on functions       | `PROTOTYPE` |
-| `ensures` on functions       | `PROTOTYPE` |
-| `pure`                       | `PROTOTYPE` |
-| `verified`                   | `PROTOTYPE` |
-| verified-call composition    | `PROTOTYPE` |
-| path-sensitive `if`/`else`    | `PROTOTYPE` |
-| integer comparison predicates | `PROTOTYPE` |
-| locals and assignments        | `PROTOTYPE` |
-| `invariant` on loops          | `PROTOTYPE` |
-| partial-correctness contracts | `PROTOTYPE` |
-| `ghost`                      | `SPECIFIED` |
-| `unsafe`                     | `SPECIFIED` |
-| `trusted`                    | `SPECIFIED` |
-| `decreases`                  | `SPECIFIED` |
-| proof erasure                | `PROTOTYPE` |
+| Capability                    | Status        |
+| ----------------------------- | ------------- |
+| C++L language mission         | `SPECIFIED`   |
+| Genuine C++ superset model    | `PROTOTYPE`   |
+| `law` declarations            | `PROTOTYPE`   |
+| `ensures` clauses on laws     | `PROTOTYPE`   |
+| `proves` clauses              | `PROTOTYPE`   |
+| proof declarations            | `PROTOTYPE`   |
+| `refl` / `exact` / `apply`    | `PROTOTYPE`   |
+| proof instantiation `q(t)`    | `PROTOTYPE`   |
+| `expects` clauses on laws     | `PROTOTYPE`   |
+| `assume`                      | `PROTOTYPE`   |
+| `rewrite`                     | `PROTOTYPE`   |
+| multi-statement proof bodies  | `PROTOTYPE`   |
+| proof `let`                   | `SPECIFIED`   |
+| proof case analysis `cases`   | `SPECIFIED`   |
+| proposition types             | `PROTOTYPE`   |
+| explicit `Eq<T>` propositions | `PROTOTYPE`   |
+| direct proposition proofs     | `PROTOTYPE`   |
+| universal quantification      | `PROTOTYPE`   |
+| implication                   | `PROTOTYPE`   |
+| conjunction / disjunction     | `SPECIFIED`   |
+| existential quantification    | `SPECIFIED`   |
+| dependent types               | `SPECIFIED`   |
+| refinement types              | `SPECIFIED`   |
+| algebraic data types          | `NOT PLANNED` |
+| runtime pattern matching      | `NOT PLANNED` |
+| impossible-state elimination  | `SPECIFIED`   |
+| definitional equality         | `PROTOTYPE`   |
+| propositional equality        | `PROTOTYPE`   |
+| normalization                 | `PROTOTYPE`   |
+| `induction`                   | `SPECIFIED`   |
+| well-founded recursion        | `SPECIFIED`   |
+| termination checking          | `SPECIFIED`   |
+| `expects` on functions        | `PROTOTYPE`   |
+| `ensures` on functions        | `PROTOTYPE`   |
+| `pure`                        | `PROTOTYPE`   |
+| `verified`                    | `PROTOTYPE`   |
+| verified-call composition     | `PROTOTYPE`   |
+| path-sensitive `if`/`else`    | `PROTOTYPE`   |
+| integer comparison predicates | `PROTOTYPE`   |
+| locals and assignments        | `PROTOTYPE`   |
+| `invariant` on loops          | `PROTOTYPE`   |
+| partial-correctness contracts | `PROTOTYPE`   |
+| `ghost`                       | `SPECIFIED`   |
+| `unsafe`                      | `SPECIFIED`   |
+| `trusted`                     | `SPECIFIED`   |
+| `decreases`                   | `SPECIFIED`   |
+| proof erasure                 | `PROTOTYPE`   |
 
 ---
 
@@ -372,7 +372,7 @@ premise on its own.
 Equality substitution transports evidence through a proposition context. It is
 a genuinely new capability rather than sugar over the others: without it,
 evidence for `a = b` closes a goal that already is `a = b` and can do nothing
-else. The kernel performs the substitution itself — the context is given to it,
+else. The kernel performs the substitution itself - the context is given to it,
 its hole type-checked against the type the equality is stated at, and the
 resulting proposition derived rather than accepted. Symmetry, and rewriting in
 the opposite direction, are this rule at another context; neither is primitive
@@ -406,25 +406,25 @@ Written proof declarations added no rule of their own: `refl`, `exact`,
 
 # C++ integration status
 
-| Capability                               | Status        |
-| ---------------------------------------- | ------------- |
-| Clang-based C++ semantic integration     | `PROTOTYPE`   |
-| Clang AST bridge                         | `PROTOTYPE`   |
-| Source mapping                           | `PROTOTYPE`   |
-| C++ name lookup reuse                    | `PROTOTYPE`   |
-| C++ overload-resolution reuse            | `PROTOTYPE`   |
-| C++ template interoperability            | `SPECIFIED`   |
-| C++ `constexpr` interoperability         | `SPECIFIED`   |
-| C++ exceptions model                     | `SPECIFIED`   |
-| C++ RTTI model                           | `SPECIFIED`   |
-| C++ ABI preservation                     | `SPECIFIED`   |
-| libc++ interoperability                  | `SPECIFIED`   |
-| Existing native library interoperability | `SPECIFIED`   |
-| C interoperability                       | `SPECIFIED`   |
-| Objective-C++ interoperability           | `SPECIFIED`   |
-| JNI interoperability                     | `SPECIFIED`   |
-| N-API interoperability                   | `SPECIFIED`   |
-| WASM target compatibility                | `SPECIFIED`   |
+| Capability                               | Status      |
+| ---------------------------------------- | ----------- |
+| Clang-based C++ semantic integration     | `PROTOTYPE` |
+| Clang AST bridge                         | `PROTOTYPE` |
+| Source mapping                           | `PROTOTYPE` |
+| C++ name lookup reuse                    | `PROTOTYPE` |
+| C++ overload-resolution reuse            | `PROTOTYPE` |
+| C++ template interoperability            | `SPECIFIED` |
+| C++ `constexpr` interoperability         | `SPECIFIED` |
+| C++ exceptions model                     | `SPECIFIED` |
+| C++ RTTI model                           | `SPECIFIED` |
+| C++ ABI preservation                     | `SPECIFIED` |
+| libc++ interoperability                  | `SPECIFIED` |
+| Existing native library interoperability | `SPECIFIED` |
+| C interoperability                       | `SPECIFIED` |
+| Objective-C++ interoperability           | `SPECIFIED` |
+| JNI interoperability                     | `SPECIFIED` |
+| N-API interoperability                   | `SPECIFIED` |
+| WASM target compatibility                | `SPECIFIED` |
 
 ---
 
@@ -498,19 +498,19 @@ is not implemented.
 
 # Contracts status
 
-| Capability                              | Status        |
-| --------------------------------------- | ------------- |
-| Preconditions (supported fragment)      | `PROTOTYPE`   |
-| Postconditions (supported fragment)     | `PROTOTYPE`   |
-| Function invariants                     | `SPECIFIED`   |
-| Loop invariants                         | `PROTOTYPE`   |
-| Loop termination (`decreases`)          | `SPECIFIED`   |
-| Verification-condition generation (returns/paths) | `PROTOTYPE` |
-| Verification-condition generation (loops) | `PROTOTYPE` |
-| Local versioning (declarations/assignments) | `PROTOTYPE` |
-| Weakest-precondition engine             | `NOT STARTED` |
-| Contract composition                    | `PROTOTYPE`   |
-| Contract reuse across translation units | `NOT STARTED` |
+| Capability                                        | Status        |
+| ------------------------------------------------- | ------------- |
+| Preconditions (supported fragment)                | `PROTOTYPE`   |
+| Postconditions (supported fragment)               | `PROTOTYPE`   |
+| Function invariants                               | `SPECIFIED`   |
+| Loop invariants                                   | `PROTOTYPE`   |
+| Loop termination (`decreases`)                    | `SPECIFIED`   |
+| Verification-condition generation (returns/paths) | `PROTOTYPE`   |
+| Verification-condition generation (loops)         | `PROTOTYPE`   |
+| Local versioning (declarations/assignments)       | `PROTOTYPE`   |
+| Weakest-precondition engine                       | `NOT STARTED` |
+| Contract composition                              | `PROTOTYPE`   |
+| Contract reuse across translation units           | `NOT STARTED` |
 
 ---
 
@@ -789,8 +789,8 @@ AI output must always be independently verified.
 
 # Developer tooling status
 
-| Tool                   | Status        |
-| ---------------------- | ------------- |
+| Tool                    | Status        |
+| ----------------------- | ------------- |
 | Clang-compatible driver | `PROTOTYPE`   |
 | `cppl build`            | `SPECIFIED`   |
 | `cppl check`            | `SPECIFIED`   |
@@ -872,7 +872,7 @@ Until concurrency semantics exist, concurrency must not be silently treated usin
 The implemented TCB is stated in `TRUST.md` 41. There are no axioms and no
 trusted declarations, because no mechanism to introduce one exists yet: a
 `trusted law` is refused rather than accepted. The trust report prints counts it
-can substantiate, and says *not analysed* where C++L does not yet look.
+can substantiate, and says _not analysed_ where C++L does not yet look.
 
 See [TRUST.md](TRUST.md).
 
@@ -981,7 +981,7 @@ clang++
 
 Such prototypes should be marked `PROTOTYPE` rather than presented as broad language support.
 
-The first of these now exists: see *What the current implementation does* above.
+The first of these now exists: see _What the current implementation does_ above.
 It is marked `PROTOTYPE` throughout this document, and the fragment it verifies
 is stated explicitly rather than implied.
 
