@@ -125,9 +125,9 @@ and unmodeled initializer conversions are rejected. Each read repeats its
 local's value, so bodies whose stated terms exceed a fixed size are rejected
 too. Locals add no kernel rule and no runtime change.
 
-This slice does **not** implement induction, dependent types, refinement types,
-loops, ghost state, `unsafe`, `trusted`, conjunction, proof `let` or
-`match`, solvers, proof caching, or any verification of the C++ memory model.
+This slice does **not** implement induction, case analysis (`cases`), dependent
+types, refinement types, loops, ghost state, `unsafe`, `trusted`, conjunction,
+proof `let`, solvers, proof caching, or any verification of the C++ memory model.
 Those remain `SPECIFIED` below.
 
 ---
@@ -217,7 +217,8 @@ The project should not claim broad language implementation before the proof sema
 | `assume`                     | `PROTOTYPE` |
 | `rewrite`                    | `PROTOTYPE` |
 | multi-statement proof bodies | `PROTOTYPE` |
-| proof `let` / `match`        | `SPECIFIED` |
+| proof `let`                  | `SPECIFIED` |
+| proof case analysis `cases`  | `SPECIFIED` |
 | proposition types            | `PROTOTYPE` |
 | universal quantification     | `PROTOTYPE` |
 | implication                  | `PROTOTYPE` |
@@ -225,13 +226,13 @@ The project should not claim broad language implementation before the proof sema
 | existential quantification   | `SPECIFIED` |
 | dependent types              | `SPECIFIED` |
 | refinement types             | `SPECIFIED` |
-| algebraic data types         | `SPECIFIED` |
-| proof-aware pattern matching | `SPECIFIED` |
+| algebraic data types         | `NOT PLANNED` |
+| runtime pattern matching     | `NOT PLANNED` |
 | impossible-state elimination | `SPECIFIED` |
 | definitional equality        | `PROTOTYPE` |
 | propositional equality       | `PROTOTYPE` |
 | normalization                | `PROTOTYPE` |
-| structural induction         | `SPECIFIED` |
+| `induction`                  | `SPECIFIED` |
 | well-founded recursion       | `SPECIFIED` |
 | termination checking         | `SPECIFIED` |
 | `expects` on functions       | `PROTOTYPE` |
@@ -469,18 +470,24 @@ is not implemented.
 
 ---
 
-# Inductive types status
+# Case analysis and induction status
 
-| Capability                 | Status        |
-| -------------------------- | ------------- |
-| Algebraic data type syntax | `SPECIFIED`   |
-| Constructor typing         | `SPECIFIED`   |
-| Exhaustive matching        | `SPECIFIED`   |
-| Pattern-based refinement   | `SPECIFIED`   |
-| Structural induction       | `SPECIFIED`   |
-| Impossible branches        | `SPECIFIED`   |
-| Runtime lowering           | `NOT STARTED` |
-| ABI rules                  | `NOT STARTED` |
+C++L reasons over C++ types and adds no data types of its own (`SPEC.md` §19,
+RFC 0005).
+
+| Capability                                  | Status        |
+| ------------------------------------------- | ------------- |
+| `cases` over C++ values                     | `SPECIFIED`   |
+| Exhaustiveness over C++ value sets          | `SPECIFIED`   |
+| Arm-scoped case hypotheses                  | `SPECIFIED`   |
+| Impossible cases                            | `SPECIFIED`   |
+| `induction` with explicit arms / short form | `SPECIFIED`   |
+| Machine-integer induction principles        | `SPECIFIED`   |
+| Pointer-structure induction (premised)      | `SPECIFIED`   |
+| Proof-only mathematical domains             | `SPECIFIED`   |
+| Source spelling of mathematical domains     | `NOT STARTED` |
+| General-purpose algebraic data types        | `NOT PLANNED` |
+| Runtime pattern matching (`match`)          | `NOT PLANNED` |
 
 ---
 

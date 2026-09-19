@@ -16,15 +16,15 @@ proof       ≈ program/value inhabiting that type
 A theorem such as:
 
 ```text
-∀ x : Nat,
-    add(x, Zero) = x
+∀ x : ℕ,
+    add(x, 0) = x
 ```
 
 can be represented as a dependent function type:
 
 ```text
-Π (x : Nat),
-    Eq(add(x, Zero), x)
+Π (x : ℕ),
+    Eq(add(x, 0), x)
 ```
 
 A valid proof is a program whose type is exactly that proposition.
@@ -33,9 +33,11 @@ Conceptually:
 
 ```text
 add_zero :
-    Π (x : Nat),
-        Eq(add(x, Zero), x)
+    Π (x : ℕ),
+        Eq(add(x, 0), x)
 ```
+
+Here ℕ is mathematical notation, not C++L source syntax. The same shape applies when `x` is a C++ `unsigned`, under machine semantics (`SPEC.md` §21.2).
 
 If the C++L proof kernel verifies that the proof term has this type, the theorem is established.
 
@@ -77,7 +79,7 @@ Its intended contribution is integrating them into a source-compatible C++ super
 | Machine-checked formal mathematics | AUTOMATH                             | Nicolaas de Bruijn                                |
 | Dependent types                    | Intuitionistic dependent type theory | Per Martin-Löf                                    |
 | Identity/equality types            | Martin-Löf type theory               | Per Martin-Löf                                    |
-| Inductive types                    | Constructive type theory             | Per Martin-Löf and related type-theory tradition  |
+| Induction and case analysis        | Constructive type theory             | Per Martin-Löf and related type-theory tradition  |
 | Preconditions/postconditions       | Hoare logic                          | C. A. R. Hoare                                    |
 | Program correctness logic          | Floyd–Hoare reasoning                | Robert W. Floyd, C. A. R. Hoare                   |
 | Weakest preconditions              | Predicate-transformer semantics      | Edsger W. Dijkstra                                |
@@ -207,34 +209,26 @@ An existential theorem must provide both a witness and evidence.
 
 ## Induction
 
-Universal properties over recursively defined types are proven structurally.
+Universal properties over recursively structured domains are proven structurally.
 
-For natural numbers:
-
-```text
-Nat =
-    Zero
-  | Succ(Nat)
-```
-
-to prove:
+For the natural numbers ℕ, to prove:
 
 ```text
-∀ n : Nat,
+∀ n : ℕ,
     P(n)
 ```
 
 it is sufficient to establish:
 
 ```text
-P(Zero)
+P(0)
 ```
 
 and:
 
 ```text
 ∀ n,
-    P(n) → P(Succ(n))
+    P(n) → P(n + 1)
 ```
 
 This proves the property for every natural number without enumerating:
@@ -243,14 +237,15 @@ This proves the property for every natural number without enumerating:
 0, 1, 2, 3, ...
 ```
 
-The same principle applies to:
+C++L applies this principle to the values a C++ program already has. It does not ask the program to redeclare them as inductive types. Each principle must be well founded and must match runtime semantics:
 
-- lists
-- trees
-- syntax trees
-- recursive state machines
-- algebraic data types
-- other inductive structures
+- machine integers, over their actual range, where the successor step never wraps
+- pointer-linked lists and trees, given an explicit well-founded premise such as finite acyclic reachability
+- proof-only mathematical domains such as ℕ, sequences, sets, and maps
+
+Case analysis is the non-recursive form of the same idea: one obligation per case of a value.
+
+The normative rules are in `SPEC.md` §20–§21.
 
 ## Equality
 
@@ -263,7 +258,7 @@ Two terms are definitionally equal when computation reduces them to the same can
 For example:
 
 ```text
-add(Zero, x)
+add(0, x)
 ```
 
 may normalize to:
@@ -272,10 +267,10 @@ may normalize to:
 x
 ```
 
-so:
+when `add` is defined by recursion on its first argument, so:
 
 ```text
-add(Zero, x) ≡ x
+add(0, x) ≡ x
 ```
 
 can be established directly.

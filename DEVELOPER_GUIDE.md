@@ -245,45 +245,35 @@ kernel
 
 # 7. Simple equality proof
 
-Suppose we define natural numbers:
+Proofs are about ordinary C++ functions and types. Suppose we have:
 
 ```cpp
-data Nat {
-    Zero;
-    Succ(Nat);
-};
-```
-
-and addition:
-
-```cpp
-pure Nat add(Nat a, Nat b) {
-    match (b) {
-        Zero      => a;
-        Succ(rest) => Succ(add(a, rest));
-    }
+pure unsigned identity(unsigned x) {
+    return x;
 }
 ```
 
 We can state:
 
 ```cpp
-law add_zero(Nat x)
-    ensures add(x, Zero) == x;
+law identity_returns_input(unsigned x)
+    ensures(identity(x) == x);
 ```
 
-The proof may be immediate because the expression reduces definitionally:
+The proof is immediate because the expression reduces definitionally:
 
 ```cpp
-proof add_zero(Nat x) {
-    reflexivity;
+proof identity_returns_input_holds(unsigned x)
+    proves(identity_returns_input(x))
+{
+    refl;
 }
 ```
 
 Conceptually:
 
 ```text
-add(x, Zero)
+identity(x)
     ↓ normalize
 x
 ```
@@ -291,8 +281,10 @@ x
 Therefore:
 
 ```text
-add(x, Zero) = x
+identity(x) = x
 ```
+
+No new data type is needed. C++L reasons about `unsigned` as C++ defines it.
 
 ---
 
@@ -552,25 +544,35 @@ succeeded = true
 failed = true
 ```
 
-prefer a type like:
+prefer a C++ type like:
 
 ```cpp
-data PaymentResult {
-    Success(Receipt);
-    Failure(Error);
-};
+using PaymentResult = std::variant<Receipt, Error>;
 ```
 
 Now contradictory states are structurally impossible.
 
-Pattern matching can then be exhaustive:
+Executable code keeps branching with ordinary C++, such as `std::visit`. A proof can split the value into its cases:
 
 ```cpp
-match (result) {
-    Success(receipt) => ...
-    Failure(error)   => ...
+proof settle_is_total(PaymentResult result)
+    proves(...)
+{
+    cases result {
+        Receipt => {
+            ...
+        }
+
+        Error => {
+            ...
+        }
+    }
 }
 ```
+
+Each arm is a separate proof obligation. `cases` generates no runtime code.
+
+Cases follow C++ semantics, not just the declared names. A `std::variant` can also be `valueless_by_exception()`, so the proof must show that state cannot occur here or it is rejected. See `SPEC.md` §20.
 
 ---
 
@@ -582,30 +584,62 @@ You do not prove them by testing infinitely many examples.
 
 You prove them symbolically.
 
-For natural numbers:
+You do not need to define natural numbers to do this. Induction works on the C++ types you already have.
+
+For an `unsigned` value:
 
 ```text
-1. prove property for Zero
-2. assume property for n
-3. prove property for Succ(n)
-4. conclude property for every natural number
+1. prove the property for 0u
+2. assume the property for n, where n is below the type's maximum
+3. prove the property for n + 1u
+4. conclude the property for every unsigned value
 ```
 
-Conceptually:
+The step never wraps past the maximum, so the principle matches runtime `unsigned` arithmetic.
+
+Given:
 
 ```cpp
-proof add_zero(Nat n) {
-    induction (n) {
-        case Zero:
-            ...
+pure unsigned add(unsigned a, unsigned b)
+    decreases(a)
+{
+    return a == 0u ? b : add(a - 1u, b) + 1u;
+}
+```
 
-        case Succ(k):
+the proof is:
+
+```cpp
+proof add_zero(unsigned x)
+    proves(add(x, 0u) == x)
+{
+    induction x;
+}
+```
+
+The short form leaves each case to proof automation, whose evidence the kernel still checks.
+
+Cases can also be written out. Every arm uses the same `label => { ... }` form as `cases`:
+
+```cpp
+proof property(Node* n)
+    proves(...)
+{
+    induction n {
+        null => {
             ...
+        }
+
+        node => {
+            ...
+        }
     }
 }
 ```
 
-This establishes the Law for every natural number covered by the type.
+A pointer alone does not support induction, because a `Node*` may be cyclic, dangling, or shared. Induction over a linked structure needs an explicit well-founded premise, such as a proven finite, acyclic list shape. Without one it is rejected.
+
+`induction` is verifier machinery, not runtime branching. It generates no runtime code.
 
 ---
 
@@ -628,10 +662,10 @@ C++L therefore tracks termination where logical consistency requires it.
 Recursive functions may need to demonstrate structural descent:
 
 ```cpp
-pure Nat length(List xs)
-    decreases xs
+pure unsigned gcd(unsigned a, unsigned b)
+    decreases(b)
 {
-    ...
+    return b == 0u ? a : gcd(b, a % b);
 }
 ```
 
@@ -643,10 +677,10 @@ or another well-founded measure.
 
 Some expressions are equal because computation reduces them to the same normal form.
 
-Example:
+Example, with `add` from §15:
 
 ```text
-add(x, Zero)
+add(0u, x)
 ```
 
 reduces to:
@@ -656,6 +690,8 @@ x
 ```
 
 Therefore the equality may require no separate theorem.
+
+By contrast, `add(x, 0u) == x` does not reduce this way, because `add` recurses on its first argument. It needs induction (§15).
 
 This is **definitional equality**.
 

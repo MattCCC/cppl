@@ -145,8 +145,6 @@ expects
 ensures
 decreases
 invariant
-data
-match
 forall
 exists
 ```
@@ -158,6 +156,20 @@ result
 old
 self
 ```
+
+The following words have special meaning only as proof statements inside a proof body (§15):
+
+```text
+refl
+exact
+apply
+assume
+rewrite
+cases
+induction
+```
+
+C++L does not define `data` or `match`. It introduces no algebraic data types and no runtime pattern matching (§19).
 
 Existing C++ keywords retain their existing C++ meaning.
 
@@ -367,7 +379,7 @@ Definitional equality requires no explicit equality theorem.
 Example:
 
 ```text
-add(x, Zero)
+identity(x)
 ```
 
 may reduce definitionally to:
@@ -376,7 +388,7 @@ may reduce definitionally to:
 x
 ```
 
-if `add` is defined accordingly.
+if `identity` is defined to return its argument.
 
 ---
 
@@ -1395,77 +1407,141 @@ Proof-only indices MUST NOT change runtime ABI merely by existing in the formal 
 
 ---
 
-# 19. Inductive data types
+# 19. Reasoning over C++ types
 
-C++L provides algebraic/inductive data declarations through `data`.
+C++L reasons directly over C++ types.
+
+The types a verified program uses are the types its C++ source declares, as resolved by Clang:
+
+```text
+struct
+class
+enum
+std::variant and other library types
+pointers
+references
+arrays
+integers
+templates
+functions
+```
+
+C++L does not introduce general-purpose algebraic data types or runtime pattern matching.
+
+A program MUST NOT be required to restate a C++ type in a second, logical type language before properties of its values can be proven.
+
+C++L MAY provide proof-only mathematical domains (§19.1) and proof constructs such as exhaustive case analysis (§20) and induction (§21). All such constructs are erased and have no runtime representation.
+
+The rationale is recorded in `docs/rfcs/0005-cxx-types-case-analysis-induction.md`.
+
+---
+
+## 19.1 Proof-only mathematical domains
+
+Specifications and proofs MAY use mathematical domains such as:
+
+```text
+ℕ          natural numbers
+ℤ          mathematical integers
+Seq⟨T⟩     finite sequences
+Set⟨T⟩     sets
+Map⟨K,V⟩   finite maps
+```
+
+These names are metanotation. They are not C++L source syntax and are not reserved identifiers.
+
+The source-level spelling of mathematical domains is not specified. Any future spelling MUST:
+
+```text
+not reuse a C++ keyword
+not ambiguously shadow common C++ or std names
+keep mathematical and machine integers visibly distinct
+remain verification-only
+```
+
+A mathematical domain has no runtime representation. Its values MUST NOT appear in executable code, runtime object layout, or ABI.
+
+A C++ value is never silently a mathematical value. A machine integer type is neither ℕ nor ℤ (§29.1). Relating a C++ value to a mathematical one requires an explicit, defined mapping whose side conditions are proof obligations.
+
+---
+
+## 19.2 Abstract models
+
+A specification MAY relate a C++ object to an abstract mathematical value, such as a `std::vector<int>` to a sequence of `int`.
+
+The function relating them is proof-only.
+
+What that function states about a C++ type MUST be established by proof or declared as an explicit trusted assumption (§27). It MUST NOT be inferred.
+
+---
+
+# 20. Case analysis
+
+`cases` splits a proof obligation into one obligation for every case of a value.
 
 Example:
 
 ```cpp
-data Nat {
-    Zero;
-    Succ(Nat predecessor);
-};
+proof foo(Result r)
+    proves(...)
+{
+    cases r {
+        Result::ok => {
+            ...
+        }
+
+        Result::error => {
+            ...
+        }
+    }
+}
 ```
 
-A `data` declaration defines a closed set of constructors.
+`cases` is a proof statement (§15). It is not runtime control flow and generates no runtime code.
 
 ---
 
-## 19.1 Constructor validity
+## 20.1 Case sets
 
-Every runtime or formal value of an inductive type MUST correspond to one of its declared constructors.
+The cases of a value are determined by its C++ type under the selected C++ semantics.
 
----
+An arm label names one case, for example one enumerator of an enumeration.
 
-## 19.2 Recursive types
-
-Recursive inductive types used in the proof system MUST satisfy the positivity requirements necessary to preserve logical consistency.
-
-Unrestricted negative recursive types MUST NOT be admitted into proof-relevant formal reasoning.
+Case analysis over a type whose cases the verifier does not model MUST be rejected.
 
 ---
 
-## 19.3 Runtime data
+## 20.2 Exhaustiveness
 
-A `data` type MAY be used at runtime.
+Case analysis MUST be exhaustive over the type's C++ value set, not merely over its declared names.
 
-Its runtime representation is not required to expose proof-only metadata.
+For example:
 
-The representation MUST preserve the observable semantics of the declared constructors.
+```text
+an enumeration with a fixed underlying type
+    may hold values other than its enumerators
 
----
-
-# 20. Pattern matching
-
-C++L provides structural pattern matching through `match`.
-
-Example:
-
-```cpp
-return match (value) {
-    Zero => 0;
-    Succ(n) => 1 + to_int(n);
-};
+a std::variant
+    may be valueless_by_exception()
 ```
 
----
-
-## 20.1 Exhaustiveness
-
-A match over a closed inductive type MUST be exhaustive unless impossibility of omitted constructors is formally established.
+When the labelled arms do not cover the full value set by construction, `cases` generates an additional exhaustiveness obligation. That obligation MUST be discharged from the proof context, or the proof is rejected.
 
 ---
 
-## 20.2 Branch assumptions
+## 20.3 Arm hypotheses
 
-Within a match branch, the selected constructor and its associated fields become known facts.
+Within an arm, the fact that the value belongs to that arm's case is a hypothesis.
+
+It is available only inside that arm and MUST NOT escape it.
+
+Every arm must establish the enclosing goal.
 
 ---
 
-## 20.3 Impossible branches
+## 20.4 Impossible cases
 
-A branch proven impossible need not produce a runtime case.
+A case may be closed by evidence that it cannot occur.
 
 Impossibility MUST be established formally rather than guessed from control-flow heuristics.
 
@@ -1473,27 +1549,107 @@ Impossibility MUST be established formally rather than guessed from control-flow
 
 # 21. Induction
 
-C++L supports inductive proof over inductive values.
+`induction` proves a proposition for every value of a domain by applying that domain's induction principle.
 
-For a natural-number-like type, induction has the conceptual form:
+Example:
+
+```cpp
+proof property(Node* n)
+    proves(...)
+{
+    induction n {
+        null => {
+            ...
+        }
+
+        node => {
+            ...
+        }
+    }
+}
+```
+
+Each arm establishes one case of the principle. In a step case, the induction hypothesis is available as a hypothesis.
+
+The short form:
+
+```cpp
+proof add_zero(unsigned x)
+    proves(add(x, 0u) == x)
+{
+    induction x;
+}
+```
+
+leaves every case to proof automation (§15.4). Automation that closes a case MUST produce valid proof evidence. A case it cannot close leaves the proof unproven.
+
+`induction` is a proof statement (§15). It is not runtime control flow and generates no runtime code.
+
+---
+
+## 21.1 Induction principles
+
+Induction MUST follow the induction principle associated with the value's domain.
+
+An induction principle MUST be well founded and MUST correspond to the runtime semantics of that domain.
+
+Induction over a domain without a defined principle MUST be rejected.
+
+An implementation MAY provide convenient tactic syntax.
+
+Convenience syntax does not alter the induction rule.
+
+---
+
+## 21.2 Machine integers
+
+For an unsigned integer type `T` whose maximum value is `max`, the principle has the form:
 
 ```text
-P(Zero)
+P(0)
+
+∀ n : T,
+    n < max → P(n) → P(n + 1)
+
+therefore:
+
+∀ n : T,
+    P(n)
+```
+
+The successor step applies only below `max`. It never wraps.
+
+Principles for other integer types MUST likewise respect their machine range and defined behavior (§29).
+
+---
+
+## 21.3 Pointer-linked structures
+
+A pointer type has no induction principle by type alone.
+
+A value of type `Node*` may be null, cyclic, dangling, or shared.
+
+Induction over a pointer-linked structure MUST be justified by an explicit well-founded premise, such as finite acyclic reachability under the memory model (§32).
+
+Without such a premise it MUST be rejected.
+
+---
+
+## 21.4 Mathematical domains
+
+For ℕ the principle has the conceptual form:
+
+```text
+P(0)
 
 ∀ n,
-    P(n) → P(Succ(n))
+    P(n) → P(n + 1)
 
 therefore:
 
 ∀ n,
     P(n)
 ```
-
-Induction MUST follow the induction principle associated with the relevant inductive type.
-
-An implementation MAY provide convenient tactic syntax.
-
-Convenience syntax does not alter the induction rule.
 
 ---
 
@@ -1539,10 +1695,10 @@ decreases(expression)
 Example:
 
 ```cpp
-pure Nat length(List xs)
-    decreases(xs)
+pure unsigned gcd(unsigned a, unsigned b)
+    decreases(b)
 {
-    ...
+    return b == 0u ? a : gcd(b, a % b);
 }
 ```
 
@@ -2185,6 +2341,8 @@ expects
 ensures
 law associations
 proof declarations
+case analysis and induction
+proof-only mathematical domains
 ghost state
 trusted metadata
 unsafe metadata
@@ -2194,7 +2352,7 @@ Proof-only values are absent from runtime calling conventions.
 
 Refinement types use their base runtime representation unless explicitly specified otherwise.
 
-New runtime C++L types such as `data` declarations may define new runtime representations because they introduce new types rather than modifying existing C++ ABI.
+Case analysis, induction, and proof-only mathematical domains have no runtime representation (§19–§21).
 
 ---
 
@@ -2458,22 +2616,19 @@ PROVEN
 
 # 51. Impossible states
 
-C++L encourages types that encode mutually exclusive states directly.
+C++L encourages C++ types that encode mutually exclusive states directly.
 
 For example:
 
 ```cpp
-data PaymentResult {
-    Success(Receipt receipt);
-    Failure(Error error);
-};
+using PaymentResult = std::variant<Receipt, Error>;
 ```
 
-represents exactly one constructor at a time.
+holds one alternative at a time. After an exception during assignment it may hold none (`valueless_by_exception()`).
 
-A closed inductive type may therefore make states structurally impossible that would otherwise require Boolean invariants.
+Such a type may make states structurally impossible that would otherwise require Boolean invariants.
 
-Proofs may rely on such constructor exclusivity.
+Proofs may rely on that exclusivity through case analysis (§20), which must also account for every other state C++ permits.
 
 ---
 
@@ -2691,6 +2846,9 @@ a replacement native ABI
 a mandatory runtime proof engine
 a rewrite of existing C++ dependencies
 whole-program verification before any code can compile
+general-purpose algebraic data types
+runtime pattern matching
+a logical restatement of the program's C++ types
 ```
 
 These are not requirements of the C++L language model.

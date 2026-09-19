@@ -46,8 +46,9 @@ Deliverables:
 - dependent function types
 - universal quantification
 - existential quantification
-- inductive data
-- structural induction
+- case analysis over C++ types
+- induction principles
+- proof-only mathematical domains
 - refinement propositions
 - normalization semantics
 - termination semantics
@@ -175,9 +176,11 @@ where
 expects
 ensures
 decreases
-data
-match
+cases
+induction
 ```
+
+`cases` and `induction` are proof statements only. C++L adds no data-type declarations or runtime pattern matching.
 
 Exit criterion:
 
@@ -248,25 +251,28 @@ Exit criterion:
 
 # Phase 7 - Induction and recursive proofs
 
-Implement:
+Implement, over ordinary C++ types:
 
-- inductive data
-- exhaustive matching
-- structural induction
-- impossible states
+- exhaustive case analysis (`cases`)
+- induction (`induction`) for machine integers and well-founded C++ structures
+- impossible cases
 - recursive proofs
 - termination checking
+- proof-only mathematical domains (ℕ, ℤ, sequences, sets, maps), once their source spelling is fixed by RFC
 
 Example:
 
 ```cpp
-law append_identity<T>(List<T> xs)
-    proves append(xs, Nil) == xs;
+proof add_zero(unsigned x)
+    proves(add(x, 0u) == x)
+{
+    induction x;
+}
 ```
 
 Exit criterion:
 
-> C++L can prove universal properties of recursively defined data without enumeration.
+> C++L can prove universal properties of C++ values without enumeration and without redeclaring C++ types.
 
 ---
 

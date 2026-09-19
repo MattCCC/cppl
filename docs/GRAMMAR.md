@@ -52,8 +52,6 @@ expects
 ensures
 decreases
 invariant
-data
-match
 forall
 exists
 ```
@@ -67,6 +65,20 @@ self
 ```
 
 have special meaning only in the specification contexts defined below.
+
+The proof-statement words:
+
+```text
+refl
+exact
+apply
+assume
+rewrite
+cases
+induction
+```
+
+have special meaning only as statements inside a proof body (§5).
 
 Ordinary C++ remains valid:
 
@@ -88,7 +100,6 @@ cppl-declaration
     ::= law-declaration
      | proof-declaration
      | refinement-type-declaration
-     | data-declaration
      | ghost-declaration
      | trusted-declaration
      | verified-function-declaration
@@ -211,7 +222,8 @@ proof-statement
      | "assume" identifier ":" specification-expression ";"
      | "rewrite" qualified-id [proof-argument-list] ";"
      | proof-let-statement
-     | proof-match-statement
+     | cases-statement
+     | induction-statement
 ```
 
 The language MAY grow additional derived proof syntax without changing the primitive proof semantics.
@@ -426,6 +438,103 @@ a  ↦  b
 
 Reverse rewriting, if introduced, must be explicit rather than inferred
 heuristically.
+
+---
+
+## 5.6 `cases`
+
+```ebnf
+cases-statement
+    ::= "cases" identifier
+        "{" proof-arm {proof-arm} "}"
+```
+
+`cases x { ... }` splits the current goal into one obligation for every case of
+`x`. Each arm proves the goal for one case, with that case as a hypothesis.
+
+```cpp
+proof foo(Result r)
+    proves(...)
+{
+    cases r {
+        Result::ok => {
+            ...
+        }
+
+        Result::error => {
+            ...
+        }
+    }
+}
+```
+
+The cases come from the C++ type of `x`, and exhaustiveness is judged against
+that type's full C++ value set (SPEC.md 20). `cases` is not runtime control flow
+and generates no runtime code.
+
+---
+
+## 5.7 `induction`
+
+```ebnf
+induction-statement
+    ::= "induction" identifier ";"
+     | "induction" identifier
+        "{" proof-arm {proof-arm} "}"
+```
+
+`induction x { ... }` proves the current goal for every value of `x` by the
+induction principle of its domain. Each arm proves one case of that principle.
+
+```cpp
+proof property(Node* n)
+    proves(...)
+{
+    induction n {
+        null => {
+            ...
+        }
+
+        node => {
+            ...
+        }
+    }
+}
+```
+
+`induction x;` leaves every case to proof automation, which must still produce
+kernel-checked evidence:
+
+```cpp
+proof add_zero(unsigned x)
+    proves(add(x, 0u) == x)
+{
+    induction x;
+}
+```
+
+A domain without a defined, well-founded principle is rejected (SPEC.md 21).
+`induction` is not runtime control flow and generates no runtime code.
+
+---
+
+## 5.8 Proof arms
+
+`cases` and `induction` share one arm grammar:
+
+```ebnf
+proof-arm
+    ::= proof-arm-label "=>" proof-body
+
+proof-arm-label
+    ::= id-expression
+```
+
+`id-expression` is the C++ category covering both `Result::ok` and `null`. The
+enclosing construct determines which labels are valid (§18). Each label may
+appear at most once. An arm body is an ordinary proof body, so arms nest.
+
+The C++ keyword `case` is not part of this grammar.
 
 ---
 
@@ -822,144 +931,82 @@ This intentionally aligns with C++ template-like type syntax.
 
 ---
 
-# 17. Inductive `data` declaration
+# 17. Data types are C++ types
 
-The canonical syntax is:
+C++L has no declaration syntax for algebraic or inductive data types.
 
-```ebnf
-data-declaration
-    ::= "data" identifier
-        ["(" [formal-index-parameter-list] ")"]
-        "{"
-        {data-constructor-declaration}
-        "}"
-        ";"
-
-data-constructor-declaration
-    ::= identifier
-        ["(" [parameter-declaration-list] ")"]
-        ";"
-```
-
-Example:
+The data a C++L program reasons about is declared with ordinary C++:
 
 ```cpp
-data Nat {
-    Zero;
-    Succ(Nat predecessor);
+enum class Result { ok, error };
+
+struct Node {
+    int value;
+    Node* next;
 };
+
+using PaymentResult = std::variant<Receipt, Error>;
 ```
 
-Example:
-
-```cpp
-data PaymentResult {
-    Success(Receipt receipt);
-    Failure(Error error);
-};
-```
-
-Constructors are named members of the declared closed type.
+Laws, proofs, `cases`, and `induction` refer to these types directly. See
+SPEC.md 19.
 
 ---
 
-# 18. Constructor syntax
+# 18. Case labels
 
-Nullary constructor use:
+A `proof-arm-label` (§5.8) names one case of the construct that encloses it:
 
-```cpp
-Nat n = Zero;
+```text
+cases over an enumeration
+    its enumerators, as qualified-ids
+
+cases over a std::variant
+    its alternative types
+
+induction
+    the case names of the domain's induction principle
 ```
 
-Constructor with arguments:
+A label that does not name a case of the enclosing construct is an error.
 
-```cpp
-Nat n = Succ(previous);
-```
-
-The exact namespace qualification rules follow the declaration's ordinary C++ scope.
-
-An implementation MAY expose constructors as scoped names where required to avoid ambiguity.
+Where a construct's labels do not cover the value's full C++ value set, the
+construct generates an exhaustiveness obligation rather than assuming coverage
+(SPEC.md 20.2). The syntax of an arm covering the remaining values is not yet
+specified.
 
 ---
 
-# 19. Pattern matching
+# 19. No runtime pattern matching
 
-The canonical expression syntax is:
+C++L defines no `match` expression or statement.
 
-```ebnf
-match-expression
-    ::= "match" "(" expression ")"
-        "{"
-        {match-arm}
-        "}"
-
-match-arm
-    ::= pattern "=>" expression ";"
-
-pattern
-    ::= constructor-pattern
-     | identifier
-     | "_"
-
-constructor-pattern
-    ::= qualified-id
-        ["(" [pattern-list] ")"]
-
-pattern-list
-    ::= pattern {"," pattern}
-```
-
-Example:
+Executable code branches with ordinary C++:
 
 ```cpp
-int to_int(Nat value) {
-    return match (value) {
-        Zero => 0;
-        Succ(n) => 1 + to_int(n);
-    };
+switch (r) {
+case Result::ok:
+    ...
+    break;
+case Result::error:
+    ...
+    break;
 }
 ```
 
-Wildcard:
-
-```cpp
-match (value) {
-    Success(receipt) => handle(receipt);
-    _ => fallback();
-};
-```
+`cases` and `induction` are proof statements (§5.6, §5.7). They cannot appear in
+executable code and have no runtime representation.
 
 ---
 
-# 20. Match statement form
+# 20. Mathematical domains are not source syntax
 
-Where an expression result is not required, the statement form is:
+Specifications may eventually use proof-only mathematical domains, written in
+documentation as ℕ, ℤ, Seq⟨T⟩, Set⟨T⟩, and Map⟨K,V⟩.
 
-```ebnf
-match-statement
-    ::= "match" "(" expression ")"
-        "{"
-        {match-statement-arm}
-        "}"
-
-match-statement-arm
-    ::= pattern "=>" statement
-```
-
-Example:
-
-```cpp
-match (result) {
-    Success(receipt) => {
-        print(receipt);
-    }
-
-    Failure(error) => {
-        log(error);
-    }
-}
-```
+Those names are metanotation. This grammar defines no source spelling for them,
+and none of them is a reserved or contextual C++L word. In particular, C++ `int`
+never denotes mathematical integers. See SPEC.md 19.1.
 
 ---
 
@@ -1427,7 +1474,6 @@ Unless a more specific rule applies:
 - `proof` declarations may appear at namespace or class scope;
 - local proof declarations MAY be supported only where explicitly defined;
 - refinement `type` declarations may appear at namespace or class scope;
-- `data` declarations may appear wherever an ordinary type declaration is permitted;
 - `ghost` declarations may appear in specification/proof-enabled block scope;
 - `unsafe` blocks appear in statement context.
 
@@ -1693,7 +1739,8 @@ type Percentage =
 
 Proof declarations contain a body and do not require an additional semicolon after the closing brace.
 
-`data` declarations end with `;` after the closing brace.
+`cases` and `induction` statements with arms end at their closing brace. The
+short form `induction x;` ends with `;`.
 
 ---
 
@@ -1799,11 +1846,6 @@ verified pure int checked_identity(int x)
 
 type Percentage =
     int where(self >= 0 && self <= 100);
-
-data Result {
-    Success(int value);
-    Failure(int error);
-};
 ```
 
 This example demonstrates the canonical syntax for:
@@ -1819,7 +1861,6 @@ ensures
 type
 where
 self
-data
 ```
 
 ---
@@ -1833,7 +1874,6 @@ cppl-declaration
     ::= law-declaration
      | proof-declaration
      | refinement-type-declaration
-     | data-declaration
      | ghost-declaration
      | cppl-function-declaration
 
@@ -1863,18 +1903,20 @@ refinement-type-declaration
         "where" "(" specification-expression ")"
         ";"
 
-data-declaration
-    ::= "data" identifier
-        ["(" [formal-index-parameter-list] ")"]
-        "{"
-        {data-constructor-declaration}
-        "}"
-        ";"
+cases-statement
+    ::= "cases" identifier
+        "{" proof-arm {proof-arm} "}"
 
-data-constructor-declaration
-    ::= identifier
-        ["(" [parameter-declaration-list] ")"]
-        ";"
+induction-statement
+    ::= "induction" identifier ";"
+     | "induction" identifier
+        "{" proof-arm {proof-arm} "}"
+
+proof-arm
+    ::= proof-arm-label "=>" proof-body
+
+proof-arm-label
+    ::= id-expression
 
 ghost-declaration
     ::= "ghost" simple-declaration
