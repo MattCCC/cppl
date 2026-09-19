@@ -29,53 +29,54 @@ C++L is an attempt to answer that question while preserving the C++ runtime, ABI
 
 ## Core idea
 
-```text
-C++L source
-=
-C++ runtime code
-+
-formal Laws
-+
-proofs
-+
-dependent/refinement types
-+
-compile-time correctness information
+```mermaid
+flowchart TD
+    RUNTIME["C++ runtime code"]
+    LAWS["formal Laws"]
+    PROOFS["proofs"]
+    TYPES["dependent / refinement types"]
+    CTINFO["compile-time correctness information"]
 
-        ↓
+    SRC["C++L source"]
 
-C++L compiler/checker
+    RUNTIME --> SRC
+    LAWS --> SRC
+    PROOFS --> SRC
+    TYPES --> SRC
+    CTINFO --> SRC
 
-        ↓
+    SRC --> CHECKER["C++L compiler / checker"]
 
-prove:
-- Laws
-- invariants
-- dependent relationships
-- refinements
-- equality
-- termination
-- safety obligations
+    CHECKER --> PROVE["Prove"]
 
-        ↓
+    PROVE --> P1["Laws"]
+    PROVE --> P2["invariants"]
+    PROVE --> P3["dependent relationships"]
+    PROVE --> P4["refinements"]
+    PROVE --> P5["equality"]
+    PROVE --> P6["termination"]
+    PROVE --> P7["safety obligations"]
 
-erase:
-- proofs
-- ghost state
-- theorem-only values
-- compile-time-only type information
+    P1 --> ERASE["Erase"]
+    P2 --> ERASE
+    P3 --> ERASE
+    P4 --> ERASE
+    P5 --> ERASE
+    P6 --> ERASE
+    P7 --> ERASE
 
-        ↓
+    ERASE --> E1["proofs"]
+    ERASE --> E2["ghost state"]
+    ERASE --> E3["theorem-only values"]
+    ERASE --> E4["compile-time-only type information"]
 
-ordinary C++
+    E1 --> CPP["ordinary C++"]
+    E2 --> CPP
+    E3 --> CPP
+    E4 --> CPP
 
-        ↓
-
-Clang / LLVM
-
-        ↓
-
-normal native binary
+    CPP --> CLANG["Clang / LLVM"]
+    CLANG --> BIN["normal native binary"]
 ```
 
 C++L requires no dedicated proof VM, theorem runtime, garbage collector, or alternate execution model.
