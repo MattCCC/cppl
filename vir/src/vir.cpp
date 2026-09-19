@@ -55,6 +55,13 @@ std::string describe(const Expr& expr) {
                 return node.operands.size() == 3 ? "if(" + describe(node.operands[0]) + ", " +
                     describe(node.operands[1]) + ", " + describe(node.operands[2]) + ")"
                     : "<malformed-conditional>";
+            } else if constexpr (std::is_same_v<Node, LocalVersion>) {
+                return node.operands.size() == 2
+                    ? "let " + node.name + "#" + std::to_string(node.version) + " = " +
+                          describe(node.operands[0]) + " in " + describe(node.operands[1])
+                    : "<malformed-local>";
+            } else if constexpr (std::is_same_v<Node, LocalRef>) {
+                return node.name + "#" + std::to_string(node.version);
             } else {
                 if (node.operands.size() != 2) {
                     return "<malformed-binary>";

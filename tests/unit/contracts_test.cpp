@@ -114,7 +114,146 @@ o::Program branching() {
     return program;
 }
 
+v::Expr number(std::int64_t value) {
+    v::Expr expression;
+    expression.type = vUnsigned;
+    expression.node = v::IntLiteral{value};
+    return expression;
+}
+
+v::Expr local(std::uint32_t version) {
+    v::Expr expression;
+    expression.type = vUnsigned;
+    expression.node = v::LocalRef{version, "y"};
+    return expression;
+}
+
+v::Expr versioned(std::uint32_t version, v::Expr value, v::Expr body) {
+    v::Expr expression;
+    expression.type = body.type;
+    expression.node = v::LocalVersion{version, "y", {std::move(value), std::move(body)}};
+    return expression;
+}
+
+// `y = 7; y = x; return y;` against `result == x`. Reading the version the
+// assignment established proves the contract; reading the one the initializer
+// established would prove a false one.
+o::Program assigned(std::uint32_t observed) {
+    auto function = first();
+    function.returned_value = versioned(0, number(7), versioned(1, parameter(0), local(observed)));
+    cppl::elaboration::Result elaborated;
+    elaborated.module.functions.push_back(std::move(function));
+    cppl::diagnostics::Engine engine;
+    auto program = o::generate(elaborated.module, elaborated, engine);
+    CPPL_CHECK(!engine.has_errors());
+    return program;
+}
+
+// `y = callee(y, x); if (x == y) return y; else return y;` - the call belongs
+// to the declaration, not to either arm.
+o::Program anchored() {
+    auto callee = first();
+    callee.id = v::FunctionId{0};
+    callee.contract->precondition = equality(parameter(0), parameter(1));
+    auto caller = first();
+    caller.id = v::FunctionId{1};
+    caller.symbol = v::SymbolId{"anchor"};
+    caller.qualified_name = "anchor";
+    caller.contract = v::Contract{equality(parameter(0), parameter(1)),
+                                  equality(parameter(2), parameter(1)), {}};
+    v::Expr call;
+    call.id = v::ExprId{1};
+    call.type = vUnsigned;
+    call.node = v::Call{callee.symbol, callee.qualified_name, {parameter(1), parameter(0)}};
+    v::Expr branch;
+    branch.id = v::ExprId{2};
+    branch.type = vUnsigned;
+    branch.node = v::Conditional{{equality(parameter(0), parameter(1)), local(0), local(0)}};
+    caller.returned_value = versioned(0, std::move(call), std::move(branch));
+    cppl::elaboration::Result elaborated;
+    elaborated.module.functions = {std::move(caller), std::move(callee)};
+    cppl::diagnostics::Engine engine;
+    auto program = o::generate(elaborated.module, elaborated, engine);
+    CPPL_CHECK(!engine.has_errors());
+    return program;
+}
+
 }  // namespace
+
+CPPL_TEST(a_return_observes_the_version_its_path_established) {
+    const auto latest = assigned(1);
+    cppl::diagnostics::Engine engine;
+    for (const auto& result : cppl::automation::verify(latest, engine)) {
+        CPPL_CHECK(result.verdict.is_proven());
+    }
+    CPPL_CHECK(!engine.has_errors());
+
+    const auto stale = assigned(0);
+    CPPL_CHECK(!(latest.obligations.front().id == stale.obligations.front().id));
+    cppl::diagnostics::Engine stale_engine;
+    const auto results = cppl::automation::verify(stale, stale_engine);
+    CPPL_CHECK(!results.front().verdict.is_proven());
+}
+
+CPPL_TEST(a_call_bound_to_a_local_is_proven_before_the_guards_that_follow_it) {
+    const auto program = anchored();
+    const auto& caller = program.contracts.back();
+    CPPL_CHECK_EQ(caller.paths.size(), std::size_t{2});
+    for (const auto& path : caller.paths) {
+        CPPL_CHECK_EQ(path.conditions.size(), std::size_t{1});
+        CPPL_CHECK_EQ(path.calls.size(), std::size_t{1});
+        // No condition is in scope where the call is made, so no guard can
+        // justify its precondition.
+        CPPL_CHECK_EQ(path.calls.front().conditions, std::size_t{0});
+    }
+    cppl::diagnostics::Engine engine;
+    for (const auto& result : cppl::automation::verify(program, engine)) {
+        CPPL_CHECK(result.verdict.is_proven());
+    }
+    CPPL_CHECK(!engine.has_errors());
+}
+
+// Malformed VIR in which the false arm reads a version only the true arm
+// established: `if (x == y) { v0 = 0; return v0; } return v0;`.
+CPPL_TEST(a_version_never_escapes_the_arm_that_established_it) {
+    auto function = first();
+    function.returned_value->node = v::Conditional{
+        {equality(parameter(0), parameter(1)), versioned(0, number(0), local(0)), local(0)}};
+    cppl::elaboration::Result elaborated;
+    elaborated.module.functions.push_back(std::move(function));
+    cppl::diagnostics::Engine engine;
+    const auto program = o::generate(elaborated.module, elaborated, engine);
+    CPPL_CHECK(engine.has_errors());
+    CPPL_CHECK(program.contracts.empty());
+}
+
+// A version bound twice on one path is malformed, not a reassignment.
+CPPL_TEST(a_version_is_bound_once) {
+    auto function = first();
+    function.returned_value = versioned(0, parameter(0), versioned(0, number(0), local(0)));
+    cppl::elaboration::Result elaborated;
+    elaborated.module.functions.push_back(std::move(function));
+    cppl::diagnostics::Engine engine;
+    const auto program = o::generate(elaborated.module, elaborated, engine);
+    CPPL_CHECK(engine.has_errors());
+    CPPL_CHECK(program.contracts.empty());
+}
+
+// A value that reads its own version, directly or through a later one, is a
+// cycle; it is refused instead of replayed without end.
+CPPL_TEST(a_version_cannot_read_itself) {
+    for (auto body : {versioned(0, local(0), local(0)),
+                      versioned(1, number(0), versioned(0, local(1), local(0)))}) {
+        auto function = first();
+        function.returned_value = std::move(body);
+        cppl::elaboration::Result elaborated;
+        elaborated.module.functions.push_back(std::move(function));
+        cppl::diagnostics::Engine engine;
+        const auto program = o::generate(elaborated.module, elaborated, engine);
+        CPPL_CHECK(engine.has_errors());
+        CPPL_CHECK(program.contracts.empty());
+    }
+}
 
 CPPL_TEST(result_substitution_closes_over_the_correct_parameter) {
     const auto program = generate(first());

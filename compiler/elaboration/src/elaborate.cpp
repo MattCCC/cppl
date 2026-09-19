@@ -147,6 +147,24 @@ public:
             result.node = std::move(converted);
             return result;
         }
+
+        if (const auto* bound = std::get_if<clangbridge::LocalVersion>(&expr.node)) {
+            vir::LocalVersion converted;
+            converted.version = bound->version;
+            converted.name = bound->name;
+            for (const auto& operand : bound->operands) {
+                auto value = convert(operand);
+                if (!value) return std::nullopt;
+                converted.operands.push_back(std::move(*value));
+            }
+            result.node = std::move(converted);
+            return result;
+        }
+
+        if (const auto* local = std::get_if<clangbridge::LocalRef>(&expr.node)) {
+            result.node = vir::LocalRef{local->version, local->name};
+            return result;
+        }
         const auto& unsupported = std::get<clangbridge::Unsupported>(expr.node);
         failure_ = Failure{unsupported.reason, expr.location};
         return std::nullopt;
@@ -174,6 +192,9 @@ void collect_callees(const vir::Expr& expr, std::vector<vir::SymbolId>& callees)
     }
     if (const auto* branch = std::get_if<vir::Conditional>(&expr.node)) {
         for (const auto& operand : branch->operands) collect_callees(operand, callees);
+    }
+    if (const auto* bound = std::get_if<vir::LocalVersion>(&expr.node)) {
+        for (const auto& operand : bound->operands) collect_callees(operand, callees);
     }
     if (const auto* negation = std::get_if<vir::Negation>(&expr.node)) {
         for (const auto& operand : negation->operands) collect_callees(operand, callees);
@@ -662,7 +683,9 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
                         "it calls a function that is not declared pure, so its value is not "
                         "a mathematical function of its arguments";
                 } else if (candidate.pure && calls_only_pure &&
-                           !std::holds_alternative<vir::Conditional>(converted.returned_value->node)) {
+                           !std::holds_alternative<vir::Conditional>(converted.returned_value->node) &&
+                           !std::holds_alternative<vir::LocalVersion>(
+                               converted.returned_value->node)) {
                     converted.purity = vir::Purity::Pure;
                 } else if (candidate.pure && candidate.contract == nullptr) {
                     rejection = "pure specification helpers require a single return expression";

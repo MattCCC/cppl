@@ -12,6 +12,7 @@ namespace cppl::clangbridge {
 namespace {
 
 constexpr unsigned kMaxExpressionDepth = 128;
+constexpr std::size_t kMaxReturnPaths = 128;
 
 class ScopedString {
 public:
@@ -66,6 +67,14 @@ Type convert_type(CXType type) {
 
     Type converted;
     converted.spelling = take(clang_getTypeSpelling(canonical));
+
+    // A volatile glvalue is read for its effect, not for a value that is a
+    // function of anything C++L models, so it is not a modeled type at all
+    // (AGENTS.md 11). `const` is not such a qualifier: it constrains writes,
+    // and the value read is the ordinary one.
+    if (clang_isVolatileQualifiedType(canonical) != 0) {
+        return converted;
+    }
 
     const long long size = clang_Type_getSizeOf(canonical);
     const bool layout_known = size > 0 && size <= 8;
@@ -145,7 +154,37 @@ Expr unsupported_expression(CXCursor cursor, std::string reason) {
     return expr;
 }
 
-Expr build_expression(CXCursor cursor, const std::vector<CXCursor>& parameters, unsigned depth);
+// A local's identity is the declaration Clang resolved; its current logical
+// version is what a read of it denotes. Shadowing needs no rule of its own,
+// because an inner declaration is a different declaration.
+struct Local {
+    CXCursor declaration;
+    std::uint32_t version = 0;
+    Type type;
+};
+
+using Locals = std::vector<Local>;
+
+std::optional<std::size_t> find_local(const Locals& locals, CXCursor declaration) {
+    for (std::size_t index = locals.size(); index > 0; --index) {
+        if (clang_equalCursors(locals[index - 1].declaration, declaration) != 0) {
+            return index - 1;
+        }
+    }
+    return std::nullopt;
+}
+
+// Whether two Clang types denote the same modeled value. Qualifiers are not
+// part of a value, so a read of a `const` local is the value it holds; two
+// spellings that Clang laid out identically are the same machine integer. A
+// type C++L does not model is never "the same" as anything.
+bool same_modeled_value(const Type& outer, const Type& inner) {
+    return outer.kind != TypeKind::Unsupported && outer.kind == inner.kind &&
+           outer.width == inner.width && outer.is_signed == inner.is_signed;
+}
+
+Expr build_expression(CXCursor cursor, const std::vector<CXCursor>& parameters,
+                      const Locals& locals, unsigned depth);
 
 Expr build_integer_literal(CXCursor cursor) {
     CXEvalResult evaluated = clang_Cursor_Evaluate(cursor);
@@ -182,7 +221,8 @@ Expr build_integer_literal(CXCursor cursor) {
     return expr;
 }
 
-Expr build_expression(CXCursor cursor, const std::vector<CXCursor>& parameters, unsigned depth) {
+Expr build_expression(CXCursor cursor, const std::vector<CXCursor>& parameters,
+                      const Locals& locals, unsigned depth) {
     if (depth > kMaxExpressionDepth) {
         return unsupported_expression(cursor, "expression nests deeper than the bridge allows");
     }
@@ -190,8 +230,8 @@ Expr build_expression(CXCursor cursor, const std::vector<CXCursor>& parameters, 
     const CXCursorKind kind = clang_getCursorKind(cursor);
 
     // Nodes Clang inserts that carry no meaning of their own are traversed
-    // through, but only while they do not change the type. A node that changes
-    // the type is a conversion, and conversions are not modeled yet.
+    // through, but only while they do not change the value. A node that changes
+    // the value is a conversion, and conversions are not modeled yet.
     if (kind == CXCursor_UnexposedExpr || kind == CXCursor_ParenExpr) {
         const std::vector<CXCursor> inner = children_of(cursor);
         if (inner.size() != 1) {
@@ -199,16 +239,25 @@ Expr build_expression(CXCursor cursor, const std::vector<CXCursor>& parameters, 
         }
         const CXType outer = clang_getCanonicalType(clang_getCursorType(cursor));
         const CXType nested = clang_getCanonicalType(clang_getCursorType(inner[0]));
-        if (clang_equalTypes(outer, nested) == 0) {
+        if (clang_equalTypes(outer, nested) == 0 &&
+            !same_modeled_value(convert_type(outer), convert_type(nested))) {
             return unsupported_expression(
                 cursor, "implicit conversion from '" + take(clang_getTypeSpelling(nested)) +
                             "' to '" + take(clang_getTypeSpelling(outer)) + "' is not modeled");
         }
-        return build_expression(inner[0], parameters, depth + 1);
+        return build_expression(inner[0], parameters, locals, depth + 1);
     }
 
     if (kind == CXCursor_DeclRefExpr) {
         const CXCursor referenced = clang_getCursorReferenced(cursor);
+        if (const std::optional<std::size_t> local = find_local(locals, referenced)) {
+            Expr expr;
+            expr.type = locals[*local].type;
+            expr.location = presumed_location(clang_getCursorLocation(cursor));
+            expr.node = LocalRef{locals[*local].version,
+                                 take(clang_getCursorSpelling(referenced))};
+            return expr;
+        }
         for (std::size_t index = 0; index < parameters.size(); ++index) {
             if (clang_equalCursors(referenced, parameters[index]) != 0) {
                 Expr expr;
@@ -219,9 +268,19 @@ Expr build_expression(CXCursor cursor, const std::vector<CXCursor>& parameters, 
                 return expr;
             }
         }
+        // C++ puts a local in scope inside its own initializer, so scoping
+        // alone does not rule out a read before the local holds a value.
+        if (clang_getCursorKind(referenced) == CXCursor_VarDecl &&
+            clang_Cursor_hasVarDeclGlobalStorage(referenced) == 0) {
+            return unsupported_expression(
+                cursor, "local '" + take(clang_getCursorSpelling(referenced)) +
+                            "' is read where it holds no modeled value, such as in its own "
+                            "initializer");
+        }
         return unsupported_expression(cursor,
                                       "'" + take(clang_getCursorSpelling(referenced)) +
-                                          "' is not a parameter of the enclosing declaration");
+                                          "' is not a parameter or local of the enclosing "
+                                          "declaration");
     }
 
     if (kind == CXCursor_IntegerLiteral) {
@@ -247,7 +306,7 @@ Expr build_expression(CXCursor cursor, const std::vector<CXCursor>& parameters, 
         for (int index = 0; index < argument_count; ++index) {
             call.arguments.push_back(
                 build_expression(clang_Cursor_getArgument(cursor, static_cast<unsigned>(index)),
-                                 parameters, depth + 1));
+                                 parameters, locals, depth + 1));
         }
 
         Expr expr;
@@ -264,7 +323,7 @@ Expr build_expression(CXCursor cursor, const std::vector<CXCursor>& parameters, 
         Expr expr;
         expr.type = convert_type(clang_getCursorType(cursor));
         expr.location = presumed_location(clang_getCursorLocation(cursor));
-        expr.node = Negation{{build_expression(operands[0], parameters, depth + 1)}};
+        expr.node = Negation{{build_expression(operands[0], parameters, locals, depth + 1)}};
         return expr;
     }
 
@@ -299,8 +358,8 @@ Expr build_expression(CXCursor cursor, const std::vector<CXCursor>& parameters, 
 
         Binary binary;
         binary.op = mapped;
-        binary.operands.push_back(build_expression(operands[0], parameters, depth + 1));
-        binary.operands.push_back(build_expression(operands[1], parameters, depth + 1));
+        binary.operands.push_back(build_expression(operands[0], parameters, locals, depth + 1));
+        binary.operands.push_back(build_expression(operands[1], parameters, locals, depth + 1));
 
         Expr expr;
         expr.type = convert_type(clang_getCursorType(cursor));
@@ -326,76 +385,249 @@ std::size_t return_paths(const Expr& expression) {
     if (const auto* branch = std::get_if<Conditional>(&expression.node)) {
         return return_paths(branch->operands[1]) + return_paths(branch->operands[2]);
     }
+    if (const auto* bound = std::get_if<LocalVersion>(&expression.node)) {
+        return return_paths(bound->operands[1]);
+    }
     return 1;
 }
 
-std::optional<Expr> return_tree(CXCursor cursor, const std::vector<CXCursor>& parameters,
-                                std::optional<Expr> continuation, unsigned depth,
-                                std::string& rejection, bool& falls_through) {
+// Whether control leaves the function rather than reaching what follows. It
+// decides reachability only; what each statement means is decided by the
+// lowering below.
+bool terminates(CXCursor statement, unsigned depth) {
     if (depth > kMaxExpressionDepth) {
-        rejection = "body nests deeper than the bridge allows";
+        return false;
+    }
+    const CXCursorKind kind = clang_getCursorKind(statement);
+    if (kind == CXCursor_ReturnStmt) {
+        return true;
+    }
+    if (kind == CXCursor_CompoundStmt) {
+        const std::vector<CXCursor> nested = children_of(statement);
+        return std::ranges::any_of(
+            nested, [depth](CXCursor child) { return terminates(child, depth + 1); });
+    }
+    if (kind == CXCursor_IfStmt) {
+        const std::vector<CXCursor> parts = children_of(statement);
+        return parts.size() == 3 && terminates(parts[1], depth + 1) &&
+               terminates(parts[2], depth + 1);
+    }
+    return false;
+}
+
+// What remains to be executed after the statement being lowered: the rest of
+// its block, and whatever follows the blocks enclosing it. A branch lowers this
+// continuation once per arm, under the versions that arm established, which is
+// what makes a local's value path-sensitive without any merge rule.
+struct Continuation {
+    const Continuation* outer = nullptr;
+    const std::vector<CXCursor>* statements = nullptr;
+    std::size_t index = 0;
+};
+
+// Lowers a resolved function body into the value it returns.
+//
+// Statements are taken in program order, threading the logical version of each
+// local. A declaration or an assignment binds the next version and the rest of
+// the body is lowered under it; a read of a local denotes the version current
+// where the read stands. Nothing here rewrites the program: the versions are a
+// model of the body Clang resolved (SPEC.md 12.8).
+struct BodyLowering {
+    const std::vector<CXCursor>& parameters;
+    std::uint32_t next_version = 0;
+    std::string rejection;
+
+    std::nullopt_t reject(std::string reason) {
+        if (rejection.empty()) {
+            rejection = std::move(reason);
+        }
         return std::nullopt;
     }
-    const auto kind = clang_getCursorKind(cursor);
-    const auto children = children_of(cursor);
-    if (kind == CXCursor_CompoundStmt) {
-        bool later_statement = false;
-        falls_through = true;
-        for (auto statement = children.rbegin(); statement != children.rend(); ++statement) {
-            bool statement_falls_through = true;
-            continuation = return_tree(*statement, parameters, std::move(continuation),
-                                       depth + 1, rejection, statement_falls_through);
-            if (!rejection.empty()) return std::nullopt;
-            if (later_statement && !statement_falls_through) {
-                rejection = "unreachable trailing statements are not modeled";
-                return std::nullopt;
+
+    Expr bind(std::uint32_t version, std::string name, Expr value, Expr body, CXCursor at) {
+        Expr expr;
+        expr.type = body.type;
+        expr.location = presumed_location(clang_getCursorLocation(at));
+        expr.node = LocalVersion{version, std::move(name), {std::move(value), std::move(body)}};
+        return expr;
+    }
+
+    std::optional<Expr> lower_statements(const Continuation& from, const Locals& locals,
+                                         unsigned depth) {
+        // Each statement lowers the rest of the body inside itself, so this
+        // bounds the statements on one path as well as their nesting.
+        if (depth > kMaxExpressionDepth) {
+            return reject("more than " + std::to_string(kMaxExpressionDepth) +
+                          " nested or consecutive statements on one path are not modeled");
+        }
+        if (from.index == from.statements->size()) {
+            if (from.outer == nullptr) {
+                return reject("every path must return a value");
             }
-            falls_through = falls_through && statement_falls_through;
-            later_statement = true;
+            return lower_statements(*from.outer, locals, depth + 1);
         }
-        return continuation;
+        const CXCursor statement = (*from.statements)[from.index];
+        const Continuation next{from.outer, from.statements, from.index + 1};
+        if (next.index != from.statements->size() && terminates(statement, 0)) {
+            return reject("unreachable trailing statements are not modeled");
+        }
+        return lower_statement(statement, next, locals, depth);
     }
-    if (kind == CXCursor_ReturnStmt) {
-        falls_through = false;
-        if (children.size() != 1) {
-            rejection = "a return requires one value";
-            return std::nullopt;
+
+    std::optional<Expr> lower_statement(CXCursor statement, const Continuation& next,
+                                        const Locals& locals, unsigned depth) {
+        const CXCursorKind kind = clang_getCursorKind(statement);
+        if (kind == CXCursor_CompoundStmt) {
+            const std::vector<CXCursor> nested = children_of(statement);
+            return lower_statements(Continuation{&next, &nested, 0}, locals, depth + 1);
         }
-        return build_expression(children[0], parameters, 0);
+        if (kind == CXCursor_ReturnStmt) {
+            const std::vector<CXCursor> returned = children_of(statement);
+            if (returned.size() != 1) {
+                return reject("a return requires one value");
+            }
+            return build_expression(returned[0], parameters, locals, 0);
+        }
+        if (kind == CXCursor_DeclStmt) {
+            return lower_declaration(children_of(statement), 0, next, locals, depth);
+        }
+        if (kind == CXCursor_BinaryOperator &&
+            clang_getCursorBinaryOperatorKind(statement) == CXBinaryOperator_Assign) {
+            return lower_assignment(statement, next, locals, depth);
+        }
+        const std::vector<CXCursor> parts = children_of(statement);
+        if (kind == CXCursor_IfStmt && (parts.size() == 2 || parts.size() == 3) &&
+            clang_isExpression(clang_getCursorKind(parts[0])) != 0) {
+            return lower_branch(statement, parts, next, locals, depth);
+        }
+        return reject("only if/else, blocks, local declarations, assignments, and return "
+                      "statements are modeled; found '" +
+                      take(clang_getCursorKindSpelling(kind)) + "'");
     }
-    if (kind == CXCursor_IfStmt && (children.size() == 2 || children.size() == 3) &&
-        clang_isExpression(clang_getCursorKind(children[0])) != 0) {
-        bool true_falls = true;
-        bool false_falls = true;
-        auto when_true = return_tree(children[1], parameters, continuation, depth + 1,
-                                     rejection, true_falls);
-        if (!rejection.empty()) return std::nullopt;
-        auto when_false = continuation;
-        if (children.size() == 3) {
-            when_false = return_tree(children[2], parameters, continuation, depth + 1,
-                                      rejection, false_falls);
-            if (!rejection.empty()) return std::nullopt;
-        }
-        falls_through = true_falls || false_falls;
-        if (!when_true || !when_false) {
-            rejection = "every path must return a value";
+
+    std::optional<Expr> lower_branch(CXCursor statement, const std::vector<CXCursor>& parts,
+                                     const Continuation& next, const Locals& locals,
+                                     unsigned depth) {
+        Expr condition = build_expression(parts[0], parameters, locals, 0);
+        std::optional<Expr> when_true = lower_statement(parts[1], next, locals, depth + 1);
+        if (!when_true) {
             return std::nullopt;
         }
-        if (return_paths(*when_true) + return_paths(*when_false) > 128) {
-            rejection = "more than 128 return paths are not modeled";
+        std::optional<Expr> when_false = parts.size() == 3
+            ? lower_statement(parts[2], next, locals, depth + 1)
+            : lower_statements(next, locals, depth + 1);
+        if (!when_false) {
             return std::nullopt;
+        }
+        if (return_paths(*when_true) + return_paths(*when_false) > kMaxReturnPaths) {
+            return reject("more than " + std::to_string(kMaxReturnPaths) +
+                          " return paths are not modeled");
         }
         Expr result;
         result.type = when_true->type;
-        result.location = presumed_location(clang_getCursorLocation(cursor));
-        result.node = Conditional{{build_expression(children[0], parameters, 0),
-                                   std::move(*when_true), std::move(*when_false)}};
+        result.location = presumed_location(clang_getCursorLocation(statement));
+        result.node =
+            Conditional{{std::move(condition), std::move(*when_true), std::move(*when_false)}};
         return result;
     }
-    rejection = "only if/else, blocks, and return statements are modeled; found '" +
-                take(clang_getCursorKindSpelling(kind)) + "'";
-    return std::nullopt;
-}
+
+    std::optional<Expr> lower_declaration(const std::vector<CXCursor>& declared, std::size_t index,
+                                          const Continuation& next, const Locals& locals,
+                                          unsigned depth) {
+        if (index == declared.size()) {
+            return lower_statements(next, locals, depth + 1);
+        }
+        const CXCursor declaration = declared[index];
+        const std::string name = take(clang_getCursorSpelling(declaration));
+        if (clang_getCursorKind(declaration) != CXCursor_VarDecl) {
+            return reject("only variable declarations are modeled inside a verified body; found '" +
+                          take(clang_getCursorKindSpelling(clang_getCursorKind(declaration))) +
+                          "'");
+        }
+        const enum CX_StorageClass storage = clang_Cursor_getStorageClass(declaration);
+        if (storage != CX_SC_None && storage != CX_SC_Auto) {
+            return reject("local '" + name + "' does not have automatic storage");
+        }
+        if (clang_getCursorTLSKind(declaration) != CXTLS_None) {
+            return reject("thread-local '" + name + "' is not modeled");
+        }
+        const Type type = convert_type(clang_getCursorType(declaration));
+        if (type.kind == TypeKind::Unsupported) {
+            return reject("local '" + name + "' has type '" + type.spelling +
+                          "', which is not modeled");
+        }
+        CXCursor initializer = clang_Cursor_getVarDeclInitializer(declaration);
+        if (clang_Cursor_isNull(initializer) != 0) {
+            return reject("local '" + name +
+                          "' is declared without an initializer, so it holds no modeled value");
+        }
+        if (clang_getCursorKind(initializer) == CXCursor_InitListExpr) {
+            const std::vector<CXCursor> elements = children_of(initializer);
+            if (elements.size() != 1) {
+                return reject("the initializer of '" + name + "' is not a single modeled value");
+            }
+            initializer = elements[0];
+        }
+        Expr value = build_expression(initializer, parameters, locals, 0);
+        if (!std::holds_alternative<Unsupported>(value.node) &&
+            !same_modeled_value(type, value.type)) {
+            return reject("initializing '" + name + "' of type '" + type.spelling + "' from '" +
+                          value.type.spelling + "' is a conversion that is not modeled");
+        }
+        const std::uint32_t version = next_version++;
+        Locals declaring = locals;
+        declaring.push_back(Local{declaration, version, type});
+        std::optional<Expr> body = lower_declaration(declared, index + 1, next, declaring, depth);
+        if (!body) {
+            return std::nullopt;
+        }
+        return bind(version, name, std::move(value), std::move(*body), declaration);
+    }
+
+    std::optional<Expr> lower_assignment(CXCursor statement, const Continuation& next,
+                                         const Locals& locals, unsigned depth) {
+        const std::vector<CXCursor> operands = children_of(statement);
+        if (operands.size() != 2) {
+            return reject("an assignment requires a target and a value");
+        }
+        CXCursor target = operands[0];
+        while (clang_getCursorKind(target) == CXCursor_ParenExpr) {
+            const std::vector<CXCursor> inner = children_of(target);
+            if (inner.size() != 1) {
+                return reject("this assignment target is not modeled");
+            }
+            target = inner[0];
+        }
+        if (clang_getCursorKind(target) != CXCursor_DeclRefExpr) {
+            return reject("only a local variable is assigned in a modeled body");
+        }
+        const CXCursor declaration = clang_getCursorReferenced(target);
+        const std::string name = take(clang_getCursorSpelling(declaration));
+        const std::optional<std::size_t> local = find_local(locals, declaration);
+        if (!local) {
+            if (clang_getCursorKind(declaration) == CXCursor_ParmDecl) {
+                return reject("assigning to parameter '" + name +
+                              "' is not modeled: a contract names the value the caller passed");
+            }
+            return reject("'" + name + "' is not a local of this body");
+        }
+        const Type& type = locals[*local].type;
+        Expr value = build_expression(operands[1], parameters, locals, 0);
+        if (!std::holds_alternative<Unsupported>(value.node) &&
+            !same_modeled_value(type, value.type)) {
+            return reject("assigning '" + value.type.spelling + "' to '" + name + "' of type '" +
+                          type.spelling + "' is a conversion that is not modeled");
+        }
+        const std::uint32_t version = next_version++;
+        Locals assigned = locals;
+        assigned[*local].version = version;
+        std::optional<Expr> body = lower_statements(next, assigned, depth + 1);
+        if (!body) {
+            return std::nullopt;
+        }
+        return bind(version, name, std::move(value), std::move(*body), statement);
+    }
+};
 
 void extract_body(Function& function, CXCursor cursor, const std::vector<CXCursor>& parameters) {
     const std::vector<CXCursor> members = children_of(cursor);
@@ -413,12 +645,13 @@ void extract_body(Function& function, CXCursor cursor, const std::vector<CXCurso
 
     function.has_body = true;
 
-    std::string rejection;
-    bool falls_through = true;
-    function.returned_value = return_tree(members[body_index], parameters, std::nullopt, 0,
-                                          rejection, falls_through);
+    const std::vector<CXCursor> statements = children_of(members[body_index]);
+    BodyLowering lowering{parameters, 0, {}};
+    function.returned_value =
+        lowering.lower_statements(Continuation{nullptr, &statements, 0}, {}, 0);
     if (!function.returned_value) {
-        function.body_rejection = rejection.empty() ? "every path must return a value" : rejection;
+        function.body_rejection =
+            lowering.rejection.empty() ? "every path must return a value" : lowering.rejection;
     }
 }
 

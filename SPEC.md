@@ -917,8 +917,9 @@ Clang remains authoritative for overloads,
 integer widths, and conversions; unsupported conversions and signed addition
 are rejected. Type aliases are resolved by Clang.
 
-Branches and multiple returns extend this fragment under section 12.7.
-Loops, locals, references, pointers, floating point,
+Branches and multiple returns extend this fragment under section 12.7, and
+straight-line locals and assignments under section 12.8.
+Loops, references, pointers, floating point,
 exceptions, side effects, recursion, and unsupported declarators are rejected.
 An ordinary parameter named `result` is currently unsupported on a verified
 definition because that name binds the returned value in its postcondition.
@@ -965,9 +966,10 @@ section 12.7. Subtraction remains unsupported.
 
 Verified bodies MAY contain ordinary `if`/`else`, nested blocks, and returns.
 Clang MUST resolve each condition and operand type. Every modeled path MUST end
-in a return; an omitted `else` continues with the following statements. Locals,
-assignments, loops, switches, jumps, exceptions, side effects, implicit type
-conversions, and trailing unreachable statements remain unsupported.
+in a return; an omitted `else` continues with the following statements. Locals
+and assignments are specified in section 12.8. Loops, switches, jumps,
+exceptions, side effects, implicit type conversions, and trailing unreachable
+statements remain unsupported.
 
 For each return term R, the compiler MUST generate and kernel-prove:
 
@@ -1007,6 +1009,55 @@ the actual condition and return terms. This adds zero logical assumptions.
 Erasure MUST preserve each runtime condition, call, return, and control-flow
 edge, and MUST insert zero runtime checks. Pure specification helpers retain
 their single-return fragment.
+
+## 12.8 Locals and assignments
+
+A verified body MAY declare local variables and assign to them.
+
+A declaration MUST have automatic storage, a modeled type, and an initializer
+that is a single modeled expression: `T x = e;`, `T x{e};`, `T x(e);`, and the
+same forms with `auto` or `const`. An uninitialized local, a `static`,
+`extern`, `register` or `thread_local` declaration, a declaration of a
+reference, pointer, `volatile` or otherwise unmodeled type, an aggregate or
+empty braced initializer, and a non-variable declaration are rejected. An
+assignment MUST name a local of the same body, with a value of the same modeled
+type. Assignment through a reference or pointer, to a parameter, to anything
+outside the body, and compound assignment, increment and decrement are
+rejected. C++ decides whether a `const` local may be assigned; C++L adds no
+`const` model of its own. Conversions in an initializer or an assigned value
+are rejected exactly as elsewhere: a difference in qualification alone is not a
+conversion, because the value read is the same.
+
+Each write gives the local its next logical **version**. A version belongs to
+the declaration Clang resolved, not to a spelling, so shadowing and nested
+scopes follow C++ name lookup and never C++L's own. A read denotes the version
+current where the read stands, and the value a version denotes is the modeled
+expression that established it. A version is never an unknown: nothing is
+assumed about a local. C++ scoping forbids a read before the declaration but
+puts a local in scope within its own initializer; a read there, or anywhere
+else no version of the local is current, MUST be rejected.
+
+What follows a branch is verified once per arm, under the versions that arm
+established, so a local's value after a branch is path-sensitive by
+construction. This requires no merge operation and no additional kernel rule.
+
+A call in an initializer or an assigned value is evaluated where the body
+evaluates it. Its precondition MUST be proven using only the path conditions
+and summaries established **before** that statement, and its postcondition
+becomes available only from that statement onwards. A call bound to a local
+MUST be proven on every path that reaches its statement, including paths that
+never read the local.
+
+Every return MUST discharge the postcondition from the versions visible on its
+path; as in section 12.7, no path is exempted as unreachable. Verification
+models locals this way; the runtime program is not rewritten. Erasure MUST
+preserve every declaration, initializer, assignment, call, branch, and return
+as written.
+
+A read denotes its version's whole value, so the stated terms can grow faster
+than the body. An implementation MAY bound the statements on one path and the
+size of the terms it states, and MUST reject a body beyond those bounds rather
+than approximate it.
 
 ---
 

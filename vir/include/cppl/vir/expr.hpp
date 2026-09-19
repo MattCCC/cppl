@@ -73,11 +73,34 @@ struct Conditional {
     friend bool operator==(const Conditional&, const Conditional&) = default;
 };
 
+// The logical version of a local that a declaration or an assignment
+// establishes, and the rest of the body under it. A version is what the local
+// denotes from this point on; the runtime statement it came from is unchanged.
+// Versions are unique within a body, and a value reads only versions numbered
+// below its own.
+struct LocalVersion {
+    std::uint32_t version = 0;
+    std::string name;
+    std::vector<Expr> operands;  // value, body
+
+    friend bool operator==(const LocalVersion&, const LocalVersion&) = default;
+};
+
+// A read of the version of a local that is current where the read stands.
+struct LocalRef {
+    std::uint32_t version = 0;
+    std::string name;
+
+    friend bool operator==(const LocalRef&, const LocalRef&) = default;
+};
+
 struct Expr {
     ExprId id;
     Type type;
     Provenance provenance;
-    std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional> node;
+    std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, LocalVersion,
+                 LocalRef>
+        node;
 
     friend bool operator==(const Expr&, const Expr&) = default;
 };

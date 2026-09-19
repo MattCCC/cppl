@@ -18,12 +18,16 @@ struct Failure {
 
 using DefinitionMap = std::map<std::string, kernel::DefId>;
 using CallBindings = std::map<std::uint32_t, std::size_t>;
+// The value each logical version of a local denotes, for the versions a path
+// has established before the expression being lowered.
+using VersionBindings = std::map<std::uint32_t, const vir::Expr*>;
 
 std::optional<kernel::Type> core_type(const vir::Type& type);
 std::expected<kernel::Term, Failure> lower_value(const vir::Expr& expression,
                                                 const DefinitionMap& definitions,
                                                 std::size_t binders,
-                                                const CallBindings* calls = nullptr);
+                                                const CallBindings* calls = nullptr,
+                                                const VersionBindings* versions = nullptr);
 std::expected<kernel::Proposition, Failure> lower_predicate(const vir::Expr& expression,
                                                          const DefinitionMap& definitions,
                                                          std::size_t binders);

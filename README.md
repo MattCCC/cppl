@@ -361,6 +361,28 @@ General order implications, subtraction, signed addition, and algebraic
 reassociation remain unsupported. See [SPEC.md](SPEC.md#127-path-sensitive-verification)
 for the boundary.
 
+Bodies may also use ordinary locals and assignments:
+
+```cpp cppl-example
+verified unsigned pick(unsigned x, bool wide)
+    ensures(result <= 10u)
+{
+    unsigned limit = 0u;
+
+    if (wide)
+        limit = 10u;
+
+    return limit;
+}
+```
+
+Each write is a logical version of that local, and each return proves its
+contract from the versions its own path established. What follows a branch is
+verified once per arm, so nothing merges and no kernel rule is added. A call
+bound to a local proves its precondition where the body makes the call, not
+where the value is read. See [SPEC.md](SPEC.md#128-locals-and-assignments) for
+the boundary.
+
 The remaining examples use features this implementation does not accept yet.
 Laws are meant to state domain requirements over user-defined types:
 
