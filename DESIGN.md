@@ -1139,12 +1139,12 @@ The design goal is progressive use rather than requiring dependent typing throug
 
 ---
 
-# 22. Why inductive data and structural reasoning are useful
+# 22. Why structural reasoning uses C++ types, not new data types
 
-Closed data forms provide the verifier with information that ordinary open-ended representation patterns may obscure:
+Structural reasoning needs the verifier to know:
 
 ```text
-complete constructor set
+the complete set of cases
 case distinction
 structural recursion
 induction principle
@@ -1161,9 +1161,27 @@ results
 recursive structures
 ```
 
-C++L therefore explores explicit inductive forms alongside ordinary C++ types.
+An earlier design obtained them by adding algebraic data types (`data Nat { Zero; Succ(Nat); };`) and runtime pattern matching (`match`). That was the wrong layer. C++L verifies real C++ programs. Requiring developers to restate their data structures in a second logical language would duplicate the type system, add runtime-looking control flow with its own lowering and ABI questions, and move proofs away from the code that actually executes. `match` has also been proposed for runtime pattern matching in C++ itself, which a C++ superset must not pre-empt.
 
-Their normative semantics are defined in `SPEC.md`.
+The verifier needs proof steps, not runtime constructs. C++L therefore:
+
+```text
+reasons directly over C++ types
+    struct, class, enum, std::variant, pointers, arrays, integers, templates
+
+adds proof-only constructs
+    cases       one proof obligation per case
+    induction   the domain's induction principle
+
+erases all of them
+    zero runtime representation
+```
+
+Structural induction remains; the `Nat` datatype syntax does not.
+
+Mathematical domains such as ℕ, ℤ, sequences, sets, and maps may still be needed. A vector's contract is much easier to state over an abstract sequence than over its buffer. Such domains are proof-only and have no runtime representation. Their source spelling is deliberately left open. C++ `int` must not stand for ℤ, and names such as `set` or `map` would collide with ordinary C++.
+
+The normative semantics are in `SPEC.md` §19–§21. The decision is recorded in `docs/rfcs/0005-cxx-types-case-analysis-induction.md`.
 
 ---
 
@@ -1173,10 +1191,8 @@ Repeatedly proving that invalid combinations never occur is often weaker than ch
 
 For example:
 
-```text
-Success(value)
-or
-Failure(error)
+```cpp
+std::variant<Value, Error>
 ```
 
 communicates more structural information than several loosely related flags and optionals.

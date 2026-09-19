@@ -99,11 +99,11 @@ where
 expects
 ensures
 decreases
-data
-match
+cases
+induction
 ```
 
-while ordinary supported C++ remains valid C++L.
+while ordinary supported C++ remains valid C++L. C++L adds no new data types: Laws and proofs reason directly over the C++ types a program already uses.
 
 ## Mission
 
@@ -391,51 +391,39 @@ law no_duplicate_authority(const Interpretation& x)
     ensures(financialAuthorityCount(x) <= 1);
 ```
 
-This example uses inductive types and proof-aware pattern matching:
+This example proves a property of an ordinary C++ `unsigned` by induction:
 
 ```cpp cppl-planned
-data Nat {
-    Zero;
-    Succ(Nat predecessor);
-};
-
-pure Nat add(Nat a, Nat b) {
-    return match (a) {
-        Zero => b;
-        Succ(n) => Succ(add(n, b));
-    };
+pure unsigned add(unsigned a, unsigned b)
+    decreases(a)
+{
+    return a == 0u ? b : add(a - 1u, b) + 1u;
 }
 
-law add_zero(Nat x)
-    ensures(add(x, Zero) == x);
+law add_zero(unsigned x)
+    ensures(add(x, 0u) == x);
 
-proof add_zero_holds(Nat x)
+proof add_zero_holds(unsigned x)
     proves(add_zero(x))
 {
-    match (x) {
-        Zero => {
-            refl;
-        }
-
-        Succ(n) => {
-            apply add_zero_holds(n);
-        }
-    }
+    induction x;
 }
 ```
 
 The `add_zero` Law means:
 
 ```text
-∀ x : Nat,
-    add(x, Zero) = x
+∀ x : unsigned,
+    add(x, 0u) = x
 ```
 
-C++L does not enumerate every natural number.
+C++L does not enumerate every `unsigned` value.
 
-It proves the property symbolically through the structure of `Nat`.
+`induction x;` applies the induction principle for `unsigned`: prove the case `0u`, then prove the case `n + 1u` from the case `n` for every `n` below the type's maximum, so the step never wraps.
 
-The proof is erased before runtime code generation.
+Case analysis works the same way. `cases r { Result::ok => { ... } Result::error => { ... } }` creates one proof obligation for each case of a C++ value.
+
+Neither `induction` nor `cases` is runtime control flow. Both are erased before runtime code generation and leave no runtime representation.
 
 For installation, compiler options, project integration, Laws, proofs, verification statuses, and examples, see [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md).
 
@@ -450,8 +438,8 @@ C++L is intended to provide:
 - refinement types
 - proof-relevant equality
 - definitional equality and normalization
-- symbolic induction
-- proof-aware pattern matching
+- symbolic induction over C++ values
+- proof-only case analysis
 - termination checking
 - preconditions and postconditions
 - pure / verified / ghost / unsafe / trusted boundaries
@@ -514,7 +502,7 @@ C++L should remain compatible with:
 5. Proof-producing computation cannot exploit nontermination.
 6. Types may express value-dependent relationships.
 7. Equality can be formally reasoned about.
-8. Inductive structures can be proven over symbolically.
+8. Universal properties of C++ values can be proven by induction rather than enumeration.
 9. Proof-only information can be erased.
 10. Erasure preserves executable semantics.
 11. Unsafe operations cannot silently contaminate verified proofs.
