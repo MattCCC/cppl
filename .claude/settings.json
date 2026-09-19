@@ -48,7 +48,10 @@
       "Bash(git worktree list:*)",
       "Bash(git worktree remove:*)"
     ],
-    "ask": ["Bash(rm:*)", "Bash(chmod:*)"],
+    "ask": [
+      "Bash(rm:*)",
+      "Bash(chmod:*)"
+    ],
     "deny": [
       "Edit(.claude/hooks/**)",
       "Write(.claude/hooks/**)",
