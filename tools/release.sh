@@ -91,6 +91,8 @@ make check
 # A release must independently build and test the actual release preset.
 info "Building and testing release configuration"
 
+rm -rf build/release
+
 cmake --workflow --preset release
 
 # Recheck the tree in case a validation/build step unexpectedly modified it.

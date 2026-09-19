@@ -5,6 +5,12 @@
     "minor": 25,
     "patch": 0
   },
+  "packagePresets": [
+    {
+      "name": "release",
+      "configurePreset": "release"
+    }
+  ],
   "configurePresets": [
     {
       "name": "base",
@@ -157,6 +163,10 @@
         },
         {
           "type": "test",
+          "name": "release"
+        },
+        {
+          "type": "package",
           "name": "release"
         }
       ]
