@@ -128,10 +128,12 @@ A body may also declare locals and assign to them. Each write is a logical
 version of the declaration Clang resolved, a read denotes the version current
 where it stands, and what follows a branch is verified once per arm under that
 arm's versions. A call bound to a local is proven where the body makes it, under
-the conditions in force there, on every path that reaches it. Uninitialized,
-`static`, `thread_local`, reference, pointer and `volatile` declarations,
-compound assignment, increment, assignment to a parameter, self-initialization,
-and unmodeled initializer conversions are rejected. Each read repeats its
+the conditions in force there, on every path that reaches it. `+=`, `-=`, `*=`,
+increment and decrement are the assignments they abbreviate, for locals not
+promoted before arithmetic. Uninitialized, `static`, `thread_local`, reference,
+pointer and `volatile` declarations, other compound assignments, assignment to a
+parameter, self-initialization, and unmodeled initializer conversions are
+rejected. Every value is modeled where it is written, read or not. Each read repeats its
 local's value, so bodies whose stated terms exceed a fixed size are rejected
 too. Locals add no kernel rule and no runtime change.
 

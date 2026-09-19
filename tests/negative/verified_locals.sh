@@ -66,10 +66,30 @@ reject empty_braces 'single modeled value' \
 reject typedef_declaration 'only variable declarations' \
     'verified unsigned f(unsigned x) ensures(result == x) { typedef unsigned number; return x; }'
 # Mutations outside the closed local model.
-reject compound_assignment 'only if/else' \
-    'verified unsigned f(unsigned x) ensures(result == x) { unsigned y = x; y += 0u; return y; }'
-reject increment 'only if/else' \
+# An update is the assignment it abbreviates, and is refused wherever that
+# assignment would be.
+reject wrong_increment 'does not satisfy its contract' \
     'verified unsigned f(unsigned x) ensures(result == x) { unsigned y = x; ++y; return y; }'
+reject wrong_compound 'does not satisfy its contract' \
+    'verified unsigned f(unsigned x) ensures(result == x) { unsigned y = x; y -= 1u; return y + 2u; }'
+reject division_update "compound assignment '/=' is not modeled" \
+    'verified unsigned f(unsigned x) ensures(result == x) { unsigned y = x; y /= 1u; return y; }'
+reject shift_update "compound assignment '<<=' is not modeled" \
+    'verified unsigned f(unsigned x) ensures(result == x) { unsigned y = x; y <<= 0u; return y; }'
+reject signed_increment 'signed type' \
+    'verified int f(int x) ensures(result == x) { int y = x; ++y; return x; }'
+reject signed_compound 'signed type' \
+    'verified int f(int x) ensures(result == x) { int y = x; y += 1; return x; }'
+reject narrow_increment 'after promotion' \
+    'verified unsigned f(unsigned char x) ensures(result == 0u) { unsigned char y = x; ++y; return 0u; }'
+reject converted_update 'not modeled' \
+    'verified unsigned f(unsigned x) ensures(result == x) { unsigned y = x; y += 1; return y; }'
+reject parameter_increment 'assigning to parameter' \
+    'verified unsigned f(unsigned x) ensures(result == x) { x++; return x; }'
+reject update_in_value 'not modeled' \
+    'verified unsigned f(unsigned x) ensures(result == x) { unsigned y = x; unsigned z = ++y; return x; }'
+reject negation_statement 'only if/else' \
+    'verified unsigned f(unsigned x) ensures(result == x) { unsigned y = x; -y; return y; }'
 reject parameter_assignment 'assigning to parameter' \
     'verified unsigned f(unsigned x) ensures(result == x) { x = 0u; return x; }'
 reject chained_assignment 'not modeled' \

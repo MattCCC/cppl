@@ -137,7 +137,27 @@ verified unsigned declared_in_arm(unsigned x, bool b) ensures(result == x) {
     return y;
 }
 
+// Each update is the assignment it abbreviates, at the local's own type.
+verified unsigned updated(unsigned x) ensures(result == 2u * x + 1u) {
+    unsigned y = x;
+    y += x;
+    y++;
+    ++y;
+    y--;
+    return y;
+}
+
+verified unsigned long scaled(unsigned long x) ensures(result == 6ul * x - 1ul) {
+    unsigned long y = x;
+    y *= 3ul;
+    y *= 2ul;
+    --y;
+    y -= 0ul;
+    return y;
+}
+
 int main() {
+    if (updated(4u) != 9u || scaled(2ul) != 11ul || updated(4294967295u) != 4294967295u) return 16;
     if (chained(1u) != 3u || latest(1u) != 7u || declared_together(2u) != 2u) return 1;
     if (preserved(1u) != 1u) return 11;
     if (deduced(3u) != 3u || braced(4u) != 4u) return 2;

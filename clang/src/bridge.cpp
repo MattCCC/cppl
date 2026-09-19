@@ -183,6 +183,27 @@ bool same_modeled_value(const Type& outer, const Type& inner) {
            outer.is_signed == inner.is_signed;
 }
 
+// Whether C++ performs arithmetic on this type only after promoting it to
+// `int`. An update of such a local converts the promoted result back, which is
+// a conversion C++L does not model.
+bool promoted_before_arithmetic(CXType type) {
+    switch (clang_getCanonicalType(type).kind) {
+        case CXType_Int:
+        case CXType_UInt:
+        case CXType_Long:
+        case CXType_ULong:
+        case CXType_LongLong:
+        case CXType_ULongLong:
+            return false;
+        default:
+            return true;
+    }
+}
+
+std::string unmodeled_statement(const std::string& found) {
+    return "only if/else, blocks, local declarations, assignments, and return statements are modeled; found " + found;
+}
+
 Expr build_expression(CXCursor cursor, const std::vector<CXCursor>& parameters, const Locals& locals, unsigned depth);
 
 Expr build_integer_literal(CXCursor cursor) {
@@ -484,14 +505,15 @@ struct BodyLowering {
             clang_getCursorBinaryOperatorKind(statement) == CXBinaryOperator_Assign) {
             return lower_assignment(statement, next, locals, depth);
         }
+        if (kind == CXCursor_CompoundAssignOperator || kind == CXCursor_UnaryOperator) {
+            return lower_update(statement, next, locals, depth);
+        }
         const std::vector<CXCursor> parts = children_of(statement);
         if (kind == CXCursor_IfStmt && (parts.size() == 2 || parts.size() == 3) &&
             clang_isExpression(clang_getCursorKind(parts[0])) != 0) {
             return lower_branch(statement, parts, next, locals, depth);
         }
-        return reject("only if/else, blocks, local declarations, assignments, and return "
-                      "statements are modeled; found '" +
-                      take(clang_getCursorKindSpelling(kind)) + "'");
+        return reject(unmodeled_statement("'" + take(clang_getCursorKindSpelling(kind)) + "'"));
     }
 
     std::optional<Expr> lower_branch(CXCursor statement, const std::vector<CXCursor>& parts, const Continuation& next,
@@ -564,13 +586,8 @@ struct BodyLowering {
         return bind(version, name, std::move(value), std::move(*body), declaration);
     }
 
-    std::optional<Expr> lower_assignment(CXCursor statement, const Continuation& next, const Locals& locals,
-                                         unsigned depth) {
-        const std::vector<CXCursor> operands = children_of(statement);
-        if (operands.size() != 2) {
-            return reject("an assignment requires a target and a value");
-        }
-        CXCursor target = operands[0];
+    // The local a write targets. Only a local of this body is ever written.
+    std::optional<std::size_t> written_local(CXCursor target, const Locals& locals) {
         while (clang_getCursorKind(target) == CXCursor_ParenExpr) {
             const std::vector<CXCursor> inner = children_of(target);
             if (inner.size() != 1) {
@@ -591,20 +608,115 @@ struct BodyLowering {
             }
             return reject("'" + name + "' is not a local of this body");
         }
-        const Type& type = locals[*local].type;
-        Expr value = build_expression(operands[1], parameters, locals, 0);
-        if (!std::holds_alternative<Unsupported>(value.node) && !same_modeled_value(type, value.type)) {
-            return reject("assigning '" + value.type.spelling + "' to '" + name + "' of type '" + type.spelling +
-                          "' is a conversion that is not modeled");
-        }
+        return local;
+    }
+
+    std::optional<Expr> write(std::size_t local, Expr value, CXCursor statement, const Continuation& next,
+                              const Locals& locals, unsigned depth) {
         const std::uint32_t version = next_version++;
         Locals assigned = locals;
-        assigned[*local].version = version;
+        assigned[local].version = version;
         std::optional<Expr> body = lower_statements(next, assigned, depth + 1);
         if (!body) {
             return std::nullopt;
         }
-        return bind(version, name, std::move(value), std::move(*body), statement);
+        return bind(version, take(clang_getCursorSpelling(locals[local].declaration)), std::move(value),
+                    std::move(*body), statement);
+    }
+
+    std::optional<Expr> lower_assignment(CXCursor statement, const Continuation& next, const Locals& locals,
+                                         unsigned depth) {
+        const std::vector<CXCursor> operands = children_of(statement);
+        if (operands.size() != 2) {
+            return reject("an assignment requires a target and a value");
+        }
+        const std::optional<std::size_t> local = written_local(operands[0], locals);
+        if (!local) {
+            return std::nullopt;
+        }
+        const Type& type = locals[*local].type;
+        Expr value = build_expression(operands[1], parameters, locals, 0);
+        if (!std::holds_alternative<Unsupported>(value.node) && !same_modeled_value(type, value.type)) {
+            return reject("assigning '" + value.type.spelling + "' to '" +
+                          take(clang_getCursorSpelling(locals[*local].declaration)) + "' of type '" + type.spelling +
+                          "' is a conversion that is not modeled");
+        }
+        return write(*local, std::move(value), statement, next, locals, depth);
+    }
+
+    // `x += e`, `x -= e`, `x *= e`, `++x`, `x++`, `--x` and `x--` as statements.
+    // Each is the assignment `x = x op e` (or `x op 1`) at the local's own type,
+    // which C++ guarantees exactly when that type is not promoted first; the
+    // arithmetic is then modeled or refused like any other (SPEC.md 12.8).
+    std::optional<Expr> lower_update(CXCursor statement, const Continuation& next, const Locals& locals,
+                                     unsigned depth) {
+        const CXCursorKind kind = clang_getCursorKind(statement);
+        const std::vector<CXCursor> operands = children_of(statement);
+        BinaryOp op = BinaryOp::Unsupported;
+        if (kind == CXCursor_CompoundAssignOperator) {
+            const enum CXBinaryOperatorKind written = clang_getCursorBinaryOperatorKind(statement);
+            if (written == CXBinaryOperator_AddAssign) {
+                op = BinaryOp::Add;
+            } else if (written == CXBinaryOperator_SubAssign) {
+                op = BinaryOp::Sub;
+            } else if (written == CXBinaryOperator_MulAssign) {
+                op = BinaryOp::Mul;
+            } else {
+                return reject("compound assignment '" + take(clang_getBinaryOperatorKindSpelling(written)) +
+                              "' is not modeled");
+            }
+            if (operands.size() != 2) {
+                return reject("a compound assignment requires a target and a value");
+            }
+        } else {
+            const enum CXUnaryOperatorKind written = clang_getCursorUnaryOperatorKind(statement);
+            if (written == CXUnaryOperator_PreInc || written == CXUnaryOperator_PostInc) {
+                op = BinaryOp::Add;
+            } else if (written == CXUnaryOperator_PreDec || written == CXUnaryOperator_PostDec) {
+                op = BinaryOp::Sub;
+            } else {
+                return reject(
+                    unmodeled_statement("operator '" + take(clang_getUnaryOperatorKindSpelling(written)) + "'"));
+            }
+            if (operands.size() != 1) {
+                return reject("an increment or decrement requires one operand");
+            }
+        }
+
+        const std::optional<std::size_t> local = written_local(operands[0], locals);
+        if (!local) {
+            return std::nullopt;
+        }
+        const Local& target = locals[*local];
+        const std::string name = take(clang_getCursorSpelling(target.declaration));
+        if (promoted_before_arithmetic(clang_getCursorType(target.declaration))) {
+            return reject("updating '" + name + "' of type '" + target.type.spelling +
+                          "' computes in 'int' after promotion and converts back, which is not modeled");
+        }
+
+        Expr current;
+        current.type = target.type;
+        current.location = presumed_location(clang_getCursorLocation(operands[0]));
+        current.node = LocalRef{target.version, name};
+
+        Expr amount;
+        if (operands.size() == 2) {
+            amount = build_expression(operands[1], parameters, locals, 0);
+            if (!std::holds_alternative<Unsupported>(amount.node) && !same_modeled_value(target.type, amount.type)) {
+                return reject("updating '" + name + "' of type '" + target.type.spelling + "' by '" +
+                              amount.type.spelling + "' is a conversion that is not modeled");
+            }
+        } else {
+            amount.type = target.type;
+            amount.location = presumed_location(clang_getCursorLocation(statement));
+            amount.node = IntLiteral{1};
+        }
+
+        Expr value;
+        value.type = target.type;
+        value.location = presumed_location(clang_getCursorLocation(statement));
+        value.node = Binary{op, {std::move(current), std::move(amount)}};
+        return write(*local, std::move(value), statement, next, locals, depth);
     }
 };
 

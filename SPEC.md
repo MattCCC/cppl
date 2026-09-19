@@ -1114,12 +1114,21 @@ same forms with `auto` or `const`. An uninitialized local, a `static`,
 reference, pointer, `volatile` or otherwise unmodeled type, an aggregate or
 empty braced initializer, and a non-variable declaration are rejected. An
 assignment MUST name a local of the same body, with a value of the same modeled
-type. Assignment through a reference or pointer, to a parameter, to anything
-outside the body, and compound assignment, increment and decrement are
-rejected. C++ decides whether a `const` local may be assigned; C++L adds no
-`const` model of its own. Conversions in an initializer or an assigned value
-are rejected exactly as elsewhere: a difference in qualification alone is not a
-conversion, because the value read is the same.
+type. Assignment through a reference or pointer, to a parameter, and to
+anything outside the body are rejected. C++ decides whether a `const` local may
+be assigned; C++L adds no `const` model of its own. Conversions in an
+initializer or an assigned value are rejected exactly as elsewhere: a
+difference in qualification alone is not a conversion, because the value read
+is the same.
+
+As a statement, `x += e`, `x -= e` and `x *= e` denote the assignment
+`x = x op e`, and `++x`, `x++`, `--x` and `x--` denote `x = x + 1` and
+`x = x - 1`, with `1` of the local's type. C++ gives them exactly that meaning
+when the local's type is not promoted before arithmetic, so a local narrower
+than `int` is rejected, as is an operand of another type. The arithmetic is
+then modeled or rejected like any other (§7.1.1, §29.2): signed updates are
+rejected until their overflow obligations exist. Other compound assignments,
+and an update used as a value rather than as a statement, are rejected.
 
 Each write gives the local its next logical **version**. A version belongs to
 the declaration Clang resolved, not to a spelling, so shadowing and nested

@@ -1284,6 +1284,10 @@ weight are deliberately few and are stated explicitly in the implementation:
   premise, and the hypothesis the kernel then holds is the goal's premise, not
   the written text. A goal that supposes no premise has none to name, and the
   statement is refused there;
+- a statement `x += e`, `x -= e` or `x *= e`, or an increment or decrement of
+  `x`, is lowered as the assignment it abbreviates, only for a local whose type
+  C++ does not promote before arithmetic; the value is then lowered by the rule
+  for `+`, `-` and `*` above, so signed updates are refused;
 - `rewrite e;` chooses which occurrences of a term the goal's context
   abstracts. That choice is this layer's, and it is all this layer does: the
   context goes to the kernel, which checks the equality, checks what is
