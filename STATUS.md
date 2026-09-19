@@ -110,9 +110,19 @@ overloads, and forward declarations are supported within an acyclic translation
 unit, including headers. Ordinary runtime calls remain unchanged. See `SPEC.md`
 12.5–12.8. Each return path additionally supposes its branch conditions. Calls in
 guards prove their preconditions before that guard can be used. The kernel
-combines the checked paths into the complete function theorem. Concrete
-comparisons compute; symbolic order weakening and transitivity, subtraction,
-signed addition, and algebraic reassociation remain unsupported.
+combines the checked paths into the complete function theorem.
+
+Unsigned `+`, `-` and `*` are the ring of integers modulo `2^width`: every
+commutative-ring identity is definitional, comparisons are normalized only as
+the machine type allows, and order consequences (`i < n` gives `i + 1 <= n`)
+are proven by a linear-arithmetic rule whose certificates the kernel checks
+against a constraint system it states itself, wrapping included. When
+definitional equality and premise rewriting do not close a goal, automation
+tries linear arithmetic over the premises, then rewriting with premise
+equalities and with equalities between variables that arithmetic establishes.
+A contradictory path is proven from its contradiction. Signed arithmetic,
+division, remainder, shifts and bitwise operators are rejected. See `SPEC.md`
+7.1.1, 7.5 and 29.2.
 
 A body may also declare locals and assign to them. Each write is a logical
 version of the declaration Clang resolved, a read denotes the version current
@@ -171,13 +181,12 @@ Verified functions now verify every return path through `if`/`else`, including
 compositional calls in guards and returns, and ordinary straight-line locals and
 assignments within those paths. All six integer comparisons are
 represented structurally. The original function/call slices use seven rules;
-path composition adds one conditional-elimination rule, bringing the core to
-eight, with zero logical assumptions and zero runtime checks. Locals add none of
-the three.
-Next is arithmetic normalization
-(subtraction and useful integer identities under sound machine semantics), then
-loops with explicit invariants. Recursion with induction/termination, memory and
-reference reasoning, and SMT automation come later.
+path composition adds one conditional-elimination rule, and machine arithmetic
+adds one linear-arithmetic rule, bringing the core to nine, with zero logical
+assumptions and zero runtime checks. Locals add none. Unsigned arithmetic is
+normalized as a ring modulo `2^width`, and order consequences are kernel-checked.
+Next are loops with explicit invariants. Recursion with induction/termination,
+memory and reference reasoning, and SMT automation come later.
 
 Original target, for reference:
 
@@ -270,6 +279,9 @@ The project should not claim broad language implementation before the proof sema
 | Implication elimination              | `PROTOTYPE`   |
 | Hypothesis context                   | `PROTOTYPE`   |
 | Equality substitution (rewriting)    | `PROTOTYPE`   |
+| Conditional elimination              | `PROTOTYPE`   |
+| Machine-arithmetic normal form       | `PROTOTYPE`   |
+| Linear arithmetic (certificates)     | `PROTOTYPE`   |
 | Existential introduction/elimination | `NOT STARTED` |
 | Induction checking                   | `NOT STARTED` |
 | Refinement introduction/elimination  | `NOT STARTED` |
@@ -277,12 +289,12 @@ The project should not claim broad language implementation before the proof sema
 | Termination checker                  | `NOT STARTED` |
 | Proof certificate format             | `NOT STARTED` |
 | Kernel fuzzing                       | `NOT STARTED` |
-| Kernel property testing              | `NOT STARTED` |
+| Kernel property testing              | `PARTIAL`     |
 | Kernel rejection tests               | `PROTOTYPE`   |
 | Mechanized core calculus             | `NOT STARTED` |
 | Meta-theory / soundness proofs       | `NOT STARTED` |
 
-The kernel implements seven rules:
+The kernel implements nine rules:
 
 ```text
 1. Reflexivity
@@ -292,13 +304,25 @@ The kernel implements seven rules:
 5. Implication introduction
 6. Implication elimination
 7. Hypothesis use
+8. Conditional elimination
+9. Linear arithmetic
 ```
 
 They act over propositions built from equality, universal quantification and
 implication. The kernel's terms are variables, machine-integer literals,
-applications of admitted definitions and one primitive, wrapping addition. It
-admits no recursion, which is why it needs no termination checker yet
-(`ARCHITECTURE.md` 97.7).
+applications of admitted definitions, and primitives: wrapping addition,
+subtraction and multiplication, the six comparisons, boolean negation and
+selection. It admits no recursion, which is why it needs no termination checker
+yet (`ARCHITECTURE.md` 97.7).
+
+Reflexivity decides definitional equality by normalization, which puts machine
+arithmetic in polynomial normal form modulo `2^width` and comparisons in
+canonical form (`SPEC.md` 7.1.1). Linear arithmetic concludes an equality or
+comparison from facts whose evidence it checks, by checking a certificate
+against the integer constraint system it states for them (`SPEC.md` 7.5).
+Property testing currently covers the normal form only: random terms and their
+normal forms are evaluated by an independent evaluator on every assignment of
+small types.
 
 Universal elimination instantiates quantified evidence at a term. The kernel
 checks the evidence against the proposition it is eliminated from, derives the
@@ -478,14 +502,16 @@ RFC 0005).
 | Capability                                  | Status        |
 | ------------------------------------------- | ------------- |
 | `cases` over C++ values                     | `SPECIFIED`   |
-| Exhaustiveness over C++ value sets          | `SPECIFIED`   |
-| Arm-scoped case hypotheses                  | `SPECIFIED`   |
+| Residual cases (`unnamed`, `valueless`, …)  | `SPECIFIED`   |
+| Exhaustiveness over C++ state spaces        | `SPECIFIED`   |
+| Arm binders and `assume`-named premises     | `SPECIFIED`   |
 | Impossible cases                            | `SPECIFIED`   |
 | `induction` with explicit arms / short form | `SPECIFIED`   |
 | Machine-integer induction principles        | `SPECIFIED`   |
 | Pointer-structure induction (premised)      | `SPECIFIED`   |
-| Proof-only mathematical domains             | `SPECIFIED`   |
-| Source spelling of mathematical domains     | `NOT STARTED` |
+| `@N` `@Z` `@Seq` `@Set` `@Map` domains      | `SPECIFIED`   |
+| Machine-to-domain conversions               | `NOT STARTED` |
+| Wildcard arms                               | `NOT PLANNED` |
 | General-purpose algebraic data types        | `NOT PLANNED` |
 | Runtime pattern matching (`match`)          | `NOT PLANNED` |
 
@@ -570,13 +596,23 @@ The exact formal memory calculus is not yet frozen.
 | Capability                       | Status        |
 | -------------------------------- | ------------- |
 | Mathematical integer distinction | `SPECIFIED`   |
-| Fixed-width integer semantics    | `SPECIFIED`   |
+| Fixed-width integer semantics    | `PARTIAL`     |
+| Unsigned `+` `-` `*` (modular)   | `PROTOTYPE`   |
+| Order reasoning (linear)         | `PROTOTYPE`   |
+| Signed `+` `-` `*`               | `NOT STARTED` |
+| Division, remainder, shifts      | `NOT STARTED` |
 | Checked arithmetic               | `SPECIFIED`   |
 | Wrapping arithmetic              | `SPECIFIED`   |
 | Saturating arithmetic            | `SPECIFIED`   |
 | Big integer proof domain         | `SPECIFIED`   |
 | Bitvector solver integration     | `NOT STARTED` |
 | Overflow diagnostics             | `NOT STARTED` |
+
+Fixed-width semantics are `PARTIAL`: unsigned `+`, `-`, `*` and all six
+comparisons are modeled exactly at every width from 1 to 64 bits, and signed
+comparisons are modeled; signed arithmetic is refused until its no-overflow
+obligations exist. `Wrapping arithmetic` above means the explicit `Wrapping<T>`
+facility of the roadmap, which is not the same as C++ unsigned arithmetic.
 
 ---
 
@@ -680,17 +716,23 @@ Proofs should normally disappear before runtime.
 | Definitional-equality strategy   | `PROTOTYPE`   |
 | `proof auto`                     | `SPECIFIED`   |
 | Simplification                   | `SPECIFIED`   |
-| Rewriting                        | `SPECIFIED`   |
-| Arithmetic automation            | `SPECIFIED`   |
-| Contradiction solving            | `SPECIFIED`   |
+| Rewriting                        | `PROTOTYPE`   |
+| Arithmetic automation            | `PROTOTYPE`   |
+| Contradiction solving            | `PROTOTYPE`   |
 | Induction tactic                 | `SPECIFIED`   |
 | cvc5 integration                 | `NOT STARTED` |
 | Z3 integration                   | `NOT STARTED` |
-| Proof certificates               | `NOT STARTED` |
-| Independent certificate checking | `NOT STARTED` |
+| Proof certificates               | `PROTOTYPE`   |
+| Independent certificate checking | `PROTOTYPE`   |
 | Counterexample extraction        | `NOT STARTED` |
 
 Automation must not weaken the meaning of `PROVEN`.
+
+Rewriting, arithmetic and contradiction solving are automatic evidence for
+contracts and for Laws without a written proof; there is no proof statement that
+invokes them yet. Proof certificates exist for linear arithmetic only: automation
+finds them by Fourier-Motzkin elimination, and the kernel checks them against a
+system it states itself. No external solver is involved or trusted.
 
 ---
 

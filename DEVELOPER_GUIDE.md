@@ -559,20 +559,26 @@ proof settle_is_total(PaymentResult result)
     proves(...)
 {
     cases result {
-        Receipt => {
+        Receipt(receipt) => {
             ...
         }
 
-        Error => {
+        Error(error) => {
+            ...
+        }
+
+        valueless => {
             ...
         }
     }
 }
 ```
 
-Each arm is a separate proof obligation. `cases` generates no runtime code.
+Each arm is a separate proof obligation. The binders `receipt` and `error` name the value each alternative holds. `cases` generates no runtime code.
 
-Cases follow C++ semantics, not just the declared names. A `std::variant` can also be `valueless_by_exception()`, so the proof must show that state cannot occur here or it is rejected. See `SPEC.md` §20.
+Cases follow C++ semantics, not just the declared names. A `std::variant` can become valueless when an exception interrupts an assignment, so `valueless` is a case too. It needs an arm unless the proof context shows it cannot occur. Likewise, an `enum class` value can match no enumerator, which is the `unnamed(value)` case.
+
+There is no catch-all `_` arm. A proof never silently covers a state it did not consider, and adding an enumerator later makes every proof that ignores it fail. See `SPEC.md` §20.
 
 ---
 
@@ -619,25 +625,43 @@ proof add_zero(unsigned x)
 
 The short form leaves each case to proof automation, whose evidence the kernel still checks.
 
-Cases can also be written out. Every arm uses the same `label => { ... }` form as `cases`:
+Cases can also be written out. Every arm uses the same `label(binders) => { ... }` form as `cases`:
 
 ```cpp
-proof property(Node* n)
-    proves(...)
+proof add_zero(unsigned x)
+    proves(add(x, 0u) == x)
 {
-    induction n {
-        null => {
-            ...
+    induction x {
+        zero => {
+            refl;
         }
 
-        node => {
+        successor(pred) => {
+            assume below : pred < UINT_MAX;
+            assume ih    : add(pred, 0u) == pred;
             ...
         }
     }
 }
 ```
 
-A pointer alone does not support induction, because a `Node*` may be cyclic, dangling, or shared. Induction over a linked structure needs an explicit well-founded premise, such as a proven finite, acyclic list shape. Without one it is rejected.
+The binder `pred` names the predecessor. The induction hypothesis is not a binder: the principle already supplies it, and `assume` gives it a name. If the stated proposition does not match what the principle supplies, the proof is rejected. The same holds for structures with several recursive parts:
+
+```cpp
+induction tree {
+    empty => {
+        ...
+    }
+
+    node(value, left, right) => {
+        assume left_ih  : P(left);
+        assume right_ih : P(right);
+        ...
+    }
+}
+```
+
+A pointer alone does not support induction, because a `Node*` may be cyclic, dangling, or shared. Induction over a linked structure such as this tree needs an explicit well-founded premise, such as a proven finite, acyclic shape. Without one it is rejected.
 
 `induction` is verifier machinery, not runtime branching. It generates no runtime code.
 
