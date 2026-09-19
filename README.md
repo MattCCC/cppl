@@ -144,7 +144,18 @@ C++L is designed for incremental adoption: existing supported C++ can continue t
 
 Example:
 
-```cpp
+```cpp cppl-example
+pure int identity(int x) {
+    return x;
+}
+
+law identity_returns_input(int x)
+    ensures(identity(x) == x);
+```
+
+Contracts written on the function itself are part of the language, but are not accepted by this implementation yet:
+
+```cpp cppl-planned
 verified int identity(int x)
     ensures(result == x)
 {
@@ -156,34 +167,34 @@ For installation, compiler options, project integration, Laws, proofs, verificat
 
 ## Other Examples
 
-```cpp
+This example uses inductive types and proof-aware pattern matching, which this implementation does not accept yet:
+
+```cpp cppl-planned
 data Nat {
     Zero;
-    Succ(Nat);
-}
+    Succ(Nat predecessor);
+};
 
-pure Nat add(Nat a, Nat b)
-{
-    match a {
-        Zero =>
-            b;
-
-        Succ(n) =>
-            Succ(add(n, b));
-    }
+pure Nat add(Nat a, Nat b) {
+    return match (a) {
+        Zero => b;
+        Succ(n) => Succ(add(n, b));
+    };
 }
 
 law add_zero(Nat x)
-    proves add(x, Zero) == x
+    ensures(add(x, Zero) == x);
+
+proof add_zero_holds(Nat x)
+    proves(add_zero(x))
 {
-    match x {
+    match (x) {
         Zero => {
-            proof reflexive;
+            refl;
         }
 
         Succ(n) => {
-            proof use add_zero(n);
-            proof reflexive;
+            apply add_zero_holds(n);
         }
     }
 }
@@ -206,9 +217,9 @@ The proof is erased before runtime code generation.
 
 A Law is a formal statement of required behavior.
 
-```cpp
+```cpp cppl-planned
 law no_duplicate_authority(const Interpretation& x)
-    proves financialAuthorityCount(x) <= 1;
+    ensures(financialAuthorityCount(x) <= 1);
 ```
 
 A Law is not:

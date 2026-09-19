@@ -56,6 +56,11 @@ cppl_add_script_test(conformance_ordinary_cpp conformance/ordinary_cpp.sh)
 cppl_add_script_test(conformance_contextual_identifiers conformance/contextual_identifiers.sh)
 cppl_add_script_test(conformance_target_standard_isolation conformance/target_standard_isolation.sh)
 
+# The documented examples are compiled by the compiler they document.
+add_test(NAME conformance_readme_examples
+         COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/conformance/readme_examples.sh"
+                 $<TARGET_FILE:cppl> "${CMAKE_SOURCE_DIR}/README.md" "${CPPL_TEST_WORK}")
+
 cppl_add_script_test(e2e_valid_law e2e/valid_law.sh)
 cppl_add_script_test(e2e_invalid_law e2e/invalid_law.sh)
 
