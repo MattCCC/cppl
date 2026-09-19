@@ -175,6 +175,76 @@ Projection project(const TokenStream& stream,
         projection.proof_functions.push_back(std::move(projected));
     }
 
+    // A contract is not C++, so it leaves both texts. What Clang is given
+    // instead is an ordinary function per clause, emitted after the body so
+    // that everything the contract can name is already declared. The
+    // postcondition takes one parameter more than the function does: `result`,
+    // of the declared return type.
+    for (std::size_t index = 0; index < syntax.verified_functions.size(); ++index) {
+        const VerifiedFunction& verified = syntax.verified_functions[index];
+        blank(projection.runtime, verified.keyword);
+        blank(projection.runtime, verified.clause_region);
+        edits.push_back(Edit{verified.keyword, std::string(verified.keyword.length, ' ')});
+        edits.push_back(
+            Edit{verified.clause_region, projection.runtime.substr(verified.clause_region.offset,
+                                                                   verified.clause_region.length)});
+
+        const Clause* postcondition = verified.postcondition();
+        if (postcondition == nullptr) {
+            continue;
+        }
+
+        const std::string suffix =
+            std::to_string(index) + (options.unit_key.empty() ? "" : "_" + options.unit_key);
+        std::string_view parameters = stream.spelling(verified.parameters);
+        const std::size_t first = parameters.find_first_not_of(" \t\r\n");
+        const std::size_t last = parameters.find_last_not_of(" \t\r\n");
+        if (first != std::string_view::npos && parameters.substr(first, last - first + 1) == "void") {
+            parameters = {};
+        }
+        const bool has_parameters = parameters.find_first_not_of(" \t\r\n") != std::string_view::npos;
+
+        std::string result_parameter;
+        if (has_parameters) {
+            result_parameter += parameters;
+            result_parameter += ", ";
+        }
+        result_parameter += stream.spelling(verified.return_type);
+        result_parameter += " result";
+
+        ContractFunctions projected;
+        projected.function_index = index;
+        projected.postcondition_name = options.generated_prefix + "ensures_" + suffix;
+
+        std::string replacement = "\n";
+        replacement += line_directive(postcondition->location.line, verified.keyword_location.file);
+        replacement += "[[maybe_unused]] static bool ";
+        replacement += projected.postcondition_name;
+        replacement += "(";
+        replacement += result_parameter;
+        replacement += ") { return (";
+        replacement += stream.spelling(postcondition->expression);
+        replacement += "); }\n";
+
+        if (const Clause* precondition = verified.precondition(); precondition != nullptr) {
+            projected.precondition_name = options.generated_prefix + "expects_" + suffix;
+            replacement +=
+                line_directive(precondition->location.line, verified.keyword_location.file);
+            replacement += "[[maybe_unused]] static bool ";
+            replacement += projected.precondition_name;
+            replacement += "(";
+            replacement += parameters;
+            replacement += ") { return (";
+            replacement += stream.spelling(precondition->expression);
+            replacement += "); }\n";
+        }
+
+        replacement += line_directive(verified.body_end_line, verified.keyword_location.file);
+        replacement.append(verified.body_end_column - 1, ' ');
+        edits.push_back(Edit{source::ByteSpan{verified.body_end, 0}, std::move(replacement)});
+        projection.contract_functions.push_back(std::move(projected));
+    }
+
     std::ranges::sort(edits, [](const Edit& lhs, const Edit& rhs) {
         return lhs.span.offset < rhs.span.offset;
     });

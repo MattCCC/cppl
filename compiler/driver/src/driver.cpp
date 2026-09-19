@@ -1,6 +1,9 @@
 #include "cppl/driver/driver.hpp"
 
+#include <unistd.h>
+
 #include <algorithm>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -31,6 +34,7 @@ namespace {
 struct Summary {
     std::size_t laws = 0;
     std::size_t proven = 0;
+    std::size_t contracts_proven = 0;
     std::size_t proven_by_written_proof = 0;
     std::size_t unresolved = 0;
     std::size_t units_verified = 0;
@@ -59,14 +63,44 @@ void report(diagnostics::Engine& engine,
     engine.report(std::move(diagnostic));
 }
 
-std::filesystem::path scratch_directory(const std::string& input) {
+class ScratchDirectory {
+public:
+    ScratchDirectory() {
+        std::error_code error;
+        const auto temporary = std::filesystem::temp_directory_path(error);
+        if (error) {
+            return;
+        }
+        std::string pattern = (temporary / "cppl-XXXXXX").string();
+        if (const char* created = ::mkdtemp(pattern.data())) {
+            path_ = created;
+        }
+    }
+
+    ScratchDirectory(const ScratchDirectory&) = delete;
+    ScratchDirectory& operator=(const ScratchDirectory&) = delete;
+
+    ~ScratchDirectory() {
+        if (!path_.empty()) {
+            std::error_code error;
+            std::filesystem::remove_all(path_, error);
+        }
+    }
+
+    [[nodiscard]] const std::filesystem::path& path() const { return path_; }
+
+private:
+    std::filesystem::path path_;
+};
+
+std::filesystem::path scratch_directory(const std::filesystem::path& root,
+                                        const std::string& input) {
     std::error_code error;
     const std::filesystem::path absolute = std::filesystem::absolute(input, error);
     const source::Digest digest = source::hash_bytes(absolute.string());
-    const std::filesystem::path directory =
-        std::filesystem::temp_directory_path(error) / "cppl" / digest.to_short_hex(16);
+    const std::filesystem::path directory = root / digest.to_short_hex(16);
     std::filesystem::create_directories(directory, error);
-    return directory;
+    return error ? std::filesystem::path{} : directory;
 }
 
 bool write_file(const std::filesystem::path& path, std::string_view content) {
@@ -133,12 +167,19 @@ diagnostics::Severity convert(clangbridge::Severity severity) {
 }
 
 UnitOutcome compile_unit(const Options& options,
-                         const Input& input,
+                          const Input& input,
+                          const std::filesystem::path& scratch_root,
                          diagnostics::Engine& engine,
                          Summary& summary) {
     UnitOutcome outcome;
 
-    const std::filesystem::path scratch = scratch_directory(input.path);
+    const std::filesystem::path scratch = scratch_directory(scratch_root, input.path);
+    if (scratch.empty()) {
+        report(engine, diagnostics::Category::Internal,
+               "could not create the scratch directory for '" + input.path + "'");
+        outcome.failed = true;
+        return outcome;
+    }
     const std::string stem = std::filesystem::path(input.path).filename().string();
     const std::filesystem::path preprocessed_path = scratch / (stem + ".i");
 
@@ -234,6 +275,9 @@ UnitOutcome compile_unit(const Options& options,
     for (const frontend::PureMarker& marker : syntax.pure_markers) {
         request.selection.locations.push_back(marker.function_location);
     }
+    for (const frontend::VerifiedFunction& function : syntax.verified_functions) {
+        request.selection.locations.push_back(function.function_location);
+    }
     // A law is projected under its own name, so it is selected by the line it
     // was declared on rather than by a generated prefix.
     for (const frontend::LawDeclaration& law : syntax.laws) {
@@ -277,17 +321,21 @@ UnitOutcome compile_unit(const Options& options,
     summary.laws += elaborated.module.laws.size();
     for (const obligations::ObligationResult& result : results) {
         if (result.verdict.is_proven()) {
-            ++summary.proven;
-            if (program.proof_for(result.obligation.law) != nullptr) {
+            if (result.obligation.origin == obligations::Origin::FunctionContract) {
+                ++summary.contracts_proven;
+            } else {
+                ++summary.proven;
+            }
+            if (program.proof_for(result.obligation) != nullptr) {
                 ++summary.proven_by_written_proof;
             }
         } else {
             ++summary.unresolved;
         }
     }
-    // A law whose obligation could not even be stated is unresolved too.
-    if (results.size() < elaborated.module.laws.size()) {
-        summary.unresolved += elaborated.module.laws.size() - results.size();
+    const std::size_t required = syntax.laws.size() + syntax.verified_functions.size();
+    if (results.size() < required) {
+        summary.unresolved += required - results.size();
     }
 
     const erasure::Erased erased = erasure::erase(stream, syntax, projection, engine);
@@ -323,6 +371,7 @@ void print_trust_report(const Options& options, const Summary& summary) {
     std::cout << "Laws proven:                 " << summary.proven << "\n";
     std::cout << "  by a written proof:        " << summary.proven_by_written_proof << "\n";
     std::cout << "Laws trusted:                0\n";
+    std::cout << "Function contracts proven:   " << summary.contracts_proven << "\n";
     std::cout << "Unresolved obligations:      " << summary.unresolved << "\n\n";
     std::cout << "Unsafe regions:              0\n";
     std::cout << "Runtime validation sites:    0\n";
@@ -358,6 +407,12 @@ int run_driver(int argc, const char* const* argv) {
         return result.exit_code;
     }
 
+    const ScratchDirectory scratch;
+    if (scratch.path().empty()) {
+        std::cerr << "cppl: error: could not create an isolated compilation directory\n";
+        return 1;
+    }
+
     diagnostics::Engine engine;
     Summary summary;
     std::map<std::size_t, std::string> replacements;
@@ -365,7 +420,7 @@ int run_driver(int argc, const char* const* argv) {
     bool failed = false;
 
     for (const Input& input : options.inputs) {
-        const UnitOutcome outcome = compile_unit(options, input, engine, summary);
+        const UnitOutcome outcome = compile_unit(options, input, scratch.path(), engine, summary);
         if (outcome.failed) {
             failed = true;
             if (outcome.exit_code != 0) {

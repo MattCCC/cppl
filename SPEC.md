@@ -879,6 +879,55 @@ The trust policy and reporting requirements are defined in `TRUST.md`.
 
 ---
 
+## 12.5 Single-return verification fragment
+
+For a supported definition of the form:
+
+```cpp
+verified T f(parameters)
+    expects(P)
+    ensures(Q)
+{
+    return expression;
+}
+```
+
+let `R` be the typed return term elaborated from the actual function body
+resolved by Clang. Its required obligation is:
+
+```text
+forall parameters. P -> Q[R/result]
+```
+
+When `expects` is absent, the obligation is `forall parameters. Q[R/result]`.
+Substitution MUST avoid variable capture. `result` is a specification binding
+of type `T`; it MUST NOT introduce a runtime variable, parameter, or computation.
+The return expression MUST be checked even when `Q` does not mention `result`.
+
+The body MUST NOT be replaced by an assumed summary or a `body_semantics` axiom.
+Every generated obligation requires evidence accepted by the existing kernel.
+This fragment adds zero kernel rules and zero logical assumptions.
+
+The initial implementation accepts namespace-scope functions with an explicit
+built-in integer return type, integer value parameters, one `ensures` equality,
+and at most one `expects` equality. Bodies contain exactly one return of a
+modeled pure expression: parameters, integer literals, unsigned addition, or
+calls to admitted pure definitions. Clang remains authoritative for overloads,
+integer widths, and conversions; unsupported conversions and signed addition
+are rejected. Type aliases are resolved by Clang.
+
+Branches, loops, locals, multiple returns, references, pointers, floating point,
+exceptions, side effects, recursion, and unsupported declarators are rejected.
+An ordinary parameter named `result` is currently unsupported on a verified
+definition because that name binds the returned value in its postcondition.
+
+Until call-site obligations are implemented, functions with preconditions are
+unavailable as definitions in verified reasoning, including through pure helper
+dependencies. Ordinary callers remain permitted under section 11.7. `verified`
+alone does not make a function available for unfolding as a `pure` definition.
+
+---
+
 # 13. `pure`
 
 `pure` declares that a function is referentially transparent for the formal semantics in which it is used.

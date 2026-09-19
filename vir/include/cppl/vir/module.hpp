@@ -30,6 +30,17 @@ enum class Purity : std::uint8_t {
     Pure,
 };
 
+// The contract a verified function must satisfy (GRAMMAR.md 6).
+//
+// `postcondition` is stated over the function's parameters and one more, in
+// last position, standing for the value the function returns. That parameter is
+// what `result` denotes; it exists only in the specification.
+struct Contract {
+    std::optional<Expr> precondition;
+    Expr postcondition;
+    source::SourceRange range;
+};
+
 struct Function {
     FunctionId id;
     SymbolId symbol;
@@ -37,6 +48,7 @@ struct Function {
     std::vector<Parameter> parameters;
     Type result;
     Purity purity = Purity::Unknown;
+    std::optional<Contract> contract;
 
     // The value a single-expression body returns. Absent when the body shape
     // is outside the modeled fragment; such a function cannot be admitted as a

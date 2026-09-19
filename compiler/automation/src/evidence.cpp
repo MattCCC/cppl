@@ -4,14 +4,12 @@
 
 namespace cppl::automation {
 
-namespace {
-
-constexpr std::string_view kDefinitionalStrategy = "definitional-equality";
-
-}  // namespace
-
-std::optional<Evidence> propose(const kernel::Context&, const kernel::Proposition& goal) {
-    return Evidence{obligations::definitional_evidence(goal), std::string(kDefinitionalStrategy)};
+std::optional<Evidence> propose(const kernel::Context& context, const kernel::Proposition& goal) {
+    kernel::ProofTerm definitional = obligations::definitional_evidence(goal);
+    if (kernel::check(context, goal, definitional, kernel::CoreLimits{}).has_value()) {
+        return Evidence{std::move(definitional), "definitional-equality"};
+    }
+    return Evidence{obligations::automatic_evidence(goal), "premise-and-definitional-equality"};
 }
 
 std::vector<obligations::ObligationResult> verify(const obligations::Program& program,
@@ -23,12 +21,12 @@ std::vector<obligations::ObligationResult> verify(const obligations::Program& pr
         // Evidence the author wrote is the evidence submitted. A written proof
         // that the kernel refuses is a failure of that proof; it never falls
         // back to a strategy that might close the goal another way.
-        const obligations::WrittenProof* written = program.proof_for(obligation.law);
+        const obligations::WrittenProof* written = program.proof_for(obligation);
 
         // A law whose written proof was refused stays open. The reason was
         // reported where the proof was refused, and the compiler does not go
         // looking for evidence the author did not ask for.
-        if (written == nullptr && program.proof_refused(obligation.law)) {
+        if (written == nullptr && program.proof_refused(obligation)) {
             results.push_back(obligations::ObligationResult{
                 obligation,
                 obligations::Verdict::unresolved("the proof written for this law was refused"),
@@ -65,11 +63,17 @@ std::vector<obligations::ObligationResult> verify(const obligations::Program& pr
             diagnostic.severity = diagnostics::Severity::Error;
             diagnostic.category = evidence.has_value() ? diagnostics::Category::KernelRejection
                                                        : diagnostics::Category::ProofFailure;
-            diagnostic.message =
-                written != nullptr
-                    ? "proof '" + written->name + "' does not establish law '" +
-                          obligation.law_name + "'"
-                    : "law '" + obligation.law_name + "' is not proven";
+            // A contract is not a law an author can write a proof for: it is
+            // discharged from the function's own body or not at all.
+            if (written != nullptr) {
+                diagnostic.message = "proof '" + written->name + "' does not establish law '" +
+                                     obligation.subject + "'";
+            } else if (obligation.origin == obligations::Origin::FunctionContract) {
+                diagnostic.message =
+                    "verified function '" + obligation.subject + "' does not satisfy its contract";
+            } else {
+                diagnostic.message = "law '" + obligation.subject + "' is not proven";
+            }
             diagnostic.location = location;
             diagnostic.notes.push_back(
                 diagnostics::Note{"goal: " + kernel::describe(obligation.goal), location});

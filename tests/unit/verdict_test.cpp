@@ -33,7 +33,7 @@ Proposition reflexive_goal() {
 
 cppl::obligations::Obligation obligation_for(Proposition goal) {
     cppl::obligations::Obligation obligation;
-    obligation.law_name = "some_law";
+    obligation.subject = "some_law";
     obligation.goal = std::move(goal);
     return obligation;
 }

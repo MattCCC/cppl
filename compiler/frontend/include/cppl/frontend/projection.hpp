@@ -43,6 +43,17 @@ struct ProofFunction {
     std::vector<std::string> assumption_names;
 };
 
+// The ordinary C++ functions a verified function's contract is projected into.
+//
+// The postcondition takes the verified function's parameters and one more, of
+// its return type, named `result`. That is what makes `result` an ordinary name
+// Clang resolves; it is never introduced into the program itself.
+struct ContractFunctions {
+    std::size_t function_index = 0;
+    std::string postcondition_name;
+    std::string precondition_name;  // empty when the function states none
+};
+
 // One projector, two texts.
 //
 // `runtime` is the program: the scanned text with every C++L-only span blanked.
@@ -60,6 +71,7 @@ struct Projection {
     std::string runtime;
     std::vector<SpecificationFunction> specification_functions;
     std::vector<ProofFunction> proof_functions;
+    std::vector<ContractFunctions> contract_functions;
 };
 
 struct ProjectionOptions {

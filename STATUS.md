@@ -56,14 +56,15 @@ cppl -std=c++17|c++20|c++23 main.cpp -o main
 compiles ordinary supported C++ with no source changes, and for a unit that
 declares Laws it:
 
-1. preprocesses with Clang and recognizes `law`, `proof` and `pure`
+1. preprocesses with Clang and recognizes `law`, `proof`, `pure`, and `verified`
    contextually;
 2. projects the unit into an analysis text and a runtime text in one pass;
 3. resolves the C++ semantics of the analysis text through libclang;
 4. elaborates the resolved semantics into typed VIR;
 5. lowers VIR into core definitions and a universally quantified goal — an
    equality, or an implication from the Law's precondition to it — and lowers
-   each written proof into a kernel proof term;
+   each written proof into a kernel proof term; verified functions generate
+   postcondition obligations by substituting their elaborated return term;
 6. submits the author's evidence, or its own when none was written, to the
    trusted kernel;
 7. reports `PROVEN` only on kernel acceptance, and fails the build otherwise;
@@ -89,8 +90,18 @@ introduction. `assume` names that premise and is an error where the goal
 supposes none. `rewrite` then uses an equality to transform the goal, so a
 conditional Law whose conclusion needs its premise to be *used* is provable.
 
+Verified functions support one pure return expression, integer parameters and
+results, one `ensures` equality, and an optional `expects` equality. The generated
+goal is `forall parameters. P -> Q[R/result]`. Automatic evidence first tries
+definitional equality. If needed, it introduces binders, uses an identical
+hypothesis or performs one equality rewrite, then offers reflexivity; the kernel
+checks every step. Written `refl` retains its
+definitional-equality semantics. `result` is erased specification syntax.
+Functions with preconditions cannot yet be called from verified reasoning;
+ordinary runtime callers remain allowed. See `SPEC.md` 12.5.
+
 This slice does **not** implement induction, dependent types, refinement types,
-contracts, ghost state, `unsafe`, `trusted`, conjunction, proof `let` or
+control-flow contracts, ghost state, `unsafe`, `trusted`, conjunction, proof `let` or
 `match`, solvers, proof caching, or any verification of the C++ memory model.
 Those remain `SPECIFIED` below.
 
@@ -131,13 +142,11 @@ IMPLEMENTED
 
 # Current milestone
 
-The first vertical slice is in place, developers can write the proof of a Law
-themselves, quantified evidence can be instantiated at a term, and a Law can be
-stated under a precondition, proven under it, and have that precondition used
-to transform what is being proven. That is the first set of rules with which a
-contract can say more than it assumes, so the next priority is `verified`
-functions and contracts. Induction and the obligations that justify signed
-arithmetic remain prerequisites for the Laws people will want after that.
+Verified functions now generate obligations from executable single-return
+bodies, using the existing seven kernel rules and no logical assumptions.
+The next slice is conditional branches with path-sensitive obligations, followed
+by locals and richer expressions. Loops with invariants, recursion with
+induction/termination, memory/reference reasoning, and SMT automation come later.
 
 Original target, for reference:
 
@@ -194,10 +203,10 @@ The project should not claim broad language implementation before the proof sema
 | structural induction         | `SPECIFIED` |
 | well-founded recursion       | `SPECIFIED` |
 | termination checking         | `SPECIFIED` |
-| `expects` on functions       | `SPECIFIED` |
-| `ensures` on functions       | `SPECIFIED` |
+| `expects` on functions       | `PROTOTYPE` |
+| `ensures` on functions       | `PROTOTYPE` |
 | `pure`                       | `PROTOTYPE` |
-| `verified`                   | `SPECIFIED` |
+| `verified`                   | `PROTOTYPE` |
 | `ghost`                      | `SPECIFIED` |
 | `unsafe`                     | `SPECIFIED` |
 | `trusted`                    | `SPECIFIED` |
@@ -289,8 +298,8 @@ Written proof declarations added no rule of their own: `refl`, `exact`,
 | Dependent type theory direction | `SPECIFIED`   |
 | Inductive reasoning             | `SPECIFIED`   |
 | Equality model                  | `SPECIFIED`   |
-| Hoare-style contracts           | `SPECIFIED`   |
-| Weakest-precondition reasoning  | `SPECIFIED`   |
+| Hoare-style contracts           | `PROTOTYPE`   |
+| Weakest-precondition reasoning  | `PROTOTYPE`   |
 | Refinement typing               | `SPECIFIED`   |
 | SMT-assisted reasoning          | `SPECIFIED`   |
 | Exact core calculus             | `NOT STARTED` |
@@ -382,7 +391,7 @@ modules, concepts and ABI-sensitive constructs are not yet covered.
 | VIR proposition representation | `NOT STARTED` |
 | VIR control-flow model         | `NOT STARTED` |
 | VIR state model                | `NOT STARTED` |
-| VIR contract model             | `NOT STARTED` |
+| VIR contract model             | `PROTOTYPE`   |
 | VIR proof obligations          | `PROTOTYPE`   |
 | VIR unsafe/trust annotations   | `NOT STARTED` |
 | VIR serialization              | `NOT STARTED` |

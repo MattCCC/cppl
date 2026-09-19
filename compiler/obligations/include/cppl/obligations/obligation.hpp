@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -25,15 +26,24 @@ struct ObligationId {
 
 enum class Origin : std::uint8_t {
     LawProposition,
+    FunctionContract,
 };
 
 std::string describe(Origin origin);
 
 struct Obligation {
     ObligationId id;
-    vir::LawId law;
-    std::string law_name;
     Origin origin = Origin::LawProposition;
+
+    // What the obligation is about: a Law's name, or a verified function's
+    // qualified name.
+    std::string subject;
+
+    // The Law this obligation states, where it states one. A contract states
+    // no Law, so no written proof can name it: it is discharged from the
+    // function's own body or not at all.
+    std::optional<vir::LawId> law;
+
     kernel::Proposition goal;
     source::SourceRange range;
 };
@@ -73,11 +83,18 @@ struct Program {
 
     [[nodiscard]] const WrittenProof* proof_for(vir::LawId law) const;
     [[nodiscard]] bool proof_refused(vir::LawId law) const;
+
+    // The same, for an obligation that may state no Law at all.
+    [[nodiscard]] const WrittenProof* proof_for(const Obligation& obligation) const;
+    [[nodiscard]] bool proof_refused(const Obligation& obligation) const;
 };
 
-// Evidence with the shape of a goal: introduce every quantifier, then offer
-// reflexivity. Whether the two sides of the equality really are definitionally
-// equal is the kernel's decision, made by its own normalizer.
+// Written refl introduces binders but never uses the hypotheses it introduces.
 [[nodiscard]] kernel::ProofTerm definitional_evidence(const kernel::Proposition& goal);
+
+[[nodiscard]] kernel::ProofTerm automatic_evidence(const kernel::Proposition& goal);
+
+[[nodiscard]] std::optional<kernel::Proposition> rewrite_context(
+    const kernel::Proposition& goal, const kernel::Term& target);
 
 }  // namespace cppl::obligations
