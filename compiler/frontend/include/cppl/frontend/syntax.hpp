@@ -113,7 +113,7 @@ struct VerifiedFunction {
     std::uint32_t body_end_column = 0;
 
     [[nodiscard]] const Clause* postcondition() const;
-    [[nodiscard]] const Clause* precondition() const;
+    [[nodiscard]] std::vector<const Clause*> preconditions() const; // in source order
 };
 
 // while (condition) invariant(P)... { body }

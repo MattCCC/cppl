@@ -31,6 +31,7 @@ struct ParseRequest {
 // An error result means the bridge itself could not run. A translation unit
 // that Clang rejected is returned normally, with has_errors set and Clang's
 // diagnostics attached: those are the user's C++ errors, not bridge failures.
+// Such a unit describes no declarations.
 [[nodiscard]] std::expected<TranslationUnit, std::string> parse(const ParseRequest& request);
 
 // The libclang version backing this build, for trust reporting.

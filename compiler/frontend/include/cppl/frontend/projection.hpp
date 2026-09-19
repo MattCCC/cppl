@@ -53,7 +53,7 @@ struct ProofFunction {
 struct ContractFunctions {
     std::size_t function_index = 0;
     std::string postcondition_name;
-    std::string precondition_name; // empty when the function states none
+    std::vector<std::string> precondition_names; // one per expects clause, in source order
 };
 
 // The declaration a loop invariant is projected into: a generated `bool` local

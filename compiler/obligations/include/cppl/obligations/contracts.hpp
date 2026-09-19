@@ -5,11 +5,18 @@
 #include "cppl/vir/ids.hpp"
 
 #include <cstddef>
-#include <optional>
 #include <string>
 #include <vector>
 
 namespace cppl::obligations {
+
+// One precondition of the callee, instantiated at a call: the obligation that
+// proves it where the call is made, and the same goal stated over earlier
+// call results rather than the calls themselves.
+struct CallPrecondition {
+    std::size_t obligation = 0;
+    kernel::Proposition reasoning_goal;
+};
 
 struct CallVerification {
     vir::FunctionId callee;
@@ -19,8 +26,7 @@ struct CallVerification {
     kernel::Type result;
     // Scope: caller parameters, earlier call results, this call's result.
     kernel::Proposition postcondition;
-    std::optional<std::size_t> precondition_obligation;
-    std::optional<kernel::Proposition> reasoning_goal;
+    std::vector<CallPrecondition> preconditions; // in the callee's source order
     std::size_t conditions = 0;
 };
 
@@ -49,7 +55,9 @@ struct ContractVerification {
     vir::FunctionId function;
     std::string name;
     std::vector<kernel::Type> parameters;
-    std::optional<kernel::Proposition> precondition;
+    // Each is supposed in turn, P1 -> ... -> Pn -> Q, which is their
+    // conjunction without a conjunction connective.
+    std::vector<kernel::Proposition> preconditions;
     // Scope: function parameters followed by its specification-only result.
     kernel::Proposition postcondition;
     kernel::Type result;

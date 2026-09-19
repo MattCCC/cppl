@@ -462,14 +462,20 @@ void elaborate_contract(const Request& request, const frontend::VerifiedFunction
     contract.postcondition = std::move(*ensured);
     contract.range.begin = postcondition->location;
 
-    if (const frontend::Clause* precondition = declaration.precondition(); precondition != nullptr) {
-        std::optional<vir::Expr> expected =
-            convert_projected(request, projected.precondition_name, precondition->location, next_expression_id,
-                              "the precondition of verified function '" + function.qualified_name + "'", engine);
+    const std::vector<const frontend::Clause*> preconditions = declaration.preconditions();
+    if (preconditions.size() != projected.precondition_names.size()) {
+        report(engine, diagnostics::Category::Elaboration, declaration.function_location,
+               "the preconditions of verified function '" + function.qualified_name + "' were not all projected");
+        return;
+    }
+    for (std::size_t index = 0; index < preconditions.size(); ++index) {
+        std::optional<vir::Expr> expected = convert_projected(
+            request, projected.precondition_names[index], preconditions[index]->location, next_expression_id,
+            "the precondition of verified function '" + function.qualified_name + "'", engine);
         if (!expected.has_value()) {
             return;
         }
-        contract.precondition = std::move(*expected);
+        contract.preconditions.push_back(std::move(*expected));
     }
 
     converted.contract = std::move(contract);

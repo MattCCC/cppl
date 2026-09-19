@@ -56,8 +56,17 @@ reject no_ensures 'ensures clause' \
     'verified unsigned f(unsigned x) expects(x == 0u) { return x; }'
 reject duplicate_ensures 'ensures clause' \
     'verified unsigned f(unsigned x) ensures(result == x) ensures(result == 0u) { return x; }'
-reject duplicate_expects 'expects clause' \
-    'verified unsigned f(unsigned x) expects(x == 0u) expects(x == 1u) ensures(result == x) { return x; }'
+reject second_expects_needed 'does not satisfy its contract' \
+    'verified unsigned f(unsigned x, unsigned y) expects(x == 1u) expects(y == 2u) ensures(result == 4u) { return x + y; }'
+reject first_expects_unestablished 'call.site precondition' \
+    'verified unsigned g(unsigned x, unsigned y) expects(x == 1u) expects(y == 2u) ensures(result == 3u) { return x + y; } verified unsigned f(unsigned y) expects(y == 2u) ensures(result == 3u) { return g(y, y); }'
+reject second_expects_unestablished 'call.site precondition' \
+    'verified unsigned g(unsigned x, unsigned y) expects(x == 1u) expects(y == 2u) ensures(result == 3u) { return x + y; } verified unsigned f(unsigned x) expects(x == 1u) ensures(result == 3u) { return g(x, x); }'
+# Clang's own error, reported rather than crashing on its recovery expressions.
+reject malformed_law_proposition 'error \[cpp-semantic\]' \
+    'law l(unsigned x) ensures(exists(unsigned y) y == x);'
+reject malformed_contract 'error \[cpp-semantic\]' \
+    'verified unsigned f(unsigned x) ensures(foo(unsigned y) y == x) { return x; }'
 reject declaration_only 'not defined here' \
     'verified unsigned f(unsigned x) ensures(result == x);'
 reject runtime_result 'undeclared identifier.*result' \
@@ -66,7 +75,7 @@ reject result_in_expects 'undeclared identifier.*result' \
     'verified unsigned f(unsigned x) expects(result == 0u) ensures(result == x) { return x; }'
 reject method 'outside namespace scope' \
     'struct S { verified unsigned f(unsigned x) ensures(result == x) { return x; } };'
-reject recursive 'not available|not admitted' \
+reject recursive 'recursion is not modeled' \
     'verified pure unsigned f(unsigned x) ensures(result == x) { return f(x); }'
 reject conditional_call 'call.site precondition' \
     'verified pure unsigned g(unsigned x) expects(x == 0u) ensures(result == 0u) { return x; } verified unsigned f(unsigned x) ensures(result == x) { return g(x); }'
@@ -88,5 +97,23 @@ reject conditional_helper 'not admitted|not available' \
     'verified pure unsigned g(unsigned x) expects(x == 0u) ensures(result == 0u) { return x; } pure unsigned h(unsigned x) { return g(x); } verified unsigned f(unsigned x) ensures(result == x) { return h(x); }'
 reject result_parameter 'redefinition of parameter.*result' \
     'verified unsigned f(unsigned result) ensures(result == 0u) { return result; }'
+
+# Unsupported constructs are named as written, not by Clang's class for them.
+reject bitwise_not "operator '~' is not modeled" \
+    'verified unsigned f(unsigned x) ensures(result == x) { return ~x; }'
+reject conditional_operator "conditional operator '\?:' is not modeled" \
+    'verified unsigned f(unsigned x) ensures(result == x) { return x == 0u ? x : x; }'
+reject explicit_cast 'explicit conversion is not modeled' \
+    'verified unsigned f(unsigned x) ensures(result == x) { return (unsigned)x; }'
+reject switch_statement "found a 'switch' statement" \
+    'verified unsigned f(unsigned x) ensures(result == x) { switch (x) { default: return x; } }'
+reject try_block "found a 'try' block" \
+    'verified unsigned f(unsigned x) ensures(result == x) { try { return x; } catch (...) { return x; } }'
+reject discarded_call 'call whose value is discarded' \
+    'unsigned h(unsigned x); verified unsigned f(unsigned x) ensures(result == x) { h(x); return x; }'
+reject direct_recursion 'it calls itself; recursion is not modeled' \
+    'verified unsigned f(unsigned x) ensures(result == x) { if (x == 0u) return 0u; return f(x - 1u) + 1u; }'
+reject mutual_recursion "call to 'g' is recursive or depends on recursion" \
+    'unsigned g(unsigned); verified unsigned f(unsigned x) ensures(result == x) { return g(x); } verified unsigned g(unsigned x) ensures(result == x) { return f(x); }'
 
 echo 'false contracts and unsupported verified bodies fail closed'

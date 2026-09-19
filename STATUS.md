@@ -93,10 +93,12 @@ supposes none. `rewrite` then uses an equality to transform the goal, so a
 conditional Law whose conclusion needs its premise to be *used* is provable.
 
 Verified functions support pure return expressions, `if`/`else`, nested blocks,
-integer parameters and results, one `ensures` comparison, and an optional
-`expects` comparison. Comparisons are `==`, `!=`, `<`, `<=`, `>`, `>=`, with logical
-negation. The generated single-return
-goal is `forall parameters. P -> Q[R/result]`. Automatic evidence first tries
+integer parameters and results, one `ensures` comparison, and any number of
+`expects` comparisons, which conjoin (`SPEC.md` 11.5): the body supposes each in
+turn, and a verified caller proves each separately. Comparisons are `==`, `!=`,
+`<`, `<=`, `>`, `>=`, with logical negation. The generated single-return
+goal is `forall parameters. P1 -> ... -> Pn -> Q[R/result]`. A Law still
+accepts at most one `expects` clause. Automatic evidence first tries
 definitional equality. If needed, it introduces binders, uses an identical
 hypothesis or rewrites once per available equality in either direction, newest first, then offers
 reflexivity; the kernel
@@ -367,7 +369,7 @@ the opposite direction, are this rule at another context; neither is primitive
 and neither is inferred.
 
 Written proof declarations added no rule of their own: `refl`, `exact`,
-`apply`, `assume` and `rewrite` elaborate into terms built from these seven.
+`apply`, `assume` and `rewrite` elaborate into terms built from these rules.
 
 ---
 

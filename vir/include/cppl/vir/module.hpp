@@ -34,9 +34,10 @@ enum class Purity : std::uint8_t {
 //
 // `postcondition` is stated over the function's parameters and one more, in
 // last position, standing for the value the function returns. That parameter is
-// what `result` denotes; it exists only in the specification.
+// what `result` denotes; it exists only in the specification. The
+// preconditions, in source order, conjoin (SPEC.md 11.5).
 struct Contract {
-    std::optional<Expr> precondition;
+    std::vector<Expr> preconditions;
     Expr postcondition;
     source::SourceRange range;
 };

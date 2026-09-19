@@ -1249,7 +1249,7 @@ Program generate(const vir::Module& module, const elaboration::Result& elaborate
     // definition graph acyclic and normalization terminating.
     std::vector<const vir::Function*> pending;
     for (const vir::Function& function : module.functions) {
-        if (function.contract.has_value() && function.contract->precondition.has_value()) {
+        if (function.contract.has_value() && !function.contract->preconditions.empty()) {
             deferred.emplace(
                 function.symbol.usr,
                 Failure{"call-site preconditions require a verified caller body", function.range.begin, {}});

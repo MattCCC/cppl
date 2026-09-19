@@ -45,15 +45,24 @@ std::expected<Step, std::string> discharge(Step step, const Step& premise) {
     return step;
 }
 
+// Discharges the caller's own preconditions, which are in scope as hypotheses
+// introduced before the `conditions` path conditions that follow them.
+std::expected<Step, std::string> discharge_preconditions(std::expected<Step, std::string> step,
+                                                         const obligations::ContractVerification& caller,
+                                                         std::size_t conditions) {
+    const std::size_t count = caller.preconditions.size();
+    for (std::size_t index = 0; step && index < count; ++index) {
+        step = discharge(std::move(*step), Step{caller.preconditions[index],
+                                                kernel::ProofTerm::hypothesis(kernel::HypothesisIndex{
+                                                    static_cast<std::uint32_t>(conditions + count - 1 - index)})});
+    }
+    return step;
+}
+
 std::expected<Step, std::string> under_caller(Step step, const obligations::ContractVerification& caller,
                                               const obligations::ReturnPath* path = nullptr, std::size_t needed = 0,
                                               std::size_t available = 0) {
-    auto opened = instantiate(std::move(step), parameters_of(caller));
-    if (opened && caller.precondition.has_value()) {
-        opened = discharge(std::move(*opened),
-                           Step{*caller.precondition, kernel::ProofTerm::hypothesis(kernel::HypothesisIndex{
-                                                          static_cast<std::uint32_t>(available)})});
-    }
+    auto opened = discharge_preconditions(instantiate(std::move(step), parameters_of(caller)), caller, available);
     for (std::size_t index = 0; opened && index < needed; ++index) {
         opened = discharge(std::move(*opened), Step{path->conditions[index].actual,
                                                     kernel::ProofTerm::hypothesis(kernel::HypothesisIndex{
@@ -67,8 +76,9 @@ kernel::ProofTerm close(const obligations::ContractVerification& function, kerne
     for (std::size_t index = conditions; index > 0; --index) {
         proof = kernel::ProofTerm::implication_introduction(path->conditions[index - 1].actual, std::move(proof));
     }
-    if (function.precondition.has_value()) {
-        proof = kernel::ProofTerm::implication_introduction(*function.precondition, std::move(proof));
+    for (auto precondition = function.preconditions.rbegin(); precondition != function.preconditions.rend();
+         ++precondition) {
+        proof = kernel::ProofTerm::implication_introduction(*precondition, std::move(proof));
     }
     for (auto parameter = function.parameters.rbegin(); parameter != function.parameters.rend(); ++parameter) {
         proof = kernel::ProofTerm::forall_introduction(*parameter, std::move(proof));
@@ -122,9 +132,9 @@ Composition::Composition(const obligations::Program& program) : program_(program
         for (const auto& path : function.paths) {
             for (std::size_t prefix = 0; prefix < path.calls.size(); ++prefix) {
                 const auto& call = path.calls[prefix];
-                if (call.precondition_obligation.has_value() && call.reasoning_goal.has_value()) {
-                    stages_.emplace(*call.precondition_obligation,
-                                    Stage{&function, &path, prefix, call.conditions, &*call.reasoning_goal, false});
+                for (const auto& precondition : call.preconditions) {
+                    stages_.emplace(precondition.obligation, Stage{&function, &path, prefix, call.conditions,
+                                                                   &precondition.reasoning_goal, false});
                 }
             }
             stages_.emplace(path.obligation, Stage{&function, &path, path.calls.size(), path.conditions.size(),
@@ -187,8 +197,11 @@ std::expected<Evidence, std::string> Composition::propose(std::size_t obligation
         if (!callees_.contains(call.callee.value)) {
             return std::unexpected("callee '" + call.callee_name + "' is not proven");
         }
-        if (index < stage.prefix && call.precondition_obligation.has_value() &&
-            !proven_.contains(*call.precondition_obligation)) {
+        if (index < stage.prefix && !std::ranges::all_of(
+                                        call.preconditions,
+                                        [this](const obligations::CallPrecondition& precondition) {
+                                            return proven_.contains(precondition.obligation);
+                                        })) {
             return std::unexpected("call-site precondition for '" + call.callee_name + "' is not proven");
         }
     }
@@ -211,11 +224,7 @@ std::expected<Evidence, std::string> Composition::propose(std::size_t obligation
     if (reasoning) {
         reasoning = instantiate(std::move(*reasoning), values);
     }
-    if (reasoning && function.precondition.has_value()) {
-        reasoning = discharge(std::move(*reasoning),
-                              Step{*function.precondition, kernel::ProofTerm::hypothesis(kernel::HypothesisIndex{
-                                                               static_cast<std::uint32_t>(stage.conditions)})});
-    }
+    reasoning = discharge_preconditions(std::move(reasoning), function, stage.conditions);
     for (std::size_t index = 0; reasoning && index < stage.conditions; ++index) {
         reasoning =
             discharge(std::move(*reasoning), Step{path.conditions[index].actual,
@@ -230,10 +239,12 @@ std::expected<Evidence, std::string> Composition::propose(std::size_t obligation
         const auto& call = path.calls[index];
         const auto& theorem = callees_.at(call.callee.value);
         auto postcondition = instantiate(Step{theorem.goal, theorem.proof}, call.arguments);
-        if (postcondition && call.precondition_obligation.has_value()) {
-            const auto precondition_index = *call.precondition_obligation;
+        for (const auto& required : call.preconditions) {
+            if (!postcondition) {
+                break;
+            }
             auto precondition =
-                under_caller(Step{program_.obligations[precondition_index].goal, proven_.at(precondition_index)},
+                under_caller(Step{program_.obligations[required.obligation].goal, proven_.at(required.obligation)},
                              function, &path, call.conditions, stage.conditions);
             if (!precondition) {
                 return std::unexpected(precondition.error());

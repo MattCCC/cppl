@@ -33,7 +33,7 @@ v::Function first() {
     function.parameters = {{"x", vUnsigned}, {"y", vUnsigned}};
     function.result = vUnsigned;
     function.returned_value = parameter(0);
-    function.contract = v::Contract{std::nullopt, equality(parameter(2), parameter(0)), {}};
+    function.contract = v::Contract{{}, equality(parameter(2), parameter(0)), {}};
     return function;
 }
 
@@ -60,7 +60,7 @@ k::Proposition conditional(bool same) {
 o::Program composed(bool weak = false) {
     auto callee = first();
     callee.id = v::FunctionId{0};
-    callee.contract->precondition = equality(parameter(0), parameter(1));
+    callee.contract->preconditions.push_back(equality(parameter(0), parameter(1)));
     if (weak) {
         callee.contract->postcondition = equality(parameter(0), parameter(0));
     }
@@ -68,7 +68,7 @@ o::Program composed(bool weak = false) {
     caller.id = v::FunctionId{1};
     caller.symbol = v::SymbolId{"swapped"};
     caller.qualified_name = "swapped";
-    caller.contract = v::Contract{equality(parameter(0), parameter(1)), equality(parameter(2), parameter(1)), {}};
+    caller.contract = v::Contract{{equality(parameter(0), parameter(1))}, equality(parameter(2), parameter(1)), {}};
     v::Expr call;
     call.id = v::ExprId{1};
     call.type = vUnsigned;
@@ -151,12 +151,12 @@ o::Program assigned(std::uint32_t observed) {
 o::Program anchored() {
     auto callee = first();
     callee.id = v::FunctionId{0};
-    callee.contract->precondition = equality(parameter(0), parameter(1));
+    callee.contract->preconditions.push_back(equality(parameter(0), parameter(1)));
     auto caller = first();
     caller.id = v::FunctionId{1};
     caller.symbol = v::SymbolId{"anchor"};
     caller.qualified_name = "anchor";
-    caller.contract = v::Contract{equality(parameter(0), parameter(1)), equality(parameter(2), parameter(1)), {}};
+    caller.contract = v::Contract{{equality(parameter(0), parameter(1))}, equality(parameter(2), parameter(1)), {}};
     v::Expr call;
     call.id = v::ExprId{1};
     call.type = vUnsigned;
@@ -442,7 +442,7 @@ v::Function counting(v::Expr invariant, std::uint32_t loop_id = 0) {
         control(v::Conditional{{compare(v::BinaryOp::Less, local(1), parameter(0)), std::move(iteration), local(1)}});
     auto loop = control(v::Loop{0, {1}, {"i"}, 1, {local(0), std::move(invariant), std::move(head)}});
     function.returned_value = control(v::LocalVersion{0, "i", {number(0), std::move(loop)}});
-    function.contract = v::Contract{std::nullopt, equality(parameter(1), parameter(0)), {}};
+    function.contract = v::Contract{{}, equality(parameter(1), parameter(0)), {}};
     return function;
 }
 
@@ -482,7 +482,7 @@ CPPL_TEST(an_invariant_that_does_not_hold_on_entry_leaves_the_contract_unproven)
     caller.id = v::FunctionId{1};
     caller.symbol = v::SymbolId{"caller"};
     caller.qualified_name = "caller";
-    caller.contract = v::Contract{std::nullopt, equality(parameter(2), parameter(0)), {}};
+    caller.contract = v::Contract{{}, equality(parameter(2), parameter(0)), {}};
     v::Expr call;
     call.id = v::ExprId{9};
     call.type = vUnsigned;

@@ -77,9 +77,8 @@ Type convert_type(CXType type) {
         return converted;
     }
 
-    const long long size = clang_Type_getSizeOf(canonical);
-    const bool layout_known = size > 0 && size <= 8;
-
+    // Layout is asked only of built-in integer types, which always have one.
+    long long size = 0;
     switch (canonical.kind) {
         case CXType_Bool:
             converted.kind = TypeKind::Bool;
@@ -91,7 +90,8 @@ Type convert_type(CXType type) {
         case CXType_Int:
         case CXType_Long:
         case CXType_LongLong:
-            if (layout_known) {
+            size = clang_Type_getSizeOf(canonical);
+            if (size > 0 && size <= 8) {
                 converted.kind = TypeKind::Int;
                 converted.is_signed = true;
                 converted.width = static_cast<std::uint16_t>(size * 8);
@@ -104,7 +104,8 @@ Type convert_type(CXType type) {
         case CXType_UInt:
         case CXType_ULong:
         case CXType_ULongLong:
-            if (layout_known) {
+            size = clang_Type_getSizeOf(canonical);
+            if (size > 0 && size <= 8) {
                 converted.kind = TypeKind::Int;
                 converted.is_signed = false;
                 converted.width = static_cast<std::uint16_t>(size * 8);
@@ -204,6 +205,66 @@ std::string unmodeled_statement(const std::string& found) {
     return "only if/else, while and for loops, blocks, local declarations, assignments, and return statements are "
            "modeled; found " +
            found;
+}
+
+// Names what the author wrote, not Clang's class for it.
+std::string unmodeled_expression(CXCursor cursor, CXCursorKind kind) {
+    switch (kind) {
+        case CXCursor_UnaryOperator:
+            return "operator '" + take(clang_getUnaryOperatorKindSpelling(clang_getCursorUnaryOperatorKind(cursor))) +
+                   "' is not modeled";
+        case CXCursor_ConditionalOperator:
+            return "the conditional operator '?:' is not modeled; if/else is";
+        case CXCursor_CStyleCastExpr:
+        case CXCursor_CXXFunctionalCastExpr:
+        case CXCursor_CXXStaticCastExpr:
+        case CXCursor_CXXConstCastExpr:
+        case CXCursor_CXXReinterpretCastExpr:
+        case CXCursor_CXXDynamicCastExpr:
+            return "an explicit conversion is not modeled";
+        case CXCursor_FloatingLiteral:
+            return "floating-point values are not modeled";
+        case CXCursor_CXXBoolLiteralExpr:
+            return "'bool' literals are not modeled";
+        case CXCursor_MemberRefExpr:
+            return "member access is not modeled";
+        case CXCursor_ArraySubscriptExpr:
+            return "subscripting is not modeled";
+        case CXCursor_CXXThisExpr:
+            return "'this' is not modeled";
+        case CXCursor_CXXNewExpr:
+        case CXCursor_CXXDeleteExpr:
+            return "dynamic allocation is not modeled";
+        case CXCursor_CXXThrowExpr:
+            return "exceptions are not modeled";
+        default:
+            return "'" + take(clang_getCursorKindSpelling(kind)) + "' is not modeled";
+    }
+}
+
+std::string statement_name(CXCursorKind kind) {
+    switch (kind) {
+        case CXCursor_SwitchStmt:
+            return "a 'switch' statement";
+        case CXCursor_GotoStmt:
+        case CXCursor_IndirectGotoStmt:
+            return "a 'goto' statement";
+        case CXCursor_LabelStmt:
+            return "a label";
+        case CXCursor_CXXTryStmt:
+            return "a 'try' block (exceptions are not modeled)";
+        case CXCursor_CXXThrowExpr:
+            return "a 'throw' (exceptions are not modeled)";
+        case CXCursor_CallExpr:
+            return "a call whose value is discarded (effects are not modeled)";
+        case CXCursor_NullStmt:
+            return "an empty statement";
+        case CXCursor_GCCAsmStmt:
+        case CXCursor_MSAsmStmt:
+            return "inline assembly";
+        default:
+            return "'" + take(clang_getCursorKindSpelling(kind)) + "'";
+    }
 }
 
 Expr build_expression(CXCursor cursor, const std::vector<CXCursor>& parameters, const Locals& locals, unsigned depth);
@@ -384,7 +445,7 @@ Expr build_expression(CXCursor cursor, const std::vector<CXCursor>& parameters, 
         return expr;
     }
 
-    return unsupported_expression(cursor, "'" + take(clang_getCursorKindSpelling(kind)) + "' is not modeled");
+    return unsupported_expression(cursor, unmodeled_expression(cursor, kind));
 }
 
 std::vector<CXCursor> parameters_of(CXCursor cursor) {
@@ -711,7 +772,7 @@ struct BodyLowering {
         if (kind == CXCursor_CXXForRangeStmt) {
             return reject("range-based for loops are not modeled");
         }
-        return reject(unmodeled_statement("'" + take(clang_getCursorKindSpelling(kind)) + "'"));
+        return reject(unmodeled_statement(statement_name(kind)));
     }
 
     std::optional<Expr> lower_for(CXCursor statement, const Continuation& next, const Locals& locals, unsigned depth) {
@@ -1280,6 +1341,12 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
             result.has_errors = true;
         }
         result.diagnostics.push_back(std::move(converted));
+    }
+
+    // A rejected unit is never verified, and libclang's layout queries can
+    // crash on the error types of its recovery expressions.
+    if (result.has_errors) {
+        return result;
     }
 
     Collector collector;

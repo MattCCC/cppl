@@ -162,7 +162,30 @@ verified unsigned count_twice(unsigned n)
     return clamp(0u) * 0u + once;
 }
 
+// Several preconditions conjoin: the body supposes each of them, and a caller
+// proves each of them where it makes the call.
+verified unsigned count_from(unsigned start, unsigned n)
+    expects(start == 0u)
+    expects(n == 3u)
+    ensures(result == 3u)
+{
+    unsigned i = start;
+    while (i < n)
+        invariant(i <= n)
+    {
+        i = i + 1u;
+    }
+    return i;
+}
+
+verified unsigned count_three()
+    ensures(result == 3u)
+{
+    return count_from(0u, 3u);
+}
+
 int main() {
+    if (count_three() != 3u) return 6;
     if (count_up(5u) != 5u || count_for(7u) != 7u || double_count(4u) != 8u) return 1;
     if (untouched(3u, 9u) != 9u || drain(6u) != 0u) return 2;
     if (find_limit(10u, 4u) != 4u || find_limit(3u, 8u) != 3u) return 3;

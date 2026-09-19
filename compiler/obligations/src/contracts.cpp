@@ -62,9 +62,10 @@ kernel::Proposition close(const ContractVerification& function, const ReturnPath
                      : condition.actual,
             std::move(goal));
     }
-    if (function.precondition.has_value()) {
-        goal = kernel::Proposition::implication(
-            kernel::shift(*function.precondition, static_cast<std::uint32_t>(prefix)), std::move(goal));
+    for (auto precondition = function.preconditions.rbegin(); precondition != function.preconditions.rend();
+         ++precondition) {
+        goal = kernel::Proposition::implication(kernel::shift(*precondition, static_cast<std::uint32_t>(prefix)),
+                                                std::move(goal));
     }
     for (std::size_t index = prefix; index > 0; --index) {
         goal = kernel::Proposition::for_all(path.calls[index - 1].result, std::move(goal));
@@ -213,16 +214,18 @@ std::expected<void, Failure> append_calls(const vir::Expr& expression, const vir
             abstract_arguments.push_back(std::move(*abstract));
         }
         call.value = kernel::Term::call(definitions.at(call_expression.callee.usr), call.arguments);
-        if (callee.precondition.has_value()) {
-            call.reasoning_goal = close(plan, path, prefix, call.conditions, true,
-                                        specialize(*callee.precondition, callee.parameters, abstract_arguments));
-            call.precondition_obligation = program.obligations.size() + obligations.size();
-            obligations.push_back(
-                obligation_for(program, path, Origin::CallPrecondition,
-                               function.qualified_name + " -> " + call_expression.callee_name, site->provenance.range,
-                               close(plan, path, 0, call.conditions, false,
-                                     specialize(*callee.precondition, callee.parameters, call.arguments)),
-                               *call.reasoning_goal));
+        for (const auto& precondition : callee.preconditions) {
+            CallPrecondition required;
+            required.reasoning_goal = close(plan, path, prefix, call.conditions, true,
+                                            specialize(precondition, callee.parameters, abstract_arguments));
+            required.obligation = program.obligations.size() + obligations.size();
+            obligations.push_back(obligation_for(program, path, Origin::CallPrecondition,
+                                                 function.qualified_name + " -> " + call_expression.callee_name,
+                                                 site->provenance.range,
+                                                 close(plan, path, 0, call.conditions, false,
+                                                       specialize(precondition, callee.parameters, call.arguments)),
+                                                 required.reasoning_goal));
+            call.preconditions.push_back(std::move(required));
         }
         for (auto& argument : abstract_arguments)
             argument = kernel::shift(argument, 1);
@@ -258,12 +261,12 @@ std::expected<void, Failure> state_contract(const vir::Function& function, const
         return std::unexpected(post.error());
     }
     plan.postcondition = std::move(*post);
-    if (contract.precondition.has_value()) {
-        auto pre = lower_predicate(*contract.precondition, pure_definitions, plan.parameters.size());
+    for (const auto& precondition : contract.preconditions) {
+        auto pre = lower_predicate(precondition, pure_definitions, plan.parameters.size());
         if (!pre) {
             return std::unexpected(pre.error());
         }
-        plan.precondition = std::move(*pre);
+        plan.preconditions.push_back(std::move(*pre));
     }
     return {};
 }
@@ -405,8 +408,8 @@ class Conditions {
     std::expected<void, Failure> run() {
         Scope scope;
         scope.binders = plan_.parameters;
-        if (plan_.precondition.has_value()) {
-            scope.events.push_back(Event{std::nullopt, plan_.precondition});
+        for (const auto& precondition : plan_.preconditions) {
+            scope.events.push_back(Event{std::nullopt, precondition});
         }
         std::vector<Active> loops;
         return walk(*function_.returned_value, std::move(scope), loops);
@@ -506,9 +509,9 @@ class Conditions {
                 }
                 arguments.push_back(std::move(*lowered));
             }
-            if (callee.precondition.has_value()) {
+            for (const auto& precondition : callee.preconditions) {
                 emit(scope, Origin::CallPrecondition, function_.qualified_name + " -> " + call.callee_name,
-                     site->provenance.range, specialize(*callee.precondition, callee.parameters, arguments));
+                     site->provenance.range, specialize(precondition, callee.parameters, arguments));
             }
             for (auto& argument : arguments) {
                 argument = kernel::shift(argument, 1);
@@ -797,12 +800,32 @@ void generate_contracts(const vir::Module& module, const DefinitionMap& pure_def
             progress = true;
         }
     }
+    const auto is_pending = [&pending](const std::string& usr) {
+        return std::ranges::any_of(pending, [&usr](const vir::Function* each) { return each->symbol.usr == usr; });
+    };
     for (const auto* function : pending) {
-        report(engine, *function,
-               Failure{"a verified callee is not available: recursive or unsupported dependency",
-                       function->range.begin,
-                       {}},
-               explain);
+        std::vector<const vir::Expr*> calls;
+        collect_calls(*function->returned_value, contracts, calls);
+        std::string reason = "a verified callee is not available";
+        source::SourceLocation location = function->range.begin;
+        for (const vir::Expr* site : calls) {
+            const auto& call = std::get<vir::Call>(site->node);
+            if (established.contains(call.callee.usr)) {
+                continue;
+            }
+            location = site->provenance.range.begin;
+            if (call.callee.usr == function->symbol.usr) {
+                reason = "it calls itself; recursion is not modeled, because termination is not yet verified";
+            } else if (is_pending(call.callee.usr)) {
+                reason = "its call to '" + call.callee_name +
+                         "' is recursive or depends on recursion; recursion is not modeled, because termination is "
+                         "not yet verified";
+            } else {
+                reason = "its callee '" + call.callee_name + "' has no established contract";
+            }
+            break;
+        }
+        report(engine, *function, Failure{reason, location, {}}, explain);
     }
 }
 

@@ -1258,6 +1258,11 @@ left to C++, where it declares `name` if `invariant` names a type (§1,
 SPEC.md 3.1). `decreases` on a loop is currently refused, because loop
 termination is not yet verified (SPEC.md 24.3).
 
+The example above shows the syntax, not the currently verified fragment. Besides
+`decreases`, it initializes a `std::size_t` from the `int` literal `0`, which is
+an implicit conversion, and calls the member function `values.size()`, which
+needs an object model. Both are rejected today (SPEC.md 12.5, 12.8).
+
 ---
 
 # 27. `decreases`

@@ -26,6 +26,9 @@ reject not_preserved 'is not preserved by an iteration' \
     "$count while (i < n) invariant(i == 0u) { ++i; } return 0u; }"
 reject not_preserved_by_continue 'is not preserved by an iteration' \
     'verified unsigned f(unsigned n, bool b) ensures(result <= n) { unsigned seen = 0u; for (unsigned i = 0u; i < n; ++i) invariant(seen == i) { if (b) continue; ++seen; } return seen; }'
+# A caller of a loop function proves every precondition, not only the first.
+reject second_expects_unestablished 'call.site precondition|precondition.*not' \
+    'verified unsigned g(unsigned s, unsigned n) expects(s == 0u) expects(n == 3u) ensures(result == 3u) { unsigned i = s; while (i < n) invariant(i <= n) { i = i + 1u; } return i; } verified unsigned f(unsigned n) ensures(result == 3u) { return g(0u, n); }'
 # After the loop only the invariants and the failed condition are known.
 reject head_value_leak 'return path.*does not satisfy' \
     "$count while (i < n) invariant(i <= n) { ++i; } if (i == 0u) return n; return 0u; }"

@@ -9,8 +9,8 @@ run=$(mktemp -d "$WORK/verified-calls.XXXXXX")
 for standard in c++17 c++20 c++23; do
     "$CPPL" "-std=$standard" "$FIXTURES/verified_calls.cpp" -o "$run/program" \
         --cppl-trust-report "--cppl-emit-projection=$run/runtime.cpp" > "$run/report"
-    grep -Eq '^Function contracts proven: +16$' "$run/report"
-    grep -Eq '^Call preconditions proven: +7$' "$run/report"
+    grep -Eq '^Function contracts proven: +18$' "$run/report"
+    grep -Eq '^Call preconditions proven: +9$' "$run/report"
     grep -Eq '^Unresolved obligations: +0$' "$run/report"
     grep -Eq '^Trusted external axioms: +0$' "$run/report"
     "$run/program"

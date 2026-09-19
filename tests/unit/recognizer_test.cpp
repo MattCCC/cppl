@@ -272,7 +272,7 @@ CPPL_TEST(a_verified_function_retains_its_contract) {
     const auto& function = result.syntax.verified_functions.front();
     CPPL_CHECK_EQ(function.function_name, std::string("identity"));
     CPPL_CHECK(function.postcondition() != nullptr);
-    CPPL_CHECK(function.precondition() == nullptr);
+    CPPL_CHECK(function.preconditions().empty());
     CPPL_CHECK(result.syntax.pure_markers.empty());
 }
 

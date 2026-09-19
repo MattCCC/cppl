@@ -176,6 +176,7 @@ where
 expects
 ensures
 decreases
+invariant
 cases
 induction
 ```

@@ -605,14 +605,6 @@ bool try_verified(const TokenStream& stream, std::size_t index, diagnostics::Eng
                "a verified function has exactly one ensures clause");
         return false;
     }
-    if (verified.clauses.size() - static_cast<std::size_t>(ensures_count) > 1) {
-        report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
-               "verified function '" + std::string(tokens[*name].text) + "' has more than one expects clause",
-               "multiple preconditions are conjoined, and conjunction is not part of the "
-               "formal core");
-        return false;
-    }
-
     if (cursor >= tokens.size() || !tokens[cursor].is_punctuator("{")) {
         report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
                "verified function '" + std::string(tokens[*name].text) + "' is declared but not defined here",
@@ -821,13 +813,14 @@ const Clause* VerifiedFunction::postcondition() const {
     return nullptr;
 }
 
-const Clause* VerifiedFunction::precondition() const {
+std::vector<const Clause*> VerifiedFunction::preconditions() const {
+    std::vector<const Clause*> found;
     for (const Clause& clause : clauses) {
         if (clause.kind == ClauseKind::Expects) {
-            return &clause;
+            found.push_back(&clause);
         }
     }
-    return nullptr;
+    return found;
 }
 
 Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine) {

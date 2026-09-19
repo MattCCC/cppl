@@ -217,11 +217,15 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         replacement += stream.spelling(postcondition->expression);
         replacement += "); }\n";
 
-        if (const Clause* precondition = verified.precondition(); precondition != nullptr) {
-            projected.precondition_name = options.generated_prefix + "expects_" + suffix;
+        for (const Clause* precondition : verified.preconditions()) {
+            std::string name = options.generated_prefix + "expects_" + suffix;
+            if (!projected.precondition_names.empty()) {
+                name += "_" + std::to_string(projected.precondition_names.size());
+            }
             replacement += line_directive(precondition->location.line, verified.keyword_location.file);
             replacement += "[[maybe_unused]] static bool ";
-            replacement += projected.precondition_name;
+            replacement += name;
+            projected.precondition_names.push_back(std::move(name));
             replacement += "(";
             replacement += parameters;
             replacement += ") { return (";

@@ -986,6 +986,10 @@ forall parameters. P -> Q[R/result]
 ```
 
 When `expects` is absent, the obligation is `forall parameters. Q[R/result]`.
+Several `expects` clauses `P1`, ..., `Pn` conjoin (section 11.5) and are
+supposed in source order: `forall parameters. P1 -> ... -> Pn -> Q[R/result]`.
+A verified call must establish each `Pi` separately (section 12.6). No
+conjunction connective is required.
 Substitution MUST avoid variable capture. `result` is a specification binding
 of type `T`; it MUST NOT introduce a runtime variable, parameter, or computation.
 The return expression MUST be checked even when `Q` does not mention `result`.
@@ -995,8 +999,9 @@ Every generated obligation requires evidence accepted by the existing kernel.
 This fragment adds zero kernel rules and zero logical assumptions.
 
 The initial implementation accepts namespace-scope functions with an explicit
-built-in integer return type, integer value parameters, one `ensures` equality,
-and at most one `expects` equality. Bodies contain exactly one return of a
+built-in integer return type, integer value parameters, one `ensures` clause,
+and any number of `expects` clauses, each a comparison under section 12.7. A
+Law accepts at most one `expects` clause. Bodies contain exactly one return of a
 modeled pure expression: parameters, integer literals, unsigned addition,
 subtraction and multiplication, or calls to admitted pure definitions or
 verified functions under section 12.6. Unsigned `+`, `-` and `*` denote the
