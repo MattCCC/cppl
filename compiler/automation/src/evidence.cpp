@@ -2,6 +2,8 @@
 
 #include <variant>
 
+#include "composition.hpp"
+
 namespace cppl::automation {
 
 std::optional<Evidence> propose(const kernel::Context& context, const kernel::Proposition& goal) {
@@ -16,8 +18,10 @@ std::vector<obligations::ObligationResult> verify(const obligations::Program& pr
                                                   diagnostics::Engine& engine) {
     std::vector<obligations::ObligationResult> results;
     results.reserve(program.obligations.size());
+    Composition composition(program);
 
-    for (const obligations::Obligation& obligation : program.obligations) {
+    for (std::size_t index = 0; index < program.obligations.size(); ++index) {
+        const obligations::Obligation& obligation = program.obligations[index];
         // Evidence the author wrote is the evidence submitted. A written proof
         // that the kernel refuses is a failure of that proof; it never falls
         // back to a strategy that might close the goal another way.
@@ -34,14 +38,22 @@ std::vector<obligations::ObligationResult> verify(const obligations::Program& pr
             continue;
         }
 
-        const std::optional<Evidence> evidence =
-            written != nullptr
-                ? std::optional<Evidence>{Evidence{written->term,
-                                                   "written proof '" + written->name + "'"}}
-                : propose(program.context, obligation.goal);
+        std::optional<Evidence> evidence;
+        std::string failure = "no strategy in this implementation produced candidate evidence";
+        if (written != nullptr) {
+            evidence = Evidence{written->term, "written proof '" + written->name + "'"};
+        } else if (composition.owns(index)) {
+            auto proposed = composition.propose(index);
+            if (proposed) {
+                evidence = std::move(*proposed);
+            } else {
+                failure = proposed.error();
+            }
+        } else {
+            evidence = propose(program.context, obligation.goal);
+        }
 
-        obligations::Verdict verdict = obligations::Verdict::unresolved(
-            "no strategy in this implementation produced candidate evidence");
+        obligations::Verdict verdict = obligations::Verdict::unresolved(failure);
         std::string strategy;
 
         if (evidence.has_value()) {
@@ -50,6 +62,12 @@ std::vector<obligations::ObligationResult> verify(const obligations::Program& pr
                                                               evidence->proof, kernel::CoreLimits{});
             if (checked.has_value()) {
                 verdict = obligations::Verdict::proven(*checked, obligation);
+                if (composition.owns(index)) {
+                    auto recorded = composition.accept(index, evidence->proof, *checked);
+                    if (!recorded) {
+                        verdict = obligations::Verdict::unresolved(recorded.error());
+                    }
+                }
             } else {
                 verdict = obligations::Verdict::unresolved(checked.error().detail);
             }
@@ -71,6 +89,9 @@ std::vector<obligations::ObligationResult> verify(const obligations::Program& pr
             } else if (obligation.origin == obligations::Origin::FunctionContract) {
                 diagnostic.message =
                     "verified function '" + obligation.subject + "' does not satisfy its contract";
+            } else if (obligation.origin == obligations::Origin::CallPrecondition) {
+                diagnostic.message = "call-site precondition for '" + obligation.subject +
+                                     "' is not proven";
             } else {
                 diagnostic.message = "law '" + obligation.subject + "' is not proven";
             }

@@ -12,18 +12,13 @@
 #include "cppl/kernel/substitution.hpp"
 #include "cppl/kernel/version.hpp"
 #include "cppl/source/digest.hpp"
+#include "lowering.hpp"
 
 namespace cppl::obligations {
 
 namespace {
 
-struct Failure {
-    std::string reason;
-    source::SourceLocation location;
-    // Set when the failure is a definition the core does not have, so the
-    // diagnostic can explain why that definition was not admitted.
-    std::string missing_symbol;
-};
+using detail::Failure;
 
 std::unexpected<Failure> fail(std::string reason, const source::SourceLocation& location) {
     return std::unexpected(Failure{std::move(reason), location, {}});
@@ -39,7 +34,7 @@ std::optional<kernel::Type> lower_type(const vir::Type& type) {
         integer.is_signed ? kernel::Signedness::Signed : kernel::Signedness::Unsigned);
 }
 
-using DefinitionMap = std::map<std::string, kernel::DefId>;
+using detail::DefinitionMap;
 
 // Lowers a VIR value expression into a core term.
 //
@@ -48,8 +43,9 @@ using DefinitionMap = std::map<std::string, kernel::DefId>;
 // Where it is not, the lowering refuses rather than pretending (SPEC.md 29, 31).
 class TermLowering {
 public:
-    TermLowering(const DefinitionMap& definitions, std::size_t parameter_count)
-        : definitions_(definitions), parameter_count_(parameter_count) {}
+    TermLowering(const DefinitionMap& definitions, std::size_t parameter_count,
+                 const detail::CallBindings* calls = nullptr)
+        : definitions_(definitions), parameter_count_(parameter_count), calls_(calls) {}
 
     [[nodiscard]] std::expected<kernel::Term, Failure> lower(const vir::Expr& expr) const {
         const source::SourceLocation& location = expr.provenance.range.begin;
@@ -74,6 +70,16 @@ public:
         }
 
         if (const auto* call = std::get_if<vir::Call>(&expr.node)) {
+            if (calls_ != nullptr) {
+                const auto binding = calls_->find(expr.id.value);
+                if (binding != calls_->end()) {
+                    if (binding->second >= parameter_count_) {
+                        return fail("call result is outside its logical scope", location);
+                    }
+                    return kernel::Term::variable(
+                        kernel::parameter_reference(parameter_count_, binding->second));
+                }
+            }
             const auto definition = definitions_.find(call->callee.usr);
             if (definition == definitions_.end()) {
                 return std::unexpected(
@@ -137,6 +143,7 @@ public:
 private:
     const DefinitionMap& definitions_;
     std::size_t parameter_count_;
+    const detail::CallBindings* calls_;
 };
 
 // Lowers a specification expression into a core proposition.
@@ -1111,6 +1118,26 @@ std::optional<kernel::Proposition> rewrite_context(const kernel::Proposition& go
     return make_rewrite_context(goal, target);
 }
 
+std::optional<kernel::Type> detail::core_type(const vir::Type& type) {
+    return lower_type(type);
+}
+
+std::expected<kernel::Term, detail::Failure> detail::lower_value(
+    const vir::Expr& expression, const DefinitionMap& definitions, std::size_t binders,
+    const CallBindings* calls) {
+    return TermLowering(definitions, binders, calls).lower(expression);
+}
+
+std::expected<kernel::Proposition, detail::Failure> detail::lower_predicate(
+    const vir::Expr& expression, const DefinitionMap& definitions, std::size_t binders) {
+    return lower_proposition(expression, definitions, binders);
+}
+
+ObligationId detail::identify_goal(const kernel::Context& context, const std::string& subject,
+                                  const kernel::Proposition& goal) {
+    return identify(context, subject, goal);
+}
+
 Program generate(const vir::Module& module,
                  const elaboration::Result& elaborated,
                  diagnostics::Engine& engine) {
@@ -1125,7 +1152,7 @@ Program generate(const vir::Module& module,
     for (const vir::Function& function : module.functions) {
         if (function.contract.has_value() && function.contract->precondition.has_value()) {
             deferred.emplace(function.symbol.usr,
-                             Failure{"call-site precondition obligations are not modeled yet",
+                             Failure{"call-site preconditions require a verified caller body",
                                      function.range.begin, {}});
             continue;
         }
@@ -1286,78 +1313,7 @@ Program generate(const vir::Module& module,
         program.obligations.push_back(std::move(obligation));
     }
 
-    // A verified function's contract is an obligation generated from the code
-    // itself rather than from a proposition an author stated separately: the
-    // postcondition, said of the value the body actually produces, under the
-    // precondition, for every argument.
-    for (const vir::Function& function : module.functions) {
-        if (!function.contract.has_value() || !function.returned_value.has_value()) {
-            continue;  // a body that could not be stated was reported already
-        }
-        const vir::Contract& contract = *function.contract;
-
-        const TermLowering lowering(definitions, function.parameters.size());
-        std::expected<kernel::Term, Failure> returned = lowering.lower(*function.returned_value);
-        if (!returned) {
-            report(engine, diagnostics::Category::UnsupportedSemantics,
-                   returned.error().location.is_valid() ? returned.error().location
-                                                        : function.range.begin,
-                   "the body of verified function '" + function.qualified_name +
-                       "' cannot be stated to the formal core: " + returned.error().reason,
-                   explain(returned.error()));
-            continue;
-        }
-
-        // The postcondition is stated over the parameters and one more standing
-        // for the returned value, in last position. Substituting the body's own
-        // term for it is what ties the contract to the code: there is no
-        // separate account of what the function does.
-        std::expected<kernel::Proposition, Failure> ensured =
-            lower_proposition(contract.postcondition, definitions, function.parameters.size() + 1);
-        if (!ensured) {
-            report(engine, diagnostics::Category::UnsupportedSemantics,
-                   ensured.error().location.is_valid() ? ensured.error().location
-                                                       : contract.range.begin,
-                   "the postcondition of verified function '" + function.qualified_name +
-                       "' cannot be stated to the formal core: " + ensured.error().reason,
-                   explain(ensured.error()));
-            continue;
-        }
-        kernel::Proposition goal = kernel::instantiate(*ensured, *returned);
-
-        if (contract.precondition.has_value()) {
-            std::expected<kernel::Proposition, Failure> expected =
-                lower_proposition(*contract.precondition, definitions, function.parameters.size());
-            if (!expected) {
-                report(engine, diagnostics::Category::UnsupportedSemantics,
-                       expected.error().location.is_valid() ? expected.error().location
-                                                            : contract.range.begin,
-                       "the precondition of verified function '" + function.qualified_name +
-                           "' cannot be stated to the formal core: " + expected.error().reason,
-                       explain(expected.error()));
-                continue;
-            }
-            goal = kernel::Proposition::implication(std::move(*expected), std::move(goal));
-        }
-
-        std::string unrepresented;
-        std::optional<kernel::Proposition> quantified =
-            quantify_over(function.parameters, std::move(goal), unrepresented);
-        if (!quantified.has_value()) {
-            report(engine, diagnostics::Category::UnsupportedSemantics, function.range.begin,
-                   "verified function '" + function.qualified_name + "' takes a '" +
-                       unrepresented + "', which the formal core does not represent");
-            continue;
-        }
-
-        Obligation obligation;
-        obligation.origin = Origin::FunctionContract;
-        obligation.subject = function.qualified_name;
-        obligation.range = contract.range;
-        obligation.id = identify(program.context, function.qualified_name, *quantified);
-        obligation.goal = std::move(*quantified);
-        program.obligations.push_back(std::move(obligation));
-    }
+    detail::generate_contracts(module, definitions, program, engine, explain);
 
     lower_proofs(module, elaborated, definitions, program, engine);
     return program;

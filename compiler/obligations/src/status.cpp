@@ -1,6 +1,7 @@
 #include "cppl/obligations/status.hpp"
 
 #include <algorithm>
+#include <limits>
 #include <variant>
 
 #include "cppl/kernel/substitution.hpp"
@@ -27,6 +28,8 @@ std::string describe(Status status) {
 
 std::string describe(Origin origin) {
     switch (origin) {
+        case Origin::CallPrecondition:
+            return "call-site precondition";
         case Origin::FunctionContract:
             return "function contract";
         case Origin::LawProposition:
@@ -67,7 +70,8 @@ struct Supposed {
 
 kernel::ProofTerm shaped_evidence(const kernel::Proposition& goal,
                                   std::vector<Supposed>& supposed,
-                                  std::size_t binders) {
+                                  std::size_t binders,
+                                  std::size_t remaining = std::numeric_limits<std::size_t>::max()) {
     if (const auto* quantified = std::get_if<kernel::Forall>(&goal.node)) {
         return kernel::ProofTerm::forall_introduction(
             quantified->binder, shaped_evidence(*quantified->body, supposed, binders + 1));
@@ -95,7 +99,7 @@ kernel::ProofTerm shaped_evidence(const kernel::Proposition& goal,
         }
     }
 
-    for (std::size_t position = supposed.size(); position > 0; --position) {
+    for (std::size_t position = std::min(supposed.size(), remaining); position > 0; --position) {
         const Supposed& entry = supposed[position - 1];
         const kernel::Proposition available = kernel::shift(
             entry.proposition, static_cast<std::uint32_t>(binders - entry.binders));
@@ -105,11 +109,12 @@ kernel::ProofTerm shaped_evidence(const kernel::Proposition& goal,
         }
         std::optional<kernel::Proposition> motive = rewrite_context(goal, equality->lhs);
         if (motive.has_value()) {
+            const auto rewritten = kernel::instantiate(*motive, equality->rhs);
             return kernel::ProofTerm::equality_elimination(
                 equality->type, equality->lhs, equality->rhs, std::move(*motive),
                 kernel::ProofTerm::hypothesis(kernel::HypothesisIndex{
                     static_cast<std::uint32_t>(supposed.size() - position)}),
-                kernel::ProofTerm::reflexivity());
+                shaped_evidence(rewritten, supposed, binders, position - 1));
         }
     }
 

@@ -524,6 +524,7 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
     };
 
     std::set<std::string> pure_symbols;
+    std::set<std::string> verified_symbols;
     std::vector<Candidate> candidates;
 
     const auto candidate_for = [&candidates](const clangbridge::Function* function) -> Candidate& {
@@ -564,6 +565,7 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
         Candidate& candidate = candidate_for(function);
         candidate.contract = &projected;
         candidate.declaration = &declaration;
+        verified_symbols.insert(function->usr);
     }
 
     for (const Candidate& candidate : candidates) {
@@ -618,11 +620,17 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
                     std::ranges::all_of(callees, [&pure_symbols](const vir::SymbolId& callee) {
                         return pure_symbols.contains(callee.usr);
                     });
-                if (!calls_only_pure) {
+                const bool calls_modeled = std::ranges::all_of(
+                    callees, [&](const vir::SymbolId& callee) {
+                        return pure_symbols.contains(callee.usr) ||
+                               (candidate.contract != nullptr &&
+                                verified_symbols.contains(callee.usr));
+                    });
+                if (!calls_modeled) {
                     rejection =
                         "it calls a function that is not declared pure, so its value is not "
                         "a mathematical function of its arguments";
-                } else if (candidate.pure) {
+                } else if (candidate.pure && calls_only_pure) {
                     converted.purity = vir::Purity::Pure;
                 }
             }

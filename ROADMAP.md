@@ -187,6 +187,11 @@ Exit criterion:
 
 # Phase 5 - Laws and contracts
 
+Current sequence: single-return verified functions and verified-call contract
+composition are prototyped. Next come conditionals with path obligations, then
+locals and richer expressions. Loops, recursion, memory reasoning, and SMT remain
+later work. See `STATUS.md` for the supported fragment.
+
 Implement:
 
 - Laws

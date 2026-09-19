@@ -912,7 +912,8 @@ The initial implementation accepts namespace-scope functions with an explicit
 built-in integer return type, integer value parameters, one `ensures` equality,
 and at most one `expects` equality. Bodies contain exactly one return of a
 modeled pure expression: parameters, integer literals, unsigned addition, or
-calls to admitted pure definitions. Clang remains authoritative for overloads,
+calls to admitted pure definitions or verified functions under section 12.6.
+Clang remains authoritative for overloads,
 integer widths, and conversions; unsupported conversions and signed addition
 are rejected. Type aliases are resolved by Clang.
 
@@ -921,10 +922,43 @@ exceptions, side effects, recursion, and unsupported declarators are rejected.
 An ordinary parameter named `result` is currently unsupported on a verified
 definition because that name binds the returned value in its postcondition.
 
-Until call-site obligations are implemented, functions with preconditions are
-unavailable as definitions in verified reasoning, including through pure helper
-dependencies. Ordinary callers remain permitted under section 11.7. `verified`
-alone does not make a function available for unfolding as a `pure` definition.
+Verified calls compose contracts under section 12.6. Ordinary callers remain
+permitted under section 11.7. `verified` alone does not make a function available
+for unrestricted unfolding as a `pure` definition.
+
+## 12.6 Compositional verified calls
+
+For a call `g(t)` within a supported verified body, the compiler MUST resolve
+the callee through Clang, instantiate its contract at the actual arguments,
+and generate a separate obligation for its precondition, when present. The
+caller may use its own precondition and postconditions of previously justified
+calls. The current call's postcondition MUST NOT justify its own precondition.
+
+After that obligation and the callee's contract have been kernel-proven, the
+callee's postcondition is evidence about the call's result. Caller reasoning
+uses a fresh logical result and this postcondition, without inspecting the
+callee's implementation. Even a call whose result the caller's postcondition
+ignores MUST discharge its precondition. Calls without preconditions still
+require a proven callee contract before their postconditions become available.
+
+The compiler MUST connect this abstract reasoning to the actual lowered body
+using kernel-checked evidence. Existing universal elimination, implication
+elimination, and equality substitution suffice. Conditional postconditions are
+not axioms; there are zero additional kernel rules or logical assumptions.
+
+Nested calls are processed from arguments to enclosing calls. Since supported
+expressions are pure, this logical dependency order introduces no runtime
+evaluation-order claim. Erasure leaves every runtime call and argument unchanged
+and adds no runtime checks, variables, parameters, or wrappers.
+
+The initial composition fragment requires definitions in the same translation
+unit, including included headers, and an acyclic verified-call dependency graph.
+Recursion, declaration-only contracts, calls hidden behind unsupported pure
+dependencies, and calls with neither an admitted pure definition nor a verified
+contract fail closed. Specification
+expressions retain the existing pure-definition model. Equality and unsigned
+addition remain the modeled expression fragment; ordering and subtraction are
+not introduced by call composition.
 
 ---
 

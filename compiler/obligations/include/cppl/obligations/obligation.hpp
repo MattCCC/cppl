@@ -8,6 +8,7 @@
 #include "cppl/kernel/context.hpp"
 #include "cppl/kernel/proof.hpp"
 #include "cppl/kernel/proposition.hpp"
+#include "cppl/obligations/contracts.hpp"
 #include "cppl/source/digest.hpp"
 #include "cppl/source/location.hpp"
 #include "cppl/vir/ids.hpp"
@@ -27,6 +28,7 @@ struct ObligationId {
 enum class Origin : std::uint8_t {
     LawProposition,
     FunctionContract,
+    CallPrecondition,
 };
 
 std::string describe(Origin origin);
@@ -76,6 +78,7 @@ struct Program {
     kernel::Context context;
     std::vector<Obligation> obligations;
     std::vector<WrittenProof> proofs;
+    std::vector<ContractVerification> contracts;
 
     // Laws whose written proof was refused. Their obligation stays open: the
     // author said how the law is established, and that evidence did not hold.

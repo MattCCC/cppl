@@ -64,7 +64,8 @@ declares Laws it:
 5. lowers VIR into core definitions and a universally quantified goal — an
    equality, or an implication from the Law's precondition to it — and lowers
    each written proof into a kernel proof term; verified functions generate
-   postcondition obligations by substituting their elaborated return term;
+   postcondition obligations by substituting their elaborated return term, plus
+   precondition obligations for verified calls;
 6. submits the author's evidence, or its own when none was written, to the
    trusted kernel;
 7. reports `PROVEN` only on kernel acceptance, and fails the build otherwise;
@@ -94,11 +95,17 @@ Verified functions support one pure return expression, integer parameters and
 results, one `ensures` equality, and an optional `expects` equality. The generated
 goal is `forall parameters. P -> Q[R/result]`. Automatic evidence first tries
 definitional equality. If needed, it introduces binders, uses an identical
-hypothesis or performs one equality rewrite, then offers reflexivity; the kernel
+hypothesis or rewrites once per available equality, newest first, then offers
+reflexivity; the kernel
 checks every step. Written `refl` retains its
 definitional-equality semantics. `result` is erased specification syntax.
-Functions with preconditions cannot yet be called from verified reasoning;
-ordinary runtime callers remain allowed. See `SPEC.md` 12.5.
+Verified calls instantiate their callee's contract at the resolved arguments.
+Each precondition must be kernel-proven before its postcondition is available.
+Caller reasoning uses abstract call results and proven summaries; kernel-checked
+evidence connects that reasoning to the executable return term. Nested calls,
+overloads, and forward declarations are supported within an acyclic translation
+unit, including headers. Ordinary runtime calls remain unchanged. See `SPEC.md`
+12.5–12.6. Ordering, subtraction, and algebraic reassociation remain unsupported.
 
 This slice does **not** implement induction, dependent types, refinement types,
 control-flow contracts, ghost state, `unsafe`, `trusted`, conjunction, proof `let` or
@@ -142,8 +149,9 @@ IMPLEMENTED
 
 # Current milestone
 
-Verified functions now generate obligations from executable single-return
-bodies, using the existing seven kernel rules and no logical assumptions.
+Verified functions now compose calls through kernel-proven preconditions and
+postconditions while retaining body-derived obligations. Both slices use the
+existing seven kernel rules and no logical assumptions, and add no runtime checks.
 The next slice is conditional branches with path-sensitive obligations, followed
 by locals and richer expressions. Loops with invariants, recursion with
 induction/termination, memory/reference reasoning, and SMT automation come later.
@@ -207,6 +215,7 @@ The project should not claim broad language implementation before the proof sema
 | `ensures` on functions       | `PROTOTYPE` |
 | `pure`                       | `PROTOTYPE` |
 | `verified`                   | `PROTOTYPE` |
+| verified-call composition    | `PROTOTYPE` |
 | `ghost`                      | `SPECIFIED` |
 | `unsafe`                     | `SPECIFIED` |
 | `trusted`                    | `SPECIFIED` |
