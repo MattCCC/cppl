@@ -1,16 +1,12 @@
 {
   "version": 6,
+
   "cmakeMinimumRequired": {
     "major": 3,
     "minor": 25,
     "patch": 0
   },
-  "packagePresets": [
-    {
-      "name": "release",
-      "configurePreset": "release"
-    }
-  ],
+
   "configurePresets": [
     {
       "name": "base",
@@ -20,6 +16,7 @@
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       }
     },
+
     {
       "name": "dev",
       "displayName": "Development",
@@ -32,6 +29,7 @@
         "CPPL_WARNINGS_AS_ERRORS": "ON"
       }
     },
+
     {
       "name": "release",
       "displayName": "Release",
@@ -44,10 +42,11 @@
         "CPPL_WARNINGS_AS_ERRORS": "ON"
       }
     },
+
     {
       "name": "asan",
-      "displayName": "AddressSanitizer + UndefinedBehaviorSanitizer",
-      "description": "Debug build with ASan and UBSan enabled.",
+      "displayName": "AddressSanitizer",
+      "description": "Debug build with AddressSanitizer enabled.",
       "inherits": "base",
       "binaryDir": "${sourceDir}/build/asan",
       "condition": {
@@ -60,9 +59,32 @@
         "CPPL_BUILD_TESTS": "ON",
         "CPPL_WARNINGS_AS_ERRORS": "ON",
         "CPPL_ENABLE_ASAN": "ON",
-        "CPPL_ENABLE_UBSAN": "ON"
+        "CPPL_ENABLE_UBSAN": "OFF",
+        "CPPL_ENABLE_TSAN": "OFF"
       }
     },
+
+    {
+      "name": "ubsan",
+      "displayName": "UndefinedBehaviorSanitizer",
+      "description": "Debug build with UndefinedBehaviorSanitizer enabled.",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build/ubsan",
+      "condition": {
+        "type": "notEquals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CPPL_BUILD_TESTS": "ON",
+        "CPPL_WARNINGS_AS_ERRORS": "ON",
+        "CPPL_ENABLE_ASAN": "OFF",
+        "CPPL_ENABLE_UBSAN": "ON",
+        "CPPL_ENABLE_TSAN": "OFF"
+      }
+    },
+
     {
       "name": "tsan",
       "displayName": "ThreadSanitizer",
@@ -78,10 +100,13 @@
         "CMAKE_BUILD_TYPE": "Debug",
         "CPPL_BUILD_TESTS": "ON",
         "CPPL_WARNINGS_AS_ERRORS": "ON",
+        "CPPL_ENABLE_ASAN": "OFF",
+        "CPPL_ENABLE_UBSAN": "OFF",
         "CPPL_ENABLE_TSAN": "ON"
       }
     }
   ],
+
   "buildPresets": [
     {
       "name": "dev",
@@ -96,16 +121,24 @@
       "configurePreset": "asan"
     },
     {
+      "name": "ubsan",
+      "configurePreset": "ubsan"
+    },
+    {
       "name": "tsan",
       "configurePreset": "tsan"
     }
   ],
+
   "testPresets": [
     {
       "name": "dev",
       "configurePreset": "dev",
       "output": {
         "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
       }
     },
     {
@@ -113,6 +146,9 @@
       "configurePreset": "release",
       "output": {
         "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
       }
     },
     {
@@ -120,6 +156,19 @@
       "configurePreset": "asan",
       "output": {
         "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
+    },
+    {
+      "name": "ubsan",
+      "configurePreset": "ubsan",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
       }
     },
     {
@@ -127,9 +176,20 @@
       "configurePreset": "tsan",
       "output": {
         "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
       }
     }
   ],
+
+  "packagePresets": [
+    {
+      "name": "release",
+      "configurePreset": "release"
+    }
+  ],
+
   "workflowPresets": [
     {
       "name": "dev",
@@ -149,6 +209,7 @@
         }
       ]
     },
+
     {
       "name": "release",
       "displayName": "Release workflow",
@@ -171,9 +232,10 @@
         }
       ]
     },
+
     {
       "name": "asan",
-      "displayName": "ASan + UBSan workflow",
+      "displayName": "AddressSanitizer workflow",
       "steps": [
         {
           "type": "configure",
@@ -189,6 +251,26 @@
         }
       ]
     },
+
+    {
+      "name": "ubsan",
+      "displayName": "UndefinedBehaviorSanitizer workflow",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "ubsan"
+        },
+        {
+          "type": "build",
+          "name": "ubsan"
+        },
+        {
+          "type": "test",
+          "name": "ubsan"
+        }
+      ]
+    },
+
     {
       "name": "tsan",
       "displayName": "ThreadSanitizer workflow",
