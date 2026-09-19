@@ -23,6 +23,9 @@ struct Options {
     std::vector<Input> inputs;
     std::string clang;
     bool trust_report = false;
+    // Where to write the runtime program for inspection. Observability only:
+    // it changes nothing about what is compiled.
+    std::string emit_projection;
     bool passthrough = false;         // the command does not compile anything
     bool explicit_language = false;   // -x was given
     std::string standard;             // -std=..., for reporting

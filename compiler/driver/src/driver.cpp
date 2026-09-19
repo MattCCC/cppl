@@ -290,6 +290,13 @@ UnitOutcome compile_unit(const Options& options,
         return outcome;
     }
 
+    if (!options.emit_projection.empty() && !write_file(options.emit_projection, erased.runtime)) {
+        report(engine, diagnostics::Category::Internal,
+               "could not write the runtime projection to '" + options.emit_projection + "'");
+        outcome.failed = true;
+        return outcome;
+    }
+
     outcome.runtime_path = runtime_path.string();
     return outcome;
 }

@@ -51,6 +51,9 @@ Options parse(int argc, const char* const* argv) {
                 options.trust_report = true;
             } else if (argument.starts_with("--cppl-clang=")) {
                 options.clang = argument.substr(std::string_view("--cppl-clang=").size());
+            } else if (argument.starts_with("--cppl-emit-projection=")) {
+                options.emit_projection =
+                    argument.substr(std::string_view("--cppl-emit-projection=").size());
             } else {
                 options.errors.push_back("unknown C++L option '" + argument + "'");
             }
