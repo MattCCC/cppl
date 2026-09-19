@@ -2700,4 +2700,3 @@ because the implementation needed the statement to be true
 ```
 
 **C++L is C++ with Laws: existing C++ continues to execute as C++, while formal intent may be stated and mechanically established without turning proof machinery into runtime behavior.**
-```
