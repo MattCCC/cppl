@@ -101,7 +101,9 @@ jobs:
           sudo ./llvm.sh 22
           sudo apt-get install -y \
             llvm-22-dev \
-            libclang-22-dev
+            libclang-22-dev \
+            clang-format-22 \
+            clang-tidy-22
 
       - name: Install LLVM/Clang 22 / macOS
         if: runner.os == 'macOS'
@@ -199,7 +201,9 @@ jobs:
           sudo ./llvm.sh 22
           sudo apt-get install -y \
             llvm-22-dev \
-            libclang-22-dev
+            libclang-22-dev \
+            clang-format-22 \
+            clang-tidy-22
 
       - name: Configure
         run: |
@@ -237,7 +241,9 @@ jobs:
           sudo ./llvm.sh 22
           sudo apt-get install -y \
             llvm-22-dev \
-            libclang-22-dev
+            libclang-22-dev \
+            clang-format-22 \
+            clang-tidy-22
 
       - name: Configure
         run: |
