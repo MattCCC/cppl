@@ -70,4 +70,20 @@ reject pure_branch 'single return|not available' \
     'pure unsigned g(unsigned x) { if (x <= 10u) return x; return 10u; } law l(unsigned x) ensures(g(x) <= 10u);'
 reject recursive_branch 'recursive|not available' \
     'verified unsigned f(unsigned x) ensures(result <= 10u) { if (x <= 10u) return x; return f(x); }'
+# A guard holds only inside its arm. Each case below is rejected at the one
+# path whose goal is false, so the rejection is the leak and not an
+# incompleteness elsewhere in the body.
+reject join_leak "return path 'f path 2'" \
+    'verified unsigned f(unsigned x) ensures(result <= 10u) { if (x <= 10u) {} return x; }'
+reject nested_join_leak "return path 'f path 2'" \
+    'verified unsigned f(unsigned x, unsigned y) ensures(result <= 10u) { if (x <= 10u) { if (y <= 10u) {} } return y; }'
+reject else_if_tail "return path 'f path 3'" \
+    'verified unsigned f(unsigned x) ensures(result <= 10u) { if (x <= 10u) return x; else if (x <= 20u) return 10u; return 11u; }'
+reject double_negation "return path 'f path 1'" \
+    'verified unsigned f(unsigned x) ensures(result <= 10u) { if (!!(x <= 10u)) return 11u; return 0u; }'
+# A call in a guard is evaluated before its guard holds, whatever the polarity.
+reject negated_guard_call 'call-site precondition' \
+    'verified unsigned g(unsigned x) expects(x <= 10u) ensures(result == x) { return x; } verified unsigned f(unsigned x) ensures(result <= 10u) { if (!(g(x) <= 10u)) return 10u; return 0u; }'
+reject call_in_false_arm 'call-site precondition' \
+    'verified unsigned g(unsigned x) expects(x == 0u) ensures(result == 0u) { return x; } verified unsigned f(unsigned x) ensures(result == 0u) { if (x == 0u) return 0u; return g(x); }'
 echo 'false paths, leaked evidence, unreachable paths, and unsupported semantics fail closed'

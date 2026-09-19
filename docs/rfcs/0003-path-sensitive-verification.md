@@ -37,8 +37,11 @@ versions change because the accepted calculus changes.
 Validation includes all comparison operators, both branch outcomes, nested and
 fallthrough paths, guards containing calls, branch-local call obligations, signed
 comparisons, runtime erasure, and malformed conditional evidence. Negative cases
-cover false arms, hypothesis leakage, future guard evidence, unsupported control
-flow/conversions/effects, and deliberately unsupported arithmetic implications.
+cover false arms, hypothesis leakage (including past the join of an arm that
+falls through, and down an `else if` chain), future guard evidence in either
+polarity, unsupported control flow/conversions/effects, and deliberately
+unsupported arithmetic implications. Each leak case is rejected at the one path
+whose goal is false, so the rejection cannot come from an unrelated gap.
 
 Next: straight-line locals and assignments; then arithmetic normalization; then
 loops with explicit invariants. Recursion, memory reasoning, and SMT remain later.
