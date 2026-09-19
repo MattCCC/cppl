@@ -25,6 +25,12 @@ target_link_libraries(kernel_check_test PRIVATE cppl_kernel)
 cppl_add_unit_test(kernel_malformed_test kernel/malformed_test.cpp)
 target_link_libraries(kernel_malformed_test PRIVATE cppl_kernel)
 
+cppl_add_unit_test(kernel_substitution_property_test kernel/substitution_property_test.cpp)
+target_link_libraries(kernel_substitution_property_test PRIVATE cppl_kernel)
+
+cppl_add_unit_test(kernel_evidence_regression_test kernel/evidence_regression_test.cpp)
+target_link_libraries(kernel_evidence_regression_test PRIVATE cppl_kernel)
+
 cppl_add_unit_test(kernel_paths_test kernel/paths_test.cpp)
 target_link_libraries(kernel_paths_test PRIVATE cppl_kernel)
 
