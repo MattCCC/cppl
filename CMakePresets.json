@@ -1,80 +1,201 @@
 {
-    "version": 6,
-    "cmakeMinimumRequired": {
-        "major": 3,
-        "minor": 24,
-        "patch": 0
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 25,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "cacheVariables": {
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+      }
     },
-    "configurePresets": [
+    {
+      "name": "dev",
+      "displayName": "Development",
+      "description": "Optimized development build with debug information, tests, and warnings as errors.",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build/dev",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CPPL_BUILD_TESTS": "ON",
+        "CPPL_WARNINGS_AS_ERRORS": "ON"
+      }
+    },
+    {
+      "name": "release",
+      "displayName": "Release",
+      "description": "Production release build with tests enabled.",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build/release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CPPL_BUILD_TESTS": "ON",
+        "CPPL_WARNINGS_AS_ERRORS": "ON"
+      }
+    },
+    {
+      "name": "asan",
+      "displayName": "AddressSanitizer + UndefinedBehaviorSanitizer",
+      "description": "Debug build with ASan and UBSan enabled.",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build/asan",
+      "condition": {
+        "type": "notEquals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CPPL_BUILD_TESTS": "ON",
+        "CPPL_WARNINGS_AS_ERRORS": "ON",
+        "CPPL_ENABLE_ASAN": "ON",
+        "CPPL_ENABLE_UBSAN": "ON"
+      }
+    },
+    {
+      "name": "tsan",
+      "displayName": "ThreadSanitizer",
+      "description": "Debug build with ThreadSanitizer enabled.",
+      "inherits": "base",
+      "binaryDir": "${sourceDir}/build/tsan",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CPPL_BUILD_TESTS": "ON",
+        "CPPL_WARNINGS_AS_ERRORS": "ON",
+        "CPPL_ENABLE_TSAN": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "dev",
+      "configurePreset": "dev"
+    },
+    {
+      "name": "release",
+      "configurePreset": "release"
+    },
+    {
+      "name": "asan",
+      "configurePreset": "asan"
+    },
+    {
+      "name": "tsan",
+      "configurePreset": "tsan"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "dev",
+      "configurePreset": "dev",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "release",
+      "configurePreset": "release",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "asan",
+      "configurePreset": "asan",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "tsan",
+      "configurePreset": "tsan",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ],
+  "workflowPresets": [
+    {
+      "name": "dev",
+      "displayName": "Development workflow",
+      "steps": [
         {
-            "name": "dev",
-            "displayName": "Development build",
-            "generator": "Ninja",
-            "binaryDir": "${sourceDir}/build/dev",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "RelWithDebInfo",
-                "CPPL_BUILD_TESTS": "ON",
-                "CPPL_WARNINGS_AS_ERRORS": "ON"
-            }
+          "type": "configure",
+          "name": "dev"
         },
         {
-            "name": "release",
-            "displayName": "Release build",
-            "generator": "Ninja",
-            "binaryDir": "${sourceDir}/build/release",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Release",
-                "CPPL_BUILD_TESTS": "ON"
-            }
+          "type": "build",
+          "name": "dev"
         },
         {
-            "name": "asan",
-            "displayName": "AddressSanitizer + UndefinedBehaviorSanitizer",
-            "generator": "Ninja",
-            "binaryDir": "${sourceDir}/build/asan",
-            "cacheVariables": {
-                "CMAKE_BUILD_TYPE": "Debug",
-                "CPPL_BUILD_TESTS": "ON",
-                "CMAKE_CXX_FLAGS": "-fsanitize=address,undefined -fno-omit-frame-pointer",
-                "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=address,undefined"
-            }
+          "type": "test",
+          "name": "dev"
         }
-    ],
-    "buildPresets": [
+      ]
+    },
+    {
+      "name": "release",
+      "displayName": "Release workflow",
+      "steps": [
         {
-            "name": "dev",
-            "configurePreset": "dev"
+          "type": "configure",
+          "name": "release"
         },
         {
-            "name": "release",
-            "configurePreset": "release"
+          "type": "build",
+          "name": "release"
         },
         {
-            "name": "asan",
-            "configurePreset": "asan"
+          "type": "test",
+          "name": "release"
         }
-    ],
-    "testPresets": [
+      ]
+    },
+    {
+      "name": "asan",
+      "displayName": "ASan + UBSan workflow",
+      "steps": [
         {
-            "name": "dev",
-            "configurePreset": "dev",
-            "output": {
-                "outputOnFailure": true
-            }
+          "type": "configure",
+          "name": "asan"
         },
         {
-            "name": "release",
-            "configurePreset": "release",
-            "output": {
-                "outputOnFailure": true
-            }
+          "type": "build",
+          "name": "asan"
         },
         {
-            "name": "asan",
-            "configurePreset": "asan",
-            "output": {
-                "outputOnFailure": true
-            }
+          "type": "test",
+          "name": "asan"
         }
-    ]
+      ]
+    },
+    {
+      "name": "tsan",
+      "displayName": "ThreadSanitizer workflow",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "tsan"
+        },
+        {
+          "type": "build",
+          "name": "tsan"
+        },
+        {
+          "type": "test",
+          "name": "tsan"
+        }
+      ]
+    }
+  ]
 }

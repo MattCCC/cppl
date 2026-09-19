@@ -1,0 +1,202 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+
+  pull_request:
+    branches:
+      - main
+
+  schedule:
+    # Nightly checks, including ThreadSanitizer.
+    - cron: "23 3 * * *"
+
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CTEST_OUTPUT_ON_FAILURE: "1"
+
+jobs:
+  quality:
+    name: Quality
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Configure
+        run: >
+          cmake
+          --preset dev
+          -DCMAKE_C_COMPILER=clang
+          -DCMAKE_CXX_COMPILER=clang++
+          -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+      - name: Check formatting
+        run: cmake --build build/dev --target format-check
+
+      - name: Static analysis
+        run: cmake --build build/dev --target lint
+
+  build-test:
+    name: Build & test / ${{ matrix.name }}
+
+    strategy:
+      fail-fast: false
+
+      matrix:
+        include:
+          - name: Linux GCC
+            os: ubuntu-latest
+            cmake_args: >-
+              -DCMAKE_C_COMPILER=gcc
+              -DCMAKE_CXX_COMPILER=g++
+
+          - name: Linux Clang
+            os: ubuntu-latest
+            cmake_args: >-
+              -DCMAKE_C_COMPILER=clang
+              -DCMAKE_CXX_COMPILER=clang++
+
+          - name: macOS Clang
+            os: macos-latest
+            cmake_args: ""
+
+          - name: Windows MSVC
+            os: windows-latest
+            cmake_args: ""
+
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Configure
+        run: cmake --preset dev ${{ matrix.cmake_args }}
+
+      - name: Build
+        run: cmake --build build/dev --parallel
+
+      - name: Test
+        run: >
+          ctest
+          --test-dir build/dev
+          --output-on-failure
+          --no-tests=error
+
+  sanitizers:
+    name: ${{ matrix.name }}
+
+    strategy:
+      fail-fast: false
+
+      matrix:
+        include:
+          - name: AddressSanitizer
+            preset: asan
+
+          - name: UndefinedBehaviorSanitizer
+            preset: ubsan
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }}
+
+      - name: Build
+        run: cmake --build build/${{ matrix.preset }} --parallel
+
+      - name: Test
+        run: >
+          ctest
+          --test-dir build/${{ matrix.preset }}
+          --output-on-failure
+          --no-tests=error
+
+  thread-sanitizer:
+    name: ThreadSanitizer
+
+    if: >
+      github.event_name == 'schedule' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Configure
+        run: cmake --preset tsan
+
+      - name: Build
+        run: cmake --build build/tsan --parallel
+
+      - name: Test
+        run: >
+          ctest
+          --test-dir build/tsan
+          --output-on-failure
+          --no-tests=error
+
+  required:
+    name: Required CI
+
+    if: always()
+
+    needs:
+      - quality
+      - build-test
+      - sanitizers
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Verify required jobs
+        shell: bash
+        run: |
+          if [[ "${{ needs.quality.result }}" != "success" ]]; then
+              echo "Quality checks failed."
+              exit 1
+          fi
+
+          if [[ "${{ needs.build-test.result }}" != "success" ]]; then
+              echo "Build/test matrix failed."
+              exit 1
+          fi
+
+          if [[ "${{ needs.sanitizers.result }}" != "success" ]]; then
+              echo "Sanitizer checks failed."
+              exit 1
+          fi
+
+          echo "All required CI checks passed."

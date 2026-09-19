@@ -1,0 +1,35 @@
+changelog:
+  categories:
+    - title: Language
+      labels:
+        - language
+        - syntax
+        - semantics
+
+    - title: Verification
+      labels:
+        - verification
+        - proofs
+        - laws
+
+    - title: Compiler
+      labels:
+        - compiler
+
+    - title: Tooling
+      labels:
+        - tooling
+        - lsp
+
+    - title: Fixed
+      labels:
+        - bug
+        - fix
+
+    - title: Documentation
+      labels:
+        - documentation
+
+    - title: Other Changes
+      labels:
+        - "*"
