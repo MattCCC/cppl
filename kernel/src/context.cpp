@@ -19,8 +19,7 @@ std::unexpected<CoreError> fail(CoreErrorKind kind, std::string detail) {
     }
     if (!is_supported(type.integer_type())) {
         return fail(CoreErrorKind::MalformedType,
-                    "integer width " + std::to_string(type.integer_type().width) +
-                        " is outside the range this core supports");
+                    "integer type has an unsupported width or signedness");
     }
     return {};
 }
@@ -44,7 +43,11 @@ std::unexpected<CoreError> fail(CoreErrorKind kind, std::string detail) {
                                 "variable #" + std::to_string(node.index.value) +
                                     " has no enclosing binder");
                 }
-                return locals[locals.size() - 1 - node.index.value];
+                const Type& type = locals[locals.size() - 1 - node.index.value];
+                if (auto valid = validate_type(type); !valid) {
+                    return std::unexpected(valid.error());
+                }
+                return type;
 
             } else if constexpr (std::is_same_v<Node, Literal>) {
                 const Type type{node.type};

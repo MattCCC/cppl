@@ -15,11 +15,12 @@ bool is_supported_width(const IntType& type) {
 }  // namespace
 
 bool is_supported(const IntType& type) {
-    return is_supported_width(type);
+    return is_supported_width(type) &&
+           (type.signedness == Signedness::Signed || type.signedness == Signedness::Unsigned);
 }
 
 std::int64_t minimum_value(const IntType& type) {
-    if (!is_supported_width(type) || type.signedness == Signedness::Unsigned) {
+    if (!is_supported(type) || type.signedness == Signedness::Unsigned) {
         return 0;
     }
     if (type.width == 64) {
@@ -29,7 +30,7 @@ std::int64_t minimum_value(const IntType& type) {
 }
 
 std::int64_t maximum_value(const IntType& type) {
-    if (!is_supported_width(type)) {
+    if (!is_supported(type)) {
         return 0;
     }
     if (type.signedness == Signedness::Signed) {
@@ -47,7 +48,7 @@ std::int64_t maximum_value(const IntType& type) {
 }
 
 bool is_representable(const IntType& type, std::int64_t value) {
-    if (!is_supported_width(type)) {
+    if (!is_supported(type)) {
         return false;
     }
     if (type.signedness == Signedness::Unsigned && type.width >= 64) {
@@ -57,7 +58,7 @@ bool is_representable(const IntType& type, std::int64_t value) {
 }
 
 std::int64_t wrap_into(const IntType& type, std::int64_t value) {
-    if (!is_supported_width(type)) {
+    if (!is_supported(type)) {
         return 0;
     }
     const auto raw = static_cast<std::uint64_t>(value);
