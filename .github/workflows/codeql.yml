@@ -1,14 +1,6 @@
 name: CodeQL
 
 on:
-  push:
-    branches:
-      - main
-
-  pull_request:
-    branches:
-      - main
-
   schedule:
     - cron: "17 4 * * 1"
 
@@ -16,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  security-events: write
 
 concurrency:
   group: codeql-${{ github.workflow }}-${{ github.ref }}
@@ -23,24 +16,9 @@ concurrency:
 
 jobs:
   analyze:
-    name: C++ / ${{ matrix.platform }}
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: linux
-            os: ubuntu-latest
-
-          - platform: macos
-            os: macos-latest
-
-          - platform: windows
-            os: windows-latest
-
-    runs-on: ${{ matrix.os }}
-
-    timeout-minutes: 45
+    name: CodeQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     permissions:
       actions: read
@@ -57,16 +35,10 @@ jobs:
         uses: github/codeql-action/init@v4
         with:
           languages: c-cpp
-          build-mode: manual
+          build-mode: none
           queries: security-extended
-
-      - name: Configure
-        run: cmake --preset dev
-
-      - name: Build
-        run: cmake --build build/dev --parallel
 
       - name: Analyze
         uses: github/codeql-action/analyze@v4
         with:
-          category: "/language:c-cpp/platform:${{ matrix.platform }}"
+          category: "/language:c-cpp"

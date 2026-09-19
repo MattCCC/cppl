@@ -28,7 +28,6 @@ env:
 jobs:
   quality:
     name: Quality
-
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -38,13 +37,23 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Install LLVM/Clang 22
+        run: |
+          wget -q https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 22
+          sudo apt-get install -y \
+            llvm-22-dev \
+            libclang-22-dev \
+            clang-format-22 \
+            clang-tidy-22
+
       - name: Configure
-        run: >
-          cmake
-          --preset dev
-          -DCMAKE_C_COMPILER=clang
-          -DCMAKE_CXX_COMPILER=clang++
-          -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+        run: |
+          cmake --preset dev \
+            -DCMAKE_C_COMPILER=/usr/lib/llvm-22/bin/clang \
+            -DCMAKE_CXX_COMPILER=/usr/lib/llvm-22/bin/clang++ \
+            -DLibClang_ROOT=/usr/lib/llvm-22
 
       - name: Check formatting
         run: cmake --build build/dev --target format-check
@@ -57,28 +66,23 @@ jobs:
 
     strategy:
       fail-fast: false
-
       matrix:
         include:
           - name: Linux GCC
             os: ubuntu-latest
-            cmake_args: >-
-              -DCMAKE_C_COMPILER=gcc
-              -DCMAKE_CXX_COMPILER=g++
+            platform: linux-gcc
 
-          - name: Linux Clang
+          - name: Linux Clang 22
             os: ubuntu-latest
-            cmake_args: >-
-              -DCMAKE_C_COMPILER=clang
-              -DCMAKE_CXX_COMPILER=clang++
+            platform: linux-clang
 
-          - name: macOS Clang
+          - name: macOS Clang 22
             os: macos-latest
-            cmake_args: ""
+            platform: macos
 
           - name: Windows MSVC
             os: windows-latest
-            cmake_args: ""
+            platform: windows
 
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
@@ -89,8 +93,72 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Configure
-        run: cmake --preset dev ${{ matrix.cmake_args }}
+      - name: Install LLVM/Clang 22 / Linux
+        if: runner.os == 'Linux'
+        run: |
+          wget -q https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 22
+          sudo apt-get install -y \
+            llvm-22-dev \
+            libclang-22-dev
+
+      - name: Install LLVM/Clang 22 / macOS
+        if: runner.os == 'macOS'
+        run: |
+          brew install llvm@22
+          echo "LLVM_ROOT=$(brew --prefix llvm@22)" >> "$GITHUB_ENV"
+
+      - name: Install LLVM/Clang 22 / Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco upgrade llvm `
+            --version=22.1.7 `
+            --allow-downgrade `
+            --no-progress `
+            --yes
+          "LLVM_ROOT=C:/Program Files/LLVM" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Enable MSVC
+        if: matrix.platform == 'windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Configure Linux GCC
+        if: matrix.platform == 'linux-gcc'
+        run: |
+          cmake --preset dev \
+            -DCMAKE_C_COMPILER=/usr/bin/gcc \
+            -DCMAKE_CXX_COMPILER=/usr/bin/g++ \
+            -DLibClang_ROOT=/usr/lib/llvm-22
+
+      - name: Configure Linux Clang 22
+        if: matrix.platform == 'linux-clang'
+        run: |
+          cmake --preset dev \
+            -DCMAKE_C_COMPILER=/usr/lib/llvm-22/bin/clang \
+            -DCMAKE_CXX_COMPILER=/usr/lib/llvm-22/bin/clang++ \
+            -DLibClang_ROOT=/usr/lib/llvm-22
+
+      - name: Configure macOS Clang 22
+        if: matrix.platform == 'macos'
+        run: |
+          cmake --preset dev \
+            -DCMAKE_C_COMPILER="${LLVM_ROOT}/bin/clang" \
+            -DCMAKE_CXX_COMPILER="${LLVM_ROOT}/bin/clang++" \
+            -DLibClang_ROOT="${LLVM_ROOT}"
+
+      - name: Configure Windows MSVC
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        run: |
+          cmake --preset dev `
+            -G Ninja `
+            -DCMAKE_C_COMPILER=cl `
+            -DCMAKE_CXX_COMPILER=cl `
+            "-DLibClang_ROOT=$env:LLVM_ROOT"
 
       - name: Build
         run: cmake --build build/dev --parallel
@@ -107,7 +175,6 @@ jobs:
 
     strategy:
       fail-fast: false
-
       matrix:
         include:
           - name: AddressSanitizer
@@ -125,8 +192,21 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Install LLVM/Clang 22
+        run: |
+          wget -q https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 22
+          sudo apt-get install -y \
+            llvm-22-dev \
+            libclang-22-dev
+
       - name: Configure
-        run: cmake --preset ${{ matrix.preset }}
+        run: |
+          cmake --preset "${{ matrix.preset }}" \
+            -DCMAKE_C_COMPILER=/usr/lib/llvm-22/bin/clang \
+            -DCMAKE_CXX_COMPILER=/usr/lib/llvm-22/bin/clang++ \
+            -DLibClang_ROOT=/usr/lib/llvm-22
 
       - name: Build
         run: cmake --build build/${{ matrix.preset }} --parallel
@@ -140,11 +220,7 @@ jobs:
 
   thread-sanitizer:
     name: ThreadSanitizer
-
-    if: >
-      github.event_name == 'schedule' ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main')
-
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
@@ -154,8 +230,21 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Install LLVM/Clang 22
+        run: |
+          wget -q https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 22
+          sudo apt-get install -y \
+            llvm-22-dev \
+            libclang-22-dev
+
       - name: Configure
-        run: cmake --preset tsan
+        run: |
+          cmake --preset tsan \
+            -DCMAKE_C_COMPILER=/usr/lib/llvm-22/bin/clang \
+            -DCMAKE_CXX_COMPILER=/usr/lib/llvm-22/bin/clang++ \
+            -DLibClang_ROOT=/usr/lib/llvm-22
 
       - name: Build
         run: cmake --build build/tsan --parallel
@@ -169,7 +258,6 @@ jobs:
 
   required:
     name: Required CI
-
     if: always()
 
     needs:

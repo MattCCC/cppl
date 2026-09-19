@@ -54,124 +54,148 @@ C++L is an attempt to answer that question while preserving the C++ runtime, ABI
 
 C++L is designed as a conservative extension of C++: every valid C++ program remains valid C++L, while additional language constructs express Laws, proofs, refinements, and other compile-time correctness information. Verification establishes the required obligations before these proof-only constructs are erased, yielding ordinary C++ with the same runtime meaning. The equations below summarize that relationship.
 
-$$
-\forall p \in C^{++},\quad p \in C^{++}L
-$$
+```math
+\forall p \in C^{++}, \quad p \in C^{++}L
+```
 
-$$
-C^{++}L = C^{++} \oplus \mathcal{L} \oplus \mathcal{P} \oplus \mathcal{R}
-$$
+```math
+C^{++}L
+=
+C^{++}
+\oplus
+\mathcal{L}
+\oplus
+\mathcal{P}
+\oplus
+\mathcal{R}
+```
 
-$$
-\mathcal{L} = \text{Laws},\qquad
-\mathcal{P} = \text{Proofs},\qquad
-\mathcal{R} = \text{Refinements}
-$$
+```math
+\mathcal{L} = \mathrm{Laws},
+\quad
+\mathcal{P} = \mathrm{Proofs},
+\quad
+\mathcal{R} = \mathrm{Refinements}
+```
 
-$$
+```math
 L \in \mathcal{L}
-\quad\Longrightarrow\quad
-\operatorname{obligations}(L)=\{O_1,\ldots,O_n\}
-$$
+\Longrightarrow
+\mathrm{obligations}(L)
+=
+\{O_1, \ldots, O_n\}
+```
 
-$$
-\forall O_i,\quad
+```math
+\forall O_i,
+\quad
 \Gamma \vdash e_i : O_i
-$$
+```
 
-$$
+```math
 \Gamma \vdash e : L
-\quad\Longrightarrow\quad
+\Longrightarrow
 \Gamma \models L
-$$
+```
 
-$$
-\text{Law}
-\;\longrightarrow\;
-\text{Obligation}
-\;\longrightarrow\;
-\text{Evidence}
-\;\longrightarrow\;
-\text{Theorem}
-$$
+```math
+\mathrm{Law}
+\longrightarrow
+\mathrm{Obligation}
+\longrightarrow
+\mathrm{Evidence}
+\longrightarrow
+\mathrm{Theorem}
+```
 
-$$
-\operatorname{verify}(p)=\checkmark
-\quad\Longrightarrow\quad
-\operatorname{erase}(p)\in C^{++}
-$$
+```math
+\mathrm{verify}(p) = \checkmark
+\Longrightarrow
+\mathrm{erase}(p) \in C^{++}
+```
 
-$$
-\operatorname{erase} :
+```math
+\mathrm{erase}
+:
 C^{++}L_{\mathrm{verified}}
 \longrightarrow
 C^{++}
-$$
+```
 
-$$
-\llbracket p \rrbracket_{\mathrm{runtime}}
+```math
+\mathrm{Sem}_{\mathrm{runtime}}(p)
 =
-\llbracket \operatorname{erase}(p) \rrbracket_{\mathrm{runtime}}
-$$
+\mathrm{Sem}_{\mathrm{runtime}}(\mathrm{erase}(p))
+```
 
-$$
-\operatorname{erase}
-\left(
-\text{runtime}
+```math
+\mathrm{erase}
+(
+\mathrm{runtime}
 +
-\text{proof}
+\mathrm{proof}
 +
-\text{ghost}
+\mathrm{ghost}
 +
-\text{refinement}
-\right)
+\mathrm{refinement}
+)
 =
-\text{runtime}
-$$
+\mathrm{runtime}
+```
 
-$$
-\operatorname{erase}(\text{proof}) =
-\operatorname{erase}(\text{ghost}) =
+```math
+\mathrm{erase}(\mathrm{proof})
+=
+\mathrm{erase}(\mathrm{ghost})
+=
 \varnothing
-$$
+```
 
-$$
-\operatorname{Sem}_{C^{++}L}
+```math
+\mathrm{Sem}_{C^{++}L}
 =
-\operatorname{Sem}_{C^{++}}
+\mathrm{Sem}_{C^{++}}
 \oplus
-\operatorname{Sem}_{\mathrm{proof}}
-$$
+\mathrm{Sem}_{\mathrm{proof}}
+```
 
-$$
-p\in C^{++}
-\quad\Longrightarrow\quad
-\llbracket p \rrbracket_{C^{++}L}
+```math
+p \in C^{++}
+\Longrightarrow
+\mathrm{Sem}_{C^{++}L}(p)
 =
-\llbracket p \rrbracket_{C^{++}}
-$$
+\mathrm{Sem}_{C^{++}}(p)
+```
 
-$$
+```math
 C^{++}L
-\xrightarrow{\;\mathrm{verify}\;}
+\longrightarrow
 C^{++}L^{\checkmark}
-\xrightarrow{\;\mathrm{erase}\;}
+\longrightarrow
 C^{++}
-\xrightarrow{\;\mathrm{Clang/LLVM}\;}
+\longrightarrow
 \mathrm{Native}
-$$
+```
 
-$$
+```math
+\mathrm{verify}
+\quad\longrightarrow\quad
+\mathrm{erase}
+\quad\longrightarrow\quad
+\mathrm{Clang/LLVM}
+```
+
+```math
 \boxed{
-C^{++}\subset C^{++}L
+C^{++} \subset C^{++}L
 \;\land\;
-\operatorname{erase}(C^{++}L^{\checkmark})\subseteq C^{++}
+\mathrm{erase}(C^{++}L_{\mathrm{verified}}) \subseteq C^{++}
 \;\land\;
-\llbracket p\rrbracket
+\mathrm{Sem}_{\mathrm{runtime}}(p)
 =
-\llbracket\operatorname{erase}(p)\rrbracket
+\mathrm{Sem}_{\mathrm{runtime}}(\mathrm{erase}(p))
 }
-$$
+```
 
 ### C++L Flow
 

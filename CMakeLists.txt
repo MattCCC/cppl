@@ -2,9 +2,9 @@ cmake_minimum_required(VERSION 3.25)
 
 project(
     cppl
-    VERSION 0.1.0
+    VERSION 0.0.1
     DESCRIPTION "C++L - C++ with Laws"
-    LANGUAGES CXX
+    LANGUAGES C CXX
 )
 
 # -----------------------------------------------------------------------------

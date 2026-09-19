@@ -48,6 +48,13 @@
 
 include_guard(GLOBAL)
 
+# CMake 4.4+ changed macro backslash handling. The finder itself avoids passing
+# native Windows paths through macros, but opt into the modern behavior when
+# available so included third-party/package logic sees consistent path strings.
+if(POLICY CMP0219)
+    cmake_policy(SET CMP0219 NEW)
+endif()
+
 include(FindPackageHandleStandardArgs)
 
 # -----------------------------------------------------------------------------
@@ -447,25 +454,40 @@ endfunction()
 
 set(_LibClang_CANDIDATE_ROOTS)
 
-macro(
+function(
     _cppl_libclang_add_root
     ROOT_VALUE
 )
-    if(NOT "${ROOT_VALUE}" STREQUAL "")
-        _cppl_libclang_normalize_path(
-            "${ROOT_VALUE}"
-            _candidate_root
-        )
-
-        if(_candidate_root)
-            list(
-                APPEND
-                _LibClang_CANDIDATE_ROOTS
-                "${_candidate_root}"
-            )
-        endif()
+    if("${ROOT_VALUE}" STREQUAL "")
+        return()
     endif()
-endmacro()
+
+    _cppl_libclang_normalize_path(
+        "${ROOT_VALUE}"
+        _candidate_root
+    )
+
+    if(NOT _candidate_root)
+        return()
+    endif()
+
+    set(
+        _candidate_roots
+        "${_LibClang_CANDIDATE_ROOTS}"
+    )
+
+    list(
+        APPEND
+        _candidate_roots
+        "${_candidate_root}"
+    )
+
+    set(
+        _LibClang_CANDIDATE_ROOTS
+        "${_candidate_roots}"
+        PARENT_SCOPE
+    )
+endfunction()
 
 # -----------------------------------------------------------------------------
 # Explicit root
@@ -792,8 +814,14 @@ if(NOT _LibClang_EXPLICIT_ROOT)
 
     if(WIN32)
         if(DEFINED ENV{ProgramFiles})
+            file(
+                TO_CMAKE_PATH
+                "$ENV{ProgramFiles}"
+                _windows_program_files
+            )
+
             _cppl_libclang_add_root(
-                "$ENV{ProgramFiles}/LLVM"
+                "${_windows_program_files}/LLVM"
             )
         endif()
     endif()
