@@ -96,19 +96,56 @@ Projection project(const TokenStream& stream,
         projection.specification_functions.push_back(SpecificationFunction{law.name, index});
     }
 
+    // An instantiation argument is an ordinary C++ expression written in the
+    // proof's own scope, so it is projected as a function returning it. The
+    // deduced return type is the type Clang gives the expression, with no
+    // conversion imposed on the way out.
+    const auto emit_argument = [&stream](std::string_view name,
+                                         const source::ByteSpan& parameters,
+                                         const ProofArgument& argument) {
+        std::string head = "[[maybe_unused]] static auto ";
+        head += name;
+        head += "(";
+        head += stream.spelling(parameters);
+        head += ") { return (";
+        // The argument's bytes are copied verbatim, so aligning the start of
+        // the copy with the column it came from makes every column inside it
+        // land where the author wrote it.
+        if (argument.location.column > head.size() + 1) {
+            head.append(argument.location.column - 1 - head.size(), ' ');
+        }
+        head += stream.spelling(argument.span);
+        head += "); }\n";
+        return head;
+    };
+
     for (std::size_t index = 0; index < syntax.proofs.size(); ++index) {
         const ProofDeclaration& proof = syntax.proofs[index];
         blank(projection.runtime, proof.range.span);
 
-        std::string name = options.generated_prefix + "proof_" + std::to_string(index);
-        if (!options.unit_key.empty()) {
-            name += "_" + options.unit_key;
+        const std::string suffix =
+            std::to_string(index) + (options.unit_key.empty() ? "" : "_" + options.unit_key);
+
+        ProofFunction projected;
+        projected.name = options.generated_prefix + "proof_" + suffix;
+        projected.proof_index = index;
+
+        std::string replacement = emit(projected.name, proof.parameters, proof.proposition,
+                                       proof.keyword_location, proof.end_line);
+
+        for (const ProofStatement& statement : proof.statements) {
+            for (const ProofArgument& argument : statement.arguments) {
+                std::string name = options.generated_prefix + "argument_" + suffix + "_" +
+                                   std::to_string(projected.argument_names.size());
+                replacement += line_directive(argument.location.line, proof.keyword_location.file);
+                replacement += emit_argument(name, proof.parameters, argument);
+                replacement += line_directive(proof.end_line, proof.keyword_location.file);
+                projected.argument_names.push_back(std::move(name));
+            }
         }
 
-        edits.push_back(Edit{proof.range.span,
-                             emit(name, proof.parameters, proof.proposition,
-                                  proof.keyword_location, proof.end_line)});
-        projection.proof_functions.push_back(ProofFunction{std::move(name), index});
+        edits.push_back(Edit{proof.range.span, std::move(replacement)});
+        projection.proof_functions.push_back(std::move(projected));
     }
 
     std::ranges::sort(edits, [](const Edit& lhs, const Edit& rhs) {

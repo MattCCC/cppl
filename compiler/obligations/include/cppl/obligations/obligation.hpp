@@ -60,6 +60,14 @@ struct WrittenProof {
     std::string name;
     vir::LawId law;
     WrittenProofKind kind = WrittenProofKind::Reflexivity;
+
+    // The proposition the `proves` clause claims: the law named there,
+    // instantiated at the arguments it was named with, closed over the proof's
+    // own parameters. It is the law's own proposition exactly when the proof
+    // discharges the law rather than one instance of it.
+    kernel::Proposition goal;
+    bool closes_law = false;
+
     kernel::ProofTerm term;
     source::SourceRange range;
 };

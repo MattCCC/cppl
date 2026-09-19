@@ -27,6 +27,11 @@ struct SpecificationFunction {
 struct ProofFunction {
     std::string name;
     std::size_t proof_index = 0;
+
+    // One generated function per term the proof's statement instantiates its
+    // reference at, in written order. Each returns that term, so Clang decides
+    // what the term denotes and what type it has.
+    std::vector<std::string> argument_names;
 };
 
 // One projector, two texts.

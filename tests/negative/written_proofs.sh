@@ -47,12 +47,41 @@ grep -q "add_one_changes_nothing_holds" "$run/false_proof.log"
 grep -q "definitionally equal" "$run/false_proof.log"
 
 # exact with evidence for another proposition, apply whose conclusion has the
-# wrong shape, and a proof name that was never declared.
+# wrong shape, a proof name that was never declared, and a law that is named by
+# a proof of one instance and by nothing that discharges the law itself.
 refuse rejected_proofs
-grep -q "'exact' requires evidence for the goal itself" "$run/rejected_proofs.log"
-grep -q "cannot be applied to the goal" "$run/rejected_proofs.log"
+grep -q "does not prove what proof 'add_one_increments_by_exact' claims" \
+    "$run/rejected_proofs.log"
+grep -q "cannot be applied to what proof 'add_one_is_add_one_by_apply' claims" \
+    "$run/rejected_proofs.log"
 grep -q "no proof named 'no_such_proof' is declared" "$run/rejected_proofs.log"
-grep -q "quantifies over 1" "$run/rejected_proofs.log"
+grep -q "nothing establishes the law itself" "$run/rejected_proofs.log"
+
+# Instantiation that does not hold up: not instantiated at all, the wrong type,
+# more arguments than the evidence quantifies over, the wrong value, and one
+# argument short.
+refuse rejected_instantiations
+grep -q "does not prove what proof 'at_41_uninstantiated_holds' claims" \
+    "$run/rejected_instantiations.log"
+grep -q "cannot be instantiated at a term of type 'i32'" "$run/rejected_instantiations.log"
+grep -q "instantiated at more arguments than it quantifies over" \
+    "$run/rejected_instantiations.log"
+grep -q "does not prove what proof 'at_42_by_wrong_value_holds' claims" \
+    "$run/rejected_instantiations.log"
+grep -q "does not prove what proof 'at_seven_and_three_holds' claims" \
+    "$run/rejected_instantiations.log"
+
+# An instantiated conclusion of exactly the claim's shape that establishes a
+# different equality. Only the kernel can tell, and it is the kernel that does.
+grep -q "kernel-rejection" "$run/rejected_instantiations.log"
+grep -q "instantiating that evidence establishes" "$run/rejected_instantiations.log"
+
+# The argument a diagnostic blames is the one the author wrote: not the
+# statement, not the declaration, but that term's own line and column.
+source="$FIXTURES/rejected_instantiations.cpp"
+line=$(grep -n "exact identity_general(41);" "$source" | cut -d: -f1)
+column=$(awk -v n="$line" 'NR == n { print index($0, "(41)") + 1 }' "$source")
+grep -q "rejected_instantiations.cpp:$line:$column:" "$run/rejected_instantiations.log"
 
 # A law whose written proof was refused is never quietly closed by the
 # compiler's own strategy instead.
@@ -75,4 +104,5 @@ grep -q "does not begin a proof statement" "$run/unsupported_proof_body.log"
 refuse cyclic_proofs
 grep -q "depends on itself" "$run/cyclic_proofs.log"
 
-echo "written proofs fail closed: false, mismatched, unknown, unsupported and circular"
+echo "written proofs fail closed: false, mismatched, mis-instantiated, unknown," \
+     "unsupported and circular"

@@ -4,6 +4,8 @@
 #include <variant>
 #include <vector>
 
+#include "cppl/kernel/substitution.hpp"
+
 namespace cppl::kernel {
 
 namespace {
@@ -57,6 +59,52 @@ std::unexpected<Rejection> reject(RejectionKind kind, std::string detail) {
     if (depth > limits.max_term_depth) {
         return reject(RejectionKind::MalformedProofTerm,
                       "proof term nests deeper than the core allows");
+    }
+
+    // Universal elimination closes a goal of any shape, because instantiating
+    // quantified evidence can leave either an equality or a smaller quantifier.
+    // It is therefore decided on the evidence rather than on the goal, and the
+    // proposition it yields is derived here and compared with the goal.
+    if (const auto* elimination = std::get_if<ForallElimination>(&proof.node)) {
+        if (auto well_formed = validate_proposition(context, locals, *elimination->quantified,
+                                                    limits, depth + 1);
+            !well_formed) {
+            return well_formed;
+        }
+
+        const auto* eliminated = std::get_if<Forall>(&elimination->quantified->node);
+        if (eliminated == nullptr) {
+            return reject(RejectionKind::ProofShapeMismatch,
+                          "an argument was applied to evidence for " +
+                              describe(*elimination->quantified) +
+                              ", which quantifies over nothing");
+        }
+
+        if (auto evidence = check_under(context, locals, *elimination->quantified,
+                                        *elimination->evidence, limits, depth + 1);
+            !evidence) {
+            return evidence;
+        }
+
+        auto argument = type_of(context, locals, elimination->argument, limits);
+        if (!argument) {
+            return reject(RejectionKind::MalformedProofTerm,
+                          describe(argument.error().kind) + ": " + argument.error().detail);
+        }
+        if (!(*argument == eliminated->binder)) {
+            return reject(RejectionKind::ProofShapeMismatch,
+                          "evidence quantifying over " + describe(eliminated->binder) +
+                              " is instantiated at " + describe(context, elimination->argument) +
+                              ", which has type " + describe(*argument));
+        }
+
+        const Proposition instantiated = instantiate(*eliminated->body, elimination->argument);
+        if (!(instantiated == proposition)) {
+            return reject(RejectionKind::ProofShapeMismatch,
+                          "instantiating that evidence establishes " + describe(instantiated) +
+                              ", which is not the goal " + describe(proposition));
+        }
+        return {};
     }
 
     if (const auto* quantified = std::get_if<Forall>(&proposition.node)) {

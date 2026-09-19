@@ -1118,12 +1118,22 @@ For a false proposition to be accepted, one of these would have to be wrong:
 
 ```text
 kernel/   the proof checker, the normalizer, the type checker of core terms,
-          and the admission rules of the definition context
+          the capture-safe substitution used by universal elimination, and the
+          admission rules of the definition context
 ```
 
 That is the whole logical TCB. It links no other component, includes no header
 outside itself, and holds no global state. `tests/architecture` checks both
 properties on every run.
+
+The core has three rules: reflexivity, universal introduction and universal
+elimination. Universal elimination is the most recent, and it is a capability,
+not an assumption. Eliminating a quantifier requires evidence for a proposition
+the kernel checks for itself, an argument whose type the kernel derives for
+itself, and a resulting proposition the kernel obtains by substituting for
+itself. The proof term it is given restates the proposition being eliminated
+from, and that restatement is checked, never believed: evidence for a false
+statement is refused before any instance of it can be taken.
 
 There are **no axioms**. The core has no rule that introduces a proposition
 without evidence, and no `trusted` mechanism is implemented, so no proposition
@@ -1164,16 +1174,27 @@ weight are deliberately few and are stated explicitly in the implementation:
   Signed addition is refused, because C++ leaves its overflow undefined;
 - a function's value may be unfolded during checking only when it was declared
   `pure` and its body was checked against the purity rules;
-- a written proof discharges the Law its `proves` clause names, at that proof's
-  own parameters. Instantiating a quantifier at any other term is refused,
-  because the core has no rule for it.
+- a `proves` clause names a Law at arguments, and the proposition it claims is
+  that Law's proposition instantiated at them and closed over the proof's own
+  parameters. The claim is a statement to be proved, never a licence: a proof
+  discharges the Law itself only when the two propositions coincide, and a
+  proof of one instance discharges nothing;
+- the terms a proof reference is instantiated at are ordinary C++ expressions,
+  resolved by Clang from the projected text like every other expression, and
+  lowered by the same rules as any other value.
 
 Anything outside those rules is reported as unsupported and yields no
 obligation. No construct is approximated.
 
 A Law that an author wrote a proof for is never closed by the compiler's own
-strategy if that proof was refused. Writing a proof narrows how a Law may be
-established; it can never widen it.
+strategy if that proof was refused, nor if the proofs that name it establish
+only instances of it. Writing a proof narrows how a Law may be established; it
+can never widen it.
+
+Every written proof reaches the kernel. The one that discharges a Law is
+submitted as that Law's evidence and checked there; a proof of an instance has
+no obligation of its own and is checked against its own claim where it is
+lowered. Neither is left standing on the author's word.
 
 ## 41.3 Runtime trust
 

@@ -202,6 +202,63 @@ bool try_law(const TokenStream& stream,
     return true;
 }
 
+// Splits the instantiation arguments of `exact p(a, b)` at the commas that
+// separate them.
+//
+// Only the separators are found here. Each argument is delimited, never read:
+// its bytes go to Clang through the projection, which is what keeps C++
+// expression meaning in one place (SPEC.md 7.3, ARCHITECTURE.md 11).
+bool read_proof_arguments(const TokenStream& stream,
+                          std::size_t open,
+                          std::size_t close,
+                          diagnostics::Engine& engine,
+                          std::vector<ProofArgument>& arguments) {
+    const std::vector<Token>& tokens = stream.tokens();
+
+    std::size_t depth = 0;
+    std::size_t begin = open + 1;
+    for (std::size_t index = open + 1; index <= close; ++index) {
+        const Token& token = tokens[index];
+        const bool separator =
+            depth == 0 && (index == close || token.is_punctuator(","));
+
+        if (!separator) {
+            if (token.is_punctuator("(") || token.is_punctuator("[") ||
+                token.is_punctuator("{")) {
+                ++depth;
+            } else if (token.is_punctuator(")") || token.is_punctuator("]") ||
+                       token.is_punctuator("}")) {
+                if (depth == 0) {
+                    report(engine, stream, token, diagnostics::Category::CpplSyntax,
+                           "'" + std::string(token.text) + "' closes nothing in this "
+                           "instantiation argument list");
+                    return false;
+                }
+                --depth;
+            }
+            continue;
+        }
+
+        if (index == begin) {
+            if (index == close && arguments.empty()) {
+                return true;  // `p()` instantiates at nothing, like `p`
+            }
+            report(engine, stream, token, diagnostics::Category::CpplSyntax,
+                   "an instantiation argument is missing",
+                   "each argument of a proof reference is an ordinary C++ expression");
+            return false;
+        }
+
+        arguments.push_back(ProofArgument{
+            source::ByteSpan{tokens[begin].span.offset,
+                             tokens[index - 1].span.end() - tokens[begin].span.offset},
+            stream.location_of(tokens[begin])});
+        begin = index + 1;
+    }
+
+    return true;
+}
+
 // Reads the primitive proof statements of GRAMMAR.md 5 out of a proof body.
 //
 // A proof statement names proof-level entities only. No C++ expression is read
@@ -220,7 +277,7 @@ bool read_proof_statements(const TokenStream& stream,
 
         if (token.is_identifier("refl") && cursor + 1 < body_close &&
             tokens[cursor + 1].is_punctuator(";")) {
-            statements.push_back(ProofStatement{ProofStatementKind::Reflexivity, {},
+            statements.push_back(ProofStatement{ProofStatementKind::Reflexivity, {}, {},
                                                 stream.location_of(token)});
             cursor += 2;
             continue;
@@ -229,21 +286,36 @@ bool read_proof_statements(const TokenStream& stream,
         const bool is_exact = token.is_identifier("exact");
         if ((is_exact || token.is_identifier("apply")) && cursor + 2 < body_close &&
             tokens[cursor + 1].kind == TokenKind::Identifier) {
+            ProofStatement statement{
+                is_exact ? ProofStatementKind::Exact : ProofStatementKind::Apply,
+                std::string(tokens[cursor + 1].text), {}, stream.location_of(token)};
+
             if (tokens[cursor + 2].is_punctuator(";")) {
-                statements.push_back(ProofStatement{
-                    is_exact ? ProofStatementKind::Exact : ProofStatementKind::Apply,
-                    std::string(tokens[cursor + 1].text), stream.location_of(token)});
+                statements.push_back(std::move(statement));
                 cursor += 3;
                 continue;
             }
+
             if (tokens[cursor + 2].is_punctuator("(")) {
-                report(engine, stream, tokens[cursor + 2],
-                       diagnostics::Category::UnsupportedSemantics,
-                       "explicit proof arguments are not supported by this implementation",
-                       "a proof is applied at the parameters of the proof that uses it; "
-                       "instantiating a quantifier at an arbitrary term is not part of this "
-                       "formal core");
-                return false;
+                const std::size_t close = matching_parenthesis(tokens, cursor + 2);
+                if (close >= body_close) {
+                    report(engine, stream, tokens[cursor + 2],
+                           diagnostics::Category::CpplSyntax,
+                           "unterminated instantiation argument list");
+                    return false;
+                }
+                if (!read_proof_arguments(stream, cursor + 2, close, engine,
+                                          statement.arguments)) {
+                    return false;
+                }
+                if (close + 1 >= body_close || !tokens[close + 1].is_punctuator(";")) {
+                    report(engine, stream, tokens[close], diagnostics::Category::CpplSyntax,
+                           "a proof statement ends with ';'");
+                    return false;
+                }
+                statements.push_back(std::move(statement));
+                cursor = close + 2;
+                continue;
             }
         }
 
@@ -251,7 +323,8 @@ bool read_proof_statements(const TokenStream& stream,
                "'" + std::string(token.text) + "' does not begin a proof statement this "
                "implementation supports",
                "the supported proof statements are 'refl;', 'exact <proof>;' and "
-               "'apply <proof>;'");
+               "'apply <proof>;', each optionally instantiated at arguments, as in "
+               "'exact <proof>(<expression>);'");
         return false;
     }
 

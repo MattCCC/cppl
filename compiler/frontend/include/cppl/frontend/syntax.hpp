@@ -45,9 +45,18 @@ enum class ProofStatementKind : std::uint8_t {
 
 std::string describe(ProofStatementKind kind);
 
+// One term a referenced proof is instantiated at. The span is ordinary C++ and
+// is never read here: it is handed to Clang through the projection, like every
+// other expression in the language (SPEC.md 7.3).
+struct ProofArgument {
+    source::ByteSpan span;
+    source::SourceLocation location;
+};
+
 struct ProofStatement {
     ProofStatementKind kind = ProofStatementKind::Reflexivity;
     std::string reference;  // the proof named by `exact` or `apply`
+    std::vector<ProofArgument> arguments;
     source::SourceLocation location;
 };
 

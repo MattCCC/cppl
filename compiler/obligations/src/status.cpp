@@ -45,7 +45,7 @@ std::string describe(WrittenProofKind kind) {
 
 const WrittenProof* Program::proof_for(vir::LawId law) const {
     for (const WrittenProof& proof : proofs) {
-        if (proof.law == law) {
+        if (proof.law == law && proof.closes_law) {
             return &proof;
         }
     }

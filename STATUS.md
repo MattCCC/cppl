@@ -71,16 +71,19 @@ declares Laws it:
 The verified fragment is deliberately small: a Law is one equality between two
 built-in integer expressions, universally quantified over its parameters, over
 functions declared `pure` whose bodies are a single `return` of a modeled
-expression. A proof declaration discharges one such Law at its own parameters,
-with a body of exactly one statement: `refl`, `exact` or `apply`. Everything
-else is reported as unsupported and produces no obligation. See
+expression. A proof declaration claims such a Law at arguments of its choosing
+and has a body of exactly one statement: `refl`, `exact` or `apply`, the latter
+two optionally instantiating the proof they name at terms, as in
+`exact q(41u);`. A proof discharges the Law itself when what it claims is the
+Law's own proposition; otherwise it proves one instance, which other proofs may
+use. Everything else is reported as unsupported and produces no obligation. See
 `ARCHITECTURE.md` 97 for the implemented structure and `TRUST.md` 41 for what
 must be trusted today.
 
 This slice does **not** implement induction, dependent types, refinement types,
 contracts, ghost state, `unsafe`, `trusted`, `assume`, proof `let` or `match`,
-explicit proof arguments, solvers, proof caching, or any verification of the
-C++ memory model. Those remain `SPECIFIED` below.
+implication, solvers, proof caching, or any verification of the C++ memory
+model. Those remain `SPECIFIED` below.
 
 ---
 
@@ -119,12 +122,12 @@ IMPLEMENTED
 
 # Current milestone
 
-The first vertical slice is in place, and developers can now write the proof of
-a Law themselves. The next priority is to widen the formal core deliberately
-rather than to widen the language surface: preconditions as implications,
-universal instantiation, induction, and the obligations that justify signed
-arithmetic are each a prerequisite for the Laws people will actually want to
-state.
+The first vertical slice is in place, developers can write the proof of a Law
+themselves, and quantified evidence can be instantiated at a term. The next
+priority is to widen the formal core deliberately rather than to widen the
+language surface: preconditions as implications, induction, and the obligations
+that justify signed arithmetic are each a prerequisite for the Laws people will
+actually want to state.
 
 Original target, for reference:
 
@@ -159,6 +162,7 @@ The project should not claim broad language implementation before the proof sema
 | `proves` clauses             | `PROTOTYPE` |
 | proof declarations           | `PROTOTYPE` |
 | `refl` / `exact` / `apply`   | `PROTOTYPE` |
+| proof instantiation `q(t)`   | `PROTOTYPE` |
 | `assume`, proof `let`/`match` | `SPECIFIED` |
 | proposition types            | `PROTOTYPE` |
 | universal quantification     | `PROTOTYPE` |
@@ -200,7 +204,7 @@ The project should not claim broad language implementation before the proof sema
 | Substitution                         | `PROTOTYPE`   |
 | Dependent application                | `NOT STARTED` |
 | Universal introduction               | `PROTOTYPE`   |
-| Universal elimination                | `NOT STARTED` |
+| Universal elimination                | `PROTOTYPE`   |
 | Existential introduction/elimination | `NOT STARTED` |
 | Induction checking                   | `NOT STARTED` |
 | Refinement introduction/elimination  | `NOT STARTED` |
@@ -211,16 +215,19 @@ The project should not claim broad language implementation before the proof sema
 | Kernel property testing              | `NOT STARTED` |
 | Kernel rejection tests               | `PROTOTYPE`   |
 
-The kernel implements two rules, reflexivity and universal introduction, over
-propositions built from equality and universal quantification. Its terms are
-variables, machine-integer literals, applications of admitted definitions and
-one primitive, wrapping addition. It admits no recursion, which is why it needs
-no termination checker yet (`ARCHITECTURE.md` 97.7).
+The kernel implements three rules — reflexivity, universal introduction and
+universal elimination — over propositions built from equality and universal
+quantification. Its terms are variables, machine-integer literals, applications
+of admitted definitions and one primitive, wrapping addition. It admits no
+recursion, which is why it needs no termination checker yet
+(`ARCHITECTURE.md` 97.7).
 
-Written proof declarations added no rule to it. `refl`, `exact` and `apply`
-elaborate into terms built from the two rules above; universal elimination is
-still absent, which is why a proof discharges its Law at its own parameters
-rather than at an arbitrary term.
+Universal elimination instantiates quantified evidence at a term. The kernel
+checks the evidence against the proposition it is eliminated from, derives the
+argument's type itself, and obtains the resulting proposition by its own
+capture-safe substitution. Several arguments are several eliminations; there is
+no multi-argument rule. Written proof declarations added no rule of their own:
+`refl`, `exact` and `apply` elaborate into terms built from these three.
 | Mechanized core calculus             | `NOT STARTED` |
 | Meta-theory / soundness proofs       | `NOT STARTED` |
 

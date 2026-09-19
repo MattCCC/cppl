@@ -8,6 +8,7 @@ add_library(cppl_kernel STATIC
     src/context.cpp
     src/proof.cpp
     src/proposition.cpp
+    src/substitution.cpp
     src/term.cpp
     src/types.cpp)
 

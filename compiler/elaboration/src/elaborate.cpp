@@ -186,11 +186,18 @@ std::optional<std::vector<vir::Parameter>> convert_parameters(
 // Resolves one proof statement into a typed step.
 //
 // A step's reference is a proof name, which is a C++L entity: it is resolved
-// against the proofs this translation unit declares, and nowhere else.
-std::optional<vir::ProofStep> convert_statement(const frontend::ProofStatement& statement,
-                                                const std::string& proof_name,
+// against the proofs this translation unit declares, and nowhere else. The
+// terms it is instantiated at are ordinary C++, and are read back from the
+// functions the projector emitted for them, so Clang alone decides what each
+// one denotes.
+std::optional<vir::ProofStep> convert_statement(const Request& request,
+                                                const frontend::ProofDeclaration& declaration,
+                                                const frontend::ProofFunction& projected,
                                                 const std::map<std::string, std::size_t>& declared,
+                                                std::uint32_t& next_expression_id,
                                                 diagnostics::Engine& engine) {
+    const frontend::ProofStatement& statement = declaration.statements.front();
+
     vir::ProofStep step;
     step.location = statement.location;
 
@@ -207,18 +214,47 @@ std::optional<vir::ProofStep> convert_statement(const frontend::ProofStatement& 
                "'" + describe(statement.kind) + "' names a proof declaration");
         return std::nullopt;
     }
-    if (statement.reference == proof_name) {
+    if (statement.reference == declaration.name) {
         report(engine, diagnostics::Category::ProofFailure, statement.location,
-               "proof '" + proof_name + "' uses itself as its own evidence",
+               "proof '" + declaration.name + "' uses itself as its own evidence",
                "this formal core has no induction rule, so a proof cannot depend on itself");
         return std::nullopt;
     }
 
+    std::vector<vir::Expr> arguments;
+    for (std::size_t position = 0; position < projected.argument_names.size(); ++position) {
+        const frontend::ProofArgument& written = statement.arguments[position];
+        const clangbridge::Function* function =
+            find_projected(request.unit, projected.argument_names[position], written.location);
+        if (function == nullptr || !function->returned_value.has_value()) {
+            report(engine, diagnostics::Category::Elaboration, written.location,
+                   "the term proof '" + declaration.name + "' instantiates '" +
+                       statement.reference + "' at was not resolved",
+                   "Clang did not resolve the projected expression");
+            return std::nullopt;
+        }
+
+        ExpressionElaborator elaborator(next_expression_id);
+        std::optional<vir::Expr> argument = elaborator.convert(*function->returned_value);
+        if (!argument.has_value()) {
+            const auto& failure = elaborator.failure();
+            report(engine, diagnostics::Category::UnsupportedSemantics,
+                   failure.has_value() && failure->location.is_valid() ? failure->location
+                                                                       : written.location,
+                   "proof '" + declaration.name + "' instantiates '" + statement.reference +
+                       "' at a term this implementation does not model: " +
+                       (failure.has_value() ? failure->reason : "it is not modeled"));
+            return std::nullopt;
+        }
+        argument->provenance.range.begin = written.location;
+        arguments.push_back(std::move(*argument));
+    }
+
     const vir::ProofId id{static_cast<std::uint32_t>(target->second)};
     if (statement.kind == frontend::ProofStatementKind::Exact) {
-        step.node = vir::ExactStep{id, statement.reference};
+        step.node = vir::ExactStep{id, statement.reference, std::move(arguments)};
     } else {
-        step.node = vir::ApplyStep{id, statement.reference};
+        step.node = vir::ApplyStep{id, statement.reference, std::move(arguments)};
     }
     return step;
 }
@@ -245,8 +281,6 @@ void elaborate_proofs(const Request& request,
                    "an earlier proof in this translation unit already has this name");
         }
     }
-
-    std::map<vir::LawId, std::string> proved_by;
 
     for (const frontend::ProofFunction& projected : request.projection.proof_functions) {
         const frontend::ProofDeclaration& declaration =
@@ -316,60 +350,15 @@ void elaborate_proofs(const Request& request,
         }
 
         const vir::Law& law = result.module.laws[admitted->second.value];
-        const auto refuse = [&result, &law] {
-            result.laws_with_refused_proofs.push_back(law.id);
-        };
 
-        if (law.parameters.size() != parameters->size()) {
-            refuse();
-            report(engine, diagnostics::Category::UnsupportedSemantics,
-                   declaration.proposition_location,
-                   "proof '" + declaration.name + "' takes " +
-                       std::to_string(parameters->size()) + " parameters, but law '" + law.name +
-                       "' quantifies over " + std::to_string(law.parameters.size()),
-                   "a proof discharges a law at its own parameters, so the two agree in number "
-                   "and in type");
-            continue;
-        }
-
-        // Parameter types need no check of their own: the claim is an ordinary
-        // C++ call, so a type that does not match is a conversion, and a
-        // conversion is not something this implementation models.
-        //
-        // The law must be claimed at the proof's own parameters, in order.
-        // Instantiating a quantifier at an arbitrary term is a rule the formal
-        // core does not have, so a proof cannot be written as if it did.
-        bool arguments_agree = claim->arguments.size() == parameters->size();
-        for (std::size_t index = 0; arguments_agree && index < claim->arguments.size(); ++index) {
-            const auto* argument = std::get_if<vir::ParameterRef>(&claim->arguments[index].node);
-            arguments_agree = argument != nullptr && argument->parameter == index;
-        }
-        if (!arguments_agree) {
-            report(engine, diagnostics::Category::UnsupportedSemantics,
-                   declaration.proposition_location,
-                   "proof '" + declaration.name + "' does not claim law '" + law.name +
-                       "' at its own parameters",
-                   "write proves(" + law.name +
-                       "(...)) naming this proof's parameters in order; instantiating a "
-                       "quantifier at another term is not part of this formal core");
-            refuse();
-            continue;
-        }
-
-        const auto [owner_of_law, first] = proved_by.emplace(law.id, declaration.name);
-        if (!first) {
-            report(engine, diagnostics::Category::CpplSyntax, declaration.range.begin,
-                   "law '" + law.name + "' already has a proof",
-                   "'" + owner_of_law->second + "' proves it; a law is discharged by exactly "
-                   "one written proof");
-            continue;
-        }
-
-        const frontend::ProofStatement& statement = declaration.statements.front();
-        std::optional<vir::ProofStep> step =
-            convert_statement(statement, declaration.name, declared, engine);
+        // The claim's arguments need no check here. `proves(L(...))` is an
+        // ordinary C++ call, so Clang has already settled their number and
+        // their types; which proposition they state is worked out where the
+        // law's own proposition is known, by instantiating it at them.
+        std::optional<vir::ProofStep> step = convert_statement(
+            request, declaration, projected, declared, next_expression_id, engine);
         if (!step.has_value()) {
-            refuse();
+            result.laws_with_refused_proofs.push_back(law.id);
             continue;
         }
 

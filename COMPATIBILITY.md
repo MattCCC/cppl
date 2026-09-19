@@ -317,6 +317,8 @@ proof make_proof(int x);
 proof* holder(int x);
 ```
 
+`refl`, `exact`, and `apply` are contextual `proof` keywords: they are interpreted specially only inside a proof body and remain ordinary identifiers elsewhere. Inside a proof body, `exact q(a, b)`; names proof evidence `q` and supplies terms at which to instantiate it. Those arguments are ordinary C++ expressions resolved and type-checked by Clang in the proof's lexical scope. C++L then elaborates only the expression forms and conversions that its VIR models; anything Clang accepts but C++L cannot faithfully lower is explicitly refused.
+
 `pure` and `verified` are recognized only where the following tokens cannot
 begin an ordinary declaration whose type carries that name. `pure f(int);` is
 therefore left alone, because it may declare `f` returning a type named `pure`.

@@ -9,6 +9,10 @@ std::string describe(const ProofTerm& proof) {
         return "forall_intro(" + describe(introduction->binder) + ", " +
                describe(*introduction->body) + ")";
     }
+    if (const auto* elimination = std::get_if<ForallElimination>(&proof.node)) {
+        return "forall_elim(" + describe(*elimination->evidence) + ", " +
+               describe(elimination->argument) + ")";
+    }
     return "refl";
 }
 

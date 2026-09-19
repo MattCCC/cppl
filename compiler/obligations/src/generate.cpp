@@ -8,6 +8,8 @@
 #include <utility>
 #include <variant>
 
+#include "cppl/kernel/check.hpp"
+#include "cppl/kernel/substitution.hpp"
 #include "cppl/kernel/version.hpp"
 #include "cppl/source/digest.hpp"
 
@@ -334,15 +336,142 @@ void report(diagnostics::Engine& engine,
     engine.report(std::move(diagnostic));
 }
 
+// The proposition a `proves` clause claims.
+//
+// A law states what holds for every inhabitant of its parameters. Naming it at
+// particular arguments claims one instance of it, which is that statement with
+// the quantifiers instantiated: universal elimination, performed here on the
+// proposition by the kernel's own substitution. What remains open are the
+// proof's own parameters, and those are quantified back over the result.
+std::optional<kernel::Proposition> claimed_proposition(const vir::Proof& proof,
+                                                       const Obligation& obligation,
+                                                       const DefinitionMap& definitions,
+                                                       diagnostics::Engine& engine) {
+    const auto& claim = std::get<vir::Call>(proof.proposition.node);
+    const TermLowering lowering(definitions, proof.parameters.size());
+
+    kernel::Proposition instance = obligation.goal;
+    for (const vir::Expr& argument : claim.arguments) {
+        const auto* quantified = std::get_if<kernel::Forall>(&instance.node);
+        if (quantified == nullptr) {
+            report(engine, diagnostics::Category::UnsupportedSemantics,
+                   argument.provenance.range.begin,
+                   "law '" + obligation.law_name + "' is named at more arguments than it "
+                   "quantifies over");
+            return std::nullopt;
+        }
+
+        std::expected<kernel::Term, Failure> term = lowering.lower(argument);
+        if (!term) {
+            report(engine, diagnostics::Category::UnsupportedSemantics, term.error().location,
+                   "proof '" + proof.name + "' claims law '" + obligation.law_name +
+                       "' at a term the formal core cannot state: " + term.error().reason);
+            return std::nullopt;
+        }
+        instance = kernel::instantiate(*quantified->body, *term);
+    }
+
+    for (auto parameter = proof.parameters.rbegin(); parameter != proof.parameters.rend();
+         ++parameter) {
+        const std::optional<kernel::Type> binder = lower_type(parameter->type);
+        if (!binder.has_value()) {
+            report(engine, diagnostics::Category::UnsupportedSemantics, proof.range.begin,
+                   "proof '" + proof.name + "' quantifies over '" +
+                       vir::describe(parameter->type) +
+                       "', which the formal core does not represent");
+            return std::nullopt;
+        }
+        instance = kernel::Proposition::for_all(*binder, std::move(instance));
+    }
+
+    return instance;
+}
+
+// The evidence a referenced proof supplies once it is instantiated.
+//
+// Each argument is one universal elimination. The proof term records the
+// proposition it eliminates from so the kernel can check that step itself; the
+// proposition tracked alongside is this layer's own account of where the
+// elimination has got to, and the kernel derives it again independently.
+struct Instantiation {
+    kernel::Proposition proposition;
+    kernel::ProofTerm term;
+};
+
+std::optional<Instantiation> instantiate_evidence(const vir::Proof& proof,
+                                                  const WrittenProof& evidence,
+                                                  const std::vector<vir::Expr>& arguments,
+                                                  const DefinitionMap& definitions,
+                                                  diagnostics::Engine& engine) {
+    Instantiation state{evidence.goal, evidence.term};
+    const TermLowering lowering(definitions, proof.parameters.size());
+
+    for (const vir::Expr& argument : arguments) {
+        const source::SourceLocation& location = argument.provenance.range.begin;
+
+        const auto* quantified = std::get_if<kernel::Forall>(&state.proposition.node);
+        if (quantified == nullptr) {
+            report(engine, diagnostics::Category::ProofFailure, location,
+                   "proof '" + evidence.name + "' is instantiated at more arguments than it "
+                   "quantifies over",
+                   "at this argument it establishes " + kernel::describe(state.proposition) +
+                       ", which quantifies over nothing");
+            return std::nullopt;
+        }
+
+        const std::optional<kernel::Type> type = lower_type(argument.type);
+        if (!type.has_value() || !(*type == quantified->binder)) {
+            report(engine, diagnostics::Category::ProofFailure, location,
+                   "proof '" + evidence.name + "' quantifies over '" +
+                       kernel::describe(quantified->binder) +
+                       "' and cannot be instantiated at a term of type '" +
+                       vir::describe(argument.type) + "'");
+            return std::nullopt;
+        }
+
+        std::expected<kernel::Term, Failure> term = lowering.lower(argument);
+        if (!term) {
+            report(engine, diagnostics::Category::UnsupportedSemantics, term.error().location,
+                   "proof '" + proof.name + "' instantiates '" + evidence.name +
+                       "' at a term the formal core cannot state: " + term.error().reason);
+            return std::nullopt;
+        }
+
+        kernel::Proposition eliminated = kernel::instantiate(*quantified->body, *term);
+        state.term = kernel::ProofTerm::forall_elimination(std::move(state.proposition),
+                                                           std::move(state.term), *term);
+        state.proposition = std::move(eliminated);
+    }
+
+    return state;
+}
+
+// The same evidence, with this proof's parameters quantified back over it.
+//
+// An argument may mention the proof's parameters, in which case the statement
+// the elimination leaves is open in them and the claim is its closure. An
+// argument may equally be a closed term, in which case the statement stands on
+// its own. Both are readings of one written statement; which one the claim
+// asks for is settled by comparing propositions, never by searching.
+Instantiation close_over(const std::vector<vir::Parameter>& parameters, Instantiation state) {
+    for (auto parameter = parameters.rbegin(); parameter != parameters.rend(); ++parameter) {
+        const kernel::Type binder = *lower_type(parameter->type);
+        state.term = kernel::ProofTerm::forall_introduction(binder, std::move(state.term));
+        state.proposition = kernel::Proposition::for_all(binder, std::move(state.proposition));
+    }
+    return state;
+}
+
 // Lowers each written proof into a kernel proof term.
 //
 // A step is lowered only once the proof it names has been lowered, so the
 // dependency graph is traversed in order and anything left over is circular.
 // No step is admitted on the strength of what it is called: `exact` must offer
-// the goal's own proposition, and `apply` must offer a conclusion the goal can
-// accept. Both then go to the kernel like any other evidence.
+// the claimed proposition itself, and `apply` must offer a conclusion that
+// proposition can accept. Both then go to the kernel like any other evidence.
 void lower_proofs(const vir::Module& module,
                   const elaboration::Result& elaborated,
+                  const DefinitionMap& definitions,
                   Program& program,
                   diagnostics::Engine& engine) {
     program.refused_proofs = elaborated.laws_with_refused_proofs;
@@ -372,28 +501,38 @@ void lower_proofs(const vir::Module& module,
 
             const auto* exact = std::get_if<vir::ExactStep>(&proof.step.node);
             const auto* apply = std::get_if<vir::ApplyStep>(&proof.step.node);
-            const std::uint32_t used =
-                exact != nullptr ? exact->target.value
-                                 : (apply != nullptr ? apply->target.value : 0);
+
+            const auto refuse = [&] {
+                program.refused_proofs.push_back(proof.law);
+                candidate = pending.erase(candidate);
+                progress = true;
+            };
+
+            const std::optional<kernel::Proposition> claimed =
+                claimed_proposition(proof, obligation, definitions, engine);
+            if (!claimed.has_value()) {
+                refuse();
+                continue;
+            }
 
             std::optional<kernel::ProofTerm> term;
             WrittenProofKind kind = WrittenProofKind::Reflexivity;
 
             if (exact == nullptr && apply == nullptr) {
-                term = definitional_evidence(obligation.goal);
+                term = definitional_evidence(*claimed);
             } else {
                 kind = exact != nullptr ? WrittenProofKind::Exact : WrittenProofKind::Apply;
                 const std::string& name =
                     exact != nullptr ? exact->target_name : apply->target_name;
+                const std::uint32_t used =
+                    exact != nullptr ? exact->target.value : apply->target.value;
 
                 if (!declared.contains(used)) {
                     report(engine, diagnostics::Category::ProofFailure, proof.step.location,
                            "proof '" + name + "' was not admitted, so proof '" + proof.name +
                                "' has no evidence",
                            "the reason it was not admitted is reported above");
-                    program.refused_proofs.push_back(proof.law);
-                    candidate = pending.erase(candidate);
-                    progress = true;
+                    refuse();
                     continue;
                 }
 
@@ -403,36 +542,53 @@ void lower_proofs(const vir::Module& module,
                     continue;
                 }
 
-                const WrittenProof& evidence = program.proofs[source->second];
-                const Obligation& proved = *goals.at(evidence.law.value);
+                const std::vector<vir::Expr>& arguments =
+                    exact != nullptr ? exact->arguments : apply->arguments;
+                std::optional<Instantiation> instantiated = instantiate_evidence(
+                    proof, program.proofs[source->second], arguments, definitions, engine);
+                if (!instantiated.has_value()) {
+                    refuse();
+                    continue;
+                }
 
-                if (exact != nullptr) {
-                    if (!(proved.goal == obligation.goal)) {
-                        report(engine, diagnostics::Category::ProofFailure, proof.step.location,
-                               "proof '" + name + "' does not prove the goal of law '" +
-                                   obligation.law_name + "'",
-                               "'exact' requires evidence for the goal itself; it proves " +
-                                   kernel::describe(proved.goal));
-                        program.refused_proofs.push_back(proof.law);
-                        candidate = pending.erase(candidate);
-                        progress = true;
-                        continue;
+                std::vector<Instantiation> readings;
+                readings.push_back(*instantiated);
+                if (!arguments.empty() && !proof.parameters.empty()) {
+                    readings.push_back(close_over(proof.parameters, std::move(*instantiated)));
+                }
+
+                std::string reason;
+                const Instantiation* accepted = nullptr;
+                for (const Instantiation& reading : readings) {
+                    std::string why;
+                    const bool matches =
+                        exact != nullptr
+                            ? reading.proposition == *claimed
+                            : conclusion_is_applicable(reading.proposition, *claimed, why);
+                    if (matches) {
+                        accepted = &reading;
+                        break;
                     }
-                } else {
-                    std::string reason;
-                    if (!conclusion_is_applicable(proved.goal, obligation.goal, reason)) {
-                        report(engine, diagnostics::Category::ProofFailure, proof.step.location,
-                               "the conclusion of proof '" + name +
-                                   "' cannot be applied to the goal of law '" +
-                                   obligation.law_name + "': " + reason);
-                        program.refused_proofs.push_back(proof.law);
-                        candidate = pending.erase(candidate);
-                        progress = true;
-                        continue;
+                    if (reason.empty()) {
+                        reason = why;  // the reading the note below shows
                     }
                 }
 
-                term = evidence.term;
+                if (accepted == nullptr) {
+                    report(engine, diagnostics::Category::ProofFailure, proof.step.location,
+                           exact != nullptr
+                               ? "proof '" + name + "' does not prove what proof '" + proof.name +
+                                     "' claims"
+                               : "the conclusion of proof '" + name +
+                                     "' cannot be applied to what proof '" + proof.name +
+                                     "' claims: " + reason,
+                           "it establishes " + kernel::describe(readings.front().proposition) +
+                               ", and the claim is " + kernel::describe(*claimed));
+                    refuse();
+                    continue;
+                }
+
+                term = accepted->term;
             }
 
             WrittenProof written;
@@ -440,8 +596,36 @@ void lower_proofs(const vir::Module& module,
             written.name = proof.name;
             written.law = proof.law;
             written.kind = kind;
+            written.goal = *claimed;
+            written.closes_law = *claimed == obligation.goal;
             written.term = std::move(*term);
             written.range = proof.range;
+
+            // A proof that discharges its law is submitted as that law's
+            // evidence and is checked there. A proof of one instance has no
+            // obligation of its own, so it is checked here: an author's claim
+            // is never left standing without the kernel having seen it.
+            if (!written.closes_law) {
+                const kernel::CheckResult checked = kernel::check(
+                    program.context, written.goal, written.term, kernel::CoreLimits{});
+                if (!checked.has_value()) {
+                    diagnostics::Diagnostic diagnostic;
+                    diagnostic.severity = diagnostics::Severity::Error;
+                    diagnostic.category = diagnostics::Category::KernelRejection;
+                    diagnostic.message =
+                        "proof '" + proof.name + "' does not establish what it claims";
+                    diagnostic.location = proof.range.begin;
+                    diagnostic.notes.push_back(diagnostics::Note{
+                        "claim: " + kernel::describe(written.goal), proof.range.begin});
+                    diagnostic.notes.push_back(diagnostics::Note{
+                        "the kernel did not accept the evidence: " + checked.error().detail,
+                        proof.range.begin});
+                    engine.report(std::move(diagnostic));
+                    refuse();
+                    continue;
+                }
+            }
+
             lowered.emplace(proof.id.value, program.proofs.size());
             program.proofs.push_back(std::move(written));
 
@@ -455,6 +639,40 @@ void lower_proofs(const vir::Module& module,
                "proof '" + proof->name + "' depends on itself through the proofs it uses",
                "this formal core has no induction rule, so written proofs must be acyclic");
         program.refused_proofs.push_back(proof->law);
+    }
+
+    std::map<std::uint32_t, std::string> closed_by;
+    for (const WrittenProof& written : program.proofs) {
+        if (!written.closes_law) {
+            continue;
+        }
+        const auto [owner, first] = closed_by.emplace(written.law.value, written.name);
+        if (!first) {
+            report(engine, diagnostics::Category::CpplSyntax, written.range.begin,
+                   "law '" + goals.at(written.law.value)->law_name + "' already has a proof",
+                   "'" + owner->second + "' establishes it; a law is discharged by exactly one "
+                   "written proof, though others may prove instances of it");
+        }
+    }
+
+    // Writing a proof for a law is taking responsibility for it. If none of the
+    // proofs that name a law establishes the law itself, the law stays open:
+    // the compiler does not quietly close with its own strategy a goal the
+    // author has already said how to establish.
+    std::set<std::uint32_t> reported;
+    for (const vir::Proof& proof : module.proofs) {
+        if (!goals.contains(proof.law.value) || closed_by.contains(proof.law.value)) {
+            continue;
+        }
+        if (program.proof_refused(proof.law) || !reported.insert(proof.law.value).second) {
+            continue;
+        }
+        report(engine, diagnostics::Category::ProofFailure, proof.range.begin,
+               "law '" + goals.at(proof.law.value)->law_name +
+                   "' is named by a written proof, but nothing establishes the law itself",
+               "a proof of one instance does not discharge the law; write a proof that claims "
+               "it at its own parameters");
+        program.refused_proofs.push_back(proof.law);
     }
 }
 
@@ -629,7 +847,7 @@ Program generate(const vir::Module& module,
         program.obligations.push_back(std::move(obligation));
     }
 
-    lower_proofs(module, elaborated, program, engine);
+    lower_proofs(module, elaborated, definitions, program, engine);
     return program;
 }
 

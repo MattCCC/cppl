@@ -68,17 +68,23 @@ struct ReflexivityStep {
 };
 
 // `exact p;` - p's proposition must be the goal itself.
+//
+// `arguments` are the terms p is instantiated at before it is compared with the
+// goal, one universal elimination each, in written order.
 struct ExactStep {
     ProofId target;
     std::string target_name;
+    std::vector<Expr> arguments;
 
     friend bool operator==(const ExactStep&, const ExactStep&) = default;
 };
 
-// `apply p;` - p's conclusion must be applicable to the goal.
+// `apply p;` - p's conclusion, instantiated at `arguments`, must be applicable
+// to the goal.
 struct ApplyStep {
     ProofId target;
     std::string target_name;
+    std::vector<Expr> arguments;
 
     friend bool operator==(const ApplyStep&, const ApplyStep&) = default;
 };

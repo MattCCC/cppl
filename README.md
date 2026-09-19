@@ -173,6 +173,32 @@ proof identity_returns_input_holds(int x)
 }
 ```
 
+A Law holds for every value of its parameters, so its proof can be used at any one of them:
+
+```cpp cppl-example
+pure unsigned identity(unsigned x) {
+    return x;
+}
+
+law identity_returns_input(unsigned x)
+    ensures(identity(x) == x);
+
+proof identity_general(unsigned x)
+    proves(identity_returns_input(x))
+{
+    refl;
+}
+
+law identity_of_41()
+    ensures(identity(41u) == 41u);
+
+proof identity_at_41()
+    proves(identity_of_41())
+{
+    exact identity_general(41u);
+}
+```
+
 Contracts written on the function itself are part of the language, but are not accepted by this implementation yet:
 
 ```cpp cppl-planned

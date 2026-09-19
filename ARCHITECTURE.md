@@ -2962,17 +2962,35 @@ A proof declaration is projected the same way. Its `proves` clause becomes the
 body of a generated function, so the proposition it claims is resolved by
 Clang; its statements are C++L and are never projected into C++ at all.
 
+A statement may instantiate the proof it names, as in `exact q(t);`. Each `t`
+is an ordinary C++ expression, so each is projected too: one generated function
+per argument, returning that term with its type deduced from the expression, in
+the proof's own scope. Clang resolves them; the elaborator reads them back.
+That is why C++L still has no parser for C++ expressions, and why an argument's
+diagnostics carry the line and column the author wrote it at — the argument's
+bytes are copied into the generated function at the column they came from.
+
 Elaboration resolves what the author wrote — which Law, at which arguments,
-using which other proof — into typed VIR steps. `compiler/obligations` lowers
-those steps into kernel proof terms: `refl` into the goal's quantifier
-introductions followed by reflexivity, `exact` into the evidence of a proof
-whose proposition is the goal itself, `apply` into the evidence of a proof
-whose conclusion the goal can accept. Steps are lowered in dependency order, so
-circular evidence never produces a term.
+using which other proof, instantiated at which terms — into typed VIR steps.
+`compiler/obligations` lowers those steps into kernel proof terms. The
+proposition a proof claims is the Law's proposition instantiated at the
+arguments of its `proves` clause and closed over the proof's own parameters.
+`refl` becomes that proposition's quantifier introductions followed by
+reflexivity; `exact` and `apply` become the named proof's evidence wrapped in
+one universal elimination per argument. Steps are lowered in dependency order,
+so circular evidence never produces a term.
+
+An instantiated statement is compared with the claim as it stands, and, failing
+that, closed over the proof's parameters and compared again. Both are readings
+of one written statement, they are tried in that fixed order, and neither is a
+search: an argument may be a closed term, in which case the statement stands on
+its own, or it may mention the proof's parameters, in which case the claim is
+its closure.
 
 The term then goes to the kernel like any other. No step is admitted because of
-what it is called, and a Law whose written proof was refused is left open: the
-compiler does not look for evidence the author did not ask for.
+what it is called. A Law whose written proof was refused is left open, and so is
+a Law that written proofs name but none of them discharges: the compiler does
+not look for evidence the author did not ask for.
 
 ## 97.6 The Clang bridge is libclang, in process
 

@@ -127,6 +127,52 @@ CPPL_TEST(a_proof_statement_naming_another_proof_is_recognized) {
                cppl::frontend::ProofStatementKind::Apply);
 }
 
+CPPL_TEST(the_terms_a_proof_reference_is_instantiated_at_are_delimited) {
+    Recognized result;
+    recognize("proof b(unsigned x)\n    proves(second(x))\n{\n    exact a(41u, add(x, 1u));\n}\n",
+              result);
+
+    CPPL_CHECK(!result.engine.has_errors());
+    const cppl::frontend::ProofStatement& statement = result.syntax.proofs[0].statements[0];
+    CPPL_CHECK(statement.kind == cppl::frontend::ProofStatementKind::Exact);
+    CPPL_CHECK_EQ(statement.reference, std::string("a"));
+    CPPL_CHECK_EQ(statement.arguments.size(), std::size_t{2});
+
+    // The comma inside the nested call does not separate arguments.
+    const cppl::frontend::TokenStream stream = cppl::frontend::lex(
+        "proof b(unsigned x)\n    proves(second(x))\n{\n    exact a(41u, add(x, 1u));\n}\n",
+        "main.cpp");
+    CPPL_CHECK_EQ(std::string(stream.spelling(statement.arguments[0].span)),
+                  std::string("41u"));
+    CPPL_CHECK_EQ(std::string(stream.spelling(statement.arguments[1].span)),
+                  std::string("add(x, 1u)"));
+    CPPL_CHECK_EQ(statement.arguments[0].location.column, std::uint32_t{13});
+}
+
+CPPL_TEST(an_empty_instantiation_argument_list_names_no_terms) {
+    Recognized result;
+    recognize("proof b(int x)\n    proves(second(x))\n{\n    apply a();\n}\n", result);
+
+    CPPL_CHECK(!result.engine.has_errors());
+    CPPL_CHECK(result.syntax.proofs[0].statements[0].arguments.empty());
+}
+
+CPPL_TEST(a_missing_instantiation_argument_is_refused) {
+    Recognized result;
+    recognize("proof b(int x)\n    proves(second(x))\n{\n    exact a(1, , 2);\n}\n", result);
+
+    CPPL_CHECK(result.engine.has_errors());
+    CPPL_CHECK(result.syntax.proofs.empty());
+}
+
+CPPL_TEST(an_unbalanced_instantiation_argument_list_is_refused_not_read_as_none) {
+    Recognized result;
+    recognize("proof b(int x)\n    proves(second(x))\n{\n    exact a(1]);\n}\n", result);
+
+    CPPL_CHECK(result.engine.has_errors());
+    CPPL_CHECK(result.syntax.proofs.empty());
+}
+
 CPPL_TEST(a_function_returning_a_type_named_proof_is_not_a_proof) {
     Recognized result;
     recognize("proof make(int x);\nproof* holder(int x) { return nullptr; }\n", result);
