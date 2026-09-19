@@ -64,4 +64,7 @@ struct Proposition {
 
 std::string describe(const Proposition& proposition);
 
+// Requires a well-typed boolean term; the checker validates it before use.
+Proposition predicate(const Term& condition, bool positive);
+
 }  // namespace cppl::kernel

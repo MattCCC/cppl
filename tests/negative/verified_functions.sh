@@ -28,19 +28,19 @@ reject parameter_capture 'does not satisfy its contract' \
     'verified unsigned f(unsigned x, unsigned y) ensures(result == x) { return y; }'
 reject bad_rewrite 'does not satisfy its contract' \
     'verified unsigned f(unsigned x) expects(x == 0u) ensures(result == 2u) { return x + 1u; }'
-reject branch 'single return|return expression' \
-    'verified unsigned f(unsigned x) ensures(result == x) { if (x == 0u) return 0u; else return x; }'
-reject loop 'single return|return expression' \
+reject branch 'does not satisfy its contract' \
+    'verified unsigned f(unsigned x) ensures(result == x) { if (x == 0u) return 1u; else return x; }'
+reject loop 'only if/else' \
     'verified unsigned f(unsigned x) ensures(result == x) { while (x) {} return x; }'
-reject local 'single return|return expression' \
+reject local 'only if/else' \
     'verified unsigned f(unsigned x) ensures(result == x) { unsigned y = x; return y; }'
-reject multiple_returns 'single return|return expression' \
+reject multiple_returns 'unreachable trailing' \
     'verified unsigned f(unsigned x) ensures(result == x) { return x; return x; }'
 reject mutation 'not modeled|cannot state' \
     'verified unsigned f(unsigned x) ensures(result == x) { return ++x; }'
 reject reference 'not modeled' \
     'verified unsigned f(unsigned& x) ensures(result == x) { return x; }'
-reject throwing 'single return|return expression' \
+reject throwing 'only if/else' \
     'verified unsigned f(unsigned x) ensures(result == x) { throw x; }'
 reject impure_call 'not available|not declared pure' \
     'unsigned g(unsigned x) { return x; } verified unsigned f(unsigned x) ensures(result == x) { return g(x); }'
@@ -76,8 +76,10 @@ reject unused_result_overflow 'signed overflow' \
     'verified int f(int x) ensures(x == x) { return x + 1; }'
 reject refl_cannot_rewrite 'does not establish law' \
     'law l(unsigned x) expects(x == 0u) ensures(x + 1u == 1u); proof p(unsigned x) proves(l(x)) { refl; }'
-reject bool_return 'unsupported-semantics' \
-    'verified pure bool f(bool x) ensures(0u == 0u) { return x; }'
+reject bool_promotion "conversion from 'bool' to 'int' is not modeled" \
+    'verified unsigned f(bool b) ensures(result == 0u) { if (b == true) return 0u; return 0u; }'
+reject bool_widening "conversion from 'bool' to 'unsigned int' is not modeled" \
+    'verified unsigned f(bool b) ensures(result == 0u) { return b; }'
 reject volatile_parameter 'not modeled' \
     'verified unsigned f(volatile unsigned x) ensures(result == 0u) { return x; }'
 reject false_pure_helper 'not admitted|not available' \

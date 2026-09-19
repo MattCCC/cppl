@@ -35,6 +35,11 @@ struct Type {
 enum class BinaryOp : std::uint8_t {
     Add,
     Equal,
+    NotEqual,
+    Less,
+    LessEqual,
+    Greater,
+    GreaterEqual,
     Unsupported,
 };
 
@@ -60,6 +65,9 @@ struct Binary {
     std::vector<Expr> operands;
 };
 
+struct Negation { std::vector<Expr> operands; };
+struct Conditional { std::vector<Expr> operands; }; // condition, true return, false return
+
 // A construct Clang resolved but C++L does not model. Carrying the reason
 // keeps the failure explainable instead of silently dropping the expression.
 struct Unsupported {
@@ -69,7 +77,7 @@ struct Unsupported {
 struct Expr {
     Type type;
     source::SourceLocation location;
-    std::variant<ParameterRef, IntLiteral, Call, Binary, Unsupported> node;
+    std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, Unsupported> node;
 };
 
 struct Parameter {
@@ -86,7 +94,7 @@ struct Function {
     source::SourceLocation location;
     bool has_body = false;
 
-    // The expression of a single `return expression;` body.
+    // A resolved return expression or a finite conditional return tree.
     std::optional<Expr> returned_value;
 
     // Why the body could not be reduced to a returned expression, when it

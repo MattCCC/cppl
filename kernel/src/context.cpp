@@ -91,25 +91,36 @@ std::unexpected<CoreError> fail(CoreErrorKind kind, std::string detail) {
                 if (auto valid = validate_type(type); !valid) {
                     return std::unexpected(valid.error());
                 }
-                const std::size_t required_arity = node.op == PrimOp::AddWrap ? 2u : 0u;
+                if (node.op != PrimOp::AddWrap && !is_comparison(node.op) &&
+                    node.op != PrimOp::Not && node.op != PrimOp::Select) {
+                    return fail(CoreErrorKind::MalformedPrimitive, "unrecognized primitive");
+                }
+                if (node.op == PrimOp::Not && !(node.type == kBoolean)) {
+                    return fail(CoreErrorKind::TypeMismatch, "negation requires a boolean");
+                }
+                const std::size_t required_arity = node.op == PrimOp::Select ? 3u :
+                                                  node.op == PrimOp::Not ? 1u : 2u;
                 if (node.arguments.size() != required_arity) {
                     return fail(CoreErrorKind::ArityMismatch,
                                 describe(node.op) + " expects " + std::to_string(required_arity) +
                                     " arguments but received " +
                                     std::to_string(node.arguments.size()));
                 }
-                for (const Term& argument : node.arguments) {
+                for (std::size_t index = 0; index < node.arguments.size(); ++index) {
+                    const auto& argument = node.arguments[index];
+                    const Type expected = node.op == PrimOp::Select && index == 0
+                                              ? Type{kBoolean} : type;
                     auto argument_type = type_of_impl(context, locals, argument, limits, depth + 1);
                     if (!argument_type) {
                         return argument_type;
                     }
-                    if (!(*argument_type == type)) {
+                    if (!(*argument_type == expected)) {
                         return fail(CoreErrorKind::TypeMismatch,
-                                    describe(node.op) + " operates on " + describe(type) +
+                                    describe(node.op) + " operates on " + describe(expected) +
                                         " but received " + describe(*argument_type));
                     }
                 }
-                return type;
+                return is_comparison(node.op) ? Type{kBoolean} : type;
             }
         },
         term.node);
@@ -223,6 +234,38 @@ std::unexpected<CoreError> fail(CoreErrorKind kind, std::string detail) {
                         return std::holds_alternative<Literal>(argument.node);
                     });
 
+                if (node.op == PrimOp::Select && arguments.size() == 3) {
+                    if (const auto* condition = std::get_if<Literal>(&arguments[0].node);
+                        condition != nullptr && condition->type == kBoolean &&
+                        (condition->value == 0 || condition->value == 1)) {
+                        ++steps;
+                        return arguments[condition->value == 1 ? 1 : 2];
+                    }
+                }
+                if (all_literal && node.op == PrimOp::Not && arguments.size() == 1) {
+                    ++steps;
+                    return Term::literal(kBoolean, std::get<Literal>(arguments[0].node).value == 0);
+                }
+                if (all_literal && is_comparison(node.op) && arguments.size() == 2) {
+                    ++steps;
+                    const auto lhs = std::get<Literal>(arguments[0].node).value;
+                    const auto rhs = std::get<Literal>(arguments[1].node).value;
+                    const auto compare = [&](auto left, auto right) {
+                        switch (node.op) {
+                            case PrimOp::Equal: return left == right;
+                            case PrimOp::NotEqual: return left != right;
+                            case PrimOp::Less: return left < right;
+                            case PrimOp::LessEqual: return left <= right;
+                            case PrimOp::Greater: return left > right;
+                            case PrimOp::GreaterEqual: return left >= right;
+                            default: return false;
+                        }
+                    };
+                    const bool result = node.type.signedness == Signedness::Signed
+                        ? compare(lhs, rhs)
+                        : compare(static_cast<std::uint64_t>(lhs), static_cast<std::uint64_t>(rhs));
+                    return Term::literal(kBoolean, result ? 1 : 0);
+                }
                 if (all_literal && node.op == PrimOp::AddWrap && arguments.size() == 2) {
                     ++steps;
                     const auto& lhs = std::get<Literal>(arguments[0].node);

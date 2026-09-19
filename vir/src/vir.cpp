@@ -20,6 +20,11 @@ std::string describe(BinaryOp op) {
             return "+";
         case BinaryOp::Equal:
             return "==";
+        case BinaryOp::NotEqual: return "!=";
+        case BinaryOp::Less: return "<";
+        case BinaryOp::LessEqual: return "<=";
+        case BinaryOp::Greater: return ">";
+        case BinaryOp::GreaterEqual: return ">=";
     }
     return "<unknown-operator>";
 }
@@ -43,6 +48,13 @@ std::string describe(const Expr& expr) {
                 }
                 text += ")";
                 return text;
+            } else if constexpr (std::is_same_v<Node, Negation>) {
+                return node.operands.size() == 1 ? "!(" + describe(node.operands[0]) + ")"
+                                                  : "<malformed-negation>";
+            } else if constexpr (std::is_same_v<Node, Conditional>) {
+                return node.operands.size() == 3 ? "if(" + describe(node.operands[0]) + ", " +
+                    describe(node.operands[1]) + ", " + describe(node.operands[2]) + ")"
+                    : "<malformed-conditional>";
             } else {
                 if (node.operands.size() != 2) {
                     return "<malformed-binary>";

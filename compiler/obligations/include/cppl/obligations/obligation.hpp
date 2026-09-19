@@ -29,6 +29,7 @@ enum class Origin : std::uint8_t {
     LawProposition,
     FunctionContract,
     CallPrecondition,
+    ReturnPath,
 };
 
 std::string describe(Origin origin);

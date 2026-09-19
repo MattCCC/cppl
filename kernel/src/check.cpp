@@ -84,6 +84,35 @@ struct Assumption {
                       "proof term nests deeper than the core allows");
     }
 
+    if (const auto* branch = std::get_if<ConditionalElimination>(&proof.node)) {
+        if (!branch->type.is_integer()) {
+            return reject(RejectionKind::MalformedProofTerm, "conditional result is not an integer");
+        }
+        const Term selected = Term::primitive(PrimOp::Select, branch->type.integer_type(),
+            {branch->condition, branch->when_true, branch->when_false});
+        const auto type = type_of(context, locals, selected, limits);
+        if (!type || !(*type == branch->type)) {
+            return reject(RejectionKind::MalformedProofTerm, "ill-typed conditional term");
+        }
+        locals.push_back(branch->type);
+        auto motive = validate_proposition(context, locals, *branch->motive, limits, depth + 1);
+        locals.pop_back();
+        if (!motive) return motive;
+        if (!(instantiate(*branch->motive, selected) == proposition)) {
+            return reject(RejectionKind::ProofShapeMismatch, "conditional motive does not yield the goal");
+        }
+        const auto true_goal = Proposition::implication(predicate(branch->condition, true),
+            instantiate(*branch->motive, branch->when_true));
+        const auto false_goal = Proposition::implication(predicate(branch->condition, false),
+            instantiate(*branch->motive, branch->when_false));
+        if (auto checked = check_under(context, locals, assumptions, true_goal,
+                                       *branch->true_case, limits, depth + 1); !checked) {
+            return checked;
+        }
+        return check_under(context, locals, assumptions, false_goal, *branch->false_case,
+                           limits, depth + 1);
+    }
+
     // Universal elimination closes a goal of any shape, because instantiating
     // quantified evidence can leave either an equality or a smaller quantifier.
     // It is therefore decided on the evidence rather than on the goal, and the

@@ -44,6 +44,11 @@ vir::BinaryOp convert_operator(clangbridge::BinaryOp op) {
             return vir::BinaryOp::Add;
         case clangbridge::BinaryOp::Equal:
             return vir::BinaryOp::Equal;
+        case clangbridge::BinaryOp::NotEqual: return vir::BinaryOp::NotEqual;
+        case clangbridge::BinaryOp::Less: return vir::BinaryOp::Less;
+        case clangbridge::BinaryOp::LessEqual: return vir::BinaryOp::LessEqual;
+        case clangbridge::BinaryOp::Greater: return vir::BinaryOp::Greater;
+        case clangbridge::BinaryOp::GreaterEqual: return vir::BinaryOp::GreaterEqual;
         case clangbridge::BinaryOp::Unsupported:
             break;
     }
@@ -122,6 +127,26 @@ public:
             return result;
         }
 
+        if (const auto* negation = std::get_if<clangbridge::Negation>(&expr.node)) {
+            vir::Negation converted;
+            for (const auto& operand : negation->operands) {
+                auto value = convert(operand);
+                if (!value) return std::nullopt;
+                converted.operands.push_back(std::move(*value));
+            }
+            result.node = std::move(converted);
+            return result;
+        }
+        if (const auto* branch = std::get_if<clangbridge::Conditional>(&expr.node)) {
+            vir::Conditional converted;
+            for (const auto& operand : branch->operands) {
+                auto value = convert(operand);
+                if (!value) return std::nullopt;
+                converted.operands.push_back(std::move(*value));
+            }
+            result.node = std::move(converted);
+            return result;
+        }
         const auto& unsupported = std::get<clangbridge::Unsupported>(expr.node);
         failure_ = Failure{unsupported.reason, expr.location};
         return std::nullopt;
@@ -146,6 +171,12 @@ void collect_callees(const vir::Expr& expr, std::vector<vir::SymbolId>& callees)
         for (const vir::Expr& operand : binary->operands) {
             collect_callees(operand, callees);
         }
+    }
+    if (const auto* branch = std::get_if<vir::Conditional>(&expr.node)) {
+        for (const auto& operand : branch->operands) collect_callees(operand, callees);
+    }
+    if (const auto* negation = std::get_if<vir::Negation>(&expr.node)) {
+        for (const auto& operand : negation->operands) collect_callees(operand, callees);
     }
 }
 
@@ -351,7 +382,7 @@ void elaborate_contract(const Request& request,
                    "' has a body this implementation cannot state as a value" +
                    (body_rejection.empty() ? "" : ": " + body_rejection),
                "a contract is discharged from the body, and this implementation models a body "
-               "that is a single return of a modeled expression");
+               "using only modeled if/else, blocks, and returned expressions");
         return;
     }
 
@@ -630,8 +661,11 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
                     rejection =
                         "it calls a function that is not declared pure, so its value is not "
                         "a mathematical function of its arguments";
-                } else if (candidate.pure && calls_only_pure) {
+                } else if (candidate.pure && calls_only_pure &&
+                           !std::holds_alternative<vir::Conditional>(converted.returned_value->node)) {
                     converted.purity = vir::Purity::Pure;
+                } else if (candidate.pure && candidate.contract == nullptr) {
+                    rejection = "pure specification helpers require a single return expression";
                 }
             }
         }

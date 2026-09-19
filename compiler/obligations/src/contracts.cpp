@@ -53,12 +53,19 @@ kernel::Proposition postcondition_at(const ContractVerification& callee,
     return specialize(callee.postcondition, parameters, arguments);
 }
 
-kernel::Proposition close(const ContractVerification& function, std::size_t prefix,
+kernel::Proposition close(const ContractVerification& function, const ReturnPath& path,
+                         std::size_t prefix, std::size_t conditions, bool abstract,
                          kernel::Proposition goal) {
     for (std::size_t index = prefix; index > 0; --index) {
         goal = kernel::Proposition::implication(
-            kernel::shift(function.calls[index - 1].postcondition,
+            kernel::shift(path.calls[index - 1].postcondition,
                           static_cast<std::uint32_t>(prefix - index)), std::move(goal));
+    }
+    for (std::size_t index = conditions; index > 0; --index) {
+        const auto& condition = path.conditions[index - 1];
+        goal = kernel::Proposition::implication(abstract
+            ? kernel::shift(condition.abstract, static_cast<std::uint32_t>(prefix - condition.calls))
+            : condition.actual, std::move(goal));
     }
     if (function.precondition.has_value()) {
         goal = kernel::Proposition::implication(
@@ -66,7 +73,7 @@ kernel::Proposition close(const ContractVerification& function, std::size_t pref
             std::move(goal));
     }
     for (std::size_t index = prefix; index > 0; --index) {
-        goal = kernel::Proposition::for_all(function.calls[index - 1].result, std::move(goal));
+        goal = kernel::Proposition::for_all(path.calls[index - 1].result, std::move(goal));
     }
     return quantify(function.parameters, std::move(goal));
 }
@@ -84,10 +91,14 @@ void collect_calls(const vir::Expr& expression, const Contracts& contracts,
         for (const auto& operand : binary->operands) {
             collect_calls(operand, contracts, calls);
         }
+    } else if (const auto* negation = std::get_if<vir::Negation>(&expression.node)) {
+        for (const auto& operand : negation->operands) collect_calls(operand, contracts, calls);
+    } else if (const auto* branch = std::get_if<vir::Conditional>(&expression.node)) {
+        for (const auto& operand : branch->operands) collect_calls(operand, contracts, calls);
     }
 }
 
-Obligation obligation_for(const Program& program, const ContractVerification& function,
+Obligation obligation_for(const Program& program, const ReturnPath& path,
                           Origin origin, std::string subject, source::SourceRange range,
                           kernel::Proposition goal, const kernel::Proposition& reasoning) {
     Obligation obligation;
@@ -96,13 +107,13 @@ Obligation obligation_for(const Program& program, const ContractVerification& fu
     obligation.range = std::move(range);
     obligation.goal = std::move(goal);
     obligation.id = identify_goal(program.context, obligation.subject, obligation.goal);
-    if (!function.calls.empty()) {
+    if (!path.calls.empty()) {
         source::Hasher hasher;
         hasher.update_field("verified-call-composition-v1");
         hasher.update_field(obligation.id.digest.to_short_hex(64));
         hasher.update_field(identify_goal(program.context, obligation.subject, reasoning)
                                 .digest.to_short_hex(64));
-        for (const auto& call : function.calls) {
+        for (const auto& call : path.calls) {
             const auto callee = std::ranges::find(program.contracts, call.callee,
                                                    &ContractVerification::function);
             hasher.update_field(program.obligations[callee->obligation].id.digest.to_short_hex(64));
@@ -112,8 +123,84 @@ Obligation obligation_for(const Program& program, const ContractVerification& fu
     return obligation;
 }
 
+struct Guard {
+    const vir::Expr* expression;
+    bool positive;
+};
+
+struct Route {
+    std::vector<Guard> guards;
+    const vir::Expr* returned;
+};
+
+bool routes(const vir::Expr& expression, std::vector<Guard> guards, std::vector<Route>& result) {
+    if (result.size() >= 128) return false;
+    if (const auto* branch = std::get_if<vir::Conditional>(&expression.node)) {
+        if (branch->operands.size() != 3) return false;
+        guards.push_back(Guard{&branch->operands[0], true});
+        if (!routes(branch->operands[1], guards, result)) return false;
+        guards.back().positive = false;
+        return routes(branch->operands[2], std::move(guards), result);
+    }
+    result.push_back(Route{std::move(guards), &expression});
+    return true;
+}
+
+std::expected<void, Failure> append_calls(
+    const vir::Expr& expression, const vir::Function& function, const Contracts& contracts,
+    const ContractVerification& plan, ReturnPath& path, CallBindings& bindings,
+    const DefinitionMap& pure_definitions, const DefinitionMap& definitions,
+    const std::map<std::string, std::size_t>& established, const Program& program,
+    std::vector<Obligation>& obligations) {
+    std::vector<const vir::Expr*> sites;
+    collect_calls(expression, contracts, sites);
+    for (const auto* site : sites) {
+        const auto& call_expression = std::get<vir::Call>(site->node);
+        const auto& callee = program.contracts[established.at(call_expression.callee.usr)];
+        if (call_expression.arguments.size() != callee.parameters.size()) {
+            return std::unexpected(Failure{"call argument count differs from the contract",
+                                            site->provenance.range.begin, {}});
+        }
+        const std::size_t prefix = path.calls.size();
+        CallVerification call;
+        call.callee = callee.function;
+        call.callee_name = call_expression.callee_name;
+        call.result = callee.result;
+        call.conditions = path.conditions.size();
+        std::vector<kernel::Term> abstract_arguments;
+        for (const auto& argument : call_expression.arguments) {
+            auto actual = lower_value(argument, definitions, plan.parameters.size());
+            auto abstract = lower_value(argument, pure_definitions, plan.parameters.size() + prefix,
+                                        &bindings);
+            if (!actual || !abstract) {
+                return std::unexpected(!actual ? actual.error() : abstract.error());
+            }
+            call.arguments.push_back(std::move(*actual));
+            abstract_arguments.push_back(std::move(*abstract));
+        }
+        call.value = kernel::Term::call(definitions.at(call_expression.callee.usr), call.arguments);
+        if (callee.precondition.has_value()) {
+            call.reasoning_goal = close(plan, path, prefix, call.conditions, true,
+                specialize(*callee.precondition, callee.parameters, abstract_arguments));
+            call.precondition_obligation = program.obligations.size() + obligations.size();
+            obligations.push_back(obligation_for(
+                program, path, Origin::CallPrecondition,
+                function.qualified_name + " -> " + call_expression.callee_name, site->provenance.range,
+                close(plan, path, 0, call.conditions, false,
+                    specialize(*callee.precondition, callee.parameters, call.arguments)),
+                *call.reasoning_goal));
+        }
+        for (auto& argument : abstract_arguments) argument = kernel::shift(argument, 1);
+        call.postcondition = postcondition_at(callee, std::move(abstract_arguments),
+                                               kernel::Term::variable(kernel::VarIndex{0}));
+        path.calls.push_back(std::move(call));
+        bindings.emplace(site->id.value, plan.parameters.size() + prefix);
+    }
+    return {};
+}
+
 std::expected<ContractVerification, Failure> build(
-    const vir::Function& function, const std::vector<const vir::Expr*>& sites,
+    const vir::Function& function, const Contracts& contracts,
     const DefinitionMap& pure_definitions, DefinitionMap& definitions,
     const std::map<std::string, std::size_t>& established, Program& program) {
     ContractVerification plan;
@@ -168,66 +255,66 @@ std::expected<ContractVerification, Failure> build(
             kernel::parameter_reference(plan.parameters.size(), index)));
     }
     plan.named_value = kernel::Term::call(definitions.at(function.symbol.usr), own_arguments);
-    plan.theorem = close(plan, 0, kernel::instantiate(plan.postcondition, plan.named_value));
+    plan.theorem = close(plan, {}, 0, 0, false,
+                         kernel::instantiate(plan.postcondition, plan.named_value));
 
-    CallBindings bindings;
+    std::vector<Route> leaves;
+    if (!routes(*function.returned_value, {}, leaves)) {
+        return std::unexpected(Failure{"malformed return tree or more than 128 return paths",
+                                        function.range.begin, {}});
+    }
     std::vector<Obligation> obligations;
-    for (const auto* site : sites) {
-        const auto& expression = std::get<vir::Call>(site->node);
-        const auto& callee = program.contracts[established.at(expression.callee.usr)];
-        if (expression.arguments.size() != callee.parameters.size()) {
-            return std::unexpected(Failure{"call argument count differs from the contract",
-                                            site->provenance.range.begin, {}});
+    for (const auto& leaf : leaves) {
+        ReturnPath path;
+        CallBindings bindings;
+        for (const auto& guard : leaf.guards) {
+            auto calls = append_calls(*guard.expression, function, contracts, plan, path, bindings,
+                                      pure_definitions, definitions, established, program, obligations);
+            if (!calls) return std::unexpected(calls.error());
+            auto actual = lower_value(*guard.expression, definitions, plan.parameters.size());
+            auto abstract = lower_value(*guard.expression, pure_definitions,
+                                        plan.parameters.size() + path.calls.size(), &bindings);
+            if (!actual || !abstract) return std::unexpected(!actual ? actual.error() : abstract.error());
+            path.conditions.push_back(PathCondition{kernel::predicate(*actual, guard.positive),
+                kernel::predicate(*abstract, guard.positive), path.calls.size()});
         }
-        const std::size_t prefix = plan.calls.size();
-        CallVerification call;
-        call.callee = callee.function;
-        call.callee_name = expression.callee_name;
-        call.result = callee.result;
-        std::vector<kernel::Term> abstract_arguments;
-        for (const auto& argument : expression.arguments) {
-            auto actual = lower_value(argument, definitions, plan.parameters.size());
-            auto abstract = lower_value(argument, pure_definitions, plan.parameters.size() + prefix,
-                                        &bindings);
-            if (!actual || !abstract) {
-                return std::unexpected(!actual ? actual.error() : abstract.error());
-            }
-            call.arguments.push_back(std::move(*actual));
-            abstract_arguments.push_back(std::move(*abstract));
+        auto calls = append_calls(*leaf.returned, function, contracts, plan, path, bindings,
+                                  pure_definitions, definitions, established, program, obligations);
+        if (!calls) return std::unexpected(calls.error());
+        auto actual_return = lower_value(*leaf.returned, definitions, plan.parameters.size());
+        auto abstract_return = lower_value(*leaf.returned, pure_definitions,
+                                           plan.parameters.size() + path.calls.size(), &bindings);
+        if (!actual_return || !abstract_return) {
+            return std::unexpected(!actual_return ? actual_return.error() : abstract_return.error());
         }
-        call.value = kernel::Term::call(definitions.at(expression.callee.usr), call.arguments);
-        if (callee.precondition.has_value()) {
-            call.reasoning_goal = close(plan, prefix,
-                specialize(*callee.precondition, callee.parameters, abstract_arguments));
-            call.precondition_obligation = program.obligations.size() + obligations.size();
-            obligations.push_back(obligation_for(
-                program, plan, Origin::CallPrecondition,
-                function.qualified_name + " -> " + expression.callee_name, site->provenance.range,
-                close(plan, 0, specialize(*callee.precondition, callee.parameters, call.arguments)),
-                *call.reasoning_goal));
-        }
-        for (auto& argument : abstract_arguments) {
-            argument = kernel::shift(argument, 1);
-        }
-        call.postcondition = postcondition_at(callee, std::move(abstract_arguments),
-                                               kernel::Term::variable(kernel::VarIndex{0}));
-        plan.calls.push_back(std::move(call));
-        bindings.emplace(site->id.value, plan.parameters.size() + prefix);
+        path.returned_value = std::move(*actual_return);
+        const auto abstract_post = kernel::shift(plan.postcondition,
+                                                   static_cast<std::uint32_t>(path.calls.size()), 1);
+        path.reasoning_goal = close(plan, path, path.calls.size(), path.conditions.size(), true,
+                                      kernel::instantiate(abstract_post, *abstract_return));
+        path.obligation = program.obligations.size() + obligations.size();
+        obligations.push_back(obligation_for(
+            program, path, leaves.size() == 1 ? Origin::FunctionContract : Origin::ReturnPath,
+            function.qualified_name + (leaves.size() == 1 ? "" : " path " + std::to_string(plan.paths.size() + 1)),
+            leaf.returned->provenance.range,
+            close(plan, path, 0, path.conditions.size(), false,
+                kernel::instantiate(plan.postcondition, path.returned_value)), path.reasoning_goal));
+        plan.paths.push_back(std::move(path));
     }
-    auto abstract_return = lower_value(*function.returned_value, pure_definitions,
-                                       plan.parameters.size() + plan.calls.size(), &bindings);
-    if (!abstract_return) {
-        return std::unexpected(abstract_return.error());
+    plan.obligation = plan.paths.front().obligation;
+    if (leaves.size() > 1) {
+        plan.obligation = program.obligations.size() + obligations.size();
+        auto goal = close(plan, {}, 0, 0, false,
+                          kernel::instantiate(plan.postcondition, plan.returned_value));
+        auto obligation = obligation_for(program, {}, Origin::FunctionContract,
+                                         function.qualified_name, contract.range, goal, goal);
+        source::Hasher hasher;
+        hasher.update_field("verified-paths-v1");
+        hasher.update_field(obligation.id.digest.to_short_hex(64));
+        for (const auto& dependency : obligations) hasher.update_field(dependency.id.digest.to_short_hex(64));
+        obligation.id = ObligationId{hasher.finish()};
+        obligations.push_back(std::move(obligation));
     }
-    const auto abstract_post = kernel::shift(plan.postcondition,
-                                               static_cast<std::uint32_t>(plan.calls.size()), 1);
-    plan.reasoning_goal = close(plan, plan.calls.size(),
-                                  kernel::instantiate(abstract_post, *abstract_return));
-    plan.obligation = program.obligations.size() + obligations.size();
-    obligations.push_back(obligation_for(
-        program, plan, Origin::FunctionContract, function.qualified_name, contract.range,
-        close(plan, 0, kernel::instantiate(plan.postcondition, plan.returned_value)),
-        plan.reasoning_goal));
     for (auto& obligation : obligations) {
         program.obligations.push_back(std::move(obligation));
     }
@@ -262,7 +349,7 @@ void generate_contracts(const vir::Module& module, const DefinitionMap& pure_def
                 ++candidate;
                 continue;
             }
-            auto plan = build(function, calls, pure_definitions, definitions, established, program);
+            auto plan = build(function, contracts, pure_definitions, definitions, established, program);
             if (plan) {
                 established.emplace(function.symbol.usr, program.contracts.size());
                 program.contracts.push_back(std::move(*plan));

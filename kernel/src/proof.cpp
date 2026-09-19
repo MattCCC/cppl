@@ -5,6 +5,10 @@
 namespace cppl::kernel {
 
 std::string describe(const ProofTerm& proof) {
+    if (const auto* branch = std::get_if<ConditionalElimination>(&proof.node)) {
+        return "conditional_elim(" + describe(branch->condition) + ", " +
+               describe(*branch->true_case) + ", " + describe(*branch->false_case) + ")";
+    }
     if (const auto* introduction = std::get_if<ForallIntroduction>(&proof.node)) {
         return "forall_intro(" + describe(introduction->binder) + ", " +
                describe(*introduction->body) + ")";

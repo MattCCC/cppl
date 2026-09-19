@@ -32,9 +32,19 @@ struct DefId {
 // that C++ requires for defined behavior (SPEC.md 29, 31).
 enum class PrimOp : std::uint8_t {
     AddWrap,  // two's-complement wrapping addition
+    Equal,
+    NotEqual,
+    Less,
+    LessEqual,
+    Greater,
+    GreaterEqual,
+    Not,
+    Select,
 };
 
 std::string describe(PrimOp op);
+bool is_comparison(PrimOp op);
+inline constexpr IntType kBoolean{1, Signedness::Unsigned};
 
 struct Term;
 

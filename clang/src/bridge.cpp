@@ -257,6 +257,17 @@ Expr build_expression(CXCursor cursor, const std::vector<CXCursor>& parameters, 
         return expr;
     }
 
+    if (kind == CXCursor_UnaryOperator &&
+        clang_getCursorUnaryOperatorKind(cursor) == CXUnaryOperator_LNot) {
+        const auto operands = children_of(cursor);
+        if (operands.size() != 1) return unsupported_expression(cursor, "malformed negation");
+        Expr expr;
+        expr.type = convert_type(clang_getCursorType(cursor));
+        expr.location = presumed_location(clang_getCursorLocation(cursor));
+        expr.node = Negation{{build_expression(operands[0], parameters, depth + 1)}};
+        return expr;
+    }
+
     if (kind == CXCursor_BinaryOperator) {
         const enum CXBinaryOperatorKind op = clang_getCursorBinaryOperatorKind(cursor);
         BinaryOp mapped = BinaryOp::Unsupported;
@@ -264,6 +275,16 @@ Expr build_expression(CXCursor cursor, const std::vector<CXCursor>& parameters, 
             mapped = BinaryOp::Add;
         } else if (op == CXBinaryOperator_EQ) {
             mapped = BinaryOp::Equal;
+        } else if (op == CXBinaryOperator_NE) {
+            mapped = BinaryOp::NotEqual;
+        } else if (op == CXBinaryOperator_LT) {
+            mapped = BinaryOp::Less;
+        } else if (op == CXBinaryOperator_LE) {
+            mapped = BinaryOp::LessEqual;
+        } else if (op == CXBinaryOperator_GT) {
+            mapped = BinaryOp::Greater;
+        } else if (op == CXBinaryOperator_GE) {
+            mapped = BinaryOp::GreaterEqual;
         }
         if (mapped == BinaryOp::Unsupported) {
             return unsupported_expression(
@@ -301,6 +322,81 @@ std::vector<CXCursor> parameters_of(CXCursor cursor) {
     return parameters;
 }
 
+std::size_t return_paths(const Expr& expression) {
+    if (const auto* branch = std::get_if<Conditional>(&expression.node)) {
+        return return_paths(branch->operands[1]) + return_paths(branch->operands[2]);
+    }
+    return 1;
+}
+
+std::optional<Expr> return_tree(CXCursor cursor, const std::vector<CXCursor>& parameters,
+                                std::optional<Expr> continuation, unsigned depth,
+                                std::string& rejection, bool& falls_through) {
+    if (depth > kMaxExpressionDepth) {
+        rejection = "body nests deeper than the bridge allows";
+        return std::nullopt;
+    }
+    const auto kind = clang_getCursorKind(cursor);
+    const auto children = children_of(cursor);
+    if (kind == CXCursor_CompoundStmt) {
+        bool later_statement = false;
+        falls_through = true;
+        for (auto statement = children.rbegin(); statement != children.rend(); ++statement) {
+            bool statement_falls_through = true;
+            continuation = return_tree(*statement, parameters, std::move(continuation),
+                                       depth + 1, rejection, statement_falls_through);
+            if (!rejection.empty()) return std::nullopt;
+            if (later_statement && !statement_falls_through) {
+                rejection = "unreachable trailing statements are not modeled";
+                return std::nullopt;
+            }
+            falls_through = falls_through && statement_falls_through;
+            later_statement = true;
+        }
+        return continuation;
+    }
+    if (kind == CXCursor_ReturnStmt) {
+        falls_through = false;
+        if (children.size() != 1) {
+            rejection = "a return requires one value";
+            return std::nullopt;
+        }
+        return build_expression(children[0], parameters, 0);
+    }
+    if (kind == CXCursor_IfStmt && (children.size() == 2 || children.size() == 3) &&
+        clang_isExpression(clang_getCursorKind(children[0])) != 0) {
+        bool true_falls = true;
+        bool false_falls = true;
+        auto when_true = return_tree(children[1], parameters, continuation, depth + 1,
+                                     rejection, true_falls);
+        if (!rejection.empty()) return std::nullopt;
+        auto when_false = continuation;
+        if (children.size() == 3) {
+            when_false = return_tree(children[2], parameters, continuation, depth + 1,
+                                      rejection, false_falls);
+            if (!rejection.empty()) return std::nullopt;
+        }
+        falls_through = true_falls || false_falls;
+        if (!when_true || !when_false) {
+            rejection = "every path must return a value";
+            return std::nullopt;
+        }
+        if (return_paths(*when_true) + return_paths(*when_false) > 128) {
+            rejection = "more than 128 return paths are not modeled";
+            return std::nullopt;
+        }
+        Expr result;
+        result.type = when_true->type;
+        result.location = presumed_location(clang_getCursorLocation(cursor));
+        result.node = Conditional{{build_expression(children[0], parameters, 0),
+                                   std::move(*when_true), std::move(*when_false)}};
+        return result;
+    }
+    rejection = "only if/else, blocks, and return statements are modeled; found '" +
+                take(clang_getCursorKindSpelling(kind)) + "'";
+    return std::nullopt;
+}
+
 void extract_body(Function& function, CXCursor cursor, const std::vector<CXCursor>& parameters) {
     const std::vector<CXCursor> members = children_of(cursor);
 
@@ -317,20 +413,13 @@ void extract_body(Function& function, CXCursor cursor, const std::vector<CXCurso
 
     function.has_body = true;
 
-    const std::vector<CXCursor> statements = children_of(members[body_index]);
-    if (statements.size() != 1 || clang_getCursorKind(statements[0]) != CXCursor_ReturnStmt) {
-        function.body_rejection =
-            "only a body of the form 'return expression;' is modeled by this implementation";
-        return;
+    std::string rejection;
+    bool falls_through = true;
+    function.returned_value = return_tree(members[body_index], parameters, std::nullopt, 0,
+                                          rejection, falls_through);
+    if (!function.returned_value) {
+        function.body_rejection = rejection.empty() ? "every path must return a value" : rejection;
     }
-
-    const std::vector<CXCursor> returned = children_of(statements[0]);
-    if (returned.size() != 1) {
-        function.body_rejection = "'return;' without a value is not modeled";
-        return;
-    }
-
-    function.returned_value = build_expression(returned[0], parameters, 0);
 }
 
 bool matches_location(const source::SourceLocation& declaration,

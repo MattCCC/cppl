@@ -121,6 +121,19 @@ struct EqualityElimination {
     friend bool operator==(const EqualityElimination&, const EqualityElimination&) = default;
 };
 
+// Both premises are derived from the condition, never supplied by the producer.
+struct ConditionalElimination {
+    Type type;
+    Term condition;
+    Term when_true;
+    Term when_false;
+    Box<Proposition> motive;
+    Box<ProofTerm> true_case;
+    Box<ProofTerm> false_case;
+
+    friend bool operator==(const ConditionalElimination&, const ConditionalElimination&) = default;
+};
+
 struct ProofTerm {
     std::variant<Reflexivity,
                  ForallIntroduction,
@@ -128,10 +141,18 @@ struct ProofTerm {
                  Hypothesis,
                  ImplicationIntroduction,
                  ImplicationElimination,
-                 EqualityElimination>
+                 EqualityElimination,
+                 ConditionalElimination>
         node;
 
     static ProofTerm reflexivity() { return ProofTerm{Reflexivity{}}; }
+
+    static ProofTerm conditional_elimination(Type type, Term condition, Term when_true,
+        Term when_false, Proposition motive, ProofTerm true_case, ProofTerm false_case) {
+        return ProofTerm{ConditionalElimination{std::move(type), std::move(condition),
+            std::move(when_true), std::move(when_false), Box<Proposition>{std::move(motive)},
+            Box<ProofTerm>{std::move(true_case)}, Box<ProofTerm>{std::move(false_case)}}};
+    }
 
     static ProofTerm hypothesis(HypothesisIndex index) { return ProofTerm{Hypothesis{index}}; }
 

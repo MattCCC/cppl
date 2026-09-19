@@ -1127,7 +1127,7 @@ That is the whole logical TCB. It links no other component, includes no header
 outside itself, and holds no global state. `tests/architecture` checks both
 properties on every run.
 
-The core has seven rules:
+The core has eight rules:
 
 ```text
 1. Reflexivity
@@ -1137,11 +1137,25 @@ The core has seven rules:
 5. Implication introduction
 6. Implication elimination
 7. Hypothesis use
+8. Conditional elimination
 ```
 
 Each is a capability, not an assumption.
 
-Equality substitution is the most recent, and it is a genuinely new logical
+Conditional elimination is the newest rule. It combines checked cases into a
+proposition about `select(condition, true_value, false_value)`. The kernel
+type-checks the complete conditional and the proposition context, derives each
+arm's required predicate from the condition, checks both implications, and
+computes the resulting proposition by capture-safe substitution. Producers
+cannot supply their own branch premises or omit a case. Comparisons are typed
+total primitives; concrete evaluation respects integer width and signedness.
+Boolean terms use unsigned one-bit integers, and a declared `bool` is modeled as
+that type: its value set is the same, and every promotion out of it is a
+conversion the bridge refuses. These computations and the new
+rule enlarge the logical TCB explicitly; kernel/core versions are 0.2.0.
+No symbolic ordering rules or logical assumptions are added.
+
+Equality substitution is a distinct logical
 capability rather than sugar over the others: without it, evidence for `a = b`
 can close a goal that already is `a = b` and can do nothing else. It transports
 evidence through a proposition context, and **the kernel performs the
@@ -1252,7 +1266,7 @@ A premise an `apply` leaves behind is a goal like any other. It is closed by the
 statements that follow, by evidence the kernel checks; a body that ends with one
 still open is refused, and no strategy of the compiler's own is offered for it.
 
-Verified-function contracts add no kernel rule, axiom, or logical authority.
+Single-return verified-function contracts add no kernel rule, axiom, or logical authority.
 The correspondence layer now substitutes the actual elaborated return term
 for the postcondition's specification-only `result` binder and closes the goal
 over the parameters and optional precondition. A defect in body selection or
@@ -1280,6 +1294,17 @@ detached body linkage. Automatic premise rewriting still produces ordinary
 proof terms; forged hypotheses remain kernel rejections. Function contracts and
 call preconditions have separate counts from Laws. This slice adds zero kernel
 rules, zero logical assumptions, and zero runtime checks.
+
+Path-sensitive verification additionally trusts the Clang bridge and lowering
+to preserve every branch, fallthrough edge, condition polarity, and return.
+Each return has its own implication goal. Calls in guards are checked before
+their guard evidence becomes available; calls on other paths supply no evidence.
+The kernel's conditional-elimination rule then checks the assembled body proof
+before its call theorem can be exported. A frontend defect can misstate the
+program but cannot grant a path proposition to the kernel. Kernel adversarial
+tests cover altered conditions, false/missing arms, malformed types, and motive
+capture; compiler regressions cover path leakage and failed branch dependencies.
+There are zero new logical assumptions and zero inserted runtime checks.
 
 ## 41.3 Runtime trust
 
