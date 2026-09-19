@@ -65,7 +65,10 @@ vcpkg_installed/
 *.dwo
 
 # test output & cache
-Testing/
+# Anchored: CTest writes Testing/ at the top of a build tree. Unanchored, this
+# pattern also swallowed source directories named testing/ on case-insensitive
+# filesystems.
+/Testing/
 .cache/
 
 # other dirs & files
