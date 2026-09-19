@@ -25,6 +25,9 @@ target_link_libraries(kernel_check_test PRIVATE cppl_kernel)
 cppl_add_unit_test(kernel_paths_test kernel/paths_test.cpp)
 target_link_libraries(kernel_paths_test PRIVATE cppl_kernel)
 
+cppl_add_unit_test(kernel_arithmetic_test kernel/arithmetic_test.cpp)
+target_link_libraries(kernel_arithmetic_test PRIVATE cppl_kernel)
+
 cppl_add_unit_test(unit_digest_test unit/digest_test.cpp)
 target_link_libraries(unit_digest_test PRIVATE cppl_source)
 
@@ -45,6 +48,9 @@ target_link_libraries(unit_verdict_test PRIVATE cppl_kernel cppl_obligations)
 
 cppl_add_unit_test(unit_contracts_test unit/contracts_test.cpp)
 target_link_libraries(unit_contracts_test PRIVATE cppl_automation)
+
+cppl_add_unit_test(unit_arithmetic_test unit/arithmetic_test.cpp)
+target_link_libraries(unit_arithmetic_test PRIVATE cppl_automation)
 
 # Driver-level suites. They exercise the installed command exactly as a
 # developer or CI would.
@@ -77,6 +83,7 @@ cppl_add_script_test(e2e_verified_functions e2e/verified_functions.sh)
 cppl_add_script_test(e2e_verified_calls e2e/verified_calls.sh)
 cppl_add_script_test(e2e_verified_paths e2e/verified_paths.sh)
 cppl_add_script_test(e2e_verified_locals e2e/verified_locals.sh)
+cppl_add_script_test(e2e_verified_arithmetic e2e/verified_arithmetic.sh)
 
 cppl_add_script_test(negative_broken_implementation negative/broken_implementation.sh)
 cppl_add_script_test(negative_unproven_dependencies negative/unproven_dependencies.sh)

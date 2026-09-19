@@ -22,6 +22,8 @@ struct Provenance {
 // Operations are typed variants, never strings or numeric tags.
 enum class BinaryOp : std::uint8_t {
     Add,    // addition, at the operand type's machine semantics
+    Sub,    // subtraction, likewise
+    Mul,    // multiplication, likewise
     Equal,  // equality comparison, yielding bool
     NotEqual,
     Less,

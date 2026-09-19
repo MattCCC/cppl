@@ -4,6 +4,7 @@
 # kernel, and the kernel decides. Solvers, tactics and search would be added
 # here, behind the same boundary (ARCHITECTURE.md 21).
 add_library(cppl_automation STATIC
+    src/arithmetic.cpp
     src/evidence.cpp
     src/composition.cpp)
 

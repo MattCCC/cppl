@@ -1,8 +1,9 @@
 #include "cppl/kernel/context.hpp"
 
-#include <algorithm>
 #include <utility>
 #include <variant>
+
+#include "cppl/kernel/arithmetic.hpp"
 
 namespace cppl::kernel {
 
@@ -91,7 +92,7 @@ std::unexpected<CoreError> fail(CoreErrorKind kind, std::string detail) {
                 if (auto valid = validate_type(type); !valid) {
                     return std::unexpected(valid.error());
                 }
-                if (node.op != PrimOp::AddWrap && !is_comparison(node.op) &&
+                if (!is_arithmetic(node.op) && !is_comparison(node.op) &&
                     node.op != PrimOp::Not && node.op != PrimOp::Select) {
                     return fail(CoreErrorKind::MalformedPrimitive, "unrecognized primitive");
                 }
@@ -229,54 +230,9 @@ std::unexpected<CoreError> fail(CoreErrorKind kind, std::string detail) {
                     arguments.push_back(std::move(*normalized));
                 }
 
-                const bool all_literal =
-                    std::all_of(arguments.begin(), arguments.end(), [](const Term& argument) {
-                        return std::holds_alternative<Literal>(argument.node);
-                    });
-
-                if (node.op == PrimOp::Select && arguments.size() == 3) {
-                    if (const auto* condition = std::get_if<Literal>(&arguments[0].node);
-                        condition != nullptr && condition->type == kBoolean &&
-                        (condition->value == 0 || condition->value == 1)) {
-                        ++steps;
-                        return arguments[condition->value == 1 ? 1 : 2];
-                    }
-                }
-                if (all_literal && node.op == PrimOp::Not && arguments.size() == 1) {
-                    ++steps;
-                    return Term::literal(kBoolean, std::get<Literal>(arguments[0].node).value == 0);
-                }
-                if (all_literal && is_comparison(node.op) && arguments.size() == 2) {
-                    ++steps;
-                    const auto lhs = std::get<Literal>(arguments[0].node).value;
-                    const auto rhs = std::get<Literal>(arguments[1].node).value;
-                    const auto compare = [&](auto left, auto right) {
-                        switch (node.op) {
-                            case PrimOp::Equal: return left == right;
-                            case PrimOp::NotEqual: return left != right;
-                            case PrimOp::Less: return left < right;
-                            case PrimOp::LessEqual: return left <= right;
-                            case PrimOp::Greater: return left > right;
-                            case PrimOp::GreaterEqual: return left >= right;
-                            default: return false;
-                        }
-                    };
-                    const bool result = node.type.signedness == Signedness::Signed
-                        ? compare(lhs, rhs)
-                        : compare(static_cast<std::uint64_t>(lhs), static_cast<std::uint64_t>(rhs));
-                    return Term::literal(kBoolean, result ? 1 : 0);
-                }
-                if (all_literal && node.op == PrimOp::AddWrap && arguments.size() == 2) {
-                    ++steps;
-                    const auto& lhs = std::get<Literal>(arguments[0].node);
-                    const auto& rhs = std::get<Literal>(arguments[1].node);
-                    const std::uint64_t sum =
-                        static_cast<std::uint64_t>(lhs.value) + static_cast<std::uint64_t>(rhs.value);
-                    return Term::literal(node.type,
-                                         wrap_into(node.type, static_cast<std::int64_t>(sum)));
-                }
-
-                return Term::primitive(node.op, node.type, std::move(arguments));
+                ++steps;
+                return normalize_primitive(node.op, node.type, std::move(arguments), limits,
+                                           steps);
             }
         },
         term.node);

@@ -40,10 +40,15 @@ enum class PrimOp : std::uint8_t {
     GreaterEqual,
     Not,
     Select,
+    SubWrap,  // two's-complement wrapping subtraction
+    MulWrap,  // two's-complement wrapping multiplication
 };
 
 std::string describe(PrimOp op);
 bool is_comparison(PrimOp op);
+
+// The operations of the ring of integers modulo 2^width.
+bool is_arithmetic(PrimOp op);
 inline constexpr IntType kBoolean{1, Signedness::Unsigned};
 
 struct Term;

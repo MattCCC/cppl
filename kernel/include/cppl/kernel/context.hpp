@@ -74,6 +74,14 @@ private:
 struct CoreLimits {
     std::uint64_t max_normalization_steps = 1u << 20;
     std::uint32_t max_term_depth = 512;
+    // Monomials in one polynomial, and factors in one monomial. A rendered
+    // polynomial nests about as deep as the two together, so they stay well
+    // inside max_term_depth.
+    std::uint32_t max_polynomial_terms = 256;
+    std::uint32_t max_monomial_degree = 64;
+    // Facts one arithmetic step may use, and nodes in its certificate.
+    std::uint32_t max_arithmetic_facts = 256;
+    std::uint32_t max_certificate_nodes = 1u << 14;
 };
 
 // The type of `term` under `locals`, which lists enclosing binders

@@ -1117,17 +1117,19 @@ the target; `STATUS.md` records maturity.
 For a false proposition to be accepted, one of these would have to be wrong:
 
 ```text
-kernel/   the proof checker, the normalizer, the type checker of core terms,
-          the capture-safe substitution used by universal elimination, by
-          equality substitution and by the hypothesis context, and the admission
-          rules of the definition context
+kernel/   the proof checker, the normalizer (including the polynomial normal
+          form of machine arithmetic and the canonical comparisons), the type
+          checker of core terms, the capture-safe substitution used by
+          universal elimination, by equality substitution and by the hypothesis
+          context, the admission rules of the definition context, and the
+          linear-arithmetic constraint builder and certificate checker
 ```
 
 That is the whole logical TCB. It links no other component, includes no header
 outside itself, and holds no global state. `tests/architecture` checks both
 properties on every run.
 
-The core has eight rules:
+The core has nine rules:
 
 ```text
 1. Reflexivity
@@ -1138,11 +1140,38 @@ The core has eight rules:
 6. Implication elimination
 7. Hypothesis use
 8. Conditional elimination
+9. Linear arithmetic
 ```
 
 Each is a capability, not an assumption.
 
-Conditional elimination is the newest rule. It combines checked cases into a
+**Machine arithmetic** (`SPEC.md` 7.1.1, 7.5; RFC 0006) enlarges the logical
+TCB explicitly, and the kernel and core versions are 0.3.0. Two parts must be
+right for a `PROVEN` result to mean what it says:
+
+- *The polynomial normal form.* Wrapping addition, subtraction and
+  multiplication are read as polynomials modulo `2^width` and rendered in one
+  canonical form, and comparisons are rewritten only by identities of the
+  machine type. An error here would make reflexivity accept an equality that
+  some assignment falsifies. It is checked by a differential test that
+  evaluates random terms and their normal forms with an evaluator written
+  independently of the kernel, over every assignment of small types and at the
+  edges of 64-bit ones.
+- *The linear-arithmetic rule.* The kernel checks each fact's evidence, states
+  the facts and the goal's negation as integer constraints itself — each
+  wrapped value as its polynomial minus a fresh multiple of `2^width`, bounded
+  by its type — and checks a certificate of Farkas sums, integer splits and
+  case splits against them with overflow-checked 128-bit arithmetic. The
+  producer supplies neither the translation nor any bound. An error in the
+  translation would let a certificate refute a system that does not say what
+  the machine does; negative tests cover wrapping at 32 and 64 bits, overflow,
+  misapplied, one-sided and malformed certificates, and unchecked facts.
+
+Certificates are found by Fourier-Motzkin elimination with case splitting in
+`compiler/automation`, outside the TCB. The rule adds no axiom: it derives
+nothing a model of machine integers does not satisfy.
+
+Conditional elimination was added in the path slice. It combines checked cases into a
 proposition about `select(condition, true_value, false_value)`. The kernel
 type-checks the complete conditional and the proposition context, derives each
 arm's required predicate from the condition, checks both implications, and
@@ -1151,9 +1180,10 @@ cannot supply their own branch premises or omit a case. Comparisons are typed
 total primitives; concrete evaluation respects integer width and signedness.
 Boolean terms use unsigned one-bit integers, and a declared `bool` is modeled as
 that type: its value set is the same, and every promotion out of it is a
-conversion the bridge refuses. These computations and the new
-rule enlarge the logical TCB explicitly; kernel/core versions are 0.2.0.
-No symbolic ordering rules or logical assumptions are added.
+conversion the bridge refuses. These computations and that rule enlarged the
+logical TCB explicitly and moved the kernel/core versions to 0.2.0. Symbolic
+order reasoning came later, with the linear-arithmetic rule above; no logical
+assumption was added by either.
 
 Equality substitution is a distinct logical
 capability rather than sugar over the others: without it, evidence for `a = b`
@@ -1221,9 +1251,11 @@ weight are deliberately few and are stated explicitly in the implementation:
 
 - a C++ equality between two built-in integer values of the same type denotes
   propositional equality of those values (`SPEC.md` 7.3);
-- C++ addition is lowered onto the core's wrapping primitive **only** for
-  unsigned operands, where C++ arithmetic is modular and the two agree exactly.
-  Signed addition is refused, because C++ leaves its overflow undefined;
+- C++ `+`, `-` and `*` are lowered onto the core's wrapping primitives **only**
+  for unsigned operands of one modeled type, where C++ arithmetic is modular
+  and the two agree exactly. Operands narrower than `int` reach the bridge as a
+  promotion to `int`, which it refuses as a conversion. Signed arithmetic is
+  refused, because C++ leaves its overflow undefined;
 - specification expressions may unfold admitted `pure` definitions whose
   bodies satisfy the purity rules; verified-function definitions additionally
   support the kernel-checked link between a proven contract and its actual body;

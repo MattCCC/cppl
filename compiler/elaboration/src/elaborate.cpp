@@ -42,6 +42,8 @@ vir::BinaryOp convert_operator(clangbridge::BinaryOp op) {
     switch (op) {
         case clangbridge::BinaryOp::Add:
             return vir::BinaryOp::Add;
+        case clangbridge::BinaryOp::Sub: return vir::BinaryOp::Sub;
+        case clangbridge::BinaryOp::Mul: return vir::BinaryOp::Mul;
         case clangbridge::BinaryOp::Equal:
             return vir::BinaryOp::Equal;
         case clangbridge::BinaryOp::NotEqual: return vir::BinaryOp::NotEqual;

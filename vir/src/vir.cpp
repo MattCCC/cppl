@@ -18,6 +18,8 @@ std::string describe(BinaryOp op) {
     switch (op) {
         case BinaryOp::Add:
             return "+";
+        case BinaryOp::Sub: return "-";
+        case BinaryOp::Mul: return "*";
         case BinaryOp::Equal:
             return "==";
         case BinaryOp::NotEqual: return "!=";

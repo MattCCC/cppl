@@ -17,8 +17,14 @@ std::string describe(PrimOp op) {
         case PrimOp::GreaterEqual: return "ge";
         case PrimOp::Not: return "not";
         case PrimOp::Select: return "select";
+        case PrimOp::SubWrap: return "sub_wrap";
+        case PrimOp::MulWrap: return "mul_wrap";
     }
     return "<unknown-primitive>";
+}
+
+bool is_arithmetic(PrimOp op) {
+    return op == PrimOp::AddWrap || op == PrimOp::SubWrap || op == PrimOp::MulWrap;
 }
 
 bool is_comparison(PrimOp op) {

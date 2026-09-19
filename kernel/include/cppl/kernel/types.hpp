@@ -8,6 +8,12 @@ namespace cppl::kernel {
 
 enum class Signedness : std::uint8_t { Signed, Unsigned };
 
+// Integers wide enough for everything the arithmetic procedures meet: values,
+// coefficients and wrap multiples of 64-bit types, and their products with
+// certificate multipliers. Every operation on them is overflow-checked, and an
+// overflow rejects rather than wraps.
+using Wide = __int128;
+
 // A machine integer type: exactly `width` value bits with the stated
 // signedness. The formal core never exchanges these for unbounded mathematical
 // integers (SPEC.md 29 "Machine arithmetic").

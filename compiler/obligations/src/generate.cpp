@@ -51,9 +51,31 @@ std::optional<kernel::PrimOp> comparison(vir::BinaryOp op) {
         case vir::BinaryOp::LessEqual: return kernel::PrimOp::LessEqual;
         case vir::BinaryOp::Greater: return kernel::PrimOp::Greater;
         case vir::BinaryOp::GreaterEqual: return kernel::PrimOp::GreaterEqual;
-        case vir::BinaryOp::Add: return std::nullopt;
+        case vir::BinaryOp::Add:
+        case vir::BinaryOp::Sub:
+        case vir::BinaryOp::Mul: return std::nullopt;
     }
     return std::nullopt;
+}
+
+// The wrapping primitive a C++ arithmetic operator denotes on unsigned
+// operands, where C++ defines the result modulo 2^width exactly as the core
+// primitive does (SPEC.md 29.2).
+std::optional<kernel::PrimOp> modular(vir::BinaryOp op) {
+    switch (op) {
+        case vir::BinaryOp::Add: return kernel::PrimOp::AddWrap;
+        case vir::BinaryOp::Sub: return kernel::PrimOp::SubWrap;
+        case vir::BinaryOp::Mul: return kernel::PrimOp::MulWrap;
+        default: return std::nullopt;
+    }
+}
+
+std::string operation(vir::BinaryOp op) {
+    switch (op) {
+        case vir::BinaryOp::Sub: return "subtraction";
+        case vir::BinaryOp::Mul: return "multiplication";
+        default: return "addition";
+    }
 }
 
 // A read of a local lowers its version's value again and the core has no
@@ -179,25 +201,27 @@ public:
                 return kernel::Term::primitive(*op, left->integer_type(),
                                                 {std::move(*lhs), std::move(*rhs)});
             }
-            if (binary->op != vir::BinaryOp::Add) {
+            const std::optional<kernel::PrimOp> primitive = modular(binary->op);
+            if (!primitive.has_value() || binary->operands.size() != 2) {
                 return fail("'" + vir::describe(binary->op) +
                                 "' does not denote a value in the formal core",
                             location);
             }
-            if (!type.has_value()) {
-                return fail("addition at type '" + vir::describe(expr.type) + "' is not modeled",
+            if (!type.has_value() || expr.type.is_boolean()) {
+                return fail(operation(binary->op) + " at type '" + vir::describe(expr.type) +
+                                "' is not modeled",
                             location);
             }
 
             const kernel::IntType integer = type->integer_type();
             if (integer.signedness == kernel::Signedness::Signed) {
-                // Unsigned C++ addition is modular and matches the core's
-                // wrapping primitive exactly. Signed C++ addition has undefined
-                // behaviour on overflow, so it is not this primitive, and the
-                // obligation that would justify the difference is not part of
-                // the core yet.
+                // Unsigned C++ arithmetic is modular and matches the core's
+                // wrapping primitives exactly. Signed C++ arithmetic has
+                // undefined behaviour on overflow, so it is not those
+                // primitives, and the obligation that would justify the
+                // difference is not part of the core yet.
                 return fail(
-                    "addition on the signed type '" + vir::describe(expr.type) +
+                    operation(binary->op) + " on the signed type '" + vir::describe(expr.type) +
                         "' is not modeled: C++ leaves signed overflow undefined, and this "
                         "implementation cannot yet discharge the obligation that it does not "
                         "occur",
@@ -207,13 +231,16 @@ public:
             std::vector<kernel::Term> operands;
             operands.reserve(binary->operands.size());
             for (const vir::Expr& operand : binary->operands) {
+                if (!(operand.type == expr.type)) {
+                    return fail("arithmetic requires operands of its own modeled type", location);
+                }
                 std::expected<kernel::Term, Failure> lowered = lower(operand);
                 if (!lowered) {
                     return lowered;
                 }
                 operands.push_back(std::move(*lowered));
             }
-            return kernel::Term::primitive(kernel::PrimOp::AddWrap, integer, std::move(operands));
+            return kernel::Term::primitive(*primitive, integer, std::move(operands));
         }
 
         if (const auto* negation = std::get_if<vir::Negation>(&expr.node)) {

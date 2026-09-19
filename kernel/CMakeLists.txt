@@ -4,8 +4,10 @@
 # frontend, the Clang bridge, VIR, solvers, diagnostics rendering or editor
 # tooling (ARCHITECTURE.md 23, TRUST.md). tests/architecture enforces this.
 add_library(cppl_kernel STATIC
+    src/arithmetic.cpp
     src/check.cpp
     src/context.cpp
+    src/linear.cpp
     src/proof.cpp
     src/proposition.cpp
     src/substitution.cpp
