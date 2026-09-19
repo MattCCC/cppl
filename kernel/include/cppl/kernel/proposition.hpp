@@ -1,11 +1,11 @@
 #pragma once
 
-#include <string>
-#include <variant>
-
 #include "cppl/kernel/box.hpp"
 #include "cppl/kernel/term.hpp"
 #include "cppl/kernel/types.hpp"
+
+#include <string>
+#include <variant>
 
 namespace cppl::kernel {
 
@@ -55,8 +55,7 @@ struct Proposition {
     }
 
     static Proposition implication(Proposition premise, Proposition conclusion) {
-        return Proposition{Implies{Box<Proposition>{std::move(premise)},
-                                   Box<Proposition>{std::move(conclusion)}}};
+        return Proposition{Implies{Box<Proposition>{std::move(premise)}, Box<Proposition>{std::move(conclusion)}}};
     }
 
     friend bool operator==(const Proposition&, const Proposition&) = default;
@@ -67,4 +66,4 @@ std::string describe(const Proposition& proposition);
 // Requires a well-typed boolean term; the checker validates it before use.
 Proposition predicate(const Term& condition, bool positive);
 
-}  // namespace cppl::kernel
+} // namespace cppl::kernel

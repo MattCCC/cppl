@@ -43,11 +43,9 @@ struct Edit {
     std::optional<std::size_t> specification_index = std::nullopt;
 };
 
-}  // namespace
+} // namespace
 
-Projection project(const TokenStream& stream,
-                   const Syntax& syntax,
-                   const ProjectionOptions& options) {
+Projection project(const TokenStream& stream, const Syntax& syntax, const ProjectionOptions& options) {
     const std::string_view text = stream.text();
 
     Projection projection;
@@ -64,16 +62,14 @@ Projection project(const TokenStream& stream,
     // A declaration becomes an ordinary C++ function stating the proposition it
     // carries, emitted where the declaration stood. Everything after this point
     // in the analysis text is C++ that Clang resolves on its own.
-    const auto emit = [&stream](std::string_view name,
-                                const source::ByteSpan& parameters,
-                                const source::ByteSpan& expression,
-                                const source::SourceLocation& begin,
-                                std::uint32_t end_line,
-                                std::size_t* name_offset = nullptr) {
+    const auto emit = [&stream](std::string_view name, const source::ByteSpan& parameters,
+                                const source::ByteSpan& expression, const source::SourceLocation& begin,
+                                std::uint32_t end_line, std::size_t* name_offset = nullptr) {
         std::string replacement = "\n";
         replacement += line_directive(begin.line, begin.file);
         replacement += "[[maybe_unused]] static bool ";
-        if (name_offset != nullptr) *name_offset = replacement.size();
+        if (name_offset != nullptr)
+            *name_offset = replacement.size();
         replacement += name;
         replacement += "(";
         replacement += stream.spelling(parameters);
@@ -94,22 +90,20 @@ Projection project(const TokenStream& stream,
         }
 
         SpecificationFunction projected{law.name, index, {}};
-        std::string replacement = emit(law.name, law.parameters, proposition->expression,
-                                       law.keyword_location, law.end_line, &projected.analysis_offset);
+        std::string replacement = emit(law.name, law.parameters, proposition->expression, law.keyword_location,
+                                       law.end_line, &projected.analysis_offset);
 
         // A precondition is a specification expression of the Law's own
         // parameters, so it is projected exactly like the conclusion, under a
         // generated name: the Law's name states what the Law concludes.
         if (const Clause* premise = law.premise(); premise != nullptr) {
-            projected.premise_name = options.generated_prefix + "premise_" +
-                                     std::to_string(index) +
+            projected.premise_name = options.generated_prefix + "premise_" + std::to_string(index) +
                                      (options.unit_key.empty() ? "" : "_" + options.unit_key);
-            replacement += emit(projected.premise_name, law.parameters, premise->expression,
-                                premise->location, law.end_line);
+            replacement +=
+                emit(projected.premise_name, law.parameters, premise->expression, premise->location, law.end_line);
         }
 
-        edits.push_back(Edit{law.range.span, std::move(replacement),
-                             projection.specification_functions.size()});
+        edits.push_back(Edit{law.range.span, std::move(replacement), projection.specification_functions.size()});
         projection.specification_functions.push_back(std::move(projected));
     }
 
@@ -117,10 +111,8 @@ Projection project(const TokenStream& stream,
     // proof's own scope, so it is projected as a function returning it. The
     // deduced return type is the type Clang gives the expression, with no
     // conversion imposed on the way out.
-    const auto emit_expression = [&stream](std::string_view name,
-                                           const source::ByteSpan& parameters,
-                                           const source::ByteSpan& expression,
-                                           const source::SourceLocation& location) {
+    const auto emit_expression = [&stream](std::string_view name, const source::ByteSpan& parameters,
+                                           const source::ByteSpan& expression, const source::SourceLocation& location) {
         std::string head = "[[maybe_unused]] static auto ";
         head += name;
         head += "(";
@@ -141,23 +133,21 @@ Projection project(const TokenStream& stream,
         const ProofDeclaration& proof = syntax.proofs[index];
         blank(projection.runtime, proof.range.span);
 
-        const std::string suffix =
-            std::to_string(index) + (options.unit_key.empty() ? "" : "_" + options.unit_key);
+        const std::string suffix = std::to_string(index) + (options.unit_key.empty() ? "" : "_" + options.unit_key);
 
         ProofFunction projected;
         projected.name = options.generated_prefix + "proof_" + suffix;
         projected.proof_index = index;
 
-        std::string replacement = emit(projected.name, proof.parameters, proof.proposition,
-                                       proof.keyword_location, proof.end_line);
+        std::string replacement =
+            emit(projected.name, proof.parameters, proof.proposition, proof.keyword_location, proof.end_line);
 
         for (const ProofStatement& statement : proof.statements) {
             for (const ProofArgument& argument : statement.arguments) {
                 std::string name = options.generated_prefix + "argument_" + suffix + "_" +
                                    std::to_string(projected.argument_names.size());
                 replacement += line_directive(argument.location.line, proof.keyword_location.file);
-                replacement += emit_expression(name, proof.parameters, argument.span,
-                                               argument.location);
+                replacement += emit_expression(name, proof.parameters, argument.span, argument.location);
                 replacement += line_directive(proof.end_line, proof.keyword_location.file);
                 projected.argument_names.push_back(std::move(name));
             }
@@ -167,10 +157,9 @@ Projection project(const TokenStream& stream,
             }
             std::string name = options.generated_prefix + "assumption_" + suffix + "_" +
                                std::to_string(projected.assumption_names.size());
+            replacement += line_directive(statement.proposition_location.line, proof.keyword_location.file);
             replacement +=
-                line_directive(statement.proposition_location.line, proof.keyword_location.file);
-            replacement += emit_expression(name, proof.parameters, statement.proposition,
-                                           statement.proposition_location);
+                emit_expression(name, proof.parameters, statement.proposition, statement.proposition_location);
             replacement += line_directive(proof.end_line, proof.keyword_location.file);
             projected.assumption_names.push_back(std::move(name));
         }
@@ -189,17 +178,15 @@ Projection project(const TokenStream& stream,
         blank(projection.runtime, verified.keyword);
         blank(projection.runtime, verified.clause_region);
         edits.push_back(Edit{verified.keyword, std::string(verified.keyword.length, ' ')});
-        edits.push_back(
-            Edit{verified.clause_region, projection.runtime.substr(verified.clause_region.offset,
-                                                                   verified.clause_region.length)});
+        edits.push_back(Edit{verified.clause_region,
+                             projection.runtime.substr(verified.clause_region.offset, verified.clause_region.length)});
 
         const Clause* postcondition = verified.postcondition();
         if (postcondition == nullptr) {
             continue;
         }
 
-        const std::string suffix =
-            std::to_string(index) + (options.unit_key.empty() ? "" : "_" + options.unit_key);
+        const std::string suffix = std::to_string(index) + (options.unit_key.empty() ? "" : "_" + options.unit_key);
         std::string_view parameters = stream.spelling(verified.parameters);
         const std::size_t first = parameters.find_first_not_of(" \t\r\n");
         const std::size_t last = parameters.find_last_not_of(" \t\r\n");
@@ -232,8 +219,7 @@ Projection project(const TokenStream& stream,
 
         if (const Clause* precondition = verified.precondition(); precondition != nullptr) {
             projected.precondition_name = options.generated_prefix + "expects_" + suffix;
-            replacement +=
-                line_directive(precondition->location.line, verified.keyword_location.file);
+            replacement += line_directive(precondition->location.line, verified.keyword_location.file);
             replacement += "[[maybe_unused]] static bool ";
             replacement += projected.precondition_name;
             replacement += "(";
@@ -250,13 +236,16 @@ Projection project(const TokenStream& stream,
     }
 
     std::ranges::sort(edits, [](const Edit& lhs, const Edit& rhs) {
-        if (lhs.span.offset != rhs.span.offset) return lhs.span.offset < rhs.span.offset;
-        return lhs.span.length < rhs.span.length;  // insert before replacing adjacent text
+        if (lhs.span.offset != rhs.span.offset)
+            return lhs.span.offset < rhs.span.offset;
+        return lhs.span.length < rhs.span.length; // insert before replacing adjacent text
     });
 
     std::vector<std::size_t> declarations;
-    for (const auto& marker : syntax.pure_markers) declarations.push_back(marker.function_offset);
-    for (const auto& function : syntax.verified_functions) declarations.push_back(function.function_offset);
+    for (const auto& marker : syntax.pure_markers)
+        declarations.push_back(marker.function_offset);
+    for (const auto& function : syntax.verified_functions)
+        declarations.push_back(function.function_offset);
     std::ranges::sort(declarations);
     declarations.erase(std::unique(declarations.begin(), declarations.end()), declarations.end());
     std::size_t next_declaration = 0;
@@ -265,22 +254,21 @@ Projection project(const TokenStream& stream,
         while (next_declaration < declarations.size() && declarations[next_declaration] < end) {
             const auto original = declarations[next_declaration++];
             if (original >= cursor) {
-                projection.declaration_offsets.push_back(Projection::DeclarationOffset{
-                    original, projection.analysis.size() + original - cursor});
+                projection.declaration_offsets.push_back(
+                    Projection::DeclarationOffset{original, projection.analysis.size() + original - cursor});
             }
         }
         projection.analysis.append(text.substr(cursor, end - cursor));
     };
     for (const Edit& edit : edits) {
         if (edit.span.offset < cursor || edit.span.end() > text.size()) {
-            continue;  // overlapping or out-of-range spans are never emitted
+            continue; // overlapping or out-of-range spans are never emitted
         }
         append_original(edit.span.offset);
         if (edit.specification_index.has_value()) {
             // emit() recorded the name relative to its replacement; only now
             // is its physical position in the complete analysis text known.
-            projection.specification_functions[*edit.specification_index].analysis_offset +=
-                projection.analysis.size();
+            projection.specification_functions[*edit.specification_index].analysis_offset += projection.analysis.size();
         }
         projection.analysis.append(edit.replacement);
         cursor = edit.span.end();
@@ -292,9 +280,10 @@ Projection project(const TokenStream& stream,
 
 std::optional<std::size_t> Projection::declaration_offset(std::size_t original) const {
     for (const auto& declaration : declaration_offsets) {
-        if (declaration.original == original) return declaration.analysis;
+        if (declaration.original == original)
+            return declaration.analysis;
     }
     return std::nullopt;
 }
 
-}  // namespace cppl::frontend
+} // namespace cppl::frontend

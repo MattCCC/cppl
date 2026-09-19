@@ -13,8 +13,7 @@ namespace cppl::obligations {
 //
 // A construct that cannot be lowered produces a diagnostic and no obligation.
 // It never produces a weaker obligation than the one the Law states.
-[[nodiscard]] Program generate(const vir::Module& module,
-                               const elaboration::Result& elaborated,
+[[nodiscard]] Program generate(const vir::Module& module, const elaboration::Result& elaborated,
                                diagnostics::Engine& engine);
 
-}  // namespace cppl::obligations
+} // namespace cppl::obligations

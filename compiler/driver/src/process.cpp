@@ -1,10 +1,9 @@
 #include "cppl/driver/process.hpp"
 
-#include <spawn.h>
-#include <sys/wait.h>
-
 #include <cerrno>
 #include <cstring>
+#include <spawn.h>
+#include <sys/wait.h>
 #include <vector>
 
 extern char** environ;
@@ -21,19 +20,15 @@ ProcessResult run(const std::string& executable, const std::vector<std::string>&
     argv.push_back(nullptr);
 
     pid_t child = 0;
-    const int spawned =
-        posix_spawnp(&child, executable.c_str(), nullptr, nullptr, argv.data(), environ);
+    const int spawned = posix_spawnp(&child, executable.c_str(), nullptr, nullptr, argv.data(), environ);
     if (spawned != 0) {
-        return ProcessResult{false, -1,
-                             "could not run '" + executable + "': " + std::strerror(spawned)};
+        return ProcessResult{false, -1, "could not run '" + executable + "': " + std::strerror(spawned)};
     }
 
     int status = 0;
     while (waitpid(child, &status, 0) < 0) {
         if (errno != EINTR) {
-            return ProcessResult{true, -1,
-                                 "could not wait for '" + executable +
-                                     "': " + std::strerror(errno)};
+            return ProcessResult{true, -1, "could not wait for '" + executable + "': " + std::strerror(errno)};
         }
     }
 
@@ -41,10 +36,9 @@ ProcessResult run(const std::string& executable, const std::vector<std::string>&
         return ProcessResult{true, WEXITSTATUS(status), {}};
     }
     if (WIFSIGNALED(status)) {
-        return ProcessResult{true, 128 + WTERMSIG(status),
-                             "'" + executable + "' terminated by signal"};
+        return ProcessResult{true, 128 + WTERMSIG(status), "'" + executable + "' terminated by signal"};
     }
     return ProcessResult{true, -1, "'" + executable + "' ended abnormally"};
 }
 
-}  // namespace cppl::driver
+} // namespace cppl::driver

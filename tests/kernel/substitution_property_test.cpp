@@ -1,11 +1,11 @@
 // Finite-model oracles for de Bruijn substitution. Expected meanings are
 // evaluated in environments; they are not computed by another substitution.
-#include <cstdint>
-#include <vector>
-
 #include "cppl/kernel/check.hpp"
 #include "cppl/kernel/substitution.hpp"
 #include "cppl/testing/test.hpp"
+
+#include <cstdint>
+#include <vector>
 
 namespace {
 namespace k = cppl::kernel;
@@ -21,16 +21,22 @@ struct Random {
     }
 };
 
-k::Term var(std::uint32_t index) { return k::Term::variable(k::VarIndex{index}); }
-k::Term lit(std::uint32_t value) { return k::Term::literal(type.integer_type(), value); }
+k::Term var(std::uint32_t index) {
+    return k::Term::variable(k::VarIndex{index});
+}
+k::Term lit(std::uint32_t value) {
+    return k::Term::literal(type.integer_type(), value);
+}
 k::Proposition eq(k::Term lhs, k::Term rhs) {
     return k::Proposition::equality(type, std::move(lhs), std::move(rhs));
 }
 
 k::Term term(Random& random, std::uint32_t variables, unsigned depth) {
     const auto choice = random.below(depth == 0 ? 2 : 5);
-    if (choice == 0 && variables != 0) return var(random.below(variables));
-    if (choice <= 1) return lit(random.below(4));
+    if (choice == 0 && variables != 0)
+        return var(random.below(variables));
+    if (choice <= 1)
+        return lit(random.below(4));
     const k::PrimOp ops[] = {k::PrimOp::AddWrap, k::PrimOp::SubWrap, k::PrimOp::MulWrap};
     auto lhs = term(random, variables, depth - 1);
     auto rhs = term(random, variables, depth - 1);
@@ -66,10 +72,15 @@ std::uint32_t evaluate(const k::Term& value, const Environment& environment) {
     const auto a = evaluate(primitive.arguments[0], environment);
     const auto b = evaluate(primitive.arguments[1], environment);
     switch (primitive.op) {
-        case k::PrimOp::AddWrap: return (a + b) % 4;
-        case k::PrimOp::SubWrap: return (a + 4 - b) % 4;
-        case k::PrimOp::MulWrap: return (a * b) % 4;
-        default: CPPL_CHECK(false); return 0;
+        case k::PrimOp::AddWrap:
+            return (a + b) % 4;
+        case k::PrimOp::SubWrap:
+            return (a + 4 - b) % 4;
+        case k::PrimOp::MulWrap:
+            return (a * b) % 4;
+        default:
+            CPPL_CHECK(false);
+            return 0;
     }
 }
 
@@ -78,14 +89,14 @@ bool evaluate(const k::Proposition& value, Environment environment) {
         return evaluate(equality->lhs, environment) == evaluate(equality->rhs, environment);
     }
     if (const auto* implication = std::get_if<k::Implies>(&value.node)) {
-        return !evaluate(*implication->premise, environment) ||
-               evaluate(*implication->conclusion, environment);
+        return !evaluate(*implication->premise, environment) || evaluate(*implication->conclusion, environment);
     }
     const auto& forall = std::get<k::Forall>(value.node);
     environment.push_back(0);
     for (std::uint32_t x = 0; x < 4; ++x) {
         environment.back() = x;
-        if (!evaluate(*forall.body, environment)) return false;
+        if (!evaluate(*forall.body, environment))
+            return false;
     }
     return true;
 }
@@ -95,12 +106,11 @@ k::ProofTerm reflexive_shape(const k::Proposition& goal) {
         return k::ProofTerm::forall_introduction(forall->binder, reflexive_shape(*forall->body));
     }
     if (const auto* implies = std::get_if<k::Implies>(&goal.node)) {
-        return k::ProofTerm::implication_introduction(*implies->premise,
-                                                      reflexive_shape(*implies->conclusion));
+        return k::ProofTerm::implication_introduction(*implies->premise, reflexive_shape(*implies->conclusion));
     }
     return k::ProofTerm::reflexivity();
 }
-}  // namespace
+} // namespace
 
 CPPL_TEST(substitution_preserves_meaning_at_every_tested_binder_depth) {
     Random random;
@@ -178,8 +188,7 @@ CPPL_TEST(generated_quantified_proofs_are_checked_against_a_finite_model) {
             ++rejected;
         }
         // A free hypothesis never gains a premise from a preceding check.
-        CPPL_CHECK(!k::check({}, eq(lit(0), lit(1)),
-            k::ProofTerm::hypothesis(k::HypothesisIndex{0}), {}).has_value());
+        CPPL_CHECK(!k::check({}, eq(lit(0), lit(1)), k::ProofTerm::hypothesis(k::HypothesisIndex{0}), {}).has_value());
     }
     CPPL_CHECK(accepted > 50);
     CPPL_CHECK(rejected > 50);
@@ -199,14 +208,13 @@ CPPL_TEST(transport_beneath_many_binders_preserves_the_outer_equality) {
             captured = k::Proposition::for_all(type, std::move(captured));
             evidence = k::ProofTerm::forall_introduction(type, std::move(evidence));
         }
-        const auto transport = k::ProofTerm::equality_elimination(type, var(1), var(0),
-            motive, k::ProofTerm::hypothesis(k::HypothesisIndex{0}), evidence);
-        const auto proof = k::ProofTerm::forall_introduction(type,
-            k::ProofTerm::forall_introduction(type,
-                k::ProofTerm::implication_introduction(premise, transport)));
+        const auto transport = k::ProofTerm::equality_elimination(
+            type, var(1), var(0), motive, k::ProofTerm::hypothesis(k::HypothesisIndex{0}), evidence);
+        const auto proof = k::ProofTerm::forall_introduction(
+            type, k::ProofTerm::forall_introduction(type, k::ProofTerm::implication_introduction(premise, transport)));
         const auto close = [&](k::Proposition body) {
-            return k::Proposition::for_all(type, k::Proposition::for_all(type,
-                k::Proposition::implication(premise, std::move(body))));
+            return k::Proposition::for_all(
+                type, k::Proposition::for_all(type, k::Proposition::implication(premise, std::move(body))));
         };
         CPPL_CHECK(k::check({}, close(conclusion), proof, {}).has_value());
         CPPL_CHECK(!k::check({}, close(captured), proof, {}).has_value());

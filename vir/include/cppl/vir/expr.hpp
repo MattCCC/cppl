@@ -1,13 +1,13 @@
 #pragma once
 
+#include "cppl/source/location.hpp"
+#include "cppl/vir/ids.hpp"
+#include "cppl/vir/types.hpp"
+
 #include <cstdint>
 #include <string>
 #include <variant>
 #include <vector>
-
-#include "cppl/source/location.hpp"
-#include "cppl/vir/ids.hpp"
-#include "cppl/vir/types.hpp"
 
 namespace cppl::vir {
 
@@ -21,10 +21,10 @@ struct Provenance {
 
 // Operations are typed variants, never strings or numeric tags.
 enum class BinaryOp : std::uint8_t {
-    Add,    // addition, at the operand type's machine semantics
-    Sub,    // subtraction, likewise
-    Mul,    // multiplication, likewise
-    Equal,  // equality comparison, yielding bool
+    Add,   // addition, at the operand type's machine semantics
+    Sub,   // subtraction, likewise
+    Mul,   // multiplication, likewise
+    Equal, // equality comparison, yielding bool
     NotEqual,
     Less,
     LessEqual,
@@ -60,7 +60,7 @@ struct Call {
 
 struct Binary {
     BinaryOp op = BinaryOp::Add;
-    std::vector<Expr> operands;  // exactly two
+    std::vector<Expr> operands; // exactly two
 
     friend bool operator==(const Binary&, const Binary&) = default;
 };
@@ -83,7 +83,7 @@ struct Conditional {
 struct LocalVersion {
     std::uint32_t version = 0;
     std::string name;
-    std::vector<Expr> operands;  // value, body
+    std::vector<Expr> operands; // value, body
 
     friend bool operator==(const LocalVersion&, const LocalVersion&) = default;
 };
@@ -100,13 +100,11 @@ struct Expr {
     ExprId id;
     Type type;
     Provenance provenance;
-    std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, LocalVersion,
-                 LocalRef>
-        node;
+    std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, LocalVersion, LocalRef> node;
 
     friend bool operator==(const Expr&, const Expr&) = default;
 };
 
 std::string describe(const Expr& expr);
 
-}  // namespace cppl::vir
+} // namespace cppl::vir

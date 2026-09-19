@@ -1,5 +1,5 @@
-#include "cppl/kernel/check.hpp"
 #include "cppl/automation/evidence.hpp"
+#include "cppl/kernel/check.hpp"
 #include "cppl/obligations/generate.hpp"
 #include "cppl/testing/test.hpp"
 
@@ -53,9 +53,8 @@ k::Proposition conditional(bool same) {
     const auto one = k::Term::literal(kUnsigned.integer_type(), 1);
     const auto sum = k::Term::primitive(k::PrimOp::AddWrap, kUnsigned.integer_type(), {x, one});
     return k::Proposition::for_all(
-        kUnsigned,
-        k::Proposition::implication(k::Proposition::equality(kUnsigned, x, same ? zero : one),
-                                   k::Proposition::equality(kUnsigned, sum, one)));
+        kUnsigned, k::Proposition::implication(k::Proposition::equality(kUnsigned, x, same ? zero : one),
+                                               k::Proposition::equality(kUnsigned, sum, one)));
 }
 
 o::Program composed(bool weak = false) {
@@ -69,8 +68,7 @@ o::Program composed(bool weak = false) {
     caller.id = v::FunctionId{1};
     caller.symbol = v::SymbolId{"swapped"};
     caller.qualified_name = "swapped";
-    caller.contract = v::Contract{equality(parameter(0), parameter(1)),
-                                  equality(parameter(2), parameter(1)), {}};
+    caller.contract = v::Contract{equality(parameter(0), parameter(1)), equality(parameter(2), parameter(1)), {}};
     v::Expr call;
     call.id = v::ExprId{1};
     call.type = vUnsigned;
@@ -90,8 +88,8 @@ k::Proposition abstract_caller(bool summary, bool forged = false) {
     const auto x = k::Term::variable(k::VarIndex{2});
     const auto y = k::Term::variable(k::VarIndex{1});
     const auto result = k::Term::variable(k::VarIndex{0});
-    const auto post = k::Proposition::equality(
-        kUnsigned, result, forged ? k::Term::literal(kUnsigned.integer_type(), 0) : y);
+    const auto post =
+        k::Proposition::equality(kUnsigned, result, forged ? k::Term::literal(kUnsigned.integer_type(), 0) : y);
     auto goal = summary ? k::Proposition::implication(post, post) : post;
     goal = k::Proposition::implication(k::Proposition::equality(kUnsigned, x, y), goal);
     for (int index = 0; index < 3; ++index) {
@@ -102,8 +100,7 @@ k::Proposition abstract_caller(bool summary, bool forged = false) {
 
 o::Program branching() {
     auto function = first();
-    function.returned_value->node = v::Conditional{{equality(parameter(0), parameter(1)),
-                                                   parameter(1), parameter(0)}};
+    function.returned_value->node = v::Conditional{{equality(parameter(0), parameter(1)), parameter(1), parameter(0)}};
     cppl::elaboration::Result elaborated;
     elaborated.module.functions.push_back(std::move(function));
     cppl::diagnostics::Engine engine;
@@ -159,8 +156,7 @@ o::Program anchored() {
     caller.id = v::FunctionId{1};
     caller.symbol = v::SymbolId{"anchor"};
     caller.qualified_name = "anchor";
-    caller.contract = v::Contract{equality(parameter(0), parameter(1)),
-                                  equality(parameter(2), parameter(1)), {}};
+    caller.contract = v::Contract{equality(parameter(0), parameter(1)), equality(parameter(2), parameter(1)), {}};
     v::Expr call;
     call.id = v::ExprId{1};
     call.type = vUnsigned;
@@ -178,7 +174,7 @@ o::Program anchored() {
     return program;
 }
 
-}  // namespace
+} // namespace
 
 CPPL_TEST(a_return_observes_the_version_its_path_established) {
     const auto latest = assigned(1);
@@ -217,8 +213,8 @@ CPPL_TEST(a_call_bound_to_a_local_is_proven_before_the_guards_that_follow_it) {
 // established: `if (x == y) { v0 = 0; return v0; } return v0;`.
 CPPL_TEST(a_version_never_escapes_the_arm_that_established_it) {
     auto function = first();
-    function.returned_value->node = v::Conditional{
-        {equality(parameter(0), parameter(1)), versioned(0, number(0), local(0)), local(0)}};
+    function.returned_value->node =
+        v::Conditional{{equality(parameter(0), parameter(1)), versioned(0, number(0), local(0)), local(0)}};
     cppl::elaboration::Result elaborated;
     elaborated.module.functions.push_back(std::move(function));
     cppl::diagnostics::Engine engine;
@@ -242,8 +238,7 @@ CPPL_TEST(a_version_is_bound_once) {
 // A value that reads its own version, directly or through a later one, is a
 // cycle; it is refused instead of replayed without end.
 CPPL_TEST(a_version_cannot_read_itself) {
-    for (auto body : {versioned(0, local(0), local(0)),
-                      versioned(1, number(0), versioned(0, local(1), local(0)))}) {
+    for (auto body : {versioned(0, local(0), local(0)), versioned(1, number(0), versioned(0, local(1), local(0)))}) {
         auto function = first();
         function.returned_value = std::move(body);
         cppl::elaboration::Result elaborated;
@@ -265,8 +260,7 @@ CPPL_TEST(result_substitution_closes_over_the_correct_parameter) {
     CPPL_CHECK(obligation.origin == o::Origin::FunctionContract);
     CPPL_CHECK(!obligation.law.has_value());
     CPPL_CHECK(program.proof_for(obligation) == nullptr);
-    CPPL_CHECK(k::check(program.context, obligation.goal,
-                        o::automatic_evidence(obligation.goal), {}).has_value());
+    CPPL_CHECK(k::check(program.context, obligation.goal, o::automatic_evidence(obligation.goal), {}).has_value());
 }
 
 CPPL_TEST(changing_the_return_changes_the_obligation_and_invalidates_the_proof) {
@@ -289,10 +283,9 @@ CPPL_TEST(automatic_equality_rewrite_requires_kernel_checked_hypothesis_evidence
     auto& rewrite = std::get<k::EqualityElimination>(implies.body->node);
     const auto forged = k::ProofTerm::forall_introduction(
         forall.binder, k::ProofTerm::implication_introduction(
-                           *implies.premise,
-                           k::ProofTerm::equality_elimination(
-                               rewrite.type, rewrite.lhs, rewrite.rhs, *rewrite.motive,
-                               k::ProofTerm::hypothesis(k::HypothesisIndex{1}), *rewrite.evidence)));
+                           *implies.premise, k::ProofTerm::equality_elimination(
+                                                 rewrite.type, rewrite.lhs, rewrite.rhs, *rewrite.motive,
+                                                 k::ProofTerm::hypothesis(k::HypothesisIndex{1}), *rewrite.evidence)));
     CPPL_CHECK(!k::check(context, goal, forged, {}).has_value());
     const auto wrong = conditional(false);
     CPPL_CHECK(!k::check(context, wrong, o::automatic_evidence(wrong), {}).has_value());
@@ -319,9 +312,10 @@ CPPL_TEST(call_composition_preserves_parameter_and_result_scope) {
     CPPL_CHECK(caller.paths.front().reasoning_goal == abstract_caller(true));
     const auto x = k::Term::variable(k::VarIndex{1});
     const auto y = k::Term::variable(k::VarIndex{0});
-    const auto expected = k::Proposition::for_all(kUnsigned, k::Proposition::for_all(
-        kUnsigned, k::Proposition::implication(k::Proposition::equality(kUnsigned, x, y),
-                                               k::Proposition::equality(kUnsigned, y, x))));
+    const auto expected = k::Proposition::for_all(
+        kUnsigned,
+        k::Proposition::for_all(kUnsigned, k::Proposition::implication(k::Proposition::equality(kUnsigned, x, y),
+                                                                       k::Proposition::equality(kUnsigned, y, x))));
     CPPL_CHECK(program.obligations[1].origin == o::Origin::CallPrecondition);
     CPPL_CHECK(program.obligations[1].goal == expected);
     cppl::diagnostics::Engine engine;
@@ -380,7 +374,8 @@ CPPL_TEST(branch_paths_are_independently_proven_before_export) {
     const auto program = branching();
     cppl::diagnostics::Engine engine;
     const auto results = cppl::automation::verify(program, engine);
-    for (const auto& result : results) CPPL_CHECK(result.verdict.is_proven());
+    for (const auto& result : results)
+        CPPL_CHECK(result.verdict.is_proven());
     CPPL_CHECK(!engine.has_errors());
     CPPL_CHECK(program.obligations[0].origin == o::Origin::ReturnPath);
     CPPL_CHECK(program.obligations[1].origin == o::Origin::ReturnPath);

@@ -17,54 +17,52 @@
 
 namespace {
 
-const std::string kUnit =
-    "# 1 \"main.cpp\"\n"
-    "pure int identity(int x) {\n"
-    "    return x;\n"
-    "}\n"
-    "law identity_returns_input(int x)\n"
-    "    ensures(identity(x) == x);\n"
-    "proof identity_returns_input_holds(int x)\n"
-    "    proves(identity_returns_input(x))\n"
-    "{\n"
-    "    refl;\n"
-    "}\n"
-    "law identity_of_zero()\n"
-    "    ensures(identity(0) == 0);\n"
-    "proof identity_of_zero_holds()\n"
-    "    proves(identity_of_zero())\n"
-    "{\n"
-    "    exact identity_returns_input_holds(0);\n"
-    "}\n"
-    "law identity_under_a_premise(int x)\n"
-    "    expects(identity(x) == 0)\n"
-    "    ensures(identity(x) == x);\n"
-    "proof identity_under_a_premise_holds(int x)\n"
-    "    proves(identity_under_a_premise(x))\n"
-    "{\n"
-    "    assume h : identity(x) == 0;\n"
-    "    refl;\n"
-    "}\n"
-    "int main() { return identity(0); }\n";
+const std::string kUnit = "# 1 \"main.cpp\"\n"
+                          "pure int identity(int x) {\n"
+                          "    return x;\n"
+                          "}\n"
+                          "law identity_returns_input(int x)\n"
+                          "    ensures(identity(x) == x);\n"
+                          "proof identity_returns_input_holds(int x)\n"
+                          "    proves(identity_returns_input(x))\n"
+                          "{\n"
+                          "    refl;\n"
+                          "}\n"
+                          "law identity_of_zero()\n"
+                          "    ensures(identity(0) == 0);\n"
+                          "proof identity_of_zero_holds()\n"
+                          "    proves(identity_of_zero())\n"
+                          "{\n"
+                          "    exact identity_returns_input_holds(0);\n"
+                          "}\n"
+                          "law identity_under_a_premise(int x)\n"
+                          "    expects(identity(x) == 0)\n"
+                          "    ensures(identity(x) == x);\n"
+                          "proof identity_under_a_premise_holds(int x)\n"
+                          "    proves(identity_under_a_premise(x))\n"
+                          "{\n"
+                          "    assume h : identity(x) == 0;\n"
+                          "    refl;\n"
+                          "}\n"
+                          "int main() { return identity(0); }\n";
 
 std::size_t count_newlines(std::string_view text) {
     return static_cast<std::size_t>(std::ranges::count(text, '\n'));
 }
 
-}  // namespace
+} // namespace
 
 CPPL_TEST(physical_declarations_stay_distinct_when_displayed_locations_repeat) {
-    const std::string source =
-        "#line 1 \"same.cpp\"\n"
-        "verified unsigned a() ensures(result == 0u) {return 0u;}"
-        "law same() ensures(0u == 0u);\n"
-        "#line 1 \"same.cpp\"\n"
-        "verified unsigned b() ensures(result == 1u) {return 1u;}"
-        "namespace B {law same() ensures(1u == 1u);}\n"
-        "#line 5 \"same.cpp\"\n"
-        "pure unsigned c() {return 2u;}\n"
-        "#line 5 \"same.cpp\"\n"
-        "pure unsigned d() {return 3u;}";
+    const std::string source = "#line 1 \"same.cpp\"\n"
+                               "verified unsigned a() ensures(result == 0u) {return 0u;}"
+                               "law same() ensures(0u == 0u);\n"
+                               "#line 1 \"same.cpp\"\n"
+                               "verified unsigned b() ensures(result == 1u) {return 1u;}"
+                               "namespace B {law same() ensures(1u == 1u);}\n"
+                               "#line 5 \"same.cpp\"\n"
+                               "pure unsigned c() {return 2u;}\n"
+                               "#line 5 \"same.cpp\"\n"
+                               "pure unsigned d() {return 3u;}";
     cppl::diagnostics::Engine engine;
     const auto stream = cppl::frontend::lex(source, "input.cpp");
     const auto syntax = cppl::frontend::recognize(stream, engine);
@@ -113,8 +111,7 @@ CPPL_TEST(every_runtime_token_is_an_original_token_in_its_original_place) {
     const cppl::frontend::Projection projection =
         cppl::frontend::project(stream, syntax, cppl::frontend::ProjectionOptions{});
 
-    const cppl::frontend::TokenStream runtime =
-        cppl::frontend::lex(projection.runtime, "main.cpp");
+    const cppl::frontend::TokenStream runtime = cppl::frontend::lex(projection.runtime, "main.cpp");
 
     std::size_t original_index = 0;
     for (const cppl::frontend::Token& token : runtime.tokens()) {
@@ -141,8 +138,7 @@ CPPL_TEST(the_runtime_program_carries_no_formal_syntax) {
     const cppl::frontend::Projection projection =
         cppl::frontend::project(stream, syntax, cppl::frontend::ProjectionOptions{});
 
-    const cppl::frontend::TokenStream runtime =
-        cppl::frontend::lex(projection.runtime, "main.cpp");
+    const cppl::frontend::TokenStream runtime = cppl::frontend::lex(projection.runtime, "main.cpp");
     for (const cppl::frontend::Token& token : runtime.tokens()) {
         CPPL_CHECK(token.text != "law");
         CPPL_CHECK(token.text != "ensures");
@@ -167,10 +163,8 @@ CPPL_TEST(the_analysis_program_carries_the_proposition_for_clang_to_resolve) {
     CPPL_CHECK_EQ(projection.specification_functions.size(), std::size_t{3});
     // A law is projected under its own name, so a proof can name it through
     // ordinary C++ lookup (GRAMMAR.md 46).
-    CPPL_CHECK_EQ(projection.specification_functions[0].name,
-                  std::string("identity_returns_input"));
-    CPPL_CHECK(projection.analysis.find("bool identity_returns_input(int x)") !=
-               std::string::npos);
+    CPPL_CHECK_EQ(projection.specification_functions[0].name, std::string("identity_returns_input"));
+    CPPL_CHECK(projection.analysis.find("bool identity_returns_input(int x)") != std::string::npos);
     CPPL_CHECK(projection.analysis.find("identity(x) == x") != std::string::npos);
     CPPL_CHECK(projection.analysis.find("#line") != std::string::npos);
 }
@@ -240,13 +234,11 @@ CPPL_TEST(the_analysis_program_carries_the_proposition_a_statement_assumes) {
     CPPL_CHECK_EQ(projection.proof_functions[2].assumption_names.size(), std::size_t{1});
 
     const std::string& assumed = projection.proof_functions[2].assumption_names[0];
-    CPPL_CHECK(projection.analysis.find("static auto " + assumed + "(int x)") !=
-               std::string::npos);
+    CPPL_CHECK(projection.analysis.find("static auto " + assumed + "(int x)") != std::string::npos);
 
     // The statement itself stays C++L: what reaches Clang is the proposition
     // the statement names, never the statement.
-    const cppl::frontend::TokenStream analysis =
-        cppl::frontend::lex(projection.analysis, "main.cpp");
+    const cppl::frontend::TokenStream analysis = cppl::frontend::lex(projection.analysis, "main.cpp");
     for (const cppl::frontend::Token& token : analysis.tokens()) {
         CPPL_CHECK(token.text != "assume");
     }
@@ -259,8 +251,7 @@ CPPL_TEST(erasure_reports_the_properties_it_checked) {
     const cppl::frontend::Projection projection =
         cppl::frontend::project(stream, syntax, cppl::frontend::ProjectionOptions{});
 
-    const cppl::erasure::Erased erased =
-        cppl::erasure::erase(stream, syntax, projection, engine);
+    const cppl::erasure::Erased erased = cppl::erasure::erase(stream, syntax, projection, engine);
 
     CPPL_CHECK(erased.report.only_deletions);
     CPPL_CHECK(erased.report.lines_preserved);
@@ -285,11 +276,10 @@ CPPL_TEST(a_unit_without_formal_syntax_is_left_untouched) {
 }
 
 CPPL_TEST(contracts_erase_without_changing_runtime_values_or_source_locations) {
-    const std::string text =
-        "verified unsigned f(unsigned x)\n"
-        "expects(x == 0u)\nensures(result == 0u)\n{ return x; } "
-        "verified unsigned g(unsigned y) ensures(result == y) { return y; }\n"
-        "int result = 7;\n";
+    const std::string text = "verified unsigned f(unsigned x)\n"
+                             "expects(x == 0u)\nensures(result == 0u)\n{ return x; } "
+                             "verified unsigned g(unsigned y) ensures(result == y) { return y; }\n"
+                             "int result = 7;\n";
     cppl::diagnostics::Engine engine;
     const auto stream = cppl::frontend::lex(text, "contracts.cpp");
     const auto syntax = cppl::frontend::recognize(stream, engine);

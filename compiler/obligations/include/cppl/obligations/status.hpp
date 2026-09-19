@@ -1,11 +1,11 @@
 #pragma once
 
+#include "cppl/kernel/check.hpp"
+#include "cppl/obligations/obligation.hpp"
+
 #include <cstdint>
 #include <string>
 #include <utility>
-
-#include "cppl/kernel/check.hpp"
-#include "cppl/obligations/obligation.hpp"
 
 namespace cppl::obligations {
 
@@ -29,17 +29,22 @@ std::string describe(Status status);
 // discharged. There is no other path to this status: no frontend, elaborator,
 // solver adapter, diagnostic or test can produce one (AGENTS.md 5).
 class Verdict {
-public:
-    [[nodiscard]] static Verdict proven(const kernel::Acceptance& acceptance,
-                                        const Obligation& obligation);
+  public:
+    [[nodiscard]] static Verdict proven(const kernel::Acceptance& acceptance, const Obligation& obligation);
 
     [[nodiscard]] static Verdict unresolved(std::string reason);
 
-    [[nodiscard]] Status status() const noexcept { return status_; }
-    [[nodiscard]] const std::string& reason() const noexcept { return reason_; }
-    [[nodiscard]] bool is_proven() const noexcept { return status_ == Status::Proven; }
+    [[nodiscard]] Status status() const noexcept {
+        return status_;
+    }
+    [[nodiscard]] const std::string& reason() const noexcept {
+        return reason_;
+    }
+    [[nodiscard]] bool is_proven() const noexcept {
+        return status_ == Status::Proven;
+    }
 
-private:
+  private:
     Verdict(Status status, std::string reason) : status_(status), reason_(std::move(reason)) {}
 
     Status status_ = Status::Unresolved;
@@ -49,7 +54,7 @@ private:
 struct ObligationResult {
     Obligation obligation;
     Verdict verdict;
-    std::string strategy;  // what produced the evidence, for reporting only
+    std::string strategy; // what produced the evidence, for reporting only
 };
 
-}  // namespace cppl::obligations
+} // namespace cppl::obligations

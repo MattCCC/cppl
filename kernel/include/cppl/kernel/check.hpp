@@ -1,13 +1,13 @@
 #pragma once
 
+#include "cppl/kernel/context.hpp"
+#include "cppl/kernel/proof.hpp"
+#include "cppl/kernel/proposition.hpp"
+
 #include <cstdint>
 #include <expected>
 #include <string>
 #include <utility>
-
-#include "cppl/kernel/context.hpp"
-#include "cppl/kernel/proof.hpp"
-#include "cppl/kernel/proposition.hpp"
 
 namespace cppl::kernel {
 
@@ -30,10 +30,8 @@ class Acceptance;
 class Context;
 
 // The single entry point that can establish a proposition.
-[[nodiscard]] std::expected<Acceptance, Rejection> check(const Context& context,
-                                                         const Proposition& proposition,
-                                                         const ProofTerm& proof,
-                                                         const CoreLimits& limits);
+[[nodiscard]] std::expected<Acceptance, Rejection> check(const Context& context, const Proposition& proposition,
+                                                         const ProofTerm& proof, const CoreLimits& limits);
 
 // Evidence that the kernel accepted a specific proposition.
 //
@@ -43,15 +41,15 @@ class Context;
 // have discharged, so an acceptance obtained for one goal cannot be presented
 // for another (TRUST.md, AGENTS.md 5).
 class Acceptance {
-public:
-    [[nodiscard]] const Proposition& proposition() const noexcept { return proposition_; }
+  public:
+    [[nodiscard]] const Proposition& proposition() const noexcept {
+        return proposition_;
+    }
 
-private:
+  private:
     explicit Acceptance(Proposition proposition) : proposition_(std::move(proposition)) {}
 
-    friend std::expected<Acceptance, Rejection> check(const Context&,
-                                                      const Proposition&,
-                                                      const ProofTerm&,
+    friend std::expected<Acceptance, Rejection> check(const Context&, const Proposition&, const ProofTerm&,
                                                       const CoreLimits&);
 
     Proposition proposition_;
@@ -59,4 +57,4 @@ private:
 
 using CheckResult = std::expected<Acceptance, Rejection>;
 
-}  // namespace cppl::kernel
+} // namespace cppl::kernel

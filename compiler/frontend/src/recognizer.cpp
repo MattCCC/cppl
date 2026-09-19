@@ -14,8 +14,7 @@ constexpr std::array<std::string_view, 23> kTypeKeywords = {
     "volatile", "typename", "struct", "class",   "enum",     "decltype", "constexpr"};
 
 bool is_type_keyword(const Token& token) {
-    return token.kind == TokenKind::Identifier &&
-           std::ranges::find(kTypeKeywords, token.text) != kTypeKeywords.end();
+    return token.kind == TokenKind::Identifier && std::ranges::find(kTypeKeywords, token.text) != kTypeKeywords.end();
 }
 
 // A declaration can begin here: at the start of the unit, or after a token that
@@ -25,8 +24,8 @@ bool at_declaration_start(const std::vector<Token>& tokens, std::size_t index) {
         return true;
     }
     const Token& previous = tokens[index - 1];
-    return previous.is_punctuator(";") || previous.is_punctuator("{") ||
-           previous.is_punctuator("}") || previous.is_punctuator(":");
+    return previous.is_punctuator(";") || previous.is_punctuator("{") || previous.is_punctuator("}") ||
+           previous.is_punctuator(":");
 }
 
 std::size_t matching_parenthesis(const std::vector<Token>& tokens, std::size_t open) {
@@ -77,12 +76,8 @@ bool is_specification_clause(const Token& token) {
     return clause_kind(token).has_value() || token.is_identifier("decreases");
 }
 
-void report(diagnostics::Engine& engine,
-            const TokenStream& stream,
-            const Token& token,
-            diagnostics::Category category,
-            std::string message,
-            std::string note = {}) {
+void report(diagnostics::Engine& engine, const TokenStream& stream, const Token& token, diagnostics::Category category,
+            std::string message, std::string note = {}) {
     diagnostics::Diagnostic diagnostic;
     diagnostic.severity = diagnostics::Severity::Error;
     diagnostic.category = category;
@@ -98,18 +93,14 @@ void report(diagnostics::Engine& engine,
 // list. Up to that point the token sequence is still ordinary C++ (a function
 // returning a type named `law`, for instance), so nothing is reinterpreted
 // until the clause makes the ordinary C++ reading impossible (SPEC.md 3.1).
-bool try_law(const TokenStream& stream,
-             std::size_t index,
-             diagnostics::Engine& engine,
-             LawDeclaration& law,
+bool try_law(const TokenStream& stream, std::size_t index, diagnostics::Engine& engine, LawDeclaration& law,
              std::size_t& next_index) {
     const std::vector<Token>& tokens = stream.tokens();
 
     if (index + 2 >= tokens.size()) {
         return false;
     }
-    if (tokens[index + 1].kind != TokenKind::Identifier ||
-        !tokens[index + 2].is_punctuator("(")) {
+    if (tokens[index + 1].kind != TokenKind::Identifier || !tokens[index + 2].is_punctuator("(")) {
         return false;
     }
 
@@ -120,14 +111,14 @@ bool try_law(const TokenStream& stream,
 
     std::size_t cursor = close + 1;
     if (cursor >= tokens.size() || !clause_kind(tokens[cursor]).has_value()) {
-        return false;  // still ordinary C++
+        return false; // still ordinary C++
     }
 
     law.name = std::string(tokens[index + 1].text);
     law.range.begin = stream.location_of(tokens[index + 1]);
     law.keyword_location = stream.location_of(tokens[index]);
-    law.parameters = source::ByteSpan{tokens[index + 2].span.end(),
-                                      tokens[close].span.offset - tokens[index + 2].span.end()};
+    law.parameters =
+        source::ByteSpan{tokens[index + 2].span.end(), tokens[close].span.offset - tokens[index + 2].span.end()};
 
     bool malformed = false;
     while (cursor < tokens.size()) {
@@ -154,11 +145,9 @@ bool try_law(const TokenStream& stream,
         Clause clause;
         clause.kind = *kind;
         clause.location = stream.location_of(tokens[cursor]);
-        clause.expression =
-            source::ByteSpan{tokens[cursor + 1].span.end(),
-                             tokens[clause_close].span.offset - tokens[cursor + 1].span.end()};
-        if (stream.spelling(clause.expression).find_first_not_of(" \t\r\n") ==
-            std::string_view::npos) {
+        clause.expression = source::ByteSpan{tokens[cursor + 1].span.end(),
+                                             tokens[clause_close].span.offset - tokens[cursor + 1].span.end()};
+        if (stream.spelling(clause.expression).find_first_not_of(" \t\r\n") == std::string_view::npos) {
             report(engine, stream, tokens[cursor], diagnostics::Category::CpplSyntax,
                    "'" + std::string(tokens[cursor].text) + "' requires an expression");
             malformed = true;
@@ -168,29 +157,25 @@ bool try_law(const TokenStream& stream,
     }
 
     if (cursor >= tokens.size() || !tokens[cursor].is_punctuator(";")) {
-        report(engine, stream, tokens[index], diagnostics::Category::CpplSyntax,
-               "a law declaration ends with ';'",
+        report(engine, stream, tokens[index], diagnostics::Category::CpplSyntax, "a law declaration ends with ';'",
                "a law states a proposition and has no body");
         next_index = cursor;
         return true;
     }
 
-    law.range.span = source::ByteSpan{tokens[index].span.offset,
-                                      tokens[cursor].span.end() - tokens[index].span.offset};
+    law.range.span = source::ByteSpan{tokens[index].span.offset, tokens[cursor].span.end() - tokens[index].span.offset};
     law.end_line = tokens[cursor].line;
     next_index = cursor + 1;
 
-    const auto ensures_count = std::ranges::count_if(
-        law.clauses, [](const Clause& clause) { return clause.kind == ClauseKind::Ensures; });
+    const auto ensures_count =
+        std::ranges::count_if(law.clauses, [](const Clause& clause) { return clause.kind == ClauseKind::Ensures; });
     if (ensures_count == 0) {
         report(engine, stream, tokens[index], diagnostics::Category::CpplSyntax,
-               "law '" + law.name + "' states no proposition",
-               "a law requires exactly one ensures clause");
+               "law '" + law.name + "' states no proposition", "a law requires exactly one ensures clause");
         malformed = true;
     } else if (ensures_count > 1) {
         report(engine, stream, tokens[index], diagnostics::Category::CpplSyntax,
-               "law '" + law.name + "' has " + std::to_string(ensures_count) +
-                   " ensures clauses",
+               "law '" + law.name + "' has " + std::to_string(ensures_count) + " ensures clauses",
                "a law has exactly one ensures clause");
         malformed = true;
     }
@@ -208,10 +193,7 @@ bool try_law(const TokenStream& stream,
 // Only the separators are found here. Each argument is delimited, never read:
 // its bytes go to Clang through the projection, which is what keeps C++
 // expression meaning in one place (SPEC.md 7.3, ARCHITECTURE.md 11).
-bool read_proof_arguments(const TokenStream& stream,
-                          std::size_t open,
-                          std::size_t close,
-                          diagnostics::Engine& engine,
+bool read_proof_arguments(const TokenStream& stream, std::size_t open, std::size_t close, diagnostics::Engine& engine,
                           std::vector<ProofArgument>& arguments) {
     const std::vector<Token>& tokens = stream.tokens();
 
@@ -219,19 +201,17 @@ bool read_proof_arguments(const TokenStream& stream,
     std::size_t begin = open + 1;
     for (std::size_t index = open + 1; index <= close; ++index) {
         const Token& token = tokens[index];
-        const bool separator =
-            depth == 0 && (index == close || token.is_punctuator(","));
+        const bool separator = depth == 0 && (index == close || token.is_punctuator(","));
 
         if (!separator) {
-            if (token.is_punctuator("(") || token.is_punctuator("[") ||
-                token.is_punctuator("{")) {
+            if (token.is_punctuator("(") || token.is_punctuator("[") || token.is_punctuator("{")) {
                 ++depth;
-            } else if (token.is_punctuator(")") || token.is_punctuator("]") ||
-                       token.is_punctuator("}")) {
+            } else if (token.is_punctuator(")") || token.is_punctuator("]") || token.is_punctuator("}")) {
                 if (depth == 0) {
                     report(engine, stream, token, diagnostics::Category::CpplSyntax,
-                           "'" + std::string(token.text) + "' closes nothing in this "
-                           "instantiation argument list");
+                           "'" + std::string(token.text) +
+                               "' closes nothing in this "
+                               "instantiation argument list");
                     return false;
                 }
                 --depth;
@@ -241,17 +221,15 @@ bool read_proof_arguments(const TokenStream& stream,
 
         if (index == begin) {
             if (index == close && arguments.empty()) {
-                return true;  // `p()` instantiates at nothing, like `p`
+                return true; // `p()` instantiates at nothing, like `p`
             }
-            report(engine, stream, token, diagnostics::Category::CpplSyntax,
-                   "an instantiation argument is missing",
+            report(engine, stream, token, diagnostics::Category::CpplSyntax, "an instantiation argument is missing",
                    "each argument of a proof reference is an ordinary C++ expression");
             return false;
         }
 
         arguments.push_back(ProofArgument{
-            source::ByteSpan{tokens[begin].span.offset,
-                             tokens[index - 1].span.end() - tokens[begin].span.offset},
+            source::ByteSpan{tokens[begin].span.offset, tokens[index - 1].span.end() - tokens[begin].span.offset},
             stream.location_of(tokens[begin])});
         begin = index + 1;
     }
@@ -264,19 +242,15 @@ bool read_proof_arguments(const TokenStream& stream,
 // A proof statement names proof-level entities only. No C++ expression is read
 // here: the proposition a proof discharges is resolved by Clang from the
 // projected text, never by this recognizer.
-bool read_proof_statements(const TokenStream& stream,
-                           std::size_t body_open,
-                           std::size_t body_close,
-                           diagnostics::Engine& engine,
-                           std::vector<ProofStatement>& statements) {
+bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std::size_t body_close,
+                           diagnostics::Engine& engine, std::vector<ProofStatement>& statements) {
     const std::vector<Token>& tokens = stream.tokens();
 
     std::size_t cursor = body_open + 1;
     while (cursor < body_close) {
         const Token& token = tokens[cursor];
 
-        if (token.is_identifier("refl") && cursor + 1 < body_close &&
-            tokens[cursor + 1].is_punctuator(";")) {
+        if (token.is_identifier("refl") && cursor + 1 < body_close && tokens[cursor + 1].is_punctuator(";")) {
             ProofStatement statement;
             statement.kind = ProofStatementKind::Reflexivity;
             statement.location = stream.location_of(token);
@@ -289,8 +263,7 @@ bool read_proof_statements(const TokenStream& stream,
         // proposition is delimited here and read by Clang, like every other
         // expression a proof statement carries.
         if (token.is_identifier("assume") && cursor + 3 < body_close &&
-            tokens[cursor + 1].kind == TokenKind::Identifier &&
-            tokens[cursor + 2].is_punctuator(":")) {
+            tokens[cursor + 1].kind == TokenKind::Identifier && tokens[cursor + 2].is_punctuator(":")) {
             std::size_t depth = 0;
             std::size_t terminator = cursor + 3;
             while (terminator < body_close) {
@@ -308,8 +281,7 @@ bool read_proof_statements(const TokenStream& stream,
                 ++terminator;
             }
 
-            if (terminator >= body_close || !tokens[terminator].is_punctuator(";") ||
-                terminator == cursor + 3) {
+            if (terminator >= body_close || !tokens[terminator].is_punctuator(";") || terminator == cursor + 3) {
                 report(engine, stream, tokens[cursor], diagnostics::Category::CpplSyntax,
                        "'assume' names a proposition, as in 'assume h : a == b;'");
                 return false;
@@ -319,8 +291,7 @@ bool read_proof_statements(const TokenStream& stream,
             statement.kind = ProofStatementKind::Assume;
             statement.reference = std::string(tokens[cursor + 1].text);
             statement.proposition = source::ByteSpan{
-                tokens[cursor + 3].span.offset,
-                tokens[terminator - 1].span.end() - tokens[cursor + 3].span.offset};
+                tokens[cursor + 3].span.offset, tokens[terminator - 1].span.end() - tokens[cursor + 3].span.offset};
             statement.proposition_location = stream.location_of(tokens[cursor + 3]);
             statement.location = stream.location_of(token);
             statements.push_back(std::move(statement));
@@ -333,7 +304,7 @@ bool read_proof_statements(const TokenStream& stream,
         if ((is_exact || is_rewrite || token.is_identifier("apply")) && cursor + 2 < body_close &&
             tokens[cursor + 1].kind == TokenKind::Identifier) {
             ProofStatement statement;
-            statement.kind = is_exact      ? ProofStatementKind::Exact
+            statement.kind = is_exact     ? ProofStatementKind::Exact
                              : is_rewrite ? ProofStatementKind::Rewrite
                                           : ProofStatementKind::Apply;
             statement.reference = std::string(tokens[cursor + 1].text);
@@ -348,13 +319,11 @@ bool read_proof_statements(const TokenStream& stream,
             if (tokens[cursor + 2].is_punctuator("(")) {
                 const std::size_t close = matching_parenthesis(tokens, cursor + 2);
                 if (close >= body_close) {
-                    report(engine, stream, tokens[cursor + 2],
-                           diagnostics::Category::CpplSyntax,
+                    report(engine, stream, tokens[cursor + 2], diagnostics::Category::CpplSyntax,
                            "unterminated instantiation argument list");
                     return false;
                 }
-                if (!read_proof_arguments(stream, cursor + 2, close, engine,
-                                          statement.arguments)) {
+                if (!read_proof_arguments(stream, cursor + 2, close, engine, statement.arguments)) {
                     return false;
                 }
                 if (close + 1 >= body_close || !tokens[close + 1].is_punctuator(";")) {
@@ -369,8 +338,9 @@ bool read_proof_statements(const TokenStream& stream,
         }
 
         report(engine, stream, token, diagnostics::Category::UnsupportedSemantics,
-               "'" + std::string(token.text) + "' does not begin a proof statement this "
-               "implementation supports",
+               "'" + std::string(token.text) +
+                   "' does not begin a proof statement this "
+                   "implementation supports",
                "the supported proof statements are 'refl;', 'exact <evidence>;', "
                "'apply <evidence>;', 'rewrite <evidence>;' and "
                "'assume <name> : <proposition>;'. Evidence may be instantiated at arguments, "
@@ -384,25 +354,20 @@ bool read_proof_statements(const TokenStream& stream,
 // `proof` introduces a proof declaration only when `proves` follows the
 // parameter list. Until then the token sequence is still ordinary C++ - a
 // function returning a type named `proof`, for instance (SPEC.md 3.1).
-bool try_proof(const TokenStream& stream,
-               std::size_t index,
-               diagnostics::Engine& engine,
-               ProofDeclaration& proof,
+bool try_proof(const TokenStream& stream, std::size_t index, diagnostics::Engine& engine, ProofDeclaration& proof,
                std::size_t& next_index) {
     const std::vector<Token>& tokens = stream.tokens();
 
     if (index + 2 >= tokens.size()) {
         return false;
     }
-    if (tokens[index + 1].kind != TokenKind::Identifier ||
-        !tokens[index + 2].is_punctuator("(")) {
+    if (tokens[index + 1].kind != TokenKind::Identifier || !tokens[index + 2].is_punctuator("(")) {
         return false;
     }
 
     const std::size_t close = matching_parenthesis(tokens, index + 2);
-    if (close >= tokens.size() || close + 1 >= tokens.size() ||
-        !tokens[close + 1].is_identifier("proves")) {
-        return false;  // still ordinary C++
+    if (close >= tokens.size() || close + 1 >= tokens.size() || !tokens[close + 1].is_identifier("proves")) {
+        return false; // still ordinary C++
     }
 
     const std::size_t proves = close + 1;
@@ -422,8 +387,7 @@ bool try_proof(const TokenStream& stream,
     }
 
     if (proves_close + 1 >= tokens.size() || !tokens[proves_close + 1].is_punctuator("{")) {
-        report(engine, stream, tokens[index], diagnostics::Category::CpplSyntax,
-               "a proof declaration has a body",
+        report(engine, stream, tokens[index], diagnostics::Category::CpplSyntax, "a proof declaration has a body",
                "a proof constructs evidence, so it ends with '{ ... }' rather than ';'");
         next_index = proves_close + 1;
         return true;
@@ -432,8 +396,7 @@ bool try_proof(const TokenStream& stream,
     const std::size_t body_open = proves_close + 1;
     const std::size_t body_close = matching_brace(tokens, body_open);
     if (body_close >= tokens.size()) {
-        report(engine, stream, tokens[body_open], diagnostics::Category::CpplSyntax,
-               "unterminated proof body");
+        report(engine, stream, tokens[body_open], diagnostics::Category::CpplSyntax, "unterminated proof body");
         next_index = body_open + 1;
         return true;
     }
@@ -442,30 +405,26 @@ bool try_proof(const TokenStream& stream,
 
     proof.name = std::string(tokens[index + 1].text);
     proof.range.begin = stream.location_of(tokens[index + 1]);
-    proof.range.span = source::ByteSpan{tokens[index].span.offset,
-                                        tokens[body_close].span.end() - tokens[index].span.offset};
+    proof.range.span =
+        source::ByteSpan{tokens[index].span.offset, tokens[body_close].span.end() - tokens[index].span.offset};
     proof.keyword_location = stream.location_of(tokens[index]);
     proof.end_line = tokens[body_close].line;
-    proof.parameters = source::ByteSpan{tokens[index + 2].span.end(),
-                                        tokens[close].span.offset - tokens[index + 2].span.end()};
-    proof.proposition =
-        source::ByteSpan{tokens[proves + 1].span.end(),
-                         tokens[proves_close].span.offset - tokens[proves + 1].span.end()};
+    proof.parameters =
+        source::ByteSpan{tokens[index + 2].span.end(), tokens[close].span.offset - tokens[index + 2].span.end()};
+    proof.proposition = source::ByteSpan{tokens[proves + 1].span.end(),
+                                         tokens[proves_close].span.offset - tokens[proves + 1].span.end()};
     proof.proposition_location = stream.location_of(tokens[proves]);
 
-    bool malformed = stream.spelling(proof.proposition).find_first_not_of(" \t\r\n") ==
-                     std::string_view::npos;
+    bool malformed = stream.spelling(proof.proposition).find_first_not_of(" \t\r\n") == std::string_view::npos;
     if (malformed) {
-        report(engine, stream, tokens[proves], diagnostics::Category::CpplSyntax,
-               "'proves' requires a proposition");
+        report(engine, stream, tokens[proves], diagnostics::Category::CpplSyntax, "'proves' requires a proposition");
     }
 
     if (!read_proof_statements(stream, body_open, body_close, engine, proof.statements)) {
         malformed = true;
     } else if (proof.statements.empty()) {
         report(engine, stream, tokens[index], diagnostics::Category::ProofFailure,
-               "proof '" + proof.name + "' has an empty body",
-               "a proof body must close the goal it states");
+               "proof '" + proof.name + "' has an empty body", "a proof body must close the goal it states");
         malformed = true;
     }
 
@@ -490,13 +449,11 @@ bool specifier_introduces_declaration(const std::vector<Token>& tokens, std::siz
         return false;
     }
     const Token& after = tokens[index + 2];
-    return after.kind == TokenKind::Identifier || after.is_punctuator("::") ||
-           after.is_punctuator("<") || after.is_punctuator("*") || after.is_punctuator("&") ||
-           after.is_punctuator("&&");
+    return after.kind == TokenKind::Identifier || after.is_punctuator("::") || after.is_punctuator("<") ||
+           after.is_punctuator("*") || after.is_punctuator("&") || after.is_punctuator("&&");
 }
 
-std::optional<std::size_t> find_declarator_name(const std::vector<Token>& tokens,
-                                                std::size_t index) {
+std::optional<std::size_t> find_declarator_name(const std::vector<Token>& tokens, std::size_t index) {
     std::size_t depth = 0;
     for (std::size_t cursor = index + 1; cursor < tokens.size(); ++cursor) {
         const Token& token = tokens[cursor];
@@ -504,8 +461,7 @@ std::optional<std::size_t> find_declarator_name(const std::vector<Token>& tokens
             break;
         }
         if (token.is_punctuator("(")) {
-            if (depth == 0 && cursor > index + 1 &&
-                tokens[cursor - 1].kind == TokenKind::Identifier &&
+            if (depth == 0 && cursor > index + 1 && tokens[cursor - 1].kind == TokenKind::Identifier &&
                 !is_type_keyword(tokens[cursor - 1])) {
                 return cursor - 1;
             }
@@ -530,9 +486,7 @@ std::optional<std::size_t> find_declarator_name(const std::vector<Token>& tokens
 // (GRAMMAR.md 6) but are not verified by this implementation. They are
 // diagnosed rather than erased, because silently dropping a contract would
 // turn a specification into nothing at all.
-bool has_specification_clause(const std::vector<Token>& tokens,
-                              std::size_t name_index,
-                              std::size_t& clause_index) {
+bool has_specification_clause(const std::vector<Token>& tokens, std::size_t name_index, std::size_t& clause_index) {
     const std::size_t open = name_index + 1;
     if (open >= tokens.size() || !tokens[open].is_punctuator("(")) {
         return false;
@@ -544,12 +498,10 @@ bool has_specification_clause(const std::vector<Token>& tokens,
 
     for (std::size_t cursor = close + 1; cursor < tokens.size(); ++cursor) {
         const Token& token = tokens[cursor];
-        if (token.kind == TokenKind::EndOfFile || token.is_punctuator(";") ||
-            token.is_punctuator("{")) {
+        if (token.kind == TokenKind::EndOfFile || token.is_punctuator(";") || token.is_punctuator("{")) {
             return false;
         }
-        if (is_specification_clause(token) && cursor + 1 < tokens.size() &&
-            tokens[cursor + 1].is_punctuator("(")) {
+        if (is_specification_clause(token) && cursor + 1 < tokens.size() && tokens[cursor + 1].is_punctuator("(")) {
             clause_index = cursor;
             return true;
         }
@@ -560,10 +512,7 @@ bool has_specification_clause(const std::vector<Token>& tokens,
 // `verified` marks a function whose contract this implementation has to
 // discharge. The clauses are delimited here; what they mean is settled once
 // Clang has resolved them, like every other specification expression.
-bool try_verified(const TokenStream& stream,
-                  std::size_t index,
-                  diagnostics::Engine& engine,
-                  VerifiedFunction& verified,
+bool try_verified(const TokenStream& stream, std::size_t index, diagnostics::Engine& engine, VerifiedFunction& verified,
                   std::size_t& next_index) {
     const std::vector<Token>& tokens = stream.tokens();
     next_index = index + 1;
@@ -628,11 +577,9 @@ bool try_verified(const TokenStream& stream,
         Clause clause;
         clause.kind = *kind;
         clause.location = stream.location_of(tokens[cursor]);
-        clause.expression =
-            source::ByteSpan{tokens[cursor + 1].span.end(),
-                             tokens[clause_close].span.offset - tokens[cursor + 1].span.end()};
-        if (stream.spelling(clause.expression).find_first_not_of(" \t\r\n") ==
-            std::string_view::npos) {
+        clause.expression = source::ByteSpan{tokens[cursor + 1].span.end(),
+                                             tokens[clause_close].span.offset - tokens[cursor + 1].span.end()};
+        if (stream.spelling(clause.expression).find_first_not_of(" \t\r\n") == std::string_view::npos) {
             report(engine, stream, tokens[cursor], diagnostics::Category::CpplSyntax,
                    "'" + std::string(tokens[cursor].text) + "' requires an expression");
             return false;
@@ -653,15 +600,14 @@ bool try_verified(const TokenStream& stream,
         verified.clauses, [](const Clause& clause) { return clause.kind == ClauseKind::Ensures; });
     if (ensures_count != 1) {
         report(engine, stream, tokens[index], diagnostics::Category::CpplSyntax,
-               "verified function '" + std::string(tokens[*name].text) + "' has " +
-                   std::to_string(ensures_count) + " ensures clauses",
+               "verified function '" + std::string(tokens[*name].text) + "' has " + std::to_string(ensures_count) +
+                   " ensures clauses",
                "a verified function has exactly one ensures clause");
         return false;
     }
     if (verified.clauses.size() - static_cast<std::size_t>(ensures_count) > 1) {
         report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
-               "verified function '" + std::string(tokens[*name].text) +
-                   "' has more than one expects clause",
+               "verified function '" + std::string(tokens[*name].text) + "' has more than one expects clause",
                "multiple preconditions are conjoined, and conjunction is not part of the "
                "formal core");
         return false;
@@ -669,8 +615,7 @@ bool try_verified(const TokenStream& stream,
 
     if (cursor >= tokens.size() || !tokens[cursor].is_punctuator("{")) {
         report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
-               "verified function '" + std::string(tokens[*name].text) +
-                   "' is declared but not defined here",
+               "verified function '" + std::string(tokens[*name].text) + "' is declared but not defined here",
                "its obligation comes from the body, so this implementation verifies a "
                "function where it is defined");
         return false;
@@ -686,13 +631,11 @@ bool try_verified(const TokenStream& stream,
     verified.function_location = stream.location_of(tokens[*name]);
     verified.function_offset = tokens[*name].span.offset;
     verified.return_type =
-        source::ByteSpan{tokens[type_start].span.offset,
-                         tokens[*name].span.offset - tokens[type_start].span.offset};
-    verified.parameters = source::ByteSpan{tokens[open].span.end(),
-                                           tokens[close].span.offset - tokens[open].span.end()};
-    verified.clause_region =
-        source::ByteSpan{tokens[first_clause].span.offset,
-                         tokens[cursor].span.offset - tokens[first_clause].span.offset};
+        source::ByteSpan{tokens[type_start].span.offset, tokens[*name].span.offset - tokens[type_start].span.offset};
+    verified.parameters =
+        source::ByteSpan{tokens[open].span.end(), tokens[close].span.offset - tokens[open].span.end()};
+    verified.clause_region = source::ByteSpan{tokens[first_clause].span.offset,
+                                              tokens[cursor].span.offset - tokens[first_clause].span.offset};
     verified.body_end = tokens[body_close].span.end();
     verified.body_end_line = tokens[body_close].line;
     verified.body_end_column = tokens[body_close].column + 1;
@@ -722,8 +665,8 @@ ScopeKind scope_kind_before(const std::vector<Token>& tokens, std::size_t brace)
         if (token.is_identifier("namespace")) {
             return ScopeKind::Namespace;
         }
-        if (token.is_identifier("class") || token.is_identifier("struct") ||
-            token.is_identifier("union") || token.is_identifier("enum")) {
+        if (token.is_identifier("class") || token.is_identifier("struct") || token.is_identifier("union") ||
+            token.is_identifier("enum")) {
             return ScopeKind::Class;
         }
         if (token.is_punctuator(")")) {
@@ -733,7 +676,7 @@ ScopeKind scope_kind_before(const std::vector<Token>& tokens, std::size_t brace)
     return ScopeKind::Block;
 }
 
-}  // namespace
+} // namespace
 
 std::string describe(ClauseKind kind) {
     switch (kind) {
@@ -803,8 +746,7 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine) {
 
     std::vector<ScopeKind> scopes;
     const auto at_namespace_scope = [&scopes] {
-        return std::ranges::all_of(scopes,
-                                   [](ScopeKind kind) { return kind == ScopeKind::Namespace; });
+        return std::ranges::all_of(scopes, [](ScopeKind kind) { return kind == ScopeKind::Namespace; });
     };
 
     std::size_t index = 0;
@@ -850,10 +792,8 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine) {
                     if (at_namespace_scope()) {
                         syntax.laws.push_back(std::move(law));
                     } else {
-                        report(engine, stream, tokens[index],
-                               diagnostics::Category::UnsupportedSemantics,
-                               "law '" + law.name +
-                                   "' is declared outside namespace scope",
+                        report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
+                               "law '" + law.name + "' is declared outside namespace scope",
                                "this implementation recognizes laws at namespace scope only");
                     }
                 }
@@ -871,8 +811,7 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine) {
                     if (at_namespace_scope()) {
                         syntax.proofs.push_back(std::move(proof));
                     } else {
-                        report(engine, stream, tokens[index],
-                               diagnostics::Category::UnsupportedSemantics,
+                        report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
                                "proof '" + proof.name + "' is declared outside namespace scope",
                                "this implementation recognizes proofs at namespace scope only");
                     }
@@ -882,14 +821,12 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine) {
             }
         }
 
-        if (tokens[index].is_identifier("verified") &&
-            specifier_introduces_declaration(tokens, index)) {
+        if (tokens[index].is_identifier("verified") && specifier_introduces_declaration(tokens, index)) {
             VerifiedFunction verified;
             std::size_t next = index + 1;
             if (try_verified(stream, index, engine, verified, next)) {
                 if (!at_namespace_scope()) {
-                    report(engine, stream, tokens[index],
-                           diagnostics::Category::UnsupportedSemantics,
+                    report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
                            "'verified' is applied outside namespace scope",
                            "this implementation verifies functions at namespace scope only");
                 } else {
@@ -912,8 +849,7 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine) {
             continue;
         }
 
-        if (tokens[index].is_identifier("pure") &&
-            specifier_introduces_declaration(tokens, index)) {
+        if (tokens[index].is_identifier("pure") && specifier_introduces_declaration(tokens, index)) {
             const std::optional<std::size_t> name = find_declarator_name(tokens, index);
             if (!name.has_value()) {
                 report(engine, stream, tokens[index], diagnostics::Category::CpplSyntax,
@@ -922,15 +858,13 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine) {
             } else {
                 std::size_t clause_index = 0;
                 if (has_specification_clause(tokens, *name, clause_index)) {
-                    report(engine, stream, tokens[clause_index],
-                           diagnostics::Category::UnsupportedSemantics,
+                    report(engine, stream, tokens[clause_index], diagnostics::Category::UnsupportedSemantics,
                            "a contract on a function that is not 'verified' would not be "
                            "checked",
                            "mark the function 'verified' so its contract becomes an "
                            "obligation, or state the property as a law over it");
                 } else if (!at_namespace_scope()) {
-                    report(engine, stream, tokens[index],
-                           diagnostics::Category::UnsupportedSemantics,
+                    report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
                            "'pure' is applied outside namespace scope",
                            "this implementation recognizes pure functions at namespace scope "
                            "only");
@@ -952,4 +886,4 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine) {
     return syntax;
 }
 
-}  // namespace cppl::frontend
+} // namespace cppl::frontend

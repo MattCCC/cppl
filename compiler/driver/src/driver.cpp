@@ -1,18 +1,5 @@
 #include "cppl/driver/driver.hpp"
 
-#include <unistd.h>
-
-#include <algorithm>
-#include <cstdlib>
-#include <filesystem>
-#include <fstream>
-#include <iostream>
-#include <map>
-#include <optional>
-#include <sstream>
-#include <string>
-#include <vector>
-
 #include "cppl/automation/evidence.hpp"
 #include "cppl/clang/bridge.hpp"
 #include "cppl/diagnostics/diagnostic.hpp"
@@ -26,6 +13,18 @@
 #include "cppl/kernel/version.hpp"
 #include "cppl/obligations/generate.hpp"
 #include "cppl/source/digest.hpp"
+
+#include <algorithm>
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <map>
+#include <optional>
+#include <sstream>
+#include <string>
+#include <unistd.h>
+#include <vector>
 
 namespace cppl::driver {
 
@@ -48,11 +47,8 @@ struct UnitOutcome {
     std::string runtime_path;
 };
 
-void report(diagnostics::Engine& engine,
-            diagnostics::Category category,
-            std::string message,
-            source::SourceLocation location = {},
-            std::string note = {}) {
+void report(diagnostics::Engine& engine, diagnostics::Category category, std::string message,
+            source::SourceLocation location = {}, std::string note = {}) {
     diagnostics::Diagnostic diagnostic;
     diagnostic.severity = diagnostics::Severity::Error;
     diagnostic.category = category;
@@ -65,7 +61,7 @@ void report(diagnostics::Engine& engine,
 }
 
 class ScratchDirectory {
-public:
+  public:
     ScratchDirectory() {
         std::error_code error;
         const auto temporary = std::filesystem::temp_directory_path(error);
@@ -88,14 +84,15 @@ public:
         }
     }
 
-    [[nodiscard]] const std::filesystem::path& path() const { return path_; }
+    [[nodiscard]] const std::filesystem::path& path() const {
+        return path_;
+    }
 
-private:
+  private:
     std::filesystem::path path_;
 };
 
-std::filesystem::path scratch_directory(const std::filesystem::path& root,
-                                        const std::string& input) {
+std::filesystem::path scratch_directory(const std::filesystem::path& root, const std::string& input) {
     std::error_code error;
     const std::filesystem::path absolute = std::filesystem::absolute(input, error);
     const source::Digest digest = source::hash_bytes(absolute.string());
@@ -167,11 +164,8 @@ diagnostics::Severity convert(clangbridge::Severity severity) {
     return diagnostics::Severity::Error;
 }
 
-UnitOutcome compile_unit(const Options& options,
-                          const Input& input,
-                          const std::filesystem::path& scratch_root,
-                         diagnostics::Engine& engine,
-                         Summary& summary) {
+UnitOutcome compile_unit(const Options& options, const Input& input, const std::filesystem::path& scratch_root,
+                         diagnostics::Engine& engine, Summary& summary) {
     UnitOutcome outcome;
 
     const std::filesystem::path scratch = scratch_directory(scratch_root, input.path);
@@ -213,8 +207,7 @@ UnitOutcome compile_unit(const Options& options,
 
     const std::optional<std::string> text = read_file(preprocessed_path);
     if (!text.has_value()) {
-        report(engine, diagnostics::Category::Internal,
-               "could not read the preprocessed form of '" + input.path + "'");
+        report(engine, diagnostics::Category::Internal, "could not read the preprocessed form of '" + input.path + "'");
         outcome.failed = true;
         return outcome;
     }
@@ -238,8 +231,8 @@ UnitOutcome compile_unit(const Options& options,
 
     if (input.is_header) {
         report(engine, diagnostics::Category::UnsupportedSemantics,
-               "'" + input.path + "' contains C++L constructs and is being compiled directly",
-               {}, "include the header from a source file so its constructs are verified there");
+               "'" + input.path + "' contains C++L constructs and is being compiled directly", {},
+               "include the header from a source file so its constructs are verified there");
         outcome.failed = true;
         return outcome;
     }
@@ -252,16 +245,13 @@ UnitOutcome compile_unit(const Options& options,
     }
 
     frontend::ProjectionOptions projection_options;
-    projection_options.unit_key =
-        source::hash_bytes(std::filesystem::absolute(input.path).string()).to_short_hex(12);
+    projection_options.unit_key = source::hash_bytes(std::filesystem::absolute(input.path).string()).to_short_hex(12);
     const frontend::Projection projection = frontend::project(stream, syntax, projection_options);
 
     const std::filesystem::path analysis_path = scratch / (stem + ".analysis.cpp");
     const std::filesystem::path runtime_path = scratch / (stem + ".runtime.cpp");
-    if (!write_file(analysis_path, projection.analysis) ||
-        !write_file(runtime_path, projection.runtime)) {
-        report(engine, diagnostics::Category::Internal,
-               "could not write the projection of '" + input.path + "'");
+    if (!write_file(analysis_path, projection.analysis) || !write_file(runtime_path, projection.runtime)) {
+        report(engine, diagnostics::Category::Internal, "could not write the projection of '" + input.path + "'");
         outcome.failed = true;
         return outcome;
     }
@@ -280,8 +270,7 @@ UnitOutcome compile_unit(const Options& options,
         request.selection.offsets.push_back(law.analysis_offset);
     }
 
-    const std::expected<clangbridge::TranslationUnit, std::string> unit =
-        clangbridge::parse(request);
+    const std::expected<clangbridge::TranslationUnit, std::string> unit = clangbridge::parse(request);
     if (!unit.has_value()) {
         report(engine, diagnostics::Category::Internal, unit.error());
         outcome.failed = true;
@@ -307,10 +296,8 @@ UnitOutcome compile_unit(const Options& options,
 
     const elaboration::Result elaborated =
         elaboration::elaborate(elaboration::Request{syntax, projection, *unit}, engine);
-    const obligations::Program program =
-        obligations::generate(elaborated.module, elaborated, engine);
-    const std::vector<obligations::ObligationResult> results =
-        automation::verify(program, engine);
+    const obligations::Program program = obligations::generate(elaborated.module, elaborated, engine);
+    const std::vector<obligations::ObligationResult> results = automation::verify(program, engine);
 
     summary.laws += elaborated.module.laws.size();
     std::size_t declaration_obligations = 0;
@@ -388,11 +375,11 @@ void print_trust_report(const Options& options, const Summary& summary) {
     std::cout << "Formal core version:         " << kernel::kFormalCoreVersion << "\n";
     std::cout << "Compiler version:            " << CPPL_VERSION << "\n";
     std::cout << "Clang:                       " << clangbridge::clang_version() << "\n";
-    std::cout << "C++ mode:                    "
-              << (options.standard.empty() ? "compiler default" : options.standard) << "\n";
+    std::cout << "C++ mode:                    " << (options.standard.empty() ? "compiler default" : options.standard)
+              << "\n";
 }
 
-}  // namespace
+} // namespace
 
 int run_driver(int argc, const char* const* argv) {
     Options options = parse(argc, argv);
@@ -462,9 +449,7 @@ int run_driver(int argc, const char* const* argv) {
         // reset afterwards only when another input follows it, since -x applies
         // to the inputs after it.
         const bool more_inputs_follow =
-            std::ranges::any_of(options.inputs, [index](const Input& later) {
-                return later.argument_index > index;
-            });
+            std::ranges::any_of(options.inputs, [index](const Input& later) { return later.argument_index > index; });
 
         arguments.emplace_back("-x");
         arguments.emplace_back("c++-cpp-output");
@@ -483,4 +468,4 @@ int run_driver(int argc, const char* const* argv) {
     return result.exit_code;
 }
 
-}  // namespace cppl::driver
+} // namespace cppl::driver

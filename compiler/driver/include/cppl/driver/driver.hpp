@@ -9,4 +9,4 @@ namespace cppl::driver {
 // program when a required obligation was not discharged (ARCHITECTURE.md 5).
 [[nodiscard]] int run_driver(int argc, const char* const* argv);
 
-}  // namespace cppl::driver
+} // namespace cppl::driver

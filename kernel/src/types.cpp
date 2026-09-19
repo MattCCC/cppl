@@ -12,7 +12,7 @@ bool is_supported_width(const IntType& type) {
     return type.width >= 1 && type.width <= 64;
 }
 
-}  // namespace
+} // namespace
 
 bool is_supported(const IntType& type) {
     return is_supported_width(type) &&
@@ -71,8 +71,7 @@ std::int64_t wrap_into(const IntType& type, std::int64_t value) {
     if (type.signedness == Signedness::Signed) {
         const std::uint64_t sign_bit = std::uint64_t{1} << (type.width - 1);
         if ((truncated & sign_bit) != 0u) {
-            return static_cast<std::int64_t>(truncated) - static_cast<std::int64_t>(mask) -
-                   std::int64_t{1};
+            return static_cast<std::int64_t>(truncated) - static_cast<std::int64_t>(mask) - std::int64_t{1};
         }
     }
     return static_cast<std::int64_t>(truncated);
@@ -91,4 +90,4 @@ std::string describe(const Type& type) {
     return "<unknown-type>";
 }
 
-}  // namespace cppl::kernel
+} // namespace cppl::kernel

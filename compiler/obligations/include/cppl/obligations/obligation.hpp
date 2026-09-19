@@ -1,10 +1,5 @@
 #pragma once
 
-#include <cstdint>
-#include <optional>
-#include <string>
-#include <vector>
-
 #include "cppl/kernel/context.hpp"
 #include "cppl/kernel/proof.hpp"
 #include "cppl/kernel/proposition.hpp"
@@ -13,6 +8,11 @@
 #include "cppl/source/location.hpp"
 #include "cppl/vir/ids.hpp"
 
+#include <cstdint>
+#include <optional>
+#include <string>
+#include <vector>
+
 namespace cppl::obligations {
 
 // A content-derived identity: the same obligation, produced by any run of the
@@ -20,7 +20,9 @@ namespace cppl::obligations {
 struct ObligationId {
     source::Digest digest;
 
-    [[nodiscard]] std::string text() const { return digest.to_short_hex(16); }
+    [[nodiscard]] std::string text() const {
+        return digest.to_short_hex(16);
+    }
 
     friend bool operator==(const ObligationId&, const ObligationId&) = default;
 };
@@ -98,7 +100,7 @@ struct Program {
 
 [[nodiscard]] kernel::ProofTerm automatic_evidence(const kernel::Proposition& goal);
 
-[[nodiscard]] std::optional<kernel::Proposition> rewrite_context(
-    const kernel::Proposition& goal, const kernel::Term& target);
+[[nodiscard]] std::optional<kernel::Proposition> rewrite_context(const kernel::Proposition& goal,
+                                                                 const kernel::Term& target);
 
-}  // namespace cppl::obligations
+} // namespace cppl::obligations

@@ -10,11 +10,8 @@ namespace cppl::elaboration {
 
 namespace {
 
-void report(diagnostics::Engine& engine,
-            diagnostics::Category category,
-            const source::SourceLocation& location,
-            std::string message,
-            std::string note = {}) {
+void report(diagnostics::Engine& engine, diagnostics::Category category, const source::SourceLocation& location,
+            std::string message, std::string note = {}) {
     diagnostics::Diagnostic diagnostic;
     diagnostic.severity = diagnostics::Severity::Error;
     diagnostic.category = category;
@@ -42,15 +39,22 @@ vir::BinaryOp convert_operator(clangbridge::BinaryOp op) {
     switch (op) {
         case clangbridge::BinaryOp::Add:
             return vir::BinaryOp::Add;
-        case clangbridge::BinaryOp::Sub: return vir::BinaryOp::Sub;
-        case clangbridge::BinaryOp::Mul: return vir::BinaryOp::Mul;
+        case clangbridge::BinaryOp::Sub:
+            return vir::BinaryOp::Sub;
+        case clangbridge::BinaryOp::Mul:
+            return vir::BinaryOp::Mul;
         case clangbridge::BinaryOp::Equal:
             return vir::BinaryOp::Equal;
-        case clangbridge::BinaryOp::NotEqual: return vir::BinaryOp::NotEqual;
-        case clangbridge::BinaryOp::Less: return vir::BinaryOp::Less;
-        case clangbridge::BinaryOp::LessEqual: return vir::BinaryOp::LessEqual;
-        case clangbridge::BinaryOp::Greater: return vir::BinaryOp::Greater;
-        case clangbridge::BinaryOp::GreaterEqual: return vir::BinaryOp::GreaterEqual;
+        case clangbridge::BinaryOp::NotEqual:
+            return vir::BinaryOp::NotEqual;
+        case clangbridge::BinaryOp::Less:
+            return vir::BinaryOp::Less;
+        case clangbridge::BinaryOp::LessEqual:
+            return vir::BinaryOp::LessEqual;
+        case clangbridge::BinaryOp::Greater:
+            return vir::BinaryOp::Greater;
+        case clangbridge::BinaryOp::GreaterEqual:
+            return vir::BinaryOp::GreaterEqual;
         case clangbridge::BinaryOp::Unsupported:
             break;
     }
@@ -62,7 +66,7 @@ vir::BinaryOp convert_operator(clangbridge::BinaryOp op) {
 // Every expression C++L cannot represent stops the conversion with a reason at
 // a source location. Nothing is dropped silently.
 class ExpressionElaborator {
-public:
+  public:
     explicit ExpressionElaborator(std::uint32_t& next_id) : next_id_(next_id) {}
 
     struct Failure {
@@ -133,7 +137,8 @@ public:
             vir::Negation converted;
             for (const auto& operand : negation->operands) {
                 auto value = convert(operand);
-                if (!value) return std::nullopt;
+                if (!value)
+                    return std::nullopt;
                 converted.operands.push_back(std::move(*value));
             }
             result.node = std::move(converted);
@@ -143,7 +148,8 @@ public:
             vir::Conditional converted;
             for (const auto& operand : branch->operands) {
                 auto value = convert(operand);
-                if (!value) return std::nullopt;
+                if (!value)
+                    return std::nullopt;
                 converted.operands.push_back(std::move(*value));
             }
             result.node = std::move(converted);
@@ -156,7 +162,8 @@ public:
             converted.name = bound->name;
             for (const auto& operand : bound->operands) {
                 auto value = convert(operand);
-                if (!value) return std::nullopt;
+                if (!value)
+                    return std::nullopt;
                 converted.operands.push_back(std::move(*value));
             }
             result.node = std::move(converted);
@@ -172,9 +179,11 @@ public:
         return std::nullopt;
     }
 
-    [[nodiscard]] const std::optional<Failure>& failure() const noexcept { return failure_; }
+    [[nodiscard]] const std::optional<Failure>& failure() const noexcept {
+        return failure_;
+    }
 
-private:
+  private:
     std::uint32_t& next_id_;
     std::optional<Failure> failure_;
 };
@@ -193,37 +202,38 @@ void collect_callees(const vir::Expr& expr, std::vector<vir::SymbolId>& callees)
         }
     }
     if (const auto* branch = std::get_if<vir::Conditional>(&expr.node)) {
-        for (const auto& operand : branch->operands) collect_callees(operand, callees);
+        for (const auto& operand : branch->operands)
+            collect_callees(operand, callees);
     }
     if (const auto* bound = std::get_if<vir::LocalVersion>(&expr.node)) {
-        for (const auto& operand : bound->operands) collect_callees(operand, callees);
+        for (const auto& operand : bound->operands)
+            collect_callees(operand, callees);
     }
     if (const auto* negation = std::get_if<vir::Negation>(&expr.node)) {
-        for (const auto& operand : negation->operands) collect_callees(operand, callees);
+        for (const auto& operand : negation->operands)
+            collect_callees(operand, callees);
     }
 }
 
 // Generated helpers have distinct names. Repeated displayed locations must
 // never make an ambiguous helper lookup pick the first declaration. Laws and
 // executable declarations are linked separately by physical analysis offset.
-const clangbridge::Function* find_projected(const clangbridge::TranslationUnit& unit,
-                                            std::string_view name,
+const clangbridge::Function* find_projected(const clangbridge::TranslationUnit& unit, std::string_view name,
                                             const source::SourceLocation& declared_at) {
     const clangbridge::Function* found = nullptr;
     for (const clangbridge::Function& function : unit.functions) {
         if (function.name == name && function.location.file == declared_at.file &&
             function.location.line == declared_at.line) {
-            if (found != nullptr) return nullptr;
+            if (found != nullptr)
+                return nullptr;
             found = &function;
         }
     }
     return found;
 }
 
-std::optional<std::vector<vir::Parameter>> convert_parameters(
-    const clangbridge::Function& function,
-    diagnostics::Engine& engine,
-    std::string_view subject) {
+std::optional<std::vector<vir::Parameter>> convert_parameters(const clangbridge::Function& function,
+                                                              diagnostics::Engine& engine, std::string_view subject) {
     std::vector<vir::Parameter> parameters;
     for (const clangbridge::Parameter& parameter : function.parameters) {
         const std::optional<vir::Type> type = convert_type(parameter.type);
@@ -244,16 +254,13 @@ std::optional<std::vector<vir::Parameter>> convert_parameters(
 // The expression itself was resolved by Clang in the proof's own scope; what
 // happens here is only the conversion of that resolved expression into the
 // fragment C++L models.
-std::optional<vir::Expr> convert_projected(const Request& request,
-                                           std::string_view generated,
-                                           const source::SourceLocation& written,
-                                           std::uint32_t& next_expression_id,
-                                           const std::string& subject,
-                                           diagnostics::Engine& engine) {
+std::optional<vir::Expr> convert_projected(const Request& request, std::string_view generated,
+                                           const source::SourceLocation& written, std::uint32_t& next_expression_id,
+                                           const std::string& subject, diagnostics::Engine& engine) {
     const clangbridge::Function* function = find_projected(request.unit, generated, written);
     if (function == nullptr || !function->returned_value.has_value()) {
-        report(engine, diagnostics::Category::Elaboration, written,
-               subject + " was not resolved", "Clang did not resolve the projected expression");
+        report(engine, diagnostics::Category::Elaboration, written, subject + " was not resolved",
+               "Clang did not resolve the projected expression");
         return std::nullopt;
     }
 
@@ -279,13 +286,12 @@ std::optional<vir::Expr> convert_projected(const Request& request,
 // instantiated at, and the proposition an `assume` names, are ordinary C++ and
 // are read back from the functions the projector emitted for them, so Clang
 // alone decides what each one denotes.
-std::optional<std::vector<vir::ProofStep>> convert_statements(
-    const Request& request,
-    const frontend::ProofDeclaration& declaration,
-    const frontend::ProofFunction& projected,
-    const std::map<std::string, std::size_t>& declared,
-    std::uint32_t& next_expression_id,
-    diagnostics::Engine& engine) {
+std::optional<std::vector<vir::ProofStep>> convert_statements(const Request& request,
+                                                              const frontend::ProofDeclaration& declaration,
+                                                              const frontend::ProofFunction& projected,
+                                                              const std::map<std::string, std::size_t>& declared,
+                                                              std::uint32_t& next_expression_id,
+                                                              diagnostics::Engine& engine) {
     std::vector<vir::ProofStep> steps;
     std::vector<std::string> assumed;
     std::size_t next_argument = 0;
@@ -303,12 +309,11 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
 
         if (statement.kind == frontend::ProofStatementKind::Assume) {
             if (next_assumption >= projected.assumption_names.size()) {
-                return std::nullopt;  // the projection and the syntax disagree
+                return std::nullopt; // the projection and the syntax disagree
             }
             std::optional<vir::Expr> proposition = convert_projected(
-                request, projected.assumption_names[next_assumption++],
-                statement.proposition_location, next_expression_id,
-                "the proposition '" + declaration.name + "' assumes", engine);
+                request, projected.assumption_names[next_assumption++], statement.proposition_location,
+                next_expression_id, "the proposition '" + declaration.name + "' assumes", engine);
             if (!proposition.has_value()) {
                 return std::nullopt;
             }
@@ -323,9 +328,8 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
         std::optional<vir::Reference> evidence;
         for (std::size_t position = assumed.size(); position > 0; --position) {
             if (assumed[position - 1] == statement.reference) {
-                evidence = vir::Reference{vir::HypothesisRef{
-                                              static_cast<std::uint32_t>(position - 1)},
-                                          statement.reference};
+                evidence =
+                    vir::Reference{vir::HypothesisRef{static_cast<std::uint32_t>(position - 1)}, statement.reference};
                 break;
             }
         }
@@ -334,10 +338,8 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
             const auto target = declared.find(statement.reference);
             if (target == declared.end()) {
                 report(engine, diagnostics::Category::Elaboration, statement.location,
-                       "no proof or assumed premise named '" + statement.reference +
-                           "' is in scope here",
-                       "'" + describe(statement.kind) +
-                           "' names a proof declaration or a name bound by 'assume'");
+                       "no proof or assumed premise named '" + statement.reference + "' is in scope here",
+                       "'" + describe(statement.kind) + "' names a proof declaration or a name bound by 'assume'");
                 return std::nullopt;
             }
             if (statement.reference == declaration.name) {
@@ -347,22 +349,18 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
                        "itself");
                 return std::nullopt;
             }
-            evidence = vir::Reference{
-                vir::ProofRef{vir::ProofId{static_cast<std::uint32_t>(target->second)}},
-                statement.reference};
+            evidence = vir::Reference{vir::ProofRef{vir::ProofId{static_cast<std::uint32_t>(target->second)}},
+                                      statement.reference};
         }
 
         std::vector<vir::Expr> arguments;
         for (const frontend::ProofArgument& written : statement.arguments) {
             if (next_argument >= projected.argument_names.size()) {
-                return std::nullopt;  // the projection and the syntax disagree
+                return std::nullopt; // the projection and the syntax disagree
             }
             std::optional<vir::Expr> argument = convert_projected(
-                request, projected.argument_names[next_argument++], written.location,
-                next_expression_id,
-                "the term proof '" + declaration.name + "' instantiates '" +
-                    statement.reference + "' at",
-                engine);
+                request, projected.argument_names[next_argument++], written.location, next_expression_id,
+                "the term proof '" + declaration.name + "' instantiates '" + statement.reference + "' at", engine);
             if (!argument.has_value()) {
                 return std::nullopt;
             }
@@ -393,13 +391,9 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
 // Clang resolves it as an ordinary name and the elaborated expression refers to
 // it by position like any other parameter. Nothing named `result` exists in the
 // program itself.
-void elaborate_contract(const Request& request,
-                        const frontend::VerifiedFunction& declaration,
-                        const frontend::ContractFunctions& projected,
-                        const clangbridge::Function& function,
-                        const std::string& body_rejection,
-                        std::uint32_t& next_expression_id,
-                        vir::Function& converted,
+void elaborate_contract(const Request& request, const frontend::VerifiedFunction& declaration,
+                        const frontend::ContractFunctions& projected, const clangbridge::Function& function,
+                        const std::string& body_rejection, std::uint32_t& next_expression_id, vir::Function& converted,
                         diagnostics::Engine& engine) {
     if (!body_rejection.empty() || !converted.returned_value.has_value()) {
         report(engine, diagnostics::Category::UnsupportedSemantics, declaration.function_location,
@@ -412,9 +406,9 @@ void elaborate_contract(const Request& request,
     }
 
     const frontend::Clause* postcondition = declaration.postcondition();
-    std::optional<vir::Expr> ensured = convert_projected(
-        request, projected.postcondition_name, postcondition->location, next_expression_id,
-        "the postcondition of verified function '" + function.qualified_name + "'", engine);
+    std::optional<vir::Expr> ensured =
+        convert_projected(request, projected.postcondition_name, postcondition->location, next_expression_id,
+                          "the postcondition of verified function '" + function.qualified_name + "'", engine);
     if (!ensured.has_value()) {
         return;
     }
@@ -423,11 +417,10 @@ void elaborate_contract(const Request& request,
     contract.postcondition = std::move(*ensured);
     contract.range.begin = postcondition->location;
 
-    if (const frontend::Clause* precondition = declaration.precondition();
-        precondition != nullptr) {
-        std::optional<vir::Expr> expected = convert_projected(
-            request, projected.precondition_name, precondition->location, next_expression_id,
-            "the precondition of verified function '" + function.qualified_name + "'", engine);
+    if (const frontend::Clause* precondition = declaration.precondition(); precondition != nullptr) {
+        std::optional<vir::Expr> expected =
+            convert_projected(request, projected.precondition_name, precondition->location, next_expression_id,
+                              "the precondition of verified function '" + function.qualified_name + "'", engine);
         if (!expected.has_value()) {
             return;
         }
@@ -441,12 +434,9 @@ void elaborate_contract(const Request& request,
 //
 // Nothing here decides whether a proof holds. It decides only what the author
 // wrote: which law is named, at which arguments, and which proof a step uses.
-void elaborate_proofs(const Request& request,
-                      const std::map<std::string, vir::LawId>& admitted_laws,
-                      const std::map<std::string, std::string>& law_names,
-                      std::uint32_t& next_expression_id,
-                      Result& result,
-                      diagnostics::Engine& engine) {
+void elaborate_proofs(const Request& request, const std::map<std::string, vir::LawId>& admitted_laws,
+                      const std::map<std::string, std::string>& law_names, std::uint32_t& next_expression_id,
+                      Result& result, diagnostics::Engine& engine) {
     // A proof is identified by its declaration position, so a step can name a
     // proof that is itself later found to be unsound: the reference resolves,
     // and the evidence still has to pass the kernel.
@@ -461,12 +451,11 @@ void elaborate_proofs(const Request& request,
     }
 
     for (const frontend::ProofFunction& projected : request.projection.proof_functions) {
-        const frontend::ProofDeclaration& declaration =
-            request.syntax.proofs[projected.proof_index];
+        const frontend::ProofDeclaration& declaration = request.syntax.proofs[projected.proof_index];
 
         const auto owner = declared.find(declaration.name);
         if (owner == declared.end() || owner->second != projected.proof_index) {
-            continue;  // a duplicate name, already reported
+            continue; // a duplicate name, already reported
         }
 
         const clangbridge::Function* function =
@@ -474,9 +463,8 @@ void elaborate_proofs(const Request& request,
         if (function == nullptr || !function->returned_value.has_value()) {
             report(engine, diagnostics::Category::Elaboration, declaration.range.begin,
                    "the proposition of proof '" + declaration.name + "' was not resolved",
-                   function == nullptr
-                       ? "Clang did not resolve the projected proposition"
-                       : "the proposition produced no value");
+                   function == nullptr ? "Clang did not resolve the projected proposition"
+                                       : "the proposition produced no value");
             continue;
         }
 
@@ -505,8 +493,7 @@ void elaborate_proofs(const Request& request,
 
         const auto* claim = std::get_if<vir::Call>(&proposition->node);
         if (claim == nullptr) {
-            report(engine, diagnostics::Category::UnsupportedSemantics,
-                   declaration.proposition_location,
+            report(engine, diagnostics::Category::UnsupportedSemantics, declaration.proposition_location,
                    "proof '" + declaration.name + "' does not state the law it proves",
                    "write proves(<law>(<parameters>)); this implementation proves a declared "
                    "law, and does not accept a proposition written out in place");
@@ -517,13 +504,11 @@ void elaborate_proofs(const Request& request,
         if (admitted == admitted_laws.end()) {
             const auto known = law_names.find(claim->callee.usr);
             report(engine, diagnostics::Category::Elaboration, declaration.proposition_location,
-                   known == law_names.end()
-                       ? "'" + claim->callee_name + "' is not a law in this translation unit"
-                       : "law '" + known->second + "' was not given formal meaning, so proof '" +
-                             declaration.name + "' has no goal to discharge",
-                   known == law_names.end()
-                       ? "a proof discharges a law declared with 'ensures'"
-                       : "the law itself was reported above");
+                   known == law_names.end() ? "'" + claim->callee_name + "' is not a law in this translation unit"
+                                            : "law '" + known->second + "' was not given formal meaning, so proof '" +
+                                                  declaration.name + "' has no goal to discharge",
+                   known == law_names.end() ? "a proof discharges a law declared with 'ensures'"
+                                            : "the law itself was reported above");
             continue;
         }
 
@@ -533,8 +518,8 @@ void elaborate_proofs(const Request& request,
         // ordinary C++ call, so Clang has already settled their number and
         // their types; which proposition they state is worked out where the
         // law's own proposition is known, by instantiating it at them.
-        std::optional<std::vector<vir::ProofStep>> steps = convert_statements(
-            request, declaration, projected, declared, next_expression_id, engine);
+        std::optional<std::vector<vir::ProofStep>> steps =
+            convert_statements(request, declaration, projected, declared, next_expression_id, engine);
         if (!steps.has_value()) {
             result.laws_with_refused_proofs.push_back(law.id);
             continue;
@@ -552,7 +537,7 @@ void elaborate_proofs(const Request& request,
     }
 }
 
-}  // namespace
+} // namespace
 
 const FunctionRejection* Result::rejection(const vir::SymbolId& symbol) const {
     for (const FunctionRejection& rejected : rejected_functions) {
@@ -595,12 +580,10 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
 
     for (const frontend::PureMarker& marker : request.syntax.pure_markers) {
         const auto offset = request.projection.declaration_offset(marker.function_offset);
-        const clangbridge::Function* function = offset.has_value()
-            ? request.unit.find_at_offset(*offset) : nullptr;
+        const clangbridge::Function* function = offset.has_value() ? request.unit.find_at_offset(*offset) : nullptr;
         if (function == nullptr) {
             report(engine, diagnostics::Category::Elaboration, marker.function_location,
-                   "the declaration of '" + marker.function_name +
-                       "' marked pure was not resolved",
+                   "the declaration of '" + marker.function_name + "' marked pure was not resolved",
                    "Clang did not report a function declaration at this location");
             continue;
         }
@@ -609,15 +592,12 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
     }
 
     for (const frontend::ContractFunctions& projected : request.projection.contract_functions) {
-        const frontend::VerifiedFunction& declaration =
-            request.syntax.verified_functions[projected.function_index];
+        const frontend::VerifiedFunction& declaration = request.syntax.verified_functions[projected.function_index];
         const auto offset = request.projection.declaration_offset(declaration.function_offset);
-        const clangbridge::Function* function = offset.has_value()
-            ? request.unit.find_at_offset(*offset) : nullptr;
+        const clangbridge::Function* function = offset.has_value() ? request.unit.find_at_offset(*offset) : nullptr;
         if (function == nullptr) {
             report(engine, diagnostics::Category::Elaboration, declaration.function_location,
-                   "the declaration of verified function '" + declaration.function_name +
-                       "' was not resolved",
+                   "the declaration of verified function '" + declaration.function_name + "' was not resolved",
                    "Clang did not report a function declaration at this location");
             continue;
         }
@@ -675,24 +655,19 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
 
                 std::vector<vir::SymbolId> callees;
                 collect_callees(*converted.returned_value, callees);
-                const bool calls_only_pure =
-                    std::ranges::all_of(callees, [&pure_symbols](const vir::SymbolId& callee) {
-                        return pure_symbols.contains(callee.usr);
-                    });
-                const bool calls_modeled = std::ranges::all_of(
-                    callees, [&](const vir::SymbolId& callee) {
-                        return pure_symbols.contains(callee.usr) ||
-                               (candidate.contract != nullptr &&
-                                verified_symbols.contains(callee.usr));
-                    });
+                const bool calls_only_pure = std::ranges::all_of(callees, [&pure_symbols](const vir::SymbolId& callee) {
+                    return pure_symbols.contains(callee.usr);
+                });
+                const bool calls_modeled = std::ranges::all_of(callees, [&](const vir::SymbolId& callee) {
+                    return pure_symbols.contains(callee.usr) ||
+                           (candidate.contract != nullptr && verified_symbols.contains(callee.usr));
+                });
                 if (!calls_modeled) {
-                    rejection =
-                        "it calls a function that is not declared pure, so its value is not "
-                        "a mathematical function of its arguments";
+                    rejection = "it calls a function that is not declared pure, so its value is not "
+                                "a mathematical function of its arguments";
                 } else if (candidate.pure && calls_only_pure &&
                            !std::holds_alternative<vir::Conditional>(converted.returned_value->node) &&
-                           !std::holds_alternative<vir::LocalVersion>(
-                               converted.returned_value->node)) {
+                           !std::holds_alternative<vir::LocalVersion>(converted.returned_value->node)) {
                     converted.purity = vir::Purity::Pure;
                 } else if (candidate.pure && candidate.contract == nullptr) {
                     rejection = "pure specification helpers require a single return expression";
@@ -703,13 +678,13 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
         // A function the author marked pure and that did not turn out to be a
         // definition is recorded, so a law that reaches for it can say why.
         if (candidate.pure && converted.purity != vir::Purity::Pure) {
-            result.rejected_functions.push_back(FunctionRejection{
-                converted.symbol, function->qualified_name, rejection, function->location});
+            result.rejected_functions.push_back(
+                FunctionRejection{converted.symbol, function->qualified_name, rejection, function->location});
         }
 
         if (candidate.contract != nullptr) {
-            elaborate_contract(request, *candidate.declaration, *candidate.contract, *function,
-                               rejection, next_expression_id, converted, engine);
+            elaborate_contract(request, *candidate.declaration, *candidate.contract, *function, rejection,
+                               next_expression_id, converted, engine);
         }
 
         result.module.functions.push_back(std::move(converted));
@@ -721,37 +696,30 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
     std::map<std::string, vir::LawId> admitted_laws;
     std::map<std::string, std::string> law_names;
 
-    for (const frontend::SpecificationFunction& specification :
-         request.projection.specification_functions) {
-        const frontend::LawDeclaration& declaration =
-            request.syntax.laws[specification.law_index];
+    for (const frontend::SpecificationFunction& specification : request.projection.specification_functions) {
+        const frontend::LawDeclaration& declaration = request.syntax.laws[specification.law_index];
 
-        const clangbridge::Function* function =
-            request.unit.find_at_offset(specification.analysis_offset);
+        const clangbridge::Function* function = request.unit.find_at_offset(specification.analysis_offset);
         if (function != nullptr) {
             law_names.emplace(function->usr, declaration.name);
         }
         if (function == nullptr || !function->returned_value.has_value()) {
             report(engine, diagnostics::Category::Elaboration, declaration.range.begin,
                    "the proposition of law '" + declaration.name + "' was not resolved",
-                   function == nullptr
-                       ? "Clang did not resolve the projected specification function"
-                       : "the specification expression produced no value");
+                   function == nullptr ? "Clang did not resolve the projected specification function"
+                                       : "the specification expression produced no value");
             continue;
         }
 
         // A Law states its conclusion under its precondition. More than one
         // precondition conjoins them (GRAMMAR.md 3), and conjunction is not
         // part of the formal core, so it is refused rather than approximated.
-        const auto preconditions =
-            std::ranges::count_if(declaration.clauses, [](const frontend::Clause& clause) {
-                return clause.kind == frontend::ClauseKind::Expects;
-            });
+        const auto preconditions = std::ranges::count_if(declaration.clauses, [](const frontend::Clause& clause) {
+            return clause.kind == frontend::ClauseKind::Expects;
+        });
         if (preconditions > 1) {
-            report(engine, diagnostics::Category::UnsupportedSemantics,
-                   declaration.premise()->location,
-                   "law '" + declaration.name + "' has " + std::to_string(preconditions) +
-                       " expects clauses",
+            report(engine, diagnostics::Category::UnsupportedSemantics, declaration.premise()->location,
+                   "law '" + declaration.name + "' has " + std::to_string(preconditions) + " expects clauses",
                    "multiple preconditions are conjoined, and conjunction is not part of the "
                    "formal core; this implementation accepts one expects clause");
             continue;
@@ -782,9 +750,9 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
 
         vir::Law law;
         if (const frontend::Clause* written = declaration.premise(); written != nullptr) {
-            std::optional<vir::Expr> premise = convert_projected(
-                request, specification.premise_name, written->location, next_expression_id,
-                "the precondition of law '" + declaration.name + "'", engine);
+            std::optional<vir::Expr> premise =
+                convert_projected(request, specification.premise_name, written->location, next_expression_id,
+                                  "the precondition of law '" + declaration.name + "'", engine);
             if (!premise.has_value()) {
                 continue;
             }
@@ -806,4 +774,4 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
     return result;
 }
 
-}  // namespace cppl::elaboration
+} // namespace cppl::elaboration

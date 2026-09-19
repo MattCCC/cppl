@@ -12,13 +12,11 @@ std::string digest_of(std::string_view text) {
     return cppl::source::hash_bytes(text).to_hex();
 }
 
-}  // namespace
+} // namespace
 
 CPPL_TEST(digest_matches_the_published_sha256_vectors) {
-    CPPL_CHECK_EQ(digest_of(""),
-                  std::string("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"));
-    CPPL_CHECK_EQ(digest_of("abc"),
-                  std::string("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"));
+    CPPL_CHECK_EQ(digest_of(""), std::string("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"));
+    CPPL_CHECK_EQ(digest_of("abc"), std::string("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"));
     CPPL_CHECK_EQ(digest_of("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq"),
                   std::string("248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1"));
 }

@@ -1,13 +1,13 @@
 #pragma once
 
+#include "cppl/kernel/context.hpp"
+#include "cppl/kernel/term.hpp"
+#include "cppl/kernel/types.hpp"
+
 #include <compare>
 #include <cstdint>
 #include <expected>
 #include <vector>
-
-#include "cppl/kernel/context.hpp"
-#include "cppl/kernel/term.hpp"
-#include "cppl/kernel/types.hpp"
 
 namespace cppl::kernel {
 
@@ -44,8 +44,7 @@ struct Polynomial {
 };
 
 // Reads a term already in normal form as a polynomial of `type`.
-[[nodiscard]] std::expected<Polynomial, CoreError> polynomial(const Term& normal,
-                                                              IntType type,
+[[nodiscard]] std::expected<Polynomial, CoreError> polynomial(const Term& normal, IntType type,
                                                               const CoreLimits& limits);
 
 // The canonical term denoting `polynomial`. Reading it back yields the same
@@ -59,11 +58,8 @@ struct Polynomial {
 // (SPEC.md 7.1). Arithmetic is put in polynomial normal form; comparisons,
 // negation and selection are put in canonical form and folded where their value
 // is determined. Every rewrite is an identity of the machine semantics.
-[[nodiscard]] std::expected<Term, CoreError> normalize_primitive(PrimOp op,
-                                                                 IntType type,
-                                                                 std::vector<Term> operands,
-                                                                 const CoreLimits& limits,
-                                                                 std::uint64_t& steps);
+[[nodiscard]] std::expected<Term, CoreError> normalize_primitive(PrimOp op, IntType type, std::vector<Term> operands,
+                                                                 const CoreLimits& limits, std::uint64_t& steps);
 
 // The value `bits` denotes in `type`, read as an integer.
 [[nodiscard]] Wide value_of(const IntType& type, std::uint64_t bits);
@@ -71,4 +67,4 @@ struct Polynomial {
 // The residue of `value` modulo 2^width, as the bits of `type`.
 [[nodiscard]] std::uint64_t bits_of(const IntType& type, std::int64_t value);
 
-}  // namespace cppl::kernel
+} // namespace cppl::kernel

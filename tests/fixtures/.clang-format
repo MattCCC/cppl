@@ -1,0 +1,7 @@
+# Fixtures are C++L compiler inputs whose layout is authored, not ordinary C++.
+# clang-format has no C++L grammar (law, proof, proves, expects, ensures, tactics)
+# and corrupts it, so it must not touch this tree. C++L formatting belongs to
+# cppl-lsp. The root .clang-format remains authoritative everywhere else.
+BasedOnStyle: InheritParentConfig
+DisableFormat: true
+SortIncludes: Never

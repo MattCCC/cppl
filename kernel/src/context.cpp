@@ -1,9 +1,9 @@
 #include "cppl/kernel/context.hpp"
 
+#include "cppl/kernel/arithmetic.hpp"
+
 #include <utility>
 #include <variant>
-
-#include "cppl/kernel/arithmetic.hpp"
 
 namespace cppl::kernel {
 
@@ -18,16 +18,13 @@ std::unexpected<CoreError> fail(CoreErrorKind kind, std::string detail) {
         return fail(CoreErrorKind::MalformedType, "type is not a recognized core type");
     }
     if (!is_supported(type.integer_type())) {
-        return fail(CoreErrorKind::MalformedType,
-                    "integer type has an unsupported width or signedness");
+        return fail(CoreErrorKind::MalformedType, "integer type has an unsupported width or signedness");
     }
     return {};
 }
 
-[[nodiscard]] std::expected<Type, CoreError> type_of_impl(const Context& context,
-                                                          std::span<const Type> locals,
-                                                          const Term& term,
-                                                          const CoreLimits& limits,
+[[nodiscard]] std::expected<Type, CoreError> type_of_impl(const Context& context, std::span<const Type> locals,
+                                                          const Term& term, const CoreLimits& limits,
                                                           std::uint32_t depth) {
     if (depth > limits.max_term_depth) {
         return fail(CoreErrorKind::DepthLimitExceeded, "term nests deeper than the core allows");
@@ -40,8 +37,7 @@ std::unexpected<CoreError> fail(CoreErrorKind kind, std::string detail) {
             if constexpr (std::is_same_v<Node, Var>) {
                 if (node.index.value >= locals.size()) {
                     return fail(CoreErrorKind::VariableOutOfScope,
-                                "variable #" + std::to_string(node.index.value) +
-                                    " has no enclosing binder");
+                                "variable #" + std::to_string(node.index.value) + " has no enclosing binder");
                 }
                 const Type& type = locals[locals.size() - 1 - node.index.value];
                 if (auto valid = validate_type(type); !valid) {
@@ -55,9 +51,8 @@ std::unexpected<CoreError> fail(CoreErrorKind kind, std::string detail) {
                     return std::unexpected(valid.error());
                 }
                 if (!is_representable(node.type, node.value)) {
-                    return fail(CoreErrorKind::MalformedLiteral,
-                                "literal " + std::to_string(node.value) +
-                                    " is not representable in " + describe(node.type));
+                    return fail(CoreErrorKind::MalformedLiteral, "literal " + std::to_string(node.value) +
+                                                                     " is not representable in " + describe(node.type));
                 }
                 return type;
 
@@ -68,24 +63,21 @@ std::unexpected<CoreError> fail(CoreErrorKind kind, std::string detail) {
                                 "def#" + std::to_string(node.callee.value) + " is not defined");
                 }
                 if (definition->parameters.size() != node.arguments.size()) {
-                    return fail(CoreErrorKind::ArityMismatch,
-                                "def#" + std::to_string(node.callee.value) + " expects " +
-                                    std::to_string(definition->parameters.size()) +
-                                    " arguments but received " +
-                                    std::to_string(node.arguments.size()));
+                    return fail(CoreErrorKind::ArityMismatch, "def#" + std::to_string(node.callee.value) + " expects " +
+                                                                  std::to_string(definition->parameters.size()) +
+                                                                  " arguments but received " +
+                                                                  std::to_string(node.arguments.size()));
                 }
                 for (std::size_t index = 0; index < node.arguments.size(); ++index) {
-                    auto argument = type_of_impl(context, locals, node.arguments[index], limits,
-                                                 depth + 1);
+                    auto argument = type_of_impl(context, locals, node.arguments[index], limits, depth + 1);
                     if (!argument) {
                         return argument;
                     }
                     if (!(*argument == definition->parameters[index])) {
                         return fail(CoreErrorKind::TypeMismatch,
                                     "argument " + std::to_string(index) + " of def#" +
-                                        std::to_string(node.callee.value) + " has type " +
-                                        describe(*argument) + " but " +
-                                        describe(definition->parameters[index]) + " is required");
+                                        std::to_string(node.callee.value) + " has type " + describe(*argument) +
+                                        " but " + describe(definition->parameters[index]) + " is required");
                     }
                 }
                 return definition->result;
@@ -95,33 +87,30 @@ std::unexpected<CoreError> fail(CoreErrorKind kind, std::string detail) {
                 if (auto valid = validate_type(type); !valid) {
                     return std::unexpected(valid.error());
                 }
-                if (!is_arithmetic(node.op) && !is_comparison(node.op) &&
-                    node.op != PrimOp::Not && node.op != PrimOp::Select) {
+                if (!is_arithmetic(node.op) && !is_comparison(node.op) && node.op != PrimOp::Not &&
+                    node.op != PrimOp::Select) {
                     return fail(CoreErrorKind::MalformedPrimitive, "unrecognized primitive");
                 }
                 if (node.op == PrimOp::Not && !(node.type == kBoolean)) {
                     return fail(CoreErrorKind::TypeMismatch, "negation requires a boolean");
                 }
-                const std::size_t required_arity = node.op == PrimOp::Select ? 3u :
-                                                  node.op == PrimOp::Not ? 1u : 2u;
+                const std::size_t required_arity = node.op == PrimOp::Select ? 3u : node.op == PrimOp::Not ? 1u : 2u;
                 if (node.arguments.size() != required_arity) {
                     return fail(CoreErrorKind::ArityMismatch,
                                 describe(node.op) + " expects " + std::to_string(required_arity) +
-                                    " arguments but received " +
-                                    std::to_string(node.arguments.size()));
+                                    " arguments but received " + std::to_string(node.arguments.size()));
                 }
                 for (std::size_t index = 0; index < node.arguments.size(); ++index) {
                     const auto& argument = node.arguments[index];
-                    const Type expected = node.op == PrimOp::Select && index == 0
-                                              ? Type{kBoolean} : type;
+                    const Type expected = node.op == PrimOp::Select && index == 0 ? Type{kBoolean} : type;
                     auto argument_type = type_of_impl(context, locals, argument, limits, depth + 1);
                     if (!argument_type) {
                         return argument_type;
                     }
                     if (!(*argument_type == expected)) {
-                        return fail(CoreErrorKind::TypeMismatch,
-                                    describe(node.op) + " operates on " + describe(expected) +
-                                        " but received " + describe(*argument_type));
+                        return fail(CoreErrorKind::TypeMismatch, describe(node.op) + " operates on " +
+                                                                     describe(expected) + " but received " +
+                                                                     describe(*argument_type));
                     }
                 }
                 return is_comparison(node.op) ? Type{kBoolean} : type;
@@ -130,13 +119,10 @@ std::unexpected<CoreError> fail(CoreErrorKind kind, std::string detail) {
         term.node);
 }
 
-[[nodiscard]] std::expected<Term, CoreError> substitute(const Term& term,
-                                                        const std::vector<Term>& arguments,
-                                                        const CoreLimits& limits,
-                                                        std::uint32_t depth) {
+[[nodiscard]] std::expected<Term, CoreError> substitute(const Term& term, const std::vector<Term>& arguments,
+                                                        const CoreLimits& limits, std::uint32_t depth) {
     if (depth > limits.max_term_depth) {
-        return fail(CoreErrorKind::DepthLimitExceeded,
-                    "substitution nests deeper than the core allows");
+        return fail(CoreErrorKind::DepthLimitExceeded, "substitution nests deeper than the core allows");
     }
 
     return std::visit(
@@ -145,10 +131,9 @@ std::unexpected<CoreError> fail(CoreErrorKind kind, std::string detail) {
 
             if constexpr (std::is_same_v<Node, Var>) {
                 if (node.index.value >= arguments.size()) {
-                    return fail(CoreErrorKind::VariableOutOfScope,
-                                "definition body references variable #" +
-                                    std::to_string(node.index.value) +
-                                    " which is not one of its parameters");
+                    return fail(CoreErrorKind::VariableOutOfScope, "definition body references variable #" +
+                                                                       std::to_string(node.index.value) +
+                                                                       " which is not one of its parameters");
                 }
                 return arguments[arguments.size() - 1 - node.index.value];
 
@@ -172,18 +157,14 @@ std::unexpected<CoreError> fail(CoreErrorKind kind, std::string detail) {
         term.node);
 }
 
-[[nodiscard]] std::expected<Term, CoreError> normalize_impl(const Context& context,
-                                                            const Term& term,
-                                                            const CoreLimits& limits,
-                                                            std::uint64_t& steps,
+[[nodiscard]] std::expected<Term, CoreError> normalize_impl(const Context& context, const Term& term,
+                                                            const CoreLimits& limits, std::uint64_t& steps,
                                                             std::uint32_t depth) {
     if (depth > limits.max_term_depth) {
-        return fail(CoreErrorKind::DepthLimitExceeded,
-                    "normalization nests deeper than the core allows");
+        return fail(CoreErrorKind::DepthLimitExceeded, "normalization nests deeper than the core allows");
     }
     if (steps > limits.max_normalization_steps) {
-        return fail(CoreErrorKind::NormalizationBudgetExhausted,
-                    "normalization exceeded its step budget");
+        return fail(CoreErrorKind::NormalizationBudgetExhausted, "normalization exceeded its step budget");
     }
 
     return std::visit(
@@ -200,9 +181,8 @@ std::unexpected<CoreError> fail(CoreErrorKind kind, std::string detail) {
                                 "def#" + std::to_string(node.callee.value) + " is not defined");
                 }
                 if (definition->parameters.size() != node.arguments.size()) {
-                    return fail(CoreErrorKind::ArityMismatch,
-                                "def#" + std::to_string(node.callee.value) +
-                                    " applied with the wrong number of arguments");
+                    return fail(CoreErrorKind::ArityMismatch, "def#" + std::to_string(node.callee.value) +
+                                                                  " applied with the wrong number of arguments");
                 }
 
                 std::vector<Term> arguments;
@@ -234,8 +214,7 @@ std::unexpected<CoreError> fail(CoreErrorKind kind, std::string detail) {
                 }
 
                 ++steps;
-                return normalize_primitive(node.op, node.type, std::move(arguments), limits,
-                                           steps);
+                return normalize_primitive(node.op, node.type, std::move(arguments), limits, steps);
             }
         },
         term.node);
@@ -256,8 +235,7 @@ std::string describe_with_names(const Context& context, const Term& term) {
                 std::string text;
                 if constexpr (std::is_same_v<Node, Call>) {
                     const Definition* definition = context.lookup(node.callee);
-                    text = definition != nullptr ? definition->name
-                                                 : "def#" + std::to_string(node.callee.value);
+                    text = definition != nullptr ? definition->name : "def#" + std::to_string(node.callee.value);
                 } else {
                     text = describe(node.op);
                 }
@@ -275,7 +253,7 @@ std::string describe_with_names(const Context& context, const Term& term) {
         term.node);
 }
 
-}  // namespace
+} // namespace
 
 std::string describe(CoreErrorKind kind) {
     switch (kind) {
@@ -327,9 +305,9 @@ std::expected<void, CoreError> Context::define(Definition definition) {
         return std::unexpected(body_type.error());
     }
     if (!(*body_type == definition.result)) {
-        return fail(CoreErrorKind::TypeMismatch,
-                    "definition '" + definition.name + "' returns " + describe(*body_type) +
-                        " but declares " + describe(definition.result));
+        return fail(CoreErrorKind::TypeMismatch, "definition '" + definition.name + "' returns " +
+                                                     describe(*body_type) + " but declares " +
+                                                     describe(definition.result));
     }
 
     definitions_.push_back(std::move(definition));
@@ -345,16 +323,12 @@ const Definition* Context::lookup(DefId id) const noexcept {
     return nullptr;
 }
 
-std::expected<Type, CoreError> type_of(const Context& context,
-                                       std::span<const Type> locals,
-                                       const Term& term,
+std::expected<Type, CoreError> type_of(const Context& context, std::span<const Type> locals, const Term& term,
                                        const CoreLimits& limits) {
     return type_of_impl(context, locals, term, limits, 0);
 }
 
-std::expected<Term, CoreError> normalize(const Context& context,
-                                         const Term& term,
-                                         const CoreLimits& limits) {
+std::expected<Term, CoreError> normalize(const Context& context, const Term& term, const CoreLimits& limits) {
     std::uint64_t steps = 0;
     return normalize_impl(context, term, limits, steps, 0);
 }
@@ -363,4 +337,4 @@ std::string describe(const Context& context, const Term& term) {
     return describe_with_names(context, term);
 }
 
-}  // namespace cppl::kernel
+} // namespace cppl::kernel

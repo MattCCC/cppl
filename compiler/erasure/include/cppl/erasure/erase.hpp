@@ -1,12 +1,12 @@
 #pragma once
 
-#include <cstddef>
-#include <string_view>
-
 #include "cppl/diagnostics/diagnostic.hpp"
 #include "cppl/frontend/projection.hpp"
 #include "cppl/frontend/syntax.hpp"
 #include "cppl/frontend/token.hpp"
+
+#include <cstddef>
+#include <string_view>
 
 namespace cppl::erasure {
 
@@ -16,8 +16,8 @@ struct Report {
 
     // The checked properties. Both must hold for the runtime program to be
     // accepted for code generation.
-    bool only_deletions = false;   // no byte was added or altered, only blanked
-    bool lines_preserved = false;  // every line of the remaining program is where it was
+    bool only_deletions = false;  // no byte was added or altered, only blanked
+    bool lines_preserved = false; // every line of the remaining program is where it was
 };
 
 struct Erased {
@@ -32,9 +32,7 @@ struct Erased {
 // nothing else changed. That is what makes erasure unable to alter runtime
 // behaviour, and unable to introduce a construct the target standard does not
 // have (TRUST.md 7, COMPATIBILITY.md).
-[[nodiscard]] Erased erase(const frontend::TokenStream& stream,
-                           const frontend::Syntax& syntax,
-                           const frontend::Projection& projection,
-                           diagnostics::Engine& engine);
+[[nodiscard]] Erased erase(const frontend::TokenStream& stream, const frontend::Syntax& syntax,
+                           const frontend::Projection& projection, diagnostics::Engine& engine);
 
-}  // namespace cppl::erasure
+} // namespace cppl::erasure

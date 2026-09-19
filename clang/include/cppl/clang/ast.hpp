@@ -1,13 +1,13 @@
 #pragma once
 
+#include "cppl/source/location.hpp"
+
 #include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
 #include <variant>
 #include <vector>
-
-#include "cppl/source/location.hpp"
 
 namespace cppl::clangbridge {
 
@@ -26,7 +26,7 @@ enum class TypeKind : std::uint8_t {
 
 struct Type {
     TypeKind kind = TypeKind::Unsupported;
-    std::uint16_t width = 0;  // value bits, for Int
+    std::uint16_t width = 0; // value bits, for Int
     bool is_signed = true;
     std::string spelling;
 
@@ -68,8 +68,12 @@ struct Binary {
     std::vector<Expr> operands;
 };
 
-struct Negation { std::vector<Expr> operands; };
-struct Conditional { std::vector<Expr> operands; }; // condition, true return, false return
+struct Negation {
+    std::vector<Expr> operands;
+};
+struct Conditional {
+    std::vector<Expr> operands;
+}; // condition, true return, false return
 
 // The logical version of a local a declaration or an assignment establishes.
 // `operands` are the value the version denotes and the rest of the body under
@@ -79,7 +83,7 @@ struct Conditional { std::vector<Expr> operands; }; // condition, true return, f
 struct LocalVersion {
     std::uint32_t version = 0;
     std::string name;
-    std::vector<Expr> operands;  // value, body
+    std::vector<Expr> operands; // value, body
 };
 
 // A read of the version of a local that is current at this point.
@@ -97,8 +101,7 @@ struct Unsupported {
 struct Expr {
     Type type;
     source::SourceLocation location;
-    std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, LocalVersion,
-                 LocalRef, Unsupported>
+    std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, LocalVersion, LocalRef, Unsupported>
         node;
 };
 
@@ -149,4 +152,4 @@ struct TranslationUnit {
     [[nodiscard]] const Function* find_at_offset(std::size_t offset) const;
 };
 
-}  // namespace cppl::clangbridge
+} // namespace cppl::clangbridge

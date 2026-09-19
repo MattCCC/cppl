@@ -1,9 +1,9 @@
 // Reproducible structural fuzzing of all nine proof constructors, with false
 // closed goals as the rejection oracle. No frontend or automation is involved.
-#include <cstdint>
-
 #include "cppl/kernel/check.hpp"
 #include "cppl/testing/test.hpp"
+
+#include <cstdint>
 
 namespace {
 namespace k = cppl::kernel;
@@ -18,47 +18,60 @@ struct Random {
         return static_cast<std::uint32_t>(state % n);
     }
 };
-k::Term literal(unsigned n) { return k::Term::literal(type.integer_type(), n); }
+k::Term literal(unsigned n) {
+    return k::Term::literal(type.integer_type(), n);
+}
 k::Proposition eq(unsigned a, unsigned b) {
     return k::Proposition::equality(type, literal(a), literal(b));
 }
 k::Term term(Random& random) {
     switch (random.below(5)) {
-        case 0: return k::Term::variable(k::VarIndex{random.below(8)});
-        case 1: return k::Term::call(k::DefId{random.below(8)}, {});
-        case 2: return k::Term::literal(k::IntType{0, k::Signedness::Unsigned}, 0);
-        case 3: return k::Term::primitive(static_cast<k::PrimOp>(random.below(255)),
-                                          type.integer_type(), {});
-        default: return literal(random.below(8));
+        case 0:
+            return k::Term::variable(k::VarIndex{random.below(8)});
+        case 1:
+            return k::Term::call(k::DefId{random.below(8)}, {});
+        case 2:
+            return k::Term::literal(k::IntType{0, k::Signedness::Unsigned}, 0);
+        case 3:
+            return k::Term::primitive(static_cast<k::PrimOp>(random.below(255)), type.integer_type(), {});
+        default:
+            return literal(random.below(8));
     }
 }
 k::Proposition claim(Random& random) {
     auto goal = eq(random.below(4), random.below(4));
-    if (random.below(2)) goal = k::Proposition::for_all(type, std::move(goal));
+    if (random.below(2))
+        goal = k::Proposition::for_all(type, std::move(goal));
     return goal;
 }
 k::ProofTerm proof(Random& random, unsigned depth) {
     const auto choice = random.below(depth == 0 ? 2 : 9);
-    if (choice == 0) return k::ProofTerm::reflexivity();
-    if (choice == 1) return k::ProofTerm::hypothesis(k::HypothesisIndex{random.below(8)});
-    if (choice == 2) return k::ProofTerm::forall_introduction(type, proof(random, depth - 1));
-    if (choice == 3) return k::ProofTerm::forall_elimination(claim(random),
-        proof(random, depth - 1), term(random));
-    if (choice == 4) return k::ProofTerm::implication_introduction(claim(random), proof(random, depth - 1));
-    if (choice == 5) return k::ProofTerm::implication_elimination(
-        k::Proposition::implication(claim(random), claim(random)),
-        proof(random, depth - 1), proof(random, depth - 1));
-    if (choice == 6) return k::ProofTerm::equality_elimination(type, term(random), term(random),
-        claim(random), proof(random, depth - 1), proof(random, depth - 1));
-    if (choice == 7) return k::ProofTerm::conditional_elimination(type,
-        k::Term::literal(boolean.integer_type(), random.below(3)), term(random), term(random),
-        claim(random), proof(random, depth - 1), proof(random, depth - 1));
+    if (choice == 0)
+        return k::ProofTerm::reflexivity();
+    if (choice == 1)
+        return k::ProofTerm::hypothesis(k::HypothesisIndex{random.below(8)});
+    if (choice == 2)
+        return k::ProofTerm::forall_introduction(type, proof(random, depth - 1));
+    if (choice == 3)
+        return k::ProofTerm::forall_elimination(claim(random), proof(random, depth - 1), term(random));
+    if (choice == 4)
+        return k::ProofTerm::implication_introduction(claim(random), proof(random, depth - 1));
+    if (choice == 5)
+        return k::ProofTerm::implication_elimination(k::Proposition::implication(claim(random), claim(random)),
+                                                     proof(random, depth - 1), proof(random, depth - 1));
+    if (choice == 6)
+        return k::ProofTerm::equality_elimination(type, term(random), term(random), claim(random),
+                                                  proof(random, depth - 1), proof(random, depth - 1));
+    if (choice == 7)
+        return k::ProofTerm::conditional_elimination(type, k::Term::literal(boolean.integer_type(), random.below(3)),
+                                                     term(random), term(random), claim(random),
+                                                     proof(random, depth - 1), proof(random, depth - 1));
     std::vector<k::ArithmeticFact> facts;
     facts.push_back(k::ArithmeticFact{claim(random), k::Box<k::ProofTerm>{proof(random, depth - 1)}});
-    return k::ProofTerm::linear_arithmetic(std::move(facts),
-        k::ArithmeticCertificate{k::FarkasSum{{{random.below(16), random.below(4)}}}});
+    return k::ProofTerm::linear_arithmetic(
+        std::move(facts), k::ArithmeticCertificate{k::FarkasSum{{{random.below(16), random.below(4)}}}});
 }
-}  // namespace
+} // namespace
 
 CPPL_TEST(malformed_proof_trees_cannot_establish_false_closed_goals) {
     Random random;

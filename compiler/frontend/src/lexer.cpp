@@ -10,10 +10,9 @@ namespace {
 
 // Longest match wins, so longer punctuators are listed first.
 constexpr auto kPunctuators = std::to_array<std::string_view>(
-    {"<<=", ">>=", "->*", "...", "<=>", "::", "->", "++", "--", "<<", ">>", ".*", "<=",
-     ">=",  "==",  "!=",  "&&",  "||",  "+=", "-=", "*=", "/=", "%=", "^=", "&=", "|=",
-     "##",  "{",   "}",   "[",   "]",   "(",  ")",  ";",  ":",  "?",  ".",  "+",  "-",
-     "*",   "/",   "%",   "^",   "&",   "|",  "~",  "!",  "=",  "<",  ">"});
+    {"<<=", ">>=", "->*", "...", "<=>", "::", "->", "++", "--", "<<", ">>", ".*", "<=", ">=", "==", "!=", "&&",
+     "||",  "+=",  "-=",  "*=",  "/=",  "%=", "^=", "&=", "|=", "##", "{",  "}",  "[",  "]",  "(",  ")",  ";",
+     ":",   "?",   ".",   "+",   "-",   "*",  "/",  "%",  "^",  "&",  "|",  "~",  "!",  "=",  "<",  ">"});
 
 bool is_identifier_start(unsigned char character) {
     return std::isalpha(character) != 0 || character == '_' || character >= 0x80;
@@ -24,8 +23,7 @@ bool is_identifier_continue(unsigned char character) {
 }
 
 bool is_horizontal_space(char character) {
-    return character == ' ' || character == '\t' || character == '\r' || character == '\f' ||
-           character == '\v';
+    return character == ' ' || character == '\t' || character == '\r' || character == '\f' || character == '\v';
 }
 
 struct LiteralPrefix {
@@ -64,7 +62,7 @@ LiteralPrefix match_literal_prefix(std::string_view text, std::size_t offset) {
 }
 
 class Lexer {
-public:
+  public:
     Lexer(std::string_view text, std::string_view initial_file) : text_(text) {
         files_.emplace_back(initial_file);
     }
@@ -103,7 +101,7 @@ public:
         return TokenStream(text_, std::move(tokens_), std::move(files_));
     }
 
-private:
+  private:
     [[nodiscard]] std::uint32_t column() const {
         return static_cast<std::uint32_t>(offset_ - line_start_ + 1);
     }
@@ -132,8 +130,7 @@ private:
                     advance_line();
                     continue;
                 }
-                if (text_[offset_] == '*' && offset_ + 1 < text_.size() &&
-                    text_[offset_ + 1] == '/') {
+                if (text_[offset_] == '*' && offset_ + 1 < text_.size() && text_[offset_ + 1] == '/') {
                     offset_ += 2;
                     return true;
                 }
@@ -204,7 +201,7 @@ private:
         const bool is_marker = has_line;
         offset_ = cursor;
         if (offset_ < text_.size()) {
-            ++offset_;  // the newline
+            ++offset_; // the newline
         }
         line_start_ = offset_;
         at_line_start_ = true;
@@ -248,24 +245,21 @@ private:
         const LiteralPrefix literal = match_literal_prefix(text_, offset_);
         if (literal.valid) {
             consume_literal(literal);
-            push(literal.character ? TokenKind::CharLiteral : TokenKind::StringLiteral, start,
-                 start_column);
+            push(literal.character ? TokenKind::CharLiteral : TokenKind::StringLiteral, start, start_column);
             return;
         }
 
         const auto character = static_cast<unsigned char>(text_[offset_]);
         if (is_identifier_start(character)) {
-            while (offset_ < text_.size() &&
-                   is_identifier_continue(static_cast<unsigned char>(text_[offset_]))) {
+            while (offset_ < text_.size() && is_identifier_continue(static_cast<unsigned char>(text_[offset_]))) {
                 ++offset_;
             }
             push(TokenKind::Identifier, start, start_column);
             return;
         }
 
-        if (std::isdigit(character) != 0 ||
-            (character == '.' && offset_ + 1 < text_.size() &&
-             std::isdigit(static_cast<unsigned char>(text_[offset_ + 1])) != 0)) {
+        if (std::isdigit(character) != 0 || (character == '.' && offset_ + 1 < text_.size() &&
+                                             std::isdigit(static_cast<unsigned char>(text_[offset_ + 1])) != 0)) {
             consume_number();
             push(TokenKind::Number, start, start_column);
             return;
@@ -286,13 +280,11 @@ private:
     void consume_number() {
         while (offset_ < text_.size()) {
             const char character = text_[offset_];
-            if (std::isalnum(static_cast<unsigned char>(character)) != 0 || character == '_' ||
-                character == '.' || character == '\'') {
-                const bool exponent = character == 'e' || character == 'E' || character == 'p' ||
-                                      character == 'P';
+            if (std::isalnum(static_cast<unsigned char>(character)) != 0 || character == '_' || character == '.' ||
+                character == '\'') {
+                const bool exponent = character == 'e' || character == 'E' || character == 'p' || character == 'P';
                 ++offset_;
-                if (exponent && offset_ < text_.size() &&
-                    (text_[offset_] == '+' || text_[offset_] == '-')) {
+                if (exponent && offset_ < text_.size() && (text_[offset_] == '+' || text_[offset_] == '-')) {
                     ++offset_;
                 }
                 continue;
@@ -311,7 +303,7 @@ private:
                 ++offset_;
             }
             if (offset_ < text_.size()) {
-                ++offset_;  // '('
+                ++offset_; // '('
             }
             const std::string terminator = ")" + delimiter + "\"";
             while (offset_ < text_.size()) {
@@ -340,7 +332,7 @@ private:
                 return;
             }
             if (character == '\n') {
-                return;  // an unterminated literal; Clang reports it
+                return; // an unterminated literal; Clang reports it
             }
             ++offset_;
         }
@@ -356,7 +348,7 @@ private:
     bool at_line_start_ = true;
 };
 
-}  // namespace
+} // namespace
 
 source::SourceLocation TokenStream::location_of(const Token& token) const {
     source::SourceLocation location;
@@ -372,4 +364,4 @@ TokenStream lex(std::string_view text, std::string_view initial_file) {
     return Lexer(text, initial_file).run();
 }
 
-}  // namespace cppl::frontend
+} // namespace cppl::frontend

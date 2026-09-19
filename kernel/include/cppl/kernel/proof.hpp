@@ -1,15 +1,15 @@
 #pragma once
 
+#include "cppl/kernel/box.hpp"
+#include "cppl/kernel/proposition.hpp"
+#include "cppl/kernel/term.hpp"
+#include "cppl/kernel/types.hpp"
+
 #include <cstdint>
 #include <string>
 #include <utility>
 #include <variant>
 #include <vector>
-
-#include "cppl/kernel/box.hpp"
-#include "cppl/kernel/proposition.hpp"
-#include "cppl/kernel/term.hpp"
-#include "cppl/kernel/types.hpp"
 
 namespace cppl::kernel {
 
@@ -75,8 +75,7 @@ struct ImplicationIntroduction {
     Box<Proposition> premise;
     Box<ProofTerm> body;
 
-    friend bool operator==(const ImplicationIntroduction&, const ImplicationIntroduction&) =
-        default;
+    friend bool operator==(const ImplicationIntroduction&, const ImplicationIntroduction&) = default;
 };
 
 // Elimination of an implication: evidence for `premise -> conclusion` together
@@ -204,55 +203,45 @@ struct ConditionalElimination {
 };
 
 struct ProofTerm {
-    std::variant<Reflexivity,
-                 ForallIntroduction,
-                 ForallElimination,
-                 Hypothesis,
-                 ImplicationIntroduction,
-                 ImplicationElimination,
-                 EqualityElimination,
-                 ConditionalElimination,
-                 LinearArithmetic>
+    std::variant<Reflexivity, ForallIntroduction, ForallElimination, Hypothesis, ImplicationIntroduction,
+                 ImplicationElimination, EqualityElimination, ConditionalElimination, LinearArithmetic>
         node;
 
-    static ProofTerm reflexivity() { return ProofTerm{Reflexivity{}}; }
+    static ProofTerm reflexivity() {
+        return ProofTerm{Reflexivity{}};
+    }
 
-    static ProofTerm linear_arithmetic(std::vector<ArithmeticFact> facts,
-                                       ArithmeticCertificate certificate) {
+    static ProofTerm linear_arithmetic(std::vector<ArithmeticFact> facts, ArithmeticCertificate certificate) {
         return ProofTerm{LinearArithmetic{std::move(facts), std::move(certificate)}};
     }
 
-    static ProofTerm conditional_elimination(Type type, Term condition, Term when_true,
-        Term when_false, Proposition motive, ProofTerm true_case, ProofTerm false_case) {
-        return ProofTerm{ConditionalElimination{std::move(type), std::move(condition),
-            std::move(when_true), std::move(when_false), Box<Proposition>{std::move(motive)},
-            Box<ProofTerm>{std::move(true_case)}, Box<ProofTerm>{std::move(false_case)}}};
+    static ProofTerm conditional_elimination(Type type, Term condition, Term when_true, Term when_false,
+                                             Proposition motive, ProofTerm true_case, ProofTerm false_case) {
+        return ProofTerm{ConditionalElimination{std::move(type), std::move(condition), std::move(when_true),
+                                                std::move(when_false), Box<Proposition>{std::move(motive)},
+                                                Box<ProofTerm>{std::move(true_case)},
+                                                Box<ProofTerm>{std::move(false_case)}}};
     }
 
-    static ProofTerm hypothesis(HypothesisIndex index) { return ProofTerm{Hypothesis{index}}; }
+    static ProofTerm hypothesis(HypothesisIndex index) {
+        return ProofTerm{Hypothesis{index}};
+    }
 
     static ProofTerm implication_introduction(Proposition premise, ProofTerm body) {
-        return ProofTerm{ImplicationIntroduction{Box<Proposition>{std::move(premise)},
-                                                 Box<ProofTerm>{std::move(body)}}};
+        return ProofTerm{
+            ImplicationIntroduction{Box<Proposition>{std::move(premise)}, Box<ProofTerm>{std::move(body)}}};
     }
 
-    static ProofTerm implication_elimination(Proposition implication,
-                                             ProofTerm evidence,
-                                             ProofTerm premise) {
+    static ProofTerm implication_elimination(Proposition implication, ProofTerm evidence, ProofTerm premise) {
         return ProofTerm{ImplicationElimination{Box<Proposition>{std::move(implication)},
                                                 Box<ProofTerm>{std::move(evidence)},
                                                 Box<ProofTerm>{std::move(premise)}}};
     }
 
-    static ProofTerm equality_elimination(Type type,
-                                          Term lhs,
-                                          Term rhs,
-                                          Proposition motive,
-                                          ProofTerm equality,
+    static ProofTerm equality_elimination(Type type, Term lhs, Term rhs, Proposition motive, ProofTerm equality,
                                           ProofTerm evidence) {
         return ProofTerm{EqualityElimination{std::move(type), std::move(lhs), std::move(rhs),
-                                             Box<Proposition>{std::move(motive)},
-                                             Box<ProofTerm>{std::move(equality)},
+                                             Box<Proposition>{std::move(motive)}, Box<ProofTerm>{std::move(equality)},
                                              Box<ProofTerm>{std::move(evidence)}}};
     }
 
@@ -261,8 +250,7 @@ struct ProofTerm {
     }
 
     static ProofTerm forall_elimination(Proposition quantified, ProofTerm evidence, Term argument) {
-        return ProofTerm{ForallElimination{Box<Proposition>{std::move(quantified)},
-                                           Box<ProofTerm>{std::move(evidence)},
+        return ProofTerm{ForallElimination{Box<Proposition>{std::move(quantified)}, Box<ProofTerm>{std::move(evidence)},
                                            std::move(argument)}};
     }
 
@@ -271,4 +259,4 @@ struct ProofTerm {
 
 std::string describe(const ProofTerm& proof);
 
-}  // namespace cppl::kernel
+} // namespace cppl::kernel

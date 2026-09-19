@@ -1,13 +1,13 @@
 #pragma once
 
+#include "cppl/diagnostics/diagnostic.hpp"
+#include "cppl/frontend/token.hpp"
+#include "cppl/source/location.hpp"
+
 #include <cstdint>
 #include <string>
 #include <string_view>
 #include <vector>
-
-#include "cppl/diagnostics/diagnostic.hpp"
-#include "cppl/frontend/token.hpp"
-#include "cppl/source/location.hpp"
 
 namespace cppl::frontend {
 
@@ -27,9 +27,9 @@ struct Clause {
 // law name(parameters) ensures(proposition);   (SPEC.md 10.1, GRAMMAR.md 3)
 struct LawDeclaration {
     std::string name;
-    source::SourceRange range;  // the whole declaration, including its ';'
+    source::SourceRange range; // the whole declaration, including its ';'
     source::SourceLocation keyword_location;
-    std::uint32_t end_line = 0;  // presumed line of the terminating ';'
+    std::uint32_t end_line = 0; // presumed line of the terminating ';'
     source::ByteSpan parameters;
     std::vector<Clause> clauses;
 
@@ -76,9 +76,9 @@ struct ProofStatement {
 // proof name(parameters) proves(proposition) { statements }   (GRAMMAR.md 4)
 struct ProofDeclaration {
     std::string name;
-    source::SourceRange range;  // the whole declaration, including its body
+    source::SourceRange range; // the whole declaration, including its body
     source::SourceLocation keyword_location;
-    std::uint32_t end_line = 0;  // presumed line of the closing '}'
+    std::uint32_t end_line = 0; // presumed line of the closing '}'
     source::ByteSpan parameters;
     source::ByteSpan proposition;
     source::SourceLocation proposition_location;
@@ -90,11 +90,11 @@ struct ProofDeclaration {
 // The contract is carried here as spans. What it means is decided once Clang
 // has resolved it, like every other specification expression.
 struct VerifiedFunction {
-    source::ByteSpan keyword;  // the `verified` specifier itself
+    source::ByteSpan keyword; // the `verified` specifier itself
     source::SourceLocation keyword_location;
     std::string function_name;
     source::SourceLocation function_location;
-    std::size_t function_offset = 0;  // physical byte offset in the preprocessed input
+    std::size_t function_offset = 0; // physical byte offset in the preprocessed input
 
     source::ByteSpan return_type;
     source::ByteSpan parameters;
@@ -131,8 +131,7 @@ struct Syntax {
     std::vector<VerifiedFunction> verified_functions;
 
     [[nodiscard]] bool empty() const noexcept {
-        return laws.empty() && proofs.empty() && pure_markers.empty() &&
-               verified_functions.empty();
+        return laws.empty() && proofs.empty() && pure_markers.empty() && verified_functions.empty();
     }
 };
 
@@ -144,4 +143,4 @@ struct Syntax {
 // untouched.
 [[nodiscard]] Syntax recognize(const TokenStream& tokens, diagnostics::Engine& diagnostics);
 
-}  // namespace cppl::frontend
+} // namespace cppl::frontend

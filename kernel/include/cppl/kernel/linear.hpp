@@ -1,5 +1,10 @@
 #pragma once
 
+#include "cppl/kernel/arithmetic.hpp"
+#include "cppl/kernel/context.hpp"
+#include "cppl/kernel/proof.hpp"
+#include "cppl/kernel/proposition.hpp"
+
 #include <array>
 #include <cstdint>
 #include <expected>
@@ -7,11 +12,6 @@
 #include <string>
 #include <utility>
 #include <vector>
-
-#include "cppl/kernel/arithmetic.hpp"
-#include "cppl/kernel/context.hpp"
-#include "cppl/kernel/proof.hpp"
-#include "cppl/kernel/proposition.hpp"
 
 namespace cppl::kernel {
 
@@ -62,15 +62,14 @@ struct ArithmeticSystem {
 // two's-complement arithmetic, so nothing true of the machine is lost and
 // nothing false is added. A comparison evaluating to one or zero becomes the
 // order it states or its negation; any other equality is equality of values.
-[[nodiscard]] std::expected<ArithmeticSystem, CoreError> arithmetic_system(
-    const Context& context,
-    std::span<const Proposition> facts,
-    const Proposition& goal,
-    const CoreLimits& limits);
+[[nodiscard]] std::expected<ArithmeticSystem, CoreError> arithmetic_system(const Context& context,
+                                                                           std::span<const Proposition> facts,
+                                                                           const Proposition& goal,
+                                                                           const CoreLimits& limits);
 
 // Whether `certificate` shows that `system` has no integer solution.
 [[nodiscard]] std::expected<void, std::string> refutes(const ArithmeticSystem& system,
                                                        const ArithmeticCertificate& certificate,
                                                        const CoreLimits& limits);
 
-}  // namespace cppl::kernel
+} // namespace cppl::kernel

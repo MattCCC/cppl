@@ -1,9 +1,9 @@
 #include "cppl/automation/evidence.hpp"
 
-#include <variant>
-
 #include "arithmetic.hpp"
 #include "composition.hpp"
+
+#include <variant>
 
 namespace cppl::automation {
 
@@ -34,8 +34,7 @@ std::optional<Evidence> propose(const kernel::Context& context, const kernel::Pr
     return Evidence{std::move(rewritten), "premise-and-definitional-equality"};
 }
 
-std::vector<obligations::ObligationResult> verify(const obligations::Program& program,
-                                                  diagnostics::Engine& engine) {
+std::vector<obligations::ObligationResult> verify(const obligations::Program& program, diagnostics::Engine& engine) {
     std::vector<obligations::ObligationResult> results;
     results.reserve(program.obligations.size());
     Composition composition(program);
@@ -52,9 +51,7 @@ std::vector<obligations::ObligationResult> verify(const obligations::Program& pr
         // looking for evidence the author did not ask for.
         if (written == nullptr && program.proof_refused(obligation)) {
             results.push_back(obligations::ObligationResult{
-                obligation,
-                obligations::Verdict::unresolved("the proof written for this law was refused"),
-                {}});
+                obligation, obligations::Verdict::unresolved("the proof written for this law was refused"), {}});
             continue;
         }
 
@@ -78,8 +75,8 @@ std::vector<obligations::ObligationResult> verify(const obligations::Program& pr
 
         if (evidence.has_value()) {
             strategy = evidence->strategy;
-            const kernel::CheckResult checked = kernel::check(program.context, obligation.goal,
-                                                              evidence->proof, kernel::CoreLimits{});
+            const kernel::CheckResult checked =
+                kernel::check(program.context, obligation.goal, evidence->proof, kernel::CoreLimits{});
             if (checked.has_value()) {
                 verdict = obligations::Verdict::proven(*checked, obligation);
                 if (composition.owns(index)) {
@@ -94,47 +91,40 @@ std::vector<obligations::ObligationResult> verify(const obligations::Program& pr
         }
 
         if (!verdict.is_proven()) {
-            const source::SourceLocation& location =
-                written != nullptr ? written->range.begin : obligation.range.begin;
+            const source::SourceLocation& location = written != nullptr ? written->range.begin : obligation.range.begin;
 
             diagnostics::Diagnostic diagnostic;
             diagnostic.severity = diagnostics::Severity::Error;
-            diagnostic.category = evidence.has_value() ? diagnostics::Category::KernelRejection
-                                                       : diagnostics::Category::ProofFailure;
+            diagnostic.category =
+                evidence.has_value() ? diagnostics::Category::KernelRejection : diagnostics::Category::ProofFailure;
             // A contract is not a law an author can write a proof for: it is
             // discharged from the function's own body or not at all.
             if (written != nullptr) {
-                diagnostic.message = "proof '" + written->name + "' does not establish law '" +
-                                     obligation.subject + "'";
-            } else if (obligation.origin == obligations::Origin::FunctionContract) {
                 diagnostic.message =
-                    "verified function '" + obligation.subject + "' does not satisfy its contract";
+                    "proof '" + written->name + "' does not establish law '" + obligation.subject + "'";
+            } else if (obligation.origin == obligations::Origin::FunctionContract) {
+                diagnostic.message = "verified function '" + obligation.subject + "' does not satisfy its contract";
             } else if (obligation.origin == obligations::Origin::CallPrecondition) {
-                diagnostic.message = "call-site precondition for '" + obligation.subject +
-                                     "' is not proven";
+                diagnostic.message = "call-site precondition for '" + obligation.subject + "' is not proven";
             } else if (obligation.origin == obligations::Origin::ReturnPath) {
                 diagnostic.message = "return path '" + obligation.subject + "' does not satisfy its contract";
             } else {
                 diagnostic.message = "law '" + obligation.subject + "' is not proven";
             }
             diagnostic.location = location;
+            diagnostic.notes.push_back(diagnostics::Note{"goal: " + kernel::describe(obligation.goal), location});
             diagnostic.notes.push_back(
-                diagnostics::Note{"goal: " + kernel::describe(obligation.goal), location});
-            diagnostic.notes.push_back(
-                diagnostics::Note{"the kernel did not accept the evidence: " + verdict.reason(),
-                                  location});
-            diagnostic.notes.push_back(diagnostics::Note{
-                "obligation " + obligation.id.text() + ", status " +
-                    obligations::describe(verdict.status()),
-                location});
+                diagnostics::Note{"the kernel did not accept the evidence: " + verdict.reason(), location});
+            diagnostic.notes.push_back(diagnostics::Note{"obligation " + obligation.id.text() + ", status " +
+                                                             obligations::describe(verdict.status()),
+                                                         location});
             engine.report(std::move(diagnostic));
         }
 
-        results.push_back(obligations::ObligationResult{obligation, std::move(verdict),
-                                                        std::move(strategy)});
+        results.push_back(obligations::ObligationResult{obligation, std::move(verdict), std::move(strategy)});
     }
 
     return results;
 }
 
-}  // namespace cppl::automation
+} // namespace cppl::automation

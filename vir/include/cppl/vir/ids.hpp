@@ -41,10 +41,12 @@ struct ExprId {
 struct SymbolId {
     std::string usr;
 
-    [[nodiscard]] bool is_valid() const noexcept { return !usr.empty(); }
+    [[nodiscard]] bool is_valid() const noexcept {
+        return !usr.empty();
+    }
 
     friend auto operator<=>(const SymbolId&, const SymbolId&) = default;
     friend bool operator==(const SymbolId&, const SymbolId&) = default;
 };
 
-}  // namespace cppl::vir
+} // namespace cppl::vir

@@ -43,7 +43,7 @@ Expr call(SymbolId callee, std::string name, Expr argument, std::uint32_t id) {
     return expr;
 }
 
-}  // namespace
+} // namespace
 
 CPPL_TEST(vir_nodes_carry_their_source_position) {
     const Expr expr = parameter(0, "x", 1);
@@ -86,9 +86,9 @@ CPPL_TEST(operators_are_typed_variants_not_text) {
     Expr equality;
     equality.id = ExprId{4};
     equality.type = Type::boolean();
-    equality.node = Binary{BinaryOp::Equal,
-                           {call(SymbolId{"c:@F@identity#I#"}, "identity", parameter(0, "x", 1), 2),
-                            parameter(0, "x", 3)}};
+    equality.node =
+        Binary{BinaryOp::Equal,
+               {call(SymbolId{"c:@F@identity#I#"}, "identity", parameter(0, "x", 1), 2), parameter(0, "x", 3)}};
 
     CPPL_CHECK(equality.type.is_boolean());
     CPPL_CHECK(std::get<Binary>(equality.node).op == BinaryOp::Equal);

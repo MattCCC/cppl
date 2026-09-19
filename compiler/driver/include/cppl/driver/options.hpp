@@ -9,7 +9,7 @@ namespace cppl::driver {
 
 struct Input {
     std::string path;
-    std::size_t argument_index = 0;  // position in Options::arguments
+    std::size_t argument_index = 0; // position in Options::arguments
     bool is_header = false;
 };
 
@@ -26,9 +26,9 @@ struct Options {
     // Where to write the runtime program for inspection. Observability only:
     // it changes nothing about what is compiled.
     std::string emit_projection;
-    bool passthrough = false;         // the command does not compile anything
-    bool explicit_language = false;   // -x was given
-    std::string standard;             // -std=..., for reporting
+    bool passthrough = false;       // the command does not compile anything
+    bool explicit_language = false; // -x was given
+    std::string standard;           // -std=..., for reporting
     std::vector<std::string> errors;
 };
 
@@ -37,4 +37,4 @@ struct Options {
 [[nodiscard]] bool is_source_path(std::string_view path);
 [[nodiscard]] bool is_header_path(std::string_view path);
 
-}  // namespace cppl::driver
+} // namespace cppl::driver

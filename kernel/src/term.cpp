@@ -9,16 +9,26 @@ std::string describe(PrimOp op) {
     switch (op) {
         case PrimOp::AddWrap:
             return "add_wrap";
-        case PrimOp::Equal: return "eq";
-        case PrimOp::NotEqual: return "ne";
-        case PrimOp::Less: return "lt";
-        case PrimOp::LessEqual: return "le";
-        case PrimOp::Greater: return "gt";
-        case PrimOp::GreaterEqual: return "ge";
-        case PrimOp::Not: return "not";
-        case PrimOp::Select: return "select";
-        case PrimOp::SubWrap: return "sub_wrap";
-        case PrimOp::MulWrap: return "mul_wrap";
+        case PrimOp::Equal:
+            return "eq";
+        case PrimOp::NotEqual:
+            return "ne";
+        case PrimOp::Less:
+            return "lt";
+        case PrimOp::LessEqual:
+            return "le";
+        case PrimOp::Greater:
+            return "gt";
+        case PrimOp::GreaterEqual:
+            return "ge";
+        case PrimOp::Not:
+            return "not";
+        case PrimOp::Select:
+            return "select";
+        case PrimOp::SubWrap:
+            return "sub_wrap";
+        case PrimOp::MulWrap:
+            return "mul_wrap";
     }
     return "<unknown-primitive>";
 }
@@ -34,8 +44,10 @@ bool is_comparison(PrimOp op) {
         case PrimOp::Less:
         case PrimOp::LessEqual:
         case PrimOp::Greater:
-        case PrimOp::GreaterEqual: return true;
-        default: return false;
+        case PrimOp::GreaterEqual:
+            return true;
+        default:
+            return false;
     }
 }
 
@@ -62,7 +74,7 @@ std::string describe_arguments(const std::vector<Term>& arguments) {
     return text;
 }
 
-}  // namespace
+} // namespace
 
 std::string describe(const Term& term) {
     return std::visit(
@@ -73,14 +85,12 @@ std::string describe(const Term& term) {
             } else if constexpr (std::is_same_v<Node, Literal>) {
                 return std::to_string(node.value) + ":" + describe(node.type);
             } else if constexpr (std::is_same_v<Node, Call>) {
-                return "def#" + std::to_string(node.callee.value) +
-                       describe_arguments(node.arguments);
+                return "def#" + std::to_string(node.callee.value) + describe_arguments(node.arguments);
             } else {
-                return describe(node.op) + ":" + describe(node.type) +
-                       describe_arguments(node.arguments);
+                return describe(node.op) + ":" + describe(node.type) + describe_arguments(node.arguments);
             }
         },
         term.node);
 }
 
-}  // namespace cppl::kernel
+} // namespace cppl::kernel

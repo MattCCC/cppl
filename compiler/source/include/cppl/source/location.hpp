@@ -11,7 +11,9 @@ struct ByteSpan {
     std::size_t offset = 0;
     std::size_t length = 0;
 
-    [[nodiscard]] std::size_t end() const noexcept { return offset + length; }
+    [[nodiscard]] std::size_t end() const noexcept {
+        return offset + length;
+    }
 
     friend bool operator==(const ByteSpan&, const ByteSpan&) = default;
 };
@@ -27,7 +29,9 @@ struct SourceLocation {
     std::uint32_t line = 0;
     std::uint32_t column = 0;
 
-    [[nodiscard]] bool is_valid() const noexcept { return !file.empty() && line != 0; }
+    [[nodiscard]] bool is_valid() const noexcept {
+        return !file.empty() && line != 0;
+    }
 
     friend bool operator==(const SourceLocation&, const SourceLocation&) = default;
 };
@@ -43,4 +47,4 @@ struct SourceRange {
 
 std::string describe(const SourceLocation& location);
 
-}  // namespace cppl::source
+} // namespace cppl::source

@@ -13,7 +13,6 @@ struct ProcessResult {
 
 // Runs a program with the given arguments, inheriting standard streams so that
 // Clang's diagnostics reach the user exactly as Clang wrote them.
-[[nodiscard]] ProcessResult run(const std::string& executable,
-                                const std::vector<std::string>& arguments);
+[[nodiscard]] ProcessResult run(const std::string& executable, const std::vector<std::string>& arguments);
 
-}  // namespace cppl::driver
+} // namespace cppl::driver

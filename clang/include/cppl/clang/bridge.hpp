@@ -1,11 +1,11 @@
 #pragma once
 
+#include "cppl/clang/ast.hpp"
+#include "cppl/source/location.hpp"
+
 #include <expected>
 #include <string>
 #include <vector>
-
-#include "cppl/clang/ast.hpp"
-#include "cppl/source/location.hpp"
 
 namespace cppl::clangbridge {
 
@@ -36,4 +36,4 @@ struct ParseRequest {
 // The libclang version backing this build, for trust reporting.
 [[nodiscard]] std::string clang_version();
 
-}  // namespace cppl::clangbridge
+} // namespace cppl::clangbridge

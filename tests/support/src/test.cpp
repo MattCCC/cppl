@@ -19,7 +19,7 @@ void fail(const char* file, int line, const std::string& message) {
     throw std::runtime_error(std::string(file) + ":" + std::to_string(line) + ": " + message);
 }
 
-}  // namespace cppl::testing
+} // namespace cppl::testing
 
 int main() {
     std::size_t failures = 0;
@@ -33,7 +33,6 @@ int main() {
         }
     }
 
-    std::cout << cppl::testing::registry().size() - failures << " passed, " << failures
-              << " failed\n";
+    std::cout << cppl::testing::registry().size() - failures << " passed, " << failures << " failed\n";
     return failures == 0 ? 0 : 1;
 }

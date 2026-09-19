@@ -67,4 +67,4 @@ std::string render(const Diagnostic& diagnostic) {
     return text;
 }
 
-}  // namespace cppl::diagnostics
+} // namespace cppl::diagnostics

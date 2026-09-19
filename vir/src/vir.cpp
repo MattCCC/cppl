@@ -18,15 +18,22 @@ std::string describe(BinaryOp op) {
     switch (op) {
         case BinaryOp::Add:
             return "+";
-        case BinaryOp::Sub: return "-";
-        case BinaryOp::Mul: return "*";
+        case BinaryOp::Sub:
+            return "-";
+        case BinaryOp::Mul:
+            return "*";
         case BinaryOp::Equal:
             return "==";
-        case BinaryOp::NotEqual: return "!=";
-        case BinaryOp::Less: return "<";
-        case BinaryOp::LessEqual: return "<=";
-        case BinaryOp::Greater: return ">";
-        case BinaryOp::GreaterEqual: return ">=";
+        case BinaryOp::NotEqual:
+            return "!=";
+        case BinaryOp::Less:
+            return "<";
+        case BinaryOp::LessEqual:
+            return "<=";
+        case BinaryOp::Greater:
+            return ">";
+        case BinaryOp::GreaterEqual:
+            return ">=";
     }
     return "<unknown-operator>";
 }
@@ -51,25 +58,24 @@ std::string describe(const Expr& expr) {
                 text += ")";
                 return text;
             } else if constexpr (std::is_same_v<Node, Negation>) {
-                return node.operands.size() == 1 ? "!(" + describe(node.operands[0]) + ")"
-                                                  : "<malformed-negation>";
+                return node.operands.size() == 1 ? "!(" + describe(node.operands[0]) + ")" : "<malformed-negation>";
             } else if constexpr (std::is_same_v<Node, Conditional>) {
-                return node.operands.size() == 3 ? "if(" + describe(node.operands[0]) + ", " +
-                    describe(node.operands[1]) + ", " + describe(node.operands[2]) + ")"
-                    : "<malformed-conditional>";
+                return node.operands.size() == 3
+                           ? "if(" + describe(node.operands[0]) + ", " + describe(node.operands[1]) + ", " +
+                                 describe(node.operands[2]) + ")"
+                           : "<malformed-conditional>";
             } else if constexpr (std::is_same_v<Node, LocalVersion>) {
-                return node.operands.size() == 2
-                    ? "let " + node.name + "#" + std::to_string(node.version) + " = " +
-                          describe(node.operands[0]) + " in " + describe(node.operands[1])
-                    : "<malformed-local>";
+                return node.operands.size() == 2 ? "let " + node.name + "#" + std::to_string(node.version) + " = " +
+                                                       describe(node.operands[0]) + " in " + describe(node.operands[1])
+                                                 : "<malformed-local>";
             } else if constexpr (std::is_same_v<Node, LocalRef>) {
                 return node.name + "#" + std::to_string(node.version);
             } else {
                 if (node.operands.size() != 2) {
                     return "<malformed-binary>";
                 }
-                return "(" + describe(node.operands[0]) + " " + describe(node.op) + " " +
-                       describe(node.operands[1]) + ")";
+                return "(" + describe(node.operands[0]) + " " + describe(node.op) + " " + describe(node.operands[1]) +
+                       ")";
             }
         },
         expr.node);
@@ -84,4 +90,4 @@ const Function* Module::find(const SymbolId& symbol) const {
     return nullptr;
 }
 
-}  // namespace cppl::vir
+} // namespace cppl::vir

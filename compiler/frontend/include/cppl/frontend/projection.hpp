@@ -1,12 +1,12 @@
 #pragma once
 
+#include "cppl/frontend/syntax.hpp"
+#include "cppl/frontend/token.hpp"
+
 #include <cstddef>
 #include <optional>
 #include <string>
 #include <vector>
-
-#include "cppl/frontend/syntax.hpp"
-#include "cppl/frontend/token.hpp"
 
 namespace cppl::frontend {
 
@@ -25,7 +25,7 @@ struct SpecificationFunction {
     // has none. It is generated rather than named after the Law, because only
     // the Law's conclusion is what a proof names.
     std::string premise_name;
-    std::size_t analysis_offset = 0;  // name token in the physical analysis buffer
+    std::size_t analysis_offset = 0; // name token in the physical analysis buffer
 };
 
 // The ordinary C++ function a proof declaration's `proves` clause is projected
@@ -53,7 +53,7 @@ struct ProofFunction {
 struct ContractFunctions {
     std::size_t function_index = 0;
     std::string postcondition_name;
-    std::string precondition_name;  // empty when the function states none
+    std::string precondition_name; // empty when the function states none
 };
 
 // One projector, two texts.
@@ -88,11 +88,9 @@ struct Projection {
 
 struct ProjectionOptions {
     std::string generated_prefix = "__cppl_";
-    std::string unit_key;  // distinguishes generated names between units
+    std::string unit_key; // distinguishes generated names between units
 };
 
-[[nodiscard]] Projection project(const TokenStream& stream,
-                                 const Syntax& syntax,
-                                 const ProjectionOptions& options);
+[[nodiscard]] Projection project(const TokenStream& stream, const Syntax& syntax, const ProjectionOptions& options);
 
-}  // namespace cppl::frontend
+} // namespace cppl::frontend

@@ -16,4 +16,4 @@ std::string describe(const SourceLocation& location) {
     return text;
 }
 
-}  // namespace cppl::source
+} // namespace cppl::source

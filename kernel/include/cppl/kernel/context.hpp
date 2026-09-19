@@ -1,13 +1,13 @@
 #pragma once
 
+#include "cppl/kernel/term.hpp"
+#include "cppl/kernel/types.hpp"
+
 #include <cstdint>
 #include <expected>
 #include <span>
 #include <string>
 #include <vector>
-
-#include "cppl/kernel/term.hpp"
-#include "cppl/kernel/types.hpp"
 
 namespace cppl::kernel {
 
@@ -53,20 +53,22 @@ struct Definition {
 // core admits no recursion, and divergence therefore cannot manufacture
 // evidence (SPEC.md 22, AGENTS.md 9).
 class Context {
-public:
+  public:
     // Admits a definition after checking it is well formed and well typed.
     // A malformed definition is rejected; nothing is added.
     [[nodiscard]] std::expected<void, CoreError> define(Definition definition);
 
     [[nodiscard]] const Definition* lookup(DefId id) const noexcept;
 
-    [[nodiscard]] std::size_t definition_count() const noexcept { return definitions_.size(); }
+    [[nodiscard]] std::size_t definition_count() const noexcept {
+        return definitions_.size();
+    }
 
     [[nodiscard]] const std::vector<Definition>& definitions() const noexcept {
         return definitions_;
     }
 
-private:
+  private:
     std::vector<Definition> definitions_;
 };
 
@@ -86,17 +88,14 @@ struct CoreLimits {
 
 // The type of `term` under `locals`, which lists enclosing binders
 // outermost-first: Var{0} refers to locals.back().
-[[nodiscard]] std::expected<Type, CoreError> type_of(const Context& context,
-                                                     std::span<const Type> locals,
-                                                     const Term& term,
-                                                     const CoreLimits& limits = {});
+[[nodiscard]] std::expected<Type, CoreError> type_of(const Context& context, std::span<const Type> locals,
+                                                     const Term& term, const CoreLimits& limits = {});
 
 // Reduction to normal form: definitions are unfolded and primitive operations
 // on literals are folded. Free variables are opaque. Deterministic.
-[[nodiscard]] std::expected<Term, CoreError> normalize(const Context& context,
-                                                       const Term& term,
+[[nodiscard]] std::expected<Term, CoreError> normalize(const Context& context, const Term& term,
                                                        const CoreLimits& limits = {});
 
 std::string describe(const Context& context, const Term& term);
 
-}  // namespace cppl::kernel
+} // namespace cppl::kernel

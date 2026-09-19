@@ -25,7 +25,7 @@ struct Digest {
 
 // SHA-256. Deterministic on every platform and independent of process state.
 class Hasher {
-public:
+  public:
     Hasher();
 
     void update(const void* data, std::size_t length);
@@ -39,7 +39,7 @@ public:
 
     [[nodiscard]] Digest finish();
 
-private:
+  private:
     void compress(const std::uint8_t block[64]);
 
     std::array<std::uint32_t, 8> state_{};
@@ -51,4 +51,4 @@ private:
 
 Digest hash_bytes(std::string_view text);
 
-}  // namespace cppl::source
+} // namespace cppl::source

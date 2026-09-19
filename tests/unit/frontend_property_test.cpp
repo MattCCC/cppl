@@ -1,13 +1,13 @@
 // Deterministic malformed-source campaigns through the real lexer, recognizer,
 // and projector. Successful recognition is not a verification result.
+#include "cppl/erasure/erase.hpp"
+#include "cppl/frontend/projection.hpp"
+#include "cppl/testing/test.hpp"
+
 #include <algorithm>
 #include <cstdint>
 #include <string>
 #include <vector>
-
-#include "cppl/erasure/erase.hpp"
-#include "cppl/frontend/projection.hpp"
-#include "cppl/testing/test.hpp"
 
 namespace {
 void exercise(const std::string& input) {
@@ -23,15 +23,18 @@ void exercise(const std::string& input) {
     CPPL_CHECK(stream.tokens().back().kind == cppl::frontend::TokenKind::EndOfFile);
     CPPL_CHECK_EQ(end, input.size());
     const auto syntax = cppl::frontend::recognize(stream, engine);
-    if (engine.has_errors()) return;  // the driver likewise stops on syntax errors
+    if (engine.has_errors())
+        return; // the driver likewise stops on syntax errors
     const auto projection = cppl::frontend::project(stream, syntax, {});
     const auto repeat = cppl::frontend::project(stream, syntax, {});
     CPPL_CHECK_EQ(projection.analysis, repeat.analysis);
     CPPL_CHECK_EQ(projection.runtime, repeat.runtime);
     CPPL_CHECK_EQ(projection.runtime.size(), input.size());
     for (std::size_t i = 0; i < input.size(); ++i) {
-        if (input[i] == '\n') CPPL_CHECK_EQ(projection.runtime[i], '\n');
-        if (input[i] != projection.runtime[i]) CPPL_CHECK_EQ(projection.runtime[i], ' ');
+        if (input[i] == '\n')
+            CPPL_CHECK_EQ(projection.runtime[i], '\n');
+        if (input[i] != projection.runtime[i])
+            CPPL_CHECK_EQ(projection.runtime[i], ' ');
     }
     const auto erased = cppl::erasure::erase(stream, syntax, projection, engine);
     CPPL_CHECK(erased.report.only_deletions);
@@ -57,7 +60,7 @@ const std::vector<std::string> seeds{
     "# 19 \"header.hpp\"\n  law l()\n ensures(0u == 0u);",
     "#line 4294967295 \"same.cpp\"\r\nlaw l() ensures(0u == 0u);\r\n",
 };
-}  // namespace
+} // namespace
 
 CPPL_TEST(every_seed_prefix_and_single_byte_deletion_is_safe) {
     for (const auto& seed : seeds) {
@@ -95,10 +98,10 @@ CPPL_TEST(long_tokens_and_deep_or_incomplete_source_do_not_crash) {
     const std::string name(32768, 'x');
     exercise("law " + name + "() ensures(0u == 0u);");
     exercise("proof " + name + "() proves(l()) { refl; }");
-    exercise("law l() ensures(" + std::string(2048, '(') + "0u == 0u" +
-             std::string(2048, ')') + ");");
+    exercise("law l() ensures(" + std::string(2048, '(') + "0u == 0u" + std::string(2048, ')') + ");");
     exercise("proof p() proves(l()) { exact q(" + std::string(2048, '('));
     std::string repeated;
-    for (unsigned i = 0; i < 300; ++i) repeated += "#line 1 \"same.cpp\"\nlaw l() ensures(0u == 0u);\n";
+    for (unsigned i = 0; i < 300; ++i)
+        repeated += "#line 1 \"same.cpp\"\nlaw l() ensures(0u == 0u);\n";
     exercise(repeated);
 }

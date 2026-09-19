@@ -1,12 +1,12 @@
 #pragma once
 
+#include "cppl/kernel/types.hpp"
+
 #include <cstddef>
 #include <cstdint>
 #include <string>
 #include <variant>
 #include <vector>
-
-#include "cppl/kernel/types.hpp"
 
 namespace cppl::kernel {
 
@@ -31,7 +31,7 @@ struct DefId {
 // primitive is the elaborator's responsibility, including any side conditions
 // that C++ requires for defined behavior (SPEC.md 29, 31).
 enum class PrimOp : std::uint8_t {
-    AddWrap,  // two's-complement wrapping addition
+    AddWrap, // two's-complement wrapping addition
     Equal,
     NotEqual,
     Less,
@@ -40,8 +40,8 @@ enum class PrimOp : std::uint8_t {
     GreaterEqual,
     Not,
     Select,
-    SubWrap,  // two's-complement wrapping subtraction
-    MulWrap,  // two's-complement wrapping multiplication
+    SubWrap, // two's-complement wrapping subtraction
+    MulWrap, // two's-complement wrapping multiplication
 };
 
 std::string describe(PrimOp op);
@@ -84,8 +84,12 @@ struct Prim {
 struct Term {
     std::variant<Var, Literal, Call, Prim> node;
 
-    static Term variable(VarIndex index) { return Term{Var{index}}; }
-    static Term literal(IntType type, std::int64_t value) { return Term{Literal{type, value}}; }
+    static Term variable(VarIndex index) {
+        return Term{Var{index}};
+    }
+    static Term literal(IntType type, std::int64_t value) {
+        return Term{Literal{type, value}};
+    }
     static Term call(DefId callee, std::vector<Term> arguments) {
         return Term{Call{callee, std::move(arguments)}};
     }
@@ -103,4 +107,4 @@ VarIndex parameter_reference(std::size_t parameter_count, std::size_t position);
 
 std::string describe(const Term& term);
 
-}  // namespace cppl::kernel
+} // namespace cppl::kernel

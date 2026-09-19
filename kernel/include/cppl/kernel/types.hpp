@@ -51,7 +51,9 @@ struct Type {
     }
 
     // Requires is_integer().
-    [[nodiscard]] const IntType& integer_type() const { return std::get<IntType>(node); }
+    [[nodiscard]] const IntType& integer_type() const {
+        return std::get<IntType>(node);
+    }
 
     friend bool operator==(const Type&, const Type&) = default;
 };
@@ -59,4 +61,4 @@ struct Type {
 std::string describe(const IntType& type);
 std::string describe(const Type& type);
 
-}  // namespace cppl::kernel
+} // namespace cppl::kernel

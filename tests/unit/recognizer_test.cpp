@@ -20,7 +20,7 @@ void recognize(const std::string& text, Recognized& out) {
     out.syntax = cppl::frontend::recognize(stream, out.engine);
 }
 
-}  // namespace
+} // namespace
 
 CPPL_TEST(a_law_declaration_is_recognized) {
     Recognized result;
@@ -35,14 +35,13 @@ CPPL_TEST(a_law_declaration_is_recognized) {
 
 CPPL_TEST(ordinary_identifiers_named_after_cppl_words_stay_ordinary) {
     Recognized result;
-    recognize(
-        "int law = 1;\n"
-        "void proof() {}\n"
-        "struct ghost {};\n"
-        "int verified = 0;\n"
-        "int pure = 2;\n"
-        "law_type trusted;\n",
-        result);
+    recognize("int law = 1;\n"
+              "void proof() {}\n"
+              "struct ghost {};\n"
+              "int verified = 0;\n"
+              "int pure = 2;\n"
+              "law_type trusted;\n",
+              result);
 
     CPPL_CHECK(!result.engine.has_errors());
     CPPL_CHECK(result.syntax.empty());
@@ -106,31 +105,26 @@ CPPL_TEST(a_proof_declaration_is_recognized) {
     CPPL_CHECK_EQ(result.syntax.proofs.size(), std::size_t{1});
     CPPL_CHECK_EQ(result.syntax.proofs[0].name, std::string("holds"));
     CPPL_CHECK_EQ(result.syntax.proofs[0].statements.size(), std::size_t{1});
-    CPPL_CHECK(result.syntax.proofs[0].statements[0].kind ==
-               cppl::frontend::ProofStatementKind::Reflexivity);
+    CPPL_CHECK(result.syntax.proofs[0].statements[0].kind == cppl::frontend::ProofStatementKind::Reflexivity);
 }
 
 CPPL_TEST(a_proof_statement_naming_another_proof_is_recognized) {
     Recognized result;
-    recognize(
-        "proof a(int x)\n    proves(first(x))\n{\n    refl;\n}\n"
-        "proof b(int x)\n    proves(second(x))\n{\n    exact a;\n}\n"
-        "proof c(int x)\n    proves(third(x))\n{\n    apply a;\n}\n",
-        result);
+    recognize("proof a(int x)\n    proves(first(x))\n{\n    refl;\n}\n"
+              "proof b(int x)\n    proves(second(x))\n{\n    exact a;\n}\n"
+              "proof c(int x)\n    proves(third(x))\n{\n    apply a;\n}\n",
+              result);
 
     CPPL_CHECK(!result.engine.has_errors());
     CPPL_CHECK_EQ(result.syntax.proofs.size(), std::size_t{3});
-    CPPL_CHECK(result.syntax.proofs[1].statements[0].kind ==
-               cppl::frontend::ProofStatementKind::Exact);
+    CPPL_CHECK(result.syntax.proofs[1].statements[0].kind == cppl::frontend::ProofStatementKind::Exact);
     CPPL_CHECK_EQ(result.syntax.proofs[1].statements[0].reference, std::string("a"));
-    CPPL_CHECK(result.syntax.proofs[2].statements[0].kind ==
-               cppl::frontend::ProofStatementKind::Apply);
+    CPPL_CHECK(result.syntax.proofs[2].statements[0].kind == cppl::frontend::ProofStatementKind::Apply);
 }
 
 CPPL_TEST(the_terms_a_proof_reference_is_instantiated_at_are_delimited) {
     Recognized result;
-    recognize("proof b(unsigned x)\n    proves(second(x))\n{\n    exact a(41u, add(x, 1u));\n}\n",
-              result);
+    recognize("proof b(unsigned x)\n    proves(second(x))\n{\n    exact a(41u, add(x, 1u));\n}\n", result);
 
     CPPL_CHECK(!result.engine.has_errors());
     const cppl::frontend::ProofStatement& statement = result.syntax.proofs[0].statements[0];
@@ -140,12 +134,9 @@ CPPL_TEST(the_terms_a_proof_reference_is_instantiated_at_are_delimited) {
 
     // The comma inside the nested call does not separate arguments.
     const cppl::frontend::TokenStream stream = cppl::frontend::lex(
-        "proof b(unsigned x)\n    proves(second(x))\n{\n    exact a(41u, add(x, 1u));\n}\n",
-        "main.cpp");
-    CPPL_CHECK_EQ(std::string(stream.spelling(statement.arguments[0].span)),
-                  std::string("41u"));
-    CPPL_CHECK_EQ(std::string(stream.spelling(statement.arguments[1].span)),
-                  std::string("add(x, 1u)"));
+        "proof b(unsigned x)\n    proves(second(x))\n{\n    exact a(41u, add(x, 1u));\n}\n", "main.cpp");
+    CPPL_CHECK_EQ(std::string(stream.spelling(statement.arguments[0].span)), std::string("41u"));
+    CPPL_CHECK_EQ(std::string(stream.spelling(statement.arguments[1].span)), std::string("add(x, 1u)"));
     CPPL_CHECK_EQ(statement.arguments[0].location.column, std::uint32_t{13});
 }
 
@@ -203,14 +194,12 @@ CPPL_TEST(an_assumed_premise_is_recognized_with_the_proposition_it_names) {
     CPPL_CHECK(assumed.kind == cppl::frontend::ProofStatementKind::Assume);
     CPPL_CHECK_EQ(assumed.reference, std::string("h"));
 
-    const cppl::frontend::TokenStream stream = cppl::frontend::lex(
-        "proof holds(int x)\n    proves(conditional_law(x))\n"
-        "{\n    assume h : identity(x) == x;\n    exact h;\n}\n",
-        "main.cpp");
-    CPPL_CHECK_EQ(std::string(stream.spelling(assumed.proposition)),
-                  std::string("identity(x) == x"));
-    CPPL_CHECK(result.syntax.proofs[0].statements[1].kind ==
-               cppl::frontend::ProofStatementKind::Exact);
+    const cppl::frontend::TokenStream stream =
+        cppl::frontend::lex("proof holds(int x)\n    proves(conditional_law(x))\n"
+                            "{\n    assume h : identity(x) == x;\n    exact h;\n}\n",
+                            "main.cpp");
+    CPPL_CHECK_EQ(std::string(stream.spelling(assumed.proposition)), std::string("identity(x) == x"));
+    CPPL_CHECK(result.syntax.proofs[0].statements[1].kind == cppl::frontend::ProofStatementKind::Exact);
 }
 
 CPPL_TEST(an_assume_without_a_proposition_is_refused) {
@@ -252,10 +241,8 @@ CPPL_TEST(a_proof_body_may_carry_more_than_one_statement) {
 
     CPPL_CHECK(!result.engine.has_errors());
     CPPL_CHECK_EQ(result.syntax.proofs[0].statements.size(), std::size_t{2});
-    CPPL_CHECK(result.syntax.proofs[0].statements[0].kind ==
-               cppl::frontend::ProofStatementKind::Apply);
-    CPPL_CHECK(result.syntax.proofs[0].statements[1].kind ==
-               cppl::frontend::ProofStatementKind::Reflexivity);
+    CPPL_CHECK(result.syntax.proofs[0].statements[0].kind == cppl::frontend::ProofStatementKind::Apply);
+    CPPL_CHECK(result.syntax.proofs[0].statements[1].kind == cppl::frontend::ProofStatementKind::Reflexivity);
 }
 
 CPPL_TEST(an_empty_proof_body_is_refused_rather_than_treated_as_evidence) {
@@ -278,8 +265,7 @@ CPPL_TEST(a_proof_inside_a_class_is_refused_rather_than_half_handled) {
 
 CPPL_TEST(a_verified_function_retains_its_contract) {
     Recognized result;
-    recognize("verified int identity(int x)\n    ensures(result == x)\n{\n    return x;\n}\n",
-              result);
+    recognize("verified int identity(int x)\n    ensures(result == x)\n{\n    return x;\n}\n", result);
 
     CPPL_CHECK(!result.engine.has_errors());
     CPPL_CHECK_EQ(result.syntax.verified_functions.size(), std::size_t{1});
@@ -292,8 +278,7 @@ CPPL_TEST(a_verified_function_retains_its_contract) {
 
 CPPL_TEST(a_contract_clause_on_a_pure_function_is_refused_rather_than_erased) {
     Recognized result;
-    recognize("pure int square(int x)\n    ensures(result >= 0)\n{\n    return x * x;\n}\n",
-              result);
+    recognize("pure int square(int x)\n    ensures(result >= 0)\n{\n    return x * x;\n}\n", result);
 
     CPPL_CHECK(result.engine.has_errors());
     CPPL_CHECK(result.syntax.pure_markers.empty());
@@ -301,8 +286,7 @@ CPPL_TEST(a_contract_clause_on_a_pure_function_is_refused_rather_than_erased) {
 
 CPPL_TEST(a_law_inside_a_class_is_refused_rather_than_half_handled) {
     Recognized result;
-    recognize("struct Account {\n    law nonnegative(int b)\n        ensures(b == b);\n};\n",
-              result);
+    recognize("struct Account {\n    law nonnegative(int b)\n        ensures(b == b);\n};\n", result);
 
     CPPL_CHECK(result.engine.has_errors());
     CPPL_CHECK(result.syntax.laws.empty());

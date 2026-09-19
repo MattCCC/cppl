@@ -1,5 +1,8 @@
 #include "arithmetic.hpp"
 
+#include "cppl/kernel/substitution.hpp"
+#include "cppl/obligations/obligation.hpp"
+
 #include <algorithm>
 #include <functional>
 #include <limits>
@@ -8,9 +11,6 @@
 #include <utility>
 #include <variant>
 #include <vector>
-
-#include "cppl/kernel/substitution.hpp"
-#include "cppl/obligations/obligation.hpp"
 
 namespace cppl::automation {
 
@@ -62,25 +62,27 @@ bool vanishes(const Row& row) {
 
 void reduce(Row& row) {
     Wide divisor = row.constant;
-    for (const Wide value : row.coefficients) divisor = gcd(divisor, value);
-    for (const Wide value : row.origin) divisor = gcd(divisor, value);
+    for (const Wide value : row.coefficients)
+        divisor = gcd(divisor, value);
+    for (const Wide value : row.origin)
+        divisor = gcd(divisor, value);
     if (divisor <= 1) {
         return;
     }
-    for (Wide& value : row.coefficients) value /= divisor;
-    for (Wide& value : row.origin) value /= divisor;
+    for (Wide& value : row.coefficients)
+        value /= divisor;
+    for (Wide& value : row.origin)
+        value /= divisor;
     row.constant /= divisor;
 }
 
 // Fourier-Motzkin elimination. Returns the multiples of `active` that sum to a
 // positive constant, if the rational relaxation is already infeasible.
-std::optional<std::vector<Wide>> eliminate(const std::vector<k::LinearConstraint>& active,
-                                           std::size_t variables) {
+std::optional<std::vector<Wide>> eliminate(const std::vector<k::LinearConstraint>& active, std::size_t variables) {
     std::vector<Row> rows;
     rows.reserve(active.size());
     for (std::size_t index = 0; index < active.size(); ++index) {
-        Row row{std::vector<Wide>(variables, 0), active[index].constant,
-                std::vector<Wide>(active.size(), 0)};
+        Row row{std::vector<Wide>(variables, 0), active[index].constant, std::vector<Wide>(active.size(), 0)};
         for (const auto& [variable, coefficient] : active[index].terms) {
             row.coefficients[variable] = coefficient;
         }
@@ -157,14 +159,14 @@ std::optional<std::vector<Wide>> eliminate(const std::vector<k::LinearConstraint
                 for (std::size_t index = 0; fits && index < active.size(); ++index) {
                     Wide left = 0;
                     Wide right = 0;
-                    fits = multiply(b, upper->origin[index], left) &&
-                           multiply(a, lower->origin[index], right) && add(left, right);
+                    fits = multiply(b, upper->origin[index], left) && multiply(a, lower->origin[index], right) &&
+                           add(left, right);
                     combined.origin[index] = left;
                 }
                 Wide left = 0;
                 Wide right = 0;
-                fits = fits && multiply(b, upper->constant, left) &&
-                       multiply(a, lower->constant, right) && add(left, right);
+                fits = fits && multiply(b, upper->constant, left) && multiply(a, lower->constant, right) &&
+                       add(left, right);
                 if (!fits) {
                     return std::nullopt;
                 }
@@ -196,7 +198,7 @@ std::optional<std::vector<Wide>> eliminate(const std::vector<k::LinearConstraint
 }
 
 class Search {
-public:
+  public:
     explicit Search(const k::ArithmeticSystem& system)
         : system_(system),
           active_(system.constraints),
@@ -224,14 +226,13 @@ public:
             if (!first || !second) {
                 return std::nullopt;
             }
-            return k::ArithmeticCertificate{k::DisjunctionCases{
-                static_cast<std::uint32_t>(index), k::Box<k::ArithmeticCertificate>{std::move(*first)},
-                k::Box<k::ArithmeticCertificate>{std::move(*second)}}};
+            return k::ArithmeticCertificate{k::DisjunctionCases{static_cast<std::uint32_t>(index),
+                                                                k::Box<k::ArithmeticCertificate>{std::move(*first)},
+                                                                k::Box<k::ArithmeticCertificate>{std::move(*second)}}};
         }
         for (std::size_t index = 0; index < system_.variables.size(); ++index) {
             const k::ArithmeticVariable& variable = system_.variables[index];
-            if (variable.role != k::VariableRole::Wrap || pinned_[index] ||
-                variable.lowest > variable.highest ||
+            if (variable.role != k::VariableRole::Wrap || pinned_[index] || variable.lowest > variable.highest ||
                 variable.highest - variable.lowest >= kMaxPinnedRange) {
                 continue;
             }
@@ -243,25 +244,24 @@ public:
         return std::nullopt;
     }
 
-private:
+  private:
     // The multiple is below its range, or it is each value in turn, or it is
     // above its range. The kernel checks that every case is refuted.
     std::optional<k::ArithmeticCertificate> pin(std::uint32_t variable, Wide lowest, Wide highest) {
-        return split(variable, lowest - 1, [&] { return solve(); },
-                     [&] { return pin_from(variable, lowest, highest); });
+        return split(
+            variable, lowest - 1, [&] { return solve(); }, [&] { return pin_from(variable, lowest, highest); });
     }
 
     // Standing: variable >= value.
     std::optional<k::ArithmeticCertificate> pin_from(std::uint32_t variable, Wide value, Wide highest) {
-        return split(variable, value, [&] { return solve(); }, [&] {
-            return value >= highest ? solve() : pin_from(variable, value + 1, highest);
-        });
+        return split(
+            variable, value, [&] { return solve(); },
+            [&] { return value >= highest ? solve() : pin_from(variable, value + 1, highest); });
     }
 
     // variable <= value | variable >= value + 1
     std::optional<k::ArithmeticCertificate> split(
-        std::uint32_t variable, Wide value,
-        const std::function<std::optional<k::ArithmeticCertificate>()>& below,
+        std::uint32_t variable, Wide value, const std::function<std::optional<k::ArithmeticCertificate>()>& below,
         const std::function<std::optional<k::ArithmeticCertificate>()>& above) {
         if (value > std::numeric_limits<std::int64_t>::max() - 1 ||
             value < std::numeric_limits<std::int64_t>::min() + 1) {
@@ -281,10 +281,10 @@ private:
         if (!second) {
             return std::nullopt;
         }
-        return k::ArithmeticCertificate{k::IntegerSplit{
-            {{variable, std::int64_t{1}}}, static_cast<std::int64_t>(-value),
-            k::Box<k::ArithmeticCertificate>{std::move(*first)},
-            k::Box<k::ArithmeticCertificate>{std::move(*second)}}};
+        return k::ArithmeticCertificate{k::IntegerSplit{{{variable, std::int64_t{1}}},
+                                                        static_cast<std::int64_t>(-value),
+                                                        k::Box<k::ArithmeticCertificate>{std::move(*first)},
+                                                        k::Box<k::ArithmeticCertificate>{std::move(*second)}}};
     }
 
     std::optional<k::ArithmeticCertificate> descend(const k::LinearConstraint& added) {
@@ -323,8 +323,7 @@ bool occurs(const k::Term& inside, const k::Term& target) {
         return true;
     }
     if (const auto* call = std::get_if<k::Call>(&inside.node)) {
-        return std::ranges::any_of(call->arguments,
-                                   [&](const k::Term& argument) { return occurs(argument, target); });
+        return std::ranges::any_of(call->arguments, [&](const k::Term& argument) { return occurs(argument, target); });
     }
     if (const auto* primitive = std::get_if<k::Prim>(&inside.node)) {
         return std::ranges::any_of(primitive->arguments,
@@ -337,9 +336,11 @@ void variables_of(const k::Term& term, std::set<std::uint32_t>& found) {
     if (const auto* variable = std::get_if<k::Var>(&term.node)) {
         found.insert(variable->index.value);
     } else if (const auto* call = std::get_if<k::Call>(&term.node)) {
-        for (const auto& argument : call->arguments) variables_of(argument, found);
+        for (const auto& argument : call->arguments)
+            variables_of(argument, found);
     } else if (const auto* primitive = std::get_if<k::Prim>(&term.node)) {
-        for (const auto& argument : primitive->arguments) variables_of(argument, found);
+        for (const auto& argument : primitive->arguments)
+            variables_of(argument, found);
     }
 }
 
@@ -362,7 +363,7 @@ struct Rewrite {
 };
 
 class Prover {
-public:
+  public:
     Prover(const k::Context& context, bool rewriting) : context_(context), rewriting_(rewriting) {}
 
     std::optional<k::ProofTerm> prove(const k::Proposition& goal) {
@@ -370,20 +371,22 @@ public:
             binders_.push_back(quantified->binder);
             auto body = prove(*quantified->body);
             binders_.pop_back();
-            if (!body) return std::nullopt;
+            if (!body)
+                return std::nullopt;
             return k::ProofTerm::forall_introduction(quantified->binder, std::move(*body));
         }
         if (const auto* implication = std::get_if<k::Implies>(&goal.node)) {
             premises_.push_back(Premise{*implication->premise, binders_.size()});
             auto body = prove(*implication->conclusion);
             premises_.pop_back();
-            if (!body) return std::nullopt;
+            if (!body)
+                return std::nullopt;
             return k::ProofTerm::implication_introduction(*implication->premise, std::move(*body));
         }
         return rewriting_ ? rewrite_then_close(goal) : by_arithmetic(goal);
     }
 
-private:
+  private:
     // The premises in scope, restated at the leaf, each with its hypothesis.
     std::vector<k::ArithmeticFact> facts() const {
         std::vector<k::ArithmeticFact> result;
@@ -393,8 +396,7 @@ private:
                 continue;
             }
             result.push_back(k::ArithmeticFact{
-                k::shift(premise.proposition,
-                         static_cast<std::uint32_t>(binders_.size() - premise.binders)),
+                k::shift(premise.proposition, static_cast<std::uint32_t>(binders_.size() - premise.binders)),
                 k::Box<k::ProofTerm>{k::ProofTerm::hypothesis(
                     k::HypothesisIndex{static_cast<std::uint32_t>(premises_.size() - 1 - index)})}});
         }
@@ -408,7 +410,8 @@ private:
         std::vector<k::ArithmeticFact> used = facts();
         std::vector<k::Proposition> propositions;
         propositions.reserve(used.size());
-        for (const auto& fact : used) propositions.push_back(fact.proposition);
+        for (const auto& fact : used)
+            propositions.push_back(fact.proposition);
         const auto system = k::arithmetic_system(context_, propositions, goal, k::CoreLimits{});
         if (!system) {
             return std::nullopt;
@@ -423,7 +426,8 @@ private:
 
     bool definitional(const k::Proposition& goal) const {
         const auto* equality = std::get_if<k::Eq>(&goal.node);
-        if (equality == nullptr) return false;
+        if (equality == nullptr)
+            return false;
         const auto lhs = k::normalize(context_, equality->lhs, k::CoreLimits{});
         const auto rhs = k::normalize(context_, equality->rhs, k::CoreLimits{});
         return lhs && rhs && *lhs == *rhs;
@@ -440,7 +444,8 @@ private:
         std::vector<Equality> known;
         for (const auto& fact : facts()) {
             const auto& equality = std::get<k::Eq>(fact.proposition.node);
-            if (equality.type == k::Type{k::kBoolean}) continue;
+            if (equality.type == k::Type{k::kBoolean})
+                continue;
             known.push_back(Equality{equality.type, equality.lhs, equality.rhs, *fact.evidence});
         }
 
@@ -450,8 +455,10 @@ private:
         for (int round = 0; round < 4; ++round) {
             const bool changed = rewrite(current, known, steps);
             std::vector<Equality> derived = derive(current, known, derivations);
-            if (derived.empty() && !changed) break;
-            for (auto& equality : derived) known.push_back(std::move(equality));
+            if (derived.empty() && !changed)
+                break;
+            for (auto& equality : derived)
+                known.push_back(std::move(equality));
         }
 
         std::optional<k::ProofTerm> proof;
@@ -460,32 +467,34 @@ private:
         } else {
             proof = by_arithmetic(current);
         }
-        if (!proof) return std::nullopt;
+        if (!proof)
+            return std::nullopt;
         for (auto step = steps.rbegin(); step != steps.rend(); ++step) {
-            proof = k::ProofTerm::equality_elimination(step->equality.type, step->equality.lhs,
-                                                       step->equality.rhs, step->motive,
-                                                       step->equality.evidence, std::move(*proof));
+            proof = k::ProofTerm::equality_elimination(step->equality.type, step->equality.lhs, step->equality.rhs,
+                                                       step->motive, step->equality.evidence, std::move(*proof));
         }
         return proof;
     }
 
     // Rewrites left to right wherever a left side occurs, never with an
     // equality whose right side contains its left side.
-    static bool rewrite(k::Proposition& current, const std::vector<Equality>& known,
-                        std::vector<Rewrite>& steps) {
+    static bool rewrite(k::Proposition& current, const std::vector<Equality>& known, std::vector<Rewrite>& steps) {
         bool changed = false;
         for (std::size_t budget = 0; budget < kMaxRewrites; ++budget) {
             bool applied = false;
             for (auto equality = known.rbegin(); equality != known.rend(); ++equality) {
-                if (equality->lhs == equality->rhs || occurs(equality->rhs, equality->lhs)) continue;
+                if (equality->lhs == equality->rhs || occurs(equality->rhs, equality->lhs))
+                    continue;
                 auto motive = obligations::rewrite_context(current, equality->lhs);
-                if (!motive) continue;
+                if (!motive)
+                    continue;
                 current = k::instantiate(*motive, equality->rhs);
                 steps.push_back(Rewrite{*equality, std::move(*motive)});
                 applied = true;
                 break;
             }
-            if (!applied) break;
+            if (!applied)
+                break;
             changed = true;
         }
         return changed;
@@ -497,12 +506,14 @@ private:
                                  std::size_t& derivations) const {
         std::vector<Equality> derived;
         const auto* equality = std::get_if<k::Eq>(&current.node);
-        if (equality == nullptr) return derived;
+        if (equality == nullptr)
+            return derived;
         std::set<std::uint32_t> mentioned;
         variables_of(equality->lhs, mentioned);
         variables_of(equality->rhs, mentioned);
         for (const std::uint32_t variable : mentioned) {
-            if (variable >= binders_.size()) continue;
+            if (variable >= binders_.size())
+                continue;
             for (std::uint32_t other = 0; other < binders_.size(); ++other) {
                 if (other == variable || !(type_of_variable(other) == type_of_variable(variable))) {
                     continue;
@@ -512,7 +523,8 @@ private:
                 const bool already = std::ranges::any_of(known, [&](const Equality& e) {
                     return (e.lhs == lhs && e.rhs == rhs) || (e.lhs == rhs && e.rhs == lhs);
                 });
-                if (already || ++derivations > kMaxDerivations) continue;
+                if (already || ++derivations > kMaxDerivations)
+                    continue;
                 const k::Type type = type_of_variable(variable);
                 const auto proposition = k::Proposition::equality(type, lhs, rhs);
                 if (auto proof = by_arithmetic(proposition)) {
@@ -529,18 +541,17 @@ private:
     std::vector<Premise> premises_;
 };
 
-}  // namespace
+} // namespace
 
 std::optional<kernel::ArithmeticCertificate> refute(const kernel::ArithmeticSystem& system) {
     Search search(system);
     return search.solve();
 }
 
-std::optional<kernel::ProofTerm> arithmetic_evidence(const kernel::Context& context,
-                                                     const kernel::Proposition& goal,
+std::optional<kernel::ProofTerm> arithmetic_evidence(const kernel::Context& context, const kernel::Proposition& goal,
                                                      bool rewriting) {
     Prover prover(context, rewriting);
     return prover.prove(goal);
 }
 
-}  // namespace cppl::automation
+} // namespace cppl::automation

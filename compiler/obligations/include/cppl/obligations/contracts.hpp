@@ -1,12 +1,12 @@
 #pragma once
 
+#include "cppl/kernel/proposition.hpp"
+#include "cppl/vir/ids.hpp"
+
 #include <cstddef>
 #include <optional>
 #include <string>
 #include <vector>
-
-#include "cppl/kernel/proposition.hpp"
-#include "cppl/vir/ids.hpp"
 
 namespace cppl::obligations {
 
@@ -51,4 +51,4 @@ struct ContractVerification {
     std::size_t obligation = 0;
 };
 
-}  // namespace cppl::obligations
+} // namespace cppl::obligations

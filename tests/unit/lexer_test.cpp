@@ -21,14 +21,13 @@ const Token* find(const TokenStream& stream, std::string_view text) {
     return nullptr;
 }
 
-}  // namespace
+} // namespace
 
 CPPL_TEST(line_markers_give_tokens_their_user_visible_position) {
-    const std::string text =
-        "# 1 \"main.cpp\"\n"
-        "int first;\n"
-        "# 10 \"payment.hpp\"\n"
-        "int second;\n";
+    const std::string text = "# 1 \"main.cpp\"\n"
+                             "int first;\n"
+                             "# 10 \"payment.hpp\"\n"
+                             "int second;\n";
 
     const TokenStream stream = cppl::frontend::lex(text, "main.cpp");
 
@@ -68,10 +67,9 @@ CPPL_TEST(raw_strings_are_consumed_whole) {
 }
 
 CPPL_TEST(comments_are_skipped) {
-    const std::string text =
-        "// law commented(int x) ensures(x == x);\n"
-        "/* law blocked(int x) ensures(x == x); */\n"
-        "int value;\n";
+    const std::string text = "// law commented(int x) ensures(x == x);\n"
+                             "/* law blocked(int x) ensures(x == x); */\n"
+                             "int value;\n";
 
     const TokenStream stream = cppl::frontend::lex(text, "main.cpp");
 

@@ -72,9 +72,11 @@ struct Work {
 };
 
 class Reader {
-public:
+  public:
     Reader(IntType type, const CoreLimits& limits, std::uint64_t& steps)
-        : type_(type), limits_(limits), steps_(steps) {}
+        : type_(type),
+          limits_(limits),
+          steps_(steps) {}
 
     std::expected<Work, CoreError> read(const Term& term, std::uint32_t depth) {
         if (depth > limits_.max_term_depth) {
@@ -85,8 +87,7 @@ public:
         }
 
         Work work{type_, {}, 0};
-        if (const auto* literal = std::get_if<Literal>(&term.node);
-            literal != nullptr && literal->type == type_) {
+        if (const auto* literal = std::get_if<Literal>(&term.node); literal != nullptr && literal->type == type_) {
             work.constant = bits_of(type_, literal->value);
             return work;
         }
@@ -129,8 +130,7 @@ public:
     std::expected<Work, CoreError> product(const Work& lhs, const Work& rhs) {
         Work result{type_, {}, 0};
         const auto each = [](const Work& work) {
-            std::vector<std::pair<std::vector<Term>, std::uint64_t>> terms(work.terms.begin(),
-                                                                          work.terms.end());
+            std::vector<std::pair<std::vector<Term>, std::uint64_t>> terms(work.terms.begin(), work.terms.end());
             if (work.constant != 0) {
                 terms.emplace_back(std::vector<Term>{}, work.constant);
             }
@@ -145,15 +145,13 @@ public:
                 }
                 if (left_factors.size() + right_factors.size() > limits_.max_monomial_degree) {
                     return fail(CoreErrorKind::NormalizationBudgetExhausted,
-                                "a monomial has more than " +
-                                    std::to_string(limits_.max_monomial_degree) + " factors");
+                                "a monomial has more than " + std::to_string(limits_.max_monomial_degree) + " factors");
                 }
                 std::vector<Term> factors;
                 factors.reserve(left_factors.size() + right_factors.size());
                 std::ranges::merge(left_factors, right_factors, std::back_inserter(factors),
                                    [](const Term& a, const Term& b) { return compare(a, b) < 0; });
-                if (auto added = accumulate(result, factors, left_coefficient * right_coefficient);
-                    !added) {
+                if (auto added = accumulate(result, factors, left_coefficient * right_coefficient); !added) {
                     return std::unexpected(added.error());
                 }
             }
@@ -161,18 +159,16 @@ public:
         return result;
     }
 
-private:
+  private:
     std::expected<void, CoreError> spend(std::uint64_t amount) {
         steps_ += amount;
         if (steps_ > limits_.max_normalization_steps) {
-            return fail(CoreErrorKind::NormalizationBudgetExhausted,
-                        "normalization exceeded its step budget");
+            return fail(CoreErrorKind::NormalizationBudgetExhausted, "normalization exceeded its step budget");
         }
         return {};
     }
 
-    std::expected<void, CoreError> accumulate(Work& into, const std::vector<Term>& factors,
-                                              std::uint64_t coefficient) {
+    std::expected<void, CoreError> accumulate(Work& into, const std::vector<Term>& factors, std::uint64_t coefficient) {
         coefficient &= mask(type_);
         if (coefficient == 0) {
             return {};
@@ -188,8 +184,7 @@ private:
         }
         if (into.terms.size() > limits_.max_polynomial_terms) {
             return fail(CoreErrorKind::NormalizationBudgetExhausted,
-                        "a polynomial has more than " +
-                            std::to_string(limits_.max_polynomial_terms) + " terms");
+                        "a polynomial has more than " + std::to_string(limits_.max_polynomial_terms) + " terms");
         }
         return {};
     }
@@ -254,7 +249,7 @@ Term less(const IntType& type, Term lhs, Term rhs) {
     return Term::primitive(PrimOp::Less, type, {std::move(lhs), std::move(rhs)});
 }
 
-}  // namespace
+} // namespace
 
 std::strong_ordering compare(const Term& lhs, const Term& rhs) {
     if (const auto order = lhs.node.index() <=> rhs.node.index(); order != 0) {
@@ -277,8 +272,7 @@ std::strong_ordering compare(const Term& lhs, const Term& rhs) {
                 }
                 return compare_lists(left.arguments, right.arguments);
             } else {
-                if (const auto order = static_cast<std::uint8_t>(left.op) <=>
-                                       static_cast<std::uint8_t>(right.op);
+                if (const auto order = static_cast<std::uint8_t>(left.op) <=> static_cast<std::uint8_t>(right.op);
                     order != 0) {
                     return order;
                 }
@@ -303,9 +297,7 @@ std::uint64_t bits_of(const IntType& type, std::int64_t value) {
     return static_cast<std::uint64_t>(value) & mask(type);
 }
 
-std::expected<Polynomial, CoreError> polynomial(const Term& normal,
-                                                IntType type,
-                                                const CoreLimits& limits) {
+std::expected<Polynomial, CoreError> polynomial(const Term& normal, IntType type, const CoreLimits& limits) {
     if (!is_supported(type)) {
         return fail(CoreErrorKind::MalformedType, "polynomial over an unsupported integer type");
     }
@@ -328,7 +320,9 @@ Term render_factors(const IntType& type, const std::vector<Term>& factors) {
 
 Term render(const Polynomial& polynomial) {
     const IntType& type = polynomial.type;
-    const auto negative = [&type](std::uint64_t coefficient) { return coefficient > half(type); };
+    const auto negative = [&type](std::uint64_t coefficient) {
+        return coefficient > half(type);
+    };
     const auto magnitude = [&type](std::uint64_t coefficient) {
         return (~coefficient + 1u) & mask(type);
     };
@@ -337,8 +331,7 @@ Term render(const Polynomial& polynomial) {
         if (coefficient == 1u) {
             return product;
         }
-        return Term::primitive(PrimOp::MulWrap, type,
-                               {literal_of(type, coefficient), std::move(product)});
+        return Term::primitive(PrimOp::MulWrap, type, {literal_of(type, coefficient), std::move(product)});
     };
 
     // Terms with a positive coefficient are added, in monomial order; then the
@@ -350,8 +343,7 @@ Term render(const Polynomial& polynomial) {
             continue;
         }
         Term term = scaled(monomial.factors, monomial.coefficient);
-        sum = sum ? Term::primitive(PrimOp::AddWrap, type, {std::move(*sum), std::move(term)})
-                  : std::move(term);
+        sum = sum ? Term::primitive(PrimOp::AddWrap, type, {std::move(*sum), std::move(term)}) : std::move(term);
     }
     for (const Monomial& monomial : polynomial.monomials) {
         if (!negative(monomial.coefficient)) {
@@ -369,17 +361,13 @@ Term render(const Polynomial& polynomial) {
             return Term::primitive(PrimOp::SubWrap, type,
                                    {std::move(*sum), literal_of(type, magnitude(polynomial.constant))});
         }
-        return Term::primitive(PrimOp::AddWrap, type,
-                               {std::move(*sum), literal_of(type, polynomial.constant)});
+        return Term::primitive(PrimOp::AddWrap, type, {std::move(*sum), literal_of(type, polynomial.constant)});
     }
     return sum ? std::move(*sum) : literal_of(type, 0u);
 }
 
-std::expected<Term, CoreError> normalize_primitive(PrimOp op,
-                                                   IntType type,
-                                                   std::vector<Term> operands,
-                                                   const CoreLimits& limits,
-                                                   std::uint64_t& steps) {
+std::expected<Term, CoreError> normalize_primitive(PrimOp op, IntType type, std::vector<Term> operands,
+                                                   const CoreLimits& limits, std::uint64_t& steps) {
     const std::size_t arity = op == PrimOp::Select ? 3u : op == PrimOp::Not ? 1u : 2u;
     if (operands.size() != arity || !is_supported(type)) {
         // Only well-typed terms reach normalization through the checker; a
@@ -410,11 +398,9 @@ std::expected<Term, CoreError> normalize_primitive(PrimOp op,
                 return std::move(operands[1]);
             }
             if (const auto* inverted = std::get_if<Prim>(&operands[0].node);
-                inverted != nullptr && inverted->op == PrimOp::Not &&
-                inverted->arguments.size() == 1) {
+                inverted != nullptr && inverted->op == PrimOp::Not && inverted->arguments.size() == 1) {
                 return Term::primitive(PrimOp::Select, type,
-                                       {inverted->arguments[0], std::move(operands[2]),
-                                        std::move(operands[1])});
+                                       {inverted->arguments[0], std::move(operands[2]), std::move(operands[1])});
             }
             return Term::primitive(PrimOp::Select, type, std::move(operands));
         }
@@ -442,10 +428,9 @@ std::expected<Term, CoreError> normalize_primitive(PrimOp op,
             if (!polynomial.monomials.empty()) {
                 Term positive = render(polynomial);
                 Term opposite = render(negated(polynomial));
-                equal = Term::primitive(
-                    PrimOp::Equal, type,
-                    {compare(positive, opposite) <= 0 ? std::move(positive) : std::move(opposite),
-                     literal_of(type, 0u)});
+                equal = Term::primitive(PrimOp::Equal, type,
+                                        {compare(positive, opposite) <= 0 ? std::move(positive) : std::move(opposite),
+                                         literal_of(type, 0u)});
             }
             return op == PrimOp::Equal ? equal : negate(std::move(equal));
         }
@@ -464,4 +449,4 @@ std::expected<Term, CoreError> normalize_primitive(PrimOp op,
     }
 }
 
-}  // namespace cppl::kernel
+} // namespace cppl::kernel

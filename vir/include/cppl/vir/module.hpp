@@ -1,15 +1,15 @@
 #pragma once
 
+#include "cppl/source/location.hpp"
+#include "cppl/vir/expr.hpp"
+#include "cppl/vir/ids.hpp"
+#include "cppl/vir/types.hpp"
+
 #include <cstdint>
 #include <optional>
 #include <string>
 #include <variant>
 #include <vector>
-
-#include "cppl/source/location.hpp"
-#include "cppl/vir/expr.hpp"
-#include "cppl/vir/ids.hpp"
-#include "cppl/vir/types.hpp"
 
 namespace cppl::vir {
 
@@ -94,7 +94,7 @@ struct ProofRef {
 };
 
 struct HypothesisRef {
-    std::uint32_t assumption = 0;  // which `assume` in this body bound the name
+    std::uint32_t assumption = 0; // which `assume` in this body bound the name
 
     friend bool operator==(const HypothesisRef&, const HypothesisRef&) = default;
 };
@@ -156,7 +156,7 @@ struct Proof {
     std::string name;
     LawId law;
     std::vector<Parameter> parameters;
-    Expr proposition;  // the resolved `proves` clause
+    Expr proposition; // the resolved `proves` clause
     std::vector<ProofStep> steps;
     source::SourceRange range;
 };
@@ -169,4 +169,4 @@ struct Module {
     [[nodiscard]] const Function* find(const SymbolId& symbol) const;
 };
 
-}  // namespace cppl::vir
+} // namespace cppl::vir

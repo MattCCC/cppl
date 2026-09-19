@@ -8,17 +8,14 @@ namespace cppl::erasure {
 namespace {
 
 bool inside(const std::vector<source::ByteSpan>& spans, std::size_t offset) {
-    return std::ranges::any_of(spans, [offset](const source::ByteSpan& span) {
-        return offset >= span.offset && offset < span.end();
-    });
+    return std::ranges::any_of(
+        spans, [offset](const source::ByteSpan& span) { return offset >= span.offset && offset < span.end(); });
 }
 
-}  // namespace
+} // namespace
 
-Erased erase(const frontend::TokenStream& stream,
-             const frontend::Syntax& syntax,
-             const frontend::Projection& projection,
-             diagnostics::Engine& engine) {
+Erased erase(const frontend::TokenStream& stream, const frontend::Syntax& syntax,
+             const frontend::Projection& projection, diagnostics::Engine& engine) {
     const std::string_view original = stream.text();
     const std::string_view runtime = projection.runtime;
 
@@ -69,14 +66,14 @@ Erased erase(const frontend::TokenStream& stream,
         diagnostic.severity = diagnostics::Severity::Error;
         diagnostic.category = diagnostics::Category::Internal;
         diagnostic.message = "erasure did not preserve the runtime program";
-        diagnostic.notes.push_back(diagnostics::Note{
-            "the runtime program must be the analysed program with proof-only spans removed "
-            "and nothing else changed",
-            source::SourceLocation{}});
+        diagnostic.notes.push_back(
+            diagnostics::Note{"the runtime program must be the analysed program with proof-only spans removed "
+                              "and nothing else changed",
+                              source::SourceLocation{}});
         engine.report(std::move(diagnostic));
     }
 
     return Erased{runtime, report};
 }
 
-}  // namespace cppl::erasure
+} // namespace cppl::erasure

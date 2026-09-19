@@ -36,7 +36,7 @@ Term shift(const Term& term, std::uint32_t amount, std::uint32_t cutoff) {
         return Term::primitive(primitive->op, primitive->type, std::move(arguments));
     }
 
-    return term;  // a literal denotes the same value under any binder
+    return term; // a literal denotes the same value under any binder
 }
 
 Proposition shift(const Proposition& proposition, std::uint32_t amount, std::uint32_t cutoff) {
@@ -45,8 +45,7 @@ Proposition shift(const Proposition& proposition, std::uint32_t amount, std::uin
     }
 
     if (const auto* quantified = std::get_if<Forall>(&proposition.node)) {
-        return Proposition::for_all(quantified->binder,
-                                    shift(*quantified->body, amount, cutoff + 1));
+        return Proposition::for_all(quantified->binder, shift(*quantified->body, amount, cutoff + 1));
     }
 
     if (const auto* implication = std::get_if<Implies>(&proposition.node)) {
@@ -93,8 +92,7 @@ Term instantiate(const Term& body, const Term& argument, std::uint32_t depth) {
 
 Proposition instantiate(const Proposition& body, const Term& argument, std::uint32_t depth) {
     if (const auto* quantified = std::get_if<Forall>(&body.node)) {
-        return Proposition::for_all(quantified->binder,
-                                    instantiate(*quantified->body, argument, depth + 1));
+        return Proposition::for_all(quantified->binder, instantiate(*quantified->body, argument, depth + 1));
     }
 
     if (const auto* implication = std::get_if<Implies>(&body.node)) {
@@ -107,4 +105,4 @@ Proposition instantiate(const Proposition& body, const Term& argument, std::uint
                                  instantiate(equality.rhs, argument, depth));
 }
 
-}  // namespace cppl::kernel
+} // namespace cppl::kernel

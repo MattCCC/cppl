@@ -67,7 +67,7 @@ struct Expression {
 };
 
 class Builder {
-public:
+  public:
     Builder(const Context& context, const CoreLimits& limits) : context_(context), limits_(limits) {}
 
     std::expected<void, CoreError> fact(const Proposition& proposition) {
@@ -139,9 +139,11 @@ public:
         return differ(*lhs, *rhs);
     }
 
-    ArithmeticSystem take() { return std::move(system_); }
+    ArithmeticSystem take() {
+        return std::move(system_);
+    }
 
-private:
+  private:
     std::expected<Term, CoreError> normal(const Term& term) {
         return normalize(context_, term, limits_);
     }
@@ -152,15 +154,13 @@ private:
             if ((literal->value != 0) == holds) {
                 return {};
             }
-            return constrain(Expression{}, Wide{1});  // 1 <= 0
+            return constrain(Expression{}, Wide{1}); // 1 <= 0
         }
         const auto* primitive = std::get_if<Prim>(&condition.node);
-        if (primitive != nullptr && primitive->op == PrimOp::Not &&
-            primitive->arguments.size() == 1) {
+        if (primitive != nullptr && primitive->op == PrimOp::Not && primitive->arguments.size() == 1) {
             return truth(primitive->arguments[0], !holds);
         }
-        if (primitive != nullptr && is_comparison(primitive->op) &&
-            primitive->arguments.size() == 2) {
+        if (primitive != nullptr && is_comparison(primitive->op) && primitive->arguments.size() == 2) {
             auto lhs = value(primitive->arguments[0], primitive->type);
             if (!lhs) {
                 return std::unexpected(lhs.error());
@@ -214,8 +214,7 @@ private:
         Expression expression;
         if (read->monomials.empty()) {
             expression.constant = value_of(type, read->constant);
-        } else if (read->monomials.size() == 1 && read->monomials.front().coefficient == 1u &&
-                   read->constant == 0u) {
+        } else if (read->monomials.size() == 1 && read->monomials.front().coefficient == 1u && read->constant == 0u) {
             auto factor = variable(type, read->monomials.front().factors);
             if (!factor) {
                 return std::unexpected(factor.error());
@@ -235,8 +234,7 @@ private:
             expression.constant = centered(type, read->constant);
             const auto [least, greatest] = wrap_range(expression, type);
             const auto wrap = static_cast<std::uint32_t>(system_.variables.size());
-            system_.variables.push_back(
-                ArithmeticVariable{VariableRole::Wrap, type, *normalized, least, greatest});
+            system_.variables.push_back(ArithmeticVariable{VariableRole::Wrap, type, *normalized, least, greatest});
             expression.terms.emplace(wrap, -modulus(type));
             if (auto bounded = bound(expression, type); !bounded) {
                 return std::unexpected(bounded.error());
@@ -256,10 +254,8 @@ private:
             const IntType& factor_type = system_.variables[factor].type;
             Wide low = 0;
             Wide high = 0;
-            if (!multiply(coefficient, coefficient >= 0 ? lowest(factor_type) : highest(factor_type),
-                          low) ||
-                !multiply(coefficient, coefficient >= 0 ? highest(factor_type) : lowest(factor_type),
-                          high) ||
+            if (!multiply(coefficient, coefficient >= 0 ? lowest(factor_type) : highest(factor_type), low) ||
+                !multiply(coefficient, coefficient >= 0 ? highest(factor_type) : lowest(factor_type), high) ||
                 !add(least, low) || !add(greatest, high)) {
                 return {1, 0};
             }
@@ -272,8 +268,7 @@ private:
         if (!add(low_numerator, -highest(type)) || !add(high_numerator, -lowest(type))) {
             return {1, 0};
         }
-        return {-floor_divide(-low_numerator, modulus(type)),
-                floor_divide(high_numerator, modulus(type))};
+        return {-floor_divide(-low_numerator, modulus(type)), floor_divide(high_numerator, modulus(type))};
     }
 
     static Wide floor_divide(Wide numerator, Wide denominator) {
@@ -285,8 +280,7 @@ private:
     }
 
     // The variable standing for a product of factors: its machine value.
-    std::expected<std::uint32_t, CoreError> variable(const IntType& type,
-                                                     const std::vector<Term>& factors) {
+    std::expected<std::uint32_t, CoreError> variable(const IntType& type, const std::vector<Term>& factors) {
         TypedTerm key{type, render_factors(type, factors)};
         if (const auto found = variables_.find(key); found != variables_.end()) {
             return found->second;
@@ -355,8 +349,7 @@ private:
     }
 
     // lhs - rhs + margin <= 0
-    std::expected<LinearConstraint, CoreError> linear(const Expression& lhs, const Expression& rhs,
-                                                      Wide margin) {
+    std::expected<LinearConstraint, CoreError> linear(const Expression& lhs, const Expression& rhs, Wide margin) {
         auto difference = subtract(lhs, rhs);
         if (!difference) {
             return std::unexpected(difference.error());
@@ -373,8 +366,7 @@ private:
         return result;
     }
 
-    static std::expected<Expression, CoreError> subtract(const Expression& lhs,
-                                                         const Expression& rhs) {
+    static std::expected<Expression, CoreError> subtract(const Expression& lhs, const Expression& rhs) {
         Expression result = lhs;
         for (const auto& [variable, coefficient] : rhs.terms) {
             Wide& entry = result.terms[variable];
@@ -391,8 +383,7 @@ private:
         return result;
     }
 
-    static std::expected<LinearConstraint, CoreError> finish(const Expression& expression,
-                                                             Wide extra) {
+    static std::expected<LinearConstraint, CoreError> finish(const Expression& expression, Wide extra) {
         LinearConstraint constraint;
         for (const auto& [variable, coefficient] : expression.terms) {
             if (coefficient != 0) {
@@ -416,15 +407,16 @@ private:
 // Checks a certificate against the constraints standing at each node: the
 // system's own, and those the splits and cases above the node added.
 class Checker {
-public:
+  public:
     Checker(const ArithmeticSystem& system, const CoreLimits& limits)
-        : system_(system), limits_(limits), active_(system.constraints) {}
+        : system_(system),
+          limits_(limits),
+          active_(system.constraints) {}
 
-    std::expected<void, std::string> check(const ArithmeticCertificate& certificate,
-                                           std::uint32_t depth) {
+    std::expected<void, std::string> check(const ArithmeticCertificate& certificate, std::uint32_t depth) {
         if (++nodes_ > limits_.max_certificate_nodes) {
-            return std::unexpected("the certificate has more than " +
-                                   std::to_string(limits_.max_certificate_nodes) + " nodes");
+            return std::unexpected("the certificate has more than " + std::to_string(limits_.max_certificate_nodes) +
+                                   " nodes");
         }
         if (depth > limits_.max_term_depth) {
             return std::unexpected("the certificate nests deeper than the core allows");
@@ -441,9 +433,8 @@ public:
                 const auto& [variable, coefficient] = split->terms[index];
                 if (variable >= system_.variables.size() || coefficient == 0 ||
                     (index > 0 && variable <= split->terms[index - 1].first)) {
-                    return std::unexpected(
-                        "a split names its variables in increasing order, each once, each "
-                        "with a nonzero coefficient");
+                    return std::unexpected("a split names its variables in increasing order, each once, each "
+                                           "with a nonzero coefficient");
                 }
                 form.terms.emplace_back(variable, Wide{coefficient});
             }
@@ -473,9 +464,8 @@ public:
         return descend(members[1], *cases.second, depth);
     }
 
-private:
-    std::expected<void, std::string> descend(LinearConstraint added,
-                                             const ArithmeticCertificate& certificate,
+  private:
+    std::expected<void, std::string> descend(LinearConstraint added, const ArithmeticCertificate& certificate,
                                              std::uint32_t depth) {
         active_.push_back(std::move(added));
         auto result = check(certificate, depth + 1);
@@ -495,15 +485,13 @@ private:
             const auto& [position, multiplier] = sum.multipliers[index];
             if (position >= active_.size() || multiplier <= 0 ||
                 (index > 0 && position <= sum.multipliers[index - 1].first)) {
-                return std::unexpected(
-                    "a contradiction names standing constraints in increasing order, each once, "
-                    "each with a positive multiplier");
+                return std::unexpected("a contradiction names standing constraints in increasing order, each once, "
+                                       "each with a positive multiplier");
             }
             const LinearConstraint& constraint = active_[position];
             for (const auto& [variable, coefficient] : constraint.terms) {
                 Wide scaled = 0;
-                if (!multiply(coefficient, multiplier, scaled) ||
-                    !add(coefficients[variable], scaled)) {
+                if (!multiply(coefficient, multiplier, scaled) || !add(coefficients[variable], scaled)) {
                     return std::unexpected("the combination overflows the core's integers");
                 }
             }
@@ -514,14 +502,12 @@ private:
         }
         for (const auto& [variable, coefficient] : coefficients) {
             if (coefficient != 0) {
-                return std::unexpected("the combination leaves variable " +
-                                       std::to_string(variable) + " standing");
+                return std::unexpected("the combination leaves variable " + std::to_string(variable) + " standing");
             }
         }
         if (constant <= 0) {
-            return std::unexpected(
-                "the combination sums to a constant that is not positive, which is no "
-                "contradiction");
+            return std::unexpected("the combination sums to a constant that is not positive, which is no "
+                                   "contradiction");
         }
         return {};
     }
@@ -532,15 +518,12 @@ private:
     std::size_t nodes_ = 0;
 };
 
-}  // namespace
+} // namespace
 
-std::expected<ArithmeticSystem, CoreError> arithmetic_system(const Context& context,
-                                                             std::span<const Proposition> facts,
-                                                             const Proposition& goal,
-                                                             const CoreLimits& limits) {
+std::expected<ArithmeticSystem, CoreError> arithmetic_system(const Context& context, std::span<const Proposition> facts,
+                                                             const Proposition& goal, const CoreLimits& limits) {
     if (facts.size() > limits.max_arithmetic_facts) {
-        return fail("an arithmetic step uses more than " +
-                    std::to_string(limits.max_arithmetic_facts) + " facts");
+        return fail("an arithmetic step uses more than " + std::to_string(limits.max_arithmetic_facts) + " facts");
     }
     Builder builder(context, limits);
     for (const Proposition& fact : facts) {
@@ -554,11 +537,10 @@ std::expected<ArithmeticSystem, CoreError> arithmetic_system(const Context& cont
     return builder.take();
 }
 
-std::expected<void, std::string> refutes(const ArithmeticSystem& system,
-                                         const ArithmeticCertificate& certificate,
+std::expected<void, std::string> refutes(const ArithmeticSystem& system, const ArithmeticCertificate& certificate,
                                          const CoreLimits& limits) {
     Checker checker(system, limits);
     return checker.check(certificate, 0);
 }
 
-}  // namespace cppl::kernel
+} // namespace cppl::kernel

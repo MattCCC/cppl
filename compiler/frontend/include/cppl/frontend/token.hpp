@@ -1,11 +1,11 @@
 #pragma once
 
+#include "cppl/source/location.hpp"
+
 #include <cstdint>
 #include <string>
 #include <string_view>
 #include <vector>
-
-#include "cppl/source/location.hpp"
 
 namespace cppl::frontend {
 
@@ -29,7 +29,9 @@ struct Token {
     std::uint32_t line = 0;
     std::uint32_t column = 0;
 
-    [[nodiscard]] bool is(TokenKind wanted) const noexcept { return kind == wanted; }
+    [[nodiscard]] bool is(TokenKind wanted) const noexcept {
+        return kind == wanted;
+    }
     [[nodiscard]] bool is_identifier(std::string_view name) const noexcept {
         return kind == TokenKind::Identifier && text == name;
     }
@@ -40,24 +42,32 @@ struct Token {
 
 // A lexed buffer together with the file names its line markers referred to.
 class TokenStream {
-public:
+  public:
     TokenStream(std::string_view text, std::vector<Token> tokens, std::vector<std::string> files)
-        : text_(text), tokens_(std::move(tokens)), files_(std::move(files)) {}
+        : text_(text),
+          tokens_(std::move(tokens)),
+          files_(std::move(files)) {}
 
     // The scanned buffer. The stream does not own it; it stays valid only as
     // long as the buffer passed to lex() does.
-    [[nodiscard]] std::string_view text() const noexcept { return text_; }
+    [[nodiscard]] std::string_view text() const noexcept {
+        return text_;
+    }
 
     [[nodiscard]] std::string_view spelling(source::ByteSpan span) const {
         return text_.substr(span.offset, span.length);
     }
 
-    [[nodiscard]] const std::vector<Token>& tokens() const noexcept { return tokens_; }
-    [[nodiscard]] const std::vector<std::string>& files() const noexcept { return files_; }
+    [[nodiscard]] const std::vector<Token>& tokens() const noexcept {
+        return tokens_;
+    }
+    [[nodiscard]] const std::vector<std::string>& files() const noexcept {
+        return files_;
+    }
 
     [[nodiscard]] source::SourceLocation location_of(const Token& token) const;
 
-private:
+  private:
     std::string_view text_;
     std::vector<Token> tokens_;
     std::vector<std::string> files_;
@@ -70,4 +80,4 @@ private:
 // are consumed to recover user-visible positions.
 [[nodiscard]] TokenStream lex(std::string_view text, std::string_view initial_file);
 
-}  // namespace cppl::frontend
+} // namespace cppl::frontend

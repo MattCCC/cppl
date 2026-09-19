@@ -1,13 +1,13 @@
 #pragma once
 
-#include <string>
-#include <vector>
-
 #include "cppl/clang/ast.hpp"
 #include "cppl/diagnostics/diagnostic.hpp"
 #include "cppl/frontend/projection.hpp"
 #include "cppl/frontend/syntax.hpp"
 #include "cppl/vir/module.hpp"
+
+#include <string>
+#include <vector>
 
 namespace cppl::elaboration {
 
@@ -50,4 +50,4 @@ struct Request {
 // later, and anything it cannot model is reported rather than approximated.
 [[nodiscard]] Result elaborate(const Request& request, diagnostics::Engine& engine);
 
-}  // namespace cppl::elaboration
+} // namespace cppl::elaboration

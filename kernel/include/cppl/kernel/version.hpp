@@ -10,4 +10,4 @@ namespace cppl::kernel {
 inline constexpr std::string_view kKernelVersion = "cppl-kernel-0.3.0";
 inline constexpr std::string_view kFormalCoreVersion = "cppl-core-0.3.0";
 
-}  // namespace cppl::kernel
+} // namespace cppl::kernel

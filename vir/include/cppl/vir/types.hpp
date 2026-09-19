@@ -25,7 +25,9 @@ struct Type {
     static Type integer(std::uint16_t width, bool is_signed) {
         return Type{IntType{width, is_signed}};
     }
-    static Type boolean() { return Type{BoolType{}}; }
+    static Type boolean() {
+        return Type{BoolType{}};
+    }
 
     [[nodiscard]] bool is_integer() const noexcept {
         return std::holds_alternative<IntType>(node);
@@ -35,11 +37,13 @@ struct Type {
     }
 
     // Requires is_integer().
-    [[nodiscard]] const IntType& integer_type() const { return std::get<IntType>(node); }
+    [[nodiscard]] const IntType& integer_type() const {
+        return std::get<IntType>(node);
+    }
 
     friend bool operator==(const Type&, const Type&) = default;
 };
 
 std::string describe(const Type& type);
 
-}  // namespace cppl::vir
+} // namespace cppl::vir
