@@ -272,3 +272,72 @@ has formally verified semantics for
 A library or feature may be perfectly executable without yet belonging to the verified subset.
 
 That distinction is fundamental to preserving C++ compatibility without weakening formal guarantees.
+
+---
+
+# Implemented compatibility
+
+This section records what the current implementation actually accepts. The rest
+of this document describes the compatibility goal; `STATUS.md` records maturity.
+
+## Standard modes
+
+`-std=c++17`, `-std=c++20` and `-std=c++23` are exercised by the conformance
+suite: an ordinary program compiles and runs unchanged in each, and a program
+using C++L words as ordinary identifiers does too.
+
+The compiler is built as C++23. The program handed to code generation is the
+user's own text with formal spans blanked, so erasure can only delete and can
+never introduce a construct from a later standard. That property is checked
+directly: the runtime program is emitted and compiled on its own under
+`-std=c++17 -pedantic-errors -Werror`.
+
+## Contextual recognition
+
+C++L syntax is recognized after preprocessing. A macro is therefore expanded
+before C++L looks at the token, and a macro named after a C++L word keeps its
+ordinary preprocessor meaning.
+
+`law` is recognized only when a parameter list is followed by a contract clause,
+which ordinary C++ cannot have in that position. So these remain ordinary C++:
+
+```cpp
+int law = 1;
+law make_law(int x);
+law value = compute();
+```
+
+`pure` and `verified` are recognized only where the following tokens cannot
+begin an ordinary declaration whose type carries that name. `pure f(int);` is
+therefore left alone, because it may declare `f` returning a type named `pure`.
+
+One known gap: if a program declares a type named `pure` or `verified` and then
+declares a variable of that type qualified by `const` or `volatile`, for example
+`pure const value;`, the declaration is diagnosed rather than compiled. The
+construct is rejected, never silently reinterpreted.
+
+## Inputs
+
+C++L processes `.cpp`, `.cc`, `.cxx`, `.c++`, `.C` and `.cppl` inputs. A Law
+written in a `.h`, `.hpp` or `.hh` header is verified in every source file that
+includes it, which is the ordinary way to use one.
+
+Compiling a header directly is passed through to Clang unchanged unless that
+header contains C++L constructs, in which case it is refused rather than
+compiled unverified.
+
+`-x` is passed through for ordinary C++, and refused for a unit containing C++L
+constructs, because the implementation selects the input language itself when it
+projects such a unit.
+
+## Arguments
+
+Include paths, defines, optimization levels, warning flags, target flags and
+linker arguments are preserved in order and handed to Clang unchanged. Options
+that take a separate value are understood well enough not to mistake the value
+for an input file.
+
+## Platforms
+
+Subprocess handling uses POSIX process spawning, so the driver builds and runs
+on macOS and Linux. Windows support is not implemented.

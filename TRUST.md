@@ -1103,3 +1103,102 @@ PROVEN
 ```
 
 must never be weakened to make implementation easier.
+
+---
+
+# 41. Trusted Computing Base as implemented
+
+This section states what must currently behave correctly for a C++L `PROVEN`
+result to mean what it claims. It describes the implementation that exists, not
+the target; `STATUS.md` records maturity.
+
+## 41.1 Logical trust
+
+For a false proposition to be accepted, one of these would have to be wrong:
+
+```text
+kernel/   the proof checker, the normalizer, the type checker of core terms,
+          and the admission rules of the definition context
+```
+
+That is the whole logical TCB. It links no other component, includes no header
+outside itself, and holds no global state. `tests/architecture` checks both
+properties on every run.
+
+There are **no axioms**. The core has no rule that introduces a proposition
+without evidence, and no `trusted` mechanism is implemented, so no proposition
+can currently enter the system as an assumption. A declaration that would state
+one, `trusted law`, is refused rather than accepted (`SPEC.md` 27, 52).
+
+## 41.2 Correspondence trust
+
+A kernel-checked proof is a proof about the proposition it was given. That the
+proposition says what the C++ program means is a separate question, and the
+components that answer it are trusted for that correspondence:
+
+```text
+compiler/frontend/      which spans are formal syntax and where they came from
+clang/                  the resolved C++ semantics C++L reads from Clang
+compiler/elaboration/   the VIR built from those semantics
+compiler/obligations/   the lowering of VIR into core terms and propositions
+```
+
+A defect here cannot make the kernel accept an invalid derivation. It can make
+the kernel check the wrong statement. The lowering rules that carry the most
+weight are deliberately few and are stated explicitly in the implementation:
+
+- a C++ equality between two built-in integer values of the same type denotes
+  propositional equality of those values (`SPEC.md` 7.3);
+- C++ addition is lowered onto the core's wrapping primitive **only** for
+  unsigned operands, where C++ arithmetic is modular and the two agree exactly.
+  Signed addition is refused, because C++ leaves its overflow undefined;
+- a function's value may be unfolded during checking only when it was declared
+  `pure` and its body was checked against the purity rules.
+
+Anything outside those rules is reported as unsupported and yields no
+obligation. No construct is approximated.
+
+## 41.3 Runtime trust
+
+```text
+Clang / LLVM    preprocessing, C++ semantics, code generation, linking
+compiler/erasure and the projector    that the program verified is the program compiled
+```
+
+Clang is trusted to implement C++ and to compile the program it is given; that
+trust is the same trust any C++ project places in its compiler, and it is not
+proof trust. Clang never decides whether a theorem holds.
+
+The projector produces the analysed text and the runtime text in one pass, and
+the erasure check verifies that the runtime text differs only by blanking inside
+recorded formal spans, with line numbering unchanged. That check is what
+connects the verified program to the compiled one; it runs on every unit that
+contains C++L syntax, and a failure is an internal error, never a verification
+result.
+
+## 41.4 Not yet trusted, because not yet present
+
+```text
+solvers                 none are integrated; none are trusted
+proof caches            no proof result is stored or reused
+proof artifacts         no serialized proof format exists
+AI systems              no privileged path exists
+FFI contracts           none can be declared
+```
+
+A trust report therefore shows zero trusted solvers and zero trusted external
+axioms, and says so because it is true, not because the fields are unfilled.
+Unverified FFI boundaries are reported as *not analysed* rather than as zero:
+C++L does not yet look for them.
+
+## 41.5 What would enlarge the TCB
+
+Each of these requires an explicit update to this document before it is merged:
+
+- admitting recursive definitions (the termination argument in
+  `ARCHITECTURE.md` 97.7 would no longer hold);
+- any axiom, `trusted` declaration or assumed contract;
+- trusting a solver result that is not independently checked;
+- reusing a cached proof result;
+- any lowering rule that equates a C++ operation with a core primitive whose
+  behaviour differs on some input.

@@ -1,7 +1,6 @@
-````markdown
 # C++L Status
 
-**Project status:** Early design and specification  
+**Project status:** Early implementation, first vertical slice  
 **Stability:** Experimental  
 **Production ready:** No  
 **Language specification frozen:** No  
@@ -46,9 +45,43 @@ C++L uses the following status categories.
 
 ---
 
+# What the current implementation does
+
+One vertical slice exists and works end to end. Concretely:
+
+```text
+cppl -std=c++17|c++20|c++23 main.cpp -o main
+```
+
+compiles ordinary supported C++ with no source changes, and for a unit that
+declares Laws it:
+
+1. preprocesses with Clang and recognizes `law` and `pure` contextually;
+2. projects the unit into an analysis text and a runtime text in one pass;
+3. resolves the C++ semantics of the analysis text through libclang;
+4. elaborates the resolved semantics into typed VIR;
+5. lowers VIR into core definitions and a universally quantified equality goal;
+6. proposes evidence and submits it to the trusted kernel;
+7. reports `PROVEN` only on kernel acceptance, and fails the build otherwise;
+8. checks that erasure only deleted text, and hands the runtime program to Clang.
+
+The verified fragment is deliberately small: a Law is one equality between two
+built-in integer expressions, universally quantified over its parameters, over
+functions declared `pure` whose bodies are a single `return` of a modeled
+expression. Everything else is reported as unsupported and produces no
+obligation. See `ARCHITECTURE.md` 97 for the implemented structure and
+`TRUST.md` 41 for what must be trusted today.
+
+This slice does **not** implement induction, dependent types, refinement types,
+contracts, ghost state, `unsafe`, `trusted`, written proofs, solvers, proof
+caching, or any verification of the C++ memory model. Those remain `SPECIFIED`
+below.
+
+---
+
 # Current project state
 
-At the current stage, C++L should be considered primarily a **language and verification-system specification**.
+Outside that slice, C++L should be considered primarily a **language and verification-system specification**.
 
 The following documents define the intended direction:
 
@@ -81,9 +114,13 @@ IMPLEMENTED
 
 # Current milestone
 
-The current priority is to establish the formal core before broad C++ implementation work.
+The first vertical slice is in place. The next priority is to widen the formal
+core deliberately rather than to widen the language surface: written proofs,
+preconditions as implications, and the obligations that justify signed
+arithmetic are each a prerequisite for the Laws people will actually want to
+state.
 
-Current target:
+Original target, for reference:
 
 ```text
 formal core
@@ -110,33 +147,34 @@ The project should not claim broad language implementation before the proof sema
 | Capability                   | Status      |
 | ---------------------------- | ----------- |
 | C++L language mission        | `SPECIFIED` |
-| Genuine C++ superset model   | `SPECIFIED` |
-| `law` declarations           | `SPECIFIED` |
+| Genuine C++ superset model   | `PROTOTYPE` |
+| `law` declarations           | `PROTOTYPE` |
+| `ensures` clauses on laws    | `PROTOTYPE` |
 | `proves` clauses             | `SPECIFIED` |
 | proof declarations           | `SPECIFIED` |
-| proposition types            | `SPECIFIED` |
-| universal quantification     | `SPECIFIED` |
+| proposition types            | `PROTOTYPE` |
+| universal quantification     | `PROTOTYPE` |
 | existential quantification   | `SPECIFIED` |
 | dependent types              | `SPECIFIED` |
 | refinement types             | `SPECIFIED` |
 | algebraic data types         | `SPECIFIED` |
 | proof-aware pattern matching | `SPECIFIED` |
 | impossible-state elimination | `SPECIFIED` |
-| definitional equality        | `SPECIFIED` |
-| propositional equality       | `SPECIFIED` |
-| normalization                | `SPECIFIED` |
+| definitional equality        | `PROTOTYPE` |
+| propositional equality       | `PROTOTYPE` |
+| normalization                | `PROTOTYPE` |
 | structural induction         | `SPECIFIED` |
 | well-founded recursion       | `SPECIFIED` |
 | termination checking         | `SPECIFIED` |
 | `expects`                    | `SPECIFIED` |
-| `ensures`                    | `SPECIFIED` |
-| `pure`                       | `SPECIFIED` |
+| `ensures` on functions       | `SPECIFIED` |
+| `pure`                       | `PROTOTYPE` |
 | `verified`                   | `SPECIFIED` |
 | `ghost`                      | `SPECIFIED` |
 | `unsafe`                     | `SPECIFIED` |
 | `trusted`                    | `SPECIFIED` |
 | `decreases`                  | `SPECIFIED` |
-| proof erasure                | `SPECIFIED` |
+| proof erasure                | `PROTOTYPE` |
 
 ---
 
@@ -146,22 +184,30 @@ The project should not claim broad language implementation before the proof sema
 | ------------------------------------ | ------------- |
 | Core proof calculus                  | `SPECIFIED`   |
 | Propositions-as-types model          | `SPECIFIED`   |
-| Trusted proof kernel architecture    | `SPECIFIED`   |
-| Kernel implementation                | `NOT STARTED` |
-| Proof-term representation            | `SPECIFIED`   |
+| Trusted proof kernel architecture    | `PROTOTYPE`   |
+| Kernel implementation                | `PROTOTYPE`   |
+| Proof-term representation            | `PROTOTYPE`   |
 | Proof-term binary/serialized format  | `NOT STARTED` |
-| Equality checking                    | `SPECIFIED`   |
-| Substitution                         | `SPECIFIED`   |
-| Dependent application                | `SPECIFIED`   |
-| Universal introduction/elimination   | `SPECIFIED`   |
-| Existential introduction/elimination | `SPECIFIED`   |
-| Induction checking                   | `SPECIFIED`   |
-| Refinement introduction/elimination  | `SPECIFIED`   |
-| Normalization engine                 | `NOT STARTED` |
+| Equality checking                    | `PROTOTYPE`   |
+| Substitution                         | `PROTOTYPE`   |
+| Dependent application                | `NOT STARTED` |
+| Universal introduction               | `PROTOTYPE`   |
+| Universal elimination                | `NOT STARTED` |
+| Existential introduction/elimination | `NOT STARTED` |
+| Induction checking                   | `NOT STARTED` |
+| Refinement introduction/elimination  | `NOT STARTED` |
+| Normalization engine                 | `PROTOTYPE`   |
 | Termination checker                  | `NOT STARTED` |
 | Proof certificate format             | `NOT STARTED` |
 | Kernel fuzzing                       | `NOT STARTED` |
 | Kernel property testing              | `NOT STARTED` |
+| Kernel rejection tests               | `PROTOTYPE`   |
+
+The kernel implements two rules, reflexivity and universal introduction, over
+propositions built from equality and universal quantification. Its terms are
+variables, machine-integer literals, applications of admitted definitions and
+one primitive, wrapping addition. It admits no recursion, which is why it needs
+no termination checker yet (`ARCHITECTURE.md` 97.7).
 | Mechanized core calculus             | `NOT STARTED` |
 | Meta-theory / soundness proofs       | `NOT STARTED` |
 
@@ -192,11 +238,11 @@ The project should not claim broad language implementation before the proof sema
 
 | Capability                               | Status        |
 | ---------------------------------------- | ------------- |
-| Clang-based C++ semantic integration     | `SPECIFIED`   |
-| Clang AST bridge                         | `NOT STARTED` |
-| Source mapping                           | `NOT STARTED` |
-| C++ name lookup reuse                    | `SPECIFIED`   |
-| C++ overload-resolution reuse            | `SPECIFIED`   |
+| Clang-based C++ semantic integration     | `PROTOTYPE`   |
+| Clang AST bridge                         | `PROTOTYPE`   |
+| Source mapping                           | `PROTOTYPE`   |
+| C++ name lookup reuse                    | `PROTOTYPE`   |
+| C++ overload-resolution reuse            | `PROTOTYPE`   |
 | C++ template interoperability            | `SPECIFIED`   |
 | C++ `constexpr` interoperability         | `SPECIFIED`   |
 | C++ exceptions model                     | `SPECIFIED`   |
@@ -242,12 +288,18 @@ Current status:
 | C++98/03                        | `NOT STARTED` |
 | C++11                           | `NOT STARTED` |
 | C++14                           | `NOT STARTED` |
-| C++17                           | `SPECIFIED`   |
-| C++20                           | `SPECIFIED`   |
-| C++23                           | `SPECIFIED`   |
+| C++17                           | `PROTOTYPE`   |
+| C++20                           | `PROTOTYPE`   |
+| C++23                           | `PROTOTYPE`   |
 | Newer Clang-supported standards | `SPECIFIED`   |
 
 No C++ compatibility level should be claimed as implemented until compatibility tests exist.
+
+The conformance suite covers each of C++17, C++20 and C++23 with an ordinary
+program and with a program that uses C++L words as ordinary identifiers, and
+checks that the runtime program emitted for a C++17 target compiles as C++17 on
+its own. That is enough for `PROTOTYPE`, not for `IMPLEMENTED`: templates,
+modules, concepts and ABI-sensitive constructs are not yet covered.
 
 ---
 
@@ -255,16 +307,22 @@ No C++ compatibility level should be claimed as implemented until compatibility 
 
 | Capability                     | Status        |
 | ------------------------------ | ------------- |
-| Verification IR architecture   | `SPECIFIED`   |
-| VIR type representation        | `NOT STARTED` |
+| Verification IR architecture   | `PROTOTYPE`   |
+| VIR type representation        | `PROTOTYPE`   |
+| VIR expression representation  | `PROTOTYPE`   |
+| VIR provenance                 | `PROTOTYPE`   |
 | VIR proposition representation | `NOT STARTED` |
 | VIR control-flow model         | `NOT STARTED` |
 | VIR state model                | `NOT STARTED` |
 | VIR contract model             | `NOT STARTED` |
-| VIR proof obligations          | `NOT STARTED` |
+| VIR proof obligations          | `PROTOTYPE`   |
 | VIR unsafe/trust annotations   | `NOT STARTED` |
 | VIR serialization              | `NOT STARTED` |
 | VIR deterministic hashing      | `NOT STARTED` |
+
+Obligation identities are content-derived today, but they are computed from the
+core representation rather than from VIR, so VIR hashing has no consumer yet and
+is not implemented.
 
 ---
 
@@ -452,10 +510,16 @@ Foreign code must not automatically count as verified.
 | Proof erasure model              | `SPECIFIED`   |
 | Ghost erasure model              | `SPECIFIED`   |
 | Dependent argument erasure       | `SPECIFIED`   |
-| Erasure implementation           | `NOT STARTED` |
-| Runtime-equivalence tests        | `NOT STARTED` |
+| Erasure implementation           | `PROTOTYPE`   |
+| Runtime-equivalence tests        | `PARTIAL`     |
 | ABI-equivalence tests            | `NOT STARTED` |
 | Formal erasure correctness proof | `NOT STARTED` |
+
+Erasure currently removes law declarations and the `pure` specifier, and the
+implementation checks a strong property rather than asserting success: the
+runtime program must be the analysed program with formal spans blanked, with
+byte positions and line numbering unchanged. Equivalence is therefore
+established structurally for the constructs implemented, not proven in general.
 
 C++L's intended mature pipeline is:
 
@@ -493,6 +557,7 @@ Proofs should normally disappear before runtime.
 
 | Capability                       | Status        |
 | -------------------------------- | ------------- |
+| Definitional-equality strategy   | `PROTOTYPE`   |
 | `proof auto`                     | `SPECIFIED`   |
 | Simplification                   | `SPECIFIED`   |
 | Rewriting                        | `SPECIFIED`   |
@@ -529,17 +594,21 @@ AI output must always be independently verified.
 
 | Tool                   | Status        |
 | ---------------------- | ------------- |
-| `cppl build`           | `SPECIFIED`   |
-| `cppl check`           | `SPECIFIED`   |
-| `cppl prove`           | `SPECIFIED`   |
-| `cppl explain`         | `SPECIFIED`   |
-| `cppl trust-report`    | `SPECIFIED`   |
-| CLI implementation     | `NOT STARTED` |
-| LSP                    | `NOT STARTED` |
-| IDE proof goals        | `NOT STARTED` |
-| Proof navigation       | `NOT STARTED` |
-| Counterexample UI      | `NOT STARTED` |
-| Structured diagnostics | `NOT STARTED` |
+| Clang-compatible driver | `PROTOTYPE`   |
+| `cppl build`            | `SPECIFIED`   |
+| `cppl check`            | `SPECIFIED`   |
+| `cppl prove`            | `SPECIFIED`   |
+| `cppl explain`          | `SPECIFIED`   |
+| `cppl trust-report`     | `PARTIAL`     |
+| LSP                     | `NOT STARTED` |
+| IDE proof goals         | `NOT STARTED` |
+| Proof navigation        | `NOT STARTED` |
+| Counterexample UI       | `NOT STARTED` |
+| Structured diagnostics  | `PROTOTYPE`   |
+
+The driver is Clang-compatible rather than subcommand-based: `cppl` takes the
+arguments `clang++` takes. Trust reporting exists as `--cppl-trust-report`; the
+subcommand forms above are not implemented.
 
 ---
 
@@ -593,14 +662,19 @@ Until concurrency semantics exist, concurrency must not be silently treated usin
 
 | Capability                  | Status        |
 | --------------------------- | ------------- |
-| Explicit TCB model          | `SPECIFIED`   |
-| Small-kernel architecture   | `SPECIFIED`   |
-| Hidden axioms forbidden     | `SPECIFIED`   |
+| Explicit TCB model          | `PROTOTYPE`   |
+| Small-kernel architecture   | `PROTOTYPE`   |
+| Hidden axioms forbidden     | `PROTOTYPE`   |
 | Trust transitivity          | `SPECIFIED`   |
 | Solver trust reporting      | `SPECIFIED`   |
-| FFI trust reporting         | `SPECIFIED`   |
-| Per-Law assumption closure  | `SPECIFIED`   |
-| Trust-report implementation | `NOT STARTED` |
+| FFI trust reporting         | `NOT STARTED` |
+| Per-Law assumption closure  | `NOT STARTED` |
+| Trust-report implementation | `PARTIAL`     |
+
+The implemented TCB is stated in `TRUST.md` 41. There are no axioms and no
+trusted declarations, because no mechanism to introduce one exists yet: a
+`trusted law` is refused rather than accepted. The trust report prints counts it
+can substantiate, and says *not analysed* where C++L does not yet look.
 
 See [TRUST.md](TRUST.md).
 
@@ -628,6 +702,8 @@ See [SECURITY.md](SECURITY.md).
 | -------------------------- | ------------- |
 | `README.md`                | `SPECIFIED`   |
 | `SPEC.md`                  | `SPECIFIED`   |
+| `docs/GRAMMAR.md`          | `SPECIFIED`   |
+| `docs/CURRENT_STATUS.md`   | `IMPLEMENTED` |
 | `DESIGN.md`                | `SPECIFIED`   |
 | `FOUNDATIONS.md`           | `SPECIFIED`   |
 | `TRUST.md`                 | `SPECIFIED`   |
@@ -657,6 +733,7 @@ Until implementation reaches the appropriate status, C++L does **not** claim:
 - completed refinement solving
 - sound C++ pointer verification
 - sound concurrency verification
+- verified signed arithmetic
 - verified standard-library implementations
 - completed proof erasure
 - completed Clang integration
@@ -706,6 +783,10 @@ clang++
 ```
 
 Such prototypes should be marked `PROTOTYPE` rather than presented as broad language support.
+
+The first of these now exists: see *What the current implementation does* above.
+It is marked `PROTOTYPE` throughout this document, and the fragment it verifies
+is stated explicitly rather than implied.
 
 ---
 
@@ -922,4 +1003,3 @@ proven sound
 ```
 
 The credibility of a proof-oriented language depends on maintaining those distinctions precisely.
-````

@@ -2846,3 +2846,139 @@ ordinary native binary
 No optimization, compatibility shortcut, solver integration, editor feature, cache, plugin, or AI system may bypass that chain.
 
 **C++L adds proof to C++. It must not replace C++ with a second, drifting implementation of C++.**
+
+---
+
+# 97. Implemented architecture
+
+This section records the structure that exists today, and the decisions taken
+while building it. Everything above describes the target architecture;
+`STATUS.md` records how much of it is implemented.
+
+## 97.1 Components
+
+```text
+compiler/source/        source identity, presumed locations, content digests
+kernel/                 the formal core and the proof checker
+vir/                    the Verification IR
+clang/                  the Clang semantic bridge
+compiler/diagnostics/   the structured diagnostic model
+compiler/frontend/      lexer, contextual recognizer, projection
+compiler/elaboration/   Clang semantics + C++L syntax -> VIR
+compiler/obligations/   VIR + Laws -> core definitions and goals
+compiler/automation/    evidence production
+compiler/erasure/       runtime program selection and its erasure check
+compiler/driver/        argument handling, orchestration, exit status
+```
+
+`compiler/source` is the source manager of section 7. It is a leaf: the VIR and
+the Clang bridge both depend on it, so no component invents its own notion of
+"where this came from".
+
+The kernel links nothing at all. `tests/architecture` enforces that by both
+inspecting its includes and checking that the built library resolves no symbol
+from any other component.
+
+## 97.2 Stage order as implemented
+
+```mermaid
+flowchart TD
+    SRC["Source file"]
+    PP["Clang preprocessing"]
+    LEX["Lexer + contextual recognizer"]
+    FAST{"Contains C++L syntax?"}
+    PROJ["Projection: analysis text + runtime text"]
+    BRIDGE["libclang parse of the analysis text"]
+    ELAB["Elaboration to VIR"]
+    OBL["Obligations + admitted definitions"]
+    AUTO["Evidence"]
+    KERNEL["Kernel"]
+    ERASE["Erasure check"]
+    CG["Clang code generation"]
+
+    SRC --> PP
+    PP --> LEX
+    LEX --> FAST
+    FAST -->|no| CG
+    FAST -->|yes| PROJ
+    PROJ --> BRIDGE
+    BRIDGE --> ELAB
+    ELAB --> OBL
+    OBL --> AUTO
+    AUTO --> KERNEL
+    KERNEL --> ERASE
+    ERASE --> CG
+```
+
+## 97.3 The frontend runs after preprocessing
+
+C++L syntax is recognized in the preprocessed translation unit, as `SPEC.md` 3.2
+requires. Two consequences are architectural rather than incidental:
+
+- a Law written in a header is verified in every unit that includes it, which a
+  scan of the unpreprocessed source would miss entirely;
+- macros are already expanded, so C++L never reinterprets a token the
+  preprocessor would have replaced.
+
+The cost is one additional Clang invocation per unit. A unit containing no C++L
+syntax then takes the ordinary path of section 29: the original file is handed
+to Clang untouched.
+
+## 97.4 One projector, two texts
+
+The projector emits both the text analysed and the text compiled, from the same
+spans in the same pass:
+
+- the **runtime text** is the preprocessed text with every C++L-only span
+  blanked, preserving every byte position and every line;
+- the **analysis text** is the same text with each Law replaced by an ordinary
+  C++ specification function, bracketed by `#line` directives so positions still
+  refer to the user's source.
+
+This keeps the single-projection invariant of section 11: there is one lowering,
+with one output selected for code generation. The relationship is checked rather
+than asserted — `compiler/erasure` verifies that the runtime text differs from
+the analysed text only by blanking inside recorded spans, and that line
+numbering is unchanged. Because erasure can only delete, it cannot introduce a
+construct from a standard later than the one the user selected.
+
+## 97.5 A Law is projected into a C++ specification function
+
+The proposition of a Law is a C++ expression (`SPEC.md` 6, 7.3). Rather than
+interpret it, C++L emits it as the body of a generated function in the position
+the Law occupies, and lets Clang resolve it: name lookup, overload resolution,
+implicit conversions and canonical types all come from Clang. The elaborator
+then reads the resolved expression. Nothing in C++L parses C++ expressions.
+
+## 97.6 The Clang bridge is libclang, in process
+
+The bridge uses libclang, Clang's stable C API, and translates the facts C++L
+needs into C++L's own types. It is the only place in the project that includes a
+Clang header, and no Clang data structure or pointer leaves it.
+
+A transport based on `-ast-dump=json` was measured and rejected: a single unit
+including `<iostream>` produces roughly 490 MB of JSON. Consuming Clang's
+in-memory AST through a stable API is both cheaper and less brittle than parsing
+a debug format.
+
+The same Clang installation supplies both libclang and the `clang++` driver used
+for preprocessing and code generation, so the semantics C++L verifies and the
+semantics Clang compiles come from one toolchain.
+
+## 97.7 Termination in the current core
+
+The core admits no recursion. `Context::define` type-checks a definition against
+the context as it stands, so a definition can only call definitions already
+admitted and the definition graph is acyclic by construction. Normalization
+therefore terminates, and divergence cannot manufacture evidence. A step budget
+and a depth limit are kept as defence in depth, and exhausting either rejects.
+
+When recursive definitions are admitted, this argument disappears and a
+termination checker becomes a prerequisite, not an improvement.
+
+## 97.8 Intermediate artifacts
+
+Projections are written under the system temporary directory, in a directory
+named by a digest of the input's absolute path. They are inputs to Clang and
+diagnostics aids; nothing reads them back as a source of truth, and no proof
+result depends on them.
