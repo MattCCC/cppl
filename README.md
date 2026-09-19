@@ -25,7 +25,7 @@ The project started from a simple chain of thought:
 > Humans and AIs need an ambiguity-free language for specifying what software must do, a mechanically checkable way to prove that an implementation satisfies that intent, and a path to high-performance native execution. Can we do that without creating entirely new language and work with existing tooling?
 > What if these requirements could be part of the C++ language itself rather than remaining in tests, comments, fixtures, and engineering conventions?
 
-C++L is an attempt to answer that question while preserving the C++ runtime, ABI, ecosystem, and Clang/LLVM toolchain. The project was initiated by Mateusz Czapliński equipped with AI, from this practical need.
+C++L is an attempt to answer that question while preserving the C++ runtime, ABI, ecosystem, and Clang/LLVM toolchain. The project was initiated by Mateusz Czapliński equipped with AI, steming from this practical need.
 
 ## Core idea
 
