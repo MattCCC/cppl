@@ -330,6 +330,57 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
     return steps;
 }
 
+// Reads a verified function's contract back from the functions it was projected
+// into.
+//
+// `result` is a parameter of the projected postcondition, in last position, so
+// Clang resolves it as an ordinary name and the elaborated expression refers to
+// it by position like any other parameter. Nothing named `result` exists in the
+// program itself.
+void elaborate_contract(const Request& request,
+                        const frontend::VerifiedFunction& declaration,
+                        const frontend::ContractFunctions& projected,
+                        const clangbridge::Function& function,
+                        const std::string& body_rejection,
+                        std::uint32_t& next_expression_id,
+                        vir::Function& converted,
+                        diagnostics::Engine& engine) {
+    if (!body_rejection.empty() || !converted.returned_value.has_value()) {
+        report(engine, diagnostics::Category::UnsupportedSemantics, declaration.function_location,
+               "verified function '" + function.qualified_name +
+                   "' has a body this implementation cannot state as a value" +
+                   (body_rejection.empty() ? "" : ": " + body_rejection),
+               "a contract is discharged from the body, and this implementation models a body "
+               "that is a single return of a modeled expression");
+        return;
+    }
+
+    const frontend::Clause* postcondition = declaration.postcondition();
+    std::optional<vir::Expr> ensured = convert_projected(
+        request, projected.postcondition_name, postcondition->location, next_expression_id,
+        "the postcondition of verified function '" + function.qualified_name + "'", engine);
+    if (!ensured.has_value()) {
+        return;
+    }
+
+    vir::Contract contract;
+    contract.postcondition = std::move(*ensured);
+    contract.range.begin = postcondition->location;
+
+    if (const frontend::Clause* precondition = declaration.precondition();
+        precondition != nullptr) {
+        std::optional<vir::Expr> expected = convert_projected(
+            request, projected.precondition_name, precondition->location, next_expression_id,
+            "the precondition of verified function '" + function.qualified_name + "'", engine);
+        if (!expected.has_value()) {
+            return;
+        }
+        contract.precondition = std::move(*expected);
+    }
+
+    converted.contract = std::move(contract);
+}
+
 // Resolves the written proofs of a unit against the laws they claim to prove.
 //
 // Nothing here decides whether a proof holds. It decides only what the author
@@ -461,10 +512,29 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
     std::uint32_t next_expression_id = 0;
     std::uint32_t next_function_id = 0;
 
-    // Functions the author marked `pure`. Purity is claimed here and checked
-    // below; the marker alone establishes nothing (SPEC.md 13.3).
+    // Functions the author marked `pure`, and functions marked `verified`. A
+    // function may be both, and is converted once either way. Purity is claimed
+    // here and checked below; the marker alone establishes nothing
+    // (SPEC.md 13.3).
+    struct Candidate {
+        const clangbridge::Function* function = nullptr;
+        bool pure = false;
+        const frontend::ContractFunctions* contract = nullptr;
+        const frontend::VerifiedFunction* declaration = nullptr;
+    };
+
     std::set<std::string> pure_symbols;
-    std::vector<const clangbridge::Function*> pure_functions;
+    std::vector<Candidate> candidates;
+
+    const auto candidate_for = [&candidates](const clangbridge::Function* function) -> Candidate& {
+        for (Candidate& existing : candidates) {
+            if (existing.function->usr == function->usr) {
+                return existing;
+            }
+        }
+        candidates.push_back(Candidate{function, false, nullptr, nullptr});
+        return candidates.back();
+    };
 
     for (const frontend::PureMarker& marker : request.syntax.pure_markers) {
         const clangbridge::Function* function = request.unit.find_at(marker.function_location);
@@ -476,10 +546,28 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
             continue;
         }
         pure_symbols.insert(function->usr);
-        pure_functions.push_back(function);
+        candidate_for(function).pure = true;
     }
 
-    for (const clangbridge::Function* function : pure_functions) {
+    for (const frontend::ContractFunctions& projected : request.projection.contract_functions) {
+        const frontend::VerifiedFunction& declaration =
+            request.syntax.verified_functions[projected.function_index];
+        const clangbridge::Function* function =
+            request.unit.find_at(declaration.function_location);
+        if (function == nullptr) {
+            report(engine, diagnostics::Category::Elaboration, declaration.function_location,
+                   "the declaration of verified function '" + declaration.function_name +
+                       "' was not resolved",
+                   "Clang did not report a function declaration at this location");
+            continue;
+        }
+        Candidate& candidate = candidate_for(function);
+        candidate.contract = &projected;
+        candidate.declaration = &declaration;
+    }
+
+    for (const Candidate& candidate : candidates) {
+        const clangbridge::Function* function = candidate.function;
         vir::Function converted;
         converted.id = vir::FunctionId{next_function_id++};
         converted.symbol = vir::SymbolId{function->usr};
@@ -519,26 +607,37 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
                 const auto& failure = elaborator.failure();
                 rejection = failure.has_value() ? failure->reason : "its body is not modeled";
             } else {
+                // The value the body produces is what a contract is about, so
+                // it is kept whatever the function's purity. Purity decides
+                // something else: whether the formal core may unfold it.
+                converted.returned_value = std::move(body);
+
                 std::vector<vir::SymbolId> callees;
-                collect_callees(*body, callees);
-                for (const vir::SymbolId& callee : callees) {
-                    if (!pure_symbols.contains(callee.usr)) {
-                        rejection =
-                            "it calls a function that is not declared pure, so its value is not "
-                            "a mathematical function of its arguments";
-                        break;
-                    }
-                }
-                if (rejection.empty()) {
-                    converted.returned_value = std::move(body);
+                collect_callees(*converted.returned_value, callees);
+                const bool calls_only_pure =
+                    std::ranges::all_of(callees, [&pure_symbols](const vir::SymbolId& callee) {
+                        return pure_symbols.contains(callee.usr);
+                    });
+                if (!calls_only_pure) {
+                    rejection =
+                        "it calls a function that is not declared pure, so its value is not "
+                        "a mathematical function of its arguments";
+                } else if (candidate.pure) {
                     converted.purity = vir::Purity::Pure;
                 }
             }
         }
 
-        if (converted.purity != vir::Purity::Pure) {
+        // A function the author marked pure and that did not turn out to be a
+        // definition is recorded, so a law that reaches for it can say why.
+        if (candidate.pure && converted.purity != vir::Purity::Pure) {
             result.rejected_functions.push_back(FunctionRejection{
                 converted.symbol, function->qualified_name, rejection, function->location});
+        }
+
+        if (candidate.contract != nullptr) {
+            elaborate_contract(request, *candidate.declaration, *candidate.contract, *function,
+                               rejection, next_expression_id, converted, engine);
         }
 
         result.module.functions.push_back(std::move(converted));

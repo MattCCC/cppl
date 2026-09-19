@@ -33,6 +33,12 @@ Erased erase(const frontend::TokenStream& stream,
     for (const frontend::PureMarker& marker : syntax.pure_markers) {
         spans.push_back(marker.keyword);
     }
+    // A verified function stays in the program; its specifier and its contract
+    // do not.
+    for (const frontend::VerifiedFunction& verified : syntax.verified_functions) {
+        spans.push_back(verified.keyword);
+        spans.push_back(verified.clause_region);
+    }
 
     Report report;
     report.erased_spans = spans.size();

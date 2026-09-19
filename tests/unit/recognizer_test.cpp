@@ -276,12 +276,18 @@ CPPL_TEST(a_proof_inside_a_class_is_refused_rather_than_half_handled) {
     CPPL_CHECK(result.syntax.proofs.empty());
 }
 
-CPPL_TEST(a_verified_function_is_refused_rather_than_ignored) {
+CPPL_TEST(a_verified_function_retains_its_contract) {
     Recognized result;
     recognize("verified int identity(int x)\n    ensures(result == x)\n{\n    return x;\n}\n",
               result);
 
-    CPPL_CHECK(result.engine.has_errors());
+    CPPL_CHECK(!result.engine.has_errors());
+    CPPL_CHECK_EQ(result.syntax.verified_functions.size(), std::size_t{1});
+    const auto& function = result.syntax.verified_functions.front();
+    CPPL_CHECK_EQ(function.function_name, std::string("identity"));
+    CPPL_CHECK(function.postcondition() != nullptr);
+    CPPL_CHECK(function.precondition() == nullptr);
+    CPPL_CHECK(result.syntax.pure_markers.empty());
 }
 
 CPPL_TEST(a_contract_clause_on_a_pure_function_is_refused_rather_than_erased) {

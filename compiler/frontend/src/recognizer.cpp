@@ -557,6 +557,151 @@ bool has_specification_clause(const std::vector<Token>& tokens,
     return false;
 }
 
+// `verified` marks a function whose contract this implementation has to
+// discharge. The clauses are delimited here; what they mean is settled once
+// Clang has resolved them, like every other specification expression.
+bool try_verified(const TokenStream& stream,
+                  std::size_t index,
+                  diagnostics::Engine& engine,
+                  VerifiedFunction& verified,
+                  std::size_t& next_index) {
+    const std::vector<Token>& tokens = stream.tokens();
+    next_index = index + 1;
+
+    const std::optional<std::size_t> name = find_declarator_name(tokens, index);
+    if (!name.has_value()) {
+        report(engine, stream, tokens[index], diagnostics::Category::CpplSyntax,
+               "the 'verified' specifier applies to a function declaration",
+               "no function declarator follows this specifier");
+        return false;
+    }
+
+    const std::size_t open = *name + 1;
+    if (open >= tokens.size() || !tokens[open].is_punctuator("(")) {
+        return false;
+    }
+    const std::size_t close = matching_parenthesis(tokens, open);
+    if (close >= tokens.size()) {
+        return false;
+    }
+
+    // Whatever stands between the specifiers and the declarator is the return
+    // type, and the contract's `result` is a value of it.
+    std::size_t type_start = index + 1;
+    const bool also_pure = tokens[type_start].is_identifier("pure");
+    if (also_pure) {
+        ++type_start;
+    }
+    if (type_start >= *name) {
+        report(engine, stream, tokens[index], diagnostics::Category::CpplSyntax,
+               "a verified function states a return type before its name");
+        return false;
+    }
+    if (tokens[type_start].is_identifier("auto")) {
+        report(engine, stream, tokens[type_start], diagnostics::Category::UnsupportedSemantics,
+               "a deduced return type is not supported on a verified function",
+               "the contract's 'result' is a value of the declared return type, so this "
+               "implementation requires one to be written");
+        return false;
+    }
+
+    const std::size_t first_clause = close + 1;
+    std::size_t cursor = first_clause;
+    while (cursor < tokens.size()) {
+        const std::optional<ClauseKind> kind = clause_kind(tokens[cursor]);
+        if (!kind.has_value()) {
+            break;
+        }
+        if (cursor + 1 >= tokens.size() || !tokens[cursor + 1].is_punctuator("(")) {
+            report(engine, stream, tokens[cursor], diagnostics::Category::CpplSyntax,
+                   "'" + std::string(tokens[cursor].text) +
+                       "' must be followed by a parenthesized specification expression");
+            return false;
+        }
+        const std::size_t clause_close = matching_parenthesis(tokens, cursor + 1);
+        if (clause_close >= tokens.size()) {
+            report(engine, stream, tokens[cursor + 1], diagnostics::Category::CpplSyntax,
+                   "unterminated specification expression");
+            return false;
+        }
+
+        Clause clause;
+        clause.kind = *kind;
+        clause.location = stream.location_of(tokens[cursor]);
+        clause.expression =
+            source::ByteSpan{tokens[cursor + 1].span.end(),
+                             tokens[clause_close].span.offset - tokens[cursor + 1].span.end()};
+        if (stream.spelling(clause.expression).find_first_not_of(" \t\r\n") ==
+            std::string_view::npos) {
+            report(engine, stream, tokens[cursor], diagnostics::Category::CpplSyntax,
+                   "'" + std::string(tokens[cursor].text) + "' requires an expression");
+            return false;
+        }
+        verified.clauses.push_back(clause);
+        cursor = clause_close + 1;
+    }
+
+    if (verified.clauses.empty()) {
+        report(engine, stream, tokens[index], diagnostics::Category::CpplSyntax,
+               "verified function '" + std::string(tokens[*name].text) + "' states no contract",
+               "a verified function requires an ensures clause; there is nothing else for "
+               "'verified' to mean");
+        return false;
+    }
+
+    const auto ensures_count = std::ranges::count_if(
+        verified.clauses, [](const Clause& clause) { return clause.kind == ClauseKind::Ensures; });
+    if (ensures_count != 1) {
+        report(engine, stream, tokens[index], diagnostics::Category::CpplSyntax,
+               "verified function '" + std::string(tokens[*name].text) + "' has " +
+                   std::to_string(ensures_count) + " ensures clauses",
+               "a verified function has exactly one ensures clause");
+        return false;
+    }
+    if (verified.clauses.size() - static_cast<std::size_t>(ensures_count) > 1) {
+        report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
+               "verified function '" + std::string(tokens[*name].text) +
+                   "' has more than one expects clause",
+               "multiple preconditions are conjoined, and conjunction is not part of the "
+               "formal core");
+        return false;
+    }
+
+    if (cursor >= tokens.size() || !tokens[cursor].is_punctuator("{")) {
+        report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
+               "verified function '" + std::string(tokens[*name].text) +
+                   "' is declared but not defined here",
+               "its obligation comes from the body, so this implementation verifies a "
+               "function where it is defined");
+        return false;
+    }
+    const std::size_t body_close = matching_brace(tokens, cursor);
+    if (body_close >= tokens.size()) {
+        return false;
+    }
+
+    verified.keyword = tokens[index].span;
+    verified.keyword_location = stream.location_of(tokens[index]);
+    verified.function_name = std::string(tokens[*name].text);
+    verified.function_location = stream.location_of(tokens[*name]);
+    verified.return_type =
+        source::ByteSpan{tokens[type_start].span.offset,
+                         tokens[*name].span.offset - tokens[type_start].span.offset};
+    verified.parameters = source::ByteSpan{tokens[open].span.end(),
+                                           tokens[close].span.offset - tokens[open].span.end()};
+    verified.clause_region =
+        source::ByteSpan{tokens[first_clause].span.offset,
+                         tokens[cursor].span.offset - tokens[first_clause].span.offset};
+    verified.body_end = tokens[body_close].span.end();
+    verified.body_end_line = tokens[body_close].line;
+    verified.body_end_column = tokens[body_close].column + 1;
+
+    // The body is walked as usual, so anything inside it is recognized exactly
+    // as it would be in an ordinary function.
+    next_index = cursor;
+    return true;
+}
+
 enum class ScopeKind : std::uint8_t {
     Namespace,
     Class,
@@ -625,6 +770,24 @@ const Clause* LawDeclaration::proposition() const {
 }
 
 const Clause* LawDeclaration::premise() const {
+    for (const Clause& clause : clauses) {
+        if (clause.kind == ClauseKind::Expects) {
+            return &clause;
+        }
+    }
+    return nullptr;
+}
+
+const Clause* VerifiedFunction::postcondition() const {
+    for (const Clause& clause : clauses) {
+        if (clause.kind == ClauseKind::Ensures) {
+            return &clause;
+        }
+    }
+    return nullptr;
+}
+
+const Clause* VerifiedFunction::precondition() const {
     for (const Clause& clause : clauses) {
         if (clause.kind == ClauseKind::Expects) {
             return &clause;
@@ -720,11 +883,30 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine) {
 
         if (tokens[index].is_identifier("verified") &&
             specifier_introduces_declaration(tokens, index)) {
-            report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
-                   "the 'verified' specifier is not supported by this implementation",
-                   "verified functions require contract verification, which this "
-                   "implementation does not perform");
-            ++index;
+            VerifiedFunction verified;
+            std::size_t next = index + 1;
+            if (try_verified(stream, index, engine, verified, next)) {
+                if (!at_namespace_scope()) {
+                    report(engine, stream, tokens[index],
+                           diagnostics::Category::UnsupportedSemantics,
+                           "'verified' is applied outside namespace scope",
+                           "this implementation verifies functions at namespace scope only");
+                } else {
+                    // `verified pure` is both: the contract is discharged here,
+                    // and the function is still a candidate definition for the
+                    // formal core.
+                    if (tokens[index + 1].is_identifier("pure")) {
+                        PureMarker marker;
+                        marker.keyword = tokens[index + 1].span;
+                        marker.keyword_location = stream.location_of(tokens[index + 1]);
+                        marker.function_name = verified.function_name;
+                        marker.function_location = verified.function_location;
+                        syntax.pure_markers.push_back(std::move(marker));
+                    }
+                    syntax.verified_functions.push_back(std::move(verified));
+                }
+            }
+            index = next;
             continue;
         }
 
@@ -740,9 +922,10 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine) {
                 if (has_specification_clause(tokens, *name, clause_index)) {
                     report(engine, stream, tokens[clause_index],
                            diagnostics::Category::UnsupportedSemantics,
-                           "function specification clauses are not supported by this "
-                           "implementation",
-                           "state the property as a law over this function instead");
+                           "a contract on a function that is not 'verified' would not be "
+                           "checked",
+                           "mark the function 'verified' so its contract becomes an "
+                           "obligation, or state the property as a law over it");
                 } else if (!at_namespace_scope()) {
                     report(engine, stream, tokens[index],
                            diagnostics::Category::UnsupportedSemantics,

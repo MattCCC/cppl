@@ -272,15 +272,38 @@ proof identity_at_zero_holds(unsigned x)
 
 `assume` is valid here because the Law's `expects` clause makes the goal an implication whose premise is `x == 0u`. It names that premise; it never grants one. `rewrite h;` then replaces `x` by `0u` in the goal, leaving `identity(0u) == 0u` to prove. The kernel performs the substitution itself and checks the result.
 
-Contracts written on the function itself are part of the language, but are not accepted by this implementation yet:
+Contracts can also verify an executable function directly:
 
-```cpp cppl-planned
+```cpp cppl-example
 verified int identity(int x)
     ensures(result == x)
 {
     return x;
 }
 ```
+
+The obligation comes from the Clang-resolved return expression. `result` names
+that value only in the specification; every obligation must pass the kernel.
+The current fragment supports one pure return expression and integer equalities:
+
+```cpp cppl-example
+verified unsigned inc(unsigned x)
+    ensures(result == x + 1u)
+{
+    return x + 1u;
+}
+
+verified unsigned zero_if_zero(unsigned x)
+    expects(x == 0u)
+    ensures(result == 0u)
+{
+    return x;
+}
+```
+
+Preconditions become proof hypotheses, never trusted facts or runtime checks.
+Unsupported bodies fail compilation. See [SPEC.md](SPEC.md#125-single-return-verification-fragment)
+for the fragment and its call-site restrictions.
 
 For installation, compiler options, project integration, Laws, proofs, verification statuses, and examples, see [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md).
 

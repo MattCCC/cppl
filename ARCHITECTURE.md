@@ -2865,7 +2865,7 @@ clang/                  the Clang semantic bridge
 compiler/diagnostics/   the structured diagnostic model
 compiler/frontend/      lexer, contextual recognizer, projection
 compiler/elaboration/   Clang semantics + C++L syntax -> VIR
-compiler/obligations/   VIR + Laws -> core definitions and goals
+compiler/obligations/   VIR + Laws + contracts -> core definitions and goals
 compiler/automation/    evidence production
 compiler/erasure/       runtime program selection and its erasure check
 compiler/driver/        argument handling, orchestration, exit status
@@ -3032,6 +3032,29 @@ proof uses exists only because an implication introduction the kernel checked
 placed it in the kernel's own context. A Law whose written proof was refused is
 left open, and so is a Law that written proofs name but none of them discharges:
 the compiler does not look for evidence the author did not ask for.
+
+### Verified-function contracts
+
+The driver selects each verified definition by its source location. The
+projector preserves that definition and emits analysis-only clause functions
+in the same lexical scope. The postcondition has one additional parameter,
+`result`, of the declared return type. The runtime projection contains neither
+these helpers nor the contract syntax.
+
+Elaboration retains the actual Clang-resolved return expression in
+`vir::Function::returned_value` and the clauses in `vir::Contract`. Generation
+lowers that expression through the same term lowering used for pure definitions,
+substitutes it for the innermost postcondition binder, adds the optional
+implication, and quantifies over the function parameters. Function obligations
+have their own origin and no Law identity, so written Law proofs cannot discharge
+them accidentally. A missing or unsupported body fails compilation.
+
+Automatic evidence reuses the occurrence abstraction used by written rewrites.
+It first tries definitional equality, then introduces binders, uses an identical
+hypothesis or one premise rewrite, and offers reflexivity. The kernel remains
+the only proof authority; its rules
+are unchanged. Precondition-bearing functions are excluded from the definition
+context until call-site verification exists. Ordinary runtime calls are retained.
 
 ## 97.6 The Clang bridge is libclang, in process
 

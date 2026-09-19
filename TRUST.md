@@ -1251,7 +1251,24 @@ A premise an `apply` leaves behind is a goal like any other. It is closed by the
 statements that follow, by evidence the kernel checks; a body that ends with one
 still open is refused, and no strategy of the compiler's own is offered for it.
 
+Verified-function contracts add no kernel rule, axiom, or logical authority.
+The correspondence layer now substitutes the actual elaborated return term
+for the postcondition's specification-only `result` binder and closes the goal
+over the parameters and optional precondition. A defect in body selection or
+substitution could state the wrong obligation; body-change, parameter-capture,
+unsupported-body, and erasure regressions exercise this boundary.
+
+The body must lower even when its result is absent from the postcondition.
+Precondition-bearing definitions are withheld from verified calls until their
+call-site obligations can be generated. Automatic premise use and rewriting
+produce ordinary proof terms; forged hypotheses and failed rewrites remain
+kernel rejections. Function-contract counts are reported separately from Laws.
+
 ## 41.3 Runtime trust
+
+Each compiler invocation owns a fresh temporary directory until native compilation
+finishes. Concurrent invocations cannot overwrite another invocation's analyzed
+or emitted program. Temporary paths do not enter obligation identities.
 
 ```text
 Clang / LLVM    preprocessing, C++ semantics, code generation, linking

@@ -85,6 +85,35 @@ struct ProofDeclaration {
     std::vector<ProofStatement> statements;
 };
 
+// verified [pure] T f(params) [expects(P)] ensures(Q) { body }  (GRAMMAR.md 6)
+//
+// The contract is carried here as spans. What it means is decided once Clang
+// has resolved it, like every other specification expression.
+struct VerifiedFunction {
+    source::ByteSpan keyword;  // the `verified` specifier itself
+    source::SourceLocation keyword_location;
+    std::string function_name;
+    source::SourceLocation function_location;
+
+    source::ByteSpan return_type;
+    source::ByteSpan parameters;
+
+    // The clauses, and the region of text they occupy between the parameter
+    // list and the body. The region is removed from both projections: a
+    // contract is not C++.
+    std::vector<Clause> clauses;
+    source::ByteSpan clause_region;
+
+    // Where the generated contract functions are emitted: after the body, so
+    // that everything the contract can name is already declared.
+    std::size_t body_end = 0;
+    std::uint32_t body_end_line = 0;
+    std::uint32_t body_end_column = 0;
+
+    [[nodiscard]] const Clause* postcondition() const;
+    [[nodiscard]] const Clause* precondition() const;
+};
+
 // The `pure` declaration specifier and the function it applies to (SPEC.md 13).
 struct PureMarker {
     source::ByteSpan keyword;
@@ -97,9 +126,11 @@ struct Syntax {
     std::vector<LawDeclaration> laws;
     std::vector<ProofDeclaration> proofs;
     std::vector<PureMarker> pure_markers;
+    std::vector<VerifiedFunction> verified_functions;
 
     [[nodiscard]] bool empty() const noexcept {
-        return laws.empty() && proofs.empty() && pure_markers.empty();
+        return laws.empty() && proofs.empty() && pure_markers.empty() &&
+               verified_functions.empty();
     }
 };
 

@@ -248,3 +248,37 @@ CPPL_TEST(a_unit_without_formal_syntax_is_left_untouched) {
     CPPL_CHECK_EQ(projection.runtime, ordinary);
     CPPL_CHECK_EQ(projection.analysis, ordinary);
 }
+
+CPPL_TEST(contracts_erase_without_changing_runtime_values_or_source_locations) {
+    const std::string text =
+        "verified unsigned f(unsigned x)\n"
+        "expects(x == 0u)\nensures(result == 0u)\n{ return x; } "
+        "verified unsigned g(unsigned y) ensures(result == y) { return y; }\n"
+        "int result = 7;\n";
+    cppl::diagnostics::Engine engine;
+    const auto stream = cppl::frontend::lex(text, "contracts.cpp");
+    const auto syntax = cppl::frontend::recognize(stream, engine);
+    const auto projection = cppl::frontend::project(stream, syntax, {});
+    const auto erased = cppl::erasure::erase(stream, syntax, projection, engine);
+    CPPL_CHECK(!engine.has_errors());
+    CPPL_CHECK(erased.report.only_deletions);
+    CPPL_CHECK(erased.report.lines_preserved);
+    CPPL_CHECK_EQ(projection.contract_functions.size(), std::size_t{2});
+    CPPL_CHECK(projection.runtime.find("int result = 7;") != std::string::npos);
+    CPPL_CHECK(projection.runtime.find("return x;") != std::string::npos);
+    CPPL_CHECK(projection.runtime.find("return y;") != std::string::npos);
+
+    const auto analysis = cppl::frontend::lex(projection.analysis, "contracts.cpp");
+    for (const auto& function : syntax.verified_functions) {
+        bool found = false;
+        for (const auto& token : analysis.tokens()) {
+            if (token.text == function.function_name) {
+                const auto location = analysis.location_of(token);
+                CPPL_CHECK_EQ(location.line, function.function_location.line);
+                CPPL_CHECK_EQ(location.column, function.function_location.column);
+                found = true;
+            }
+        }
+        CPPL_CHECK(found);
+    }
+}
