@@ -70,6 +70,7 @@ vcpkg_installed/
 # filesystems.
 /Testing/
 .cache/
+**/.gradle/
 
 # other dirs & files
 .git
