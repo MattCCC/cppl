@@ -659,12 +659,10 @@ void extract_body(Function& function, CXCursor cursor, const std::vector<CXCurso
     }
 }
 
-bool matches_location(const source::SourceLocation& declaration,
-                      const source::SourceLocation& wanted) {
-    if (declaration.file != wanted.file || declaration.line != wanted.line) {
-        return false;
-    }
-    return wanted.column == 0 || declaration.column == wanted.column;
+std::size_t physical_offset(CXCursor cursor) {
+    unsigned offset = 0;
+    clang_getFileLocation(clang_getCursorLocation(cursor), nullptr, nullptr, nullptr, &offset);
+    return offset;
 }
 
 struct Collector {
@@ -678,10 +676,8 @@ bool is_selected(CXCursor cursor, const Selection& selection) {
         return true;
     }
 
-    const source::SourceLocation location = presumed_location(clang_getCursorLocation(cursor));
-    return std::ranges::any_of(selection.locations, [&](const source::SourceLocation& wanted) {
-        return matches_location(location, wanted);
-    });
+    const auto offset = physical_offset(cursor);
+    return std::ranges::find(selection.offsets, offset) != selection.offsets.end();
 }
 
 CXChildVisitResult collect(CXCursor cursor, CXCursor, CXClientData data) {
@@ -735,13 +731,15 @@ const Function* TranslationUnit::find_by_name(std::string_view name) const {
     return nullptr;
 }
 
-const Function* TranslationUnit::find_at(const source::SourceLocation& location) const {
+const Function* TranslationUnit::find_at_offset(std::size_t offset) const {
+    const Function* found = nullptr;
     for (const Function& function : functions) {
-        if (matches_location(function.location, location)) {
-            return &function;
+        if (function.analysis_offset == offset) {
+            if (found != nullptr) return nullptr;
+            found = &function;
         }
     }
-    return nullptr;
+    return found;
 }
 
 std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
@@ -804,6 +802,7 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
         function.qualified_name = qualified_name_of(cursor);
         function.result = convert_type(clang_getCursorResultType(cursor));
         function.location = presumed_location(clang_getCursorLocation(cursor));
+        function.analysis_offset = physical_offset(cursor);
 
         const std::vector<CXCursor> parameter_cursors = parameters_of(cursor);
         for (const CXCursor& parameter : parameter_cursors) {

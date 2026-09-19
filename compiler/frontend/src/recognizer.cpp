@@ -684,6 +684,7 @@ bool try_verified(const TokenStream& stream,
     verified.keyword_location = stream.location_of(tokens[index]);
     verified.function_name = std::string(tokens[*name].text);
     verified.function_location = stream.location_of(tokens[*name]);
+    verified.function_offset = tokens[*name].span.offset;
     verified.return_type =
         source::ByteSpan{tokens[type_start].span.offset,
                          tokens[*name].span.offset - tokens[type_start].span.offset};
@@ -901,6 +902,7 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine) {
                         marker.keyword_location = stream.location_of(tokens[index + 1]);
                         marker.function_name = verified.function_name;
                         marker.function_location = verified.function_location;
+                        marker.function_offset = verified.function_offset;
                         syntax.pure_markers.push_back(std::move(marker));
                     }
                     syntax.verified_functions.push_back(std::move(verified));
@@ -938,6 +940,7 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine) {
                     marker.keyword_location = stream.location_of(tokens[index]);
                     marker.function_name = std::string(tokens[*name].text);
                     marker.function_location = stream.location_of(tokens[*name]);
+                    marker.function_offset = tokens[*name].span.offset;
                     syntax.pure_markers.push_back(std::move(marker));
                 }
             }

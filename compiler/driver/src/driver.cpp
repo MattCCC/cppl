@@ -273,18 +273,11 @@ UnitOutcome compile_unit(const Options& options,
     request.arguments.emplace_back("c++-cpp-output");
     request.arguments.emplace_back("-w");
     request.selection.specification_prefix = projection_options.generated_prefix;
-    for (const frontend::PureMarker& marker : syntax.pure_markers) {
-        request.selection.locations.push_back(marker.function_location);
+    for (const auto& declaration : projection.declaration_offsets) {
+        request.selection.offsets.push_back(declaration.analysis);
     }
-    for (const frontend::VerifiedFunction& function : syntax.verified_functions) {
-        request.selection.locations.push_back(function.function_location);
-    }
-    // A law is projected under its own name, so it is selected by the line it
-    // was declared on rather than by a generated prefix.
-    for (const frontend::LawDeclaration& law : syntax.laws) {
-        source::SourceLocation location = law.keyword_location;
-        location.column = 0;
-        request.selection.locations.push_back(std::move(location));
+    for (const auto& law : projection.specification_functions) {
+        request.selection.offsets.push_back(law.analysis_offset);
     }
 
     const std::expected<clangbridge::TranslationUnit, std::string> unit =
@@ -344,6 +337,10 @@ UnitOutcome compile_unit(const Options& options,
     const std::size_t required = syntax.laws.size() + syntax.verified_functions.size();
     if (declaration_obligations < required) {
         summary.unresolved += required - declaration_obligations;
+        if (!engine.has_errors()) {
+            report(engine, diagnostics::Category::Internal,
+                   "not every formal declaration produced a verification obligation");
+        }
     }
 
     const erasure::Erased erased = erasure::erase(stream, syntax, projection, engine);

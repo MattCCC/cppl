@@ -40,6 +40,7 @@ std::string line_directive(std::uint32_t line, std::string_view file) {
 struct Edit {
     source::ByteSpan span;
     std::string replacement;
+    std::optional<std::size_t> specification_index = std::nullopt;
 };
 
 }  // namespace
@@ -67,10 +68,12 @@ Projection project(const TokenStream& stream,
                                 const source::ByteSpan& parameters,
                                 const source::ByteSpan& expression,
                                 const source::SourceLocation& begin,
-                                std::uint32_t end_line) {
+                                std::uint32_t end_line,
+                                std::size_t* name_offset = nullptr) {
         std::string replacement = "\n";
         replacement += line_directive(begin.line, begin.file);
         replacement += "[[maybe_unused]] static bool ";
+        if (name_offset != nullptr) *name_offset = replacement.size();
         replacement += name;
         replacement += "(";
         replacement += stream.spelling(parameters);
@@ -92,7 +95,7 @@ Projection project(const TokenStream& stream,
 
         SpecificationFunction projected{law.name, index, {}};
         std::string replacement = emit(law.name, law.parameters, proposition->expression,
-                                       law.keyword_location, law.end_line);
+                                       law.keyword_location, law.end_line, &projected.analysis_offset);
 
         // A precondition is a specification expression of the Law's own
         // parameters, so it is projected exactly like the conclusion, under a
@@ -105,7 +108,8 @@ Projection project(const TokenStream& stream,
                                 premise->location, law.end_line);
         }
 
-        edits.push_back(Edit{law.range.span, std::move(replacement)});
+        edits.push_back(Edit{law.range.span, std::move(replacement),
+                             projection.specification_functions.size()});
         projection.specification_functions.push_back(std::move(projected));
     }
 
@@ -246,21 +250,51 @@ Projection project(const TokenStream& stream,
     }
 
     std::ranges::sort(edits, [](const Edit& lhs, const Edit& rhs) {
-        return lhs.span.offset < rhs.span.offset;
+        if (lhs.span.offset != rhs.span.offset) return lhs.span.offset < rhs.span.offset;
+        return lhs.span.length < rhs.span.length;  // insert before replacing adjacent text
     });
 
+    std::vector<std::size_t> declarations;
+    for (const auto& marker : syntax.pure_markers) declarations.push_back(marker.function_offset);
+    for (const auto& function : syntax.verified_functions) declarations.push_back(function.function_offset);
+    std::ranges::sort(declarations);
+    declarations.erase(std::unique(declarations.begin(), declarations.end()), declarations.end());
+    std::size_t next_declaration = 0;
     std::size_t cursor = 0;
+    const auto append_original = [&](std::size_t end) {
+        while (next_declaration < declarations.size() && declarations[next_declaration] < end) {
+            const auto original = declarations[next_declaration++];
+            if (original >= cursor) {
+                projection.declaration_offsets.push_back(Projection::DeclarationOffset{
+                    original, projection.analysis.size() + original - cursor});
+            }
+        }
+        projection.analysis.append(text.substr(cursor, end - cursor));
+    };
     for (const Edit& edit : edits) {
         if (edit.span.offset < cursor || edit.span.end() > text.size()) {
             continue;  // overlapping or out-of-range spans are never emitted
         }
-        projection.analysis.append(text.substr(cursor, edit.span.offset - cursor));
+        append_original(edit.span.offset);
+        if (edit.specification_index.has_value()) {
+            // emit() recorded the name relative to its replacement; only now
+            // is its physical position in the complete analysis text known.
+            projection.specification_functions[*edit.specification_index].analysis_offset +=
+                projection.analysis.size();
+        }
         projection.analysis.append(edit.replacement);
         cursor = edit.span.end();
     }
-    projection.analysis.append(text.substr(cursor));
+    append_original(text.size());
 
     return projection;
+}
+
+std::optional<std::size_t> Projection::declaration_offset(std::size_t original) const {
+    for (const auto& declaration : declaration_offsets) {
+        if (declaration.original == original) return declaration.analysis;
+    }
+    return std::nullopt;
 }
 
 }  // namespace cppl::frontend

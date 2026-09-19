@@ -94,6 +94,7 @@ struct VerifiedFunction {
     source::SourceLocation keyword_location;
     std::string function_name;
     source::SourceLocation function_location;
+    std::size_t function_offset = 0;  // physical byte offset in the preprocessed input
 
     source::ByteSpan return_type;
     source::ByteSpan parameters;
@@ -120,6 +121,7 @@ struct PureMarker {
     source::SourceLocation keyword_location;
     std::string function_name;
     source::SourceLocation function_location;
+    std::size_t function_offset = 0;
 };
 
 struct Syntax {

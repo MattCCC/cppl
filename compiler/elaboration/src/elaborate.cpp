@@ -203,19 +203,21 @@ void collect_callees(const vir::Expr& expr, std::vector<vir::SymbolId>& callees)
     }
 }
 
-// The function a C++L declaration was projected into: it carries the declared
-// name and stands at the line the declaration came from. Matching both keeps an
-// ordinary C++ function of the same name from being mistaken for it.
+// Generated helpers have distinct names. Repeated displayed locations must
+// never make an ambiguous helper lookup pick the first declaration. Laws and
+// executable declarations are linked separately by physical analysis offset.
 const clangbridge::Function* find_projected(const clangbridge::TranslationUnit& unit,
                                             std::string_view name,
                                             const source::SourceLocation& declared_at) {
+    const clangbridge::Function* found = nullptr;
     for (const clangbridge::Function& function : unit.functions) {
         if (function.name == name && function.location.file == declared_at.file &&
             function.location.line == declared_at.line) {
-            return &function;
+            if (found != nullptr) return nullptr;
+            found = &function;
         }
     }
-    return nullptr;
+    return found;
 }
 
 std::optional<std::vector<vir::Parameter>> convert_parameters(
@@ -592,7 +594,9 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
     };
 
     for (const frontend::PureMarker& marker : request.syntax.pure_markers) {
-        const clangbridge::Function* function = request.unit.find_at(marker.function_location);
+        const auto offset = request.projection.declaration_offset(marker.function_offset);
+        const clangbridge::Function* function = offset.has_value()
+            ? request.unit.find_at_offset(*offset) : nullptr;
         if (function == nullptr) {
             report(engine, diagnostics::Category::Elaboration, marker.function_location,
                    "the declaration of '" + marker.function_name +
@@ -607,8 +611,9 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
     for (const frontend::ContractFunctions& projected : request.projection.contract_functions) {
         const frontend::VerifiedFunction& declaration =
             request.syntax.verified_functions[projected.function_index];
-        const clangbridge::Function* function =
-            request.unit.find_at(declaration.function_location);
+        const auto offset = request.projection.declaration_offset(declaration.function_offset);
+        const clangbridge::Function* function = offset.has_value()
+            ? request.unit.find_at_offset(*offset) : nullptr;
         if (function == nullptr) {
             report(engine, diagnostics::Category::Elaboration, declaration.function_location,
                    "the declaration of verified function '" + declaration.function_name +
@@ -722,7 +727,7 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
             request.syntax.laws[specification.law_index];
 
         const clangbridge::Function* function =
-            find_projected(request.unit, specification.name, declaration.keyword_location);
+            request.unit.find_at_offset(specification.analysis_offset);
         if (function != nullptr) {
             law_names.emplace(function->usr, declaration.name);
         }

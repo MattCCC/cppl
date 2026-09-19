@@ -14,10 +14,10 @@ namespace cppl::clangbridge {
 // A preprocessed translation unit contains every declaration of every header it
 // included. C++L only needs the declarations its formal layer refers to, so the
 // caller names them: by the generated specification-function prefix, and by the
-// presumed source location of declarations the frontend marked.
+// physical analysis-buffer offset of declarations the frontend marked.
 struct Selection {
     std::string specification_prefix;
-    std::vector<source::SourceLocation> locations;
+    std::vector<std::size_t> offsets;
 };
 
 struct ParseRequest {

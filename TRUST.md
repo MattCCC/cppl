@@ -1235,6 +1235,14 @@ compiler/elaboration/   the VIR built from those semantics
 compiler/obligations/   the lowering of VIR into core terms and propositions
 ```
 
+Declaration linkage uses physical offsets in the analysis buffer. The projector
+records the generated Law name tokens and maps retained pure/verified name
+tokens; the Clang bridge obtains their offsets from libclang. Repeated presumed
+file/line/column labels cannot select another declaration. Ambiguous generated
+helper lookups fail closed, and a unit missing declaration obligations is
+rejected. These checks harden the existing correspondence boundary; they add no
+logical rule or trusted mechanism.
+
 Written proof declarations are part of this layer and **do not enlarge the
 logical TCB**. A proof statement is surface syntax that elaboration turns into a
 kernel proof term; the kernel then checks that term against the goal exactly as

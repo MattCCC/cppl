@@ -53,6 +53,41 @@ std::size_t count_newlines(std::string_view text) {
 
 }  // namespace
 
+CPPL_TEST(physical_declarations_stay_distinct_when_displayed_locations_repeat) {
+    const std::string source =
+        "#line 1 \"same.cpp\"\n"
+        "verified unsigned a() ensures(result == 0u) {return 0u;}"
+        "law same() ensures(0u == 0u);\n"
+        "#line 1 \"same.cpp\"\n"
+        "verified unsigned b() ensures(result == 1u) {return 1u;}"
+        "namespace B {law same() ensures(1u == 1u);}\n"
+        "#line 5 \"same.cpp\"\n"
+        "pure unsigned c() {return 2u;}\n"
+        "#line 5 \"same.cpp\"\n"
+        "pure unsigned d() {return 3u;}";
+    cppl::diagnostics::Engine engine;
+    const auto stream = cppl::frontend::lex(source, "input.cpp");
+    const auto syntax = cppl::frontend::recognize(stream, engine);
+    const auto projection = cppl::frontend::project(stream, syntax, {});
+    CPPL_CHECK(!engine.has_errors());
+    CPPL_CHECK_EQ(projection.declaration_offsets.size(), 4u);
+    CPPL_CHECK_EQ(projection.specification_functions.size(), 2u);
+    CPPL_CHECK(projection.specification_functions[0].analysis_offset !=
+               projection.specification_functions[1].analysis_offset);
+    for (const auto& declaration : projection.declaration_offsets) {
+        CPPL_CHECK_EQ(source[declaration.original], projection.analysis[declaration.analysis]);
+        CPPL_CHECK_EQ(projection.declaration_offset(declaration.original), declaration.analysis);
+    }
+    for (const auto& law : projection.specification_functions) {
+        CPPL_CHECK_EQ(projection.analysis.substr(law.analysis_offset, law.name.size()), law.name);
+    }
+    CPPL_CHECK(!projection.declaration_offset(source.size()).has_value());
+    const auto erased = cppl::erasure::erase(stream, syntax, projection, engine);
+    CPPL_CHECK(erased.report.only_deletions);
+    CPPL_CHECK(erased.report.lines_preserved);
+    CPPL_CHECK(!engine.has_errors());
+}
+
 CPPL_TEST(the_runtime_program_only_loses_text) {
     cppl::diagnostics::Engine engine;
     const cppl::frontend::TokenStream stream = cppl::frontend::lex(kUnit, "main.cpp");
