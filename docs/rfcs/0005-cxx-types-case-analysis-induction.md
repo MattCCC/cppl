@@ -1,8 +1,9 @@
 # Reasoning over C++ types: proof case analysis and induction
 
 Status: accepted design decision, not implemented; normative rules are SPEC.md
-19–21. It supersedes the earlier `data` declarations and `match` expressions,
-which were specified but never implemented.
+19–21 and GRAMMAR.md 5.6–5.8, 18 and 20. It supersedes the earlier `data`
+declarations and `match` expressions, which were specified but never
+implemented.
 
 ## Decision
 
@@ -35,112 +36,212 @@ must remain a superset of.
 `cases` creates one proof obligation for every case of a value:
 
 ```cpp
-proof foo(Result r)
+using PaymentResult = std::variant<Receipt, Error>;
+
+proof settle(PaymentResult result)
     proves(...)
 {
-    cases r {
-        Result::ok => {
+    cases result {
+        Receipt(receipt) => {
             ...
         }
 
-        Result::error => {
+        Error(error) => {
+            ...
+        }
+
+        valueless => {
             ...
         }
     }
 }
 ```
 
-`induction` applies the induction principle the verifier provides for a value's
-domain:
-
-```cpp
-proof property(Node* n)
-    proves(...)
-{
-    induction n {
-        null => {
-            ...
-        }
-
-        node => {
-            ...
-        }
-    }
-}
-```
-
-Its short form leaves every case to automation, which must still produce
-kernel-checked evidence:
+`induction` applies the induction principle for a value's domain:
 
 ```cpp
 proof add_zero(unsigned x)
     proves(add(x, 0u) == x)
 {
-    induction x;
+    induction x {
+        zero => {
+            refl;
+        }
+
+        successor(pred) => {
+            assume below : pred < UINT_MAX;
+            assume ih    : add(pred, 0u) == pred;
+            ...
+        }
+    }
 }
 ```
 
-Both constructs share one arm grammar, `label => { proof statements }`. The
-enclosing construct decides which labels are valid. The C++ keyword `case` is
-not reused. Both words are recognized only as proof statements inside a proof
-body, so no ordinary C++ changes meaning.
+Its short form, `induction x;`, leaves every case to automation, which must
+still produce kernel-checked evidence.
+
+Both constructs share one arm grammar, `label(binders) => { proof statements }`,
+where the binder list is optional. The enclosing construct decides which labels
+are valid. The C++ keyword `case` is not reused. `cases` and `induction` are
+recognized only as proof statements inside a proof body, so no ordinary C++
+changes meaning.
 
 Neither construct generates runtime code, and neither can appear in executable
 code. Ordinary code keeps using `if`, `switch`, and `std::visit`.
 
-## Soundness requirements
+## Arm binders and hypotheses
 
-The cases must be complete with respect to C++ semantics, not with respect to
-the declared names. An enumeration with a fixed underlying type, which includes
-every scoped enumeration, can hold values other than its enumerators. A
-`std::variant` can be `valueless_by_exception()`. Where the labelled arms do not
-cover the type's full C++ value set by construction, `cases` generates an
-additional exhaustiveness obligation that the context must discharge. If it
-cannot be discharged, the proof is rejected. Syntax for an arm covering the
-remaining values is not yet specified.
+Binders name structural components only: a variant alternative's value, an
+enumeration's underlying value, a predecessor, a node's children. Proof evidence
+is never bound by position.
 
-An induction principle must be well founded and must match runtime behavior.
-For an unsigned type, the successor step applies only below the type's maximum
-value, so it never wraps. A pointer type has no induction principle by type
-alone, because a `Node*` may be cyclic, dangling, or shared. Induction over a
-linked structure needs an explicit well-founded premise, such as finite acyclic
-reachability under the memory model. Without one it is rejected. An induction
-principle is checked by the kernel like any other rule. Unknown domains fail
-closed.
+The premises an arm receives are already in its proof context. They are the case
+fact, and for induction also the range condition and one induction hypothesis
+per recursive component. The existing `assume` statement names them:
+
+```cpp
+induction tree {
+    empty => {
+        ...
+    }
+
+    node(value, left, right) => {
+        assume left_ih  : P(left);
+        assume right_ih : P(right);
+        ...
+    }
+}
+```
+
+`assume` never creates a premise. It binds one that the principle supplied. The
+kernel rejects it unless the stated proposition matches that premise exactly.
+Induction hypotheses come from the principle, not from a proof invoking itself.
+
+Alternatives rejected:
+
+- Positional binders for evidence, as in
+  `node(value, left, right, left_ih, right_ih)`, mix program values with proof
+  evidence and make principles harder to read and evolve.
+- Implicit fixed names such as `ih` hide bindings and shadow user names.
+- Recursive self-calls would turn ordinary proof recursion into an implicit
+  induction mechanism that the checker must police.
+
+## Residual cases, no wildcard
+
+Case analysis models the complete semantic state space of the C++ type. That
+includes states with no ordinary named alternative. Those states are explicit,
+type-specific residual cases:
+
+```text
+enumeration      its enumerators
+                 + unnamed(value), when its value set exceeds them
+std::variant     each alternative(value)
+                 + valueless
+std::optional    engaged(value)
+                 + empty
+pointer          null
+                 + nonnull(p)
+```
+
+There is no wildcard arm. Every case has an arm or is proven impossible from the
+proof context. A wildcard would silently absorb an enumerator added later. With
+named residual cases, a new enumerator is a new named case, and every proof that
+does not cover it stops checking.
+
+Residual labels are defined by the verifier. They have meaning only as labels of
+the corresponding construct, and they are not reserved identifiers. Enumerator
+labels are always qualified, as in `State::idle`, so an enumerator named
+`unnamed` cannot collide with the residual label.
+
+`nonnull(p)` establishes only that `p` is not null. It says nothing about the
+lifetime of the object `p` points to. That remains a question for the memory
+model.
 
 ## Mathematical domains
 
-Specifications may eventually use proof-only mathematical objects: ℕ, ℤ, and
-sequences, sets, and maps (Seq⟨T⟩, Set⟨T⟩, Map⟨K,V⟩). For example, a vector's
-contract is easier to state over an abstract sequence:
+Specifications may use five proof-only mathematical domains:
+
+```text
+@N           natural numbers: 0, 1, 2, ...
+@Z           mathematical integers: ..., -1, 0, 1, ...
+@Seq<T>      finite sequences
+@Set<T>      sets
+@Map<K, V>   finite maps
+```
+
+The set is closed. `@` does not open a general identifier namespace, so `@Foo`
+is an error unless a later RFC adds user-defined domains. Machine and
+mathematical values cannot be confused on sight. `int` is a C++ machine integer
+and `@Z` is not. `std::vector<int>` is a runtime object and `@Seq<int>` is a
+proof-only sequence. A vector's contract is easier to state over its abstract
+sequence:
 
 ```cpp
 verified void grow_capacity(std::vector<int>& v, std::size_t n)
     ensures(model(v) == old(model(v)));
 ```
 
-These objects have no runtime representation. They are never silently
-identified with machine types: a C++ `unsigned` is not ℕ, and a C++ `int` is not
-ℤ. What a model function says about a C++ type must be proven or stated as an
-explicit trusted assumption.
+Here `model` is illustrative. It stands for a proof-only function that returns
+an `@Seq<int>`. What such a function says about a C++ type must be proven or
+stated as an explicit trusted assumption.
 
-Their source spelling is not specified. The names in this RFC, including
-`model`, are metanotation, not reserved C++L identifiers. A later RFC chooses the
-spelling. It must not reuse a C++ keyword such as `int`, must not ambiguously
-shadow common C++ or `std` names such as `set` or `map`, must keep mathematical
-and machine integers visibly distinct, and must stay verification-only.
+A domain is accepted only where a verification type is expected. That covers a
+Law or proof parameter, a quantifier binder, a ghost declaration, and an
+argument of another domain. Domains have no object representation, storage, ABI,
+lifetime, address, `sizeof`, alignment, constructor, or destructor.
+`@Z runtime_value;`, `sizeof(@Z)` and `new @Seq<int>()` are rejected.
+
+The five spellings are C++L lexical constructs. Each is a single token, so a
+macro named `N` does not expand inside `@N`. `@` cannot appear in valid C++
+outside literals and comments. The only valid C++ programs this could affect are
+ones that stringize one of these spellings after macro expansion. Objective-C++
+also uses `@`-prefixed constructs. Supporting Objective-C++ lies outside the
+core grammar and may need a separate frontend mode. If a future C++ standard
+gives `@` an incompatible meaning, C++L will version its grammar or revisit the
+spelling at that point.
+
+## Soundness requirements
+
+The cases must be complete with respect to C++ semantics, not with respect to
+declared names. Omitting a residual case is allowed only when the proof context
+establishes that it cannot occur. Otherwise the proof is rejected.
+
+An induction principle must be well founded and must match runtime behavior.
+For an unsigned type, the principle's cases are `zero` and `successor(pred)`,
+with premises `pred < max` and `P(pred)`. The step never wraps. A pointer type
+has no induction principle by type alone, because a `Node*` may be cyclic,
+dangling, or shared. Induction over a linked structure needs an explicit
+well-founded premise, such as finite acyclic reachability under the memory
+model. Without one it is rejected. Each induction principle is checked by the
+kernel like any other rule. Unknown domains fail closed.
 
 ## Consequences
 
 The contextual words `data` and `match` are removed. The proof statements
-`cases` and `induction` are added. No implementation, test, or editor grammar
-used the removed words. Trust and runtime behavior do not change until the
-construct is implemented. When it is, case analysis and each induction principle
-will need kernel rules, with positive, negative, and adversarial tests. Those
-tests must cover out-of-range enumeration values, valueless variants,
-wraparound at the unsigned maximum, and cyclic pointer structures.
+`cases` and `induction`, the five domain spellings, and the residual labels are
+added. No implementation, test, or editor grammar used the removed words. Trust
+and runtime behavior do not change until these constructs are implemented.
 
-Unresolved: the source spelling of mathematical domains; how an arm names its
-case's fields and its induction hypothesis; the labels each built-in principle
-exposes; whether `cases` accepts compound expressions; and the syntax for
-remaining-value arms.
+When they are, case analysis and each induction principle will need kernel
+rules, with positive, negative, and adversarial tests. The tests must cover:
+
+- out-of-range enumeration values, valueless variants, and omitted residual
+  cases
+- wildcard arms, which must be rejected
+- `assume` statements that do not match a supplied premise
+- wraparound at the unsigned maximum
+- cyclic pointer structures
+- domains used in runtime positions
+- macros named `N`, `Z`, `Seq`, `Set`, or `Map`
+
+## Unresolved
+
+- the explicit conversion between machine values and domain values, such as
+  `int` to `@Z`, and its spelling
+- how proof-only model functions such as `model(v)` are declared
+- literal syntax for domain values
+- induction principles for signed integer types
+- the labels and premise form of induction over pointer-linked structures
+- whether `cases` accepts compound expressions
+- an Objective-C++ frontend mode
+- user-defined mathematical domains
