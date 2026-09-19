@@ -78,6 +78,9 @@ kernel::Proposition close(const ContractVerification& function, const ReturnPath
     return quantify(function.parameters, std::move(goal));
 }
 
+// The calls an expression evaluates, in evaluation order. A read of a local is
+// not one of them: the call its value came from was evaluated where the local
+// was written, and is collected there.
 void collect_calls(const vir::Expr& expression, const Contracts& contracts,
                    std::vector<const vir::Expr*>& calls) {
     if (const auto* call = std::get_if<vir::Call>(&expression.node)) {
@@ -87,6 +90,8 @@ void collect_calls(const vir::Expr& expression, const Contracts& contracts,
         if (contracts.contains(call->callee.usr)) {
             calls.push_back(&expression);
         }
+    } else if (const auto* bound = std::get_if<vir::LocalVersion>(&expression.node)) {
+        for (const auto& operand : bound->operands) collect_calls(operand, contracts, calls);
     } else if (const auto* binary = std::get_if<vir::Binary>(&expression.node)) {
         for (const auto& operand : binary->operands) {
             collect_calls(operand, contracts, calls);
@@ -123,38 +128,52 @@ Obligation obligation_for(const Program& program, const ReturnPath& path,
     return obligation;
 }
 
-struct Guard {
-    const vir::Expr* expression;
-    bool positive;
+// One expression a path evaluates before it returns: a guard, whose outcome
+// then holds on this path, or the value a local's version was given. Both are
+// taken where the body evaluates them, so a call inside either is proven there
+// and not where its value is eventually read.
+struct Step {
+    const vir::Expr* value;
+    const vir::LocalVersion* binding;  // null for a guard
+    bool positive;                     // the guard's outcome on this path
 };
 
 struct Route {
-    std::vector<Guard> guards;
+    std::vector<Step> steps;
     const vir::Expr* returned;
 };
 
-bool routes(const vir::Expr& expression, std::vector<Guard> guards, std::vector<Route>& result) {
+bool routes(const vir::Expr& expression, std::vector<Step> steps, std::vector<Route>& result) {
     if (result.size() >= 128) return false;
+    if (const auto* bound = std::get_if<vir::LocalVersion>(&expression.node)) {
+        if (bound->operands.size() != 2) return false;
+        steps.push_back(Step{&bound->operands[0], bound, true});
+        return routes(bound->operands[1], std::move(steps), result);
+    }
     if (const auto* branch = std::get_if<vir::Conditional>(&expression.node)) {
         if (branch->operands.size() != 3) return false;
-        guards.push_back(Guard{&branch->operands[0], true});
-        if (!routes(branch->operands[1], guards, result)) return false;
-        guards.back().positive = false;
-        return routes(branch->operands[2], std::move(guards), result);
+        steps.push_back(Step{&branch->operands[0], nullptr, true});
+        if (!routes(branch->operands[1], steps, result)) return false;
+        steps.back().positive = false;
+        return routes(branch->operands[2], std::move(steps), result);
     }
-    result.push_back(Route{std::move(guards), &expression});
+    result.push_back(Route{std::move(steps), &expression});
     return true;
 }
 
 std::expected<void, Failure> append_calls(
     const vir::Expr& expression, const vir::Function& function, const Contracts& contracts,
     const ContractVerification& plan, ReturnPath& path, CallBindings& bindings,
-    const DefinitionMap& pure_definitions, const DefinitionMap& definitions,
+    const VersionBindings& versions, const DefinitionMap& pure_definitions,
+    const DefinitionMap& definitions,
     const std::map<std::string, std::size_t>& established, const Program& program,
     std::vector<Obligation>& obligations) {
     std::vector<const vir::Expr*> sites;
     collect_calls(expression, contracts, sites);
     for (const auto* site : sites) {
+        if (bindings.contains(site->id.value)) {
+            continue;
+        }
         const auto& call_expression = std::get<vir::Call>(site->node);
         const auto& callee = program.contracts[established.at(call_expression.callee.usr)];
         if (call_expression.arguments.size() != callee.parameters.size()) {
@@ -169,9 +188,10 @@ std::expected<void, Failure> append_calls(
         call.conditions = path.conditions.size();
         std::vector<kernel::Term> abstract_arguments;
         for (const auto& argument : call_expression.arguments) {
-            auto actual = lower_value(argument, definitions, plan.parameters.size());
+            auto actual = lower_value(argument, definitions, plan.parameters.size(), nullptr,
+                                      &versions);
             auto abstract = lower_value(argument, pure_definitions, plan.parameters.size() + prefix,
-                                        &bindings);
+                                        &bindings, &versions);
             if (!actual || !abstract) {
                 return std::unexpected(!actual ? actual.error() : abstract.error());
             }
@@ -267,23 +287,37 @@ std::expected<ContractVerification, Failure> build(
     for (const auto& leaf : leaves) {
         ReturnPath path;
         CallBindings bindings;
-        for (const auto& guard : leaf.guards) {
-            auto calls = append_calls(*guard.expression, function, contracts, plan, path, bindings,
-                                      pure_definitions, definitions, established, program, obligations);
+        VersionBindings versions;
+        for (const auto& step : leaf.steps) {
+            auto calls = append_calls(*step.value, function, contracts, plan, path, bindings,
+                                      versions, pure_definitions, definitions, established,
+                                      program, obligations);
             if (!calls) return std::unexpected(calls.error());
-            auto actual = lower_value(*guard.expression, definitions, plan.parameters.size());
-            auto abstract = lower_value(*guard.expression, pure_definitions,
-                                        plan.parameters.size() + path.calls.size(), &bindings);
+            if (step.binding != nullptr) {
+                if (!versions.emplace(step.binding->version, step.value).second) {
+                    return std::unexpected(Failure{"malformed local version",
+                                                    step.value->provenance.range.begin, {}});
+                }
+                continue;
+            }
+            auto actual = lower_value(*step.value, definitions, plan.parameters.size(), nullptr,
+                                      &versions);
+            auto abstract = lower_value(*step.value, pure_definitions,
+                                        plan.parameters.size() + path.calls.size(), &bindings,
+                                        &versions);
             if (!actual || !abstract) return std::unexpected(!actual ? actual.error() : abstract.error());
-            path.conditions.push_back(PathCondition{kernel::predicate(*actual, guard.positive),
-                kernel::predicate(*abstract, guard.positive), path.calls.size()});
+            path.conditions.push_back(PathCondition{kernel::predicate(*actual, step.positive),
+                kernel::predicate(*abstract, step.positive), path.calls.size()});
         }
         auto calls = append_calls(*leaf.returned, function, contracts, plan, path, bindings,
-                                  pure_definitions, definitions, established, program, obligations);
+                                  versions, pure_definitions, definitions, established, program,
+                                  obligations);
         if (!calls) return std::unexpected(calls.error());
-        auto actual_return = lower_value(*leaf.returned, definitions, plan.parameters.size());
+        auto actual_return = lower_value(*leaf.returned, definitions, plan.parameters.size(),
+                                         nullptr, &versions);
         auto abstract_return = lower_value(*leaf.returned, pure_definitions,
-                                           plan.parameters.size() + path.calls.size(), &bindings);
+                                           plan.parameters.size() + path.calls.size(), &bindings,
+                                           &versions);
         if (!actual_return || !abstract_return) {
             return std::unexpected(!actual_return ? actual_return.error() : abstract_return.error());
         }

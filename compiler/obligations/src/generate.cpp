@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <expected>
+#include <limits>
 #include <map>
 #include <optional>
 #include <set>
@@ -55,6 +56,11 @@ std::optional<kernel::PrimOp> comparison(vir::BinaryOp op) {
     return std::nullopt;
 }
 
+// A read of a local lowers its version's value again and the core has no
+// sharing, so locals that each read the previous one twice double the term per
+// statement. Past this bound the value is refused rather than expanded.
+constexpr std::size_t kMaxTermNodes = std::size_t{1} << 14;
+
 // Lowers a VIR value expression into a core term.
 //
 // The core is total: every primitive it offers is defined on every input. A C++
@@ -63,11 +69,50 @@ std::optional<kernel::PrimOp> comparison(vir::BinaryOp op) {
 class TermLowering {
 public:
     TermLowering(const DefinitionMap& definitions, std::size_t parameter_count,
-                 const detail::CallBindings* calls = nullptr)
-        : definitions_(definitions), parameter_count_(parameter_count), calls_(calls) {}
+                 const detail::CallBindings* calls = nullptr,
+                 const detail::VersionBindings* versions = nullptr)
+        : definitions_(definitions), parameter_count_(parameter_count), calls_(calls),
+          versions_(versions != nullptr ? *versions : detail::VersionBindings{}) {}
 
-    [[nodiscard]] std::expected<kernel::Term, Failure> lower(const vir::Expr& expr) const {
+    [[nodiscard]] std::expected<kernel::Term, Failure> lower(const vir::Expr& expr) {
         const source::SourceLocation& location = expr.provenance.range.begin;
+
+        // A local denotes the value its current version was given, so lowering
+        // a version binds it and lowering a read replays that value here. The
+        // value is a term, never a fresh unknown: nothing about the local is
+        // assumed. The binding is scoped to the body under the version, so a
+        // sibling arm's version cannot be read here even from malformed VIR.
+        if (const auto* bound = std::get_if<vir::LocalVersion>(&expr.node)) {
+            if (bound->operands.size() != 2 || versions_.contains(bound->version)) {
+                return fail("malformed local version", location);
+            }
+            versions_.emplace(bound->version, &bound->operands[0]);
+            auto body = lower(bound->operands[1]);
+            versions_.erase(bound->version);
+            return body;
+        }
+
+        // A version's value reads only versions established before it, which
+        // are numbered below it. Replaying under that bound makes a cycle
+        // through malformed VIR a refusal rather than unbounded recursion.
+        if (const auto* local = std::get_if<vir::LocalRef>(&expr.node)) {
+            const auto version = versions_.find(local->version);
+            if (version == versions_.end() || local->version >= replay_bound_) {
+                return fail("'" + local->name + "' is read outside the path that gives it a value",
+                            location);
+            }
+            const std::uint32_t enclosing = replay_bound_;
+            replay_bound_ = local->version;
+            auto value = lower(*version->second);
+            replay_bound_ = enclosing;
+            return value;
+        }
+
+        if (++nodes_ > kMaxTermNodes) {
+            return fail("this value expands to more than " + std::to_string(kMaxTermNodes) +
+                            " core terms: each read of a local repeats the value it was given",
+                        location);
+        }
         const std::optional<kernel::Type> type = lower_type(expr.type);
 
         if (const auto* parameter = std::get_if<vir::ParameterRef>(&expr.node)) {
@@ -204,6 +249,9 @@ private:
     const DefinitionMap& definitions_;
     std::size_t parameter_count_;
     const detail::CallBindings* calls_;
+    detail::VersionBindings versions_;
+    std::uint32_t replay_bound_ = std::numeric_limits<std::uint32_t>::max();
+    std::size_t nodes_ = 0;
 };
 
 // Lowers a specification expression into a core proposition.
@@ -217,7 +265,7 @@ std::expected<kernel::Proposition, Failure> lower_proposition(const vir::Expr& e
     const source::SourceLocation& location = expression.provenance.range.begin;
 
     if (!expression.type.is_boolean()) return fail("it does not state a comparison", location);
-    const TermLowering lowering(definitions, parameter_count);
+    TermLowering lowering(definitions, parameter_count);
     auto condition = lowering.lower(expression);
     if (!condition) return std::unexpected(condition.error());
     return kernel::predicate(*condition, true);
@@ -250,6 +298,12 @@ void collect_callees(const vir::Expr& expr, std::set<std::string>& callees) {
         for (const vir::Expr& operand : binary->operands) {
             collect_callees(operand, callees);
         }
+    }
+    if (const auto* branch = std::get_if<vir::Conditional>(&expr.node)) {
+        for (const auto& operand : branch->operands) collect_callees(operand, callees);
+    }
+    if (const auto* bound = std::get_if<vir::LocalVersion>(&expr.node)) {
+        for (const auto& operand : bound->operands) collect_callees(operand, callees);
     }
     if (const auto* negation = std::get_if<vir::Negation>(&expr.node)) {
         for (const auto& operand : negation->operands) collect_callees(operand, callees);
@@ -478,7 +532,7 @@ std::optional<kernel::Proposition> claimed_proposition(const vir::Proof& proof,
                                                        const DefinitionMap& definitions,
                                                        diagnostics::Engine& engine) {
     const auto& claim = std::get<vir::Call>(proof.proposition.node);
-    const TermLowering lowering(definitions, proof.parameters.size());
+    TermLowering lowering(definitions, proof.parameters.size());
 
     kernel::Proposition instance = obligation.goal;
     for (const vir::Expr& argument : claim.arguments) {
@@ -534,7 +588,7 @@ std::optional<Instantiation> instantiate_evidence(const vir::Proof& proof,
                                                   const std::vector<vir::Expr>& arguments,
                                                   const DefinitionMap& definitions,
                                                   diagnostics::Engine& engine) {
-    const TermLowering lowering(definitions, proof.parameters.size());
+    TermLowering lowering(definitions, proof.parameters.size());
 
     for (const vir::Expr& argument : arguments) {
         const source::SourceLocation& location = argument.provenance.range.begin;
@@ -1168,8 +1222,9 @@ std::optional<kernel::Type> detail::core_type(const vir::Type& type) {
 
 std::expected<kernel::Term, detail::Failure> detail::lower_value(
     const vir::Expr& expression, const DefinitionMap& definitions, std::size_t binders,
-    const CallBindings* calls) {
-    return TermLowering(definitions, binders, calls).lower(expression);
+    const CallBindings* calls, const VersionBindings* versions) {
+    TermLowering lowering(definitions, binders, calls, versions);
+    return lowering.lower(expression);
 }
 
 std::expected<kernel::Proposition, detail::Failure> detail::lower_predicate(
@@ -1222,7 +1277,7 @@ Program generate(const vir::Module& module,
                 continue;
             }
 
-            const TermLowering lowering(definitions, function.parameters.size());
+            TermLowering lowering(definitions, function.parameters.size());
             std::expected<kernel::Term, Failure> body = lowering.lower(*function.returned_value);
             if (!body) {
                 deferred.emplace(function.symbol.usr, body.error());

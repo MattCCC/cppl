@@ -32,8 +32,6 @@ reject branch 'does not satisfy its contract' \
     'verified unsigned f(unsigned x) ensures(result == x) { if (x == 0u) return 1u; else return x; }'
 reject loop 'only if/else' \
     'verified unsigned f(unsigned x) ensures(result == x) { while (x) {} return x; }'
-reject local 'only if/else' \
-    'verified unsigned f(unsigned x) ensures(result == x) { unsigned y = x; return y; }'
 reject multiple_returns 'unreachable trailing' \
     'verified unsigned f(unsigned x) ensures(result == x) { return x; return x; }'
 reject mutation 'not modeled|cannot state' \

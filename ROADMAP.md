@@ -188,8 +188,8 @@ Exit criterion:
 # Phase 5 - Laws and contracts
 
 Current sequence: single-return verified functions and verified-call contract
-composition, and conditionals with path obligations and integer comparisons are
-prototyped. Next come straight-line locals and assignments, then arithmetic
+composition, conditionals with path obligations and integer comparisons, and
+straight-line locals and assignments are prototyped. Next comes arithmetic
 normalization (subtraction, associativity/commutativity, and useful integer
 identities under the appropriate machine semantics), then loops with explicit
 invariants. Recursion and termination/induction, memory/reference reasoning, and

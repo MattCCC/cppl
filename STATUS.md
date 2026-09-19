@@ -108,14 +108,25 @@ Caller reasoning uses abstract call results and proven summaries; kernel-checked
 evidence connects that reasoning to the executable return term. Nested calls,
 overloads, and forward declarations are supported within an acyclic translation
 unit, including headers. Ordinary runtime calls remain unchanged. See `SPEC.md`
-12.5–12.7. Each return path additionally supposes its branch conditions. Calls in
+12.5–12.8. Each return path additionally supposes its branch conditions. Calls in
 guards prove their preconditions before that guard can be used. The kernel
 combines the checked paths into the complete function theorem. Concrete
 comparisons compute; symbolic order weakening and transitivity, subtraction,
 signed addition, and algebraic reassociation remain unsupported.
 
+A body may also declare locals and assign to them. Each write is a logical
+version of the declaration Clang resolved, a read denotes the version current
+where it stands, and what follows a branch is verified once per arm under that
+arm's versions. A call bound to a local is proven where the body makes it, under
+the conditions in force there, on every path that reaches it. Uninitialized,
+`static`, `thread_local`, reference, pointer and `volatile` declarations,
+compound assignment, increment, assignment to a parameter, self-initialization,
+and unmodeled initializer conversions are rejected. Each read repeats its
+local's value, so bodies whose stated terms exceed a fixed size are rejected
+too. Locals add no kernel rule and no runtime change.
+
 This slice does **not** implement induction, dependent types, refinement types,
-loops, locals, assignments, ghost state, `unsafe`, `trusted`, conjunction, proof `let` or
+loops, ghost state, `unsafe`, `trusted`, conjunction, proof `let` or
 `match`, solvers, proof caching, or any verification of the C++ memory model.
 Those remain `SPECIFIED` below.
 
@@ -157,11 +168,13 @@ IMPLEMENTED
 # Current milestone
 
 Verified functions now verify every return path through `if`/`else`, including
-compositional calls in guards and returns. All six integer comparisons are
+compositional calls in guards and returns, and ordinary straight-line locals and
+assignments within those paths. All six integer comparisons are
 represented structurally. The original function/call slices use seven rules;
 path composition adds one conditional-elimination rule, bringing the core to
-eight, with zero logical assumptions and zero runtime checks.
-Next are straight-line locals and assignments, then arithmetic normalization
+eight, with zero logical assumptions and zero runtime checks. Locals add none of
+the three.
+Next is arithmetic normalization
 (subtraction and useful integer identities under sound machine semantics), then
 loops with explicit invariants. Recursion with induction/termination, memory and
 reference reasoning, and SMT automation come later.
@@ -228,6 +241,7 @@ The project should not claim broad language implementation before the proof sema
 | verified-call composition    | `PROTOTYPE` |
 | path-sensitive `if`/`else`    | `PROTOTYPE` |
 | integer comparison predicates | `PROTOTYPE` |
+| locals and assignments        | `PROTOTYPE` |
 | `ghost`                      | `SPECIFIED` |
 | `unsafe`                     | `SPECIFIED` |
 | `trusted`                    | `SPECIFIED` |
@@ -433,6 +447,7 @@ is not implemented.
 | Function invariants                     | `SPECIFIED`   |
 | Loop invariants                         | `SPECIFIED`   |
 | Verification-condition generation (returns/paths) | `PROTOTYPE` |
+| Local versioning (declarations/assignments) | `PROTOTYPE` |
 | Weakest-precondition engine             | `NOT STARTED` |
 | Contract composition                    | `PROTOTYPE`   |
 | Contract reuse across translation units | `NOT STARTED` |

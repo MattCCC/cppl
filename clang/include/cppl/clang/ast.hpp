@@ -68,6 +68,23 @@ struct Binary {
 struct Negation { std::vector<Expr> operands; };
 struct Conditional { std::vector<Expr> operands; }; // condition, true return, false return
 
+// The logical version of a local a declaration or an assignment establishes.
+// `operands` are the value the version denotes and the rest of the body under
+// it. Versions belong to the declaration Clang resolved, never to a spelling,
+// and they exist only in the verification model: the runtime statements are
+// untouched.
+struct LocalVersion {
+    std::uint32_t version = 0;
+    std::string name;
+    std::vector<Expr> operands;  // value, body
+};
+
+// A read of the version of a local that is current at this point.
+struct LocalRef {
+    std::uint32_t version = 0;
+    std::string name;
+};
+
 // A construct Clang resolved but C++L does not model. Carrying the reason
 // keeps the failure explainable instead of silently dropping the expression.
 struct Unsupported {
@@ -77,7 +94,9 @@ struct Unsupported {
 struct Expr {
     Type type;
     source::SourceLocation location;
-    std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, Unsupported> node;
+    std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, LocalVersion,
+                 LocalRef, Unsupported>
+        node;
 };
 
 struct Parameter {

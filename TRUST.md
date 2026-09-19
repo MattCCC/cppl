@@ -1295,6 +1295,18 @@ proof terms; forged hypotheses remain kernel rejections. Function contracts and
 call preconditions have separate counts from Laws. This slice adds zero kernel
 rules, zero logical assumptions, and zero runtime checks.
 
+Locals and assignments add no kernel rule, no logical assumption, and no
+runtime check. A local is not a new kind of value: each write is a logical
+version, and a read lowers to the term that version was given, so the kernel
+sees the same goals it saw before and decides them the same way. What this
+slice trusts is the bridge's account of the body: which declaration each read
+resolves to, which version is current there, and where each call is evaluated.
+A defect there can misstate the program, but it cannot grant the kernel a
+proposition. Anchoring is what keeps a local from moving a call: a call bound
+to a local is proven where the body makes it, under the conditions in force
+there, and on every path that reaches it. The kernel and core versions do not
+change, because the accepted calculus does not.
+
 Path-sensitive verification additionally trusts the Clang bridge and lowering
 to preserve every branch, fallthrough edge, condition polarity, and return.
 Each return has its own implication goal. Calls in guards are checked before

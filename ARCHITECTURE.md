@@ -3116,6 +3116,34 @@ one-bit values; positive `==` remains ordinary propositional equality so existin
 rewrites retain their meaning. Negation reverses the required comparison result.
 Literal evaluation is exact, while symbolic order implications remain unavailable.
 
+### Locals and assignments
+
+The bridge takes a body's statements in program order, carrying the logical
+version of each local. A declaration or an assignment gives the local its next
+version and lowers the rest of the body under it; a read denotes the version
+current where it stands. Identity is the declaration Clang resolved, so
+shadowing and nested scopes need no rule of their own, and no name is looked up
+by spelling. A branch lowers what follows it once per arm, under the versions
+that arm established, which is what makes a local's value path-sensitive
+without a merge rule or a new kernel capability. `vir::LocalVersion` and
+`vir::LocalRef` carry this; the runtime statements are not rewritten.
+
+Obligation generation walks a path's steps in order. A guard contributes its
+condition; a version contributes the value it binds. Both contribute their calls
+where the body evaluates them, so a call written before a branch is proven
+without that branch's condition, and a call bound to a local that a path never
+reads is still proven on that path. A read of a local lowers to the term its
+version was given, so no local is an unknown and nothing about one is assumed.
+
+Versions are numbered in program order and are unique within a body, so a
+version's value reads only lower-numbered versions. Term lowering scopes each
+binding to the body beneath it and replays a read only below the version being
+replayed, so neither a sibling arm's version nor a cycle can be lowered, even
+from malformed VIR. The core has no sharing, so each read repeats the value in
+full: a lowered term is bounded at 16384 core nodes, and the bridge bounds a
+path at 128 nested or consecutive statements. Beyond either bound the body is
+rejected, never truncated.
+
 ## 97.6 The Clang bridge is libclang, in process
 
 The bridge uses libclang, Clang's stable C API, and translates the facts C++L
