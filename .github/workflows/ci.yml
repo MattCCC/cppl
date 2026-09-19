@@ -134,6 +134,7 @@ jobs:
       - name: Configure Linux GCC
         if: matrix.platform == 'linux-gcc'
         run: |
+          CXXFLAGS="-Wno-pedantic" \
           cmake --preset dev \
             -DCMAKE_C_COMPILER=/usr/bin/gcc \
             -DCMAKE_CXX_COMPILER=/usr/bin/g++ \

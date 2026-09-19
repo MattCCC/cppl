@@ -1,6 +1,7 @@
 #include "cppl/kernel/arithmetic.hpp"
 
 #include <algorithm>
+#include <iterator>
 #include <map>
 #include <optional>
 #include <string>
