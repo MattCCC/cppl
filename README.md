@@ -11,7 +11,7 @@ C++L makes formal intent and proof <b>first-class language constructs</b> while 
 It means that the C++L keeps <b>standard C++ as the runtime language</b> and adds a formal compile-time layer for intent, proof, and correctness. What we do here is a true C++ source-compatible superset with first-class Laws, propositions/proofs, dependent/refinement types, termination checking, proof erasure, and ordinary Clang/LLVM runtime output.
 
 <p align="center">
-C++L makes semantic laws first-class program declarations and requires evidence that they actually hold.<br>
+C++L makes semantic laws first-class program declarations and requires evidence that they actually hold, making it provable.<br>
   <b>C++ ⊂ C++L</b><br>
   <b>C++L = C++ + Laws</b><br>
   <b>Laws → Obligations → Evidence</b>
@@ -25,7 +25,7 @@ The project started from a simple chain of thought:
 > Humans and AIs need an ambiguity-free language for specifying what software must do, a mechanically checkable way to prove that an implementation satisfies that intent, and a path to high-performance native execution. Can we do that without creating entirely new language and work with existing tooling?
 > What if these requirements could be part of the C++ language itself rather than remaining in tests, comments, fixtures, and engineering conventions?
 
-C++L is an attempt to answer that question while preserving the C++ runtime, ABI, ecosystem, and Clang/LLVM toolchain. The project was initiated by Mateusz Czapliński equipped with AI, steming from this practical need.
+C++L is an attempt to answer that question while preserving the C++ runtime, ABI, ecosystem, and Clang/LLVM toolchain. The project was initiated by Mateusz Czapliński equipped with AI, steming from this practical need. The goal is to make a Provable C++.
 
 ## Core idea
 
