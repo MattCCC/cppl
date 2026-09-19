@@ -41,7 +41,7 @@ cppl_add_unit_test(unit_verdict_test unit/verdict_test.cpp)
 target_link_libraries(unit_verdict_test PRIVATE cppl_kernel cppl_obligations)
 
 cppl_add_unit_test(unit_contracts_test unit/contracts_test.cpp)
-target_link_libraries(unit_contracts_test PRIVATE cppl_obligations)
+target_link_libraries(unit_contracts_test PRIVATE cppl_automation)
 
 # Driver-level suites. They exercise the installed command exactly as a
 # developer or CI would.
@@ -71,11 +71,13 @@ cppl_add_script_test(e2e_instantiated_proof e2e/instantiated_proof.sh)
 cppl_add_script_test(e2e_conditional_proof e2e/conditional_proof.sh)
 cppl_add_script_test(e2e_rewritten_proof e2e/rewritten_proof.sh)
 cppl_add_script_test(e2e_verified_functions e2e/verified_functions.sh)
+cppl_add_script_test(e2e_verified_calls e2e/verified_calls.sh)
 
 cppl_add_script_test(negative_broken_implementation negative/broken_implementation.sh)
 cppl_add_script_test(negative_unproven_dependencies negative/unproven_dependencies.sh)
 cppl_add_script_test(negative_written_proofs negative/written_proofs.sh)
 cppl_add_script_test(negative_verified_functions negative/verified_functions.sh)
+cppl_add_script_test(negative_verified_calls negative/verified_calls.sh)
 
 cppl_add_script_test(integration_header_law integration/header_law.sh)
 cppl_add_script_test(integration_determinism integration/determinism.sh)

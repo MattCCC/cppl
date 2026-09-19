@@ -3051,10 +3051,41 @@ them accidentally. A missing or unsupported body fails compilation.
 
 Automatic evidence reuses the occurrence abstraction used by written rewrites.
 It first tries definitional equality, then introduces binders, uses an identical
-hypothesis or one premise rewrite, and offers reflexivity. The kernel remains
-the only proof authority; its rules
-are unchanged. Precondition-bearing functions are excluded from the definition
-context until call-site verification exists. Ordinary runtime calls are retained.
+hypothesis or rewrites once per available equality in reverse premise order,
+and offers reflexivity. The kernel remains the only proof authority; its rules
+are unchanged. Written `refl` still performs only definitional equality.
+
+### Verified-call composition
+
+`compiler/obligations/src/contracts.cpp` orders verified definitions by their
+resolved call dependencies. It retains the body-derived obligation and builds a
+separate reasoning goal with one logical result binder per verified call. Calls
+are visited after their arguments. A call's precondition goal can use only the
+caller premise and earlier call postconditions; the final reasoning goal can
+use all justified postconditions. The actual call terms never replace these
+abstract results during candidate generation, including for `verified pure`
+callees. Cycles and unavailable definitions fail closed.
+
+`compiler/automation/src/composition.cpp` first checks evidence for the abstract
+goal. It then instantiates the result binders at the actual call terms and
+discharges the summary premises with previously accepted callee evidence. A
+failed callee or precondition leaves dependent obligations unresolved, even if
+the caller ignores its return value. There is no fallback to unfolding a
+verified callee to prove the caller's contract.
+
+Each callee exports `forall params. P -> Q[g(params)/result]` only after its
+body-derived contract passes the kernel. Existing equality elimination connects
+that theorem to `Q[R/result]`; reflexivity checks `g(params) == R` using a core
+definition lowered from the actual return expression. These definitions are
+available for proof linkage, while specification expressions retain their
+existing pure-definition admission rules. The fully assembled caller proof is
+checked against its original body-derived goal. No rule or axiom is added.
+
+Call-precondition obligations have their own origin, call-site provenance, and
+trust-report count. Caller identities include the abstract reasoning goal and
+callee obligation identities, so weakening a summary cannot reuse an identity
+based only on an unchanged executable body. Erasure remains deletion-only and
+preserves every runtime call and argument.
 
 ## 97.6 The Clang bridge is libclang, in process
 

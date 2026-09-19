@@ -5,6 +5,7 @@
 # the kernel does not depend on it.
 add_library(cppl_obligations STATIC
     src/generate.cpp
+    src/contracts.cpp
     src/status.cpp)
 
 target_include_directories(cppl_obligations PUBLIC

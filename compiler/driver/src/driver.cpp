@@ -35,6 +35,7 @@ struct Summary {
     std::size_t laws = 0;
     std::size_t proven = 0;
     std::size_t contracts_proven = 0;
+    std::size_t call_preconditions_proven = 0;
     std::size_t proven_by_written_proof = 0;
     std::size_t unresolved = 0;
     std::size_t units_verified = 0;
@@ -319,10 +320,16 @@ UnitOutcome compile_unit(const Options& options,
         automation::verify(program, engine);
 
     summary.laws += elaborated.module.laws.size();
+    std::size_t declaration_obligations = 0;
     for (const obligations::ObligationResult& result : results) {
+        if (result.obligation.origin != obligations::Origin::CallPrecondition) {
+            ++declaration_obligations;
+        }
         if (result.verdict.is_proven()) {
             if (result.obligation.origin == obligations::Origin::FunctionContract) {
                 ++summary.contracts_proven;
+            } else if (result.obligation.origin == obligations::Origin::CallPrecondition) {
+                ++summary.call_preconditions_proven;
             } else {
                 ++summary.proven;
             }
@@ -334,8 +341,8 @@ UnitOutcome compile_unit(const Options& options,
         }
     }
     const std::size_t required = syntax.laws.size() + syntax.verified_functions.size();
-    if (results.size() < required) {
-        summary.unresolved += required - results.size();
+    if (declaration_obligations < required) {
+        summary.unresolved += required - declaration_obligations;
     }
 
     const erasure::Erased erased = erasure::erase(stream, syntax, projection, engine);
@@ -372,6 +379,7 @@ void print_trust_report(const Options& options, const Summary& summary) {
     std::cout << "  by a written proof:        " << summary.proven_by_written_proof << "\n";
     std::cout << "Laws trusted:                0\n";
     std::cout << "Function contracts proven:   " << summary.contracts_proven << "\n";
+    std::cout << "Call preconditions proven:   " << summary.call_preconditions_proven << "\n";
     std::cout << "Unresolved obligations:      " << summary.unresolved << "\n\n";
     std::cout << "Unsafe regions:              0\n";
     std::cout << "Runtime validation sites:    0\n";

@@ -1210,8 +1210,9 @@ weight are deliberately few and are stated explicitly in the implementation:
 - C++ addition is lowered onto the core's wrapping primitive **only** for
   unsigned operands, where C++ arithmetic is modular and the two agree exactly.
   Signed addition is refused, because C++ leaves its overflow undefined;
-- a function's value may be unfolded during checking only when it was declared
-  `pure` and its body was checked against the purity rules;
+- specification expressions may unfold admitted `pure` definitions whose
+  bodies satisfy the purity rules; verified-function definitions additionally
+  support the kernel-checked link between a proven contract and its actual body;
 - a `proves` clause names a Law at arguments, and the proposition it claims is
   that Law's proposition instantiated at them and closed over the proof's own
   parameters. The claim is a statement to be proved, never a licence: a proof
@@ -1259,10 +1260,26 @@ substitution could state the wrong obligation; body-change, parameter-capture,
 unsupported-body, and erasure regressions exercise this boundary.
 
 The body must lower even when its result is absent from the postcondition.
-Precondition-bearing definitions are withheld from verified calls until their
-call-site obligations can be generated. Automatic premise use and rewriting
-produce ordinary proof terms; forged hypotheses and failed rewrites remain
-kernel rejections. Function-contract counts are reported separately from Laws.
+Every verified call must discharge its instantiated precondition, even when its
+result is ignored. Abstract caller reasoning binds fresh call results and uses
+only the caller's premise and preceding, proven callee postconditions. A callee
+cannot justify its own precondition, and a weak summary cannot be strengthened
+by inspecting its body. The same restriction applies to `verified pure` calls.
+
+Core definitions lower the actual verified bodies and are used to connect each
+callee's body-derived proof to its exported call theorem. Universal elimination,
+implication elimination, and equality elimination compose those proofs; the
+kernel checks the resulting proof against the caller's original obligation.
+The definitions add executable meanings, not assumed postconditions. Definitions
+with preconditions remain unavailable for unrestricted use in specifications.
+
+Call collection, argument substitution, and summary selection are correspondence
+responsibilities. Regressions cover nested calls, failed and irrelevant-result
+preconditions, weak contracts, overloads, capture, cycles, forged summaries, and
+detached body linkage. Automatic premise rewriting still produces ordinary
+proof terms; forged hypotheses remain kernel rejections. Function contracts and
+call preconditions have separate counts from Laws. This slice adds zero kernel
+rules, zero logical assumptions, and zero runtime checks.
 
 ## 41.3 Runtime trust
 

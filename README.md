@@ -302,8 +302,37 @@ verified unsigned zero_if_zero(unsigned x)
 ```
 
 Preconditions become proof hypotheses, never trusted facts or runtime checks.
-Unsupported bodies fail compilation. See [SPEC.md](SPEC.md#125-single-return-verification-fragment)
-for the fragment and its call-site restrictions.
+Verified functions can also call one another through their contracts:
+
+```cpp cppl-example
+verified unsigned bump_zero(unsigned x)
+    expects(x == 0u)
+    ensures(result == 1u)
+{
+    return x + 1u;
+}
+
+verified unsigned bump_one(unsigned x)
+    expects(x == 1u)
+    ensures(result == 2u)
+{
+    return x + 1u;
+}
+
+verified unsigned two_from_zero(unsigned x)
+    expects(x == 0u)
+    ensures(result == 2u)
+{
+    return bump_one(bump_zero(x));
+}
+```
+
+The inner call's proven postcondition discharges the outer call's precondition.
+The caller uses those contracts, and the kernel checks their connection to the
+actual body. Erased C++ retains both calls with no runtime checks. This fragment
+supports equality and unsigned addition; ordering and subtraction remain future
+work. Unsupported bodies and unproved call preconditions fail compilation. See
+[SPEC.md](SPEC.md#126-compositional-verified-calls) for the boundary.
 
 For installation, compiler options, project integration, Laws, proofs, verification statuses, and examples, see [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md).
 
