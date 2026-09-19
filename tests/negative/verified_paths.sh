@@ -26,14 +26,26 @@ reject wrong_subject 'return path.*does not satisfy' \
     'verified unsigned f(unsigned x, unsigned y) ensures(result <= 10u) { if (x <= 10u) return y; return 10u; }'
 reject wrong_polarity 'return path.*does not satisfy' \
     'verified unsigned f(unsigned x) ensures(result <= 10u) { if (x <= 10u) return 10u; return x; }'
-reject order_weakening 'return path.*does not satisfy' \
-    'verified unsigned f(unsigned x) ensures(result <= 10u) { if (x < 10u) return x; return 10u; }'
-reject order_transitivity 'return path.*does not satisfy' \
-    'verified unsigned f(unsigned x) ensures(result < 20u) { if (x < 5u) return x; return 0u; }'
-reject subtraction 'not modeled' \
-    'verified unsigned f(unsigned x) ensures(result == x) { if (x <= 10u) return x - 0u; return x; }'
-reject reassociation 'does not satisfy its contract' \
-    'verified unsigned f(unsigned x, unsigned y, unsigned z) ensures(result == (x + y) + z) { return x + (y + z); }'
+# Arithmetic proves what follows from a guard, never more than follows.
+reject order_strengthening "return path 'f path 1'" \
+    'verified unsigned f(unsigned x) ensures(result < 10u) { if (x <= 10u) return x; return 0u; }'
+reject order_narrowing "return path 'f path 1'" \
+    'verified unsigned f(unsigned x) ensures(result < 5u) { if (x < 20u) return x; return 0u; }'
+reject false_reassociation 'does not satisfy its contract' \
+    'verified unsigned f(unsigned x, unsigned y, unsigned z) ensures(result == (x + y) * z) { return x + y * z; }'
+# Unsigned arithmetic wraps, and the kernel knows it.
+reject wrapping_subtraction 'does not satisfy its contract' \
+    'verified unsigned f(unsigned x) ensures(result < x) { return x - 1u; }'
+reject wrapping_increment 'does not satisfy its contract' \
+    'verified unsigned f(unsigned x) ensures(result > x) { return x + 1u; }'
+reject wrapping_product 'does not satisfy its contract' \
+    'verified unsigned f(unsigned x) ensures(result >= x) { return x * 2u; }'
+reject signed_subtraction 'signed overflow' \
+    'verified int f(int x) ensures(result <= 10) { return x - 1; }'
+reject signed_product 'signed overflow' \
+    'verified int f(int x) ensures(result == 0) { return x * 0; }'
+reject division 'not modeled' \
+    'verified unsigned f(unsigned x) ensures(result <= x) { return x / 2u; }'
 reject signed_add 'signed overflow' \
     'verified int f(int x) ensures(result <= 10) { if (x < 10) return x + 1; return 10; }'
 reject missing_return 'every path must return' \
@@ -60,8 +72,10 @@ reject boolean_false_arm 'return path.*does not satisfy' \
     'verified unsigned f(bool b) ensures(result == 1u) { if (b) return 1u; return 2u; }'
 reject sibling_hypothesis 'return path.*does not satisfy' \
     'verified unsigned f(unsigned x, unsigned y) ensures(result <= 10u) { if (x <= 10u) { if (y <= 10u) return x; return y; } return 10u; }'
-reject contradictory_path 'return path.*does not satisfy' \
-    'verified unsigned f(unsigned x) ensures(result <= 10u) { if (x <= 10u) { if (x > 10u) return 11u; return x; } return 10u; }'
+# A path that can be reached is not mistaken for one that cannot: x <= 10 and
+# x >= 10 leave x == 10, where 11 <= 10 is false.
+reject consistent_inner_path "return path 'f path 1'" \
+    'verified unsigned f(unsigned x) ensures(result <= 10u) { if (x <= 10u) { if (x >= 10u) return 11u; return x; } return 10u; }'
 reject sibling_summary 'return path.*does not satisfy' \
     'verified unsigned g(unsigned x) ensures(result == 0u) { return 0u; } verified unsigned f(unsigned x) ensures(result == 0u) { if (x == 0u) return g(x); return x; }'
 reject failed_callee_path 'callee.*not proven' \

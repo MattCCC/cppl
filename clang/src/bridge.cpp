@@ -332,6 +332,10 @@ Expr build_expression(CXCursor cursor, const std::vector<CXCursor>& parameters,
         BinaryOp mapped = BinaryOp::Unsupported;
         if (op == CXBinaryOperator_Add) {
             mapped = BinaryOp::Add;
+        } else if (op == CXBinaryOperator_Sub) {
+            mapped = BinaryOp::Sub;
+        } else if (op == CXBinaryOperator_Mul) {
+            mapped = BinaryOp::Mul;
         } else if (op == CXBinaryOperator_EQ) {
             mapped = BinaryOp::Equal;
         } else if (op == CXBinaryOperator_NE) {

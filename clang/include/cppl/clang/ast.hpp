@@ -34,6 +34,8 @@ struct Type {
 
 enum class BinaryOp : std::uint8_t {
     Add,
+    Sub,
+    Mul,
     Equal,
     NotEqual,
     Less,

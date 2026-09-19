@@ -5,6 +5,16 @@
 namespace cppl::kernel {
 
 std::string describe(const ProofTerm& proof) {
+    if (const auto* arithmetic = std::get_if<LinearArithmetic>(&proof.node)) {
+        std::string text = "linear_arithmetic(";
+        for (std::size_t index = 0; index < arithmetic->facts.size(); ++index) {
+            if (index != 0) {
+                text += ", ";
+            }
+            text += describe(*arithmetic->facts[index].evidence);
+        }
+        return text + ")";
+    }
     if (const auto* branch = std::get_if<ConditionalElimination>(&proof.node)) {
         return "conditional_elim(" + describe(branch->condition) + ", " +
                describe(*branch->true_case) + ", " + describe(*branch->false_case) + ")";

@@ -44,6 +44,8 @@ reject argument_effect 'not modeled' \
     'verified unsigned g(unsigned x) ensures(result == x) { return x; } verified unsigned f(unsigned x) ensures(result == x) { return g(x++); }'
 reject future_summary 'call-site precondition' \
     'verified unsigned g(unsigned x) expects(x == 0u) ensures(result == 0u) { return x; } verified unsigned f(unsigned x) ensures(result == 0u) { return g(g(x)); }'
+# x <= 7 does not give x < 7: arithmetic proves order consequences, never
+# strengthenings.
 reject ordering_strengthening 'does not satisfy its contract' \
-    'verified unsigned g(unsigned x) expects(x < 7u) ensures(result <= 7u) { return x; }'
+    'verified unsigned g(unsigned x) expects(x <= 7u) ensures(result < 7u) { return x; }'
 echo 'unproved preconditions, weak summaries, and cyclic dependencies fail closed'

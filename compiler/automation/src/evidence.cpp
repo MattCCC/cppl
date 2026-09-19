@@ -2,16 +2,36 @@
 
 #include <variant>
 
+#include "arithmetic.hpp"
 #include "composition.hpp"
 
 namespace cppl::automation {
 
+// Strategies are tried in a fixed order and each candidate is put to the
+// kernel. Trying one proves nothing: only the kernel's acceptance, obtained
+// again when the obligation is verified, does.
 std::optional<Evidence> propose(const kernel::Context& context, const kernel::Proposition& goal) {
+    const auto accepted = [&](const kernel::ProofTerm& proof) {
+        return kernel::check(context, goal, proof, kernel::CoreLimits{}).has_value();
+    };
     kernel::ProofTerm definitional = obligations::definitional_evidence(goal);
-    if (kernel::check(context, goal, definitional, kernel::CoreLimits{}).has_value()) {
+    if (accepted(definitional)) {
         return Evidence{std::move(definitional), "definitional-equality"};
     }
-    return Evidence{obligations::automatic_evidence(goal), "premise-and-definitional-equality"};
+    kernel::ProofTerm rewritten = obligations::automatic_evidence(goal);
+    if (accepted(rewritten)) {
+        return Evidence{std::move(rewritten), "premise-and-definitional-equality"};
+    }
+    for (const bool rewriting : {false, true}) {
+        if (auto arithmetic = arithmetic_evidence(context, goal, rewriting);
+            arithmetic.has_value() && accepted(*arithmetic)) {
+            return Evidence{std::move(*arithmetic),
+                            rewriting ? "rewriting-and-linear-arithmetic" : "linear-arithmetic"};
+        }
+    }
+    // No candidate holds. The premise-rewriting one is returned so that the
+    // kernel's reason for refusing it is what the diagnostic reports.
+    return Evidence{std::move(rewritten), "premise-and-definitional-equality"};
 }
 
 std::vector<obligations::ObligationResult> verify(const obligations::Program& program,

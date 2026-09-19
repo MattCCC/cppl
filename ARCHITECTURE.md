@@ -3144,6 +3144,45 @@ full: a lowered term is bounded at 16384 core nodes, and the bridge bounds a
 path at 128 nested or consecutive statements. Beyond either bound the body is
 rejected, never truncated.
 
+### Machine arithmetic
+
+`kernel/src/arithmetic.cpp` owns the normal forms. Normalization reduces each
+primitive's operands first and then hands the primitive to
+`normalize_primitive`: wrapping `+`, `-`, `*` are read into a polynomial over
+opaque factors with coefficients modulo `2^width` and rendered canonically;
+comparisons, negation and selection are rewritten into canonical forms and
+folded where the machine type decides them. A total structural order on terms
+(`compare`) is the only source of arrangement, so normal forms depend on no
+address, hash or insertion order. Reading a rendered polynomial back yields the
+same polynomial, which makes normalization idempotent. Polynomial size and
+degree are bounded well inside the term-depth limit; beyond them normalization
+fails.
+
+`kernel/src/linear.cpp` owns the ninth rule. `arithmetic_system` states facts
+and a negated goal as integer linear constraints: monomials become bounded
+variables, and every polynomial that is not a single monomial carries a fresh
+wrap variable times `-2^width`, bounded by its type. `refutes` walks a
+certificate against the constraints standing at each node. Both functions are
+public so that producers can build the very system the kernel will check; the
+kernel never takes the system from them.
+
+`compiler/automation/src/arithmetic.cpp` is the producer. It eliminates
+variables Fourier-Motzkin style, recording for every derived row the
+nonnegative combination of original constraints it came from, so a derived
+contradiction is directly a Farkas sum. When the rational relaxation is
+feasible it splits disjunctions, then pins wrap variables value by value using
+the bounds the kernel recorded as hints. At the goal level it introduces
+quantifiers and premises and closes the equality underneath from all premises;
+failing that, it rewrites with the premises' equalities and with equalities
+between variables that arithmetic establishes (a loop counter equal to its
+bound at exit), then closes by reflexivity or arithmetic. `propose` tries
+definitional evidence, premise rewriting, arithmetic, and rewriting with
+arithmetic, in that order, and keeps the first candidate the kernel accepts.
+
+The lowering maps C++ `+`, `-`, `*` onto `add_wrap`, `sub_wrap`, `mul_wrap`
+only for unsigned operands of the expression's own modeled type, and refuses
+signed operands and every other arithmetic operator.
+
 ## 97.6 The Clang bridge is libclang, in process
 
 The bridge uses libclang, Clang's stable C API, and translates the facts C++L
@@ -3164,8 +3203,10 @@ semantics Clang compiles come from one toolchain.
 The core admits no recursion. `Context::define` type-checks a definition against
 the context as it stands, so a definition can only call definitions already
 admitted and the definition graph is acyclic by construction. Normalization
-therefore terminates, and divergence cannot manufacture evidence. A step budget
-and a depth limit are kept as defence in depth, and exhausting either rejects.
+therefore terminates, and divergence cannot manufacture evidence. Polynomial
+normalization and certificate checking are structural recursions over finite
+input with explicit size bounds. A step budget and a depth limit are kept as
+defence in depth, and exhausting any bound rejects.
 
 When recursive definitions are admitted, this argument disappears and a
 termination checker becomes a prerequisite, not an improvement.

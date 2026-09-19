@@ -4,6 +4,7 @@
 #include <variant>
 #include <vector>
 
+#include "cppl/kernel/linear.hpp"
 #include "cppl/kernel/substitution.hpp"
 
 namespace cppl::kernel {
@@ -111,6 +112,52 @@ struct Assumption {
         }
         return check_under(context, locals, assumptions, false_goal, *branch->false_case,
                            limits, depth + 1);
+    }
+
+    // Linear arithmetic closes an equality from facts whose evidence is itself
+    // checked here. The kernel states the facts and the goal's negation as
+    // integer constraints on its own, and the certificate must refute them.
+    if (const auto* arithmetic = std::get_if<LinearArithmetic>(&proof.node)) {
+        if (!std::holds_alternative<Eq>(proposition.node)) {
+            return reject(RejectionKind::ProofShapeMismatch,
+                          "linear arithmetic establishes an equality or a comparison, and the "
+                          "goal is " + describe(proposition));
+        }
+        if (arithmetic->facts.size() > limits.max_arithmetic_facts) {
+            return reject(RejectionKind::MalformedProofTerm,
+                          "an arithmetic step uses more facts than the core allows");
+        }
+        std::vector<Proposition> facts;
+        facts.reserve(arithmetic->facts.size());
+        for (const ArithmeticFact& fact : arithmetic->facts) {
+            if (auto well_formed =
+                    validate_proposition(context, locals, fact.proposition, limits, depth + 1);
+                !well_formed) {
+                return well_formed;
+            }
+            if (!std::holds_alternative<Eq>(fact.proposition.node)) {
+                return reject(RejectionKind::MalformedProofTerm,
+                              "an arithmetic fact must be an equality or a comparison, and " +
+                                  describe(fact.proposition) + " is neither");
+            }
+            if (auto checked = check_under(context, locals, assumptions, fact.proposition,
+                                           *fact.evidence, limits, depth + 1);
+                !checked) {
+                return checked;
+            }
+            facts.push_back(fact.proposition);
+        }
+        const auto system = arithmetic_system(context, facts, proposition, limits);
+        if (!system) {
+            return reject(RejectionKind::CoreFailure,
+                          describe(system.error().kind) + ": " + system.error().detail);
+        }
+        if (auto refuted = refutes(*system, arithmetic->certificate, limits); !refuted) {
+            return reject(RejectionKind::ProofShapeMismatch,
+                          "the arithmetic certificate does not refute the negation of " +
+                              describe(proposition) + ": " + refuted.error());
+        }
+        return {};
     }
 
     // Universal elimination closes a goal of any shape, because instantiating

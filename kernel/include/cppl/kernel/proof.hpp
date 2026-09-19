@@ -1,7 +1,10 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
+#include <utility>
 #include <variant>
+#include <vector>
 
 #include "cppl/kernel/box.hpp"
 #include "cppl/kernel/proposition.hpp"
@@ -121,6 +124,72 @@ struct EqualityElimination {
     friend bool operator==(const EqualityElimination&, const EqualityElimination&) = default;
 };
 
+// A refutation of a linear integer system (see linear.hpp). Each node narrows
+// the constraints standing at it; every leaf must be contradictory.
+struct ArithmeticCertificate;
+
+// Nonnegative multiples of constraints standing at this point, by their
+// position among them, whose sum has no variable left and a positive constant.
+// No integer assignment satisfies them all.
+struct FarkasSum {
+    std::vector<std::pair<std::uint32_t, Wide>> multipliers;
+
+    friend bool operator==(const FarkasSum&, const FarkasSum&) = default;
+};
+
+// Every integer assignment makes an integer linear form at most zero or at
+// least one, so both are examined and nothing is assumed.
+struct IntegerSplit {
+    std::vector<std::pair<std::uint32_t, std::int64_t>> terms;
+    std::int64_t constant = 0;
+    Box<ArithmeticCertificate> at_most_zero;
+    Box<ArithmeticCertificate> at_least_one;
+
+    friend bool operator==(const IntegerSplit&, const IntegerSplit&) = default;
+};
+
+// One of the two members of a disjunction of the system holds; both cases are
+// examined.
+struct DisjunctionCases {
+    std::uint32_t disjunction = 0;
+    Box<ArithmeticCertificate> first;
+    Box<ArithmeticCertificate> second;
+
+    friend bool operator==(const DisjunctionCases&, const DisjunctionCases&) = default;
+};
+
+struct ArithmeticCertificate {
+    std::variant<FarkasSum, IntegerSplit, DisjunctionCases> node;
+
+    friend bool operator==(const ArithmeticCertificate&, const ArithmeticCertificate&) = default;
+};
+
+// A fact an arithmetic step reasons from: a proposition restated together with
+// the evidence for it, which the kernel checks like any other.
+struct ArithmeticFact {
+    Proposition proposition;
+    Box<ProofTerm> evidence;
+
+    friend bool operator==(const ArithmeticFact&, const ArithmeticFact&) = default;
+};
+
+// Linear arithmetic over machine integers (SPEC.md 7.5).
+//
+//     p1 : F1  ...  pn : Fn      certificate refutes  F1 /\ ... /\ Fn /\ not G
+//     -------------------------------------------------------------------------
+//                                    G
+//
+// The kernel checks every fact's evidence, translates the facts and the
+// negated goal into integer linear constraints itself, and checks that the
+// certificate refutes them. Nothing about the translation is supplied by the
+// producer, and a certificate that does not refute the system is refused.
+struct LinearArithmetic {
+    std::vector<ArithmeticFact> facts;
+    ArithmeticCertificate certificate;
+
+    friend bool operator==(const LinearArithmetic&, const LinearArithmetic&) = default;
+};
+
 // Both premises are derived from the condition, never supplied by the producer.
 struct ConditionalElimination {
     Type type;
@@ -142,10 +211,16 @@ struct ProofTerm {
                  ImplicationIntroduction,
                  ImplicationElimination,
                  EqualityElimination,
-                 ConditionalElimination>
+                 ConditionalElimination,
+                 LinearArithmetic>
         node;
 
     static ProofTerm reflexivity() { return ProofTerm{Reflexivity{}}; }
+
+    static ProofTerm linear_arithmetic(std::vector<ArithmeticFact> facts,
+                                       ArithmeticCertificate certificate) {
+        return ProofTerm{LinearArithmetic{std::move(facts), std::move(certificate)}};
+    }
 
     static ProofTerm conditional_elimination(Type type, Term condition, Term when_true,
         Term when_false, Proposition motive, ProofTerm true_case, ProofTerm false_case) {
