@@ -723,7 +723,6 @@ See [SECURITY.md](SECURITY.md).
 | `README.md`                | `SPECIFIED`   |
 | `SPEC.md`                  | `SPECIFIED`   |
 | `docs/GRAMMAR.md`          | `SPECIFIED`   |
-| `docs/CURRENT_STATUS.md`   | `IMPLEMENTED` |
 | `DESIGN.md`                | `SPECIFIED`   |
 | `FOUNDATIONS.md`           | `SPECIFIED`   |
 | `TRUST.md`                 | `SPECIFIED`   |
