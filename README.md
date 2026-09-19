@@ -105,6 +105,26 @@ induction
 
 while ordinary supported C++ remains valid C++L. C++L adds no new data types: Laws and proofs reason directly over the C++ types a program already uses.
 
+| C++ | C++L |
+| --- | --- |
+| types | C++ types |
+| concepts | C++ concepts |
+| `constexpr` | C++ `constexpr` |
+| | **+** |
+| | Laws |
+| | contracts |
+| | proofs |
+| | quantified propositions |
+| | ghost state |
+| | refinement and dependent types |
+| | proof-only case analysis |
+| | induction |
+| | equality rewriting |
+| | termination checking |
+| | verified functions, with explicit `trusted` and `unsafe` boundaries |
+
+The additions are checked at compile time and erased before code generation.
+
 ## Mission
 
 C++L exists to enable this workflow:
@@ -429,21 +449,10 @@ For installation, compiler options, project integration, Laws, proofs, verificat
 
 ## Key capabilities
 
-C++L is intended to provide:
+Beyond the additions in the table above, C++L is intended to provide:
 
-- first-class Laws
-- propositions and proofs
-- universal and existential quantification
-- dependent types
-- refinement types
 - proof-relevant equality
 - definitional equality and normalization
-- symbolic induction over C++ values
-- proof-only case analysis
-- termination checking
-- preconditions and postconditions
-- pure / verified / ghost / unsafe / trusted boundaries
-- proof erasure
 - explicit handling of unsafe C++ and undefined behavior
 - machine-accurate arithmetic reasoning
 - a small trusted proof kernel
