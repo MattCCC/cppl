@@ -67,6 +67,9 @@ target_link_libraries(unit_contracts_test PRIVATE cppl_automation)
 cppl_add_unit_test(unit_arithmetic_test unit/arithmetic_test.cpp)
 target_link_libraries(unit_arithmetic_test PRIVATE cppl_automation)
 
+cppl_add_unit_test(unit_formal_equality_test unit/formal_equality_test.cpp)
+target_link_libraries(unit_formal_equality_test PRIVATE cppl_automation)
+
 # Driver-level suites. They exercise the installed command exactly as a
 # developer or CI would.
 set(CPPL_TEST_FIXTURES "${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
@@ -91,6 +94,8 @@ add_test(NAME conformance_readme_examples
 cppl_add_script_test(e2e_valid_law e2e/valid_law.sh)
 cppl_add_script_test(e2e_invalid_law e2e/invalid_law.sh)
 cppl_add_script_test(e2e_written_proof e2e/written_proof.sh)
+cppl_add_script_test(e2e_formal_equality e2e/formal_equality.sh)
+cppl_add_script_test(negative_formal_equality negative/formal_equality.sh)
 cppl_add_script_test(e2e_instantiated_proof e2e/instantiated_proof.sh)
 cppl_add_script_test(e2e_conditional_proof e2e/conditional_proof.sh)
 cppl_add_script_test(e2e_rewritten_proof e2e/rewritten_proof.sh)

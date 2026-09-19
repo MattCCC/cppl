@@ -29,6 +29,8 @@ std::optional<vir::Type> convert_type(const clangbridge::Type& type) {
             return vir::Type::integer(type.width, type.is_signed);
         case clangbridge::TypeKind::Bool:
             return vir::Type::boolean();
+        case clangbridge::TypeKind::Proposition:
+            return vir::Type::proposition();
         case clangbridge::TypeKind::Unsupported:
             break;
     }
@@ -85,6 +87,28 @@ class ExpressionElaborator {
         result.id = vir::ExprId{next_id_++};
         result.type = *type;
         result.provenance.range.begin = expr.location;
+
+        if (const auto* equality = std::get_if<clangbridge::FormalEquality>(&expr.node)) {
+            const auto operand_type = convert_type(equality->operand_type);
+            if (!operand_type || (!operand_type->is_integer() && !operand_type->is_boolean()) ||
+                equality->operands.size() != 2) {
+                failure_ = Failure{"formal equality requires two operands of a modeled C++ type", expr.location};
+                return std::nullopt;
+            }
+            vir::FormalEquality converted{*operand_type, {}};
+            for (const auto& operand : equality->operands) {
+                auto value = convert(operand);
+                if (!value)
+                    return std::nullopt;
+                if (!(value->type == *operand_type)) {
+                    failure_ = Failure{"formal equality operand has the wrong type", operand.location};
+                    return std::nullopt;
+                }
+                converted.operands.push_back(std::move(*value));
+            }
+            result.node = std::move(converted);
+            return result;
+        }
 
         if (const auto* parameter = std::get_if<clangbridge::ParameterRef>(&expr.node)) {
             result.node = vir::ParameterRef{parameter->index, parameter->name};
@@ -286,10 +310,20 @@ std::optional<std::vector<vir::Parameter>> convert_parameters(const clangbridge:
 // The expression itself was resolved by Clang in the proof's own scope; what
 // happens here is only the conversion of that resolved expression into the
 // fragment C++L models.
+const clangbridge::Function* proposition_function(const Request& request, std::string_view generated,
+                                                  const source::SourceLocation& written) {
+    for (const auto& probe : request.projection.equality_probes) {
+        if (probe.owner == generated && probe.location.file == written.file && probe.location.line == written.line) {
+            return find_projected(request.unit, probe.name, probe.location);
+        }
+    }
+    return find_projected(request.unit, generated, written);
+}
+
 std::optional<vir::Expr> convert_projected(const Request& request, std::string_view generated,
                                            const source::SourceLocation& written, std::uint32_t& next_expression_id,
                                            const std::string& subject, diagnostics::Engine& engine) {
-    const clangbridge::Function* function = find_projected(request.unit, generated, written);
+    const clangbridge::Function* function = proposition_function(request, generated, written);
     if (function == nullptr || !function->returned_value.has_value()) {
         report(engine, diagnostics::Category::Elaboration, written, subject + " was not resolved",
                "Clang did not resolve the projected expression");
@@ -510,7 +544,7 @@ void elaborate_proofs(const Request& request, const std::map<std::string, vir::L
         }
 
         const clangbridge::Function* function =
-            find_projected(request.unit, projected.name, declaration.keyword_location);
+            proposition_function(request, projected.name, declaration.keyword_location);
         if (function == nullptr || !function->returned_value.has_value()) {
             report(engine, diagnostics::Category::Elaboration, declaration.range.begin,
                    "the proposition of proof '" + declaration.name + "' was not resolved",
@@ -542,28 +576,19 @@ void elaborate_proofs(const Request& request, const std::map<std::string, vir::L
             continue;
         }
 
-        const auto* claim = std::get_if<vir::Call>(&proposition->node);
-        if (claim == nullptr) {
-            report(engine, diagnostics::Category::UnsupportedSemantics, declaration.proposition_location,
-                   "proof '" + declaration.name + "' does not state the law it proves",
-                   "write proves(<law>(<parameters>)); this implementation proves a declared "
-                   "law, and does not accept a proposition written out in place");
-            continue;
+        std::optional<vir::LawId> law;
+        if (const auto* claim = std::get_if<vir::Call>(&proposition->node)) {
+            const auto admitted = admitted_laws.find(claim->callee.usr);
+            if (admitted != admitted_laws.end()) {
+                law = admitted->second;
+            } else if (const auto known = law_names.find(claim->callee.usr); known != law_names.end()) {
+                report(engine, diagnostics::Category::Elaboration, declaration.proposition_location,
+                       "law '" + known->second + "' was not given formal meaning, so proof '" + declaration.name +
+                           "' has no goal to discharge",
+                       "the law itself was reported above");
+                continue;
+            }
         }
-
-        const auto admitted = admitted_laws.find(claim->callee.usr);
-        if (admitted == admitted_laws.end()) {
-            const auto known = law_names.find(claim->callee.usr);
-            report(engine, diagnostics::Category::Elaboration, declaration.proposition_location,
-                   known == law_names.end() ? "'" + claim->callee_name + "' is not a law in this translation unit"
-                                            : "law '" + known->second + "' was not given formal meaning, so proof '" +
-                                                  declaration.name + "' has no goal to discharge",
-                   known == law_names.end() ? "a proof discharges a law declared with 'ensures'"
-                                            : "the law itself was reported above");
-            continue;
-        }
-
-        const vir::Law& law = result.module.laws[admitted->second.value];
 
         // The claim's arguments need no check here. `proves(L(...))` is an
         // ordinary C++ call, so Clang has already settled their number and
@@ -572,14 +597,15 @@ void elaborate_proofs(const Request& request, const std::map<std::string, vir::L
         std::optional<std::vector<vir::ProofStep>> steps =
             convert_statements(request, declaration, projected, declared, next_expression_id, engine);
         if (!steps.has_value()) {
-            result.laws_with_refused_proofs.push_back(law.id);
+            if (law)
+                result.laws_with_refused_proofs.push_back(*law);
             continue;
         }
 
         vir::Proof proof;
         proof.id = vir::ProofId{static_cast<std::uint32_t>(projected.proof_index)};
         proof.name = declaration.name;
-        proof.law = law.id;
+        proof.law = law;
         proof.parameters = *parameters;
         proof.proposition = std::move(*proposition);
         proof.steps = std::move(*steps);
@@ -755,6 +781,10 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
         if (function != nullptr) {
             law_names.emplace(function->usr, declaration.name);
         }
+        const std::string law_usr = function != nullptr ? function->usr : std::string{};
+        if (function != nullptr && !specification.equality_probe.empty()) {
+            function = find_projected(request.unit, specification.equality_probe, declaration.keyword_location);
+        }
         if (function == nullptr || !function->returned_value.has_value()) {
             report(engine, diagnostics::Category::Elaboration, declaration.range.begin,
                    "the proposition of law '" + declaration.name + "' was not resolved",
@@ -818,7 +848,7 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
         law.proposition = std::move(*proposition);
         law.range = declaration.range;
         law.proposition_range.begin = declaration.proposition()->location;
-        admitted_laws.emplace(function->usr, law.id);
+        admitted_laws.emplace(law_usr, law.id);
         result.module.laws.push_back(std::move(law));
     }
 

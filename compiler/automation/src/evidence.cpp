@@ -101,7 +101,9 @@ std::vector<obligations::ObligationResult> verify(const obligations::Program& pr
             // discharged from the function's own body or not at all.
             if (written != nullptr) {
                 diagnostic.message =
-                    "proof '" + written->name + "' does not establish law '" + obligation.subject + "'";
+                    obligation.proof
+                        ? "proof '" + written->name + "' does not establish its proposition"
+                        : "proof '" + written->name + "' does not establish law '" + obligation.subject + "'";
             } else if (obligation.origin == obligations::Origin::FunctionContract) {
                 diagnostic.message = "verified function '" + obligation.subject + "' does not satisfy its contract";
             } else if (obligation.origin == obligations::Origin::CallPrecondition) {

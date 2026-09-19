@@ -1260,6 +1260,62 @@ Severity convert_severity(CXDiagnosticSeverity severity) {
     return Severity::Error;
 }
 
+// Only a projector-named equality probe reaches this path. The empty lambda
+// has no logical meaning: its signature makes Clang perform ordinary argument
+// checking, and the two converted arguments become the operands of formal Eq.
+void extract_equality(Function& function, CXCursor cursor, const std::vector<CXCursor>& parameters) {
+    function.has_body = true;
+    function.body_rejection = "malformed formal equality probe";
+    std::vector<CXCursor> bodies;
+    for (const auto child : children_of(cursor)) {
+        if (clang_getCursorKind(child) == CXCursor_CompoundStmt)
+            bodies.push_back(child);
+    }
+    if (bodies.size() != 1)
+        return;
+    const auto statements = children_of(bodies[0]);
+    if (statements.size() != 1 || clang_getCursorKind(statements[0]) != CXCursor_ReturnStmt)
+        return;
+    auto values = children_of(statements[0]);
+    if (values.size() != 1)
+        return;
+    CXCursor call = values[0];
+    while (clang_getCursorKind(call) == CXCursor_UnexposedExpr || clang_getCursorKind(call) == CXCursor_ParenExpr) {
+        values = children_of(call);
+        if (values.size() != 1)
+            return;
+        call = values[0];
+    }
+    if (clang_getCursorKind(call) != CXCursor_CallExpr)
+        return;
+    const CXCursor method = clang_getCursorReferenced(call);
+    if (clang_getCursorKind(method) != CXCursor_CXXMethod)
+        return;
+    const auto formals = parameters_of(method);
+    if (formals.size() != 2)
+        return;
+    const CXType first = clang_getCanonicalType(clang_getCursorType(formals[0]));
+    const CXType second = clang_getCanonicalType(clang_getCursorType(formals[1]));
+    if (clang_equalTypes(first, second) == 0)
+        return;
+    const int count = clang_Cursor_getNumArguments(call);
+    // libclang includes the closure object as the first operator() argument.
+    if (count != 3)
+        return;
+    FormalEquality equality;
+    equality.operand_type = convert_type(first);
+    for (unsigned index = 1; index < 3; ++index) {
+        equality.operands.push_back(build_expression(clang_Cursor_getArgument(call, index), parameters, {}, 0));
+    }
+    Expr expression;
+    expression.type.kind = TypeKind::Proposition;
+    expression.type.spelling = "Prop";
+    expression.location = function.location;
+    expression.node = std::move(equality);
+    function.returned_value = std::move(expression);
+    function.body_rejection.reset();
+}
+
 } // namespace
 
 const Function* TranslationUnit::find_by_usr(std::string_view usr) const {
@@ -1370,10 +1426,15 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
 
         // The projector's invariant declarations share the generated prefix,
         // which no ordinary declaration may use.
-        extract_body(function, cursor, parameter_cursors,
-                     request.selection.specification_prefix.empty()
-                         ? std::string()
-                         : request.selection.specification_prefix + "invariant_");
+        if (std::ranges::find(request.selection.equality_probes, function.name) !=
+            request.selection.equality_probes.end()) {
+            extract_equality(function, cursor, parameter_cursors);
+        } else {
+            extract_body(function, cursor, parameter_cursors,
+                         request.selection.specification_prefix.empty()
+                             ? std::string()
+                             : request.selection.specification_prefix + "invariant_");
+        }
         result.functions.push_back(std::move(function));
     }
 

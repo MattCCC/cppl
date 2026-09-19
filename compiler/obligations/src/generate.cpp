@@ -322,6 +322,23 @@ std::expected<kernel::Proposition, Failure> lower_proposition(const vir::Expr& e
                                                               std::size_t parameter_count) {
     const source::SourceLocation& location = expression.provenance.range.begin;
 
+    if (const auto* equality = std::get_if<vir::FormalEquality>(&expression.node)) {
+        const auto type = lower_type(equality->operand_type);
+        if (!expression.type.is_proposition() || !type || equality->operands.size() != 2 ||
+            !(equality->operands[0].type == equality->operand_type) ||
+            !(equality->operands[1].type == equality->operand_type)) {
+            return fail("malformed formal equality", location);
+        }
+        TermLowering lowering(definitions, parameter_count);
+        auto lhs = lowering.lower(equality->operands[0]);
+        if (!lhs)
+            return std::unexpected(lhs.error());
+        auto rhs = lowering.lower(equality->operands[1]);
+        if (!rhs)
+            return std::unexpected(rhs.error());
+        return kernel::Proposition::equality(*type, std::move(*lhs), std::move(*rhs));
+    }
+
     if (!expression.type.is_boolean())
         return fail("it does not state a comparison", location);
     TermLowering lowering(definitions, parameter_count);
@@ -583,6 +600,8 @@ void report(diagnostics::Engine& engine, diagnostics::Category category, const s
 // proof's own parameters, and those are quantified back over the result.
 std::optional<kernel::Proposition> claimed_proposition(const vir::Proof& proof, const Obligation& obligation,
                                                        const DefinitionMap& definitions, diagnostics::Engine& engine) {
+    if (!proof.law)
+        return obligation.goal;
     const auto& claim = std::get<vir::Call>(proof.proposition.node);
     TermLowering lowering(definitions, proof.parameters.size());
 
@@ -762,10 +781,43 @@ kernel::ProofTerm quantify(const std::vector<kernel::Type>& binders, kernel::Pro
 // Deciding this needs the two propositions and nothing else, so it is settled
 // before any statement is consumed to discharge them. `exact` offers the goal
 // itself and so discharges nothing: peeling a premise is what `apply` means.
-std::optional<std::size_t> premises_before_the_goal(const kernel::Proposition& available,
+bool convertible_equality(const kernel::Context& context, const kernel::Proposition& available,
+                          const kernel::Proposition& goal) {
+    const auto* from = std::get_if<kernel::Eq>(&available.node);
+    const auto* to = std::get_if<kernel::Eq>(&goal.node);
+    if (from == nullptr || to == nullptr || !(from->type == to->type))
+        return false;
+    const auto left_from = kernel::normalize(context, from->lhs, kernel::CoreLimits{});
+    const auto left_to = kernel::normalize(context, to->lhs, kernel::CoreLimits{});
+    const auto right_from = kernel::normalize(context, from->rhs, kernel::CoreLimits{});
+    const auto right_to = kernel::normalize(context, to->rhs, kernel::CoreLimits{});
+    return left_from && left_to && right_from && right_to && *left_from == *left_to && *right_from == *right_to;
+}
+
+// Definitional conversion is derived from the existing equality rule. Both
+// conversions are explicit reflexivity evidence, checked independently by the
+// kernel; normalization in the producer merely chooses when to offer them.
+kernel::ProofTerm convert_equality(const kernel::Proposition& available, const kernel::Proposition& goal,
+                                   kernel::ProofTerm evidence) {
+    const auto* from = std::get_if<kernel::Eq>(&available.node);
+    const auto* to = std::get_if<kernel::Eq>(&goal.node);
+    if (available == goal || from == nullptr || to == nullptr || !(from->type == to->type))
+        return evidence;
+    const auto hole = kernel::Term::variable(kernel::VarIndex{0});
+    auto right = kernel::ProofTerm::equality_elimination(
+        to->type, to->rhs, from->rhs, kernel::Proposition::equality(to->type, kernel::shift(from->lhs, 1), hole),
+        kernel::ProofTerm::reflexivity(), std::move(evidence));
+    return kernel::ProofTerm::equality_elimination(
+        to->type, to->lhs, from->lhs, kernel::Proposition::equality(to->type, hole, kernel::shift(to->rhs, 1)),
+        kernel::ProofTerm::reflexivity(), std::move(right));
+}
+
+std::optional<std::size_t> premises_before_the_goal(const kernel::Context& context,
+                                                    const kernel::Proposition& available,
                                                     const kernel::Proposition& goal, bool exact, std::string& reason) {
     if (exact) {
-        return available == goal ? std::optional<std::size_t>{0} : std::nullopt;
+        return available == goal || convertible_equality(context, available, goal) ? std::optional<std::size_t>{0}
+                                                                                   : std::nullopt;
     }
 
     const kernel::Proposition* current = &available;
@@ -792,6 +844,7 @@ std::optional<std::size_t> premises_before_the_goal(const kernel::Proposition& a
 // exactly as it was written and is never searched.
 struct Body {
     const vir::Proof& proof;
+    const kernel::Context& context;
     const DefinitionMap& definitions;
     const std::vector<WrittenProof>& built;
     const std::map<std::uint32_t, std::size_t>& built_index;
@@ -981,12 +1034,12 @@ std::optional<kernel::ProofTerm> prove(Body& body, const kernel::Proposition& go
 
     std::string reason;
     std::optional<std::size_t> discharge =
-        premises_before_the_goal(instantiated->proposition, goal, exact != nullptr, reason);
+        premises_before_the_goal(body.context, instantiated->proposition, goal, exact != nullptr, reason);
     if (discharge.has_value()) {
         binders.clear();
     } else if (!binders.empty()) {
         std::string deeper;
-        discharge = premises_before_the_goal(instantiated->proposition, *inner, exact != nullptr, deeper);
+        discharge = premises_before_the_goal(body.context, instantiated->proposition, *inner, exact != nullptr, deeper);
     }
 
     if (!discharge.has_value()) {
@@ -1016,6 +1069,10 @@ std::optional<kernel::ProofTerm> prove(Body& body, const kernel::Proposition& go
         current = std::move(conclusion);
     }
 
+    const auto& target = binders.empty() ? goal : *inner;
+    if (convertible_equality(body.context, current, target)) {
+        term = convert_equality(current, target, std::move(term));
+    }
     return quantify(binders, std::move(term));
 }
 
@@ -1031,32 +1088,38 @@ void lower_proofs(const vir::Module& module, const elaboration::Result& elaborat
     program.refused_proofs = elaborated.laws_with_refused_proofs;
 
     std::map<std::uint32_t, const Obligation*> goals;
+    std::map<std::uint32_t, const Obligation*> direct_goals;
     for (const Obligation& obligation : program.obligations) {
         if (obligation.law.has_value()) {
             goals.emplace(obligation.law->value, &obligation);
         }
+        if (obligation.proof)
+            direct_goals.emplace(obligation.proof->value, &obligation);
     }
 
     std::set<std::uint32_t> declared;
     std::vector<const vir::Proof*> pending;
     for (const vir::Proof& proof : module.proofs) {
         declared.insert(proof.id.value);
-        if (goals.contains(proof.law.value)) {
+        if (proof.law ? goals.contains(proof.law->value) : direct_goals.contains(proof.id.value)) {
             pending.push_back(&proof);
         }
     }
 
     std::map<std::uint32_t, std::size_t> lowered; // proof id -> index in program.proofs
+    std::set<std::uint32_t> refused;
 
     bool progress = true;
     while (progress) {
         progress = false;
         for (auto candidate = pending.begin(); candidate != pending.end();) {
             const vir::Proof& proof = **candidate;
-            const Obligation& obligation = *goals.at(proof.law.value);
+            const Obligation& obligation = proof.law ? *goals.at(proof.law->value) : *direct_goals.at(proof.id.value);
 
             const auto refuse = [&] {
-                program.refused_proofs.push_back(proof.law);
+                refused.insert(proof.id.value);
+                if (proof.law)
+                    program.refused_proofs.push_back(*proof.law);
                 candidate = pending.erase(candidate);
                 progress = true;
             };
@@ -1082,7 +1145,7 @@ void lower_proofs(const vir::Module& module, const elaboration::Result& elaborat
                 if (named == nullptr) {
                     continue; // a premise, which needs nothing built
                 }
-                if (!declared.contains(named->proof.value)) {
+                if (!declared.contains(named->proof.value) || refused.contains(named->proof.value)) {
                     report(engine, diagnostics::Category::ProofFailure, step.location,
                            "proof '" + reference->name + "' was not admitted, so proof '" + proof.name +
                                "' has no evidence",
@@ -1112,7 +1175,7 @@ void lower_proofs(const vir::Module& module, const elaboration::Result& elaborat
                 continue;
             }
 
-            Body body{proof, definitions, program.proofs, lowered, {}, 0, 0};
+            Body body{proof, program.context, definitions, program.proofs, lowered, {}, 0, 0};
             std::optional<kernel::ProofTerm> term = prove(body, *claimed, engine);
 
             if (term.has_value() && body.cursor < proof.steps.size()) {
@@ -1131,7 +1194,7 @@ void lower_proofs(const vir::Module& module, const elaboration::Result& elaborat
             written.name = proof.name;
             written.law = proof.law;
             written.goal = *claimed;
-            written.closes_law = *claimed == obligation.goal;
+            written.closes_law = proof.law.has_value() && *claimed == obligation.goal;
             written.term = std::move(*term);
             written.range = proof.range;
 
@@ -1170,7 +1233,8 @@ void lower_proofs(const vir::Module& module, const elaboration::Result& elaborat
         report(engine, diagnostics::Category::ProofFailure, proof->steps.front().location,
                "proof '" + proof->name + "' depends on itself through the proofs it uses",
                "this formal core has no induction rule, so written proofs must be acyclic");
-        program.refused_proofs.push_back(proof->law);
+        if (proof->law)
+            program.refused_proofs.push_back(*proof->law);
     }
 
     std::map<std::uint32_t, std::string> closed_by;
@@ -1178,10 +1242,10 @@ void lower_proofs(const vir::Module& module, const elaboration::Result& elaborat
         if (!written.closes_law) {
             continue;
         }
-        const auto [owner, first] = closed_by.emplace(written.law.value, written.name);
+        const auto [owner, first] = closed_by.emplace(written.law->value, written.name);
         if (!first) {
             report(engine, diagnostics::Category::CpplSyntax, written.range.begin,
-                   "law '" + goals.at(written.law.value)->subject + "' already has a proof",
+                   "law '" + goals.at(written.law->value)->subject + "' already has a proof",
                    "'" + owner->second +
                        "' establishes it; a law is discharged by exactly one "
                        "written proof, though others may prove instances of it");
@@ -1194,18 +1258,19 @@ void lower_proofs(const vir::Module& module, const elaboration::Result& elaborat
     // author has already said how to establish.
     std::set<std::uint32_t> reported;
     for (const vir::Proof& proof : module.proofs) {
-        if (!goals.contains(proof.law.value) || closed_by.contains(proof.law.value)) {
+        if (!proof.law || !goals.contains(proof.law->value) || closed_by.contains(proof.law->value)) {
             continue;
         }
-        if (program.proof_refused(proof.law) || !reported.insert(proof.law.value).second) {
+        if (program.proof_refused(*proof.law) || !reported.insert(proof.law->value).second) {
             continue;
         }
         report(engine, diagnostics::Category::ProofFailure, proof.range.begin,
-               "law '" + goals.at(proof.law.value)->subject +
+               "law '" + goals.at(proof.law->value)->subject +
                    "' is named by a written proof, but nothing establishes the law itself",
                "a proof of one instance does not discharge the law; write a proof that claims "
                "it at its own parameters");
-        program.refused_proofs.push_back(proof.law);
+        if (proof.law)
+            program.refused_proofs.push_back(*proof.law);
     }
 }
 
@@ -1405,6 +1470,35 @@ Program generate(const vir::Module& module, const elaboration::Result& elaborate
     }
 
     detail::generate_contracts(module, definitions, program, engine, explain);
+
+    // Direct proves(P) declarations have their own obligations. They never
+    // become synthetic Laws or enter the automatic-proof fallback path.
+    for (const auto& proof : module.proofs) {
+        if (proof.law)
+            continue;
+        auto proposition = lower_proposition(proof.proposition, definitions, proof.parameters.size());
+        if (!proposition) {
+            report(engine, diagnostics::Category::UnsupportedSemantics, proposition.error().location,
+                   "proof '" + proof.name + "' cannot be stated to the formal core: " + proposition.error().reason,
+                   explain(proposition.error()));
+            continue;
+        }
+        std::string unrepresented;
+        auto goal = quantify_over(proof.parameters, std::move(*proposition), unrepresented);
+        if (!goal) {
+            report(engine, diagnostics::Category::UnsupportedSemantics, proof.range.begin,
+                   "proof '" + proof.name + "' quantifies over an unsupported type: " + unrepresented);
+            continue;
+        }
+        Obligation obligation;
+        obligation.proof = proof.id;
+        obligation.subject = proof.name;
+        obligation.origin = Origin::ProofProposition;
+        obligation.range = proof.range;
+        obligation.id = identify(program.context, "proof:" + proof.name, *goal);
+        obligation.goal = std::move(*goal);
+        program.obligations.push_back(std::move(obligation));
+    }
 
     lower_proofs(module, elaborated, definitions, program, engine);
     return program;

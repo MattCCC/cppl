@@ -36,6 +36,8 @@ std::string describe(Origin origin) {
             return "function contract";
         case Origin::LawProposition:
             return "law proposition";
+        case Origin::ProofProposition:
+            return "proof proposition";
         case Origin::LoopEntry:
             return "loop invariant on entry";
         case Origin::LoopPreservation:
@@ -58,10 +60,21 @@ bool Program::proof_refused(vir::LawId law) const {
 }
 
 const WrittenProof* Program::proof_for(const Obligation& obligation) const {
+    if (obligation.proof) {
+        for (const auto& proof : proofs) {
+            if (proof.id == *obligation.proof)
+                return &proof;
+        }
+        return nullptr;
+    }
     return obligation.law.has_value() ? proof_for(*obligation.law) : nullptr;
 }
 
 bool Program::proof_refused(const Obligation& obligation) const {
+    // A direct proposition is always accompanied by a written proof. There is
+    // no fallback strategy when its evidence failed to elaborate.
+    if (obligation.proof)
+        return proof_for(obligation) == nullptr;
     return obligation.law.has_value() && proof_refused(*obligation.law);
 }
 

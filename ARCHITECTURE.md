@@ -2962,11 +2962,25 @@ elaboration uses that identity before reading its proposition. Presumed
 file/line/column are diagnostic labels, not declaration identities: namespaces,
 overloads, macro expansions, and `#line` can repeat them.
 
+Explicit `Eq<T>(a, b)` is a formal form, not an ordinary C++ expression.
+The projector preserves a declaration for lookup and emits a separate, uniquely
+identified analysis probe: an empty two-parameter lambda of type `T` invoked
+with the original argument list. Clang resolves that type and the arguments,
+including overloads and conversions. The bridge reads the resolved arguments;
+the lambda body is never logical evidence. The typed bridge and VIR carry a
+formal-equality node of proposition type, distinct from C++ `bool`, and lowering
+constructs the existing kernel equality. No `Eq` template, logical C++ type,
+or logical helper is inserted into a user namespace. The probe is linked by
+projection identity even when overloads share a presumed source location.
+Unsupported nested formal forms fail before C++ analysis.
+
 ## 97.5.1 A written proof is elaborated, never believed
 
 A proof declaration is projected the same way. Its `proves` clause becomes the
-body of a generated function, so the proposition it claims is resolved by
-Clang; its statements are C++L and are never projected into C++ at all.
+body of a generated function or an explicit-equality probe. Clang resolves
+the C++ parts; its statements are C++L and are never projected into C++ at all.
+A direct `proves(P)` has a proof obligation identified independently of any Law.
+It always requires its written evidence; failure never invokes automation.
 
 A statement may instantiate the proof it names, as in `exact q(t);`. Each `t`
 is an ordinary C++ expression, so each is projected too: one generated function
@@ -2994,7 +3008,10 @@ Law that states a precondition claims the implication from it to the conclusion.
 `refl` becomes that proposition's quantifier and premise introductions followed
 by reflexivity; `exact` and `apply` become the named evidence wrapped in one
 universal elimination per argument. Steps are lowered in dependency order, so
-circular evidence never produces a term.
+circular evidence never produces a term. A refused dependency is propagated as
+a refusal rather than diagnosed as a cycle. Definitionally convertible equality
+operands are connected by two explicit equality substitutions justified by
+reflexivity; this is derived evidence, not an additional kernel conversion rule.
 
 An instantiated statement is compared with the goal as it stands, and, failing
 that, with the goal underneath the quantifiers it leads with. Both are readings

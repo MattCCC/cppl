@@ -38,6 +38,7 @@ struct Summary {
     std::size_t loop_invariants_proven = 0;
     std::size_t call_preconditions_proven = 0;
     std::size_t proven_by_written_proof = 0;
+    std::size_t proofs_proven = 0;
     std::size_t unresolved = 0;
     std::size_t units_verified = 0;
 };
@@ -249,6 +250,12 @@ UnitOutcome compile_unit(const Options& options, const Input& input, const std::
     frontend::ProjectionOptions projection_options;
     projection_options.unit_key = source::hash_bytes(std::filesystem::absolute(input.path).string()).to_short_hex(12);
     const frontend::Projection projection = frontend::project(stream, syntax, projection_options);
+    for (const auto& diagnostic : projection.diagnostics)
+        engine.report(diagnostic);
+    if (engine.has_errors()) {
+        outcome.failed = true;
+        return outcome;
+    }
 
     const std::filesystem::path analysis_path = scratch / (stem + ".analysis.cpp");
     const std::filesystem::path runtime_path = scratch / (stem + ".runtime.cpp");
@@ -265,6 +272,9 @@ UnitOutcome compile_unit(const Options& options, const Input& input, const std::
     request.arguments.emplace_back("c++-cpp-output");
     request.arguments.emplace_back("-w");
     request.selection.specification_prefix = projection_options.generated_prefix;
+    for (const auto& equality : projection.equality_probes) {
+        request.selection.equality_probes.push_back(equality.name);
+    }
     for (const auto& declaration : projection.declaration_offsets) {
         request.selection.offsets.push_back(declaration.analysis);
     }
@@ -299,6 +309,9 @@ UnitOutcome compile_unit(const Options& options, const Input& input, const std::
     const elaboration::Result elaborated =
         elaboration::elaborate(elaboration::Request{syntax, projection, *unit}, engine);
     const obligations::Program program = obligations::generate(elaborated.module, elaborated, engine);
+    if (!engine.has_errors() && program.proofs.size() != syntax.proofs.size()) {
+        report(engine, diagnostics::Category::Internal, "not every written proof produced explicit evidence");
+    }
     const std::vector<obligations::ObligationResult> results = automation::verify(program, engine);
 
     summary.laws += elaborated.module.laws.size();
@@ -315,11 +328,13 @@ UnitOutcome compile_unit(const Options& options, const Input& input, const std::
                 ++summary.call_preconditions_proven;
             } else if (result.obligation.origin == obligations::Origin::LawProposition) {
                 ++summary.proven;
+            } else if (result.obligation.origin == obligations::Origin::ProofProposition) {
+                ++summary.proofs_proven;
             } else if (result.obligation.origin == obligations::Origin::LoopEntry ||
                        result.obligation.origin == obligations::Origin::LoopPreservation) {
                 ++summary.loop_invariants_proven;
             }
-            if (program.proof_for(result.obligation) != nullptr) {
+            if (result.obligation.law && program.proof_for(result.obligation) != nullptr) {
                 ++summary.proven_by_written_proof;
             }
         } else {
@@ -381,6 +396,7 @@ void print_trust_report(const Options& options, const Summary& summary) {
     std::cout << "C++L Trust Report\n\n";
     std::cout << "Laws proven:                 " << summary.proven << "\n";
     std::cout << "  by a written proof:        " << summary.proven_by_written_proof << "\n";
+    std::cout << "Proof declarations proven:   " << summary.proofs_proven << "\n";
     std::cout << "Laws trusted:                0\n";
     std::cout << "Function contracts proven:   " << summary.contracts_proven << "\n";
     std::cout << "  partial correctness only:  " << summary.partial_contracts_proven << "\n";

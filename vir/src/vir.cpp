@@ -7,6 +7,8 @@
 namespace cppl::vir {
 
 std::string describe(const Type& type) {
+    if (type.is_proposition())
+        return "Prop";
     if (type.is_boolean()) {
         return "bool";
     }
@@ -57,6 +59,11 @@ std::string describe(const Expr& expr) {
                 }
                 text += ")";
                 return text;
+            } else if constexpr (std::is_same_v<Node, FormalEquality>) {
+                return node.operands.size() == 2
+                           ? "Eq<" + describe(node.operand_type) + ">(" + describe(node.operands[0]) + ", " +
+                                 describe(node.operands[1]) + ")"
+                           : "<malformed-equality>";
             } else if constexpr (std::is_same_v<Node, Negation>) {
                 return node.operands.size() == 1 ? "!(" + describe(node.operands[0]) + ")" : "<malformed-negation>";
             } else if constexpr (std::is_same_v<Node, Conditional>) {

@@ -19,14 +19,24 @@ struct BoolType {
     friend bool operator==(const BoolType&, const BoolType&) = default;
 };
 
+struct PropositionType {
+    friend bool operator==(const PropositionType&, const PropositionType&) = default;
+};
+
 struct Type {
-    std::variant<IntType, BoolType> node;
+    std::variant<IntType, BoolType, PropositionType> node;
 
     static Type integer(std::uint16_t width, bool is_signed) {
         return Type{IntType{width, is_signed}};
     }
     static Type boolean() {
         return Type{BoolType{}};
+    }
+    static Type proposition() {
+        return Type{PropositionType{}};
+    }
+    [[nodiscard]] bool is_proposition() const noexcept {
+        return std::holds_alternative<PropositionType>(node);
     }
 
     [[nodiscard]] bool is_integer() const noexcept {

@@ -21,6 +21,7 @@ namespace cppl::clangbridge {
 enum class TypeKind : std::uint8_t {
     Int,
     Bool,
+    Proposition,
     Unsupported,
 };
 
@@ -69,6 +70,10 @@ struct Binary {
 };
 
 struct Negation {
+    std::vector<Expr> operands;
+};
+struct FormalEquality {
+    Type operand_type;
     std::vector<Expr> operands;
 };
 struct Conditional {
@@ -126,7 +131,7 @@ struct Expr {
     Type type;
     source::SourceLocation location;
     std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, LocalVersion, LocalRef, Loop, Iterate,
-                 Unsupported>
+                 FormalEquality, Unsupported>
         node;
 };
 

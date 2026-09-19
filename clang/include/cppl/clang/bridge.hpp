@@ -18,6 +18,7 @@ namespace cppl::clangbridge {
 struct Selection {
     std::string specification_prefix;
     std::vector<std::size_t> offsets;
+    std::vector<std::string> equality_probes;
 };
 
 struct ParseRequest {

@@ -70,6 +70,12 @@ struct Negation {
     friend bool operator==(const Negation&, const Negation&) = default;
 };
 
+struct FormalEquality {
+    Type operand_type;
+    std::vector<Expr> operands;
+    friend bool operator==(const FormalEquality&, const FormalEquality&) = default;
+};
+
 struct Conditional {
     std::vector<Expr> operands; // condition, true return, false return
     friend bool operator==(const Conditional&, const Conditional&) = default;
@@ -126,7 +132,8 @@ struct Expr {
     ExprId id;
     Type type;
     Provenance provenance;
-    std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, LocalVersion, LocalRef, Loop, Iterate>
+    std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, LocalVersion, LocalRef, Loop, Iterate,
+                 FormalEquality>
         node;
 
     friend bool operator==(const Expr&, const Expr&) = default;

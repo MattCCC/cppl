@@ -76,13 +76,21 @@ The verified fragment is deliberately small: a Law is one comparison between two
 built-in integer expressions, optionally stated under one `expects`
 precondition of the same shape, universally quantified over its parameters, over
 functions declared `pure` whose bodies are a single `return` of a modeled
-expression. A proof declaration claims such a Law at arguments of its choosing,
+expression. A proof declaration claims a Law at arguments of its choosing or states a modeled
+proposition directly, including explicit `Eq<T>(a, b)`,
 and its body is a sequence of `refl`, `exact`, `apply`, `assume` and `rewrite`
 statements;
 `exact` and `apply` may instantiate the evidence they name at terms, as in
 `exact q(41u);`. A proof discharges the Law itself when what it claims is the
 Law's own proposition; otherwise it proves one instance, which other proofs may
-use. Everything else is reported as unsupported and produces no obligation. See
+use. Direct propositions have their own written-proof obligations and are counted
+separately from Laws. Explicit `Eq<T>` currently supports modeled integer and
+Boolean types as a complete Law, proof, precondition, postcondition, or `assume`
+proposition. Clang resolves its type and arguments; an unmodeled conversion is
+refused. Nested formal forms and explicit quantifiers remain unsupported.
+`exact` and `apply` on equality goals can bridge definitionally equal operands
+using explicit equality-substitution and reflexivity evidence.
+Everything else is reported as unsupported and produces no obligation. See
 `ARCHITECTURE.md` 97 for the implemented structure and `TRUST.md` 41 for what
 must be trusted today.
 
@@ -250,6 +258,8 @@ The project should not claim broad language implementation before the proof sema
 | proof `let`                  | `SPECIFIED` |
 | proof case analysis `cases`  | `SPECIFIED` |
 | proposition types            | `PROTOTYPE` |
+| explicit `Eq<T>` propositions | `PROTOTYPE` |
+| direct proposition proofs    | `PROTOTYPE` |
 | universal quantification     | `PROTOTYPE` |
 | implication                  | `PROTOTYPE` |
 | conjunction / disjunction    | `SPECIFIED` |

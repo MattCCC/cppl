@@ -26,6 +26,7 @@ struct SpecificationFunction {
     // the Law's conclusion is what a proof names.
     std::string premise_name;
     std::size_t analysis_offset = 0; // name token in the physical analysis buffer
+    std::string equality_probe = {}; // unique projection identity, independent of #line
 };
 
 // The ordinary C++ function a proof declaration's `proves` clause is projected
@@ -68,6 +69,16 @@ struct LoopInvariantMarker {
     source::SourceLocation location;
 };
 
+// A formal equality is never represented by a C++ operator== or a fabricated
+// Eq template. Its analysis-only probe asks Clang to resolve a two-parameter
+// lambda call at the stated type. The bridge reads the resolved arguments,
+// while the proposition itself is supplied by this explicit projection record.
+struct EqualityProbe {
+    std::string owner;
+    std::string name;
+    source::SourceLocation location;
+};
+
 // One projector, two texts.
 //
 // `runtime` is the program: the scanned text with every C++L-only span blanked.
@@ -87,6 +98,8 @@ struct Projection {
     std::vector<ProofFunction> proof_functions;
     std::vector<ContractFunctions> contract_functions;
     std::vector<LoopInvariantMarker> loop_invariants;
+    std::vector<EqualityProbe> equality_probes;
+    std::vector<diagnostics::Diagnostic> diagnostics;
 
     // Positions of executable declarations copied into the analysis buffer.
     // Presumed file/line/column are diagnostic labels and may be repeated by

@@ -460,6 +460,18 @@ refl : Proof<Eq<T>(x, x)>
 
 ---
 
+### 7.2.1 Current explicit-equality fragment
+
+The current implementation accepts `Eq<T>(a, b)` as a complete Law, proof,
+precondition, postcondition, or assumed proposition for modeled built-in
+integer and Boolean types. `T` and both arguments are resolved by Clang;
+conversions outside the modeled fragment are refused. The logical form remains
+distinct from a C++ `operator==` invocation. Nested explicit logical forms are
+not yet supported. These implementation limits do not narrow the semantics
+above.
+
+---
+
 ## 7.3 C++ `operator==`
 
 A C++ expression:

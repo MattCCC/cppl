@@ -1398,6 +1398,18 @@ Replacement path: once induction over a proof-only natural-number domain exists
 (ROADMAP Phase 7), loop partial correctness can be stated with an iteration term
 and the loop rule derived inside the kernel, removing it from this layer.
 
+Explicit formal equality adds correspondence code, not a kernel rule. Its
+projection metadata selects an analysis-only probe whose two converted operands
+and canonical C++ type are read from Clang. The empty probe body is never a
+proposition or evidence. This mapping and the separate VIR proposition type must
+be correct; malformed shapes, unmodeled operand types and conversions are
+refused. Tests cover false equalities, wrong evidence, scope escape, repeated
+presumed locations, and attempts to use a C++ `Eq` helper for unsupported nested
+formal syntax. Direct proof declarations receive their own obligations with no
+automation fallback. Equality conversion produces existing substitution and
+reflexivity terms; the kernel checks both conversions independently. No axiom,
+logical assumption, trusted mechanism, or kernel rule is added.
+
 ## 41.3 Runtime trust
 
 Each compiler invocation owns a fresh temporary directory until native compilation

@@ -43,6 +43,85 @@ struct Edit {
     std::optional<std::size_t> specification_index = std::nullopt;
 };
 
+struct EqualitySyntax {
+    source::ByteSpan type;
+    source::ByteSpan arguments;
+    source::SourceLocation arguments_location;
+};
+
+// Delimit only the formal wrapper. In particular the arguments are copied as
+// one C++ argument list: templates, commas, lookup and conversions belong to
+// Clang. Ordinary expressions that are not this complete form are untouched.
+std::optional<EqualitySyntax> equality_syntax(const TokenStream& stream, source::ByteSpan expression) {
+    const auto& tokens = stream.tokens();
+    std::size_t begin = static_cast<std::size_t>(
+        std::lower_bound(tokens.begin(), tokens.end(), expression.offset,
+                         [](const Token& token, std::size_t offset) { return token.span.offset < offset; }) -
+        tokens.begin());
+    std::size_t end = begin;
+    while (end < tokens.size() && tokens[end].span.end() <= expression.end() &&
+           tokens[end].kind != TokenKind::EndOfFile)
+        ++end;
+    const auto matching = [&](std::size_t from, std::string_view open, std::string_view close) {
+        unsigned depth = 0;
+        for (std::size_t i = from; i < end; ++i) {
+            if (tokens[i].text == open)
+                ++depth;
+            if (tokens[i].text == close && --depth == 0)
+                return i;
+        }
+        return end;
+    };
+    while (begin < end && tokens[begin].text == "(" && matching(begin, "(", ")") == end - 1) {
+        ++begin;
+        --end;
+    }
+    if (end - begin < 6 || tokens[begin].text != "Eq" || tokens[begin + 1].text != "<")
+        return std::nullopt;
+    unsigned angles = 1;
+    std::size_t close = begin + 2;
+    for (; close < end; ++close) {
+        const auto token = tokens[close].text;
+        if (token == "(" || token == "[") {
+            close = matching(close, token, token == "(" ? ")" : "]");
+            if (close == end)
+                return std::nullopt;
+        } else if (token == "<") {
+            ++angles;
+        } else if (token == ">" || token == ">>") {
+            const unsigned count = token == ">>" ? 2 : 1;
+            if (count > angles)
+                return std::nullopt;
+            if (angles <= count)
+                break;
+            angles -= count;
+        }
+    }
+    if (close + 1 >= end || tokens[close + 1].text != "(" || matching(close + 1, "(", ")") != end - 1)
+        return std::nullopt;
+    // The final '>' can be the second character of a C++ '>>' token.
+    const std::size_t type_end = tokens[close].span.offset + (tokens[close].text == ">>" && angles == 2 ? 1 : 0);
+    auto location = stream.location_of(tokens[close + 1]);
+    ++location.column;
+    return EqualitySyntax{{tokens[begin + 2].span.offset, type_end - tokens[begin + 2].span.offset},
+                          {tokens[close + 1].span.end(), tokens[end - 1].span.offset - tokens[close + 1].span.end()},
+                          std::move(location)};
+}
+
+bool contains_formal_equality(const TokenStream& stream, source::ByteSpan expression) {
+    const auto& tokens = stream.tokens();
+    const auto start =
+        std::lower_bound(tokens.begin(), tokens.end(), expression.offset,
+                         [](const Token& token, std::size_t offset) { return token.span.offset < offset; });
+    for (std::size_t index = static_cast<std::size_t>(start - tokens.begin());
+         index + 1 < tokens.size() && tokens[index].span.offset < expression.end(); ++index) {
+        if (tokens[index + 1].span.end() <= expression.end() && tokens[index].text == "Eq" &&
+            tokens[index + 1].text == "<")
+            return true;
+    }
+    return false;
+}
+
 } // namespace
 
 Projection project(const TokenStream& stream, const Syntax& syntax, const ProjectionOptions& options) {
@@ -62,9 +141,10 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
     // A declaration becomes an ordinary C++ function stating the proposition it
     // carries, emitted where the declaration stood. Everything after this point
     // in the analysis text is C++ that Clang resolves on its own.
-    const auto emit = [&stream](std::string_view name, const source::ByteSpan& parameters,
-                                const source::ByteSpan& expression, const source::SourceLocation& begin,
-                                std::uint32_t end_line, std::size_t* name_offset = nullptr) {
+    const auto emit = [&stream, &projection,
+                       &options](std::string_view name, std::string_view parameters, const source::ByteSpan& expression,
+                                 const source::SourceLocation& begin, std::uint32_t end_line,
+                                 std::size_t* name_offset = nullptr, std::string* equality_name = nullptr) {
         std::string replacement = "\n";
         replacement += line_directive(begin.line, begin.file);
         replacement += "[[maybe_unused]] static bool ";
@@ -72,7 +152,39 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
             *name_offset = replacement.size();
         replacement += name;
         replacement += "(";
-        replacement += stream.spelling(parameters);
+        replacement += parameters;
+        if (const auto equality = equality_syntax(stream, expression);
+            equality && !contains_formal_equality(stream, equality->arguments)) {
+            replacement += ");\n";
+            const std::string probe = options.generated_prefix + "equality_" +
+                                      std::to_string(projection.equality_probes.size()) +
+                                      (options.unit_key.empty() ? "" : "_" + options.unit_key);
+            projection.equality_probes.push_back({std::string(name), probe, begin});
+            if (equality_name != nullptr)
+                *equality_name = probe;
+            replacement += line_directive(begin.line, begin.file);
+            replacement += "[[maybe_unused]] static auto " + probe + "(";
+            replacement += parameters;
+            replacement += ") { return ([](";
+            replacement += stream.spelling(equality->type);
+            replacement += ", ";
+            replacement += stream.spelling(equality->type);
+            replacement += ") {})(\n";
+            replacement += line_directive(equality->arguments_location.line, equality->arguments_location.file);
+            replacement.append(equality->arguments_location.column - 1, ' ');
+            replacement += stream.spelling(equality->arguments);
+            replacement += "); }\n";
+            replacement += line_directive(end_line, begin.file);
+            return replacement;
+        }
+        if (contains_formal_equality(stream, expression)) {
+            diagnostics::Diagnostic diagnostic;
+            diagnostic.severity = diagnostics::Severity::Error;
+            diagnostic.category = diagnostics::Category::UnsupportedSemantics;
+            diagnostic.location = begin;
+            diagnostic.message = "nested or malformed formal Eq is not supported in this proposition";
+            projection.diagnostics.push_back(std::move(diagnostic));
+        }
         replacement += ") { return (";
         replacement += stream.spelling(expression);
         replacement += "); }\n";
@@ -90,8 +202,9 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         }
 
         SpecificationFunction projected{law.name, index, {}};
-        std::string replacement = emit(law.name, law.parameters, proposition->expression, law.keyword_location,
-                                       law.end_line, &projected.analysis_offset);
+        std::string replacement =
+            emit(law.name, stream.spelling(law.parameters), proposition->expression, law.keyword_location, law.end_line,
+                 &projected.analysis_offset, &projected.equality_probe);
 
         // A precondition is a specification expression of the Law's own
         // parameters, so it is projected exactly like the conclusion, under a
@@ -99,8 +212,8 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         if (const Clause* premise = law.premise(); premise != nullptr) {
             projected.premise_name = options.generated_prefix + "premise_" + std::to_string(index) +
                                      (options.unit_key.empty() ? "" : "_" + options.unit_key);
-            replacement +=
-                emit(projected.premise_name, law.parameters, premise->expression, premise->location, law.end_line);
+            replacement += emit(projected.premise_name, stream.spelling(law.parameters), premise->expression,
+                                premise->location, law.end_line);
         }
 
         edits.push_back(Edit{law.range.span, std::move(replacement), projection.specification_functions.size()});
@@ -139,8 +252,8 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         projected.name = options.generated_prefix + "proof_" + suffix;
         projected.proof_index = index;
 
-        std::string replacement =
-            emit(projected.name, proof.parameters, proof.proposition, proof.keyword_location, proof.end_line);
+        std::string replacement = emit(projected.name, stream.spelling(proof.parameters), proof.proposition,
+                                       proof.keyword_location, proof.end_line);
 
         for (const ProofStatement& statement : proof.statements) {
             for (const ProofArgument& argument : statement.arguments) {
@@ -157,10 +270,15 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
             }
             std::string name = options.generated_prefix + "assumption_" + suffix + "_" +
                                std::to_string(projected.assumption_names.size());
-            replacement += line_directive(statement.proposition_location.line, proof.keyword_location.file);
-            replacement +=
-                emit_expression(name, proof.parameters, statement.proposition, statement.proposition_location);
-            replacement += line_directive(proof.end_line, proof.keyword_location.file);
+            if (contains_formal_equality(stream, statement.proposition)) {
+                replacement += emit(name, stream.spelling(proof.parameters), statement.proposition,
+                                    statement.proposition_location, proof.end_line);
+            } else {
+                replacement += line_directive(statement.proposition_location.line, proof.keyword_location.file);
+                replacement +=
+                    emit_expression(name, proof.parameters, statement.proposition, statement.proposition_location);
+                replacement += line_directive(proof.end_line, proof.keyword_location.file);
+            }
             projected.assumption_names.push_back(std::move(name));
         }
 
@@ -207,30 +325,16 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         projected.function_index = index;
         projected.postcondition_name = options.generated_prefix + "ensures_" + suffix;
 
-        std::string replacement = "\n";
-        replacement += line_directive(postcondition->location.line, verified.keyword_location.file);
-        replacement += "[[maybe_unused]] static bool ";
-        replacement += projected.postcondition_name;
-        replacement += "(";
-        replacement += result_parameter;
-        replacement += ") { return (";
-        replacement += stream.spelling(postcondition->expression);
-        replacement += "); }\n";
-
+        std::string replacement = emit(projected.postcondition_name, result_parameter, postcondition->expression,
+                                       postcondition->location, verified.body_end_line);
         for (const Clause* precondition : verified.preconditions()) {
             std::string name = options.generated_prefix + "expects_" + suffix;
             if (!projected.precondition_names.empty()) {
                 name += "_" + std::to_string(projected.precondition_names.size());
             }
-            replacement += line_directive(precondition->location.line, verified.keyword_location.file);
-            replacement += "[[maybe_unused]] static bool ";
-            replacement += name;
+            replacement +=
+                emit(name, parameters, precondition->expression, precondition->location, verified.body_end_line);
             projected.precondition_names.push_back(std::move(name));
-            replacement += "(";
-            replacement += parameters;
-            replacement += ") { return (";
-            replacement += stream.spelling(precondition->expression);
-            replacement += "); }\n";
         }
 
         replacement += line_directive(verified.body_end_line, verified.keyword_location.file);
@@ -250,6 +354,14 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
 
         std::string replacement = "\n";
         for (std::size_t position = 0; position < loop.invariants.size(); ++position) {
+            if (contains_formal_equality(stream, loop.invariants[position].expression)) {
+                diagnostics::Diagnostic diagnostic;
+                diagnostic.severity = diagnostics::Severity::Error;
+                diagnostic.category = diagnostics::Category::UnsupportedSemantics;
+                diagnostic.location = loop.invariants[position].location;
+                diagnostic.message = "formal Eq in a loop invariant is not supported yet";
+                projection.diagnostics.push_back(std::move(diagnostic));
+            }
             LoopInvariantMarker marker;
             marker.name = options.generated_prefix + "invariant_" + std::to_string(projection.loop_invariants.size()) +
                           (options.unit_key.empty() ? "" : "_" + options.unit_key);

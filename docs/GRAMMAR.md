@@ -1440,6 +1440,10 @@ remains C++ Boolean equality.
 
 The two are not lexically interchangeable.
 
+The current explicit-equality implementation boundary is described in
+SPEC.md 7.2.1. The type-id and argument list are resolved by Clang, not by
+a fabricated C++ `Eq` declaration.
+
 ---
 
 # 32. Specification-expression grammar

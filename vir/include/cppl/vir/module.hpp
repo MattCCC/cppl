@@ -155,7 +155,7 @@ struct ProofStep {
 struct Proof {
     ProofId id;
     std::string name;
-    LawId law;
+    std::optional<LawId> law;
     std::vector<Parameter> parameters;
     Expr proposition; // the resolved `proves` clause
     std::vector<ProofStep> steps;

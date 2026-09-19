@@ -29,6 +29,7 @@ struct ObligationId {
 
 enum class Origin : std::uint8_t {
     LawProposition,
+    ProofProposition,
     FunctionContract,
     CallPrecondition,
     ReturnPath,
@@ -50,6 +51,7 @@ struct Obligation {
     // no Law, so no written proof can name it: it is discharged from the
     // function's own body or not at all.
     std::optional<vir::LawId> law;
+    std::optional<vir::ProofId> proof;
 
     kernel::Proposition goal;
     source::SourceRange range;
@@ -63,7 +65,7 @@ struct Obligation {
 struct WrittenProof {
     vir::ProofId id;
     std::string name;
-    vir::LawId law;
+    std::optional<vir::LawId> law;
 
     // The proposition the `proves` clause claims: the law named there,
     // instantiated at the arguments it was named with, closed over the proof's
