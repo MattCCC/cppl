@@ -156,6 +156,17 @@ law identity_returns_input(int x)
     ensures(identity(x) == x);
 ```
 
+A Law is a formal statement of required behavior. A Law is not:
+
+- a unit test
+- a fuzz property
+- a runtime assertion
+- documentation
+- a comment
+- a Boolean function that happens to return `true`
+
+A Law is a proof obligation. If the compiler cannot prove it, verified compilation fails.
+
 A Law states a proposition. A proof declaration supplies the evidence for one, and the kernel decides whether that evidence holds:
 
 ```cpp cppl-example
@@ -350,11 +361,15 @@ General order implications, subtraction, signed addition, and algebraic
 reassociation remain unsupported. See [SPEC.md](SPEC.md#127-path-sensitive-verification)
 for the boundary.
 
-For installation, compiler options, project integration, Laws, proofs, verification statuses, and examples, see [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md).
+The remaining examples use features this implementation does not accept yet.
+Laws are meant to state domain requirements over user-defined types:
 
-## Other Examples
+```cpp cppl-planned
+law no_duplicate_authority(const Interpretation& x)
+    ensures(financialAuthorityCount(x) <= 1);
+```
 
-This example uses inductive types and proof-aware pattern matching, which this implementation does not accept yet:
+This example uses inductive types and proof-aware pattern matching:
 
 ```cpp cppl-planned
 data Nat {
@@ -387,7 +402,7 @@ proof add_zero_holds(Nat x)
 }
 ```
 
-The Law means:
+The `add_zero` Law means:
 
 ```text
 ∀ x : Nat,
@@ -400,27 +415,7 @@ It proves the property symbolically through the structure of `Nat`.
 
 The proof is erased before runtime code generation.
 
-## Laws
-
-A Law is a formal statement of required behavior.
-
-```cpp cppl-planned
-law no_duplicate_authority(const Interpretation& x)
-    ensures(financialAuthorityCount(x) <= 1);
-```
-
-A Law is not:
-
-- a unit test
-- a fuzz property
-- a runtime assertion
-- documentation
-- a comment
-- a Boolean function that happens to return `true`
-
-A Law is a proof obligation.
-
-If the compiler cannot prove it, verified compilation fails.
+For installation, compiler options, project integration, Laws, proofs, verification statuses, and examples, see [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md).
 
 ## Key capabilities
 
