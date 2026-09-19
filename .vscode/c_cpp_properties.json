@@ -1,0 +1,38 @@
+{
+  "configurations": [
+    {
+      "name": "Mac",
+      "compilerPath": "/usr/bin/clang++",
+      "cStandard": "c17",
+      "cppStandard": "c++20",
+      "intelliSenseMode": "macos-clang-arm64",
+      "compileCommands": "${workspaceFolder}/build/dev/compile_commands.json",
+      "includePath": ["${workspaceFolder}/**"],
+      "defines": [],
+      "compilerArgs": ["-std=c++20"]
+    },
+    {
+      "name": "Linux",
+      "compilerPath": "/usr/bin/clang++",
+      "cStandard": "c17",
+      "cppStandard": "c++20",
+      "intelliSenseMode": "linux-clang-x64",
+      "compileCommands": "${workspaceFolder}/build/dev/compile_commands.json",
+      "includePath": ["${workspaceFolder}/**"],
+      "defines": [],
+      "compilerArgs": ["-std=c++20"]
+    },
+    {
+      "name": "Win32",
+      "compilerPath": "C:/Program Files/LLVM/bin/clang++.exe",
+      "cStandard": "c17",
+      "cppStandard": "c++20",
+      "intelliSenseMode": "windows-clang-x64",
+      "compileCommands": "${workspaceFolder}/build/dev/compile_commands.json",
+      "includePath": ["${workspaceFolder}/**"],
+      "defines": ["_WIN32"],
+      "compilerArgs": ["-std=c++20"]
+    }
+  ],
+  "version": 4
+}
