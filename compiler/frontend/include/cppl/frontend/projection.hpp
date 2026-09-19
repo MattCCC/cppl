@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -24,6 +25,7 @@ struct SpecificationFunction {
     // has none. It is generated rather than named after the Law, because only
     // the Law's conclusion is what a proof names.
     std::string premise_name;
+    std::size_t analysis_offset = 0;  // name token in the physical analysis buffer
 };
 
 // The ordinary C++ function a proof declaration's `proves` clause is projected
@@ -72,6 +74,16 @@ struct Projection {
     std::vector<SpecificationFunction> specification_functions;
     std::vector<ProofFunction> proof_functions;
     std::vector<ContractFunctions> contract_functions;
+
+    // Positions of executable declarations copied into the analysis buffer.
+    // Presumed file/line/column are diagnostic labels and may be repeated by
+    // #line. They cannot identify which declaration was actually selected.
+    struct DeclarationOffset {
+        std::size_t original = 0;
+        std::size_t analysis = 0;
+    };
+    std::vector<DeclarationOffset> declaration_offsets;
+    [[nodiscard]] std::optional<std::size_t> declaration_offset(std::size_t original) const;
 };
 
 struct ProjectionOptions {

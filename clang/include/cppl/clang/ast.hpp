@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -114,6 +115,7 @@ struct Function {
     Type result;
     source::SourceLocation location;
     bool has_body = false;
+    std::size_t analysis_offset = 0;
 
     // A resolved return expression or a finite conditional return tree.
     std::optional<Expr> returned_value;
@@ -144,7 +146,7 @@ struct TranslationUnit {
 
     [[nodiscard]] const Function* find_by_usr(std::string_view usr) const;
     [[nodiscard]] const Function* find_by_name(std::string_view name) const;
-    [[nodiscard]] const Function* find_at(const source::SourceLocation& location) const;
+    [[nodiscard]] const Function* find_at_offset(std::size_t offset) const;
 };
 
 }  // namespace cppl::clangbridge

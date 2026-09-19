@@ -2956,6 +2956,12 @@ what lets a proof name a Law: `proves(L(x))` is an ordinary call, bound by
 Clang, and the elaborator meets the Law again through the symbol Clang
 resolved rather than through the spelling the author used.
 
+The projector records each Law's name-token offset in the physical analysis
+buffer. The Clang bridge selects and returns the declaration at that offset;
+elaboration uses that identity before reading its proposition. Presumed
+file/line/column are diagnostic labels, not declaration identities: namespaces,
+overloads, macro expansions, and `#line` can repeat them.
+
 ## 97.5.1 A written proof is elaborated, never believed
 
 A proof declaration is projected the same way. Its `proves` clause becomes the
@@ -3035,7 +3041,9 @@ the compiler does not look for evidence the author did not ask for.
 
 ### Verified-function contracts
 
-The driver selects each verified definition by its source location. The
+The driver selects each verified definition by its physical analysis-buffer
+offset, mapped from the original name token by the projector. Pure declarations
+use the same mapping. The
 projector preserves that definition and emits analysis-only clause functions
 in the same lexical scope. The postcondition has one additional parameter,
 `result`, of the declared return type. The runtime projection contains neither
@@ -3048,6 +3056,8 @@ substitutes it for the innermost postcondition binder, adds the optional
 implication, and quantifies over the function parameters. Function obligations
 have their own origin and no Law identity, so written Law proofs cannot discharge
 them accidentally. A missing or unsupported body fails compilation.
+The driver also rejects a unit if its formal declarations did not all produce
+verification obligations, even if no earlier stage reported an error.
 
 Automatic evidence reuses the occurrence abstraction used by written rewrites.
 It first tries definitional equality, then introduces binders, uses an identical

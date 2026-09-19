@@ -103,6 +103,7 @@ cppl_add_script_test(negative_verified_paths negative/verified_paths.sh)
 cppl_add_script_test(negative_verified_locals negative/verified_locals.sh)
 
 cppl_add_script_test(integration_header_law integration/header_law.sh)
+cppl_add_script_test(integration_source_identity integration/source_identity.sh)
 cppl_add_script_test(integration_determinism integration/determinism.sh)
 cppl_add_script_test(integration_parallel_verification integration/parallel_verification.sh)
 
