@@ -209,6 +209,7 @@ proof-statement
      | "exact" proof-expression ";"
      | "apply" qualified-id [proof-argument-list] ";"
      | "assume" identifier ":" specification-expression ";"
+     | "rewrite" qualified-id [proof-argument-list] ";"
      | proof-let-statement
      | proof-match-statement
 ```
@@ -307,6 +308,124 @@ P → Q
 the premise `P` may become available as an assumption.
 
 `assume` is not equivalent to `trusted`.
+
+---
+
+## 5.5 `rewrite`
+
+```ebnf
+rewrite-statement
+    ::= "rewrite" qualified-id
+        ["(" [argument-expression-list] ")"]
+        ";"
+```
+
+`rewrite e;` uses established evidence for an equality to transform the current
+proof goal.
+
+Given evidence:
+
+```text
+e : a = b
+```
+
+and a goal containing `a`, `rewrite e;` replaces occurrences of `a` by `b` and
+leaves the transformed proposition as the new proof obligation.
+
+The equality is not trusted merely because it is named. The kernel checks the
+evidence for `a = b` before performing the substitution.
+
+For example:
+
+```cpp
+law identity_at_zero(unsigned x)
+    expects(x == 0u)
+    ensures(identity(x) == 0u);
+
+proof identity_at_zero_holds(unsigned x)
+    proves(identity_at_zero(x))
+{
+    assume h : x == 0u;
+    rewrite h;
+    refl;
+}
+```
+
+Here `assume` is valid because the current goal is an implication whose premise
+is `x == 0u`: the Law's `expects` clause is what makes it one. A proof of a Law
+with no `expects` clause has no premise to assume, and `assume` there is an
+error.
+
+Conceptually:
+
+```text
+goal: (x = 0) -> identity(x) = 0
+
+assume h : x = 0
+
+context:
+    h : x = 0
+
+goal:
+    identity(x) = 0
+
+rewrite h
+
+goal:
+    identity(0) = 0
+```
+
+The hypothesis `h` exists only within the implication-introduction scope that
+introduced it. It is not granted globally and cannot escape that scope.
+
+The evidence used by `rewrite` may also come from an already established proof
+declaration, optionally instantiated:
+
+```cpp
+rewrite identity_returns_input_holds(x);
+```
+
+`rewrite` transforms the goal; it does not assert an equality.
+
+The equality must itself already have valid evidence, and the transformed goal
+remains a proof obligation like any other.
+
+Semantically, rewriting requires equality substitution:
+
+```text
+Γ ⊢ e : a = b
+Γ ⊢ P(a)
+────────────────
+Γ ⊢ P(b)
+```
+
+or, when used as a goal transformation, the corresponding backwards proof step:
+
+```text
+Γ ⊢ e : a = b
+goal P(a)
+────────────────
+new goal P(b)
+```
+
+The kernel performs the substitution itself. The elaborator may identify the
+requested equality and the occurrences to rewrite, but it may not manufacture
+the resulting proposition and ask the kernel to trust it.
+
+A `rewrite` whose equality does not match the current goal is an error, not a
+no-operation.
+
+The initial form rewrites from the left-hand side of the equality to the
+right-hand side:
+
+```text
+a = b
+
+a  ↦  b
+```
+
+Reverse rewriting, if introduced, must be explicit rather than inferred
+heuristically.
 
 ---
 

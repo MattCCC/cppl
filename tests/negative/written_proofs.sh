@@ -122,6 +122,17 @@ if grep -q "Laws proven: *[1-9]" "$run/rejected_conditionals.log"; then
     exit 1
 fi
 
+# Rewrites that do not hold up. An equality that does not occur in the goal,
+# evidence that is not an equality at all, a transformed goal that is still
+# false, and a rewrite whose remaining goal nothing closes.
+refuse rejected_rewrites
+grep -q "which does not occur in the goal" "$run/rejected_rewrites.log"
+grep -q "does not establish an equality" "$run/rejected_rewrites.log"
+grep -q "proof 'nothing_closes_it_holds' leaves a goal open" "$run/rejected_rewrites.log"
+grep -q "kernel-rejection" "$run/rejected_rewrites.log"
+grep -q "proof 'false_after_rewriting_holds' does not establish law" \
+    "$run/rejected_rewrites.log"
+
 # A tactic this implementation does not have is refused, not ignored.
 refuse unsupported_proof_body
 grep -q "does not begin a proof statement" "$run/unsupported_proof_body.log"

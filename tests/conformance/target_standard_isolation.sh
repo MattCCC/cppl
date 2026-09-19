@@ -17,7 +17,7 @@ run=$(mktemp -d "$WORK/isolation.XXXXXX")
 
 # `apply` is left out of the pattern: libc++ declares std::apply, and the point
 # here is that nothing of the proof survives, not that the word is unspellable.
-formal='(^|[^[:alnum:]_])(law|ensures|expects|pure|proof|proves|ghost|refl|exact|assume)([^[:alnum:]_]|$)'
+formal='(^|[^[:alnum:]_])(law|ensures|expects|pure|proof|proves|ghost|refl|exact|assume|rewrite)([^[:alnum:]_]|$)'
 
 isolated() {
     local name="$1"
@@ -47,5 +47,6 @@ isolated identity_law
 isolated written_proof
 isolated instantiated_proof
 isolated conditional_proof
+isolated rewritten_proof
 
 echo "the c++17 runtime projections are free of formal syntax and compile as c++17"

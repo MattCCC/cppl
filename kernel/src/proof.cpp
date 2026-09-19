@@ -24,6 +24,10 @@ std::string describe(const ProofTerm& proof) {
         return "implies_elim(" + describe(*application->evidence) + ", " +
                describe(*application->premise) + ")";
     }
+    if (const auto* transport = std::get_if<EqualityElimination>(&proof.node)) {
+        return "eq_elim(" + describe(*transport->equality) + ", " +
+               describe(*transport->evidence) + ")";
+    }
     return "refl";
 }
 

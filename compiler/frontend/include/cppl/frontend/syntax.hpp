@@ -39,12 +39,13 @@ struct LawDeclaration {
     [[nodiscard]] const Clause* premise() const;
 };
 
-// The primitive proof statements of GRAMMAR.md 5.1 - 5.4.
+// The primitive proof statements of GRAMMAR.md 5.1 - 5.5.
 enum class ProofStatementKind : std::uint8_t {
     Reflexivity,
     Exact,
     Apply,
     Assume,
+    Rewrite,
 };
 
 std::string describe(ProofStatementKind kind);

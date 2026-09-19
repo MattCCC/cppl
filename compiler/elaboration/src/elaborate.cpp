@@ -313,10 +313,16 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
             arguments.push_back(std::move(*argument));
         }
 
-        if (statement.kind == frontend::ProofStatementKind::Exact) {
-            step.node = vir::ExactStep{std::move(*evidence), std::move(arguments)};
-        } else {
-            step.node = vir::ApplyStep{std::move(*evidence), std::move(arguments)};
+        switch (statement.kind) {
+            case frontend::ProofStatementKind::Exact:
+                step.node = vir::ExactStep{std::move(*evidence), std::move(arguments)};
+                break;
+            case frontend::ProofStatementKind::Rewrite:
+                step.node = vir::RewriteStep{std::move(*evidence), std::move(arguments)};
+                break;
+            default:
+                step.node = vir::ApplyStep{std::move(*evidence), std::move(arguments)};
+                break;
         }
         steps.push_back(std::move(step));
     }

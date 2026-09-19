@@ -90,13 +90,45 @@ struct ImplicationElimination {
     friend bool operator==(const ImplicationElimination&, const ImplicationElimination&) = default;
 };
 
+// Elimination of an equality: evidence transported through a proposition
+// context (SPEC.md 7.2).
+//
+//     e : a = b      p : C[b]
+//     ------------------------
+//           C[a]
+//
+// `motive` is the context C[-], stated with its hole as the innermost bound
+// variable, exactly like the body of a Forall. The kernel fills it itself, by
+// the same substitution it uses for universal elimination: it checks `equality`
+// against `a = b`, checks `evidence` against C[b], and derives C[a].
+//
+// Which occurrences of a term a context abstracts is a question about what the
+// author meant, so the context is given rather than searched for here. Nothing
+// about it is taken on trust: the motive is type-checked with its hole standing
+// for a term of `type`, and a context that does not yield the goal is refused.
+// A mistaken choice of occurrences can therefore only fail to prove something.
+//
+// Symmetry needs no rule of its own: it is this one at the context `b = -`,
+// whose C[b] is `b = b`.
+struct EqualityElimination {
+    Type type;
+    Term lhs;
+    Term rhs;
+    Box<Proposition> motive;
+    Box<ProofTerm> equality;
+    Box<ProofTerm> evidence;
+
+    friend bool operator==(const EqualityElimination&, const EqualityElimination&) = default;
+};
+
 struct ProofTerm {
     std::variant<Reflexivity,
                  ForallIntroduction,
                  ForallElimination,
                  Hypothesis,
                  ImplicationIntroduction,
-                 ImplicationElimination>
+                 ImplicationElimination,
+                 EqualityElimination>
         node;
 
     static ProofTerm reflexivity() { return ProofTerm{Reflexivity{}}; }
@@ -114,6 +146,18 @@ struct ProofTerm {
         return ProofTerm{ImplicationElimination{Box<Proposition>{std::move(implication)},
                                                 Box<ProofTerm>{std::move(evidence)},
                                                 Box<ProofTerm>{std::move(premise)}}};
+    }
+
+    static ProofTerm equality_elimination(Type type,
+                                          Term lhs,
+                                          Term rhs,
+                                          Proposition motive,
+                                          ProofTerm equality,
+                                          ProofTerm evidence) {
+        return ProofTerm{EqualityElimination{std::move(type), std::move(lhs), std::move(rhs),
+                                             Box<Proposition>{std::move(motive)},
+                                             Box<ProofTerm>{std::move(equality)},
+                                             Box<ProofTerm>{std::move(evidence)}}};
     }
 
     static ProofTerm forall_introduction(Type binder, ProofTerm body) {

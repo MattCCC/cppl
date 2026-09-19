@@ -250,6 +250,28 @@ proof increment_is_itself_holds(unsigned x)
 }
 ```
 
+A premise is worth supposing because it can be *used*. `rewrite` transforms the goal with an equality that has already been established:
+
+```cpp cppl-example
+pure unsigned identity(unsigned x) {
+    return x;
+}
+
+law identity_at_zero(unsigned x)
+    expects(x == 0u)
+    ensures(identity(x) == 0u);
+
+proof identity_at_zero_holds(unsigned x)
+    proves(identity_at_zero(x))
+{
+    assume h : x == 0u;
+    rewrite h;
+    refl;
+}
+```
+
+`assume` is valid here because the Law's `expects` clause makes the goal an implication whose premise is `x == 0u`. It names that premise; it never grants one. `rewrite h;` then replaces `x` by `0u` in the goal, leaving `identity(0u) == 0u` to prove. The kernel performs the substitution itself and checks the result.
+
 Contracts written on the function itself are part of the language, but are not accepted by this implementation yet:
 
 ```cpp cppl-planned

@@ -221,6 +221,29 @@ CPPL_TEST(an_assume_without_a_proposition_is_refused) {
     CPPL_CHECK(result.syntax.proofs.empty());
 }
 
+CPPL_TEST(a_rewrite_statement_names_the_equality_it_transforms_the_goal_with) {
+    Recognized result;
+    recognize("proof holds(unsigned x)\n    proves(l(x))\n"
+              "{\n    assume h : x == 0u;\n    rewrite h;\n"
+              "    rewrite other_holds(x);\n    refl;\n}\n",
+              result);
+
+    CPPL_CHECK(!result.engine.has_errors());
+    CPPL_CHECK_EQ(result.syntax.proofs[0].statements.size(), std::size_t{4});
+
+    const cppl::frontend::ProofStatement& named = result.syntax.proofs[0].statements[1];
+    CPPL_CHECK(named.kind == cppl::frontend::ProofStatementKind::Rewrite);
+    CPPL_CHECK_EQ(named.reference, std::string("h"));
+    CPPL_CHECK(named.arguments.empty());
+
+    // A rewrite may instantiate the evidence it names, like `exact` and
+    // `apply`.
+    const cppl::frontend::ProofStatement& instantiated = result.syntax.proofs[0].statements[2];
+    CPPL_CHECK(instantiated.kind == cppl::frontend::ProofStatementKind::Rewrite);
+    CPPL_CHECK_EQ(instantiated.reference, std::string("other_holds"));
+    CPPL_CHECK_EQ(instantiated.arguments.size(), std::size_t{1});
+}
+
 CPPL_TEST(a_proof_body_may_carry_more_than_one_statement) {
     Recognized result;
     recognize("proof holds(unsigned x)\n    proves(l(x))\n"

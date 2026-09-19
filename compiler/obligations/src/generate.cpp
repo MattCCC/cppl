@@ -522,6 +522,81 @@ const kernel::Proposition* under_quantifiers(const kernel::Proposition& goal,
     return inner;
 }
 
+kernel::Term abstract_occurrences(const kernel::Term& term,
+                                  const kernel::Term& target,
+                                  std::uint32_t depth,
+                                  bool& found);
+
+kernel::Proposition abstract_occurrences(const kernel::Proposition& proposition,
+                                         const kernel::Term& target,
+                                         std::uint32_t depth,
+                                         bool& found) {
+    if (const auto* quantified = std::get_if<kernel::Forall>(&proposition.node)) {
+        return kernel::Proposition::for_all(
+            quantified->binder,
+            abstract_occurrences(*quantified->body, kernel::shift(target, 1), depth + 1, found));
+    }
+    if (const auto* implication = std::get_if<kernel::Implies>(&proposition.node)) {
+        return kernel::Proposition::implication(
+            abstract_occurrences(*implication->premise, target, depth, found),
+            abstract_occurrences(*implication->conclusion, target, depth, found));
+    }
+    const auto& equality = std::get<kernel::Eq>(proposition.node);
+    return kernel::Proposition::equality(
+        equality.type, abstract_occurrences(equality.lhs, target, depth, found),
+        abstract_occurrences(equality.rhs, target, depth, found));
+}
+
+kernel::Term abstract_occurrences(const kernel::Term& term,
+                                  const kernel::Term& target,
+                                  std::uint32_t depth,
+                                  bool& found) {
+    if (term == target) {
+        found = true;
+        return kernel::Term::variable(kernel::VarIndex{depth});
+    }
+    if (const auto* call = std::get_if<kernel::Call>(&term.node)) {
+        std::vector<kernel::Term> arguments;
+        arguments.reserve(call->arguments.size());
+        for (const kernel::Term& argument : call->arguments) {
+            arguments.push_back(abstract_occurrences(argument, target, depth, found));
+        }
+        return kernel::Term::call(call->callee, std::move(arguments));
+    }
+    if (const auto* primitive = std::get_if<kernel::Prim>(&term.node)) {
+        std::vector<kernel::Term> arguments;
+        arguments.reserve(primitive->arguments.size());
+        for (const kernel::Term& argument : primitive->arguments) {
+            arguments.push_back(abstract_occurrences(argument, target, depth, found));
+        }
+        return kernel::Term::primitive(primitive->op, primitive->type, std::move(arguments));
+    }
+    return term;
+}
+
+// The context a rewrite transports through: the goal with every occurrence of
+// `target` standing for the hole.
+//
+// Which occurrences a rewrite transforms is a question about what the author
+// meant, so it is settled here rather than in the kernel. Every occurrence is
+// the rule, and it is the whole rule: nothing is searched for and nothing is
+// weighed. The context is then handed to the kernel as part of the proof term,
+// and the kernel checks that filling it yields the goal, so a choice made here
+// can only fail to prove something — never prove the wrong thing.
+std::optional<kernel::Proposition> rewrite_context(const kernel::Proposition& goal,
+                                                   const kernel::Term& target) {
+    // The context stands underneath one more binder than the goal does — the
+    // hole itself — so the goal is restated for that depth before the
+    // occurrences are taken out of it.
+    bool found = false;
+    kernel::Proposition motive =
+        abstract_occurrences(kernel::shift(goal, 1), kernel::shift(target, 1), 0, found);
+    if (!found) {
+        return std::nullopt;
+    }
+    return motive;
+}
+
 kernel::ProofTerm quantify(const std::vector<kernel::Type>& binders, kernel::ProofTerm term) {
     for (auto binder = binders.rbegin(); binder != binders.rend(); ++binder) {
         term = kernel::ProofTerm::forall_introduction(*binder, std::move(term));
@@ -665,6 +740,64 @@ std::optional<Instantiation> named_evidence(const Body& body,
     return Instantiation{used.goal, used.term};
 }
 
+// `rewrite e;` transforms the goal with an equality and leaves what it
+// transformed it into to prove.
+//
+// The quantifiers the goal leads with are introduced first, because evidence
+// stated of the proof's parameters only reaches the goal underneath them. The
+// equality is not asserted here: it is evidence like any other, and the kernel
+// checks it along with the context this builds.
+std::optional<kernel::ProofTerm> transport(Body& body,
+                                           const vir::ProofStep& step,
+                                           const vir::RewriteStep& rewritten,
+                                           const kernel::Proposition& goal,
+                                           diagnostics::Engine& engine) {
+    std::vector<kernel::Type> binders;
+    const kernel::Proposition* inner = under_quantifiers(goal, binders);
+
+    std::optional<Instantiation> evidence =
+        named_evidence(body, step, rewritten.evidence, engine);
+    if (!evidence.has_value()) {
+        return std::nullopt;
+    }
+
+    std::optional<Instantiation> instantiated =
+        instantiate_evidence(body.proof, rewritten.evidence.name, std::move(*evidence),
+                             rewritten.arguments, body.definitions, engine);
+    if (!instantiated.has_value()) {
+        return std::nullopt;
+    }
+
+    const auto* equality = std::get_if<kernel::Eq>(&instantiated->proposition.node);
+    if (equality == nullptr) {
+        report(engine, diagnostics::Category::ProofFailure, step.location,
+               "'" + rewritten.evidence.name + "' does not establish an equality, so there is "
+               "nothing for it to rewrite",
+               "it establishes " + kernel::describe(instantiated->proposition));
+        return std::nullopt;
+    }
+
+    std::optional<kernel::Proposition> motive = rewrite_context(*inner, equality->lhs);
+    if (!motive.has_value()) {
+        report(engine, diagnostics::Category::ProofFailure, step.location,
+               "'" + rewritten.evidence.name + "' rewrites " + kernel::describe(equality->lhs) +
+                   ", which does not occur in the goal",
+               "the goal here is " + kernel::describe(*inner));
+        return std::nullopt;
+    }
+
+    const kernel::Proposition remaining = kernel::instantiate(*motive, equality->rhs);
+    std::optional<kernel::ProofTerm> rest = prove(body, remaining, engine);
+    if (!rest.has_value()) {
+        return std::nullopt;
+    }
+
+    return quantify(binders, kernel::ProofTerm::equality_elimination(
+                                 equality->type, equality->lhs, equality->rhs,
+                                 std::move(*motive), std::move(instantiated->term),
+                                 std::move(*rest)));
+}
+
 std::optional<kernel::ProofTerm> prove(Body& body,
                                        const kernel::Proposition& goal,
                                        diagnostics::Engine& engine) {
@@ -685,6 +818,10 @@ std::optional<kernel::ProofTerm> prove(Body& body,
 
     if (const auto* assumed = std::get_if<vir::AssumeStep>(&step.node)) {
         return suppose(body, step, *assumed, goal, engine);
+    }
+
+    if (const auto* rewritten = std::get_if<vir::RewriteStep>(&step.node)) {
+        return transport(body, step, *rewritten, goal, engine);
     }
 
     const auto* exact = std::get_if<vir::ExactStep>(&step.node);
@@ -811,6 +948,8 @@ void lower_proofs(const vir::Module& module,
                     reference = &used->evidence;
                 } else if (const auto* applied = std::get_if<vir::ApplyStep>(&step.node)) {
                     reference = &applied->evidence;
+                } else if (const auto* rewritten = std::get_if<vir::RewriteStep>(&step.node)) {
+                    reference = &rewritten->evidence;
                 }
                 if (reference == nullptr) {
                     continue;
