@@ -31,6 +31,9 @@ target_link_libraries(kernel_substitution_property_test PRIVATE cppl_kernel)
 cppl_add_unit_test(kernel_evidence_regression_test kernel/evidence_regression_test.cpp)
 target_link_libraries(kernel_evidence_regression_test PRIVATE cppl_kernel)
 
+cppl_add_unit_test(kernel_proof_fuzz_test kernel/proof_fuzz_test.cpp)
+target_link_libraries(kernel_proof_fuzz_test PRIVATE cppl_kernel)
+
 cppl_add_unit_test(kernel_paths_test kernel/paths_test.cpp)
 target_link_libraries(kernel_paths_test PRIVATE cppl_kernel)
 
@@ -48,6 +51,9 @@ target_link_libraries(unit_recognizer_test PRIVATE cppl_frontend cppl_diagnostic
 
 cppl_add_unit_test(unit_projection_test unit/projection_test.cpp)
 target_link_libraries(unit_projection_test PRIVATE cppl_frontend cppl_erasure cppl_diagnostics)
+
+cppl_add_unit_test(unit_frontend_property_test unit/frontend_property_test.cpp)
+target_link_libraries(unit_frontend_property_test PRIVATE cppl_frontend cppl_erasure cppl_diagnostics)
 
 cppl_add_unit_test(unit_vir_test unit/vir_test.cpp)
 target_link_libraries(unit_vir_test PRIVATE cppl_vir)
