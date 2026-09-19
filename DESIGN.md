@@ -176,6 +176,38 @@ what has been established
 
 rather than requiring conventions connecting separate languages.
 
+## 4.1 Language relationship
+
+The intended relationship is:
+
+$$
+C++ \subset C++L
+$$
+
+Equivalently, every valid C++ program is also a valid C++L program:
+
+$$
+\forall p \in C++,\quad p \in C++L
+$$
+
+C++L adds compile-time language constructs while retaining C++ as the runtime
+execution language. Those constructs admit erasure to ordinary C++:
+
+$$
+\operatorname{erase} : C++L \rightarrow C++
+$$
+
+The central runtime requirement is semantic preservation:
+
+$$
+\llbracket \operatorname{erase}(p) \rrbracket
+=
+\llbracket p \rrbracket_{\mathrm{runtime}}
+$$
+
+Thus C++L extends the language used to state and prove program properties
+without introducing a second runtime semantics.
+
 ---
 
 # 5. Compatibility as a design pressure
