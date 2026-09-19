@@ -40,6 +40,13 @@ struct Assumption {
     }
 
     if (const auto* quantified = std::get_if<Forall>(&proposition.node)) {
+        // Even an unused binder must denote an admitted type. Checking only
+        // the body's terms would let malformed quantifiers enter Acceptance.
+        if (!quantified->binder.is_integer() ||
+            !is_supported(quantified->binder.integer_type())) {
+            return reject(RejectionKind::MalformedProposition,
+                          "quantifier has an unsupported binder type");
+        }
         locals.push_back(quantified->binder);
         auto body = validate_proposition(context, locals, *quantified->body, limits, depth + 1);
         locals.pop_back();
