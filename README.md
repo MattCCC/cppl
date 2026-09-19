@@ -308,8 +308,19 @@ None alone provide the intended proof-aware language model.
 
 ## Documentation
 
-- [DESIGN.md](DESIGN.md) - language and compiler architecture
+- [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) - practical developer guide with examples
+- [SPEC.md](SPEC.md) - normative C++L language semantics
+- [ARCHITECTURE.md](ARCHITECTURE.md) - compiler structure, component boundaries, and data flow
+- [DESIGN.md](DESIGN.md) - design rationale and major language/compiler decisions
 - [FOUNDATIONS.md](FOUNDATIONS.md) - mathematical foundations and intellectual lineage
+- [TRUST.md](TRUST.md) - Trusted Computing Base, assumptions, and trust boundaries
+- [COMPATIBILITY.md](COMPATIBILITY.md) - C++ source, ABI, toolchain, and standard compatibility
+- [STATUS.md](STATUS.md) - current implementation status and verification maturity
+- [ROADMAP.md](ROADMAP.md) - planned implementation sequence and milestones
+- [SECURITY.md](SECURITY.md) - soundness and security policy
+- [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md) - intellectual and project credits
+- [CONTRIBUTING.md](CONTRIBUTING.md) - contribution and development process
+- [AGENTS.md](AGENTS.md) - mandatory repository rules for AI agents and automated contributors
 
 ## Definition of done
 
