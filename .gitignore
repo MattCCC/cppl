@@ -79,3 +79,8 @@ dist
 
 # local working notes, never tracked
 docs/CURRENT_STATUS.md
+.code-review-graph/
+.mcp.json
+mcp.json
+opencode.jsonc
+docs/local/
