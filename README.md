@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/cppl.png" alt="C++L" width="800">
+</p>
+
 # C++L - C++ with Laws
 
 <b>C++L</b> is <b>C++ with Laws</b>: an ambiguity-free, proof-carrying superset of C++ in which humans or AIs can specify intent as machine-checkable Laws, implementations are accepted only when those Laws are proven, and all proof machinery erases to ordinary optimized C++ compiled by Clang/LLVM.
@@ -128,7 +132,29 @@ native binary
 
 The implementation is accepted because the compiler can prove the specification, not because a test suite happened to pass.
 
-## Example
+## Usage
+
+Compile ordinary C++ with `cppl`:
+
+```bash
+cppl -std=c++17 main.cpp -o main
+```
+
+C++L is designed for incremental adoption: existing supported C++ can continue to compile unchanged, while formal verification is added where needed.
+
+Example:
+
+```cpp
+verified int identity(int x)
+    ensures(result == x)
+{
+    return x;
+}
+```
+
+For installation, compiler options, project integration, Laws, proofs, verification statuses, and examples, see [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md).
+
+## Other Examples
 
 ```cpp
 data Nat {
