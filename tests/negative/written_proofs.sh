@@ -54,7 +54,8 @@ grep -q "does not prove what proof 'add_one_increments_by_exact' claims" \
     "$run/rejected_proofs.log"
 grep -q "cannot be applied to what proof 'add_one_is_add_one_by_apply' claims" \
     "$run/rejected_proofs.log"
-grep -q "no proof named 'no_such_proof' is declared" "$run/rejected_proofs.log"
+grep -q "no proof or assumed premise named 'no_such_proof' is in scope" \
+    "$run/rejected_proofs.log"
 grep -q "nothing establishes the law itself" "$run/rejected_proofs.log"
 
 # Instantiation that does not hold up: not instantiated at all, the wrong type,
@@ -91,10 +92,35 @@ if grep -q "identity_returns_input_again.*is not proven" "$run/rejected_proofs.l
 fi
 
 # apply whose conclusion has exactly the goal's shape but does not close it:
-# nothing before the kernel can tell, and the subgoal it left is named.
+# nothing before the kernel can tell, and the kernel says which terms differ.
 refuse unsound_apply
 grep -q "kernel-rejection" "$run/unsound_apply.log"
-grep -q "apply left the subgoal" "$run/unsound_apply.log"
+grep -q "definitionally equal" "$run/unsound_apply.log"
+
+# Conditional laws that do not hold up. A premise is supposed, never granted:
+# naming the wrong one, naming one where none is supposed, concluding something
+# false underneath one, leaving one behind, and handing one evidence that does
+# not establish it all fail, each where it was written.
+refuse rejected_conditionals
+grep -q "'h' does not name the premise this goal supposes" "$run/rejected_conditionals.log"
+grep -q "'h' has no premise to stand for" "$run/rejected_conditionals.log"
+grep -q "proof 'unguarded_holds' leaves a goal open" "$run/rejected_conditionals.log"
+grep -q "has already closed every goal it states" "$run/rejected_conditionals.log"
+grep -q "law 'two_preconditions' has 2 expects clauses" "$run/rejected_conditionals.log"
+
+# Supposing a premise does not establish the conclusion, and a premise handed to
+# an application is evidence like any other. Only the kernel can say so.
+grep -q "kernel-rejection" "$run/rejected_conditionals.log"
+grep -q "proof 'false_under_a_premise_holds' does not establish law" \
+    "$run/rejected_conditionals.log"
+grep -q "proof 'taken_unguarded_holds' does not establish law" "$run/rejected_conditionals.log"
+
+# The premise a conditional law supposes is part of the goal the kernel is
+# given, so a trust report can never describe one of these as proven.
+if grep -q "Laws proven: *[1-9]" "$run/rejected_conditionals.log"; then
+    echo "a refused conditional law was counted as proven" >&2
+    exit 1
+fi
 
 # A tactic this implementation does not have is refused, not ignored.
 refuse unsupported_proof_body

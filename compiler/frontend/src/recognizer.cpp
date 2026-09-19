@@ -277,18 +277,64 @@ bool read_proof_statements(const TokenStream& stream,
 
         if (token.is_identifier("refl") && cursor + 1 < body_close &&
             tokens[cursor + 1].is_punctuator(";")) {
-            statements.push_back(ProofStatement{ProofStatementKind::Reflexivity, {}, {},
-                                                stream.location_of(token)});
+            ProofStatement statement;
+            statement.kind = ProofStatementKind::Reflexivity;
+            statement.location = stream.location_of(token);
+            statements.push_back(std::move(statement));
             cursor += 2;
+            continue;
+        }
+
+        // `assume h : P;` names a premise the goal already supposes. The
+        // proposition is delimited here and read by Clang, like every other
+        // expression a proof statement carries.
+        if (token.is_identifier("assume") && cursor + 3 < body_close &&
+            tokens[cursor + 1].kind == TokenKind::Identifier &&
+            tokens[cursor + 2].is_punctuator(":")) {
+            std::size_t depth = 0;
+            std::size_t terminator = cursor + 3;
+            while (terminator < body_close) {
+                const Token& candidate = tokens[terminator];
+                if (candidate.is_punctuator("(") || candidate.is_punctuator("[")) {
+                    ++depth;
+                } else if (candidate.is_punctuator(")") || candidate.is_punctuator("]")) {
+                    if (depth == 0) {
+                        break;
+                    }
+                    --depth;
+                } else if (depth == 0 && candidate.is_punctuator(";")) {
+                    break;
+                }
+                ++terminator;
+            }
+
+            if (terminator >= body_close || !tokens[terminator].is_punctuator(";") ||
+                terminator == cursor + 3) {
+                report(engine, stream, tokens[cursor], diagnostics::Category::CpplSyntax,
+                       "'assume' names a proposition, as in 'assume h : a == b;'");
+                return false;
+            }
+
+            ProofStatement statement;
+            statement.kind = ProofStatementKind::Assume;
+            statement.reference = std::string(tokens[cursor + 1].text);
+            statement.proposition = source::ByteSpan{
+                tokens[cursor + 3].span.offset,
+                tokens[terminator - 1].span.end() - tokens[cursor + 3].span.offset};
+            statement.proposition_location = stream.location_of(tokens[cursor + 3]);
+            statement.location = stream.location_of(token);
+            statements.push_back(std::move(statement));
+            cursor = terminator + 1;
             continue;
         }
 
         const bool is_exact = token.is_identifier("exact");
         if ((is_exact || token.is_identifier("apply")) && cursor + 2 < body_close &&
             tokens[cursor + 1].kind == TokenKind::Identifier) {
-            ProofStatement statement{
-                is_exact ? ProofStatementKind::Exact : ProofStatementKind::Apply,
-                std::string(tokens[cursor + 1].text), {}, stream.location_of(token)};
+            ProofStatement statement;
+            statement.kind = is_exact ? ProofStatementKind::Exact : ProofStatementKind::Apply;
+            statement.reference = std::string(tokens[cursor + 1].text);
+            statement.location = stream.location_of(token);
 
             if (tokens[cursor + 2].is_punctuator(";")) {
                 statements.push_back(std::move(statement));
@@ -322,9 +368,9 @@ bool read_proof_statements(const TokenStream& stream,
         report(engine, stream, token, diagnostics::Category::UnsupportedSemantics,
                "'" + std::string(token.text) + "' does not begin a proof statement this "
                "implementation supports",
-               "the supported proof statements are 'refl;', 'exact <proof>;' and "
-               "'apply <proof>;', each optionally instantiated at arguments, as in "
-               "'exact <proof>(<expression>);'");
+               "the supported proof statements are 'refl;', 'exact <evidence>;', "
+               "'apply <evidence>;' and 'assume <name> : <proposition>;'. Evidence may be "
+               "instantiated at arguments, as in 'exact <proof>(<expression>);'");
         return false;
     }
 
@@ -416,12 +462,6 @@ bool try_proof(const TokenStream& stream,
         report(engine, stream, tokens[index], diagnostics::Category::ProofFailure,
                "proof '" + proof.name + "' has an empty body",
                "a proof body must close the goal it states");
-        malformed = true;
-    } else if (proof.statements.size() > 1) {
-        report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
-               "proof '" + proof.name + "' has " + std::to_string(proof.statements.size()) +
-                   " statements",
-               "this implementation accepts a proof body containing exactly one statement");
         malformed = true;
     }
 
@@ -563,6 +603,8 @@ std::string describe(ProofStatementKind kind) {
             return "exact";
         case ProofStatementKind::Apply:
             return "apply";
+        case ProofStatementKind::Assume:
+            return "assume";
     }
     return "unknown";
 }
@@ -570,6 +612,15 @@ std::string describe(ProofStatementKind kind) {
 const Clause* LawDeclaration::proposition() const {
     for (const Clause& clause : clauses) {
         if (clause.kind == ClauseKind::Ensures) {
+            return &clause;
+        }
+    }
+    return nullptr;
+}
+
+const Clause* LawDeclaration::premise() const {
+    for (const Clause& clause : clauses) {
+        if (clause.kind == ClauseKind::Expects) {
             return &clause;
         }
     }

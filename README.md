@@ -199,6 +199,57 @@ proof identity_at_41()
 }
 ```
 
+A Law can be stated under a precondition. `expects` does not assert that the precondition holds: it says what the Law concludes under it, and a proof may name that premise and use it:
+
+```cpp cppl-example
+pure unsigned add_one(unsigned x) {
+    return x + 1u;
+}
+
+law increment_is_stable(unsigned x)
+    expects(add_one(x) == x)
+    ensures(add_one(x) == x);
+
+proof increment_is_stable_holds(unsigned x)
+    proves(increment_is_stable(x))
+{
+    assume premise : add_one(x) == x;
+    exact premise;
+}
+```
+
+Applying a Law that supposes a premise leaves that premise to prove:
+
+```cpp cppl-example
+pure unsigned identity(unsigned x) {
+    return x;
+}
+
+pure unsigned add_one(unsigned x) {
+    return x + 1u;
+}
+
+law guarded_increment(unsigned x)
+    expects(identity(x) == x)
+    ensures(add_one(x) == add_one(x));
+
+proof guarded_increment_holds(unsigned x)
+    proves(guarded_increment(x))
+{
+    refl;
+}
+
+law increment_is_itself(unsigned x)
+    ensures(add_one(x) == add_one(x));
+
+proof increment_is_itself_holds(unsigned x)
+    proves(increment_is_itself(x))
+{
+    apply guarded_increment_holds(x);
+    refl;
+}
+```
+
 Contracts written on the function itself are part of the language, but are not accepted by this implementation yet:
 
 ```cpp cppl-planned

@@ -183,11 +183,56 @@ CPPL_TEST(a_function_returning_a_type_named_proof_is_not_a_proof) {
 
 CPPL_TEST(an_unsupported_proof_statement_is_refused_rather_than_ignored) {
     Recognized result;
-    recognize("proof holds(int x)\n    proves(identity_law(x))\n{\n    assume h : x == x;\n}\n",
-              result);
+    recognize("proof holds(int x)\n    proves(identity_law(x))\n{\n    let y = x;\n}\n", result);
 
     CPPL_CHECK(result.engine.has_errors());
     CPPL_CHECK(result.syntax.proofs.empty());
+}
+
+CPPL_TEST(an_assumed_premise_is_recognized_with_the_proposition_it_names) {
+    Recognized result;
+    recognize("proof holds(int x)\n    proves(conditional_law(x))\n"
+              "{\n    assume h : identity(x) == x;\n    exact h;\n}\n",
+              result);
+
+    CPPL_CHECK(!result.engine.has_errors());
+    CPPL_CHECK_EQ(result.syntax.proofs.size(), std::size_t{1});
+    CPPL_CHECK_EQ(result.syntax.proofs[0].statements.size(), std::size_t{2});
+
+    const cppl::frontend::ProofStatement& assumed = result.syntax.proofs[0].statements[0];
+    CPPL_CHECK(assumed.kind == cppl::frontend::ProofStatementKind::Assume);
+    CPPL_CHECK_EQ(assumed.reference, std::string("h"));
+
+    const cppl::frontend::TokenStream stream = cppl::frontend::lex(
+        "proof holds(int x)\n    proves(conditional_law(x))\n"
+        "{\n    assume h : identity(x) == x;\n    exact h;\n}\n",
+        "main.cpp");
+    CPPL_CHECK_EQ(std::string(stream.spelling(assumed.proposition)),
+                  std::string("identity(x) == x"));
+    CPPL_CHECK(result.syntax.proofs[0].statements[1].kind ==
+               cppl::frontend::ProofStatementKind::Exact);
+}
+
+CPPL_TEST(an_assume_without_a_proposition_is_refused) {
+    Recognized result;
+    recognize("proof holds(int x)\n    proves(l(x))\n{\n    assume h : ;\n}\n", result);
+
+    CPPL_CHECK(result.engine.has_errors());
+    CPPL_CHECK(result.syntax.proofs.empty());
+}
+
+CPPL_TEST(a_proof_body_may_carry_more_than_one_statement) {
+    Recognized result;
+    recognize("proof holds(unsigned x)\n    proves(l(x))\n"
+              "{\n    apply conditional(x);\n    refl;\n}\n",
+              result);
+
+    CPPL_CHECK(!result.engine.has_errors());
+    CPPL_CHECK_EQ(result.syntax.proofs[0].statements.size(), std::size_t{2});
+    CPPL_CHECK(result.syntax.proofs[0].statements[0].kind ==
+               cppl::frontend::ProofStatementKind::Apply);
+    CPPL_CHECK(result.syntax.proofs[0].statements[1].kind ==
+               cppl::frontend::ProofStatementKind::Reflexivity);
 }
 
 CPPL_TEST(an_empty_proof_body_is_refused_rather_than_treated_as_evidence) {

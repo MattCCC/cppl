@@ -38,18 +38,6 @@ struct Obligation {
     source::SourceRange range;
 };
 
-// Which written proof statement produced a piece of evidence.
-//
-// Kept as a typed fact rather than a tactic name, so a diagnostic can say what
-// the author asked for without any component re-reading the source.
-enum class WrittenProofKind : std::uint8_t {
-    Reflexivity,
-    Exact,
-    Apply,
-};
-
-std::string describe(WrittenProofKind kind);
-
 // Evidence an author wrote, lowered to a kernel proof term.
 //
 // Lowering decides what the written statement means as a proof term. It does
@@ -59,7 +47,6 @@ struct WrittenProof {
     vir::ProofId id;
     std::string name;
     vir::LawId law;
-    WrittenProofKind kind = WrittenProofKind::Reflexivity;
 
     // The proposition the `proves` clause claims: the law named there,
     // instantiated at the arguments it was named with, closed over the proof's

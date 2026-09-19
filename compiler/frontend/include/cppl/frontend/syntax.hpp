@@ -34,13 +34,17 @@ struct LawDeclaration {
     std::vector<Clause> clauses;
 
     [[nodiscard]] const Clause* proposition() const;
+
+    // The precondition the proposition is stated under, if the law has one.
+    [[nodiscard]] const Clause* premise() const;
 };
 
-// The primitive proof statements of GRAMMAR.md 5.1 - 5.3.
+// The primitive proof statements of GRAMMAR.md 5.1 - 5.4.
 enum class ProofStatementKind : std::uint8_t {
     Reflexivity,
     Exact,
     Apply,
+    Assume,
 };
 
 std::string describe(ProofStatementKind kind);
@@ -55,8 +59,16 @@ struct ProofArgument {
 
 struct ProofStatement {
     ProofStatementKind kind = ProofStatementKind::Reflexivity;
-    std::string reference;  // the proof named by `exact` or `apply`
+
+    // The proof named by `exact` or `apply`, or the name `assume` binds.
+    std::string reference;
     std::vector<ProofArgument> arguments;
+
+    // The proposition written after `assume h :`. Ordinary C++, delimited here
+    // and resolved by Clang through the projection, like every other expression.
+    source::ByteSpan proposition;
+    source::SourceLocation proposition_location;
+
     source::SourceLocation location;
 };
 

@@ -39,6 +39,26 @@ Term shift(const Term& term, std::uint32_t amount, std::uint32_t cutoff) {
     return term;  // a literal denotes the same value under any binder
 }
 
+Proposition shift(const Proposition& proposition, std::uint32_t amount, std::uint32_t cutoff) {
+    if (amount == 0) {
+        return proposition;
+    }
+
+    if (const auto* quantified = std::get_if<Forall>(&proposition.node)) {
+        return Proposition::for_all(quantified->binder,
+                                    shift(*quantified->body, amount, cutoff + 1));
+    }
+
+    if (const auto* implication = std::get_if<Implies>(&proposition.node)) {
+        return Proposition::implication(shift(*implication->premise, amount, cutoff),
+                                        shift(*implication->conclusion, amount, cutoff));
+    }
+
+    const auto& equality = std::get<Eq>(proposition.node);
+    return Proposition::equality(equality.type, shift(equality.lhs, amount, cutoff),
+                                 shift(equality.rhs, amount, cutoff));
+}
+
 Term instantiate(const Term& body, const Term& argument, std::uint32_t depth) {
     if (const auto* variable = std::get_if<Var>(&body.node)) {
         if (variable->index.value == depth) {
@@ -75,6 +95,11 @@ Proposition instantiate(const Proposition& body, const Term& argument, std::uint
     if (const auto* quantified = std::get_if<Forall>(&body.node)) {
         return Proposition::for_all(quantified->binder,
                                     instantiate(*quantified->body, argument, depth + 1));
+    }
+
+    if (const auto* implication = std::get_if<Implies>(&body.node)) {
+        return Proposition::implication(instantiate(*implication->premise, argument, depth),
+                                        instantiate(*implication->conclusion, argument, depth));
     }
 
     const auto& equality = std::get<Eq>(body.node);

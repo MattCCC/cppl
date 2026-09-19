@@ -183,80 +183,145 @@ std::optional<std::vector<vir::Parameter>> convert_parameters(
     return parameters;
 }
 
-// Resolves one proof statement into a typed step.
+// Reads one projected expression back as VIR.
 //
-// A step's reference is a proof name, which is a C++L entity: it is resolved
-// against the proofs this translation unit declares, and nowhere else. The
-// terms it is instantiated at are ordinary C++, and are read back from the
-// functions the projector emitted for them, so Clang alone decides what each
-// one denotes.
-std::optional<vir::ProofStep> convert_statement(const Request& request,
-                                                const frontend::ProofDeclaration& declaration,
-                                                const frontend::ProofFunction& projected,
-                                                const std::map<std::string, std::size_t>& declared,
-                                                std::uint32_t& next_expression_id,
-                                                diagnostics::Engine& engine) {
-    const frontend::ProofStatement& statement = declaration.statements.front();
-
-    vir::ProofStep step;
-    step.location = statement.location;
-
-    if (statement.kind == frontend::ProofStatementKind::Reflexivity) {
-        step.node = vir::ReflexivityStep{};
-        return step;
-    }
-
-    const auto target = declared.find(statement.reference);
-    if (target == declared.end()) {
-        report(engine, diagnostics::Category::Elaboration, statement.location,
-               "no proof named '" + statement.reference + "' is declared in this translation "
-               "unit",
-               "'" + describe(statement.kind) + "' names a proof declaration");
-        return std::nullopt;
-    }
-    if (statement.reference == declaration.name) {
-        report(engine, diagnostics::Category::ProofFailure, statement.location,
-               "proof '" + declaration.name + "' uses itself as its own evidence",
-               "this formal core has no induction rule, so a proof cannot depend on itself");
+// The expression itself was resolved by Clang in the proof's own scope; what
+// happens here is only the conversion of that resolved expression into the
+// fragment C++L models.
+std::optional<vir::Expr> convert_projected(const Request& request,
+                                           std::string_view generated,
+                                           const source::SourceLocation& written,
+                                           std::uint32_t& next_expression_id,
+                                           const std::string& subject,
+                                           diagnostics::Engine& engine) {
+    const clangbridge::Function* function = find_projected(request.unit, generated, written);
+    if (function == nullptr || !function->returned_value.has_value()) {
+        report(engine, diagnostics::Category::Elaboration, written,
+               subject + " was not resolved", "Clang did not resolve the projected expression");
         return std::nullopt;
     }
 
-    std::vector<vir::Expr> arguments;
-    for (std::size_t position = 0; position < projected.argument_names.size(); ++position) {
-        const frontend::ProofArgument& written = statement.arguments[position];
-        const clangbridge::Function* function =
-            find_projected(request.unit, projected.argument_names[position], written.location);
-        if (function == nullptr || !function->returned_value.has_value()) {
-            report(engine, diagnostics::Category::Elaboration, written.location,
-                   "the term proof '" + declaration.name + "' instantiates '" +
-                       statement.reference + "' at was not resolved",
-                   "Clang did not resolve the projected expression");
-            return std::nullopt;
+    ExpressionElaborator elaborator(next_expression_id);
+    std::optional<vir::Expr> converted = elaborator.convert(*function->returned_value);
+    if (!converted.has_value()) {
+        const auto& failure = elaborator.failure();
+        report(engine, diagnostics::Category::UnsupportedSemantics,
+               failure.has_value() && failure->location.is_valid() ? failure->location : written,
+               subject + " is not modeled by this implementation: " +
+                   (failure.has_value() ? failure->reason : "it has no representation"));
+        return std::nullopt;
+    }
+    converted->provenance.range.begin = written;
+    return converted;
+}
+
+// Resolves a proof body into typed steps.
+//
+// A step's reference names a proof-level entity: a proof this translation unit
+// declares, or a premise an earlier `assume` in this same body bound. Both are
+// C++L bindings, resolved here and nowhere else. The terms a step is
+// instantiated at, and the proposition an `assume` names, are ordinary C++ and
+// are read back from the functions the projector emitted for them, so Clang
+// alone decides what each one denotes.
+std::optional<std::vector<vir::ProofStep>> convert_statements(
+    const Request& request,
+    const frontend::ProofDeclaration& declaration,
+    const frontend::ProofFunction& projected,
+    const std::map<std::string, std::size_t>& declared,
+    std::uint32_t& next_expression_id,
+    diagnostics::Engine& engine) {
+    std::vector<vir::ProofStep> steps;
+    std::vector<std::string> assumed;
+    std::size_t next_argument = 0;
+    std::size_t next_assumption = 0;
+
+    for (const frontend::ProofStatement& statement : declaration.statements) {
+        vir::ProofStep step;
+        step.location = statement.location;
+
+        if (statement.kind == frontend::ProofStatementKind::Reflexivity) {
+            step.node = vir::ReflexivityStep{};
+            steps.push_back(std::move(step));
+            continue;
         }
 
-        ExpressionElaborator elaborator(next_expression_id);
-        std::optional<vir::Expr> argument = elaborator.convert(*function->returned_value);
-        if (!argument.has_value()) {
-            const auto& failure = elaborator.failure();
-            report(engine, diagnostics::Category::UnsupportedSemantics,
-                   failure.has_value() && failure->location.is_valid() ? failure->location
-                                                                       : written.location,
-                   "proof '" + declaration.name + "' instantiates '" + statement.reference +
-                       "' at a term this implementation does not model: " +
-                       (failure.has_value() ? failure->reason : "it is not modeled"));
-            return std::nullopt;
+        if (statement.kind == frontend::ProofStatementKind::Assume) {
+            if (next_assumption >= projected.assumption_names.size()) {
+                return std::nullopt;  // the projection and the syntax disagree
+            }
+            std::optional<vir::Expr> proposition = convert_projected(
+                request, projected.assumption_names[next_assumption++],
+                statement.proposition_location, next_expression_id,
+                "the proposition '" + declaration.name + "' assumes", engine);
+            if (!proposition.has_value()) {
+                return std::nullopt;
+            }
+            step.node = vir::AssumeStep{statement.reference, std::move(*proposition)};
+            assumed.push_back(statement.reference);
+            steps.push_back(std::move(step));
+            continue;
         }
-        argument->provenance.range.begin = written.location;
-        arguments.push_back(std::move(*argument));
+
+        // A premise bound in this body is the more local binding, so it is
+        // looked for first, and the innermost one of its name wins.
+        std::optional<vir::Reference> evidence;
+        for (std::size_t position = assumed.size(); position > 0; --position) {
+            if (assumed[position - 1] == statement.reference) {
+                evidence = vir::Reference{vir::HypothesisRef{
+                                              static_cast<std::uint32_t>(position - 1)},
+                                          statement.reference};
+                break;
+            }
+        }
+
+        if (!evidence.has_value()) {
+            const auto target = declared.find(statement.reference);
+            if (target == declared.end()) {
+                report(engine, diagnostics::Category::Elaboration, statement.location,
+                       "no proof or assumed premise named '" + statement.reference +
+                           "' is in scope here",
+                       "'" + describe(statement.kind) +
+                           "' names a proof declaration or a name bound by 'assume'");
+                return std::nullopt;
+            }
+            if (statement.reference == declaration.name) {
+                report(engine, diagnostics::Category::ProofFailure, statement.location,
+                       "proof '" + declaration.name + "' uses itself as its own evidence",
+                       "this formal core has no induction rule, so a proof cannot depend on "
+                       "itself");
+                return std::nullopt;
+            }
+            evidence = vir::Reference{
+                vir::ProofRef{vir::ProofId{static_cast<std::uint32_t>(target->second)}},
+                statement.reference};
+        }
+
+        std::vector<vir::Expr> arguments;
+        for (const frontend::ProofArgument& written : statement.arguments) {
+            if (next_argument >= projected.argument_names.size()) {
+                return std::nullopt;  // the projection and the syntax disagree
+            }
+            std::optional<vir::Expr> argument = convert_projected(
+                request, projected.argument_names[next_argument++], written.location,
+                next_expression_id,
+                "the term proof '" + declaration.name + "' instantiates '" +
+                    statement.reference + "' at",
+                engine);
+            if (!argument.has_value()) {
+                return std::nullopt;
+            }
+            arguments.push_back(std::move(*argument));
+        }
+
+        if (statement.kind == frontend::ProofStatementKind::Exact) {
+            step.node = vir::ExactStep{std::move(*evidence), std::move(arguments)};
+        } else {
+            step.node = vir::ApplyStep{std::move(*evidence), std::move(arguments)};
+        }
+        steps.push_back(std::move(step));
     }
 
-    const vir::ProofId id{static_cast<std::uint32_t>(target->second)};
-    if (statement.kind == frontend::ProofStatementKind::Exact) {
-        step.node = vir::ExactStep{id, statement.reference, std::move(arguments)};
-    } else {
-        step.node = vir::ApplyStep{id, statement.reference, std::move(arguments)};
-    }
-    return step;
+    return steps;
 }
 
 // Resolves the written proofs of a unit against the laws they claim to prove.
@@ -355,9 +420,9 @@ void elaborate_proofs(const Request& request,
         // ordinary C++ call, so Clang has already settled their number and
         // their types; which proposition they state is worked out where the
         // law's own proposition is known, by instantiating it at them.
-        std::optional<vir::ProofStep> step = convert_statement(
+        std::optional<std::vector<vir::ProofStep>> steps = convert_statements(
             request, declaration, projected, declared, next_expression_id, engine);
-        if (!step.has_value()) {
+        if (!steps.has_value()) {
             result.laws_with_refused_proofs.push_back(law.id);
             continue;
         }
@@ -368,7 +433,7 @@ void elaborate_proofs(const Request& request,
         proof.law = law.id;
         proof.parameters = *parameters;
         proof.proposition = std::move(*proposition);
-        proof.step = std::move(*step);
+        proof.steps = std::move(*steps);
         proof.range = declaration.range;
         result.module.proofs.push_back(std::move(proof));
     }
@@ -498,16 +563,20 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
             continue;
         }
 
-        const bool has_precondition =
-            std::ranges::any_of(declaration.clauses, [](const frontend::Clause& clause) {
+        // A Law states its conclusion under its precondition. More than one
+        // precondition conjoins them (GRAMMAR.md 3), and conjunction is not
+        // part of the formal core, so it is refused rather than approximated.
+        const auto preconditions =
+            std::ranges::count_if(declaration.clauses, [](const frontend::Clause& clause) {
                 return clause.kind == frontend::ClauseKind::Expects;
             });
-        if (has_precondition) {
-            report(engine, diagnostics::Category::UnsupportedSemantics, declaration.range.begin,
-                   "law '" + declaration.name + "' has an expects clause, which is not supported "
-                   "by this implementation",
-                   "implication is not part of the formal core yet, and the precondition will "
-                   "not be assumed");
+        if (preconditions > 1) {
+            report(engine, diagnostics::Category::UnsupportedSemantics,
+                   declaration.premise()->location,
+                   "law '" + declaration.name + "' has " + std::to_string(preconditions) +
+                       " expects clauses",
+                   "multiple preconditions are conjoined, and conjunction is not part of the "
+                   "formal core; this implementation accepts one expects clause");
             continue;
         }
 
@@ -535,6 +604,17 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
         }
 
         vir::Law law;
+        if (const frontend::Clause* written = declaration.premise(); written != nullptr) {
+            std::optional<vir::Expr> premise = convert_projected(
+                request, specification.premise_name, written->location, next_expression_id,
+                "the precondition of law '" + declaration.name + "'", engine);
+            if (!premise.has_value()) {
+                continue;
+            }
+            law.premise = std::move(*premise);
+            law.premise_range.begin = written->location;
+        }
+
         law.id = vir::LawId{static_cast<std::uint32_t>(result.module.laws.size())};
         law.name = declaration.name;
         law.parameters = *parameters;

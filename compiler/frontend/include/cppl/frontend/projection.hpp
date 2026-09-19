@@ -19,6 +19,11 @@ namespace cppl::frontend {
 struct SpecificationFunction {
     std::string name;
     std::size_t law_index = 0;
+
+    // The generated function stating the Law's precondition, empty when the Law
+    // has none. It is generated rather than named after the Law, because only
+    // the Law's conclusion is what a proof names.
+    std::string premise_name;
 };
 
 // The ordinary C++ function a proof declaration's `proves` clause is projected
@@ -28,10 +33,14 @@ struct ProofFunction {
     std::string name;
     std::size_t proof_index = 0;
 
-    // One generated function per term the proof's statement instantiates its
-    // reference at, in written order. Each returns that term, so Clang decides
+    // One generated function per term the proof's statements instantiate their
+    // references at, in written order. Each returns that term, so Clang decides
     // what the term denotes and what type it has.
     std::vector<std::string> argument_names;
+
+    // One generated function per `assume` statement, in written order, stating
+    // the proposition that statement names.
+    std::vector<std::string> assumption_names;
 };
 
 // One projector, two texts.
