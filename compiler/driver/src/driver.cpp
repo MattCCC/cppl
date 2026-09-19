@@ -386,11 +386,17 @@ int run_driver(int argc, const char* const* argv) {
         }
         // The verified program is the program compiled: the runtime projection
         // is handed to Clang, already preprocessed. The language selection is
-        // reset afterwards so later inputs keep their own.
+        // reset afterwards only when another input follows it, since -x applies
+        // to the inputs after it.
+        const bool more_inputs_follow =
+            std::ranges::any_of(options.inputs, [index](const Input& later) {
+                return later.argument_index > index;
+            });
+
         arguments.emplace_back("-x");
         arguments.emplace_back("c++-cpp-output");
         arguments.push_back(replacement->second);
-        if (index + 1 < options.arguments.size()) {
+        if (more_inputs_follow) {
             arguments.emplace_back("-x");
             arguments.emplace_back("none");
         }
