@@ -31,6 +31,11 @@ grep -q "is not proven" "$log"
 grep -q "kernel-rejection" "$log"
 grep -q "definitionally equal" "$log"
 
+# The failure names the Law, its goal and the source it came from.
+grep -q "add_one_changes_nothing" "$log"
+grep -q "goal: forall" "$log"
+grep -q "false_law.cpp:" "$log"
+
 if grep -q "PROVEN" "$log"; then
     echo "a rejected Law was described as proven" >&2
     exit 1

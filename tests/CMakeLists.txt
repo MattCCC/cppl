@@ -37,6 +37,9 @@ target_link_libraries(unit_projection_test PRIVATE cppl_frontend cppl_erasure cp
 cppl_add_unit_test(unit_vir_test unit/vir_test.cpp)
 target_link_libraries(unit_vir_test PRIVATE cppl_vir)
 
+cppl_add_unit_test(unit_verdict_test unit/verdict_test.cpp)
+target_link_libraries(unit_verdict_test PRIVATE cppl_kernel cppl_obligations)
+
 # Driver-level suites. They exercise the installed command exactly as a
 # developer or CI would.
 set(CPPL_TEST_FIXTURES "${CMAKE_CURRENT_SOURCE_DIR}/fixtures")

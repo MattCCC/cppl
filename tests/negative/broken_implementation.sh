@@ -32,6 +32,9 @@ fi
 grep -q "identity_returns_input" "$log"
 grep -q "signed overflow" "$log"
 
+# The failure points back at the user's own source, not at a projection.
+grep -q "broken_identity.cpp:" "$log"
+
 if grep -q "PROVEN" "$log"; then
     echo "a failed verification was described as proven" >&2
     exit 1
