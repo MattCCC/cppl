@@ -122,6 +122,16 @@ class TermLowering {
             if (bound->operands.size() != 2 || versions_.contains(bound->version)) {
                 return fail("malformed local version", location);
             }
+            // C++ evaluates the value where the local is written, whether or
+            // not anything reads it afterwards, so it must be modeled there:
+            // an unread signed overflow is still undefined behaviour.
+            const std::uint32_t enclosing = replay_bound_;
+            replay_bound_ = bound->version;
+            auto evaluated = lower(bound->operands[0]);
+            replay_bound_ = enclosing;
+            if (!evaluated) {
+                return evaluated;
+            }
             versions_.emplace(bound->version, &bound->operands[0]);
             auto body = lower(bound->operands[1]);
             versions_.erase(bound->version);

@@ -1126,7 +1126,10 @@ the declaration Clang resolved, not to a spelling, so shadowing and nested
 scopes follow C++ name lookup and never C++L's own. A read denotes the version
 current where the read stands, and the value a version denotes is the modeled
 expression that established it. A version is never an unknown: nothing is
-assumed about a local. C++ scoping forbids a read before the declaration but
+assumed about a local. That expression MUST be modeled where the version is
+established, whether or not any later expression reads it, because C++
+evaluates it there: an unread signed overflow is still undefined behavior.
+C++ scoping forbids a read before the declaration but
 puts a local in scope within its own initializer; a read there, or anywhere
 else no version of the local is current, MUST be rejected.
 

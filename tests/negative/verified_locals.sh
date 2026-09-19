@@ -95,6 +95,11 @@ reject exponential_expansion 'expands to more than' \
     "verified unsigned f(unsigned x) ensures(result == x) { $chain if (y40 == 0u) return x; return x; }"
 reject sequenced_value 'not modeled' \
     'verified unsigned f(unsigned x) ensures(result == x) { unsigned y = x; unsigned z = y++ + y; return z; }'
+# A value is evaluated where the local is written, read or not.
+reject unread_signed_overflow 'signed type' \
+    'verified int f(int x) ensures(result == x) { int y = x + 1; return x; }'
+reject unread_signed_assignment 'signed type' \
+    'verified int f(int x, bool b) ensures(result == x) { int y = x; if (b) y = y * 2; return x; }'
 reject call_effect 'not declared pure' \
     'unsigned effect(); verified unsigned f(unsigned x) ensures(result == x) { unsigned y = effect(); return x; }'
 reject out_of_scope 'undeclared identifier|not a parameter or local' \

@@ -1345,7 +1345,10 @@ A defect there can misstate the program, but it cannot grant the kernel a
 proposition. Anchoring is what keeps a local from moving a call: a call bound
 to a local is proven where the body makes it, under the conditions in force
 there, and on every path that reaches it. The kernel and core versions do not
-change, because the accepted calculus does not.
+change, because the accepted calculus does not. Every version's value is
+lowered where it is established, read or not, so a value the core cannot
+state — an unread signed overflow, for instance — rejects the body instead of
+vanishing from the model.
 
 Path-sensitive verification additionally trusts the Clang bridge and lowering
 to preserve every branch, fallthrough edge, condition polarity, and return.
