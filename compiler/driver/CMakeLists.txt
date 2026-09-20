@@ -4,6 +4,7 @@
 # the implementation so the command-line tool does not become the compiler
 # (ARCHITECTURE.md 43).
 add_library(cppl_driver STATIC
+    src/crash.cpp
     src/driver.cpp
     src/options.cpp
     src/process.cpp)

@@ -30,8 +30,8 @@ postcondition vacuously, and `forall x. spin(x) != spin(x)` would then be a
 kernel theorem from which anything follows. So a function with a loop is never
 admitted to the kernel context, its contract is never a theorem about its
 value, and no Law or specification can mention it. A verified caller uses its
-contract as it uses any contract — the result is a fresh value of which the
-postcondition is supposed — and becomes partial itself.
+contract as it uses any contract - the result is a fresh value of which the
+postcondition is supposed - and becomes partial itself.
 
 ## How it is checked
 
@@ -48,7 +48,7 @@ the kernel only once every contract it supposes is established.
 ## What is trusted
 
 No kernel rule and no logical assumption are added. The loop and call rules
-that decide *which* conditions a body needs are applied in `compiler/obligations`
+that decide _which_ conditions a body needs are applied in `compiler/obligations`
 and are correspondence trust (TRUST.md 41.2), as is the bridge's decision of
 which locals a loop carries; every iteration end checks that each uncarried
 local still holds its head version, so a write the scan missed rejects the body.

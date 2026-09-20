@@ -388,8 +388,8 @@ constexpr std::size_t kMaxConditionSteps = std::size_t{1} << 15;
 // theorem about a definition. It is established from verification conditions,
 // each an ordinary proposition the kernel decides: on every path, what the path
 // supposes implies what must hold where the path stands. A value the path
-// learns only through a proposition — a verified call's result, or a carried
-// local at a loop head — is a fresh variable bound where the path meets it,
+// learns only through a proposition - a verified call's result, or a carried
+// local at a loop head - is a fresh variable bound where the path meets it,
 // followed by the proposition supposed of it. Which conditions a body needs is
 // decided here, by the rules for calls and loops; that is a correspondence
 // responsibility (TRUST.md 41.2). Whether each holds is the kernel's.

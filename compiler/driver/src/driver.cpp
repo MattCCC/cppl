@@ -3,6 +3,7 @@
 #include "cppl/automation/evidence.hpp"
 #include "cppl/clang/bridge.hpp"
 #include "cppl/diagnostics/diagnostic.hpp"
+#include "cppl/driver/crash.hpp"
 #include "cppl/driver/options.hpp"
 #include "cppl/driver/process.hpp"
 #include "cppl/elaboration/elaborate.hpp"
@@ -200,6 +201,7 @@ diagnostics::Severity convert(clangbridge::Severity severity) {
 UnitOutcome compile_unit(const Options& options, const Input& input, const std::filesystem::path& scratch_root,
                          diagnostics::Engine& engine, Summary& summary) {
     UnitOutcome outcome;
+    const Stage compiling{"compiling", input.path.c_str()};
 
     const std::filesystem::path scratch = scratch_directory(scratch_root, input.path);
     if (scratch.empty()) {
@@ -225,6 +227,7 @@ UnitOutcome compile_unit(const Options& options, const Input& input, const std::
     preprocess.push_back(preprocessed_path.string());
     preprocess.emplace_back("-w");
 
+    const Stage preprocessing_stage{"preprocessing"};
     const ProcessResult preprocessing = run(options.clang, preprocess);
     if (!preprocessing.started) {
         report(engine, diagnostics::Category::Internal, preprocessing.error);
@@ -245,6 +248,7 @@ UnitOutcome compile_unit(const Options& options, const Input& input, const std::
         return outcome;
     }
 
+    const Stage recognizing_stage{"recognizing the C++L syntax"};
     const frontend::TokenStream stream = frontend::lex(*text, input.path);
     const frontend::Syntax syntax = frontend::recognize(stream, engine);
 
@@ -279,6 +283,7 @@ UnitOutcome compile_unit(const Options& options, const Input& input, const std::
 
     frontend::ProjectionOptions projection_options;
     projection_options.unit_key = source::hash_bytes(std::filesystem::absolute(input.path).string()).to_short_hex(12);
+    const Stage projecting_stage{"projecting"};
     const frontend::Projection projection = frontend::project(stream, syntax, projection_options);
     for (const auto& diagnostic : projection.diagnostics)
         engine.report(diagnostic);
@@ -312,6 +317,7 @@ UnitOutcome compile_unit(const Options& options, const Input& input, const std::
         request.selection.offsets.push_back(law.analysis_offset);
     }
 
+    const Stage parsing_stage{"parsing the analysis projection"};
     const std::expected<clangbridge::TranslationUnit, std::string> unit = clangbridge::parse(request);
     if (!unit.has_value()) {
         report(engine, diagnostics::Category::Internal, unit.error());
@@ -336,12 +342,16 @@ UnitOutcome compile_unit(const Options& options, const Input& input, const std::
         return outcome;
     }
 
+    const Stage elaborating_stage{"elaborating"};
     const elaboration::Result elaborated =
         elaboration::elaborate(elaboration::Request{syntax, projection, *unit}, engine);
+
+    const Stage generating_stage{"generating the proof obligations"};
     const obligations::Program program = obligations::generate(elaborated.module, elaborated, engine);
     if (!engine.has_errors() && program.proofs.size() != syntax.proofs.size()) {
         report(engine, diagnostics::Category::Internal, "not every written proof produced explicit evidence");
     }
+    const Stage verifying_stage{"verifying the proof obligations"};
     const std::vector<obligations::ObligationResult> results = automation::verify(program, engine);
 
     summary.laws += elaborated.module.laws.size();
@@ -394,6 +404,7 @@ UnitOutcome compile_unit(const Options& options, const Input& input, const std::
         }
     }
 
+    const Stage erasing_stage{"erasing the proof-only text"};
     const erasure::Erased erased = erasure::erase(stream, syntax, projection, engine);
     if (!erased.report.only_deletions || !erased.report.lines_preserved) {
         outcome.failed = true;
@@ -527,6 +538,7 @@ int run_driver(int argc, const char* const* argv) {
         }
     }
 
+    const Stage compiling{"running the C++ compiler"};
     const ProcessResult result = run(options.clang, arguments);
     if (!result.started) {
         std::cerr << "cppl: error: " << result.error << "\n";
