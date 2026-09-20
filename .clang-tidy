@@ -9,6 +9,7 @@ Checks: >
   concurrency-*,
   performance-*,
   portability-*,
+  -portability-avoid-pragma-once,
   cppcoreguidelines-pro-type-const-cast,
   cppcoreguidelines-pro-type-cstyle-cast,
   cppcoreguidelines-pro-type-reinterpret-cast,
@@ -44,7 +45,7 @@ Checks: >
   readability-redundant-control-flow,
   readability-redundant-declaration,
   readability-redundant-function-ptr-dereference,
-  readability-redundant-member-init,
+  -readability-redundant-member-init,
   readability-redundant-preprocessor,
   readability-redundant-string-cstr,
   readability-redundant-string-init,
@@ -56,7 +57,9 @@ Checks: >
 
 WarningsAsErrors: "*"
 
-HeaderFilterRegex: "^(?!.*(?:/build/|/third_party/|/vendor/|/external/|/generated/)).*$"
+HeaderFilterRegex: ".*"
+
+ExcludeHeaderFilterRegex: ".*/(build|third_party|vendor|external|generated|tests/fixtures)/.*"
 
 SystemHeaders: false
 

@@ -1,0 +1,10 @@
+# Test-tree overrides for the repository clang-tidy configuration.
+#
+# Inherits every repository check; relaxes only what the test harness design
+# makes structurally unavoidable.
+
+InheritParentConfig: true
+
+Checks: >
+  -bugprone-throwing-static-initialization,
+  -cert-err58-cpp
