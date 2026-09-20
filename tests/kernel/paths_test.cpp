@@ -108,8 +108,12 @@ CPPL_TEST(comparison_primitives_compute_exact_signed_and_unsigned_results) {
 
 CPPL_TEST(comparisons_and_selection_reject_malformed_core_terms) {
     const auto boolean = k::Term::literal(k::kBoolean, 1);
+    // The unknown opcode is one of the malformed terms under test; the kernel
+    // must reject it rather than guess at an operation.
+    // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
+    const auto unknown_opcode = k::Term::primitive(static_cast<k::PrimOp>(255), u32.integer_type(), {});
     for (const auto& malformed :
-         {k::Term::primitive(static_cast<k::PrimOp>(255), u32.integer_type(), {}),
+         {unknown_opcode,
           compare(k::PrimOp::Less, number(1), k::Term::literal(i32.integer_type(), 1)),
           k::Term::primitive(k::PrimOp::Less, u32.integer_type(), {number(1)}),
           k::Term::primitive(k::PrimOp::Select, u32.integer_type(), {number(1), number(1), number(2)}),

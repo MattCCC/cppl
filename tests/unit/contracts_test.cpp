@@ -60,6 +60,7 @@ k::Proposition conditional(bool same) {
 o::Program composed(bool weak = false) {
     auto callee = first();
     callee.id = v::FunctionId{0};
+    CPPL_CHECK(callee.contract.has_value());
     callee.contract->preconditions.push_back(equality(parameter(0), parameter(1)));
     if (weak) {
         callee.contract->postcondition = equality(parameter(0), parameter(0));
@@ -100,6 +101,7 @@ k::Proposition abstract_caller(bool summary, bool forged = false) {
 
 o::Program branching() {
     auto function = first();
+    CPPL_CHECK(function.returned_value.has_value());
     function.returned_value->node = v::Conditional{{equality(parameter(0), parameter(1)), parameter(1), parameter(0)}};
     cppl::elaboration::Result elaborated;
     elaborated.module.functions.push_back(std::move(function));
@@ -151,6 +153,7 @@ o::Program assigned(std::uint32_t observed) {
 o::Program anchored() {
     auto callee = first();
     callee.id = v::FunctionId{0};
+    CPPL_CHECK(callee.contract.has_value());
     callee.contract->preconditions.push_back(equality(parameter(0), parameter(1)));
     auto caller = first();
     caller.id = v::FunctionId{1};
@@ -213,6 +216,7 @@ CPPL_TEST(a_call_bound_to_a_local_is_proven_before_the_guards_that_follow_it) {
 // established: `if (x == y) { v0 = 0; return v0; } return v0;`.
 CPPL_TEST(a_version_never_escapes_the_arm_that_established_it) {
     auto function = first();
+    CPPL_CHECK(function.returned_value.has_value());
     function.returned_value->node =
         v::Conditional{{equality(parameter(0), parameter(1)), versioned(0, number(0), local(0)), local(0)}};
     cppl::elaboration::Result elaborated;
@@ -506,6 +510,7 @@ CPPL_TEST(an_iteration_outside_its_loop_is_refused) {
 
 CPPL_TEST(a_head_version_is_not_readable_before_its_loop) {
     auto function = counting(compare(v::BinaryOp::LessEqual, local(1), parameter(0)));
+    CPPL_CHECK(function.returned_value.has_value());
     auto& first_version = std::get<v::LocalVersion>(function.returned_value->node);
     first_version.operands[0] = local(1);
     const auto program = generate_all({std::move(function)}, true);
@@ -514,6 +519,7 @@ CPPL_TEST(a_head_version_is_not_readable_before_its_loop) {
 
 CPPL_TEST(a_loop_rebinding_a_live_version_is_refused) {
     auto function = counting(compare(v::BinaryOp::LessEqual, local(1), parameter(0)));
+    CPPL_CHECK(function.returned_value.has_value());
     auto& first_version = std::get<v::LocalVersion>(function.returned_value->node);
     std::get<v::Loop>(first_version.operands[1].node).heads = {0};
     const auto program = generate_all({std::move(function)}, true);

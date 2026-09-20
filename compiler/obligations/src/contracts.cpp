@@ -2,6 +2,7 @@
 #include "lowering.hpp"
 
 #include <algorithm>
+#include <ranges>
 #include <variant>
 
 namespace cppl::obligations::detail {
@@ -25,8 +26,8 @@ void report(diagnostics::Engine& engine, const vir::Function& function, const Fa
 }
 
 kernel::Proposition quantify(const std::vector<kernel::Type>& parameters, kernel::Proposition goal) {
-    for (auto parameter = parameters.rbegin(); parameter != parameters.rend(); ++parameter) {
-        goal = kernel::Proposition::for_all(*parameter, std::move(goal));
+    for (auto parameter : std::views::reverse(parameters)) {
+        goal = kernel::Proposition::for_all(parameter, std::move(goal));
     }
     return goal;
 }
@@ -62,9 +63,8 @@ kernel::Proposition close(const ContractVerification& function, const ReturnPath
                      : condition.actual,
             std::move(goal));
     }
-    for (auto precondition = function.preconditions.rbegin(); precondition != function.preconditions.rend();
-         ++precondition) {
-        goal = kernel::Proposition::implication(kernel::shift(*precondition, static_cast<std::uint32_t>(prefix)),
+    for (const auto& precondition : std::views::reverse(function.preconditions)) {
+        goal = kernel::Proposition::implication(kernel::shift(precondition, static_cast<std::uint32_t>(prefix)),
                                                 std::move(goal));
     }
     for (std::size_t index = prefix; index > 0; --index) {
@@ -243,6 +243,9 @@ std::expected<void, Failure> state_contract(const vir::Function& function, const
                                             ContractVerification& plan) {
     plan.function = function.id;
     plan.name = function.qualified_name;
+    if (!function.contract.has_value()) {
+        return std::unexpected(Failure{"the function states no contract", function.range.begin, {}});
+    }
     const auto result = core_type(function.result);
     if (!result.has_value()) {
         return std::unexpected(Failure{"the result type is not modeled", function.range.begin, {}});
@@ -279,6 +282,13 @@ std::expected<ContractVerification, Failure> build(const vir::Function& function
     if (auto stated = state_contract(function, pure_definitions, plan); !stated) {
         return std::unexpected(stated.error());
     }
+    if (!function.contract.has_value()) {
+        return std::unexpected(Failure{"the function states no contract", function.range.begin, {}});
+    }
+    if (!function.returned_value.has_value()) {
+        return std::unexpected(Failure{"the function has no return tree", function.range.begin, {}});
+    }
+    const auto& contract = *function.contract;
     auto returned = lower_value(*function.returned_value, definitions, plan.parameters.size());
     if (!returned) {
         return std::unexpected(returned.error());
@@ -299,6 +309,7 @@ std::expected<ContractVerification, Failure> build(const vir::Function& function
         definitions.emplace(function.symbol.usr, id);
     }
     std::vector<kernel::Term> own_arguments;
+    own_arguments.reserve(plan.parameters.size());
     for (std::size_t index = 0; index < plan.parameters.size(); ++index) {
         own_arguments.push_back(kernel::Term::variable(kernel::parameter_reference(plan.parameters.size(), index)));
     }
@@ -363,7 +374,7 @@ std::expected<ContractVerification, Failure> build(const vir::Function& function
         plan.obligation = program.obligations.size() + obligations.size();
         auto goal = close(plan, {}, 0, 0, false, kernel::instantiate(plan.postcondition, plan.returned_value));
         auto obligation = obligation_for(program, {}, Origin::FunctionContract, function.qualified_name,
-                                         function.contract->range, goal, goal);
+                                         contract.range, goal, goal);
         source::Hasher hasher;
         hasher.update_field("verified-paths-v1");
         hasher.update_field(obligation.id.digest.to_short_hex(64));
@@ -406,10 +417,13 @@ class Conditions {
           program_(program) {}
 
     std::expected<void, Failure> run() {
+        if (!function_.returned_value.has_value()) {
+            return fail("the function has no return tree", function_.range.begin);
+        }
         Scope scope;
         scope.binders = plan_.parameters;
         for (const auto& precondition : plan_.preconditions) {
-            scope.events.push_back(Event{std::nullopt, precondition});
+            scope.events.emplace_back(precondition);
         }
         std::vector<Active> loops;
         return walk(*function_.returned_value, std::move(scope), loops);
@@ -420,11 +434,9 @@ class Conditions {
 
   private:
     // After the parameters, a path binds fresh values and supposes facts, in
-    // the order it meets them.
-    struct Event {
-        std::optional<kernel::Type> binder;
-        std::optional<kernel::Proposition> fact;
-    };
+    // the order it meets them. A step is one or the other, never both, so the
+    // alternative carries that exclusivity instead of a pair of optionals.
+    using Event = std::variant<kernel::Type, kernel::Proposition>;
 
     struct Scope {
         std::vector<kernel::Type> binders; // the parameters, then each fresh value
@@ -445,9 +457,10 @@ class Conditions {
     }
 
     [[nodiscard]] kernel::Proposition close(const Scope& scope, kernel::Proposition goal) const {
-        for (auto event = scope.events.rbegin(); event != scope.events.rend(); ++event) {
-            goal = event->binder.has_value() ? kernel::Proposition::for_all(*event->binder, std::move(goal))
-                                             : kernel::Proposition::implication(*event->fact, std::move(goal));
+        for (const auto& event : std::ranges::reverse_view(scope.events)) {
+            goal = std::holds_alternative<kernel::Type>(event)
+                       ? kernel::Proposition::for_all(std::get<kernel::Type>(event), std::move(goal))
+                       : kernel::Proposition::implication(std::get<kernel::Proposition>(event), std::move(goal));
         }
         return quantify(plan_.parameters, std::move(goal));
     }
@@ -518,9 +531,9 @@ class Conditions {
             }
             scope.calls.emplace(site->id.value, scope.binders.size());
             scope.binders.push_back(callee.result);
-            scope.events.push_back(Event{callee.result, std::nullopt});
-            scope.events.push_back(Event{std::nullopt, postcondition_at(callee, std::move(arguments),
-                                                                        kernel::Term::variable(kernel::VarIndex{0}))});
+            scope.events.emplace_back(callee.result);
+            scope.events.emplace_back(
+                postcondition_at(callee, std::move(arguments), kernel::Term::variable(kernel::VarIndex{0})));
             if (std::ranges::find(scope.relied_on, found->second) == scope.relied_on.end()) {
                 scope.relied_on.push_back(found->second);
             }
@@ -562,11 +575,11 @@ class Conditions {
                 return std::unexpected(condition.error());
             }
             Scope when_true = scope;
-            when_true.events.push_back(Event{std::nullopt, kernel::predicate(*condition, true)});
+            when_true.events.emplace_back(kernel::predicate(*condition, true));
             if (auto walked = walk(branch->operands[1], std::move(when_true), loops); !walked) {
                 return walked;
             }
-            scope.events.push_back(Event{std::nullopt, kernel::predicate(*condition, false)});
+            scope.events.emplace_back(kernel::predicate(*condition, false));
             return walk(branch->operands[2], std::move(scope), loops);
         }
 
@@ -634,14 +647,14 @@ class Conditions {
         for (std::size_t index = 0; index < carried; ++index) {
             head.opaque.emplace(loop.heads[index], head.binders.size());
             head.binders.push_back(types[index]);
-            head.events.push_back(Event{types[index], std::nullopt});
+            head.events.emplace_back(types[index]);
         }
         for (std::uint32_t position = 0; position < loop.invariants; ++position) {
             auto invariant = lower(loop.operands[carried + position], head);
             if (!invariant) {
                 return std::unexpected(invariant.error());
             }
-            head.events.push_back(Event{std::nullopt, kernel::predicate(*invariant, true)});
+            head.events.emplace_back(kernel::predicate(*invariant, true));
         }
 
         loops.push_back(Active{&loop, types});
@@ -760,11 +773,18 @@ std::expected<ContractVerification, Failure> build_partial(const vir::Function& 
 void generate_contracts(const vir::Module& module, const DefinitionMap& pure_definitions, Program& program,
                         diagnostics::Engine& engine, const std::function<std::string(const Failure&)>& explain) {
     Contracts contracts;
-    std::vector<const vir::Function*> pending;
+    // Only a function that states a contract and has a return tree is a
+    // candidate. Pairing the tree with the function carries that guarantee
+    // onward instead of re-asserting it at every use.
+    struct Candidate {
+        const vir::Function* function;
+        const vir::Expr* returned_value;
+    };
+    std::vector<Candidate> pending;
     for (const auto& function : module.functions) {
         if (function.contract.has_value() && function.returned_value.has_value()) {
             contracts.emplace(function.symbol.usr, &function);
-            pending.push_back(&function);
+            pending.push_back({&function, &function.returned_value.value()});
         }
     }
     DefinitionMap definitions = pure_definitions;
@@ -773,9 +793,10 @@ void generate_contracts(const vir::Module& module, const DefinitionMap& pure_def
     while (progress) {
         progress = false;
         for (auto candidate = pending.begin(); candidate != pending.end();) {
-            const auto& function = **candidate;
+            const auto& function = *candidate->function;
+            const auto& returned_value = *candidate->returned_value;
             std::vector<const vir::Expr*> calls;
-            collect_calls(*function.returned_value, contracts, calls);
+            collect_calls(returned_value, contracts, calls);
             if (!std::ranges::all_of(calls, [&](const vir::Expr* call) {
                     return established.contains(std::get<vir::Call>(call->node).callee.usr);
                 })) {
@@ -785,7 +806,7 @@ void generate_contracts(const vir::Module& module, const DefinitionMap& pure_def
             // A loop, or a call whose contract is itself partial, leaves the
             // body without a total term; its contract is then partial too.
             const bool partial =
-                contains_loop(*function.returned_value) || std::ranges::any_of(calls, [&](const vir::Expr* call) {
+                contains_loop(returned_value) || std::ranges::any_of(calls, [&](const vir::Expr* call) {
                     return program.contracts[established.at(std::get<vir::Call>(call->node).callee.usr)].partial;
                 });
             auto plan = partial ? build_partial(function, contracts, pure_definitions, established, program)
@@ -801,11 +822,12 @@ void generate_contracts(const vir::Module& module, const DefinitionMap& pure_def
         }
     }
     const auto is_pending = [&pending](const std::string& usr) {
-        return std::ranges::any_of(pending, [&usr](const vir::Function* each) { return each->symbol.usr == usr; });
+        return std::ranges::any_of(pending, [&usr](const Candidate& each) { return each.function->symbol.usr == usr; });
     };
-    for (const auto* function : pending) {
+    for (const auto& candidate : pending) {
+        const auto* function = candidate.function;
         std::vector<const vir::Expr*> calls;
-        collect_calls(*function->returned_value, contracts, calls);
+        collect_calls(*candidate.returned_value, contracts, calls);
         std::string reason = "a verified callee is not available";
         source::SourceLocation location = function->range.begin;
         for (const vir::Expr* site : calls) {

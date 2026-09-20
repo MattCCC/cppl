@@ -20,7 +20,9 @@ template <typename T> class Box {
     Box(const Box& other) : value_(std::make_unique<T>(*other.value_)) {}
 
     Box& operator=(const Box& other) {
-        value_ = std::make_unique<T>(*other.value_);
+        if (this != &other) {
+            value_ = std::make_unique<T>(*other.value_);
+        }
         return *this;
     }
 
