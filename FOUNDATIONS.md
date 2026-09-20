@@ -245,11 +245,25 @@ C++L applies this principle to the values a C++ program already has. It does not
 
 Case analysis is the non-recursive form of the same idea: one obligation per case of a value. The cases cover every state the C++ type permits, including residual states such as an enumeration value that matches no enumerator.
 
-The scoped-enum prototype maps values to their exact fixed underlying machine
-integer domain. Its case split is derived using conditional elimination on
-equality comparisons, with the residual path retaining every inequality. Thus
-exhaustiveness does not rely on assuming that every enum value has a name, and
-no additional logical rule is necessary for this fragment.
+Case analysis is derived, not primitive. A decomposition provider describes a
+representation's states as **discriminators**: decidable conditions on modeled
+values. Splitting on one is conditional elimination, whose two premises the
+kernel derives and checks itself; splitting on each in turn leaves one branch in
+which all are false, and conjunction introduction combines those negations into
+the residual case's fact. Exhaustiveness is therefore a property of checked
+evidence rather than an assumption about the representation, and no additional
+logical rule is necessary — for scoped enumerations or for any later
+representation whose states are distinguished this way.
+
+The scoped-enumeration provider maps values to their exact fixed underlying
+machine integer domain, so exhaustiveness never relies on assuming that every
+enum value has a name.
+
+The domain of this core is machine integers. A representation whose states
+cannot be stated over that domain — a variant's alternative, a pointer's
+nullness, a product's components — has no provider, because it has no values to
+discriminate on yet. Extending the value model is foundational work and precedes
+any such provider; nothing is approximated in the meantime.
 
 The normative rules are in `SPEC.md` §20–§21.
 

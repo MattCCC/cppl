@@ -1642,7 +1642,7 @@ void lower_proofs(const vir::Module& module, const elaboration::Result& elaborat
 
     std::map<std::uint32_t, std::string> closed_by;
     for (const WrittenProof& written : program.proofs) {
-        if (!written.closes_law) {
+        if (!written.closes_law || !written.law.has_value()) {
             continue;
         }
         const auto [owner, first] = closed_by.emplace(written.law->value, written.name);

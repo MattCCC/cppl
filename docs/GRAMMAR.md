@@ -494,9 +494,16 @@ needs an arm unless the proof context proves it impossible. There is no wildcard
 arm (SPEC.md 20). `cases` is not runtime control flow and generates no runtime
 code.
 
-The current prototype supports defined scoped enum parameters with qualified
-named arms and an explicit `unnamed(value)` arm. It requires every arm to be
-written; other representations and omission of impossible cases remain refused.
+Arm syntax is the same for every representation. A label is either a name the
+representation reserves for a state with no C++ expression, such as `unnamed`,
+or a qualified C++ expression that Clang resolves, such as `State::idle`. How
+many binders an arm takes is decided by the case, not by the syntax. Which cases
+exist comes from the subject's decomposition provider, so nothing here is parsed
+differently per type family.
+
+Today one provider exists: scoped enumerations, with qualified named arms and an
+explicit `unnamed(value)` arm. Every arm must be written; omission of impossible
+cases remains refused, and a representation with no provider is refused by name.
 The precise implementation boundary is SPEC.md 20.5.
 
 ---

@@ -1549,34 +1549,82 @@ Each of these requires an explicit update to this document before it is merged:
 - any lowering rule that equates a C++ operation with a core primitive whose
   behaviour differs on some input.
 
-## 41.6 Scoped-enum proof cases
+## 41.6 Proof decomposition
 
-`SPEC.md` 20.5 and RFC 0013 add no logical kernel rule, axiom, logical assumption,
-trusted solver, dependency, or proof acceptance mechanism. Kernel/core versions
-remain 0.5.0. Every named and residual branch is expressed through existing
-conditional elimination; implication introduction supplies its checked premise,
-and conjunction introduction combines residual exclusions. Written proof failure
-still has no automation fallback.
+`SPEC.md` 20.5 and RFC 0013 add no logical kernel rule, axiom, logical
+assumption, trusted solver, dependency, or proof acceptance mechanism.
+Kernel/core versions remain 0.5.0. Written proof failure still has no automation
+fallback.
 
-The existing correspondence TCB now also covers the bridge's scoped-enum mapping:
-Clang must supply the correct nominal declaration, fixed underlying integer type,
-and enumerator constants. Lowering models the entire underlying value set, never
-just the named constants. Exact underlying-type casts preserve values. Nominal
-identity is retained through VIR and proof-argument checks, then represented by
-the existing machine-integer core. The kernel knows no Clang enum declaration.
-An incorrect frontend case list cannot hide an underlying value from its checked
-residual branch, but could violate the language requirement to revisit new named
-cases; source tests pin that requirement separately.
+```text
+logical assumptions introduced by case decomposition:  0
+axioms introduced by case decomposition:               0
+kernel rules introduced by case decomposition:         0
+```
 
-The projector gives residual binders analysis-only parameters with Clang's
-underlying type. Elaboration maps them back to the subject's value, adjusting
-quantified references without capture. This mapping and correct arm scoping are
-correspondence obligations. Tests cover nested scopes, forged premises, wrong enum
-types, leaking values/evidence, false residual goals, omitted/new/aliased cases,
-and tampered generated kernel evidence.
+### What a representation provider is
+
+A decomposition provider is a **correspondence mechanism**, not an axiom. It
+states what Clang already resolved about one C++ representation in the form the
+generic case engine consumes. Every proposition it produces is an ordinary
+modeled comparison, and the kernel rechecks all of it.
+
+A provider cannot make a false proposition acceptable. It describes a partition
+as discriminator conditions; the engine splits the goal on them with existing
+conditional elimination, and the kernel checks both branches of every split
+independently. A provider that described the **wrong** partition can only fail
+to produce a proof.
+
+What a provider **can** affect is the language requirement that a new state be
+revisited. A provider that omitted a state would leave that state absorbed into
+the residual branch rather than reported as a missing case. That branch is still
+proven, so nothing unsound is admitted, but the author is not told to revisit it.
+This is a correspondence obligation, pinned separately by source tests; it is not
+a kernel property, and the boundary is exactly here.
+
+### Per-provider correspondence
+
+**Scoped enumerations.**
+
+```text
+C++ states           every value of the fixed underlying integer type
+                     ([dcl.enum]), not only the enumerated ones
+proof propositions   one discriminator `subject == c` per distinct enumerator
+                     value c, in declaration order
+exhaustiveness       machine comparison is total, so each value either equals c
+                     or does not; splitting on each discriminator in turn leaves
+                     one branch, which is the residual case
+residual state       `unnamed`: underlying values equal to no enumerator
+bindings             `unnamed(value)` aliases the subject at its underlying
+                     type - the same value, no object, copy or conversion
+not inferred         nothing about provenance, storage, or which enumerators a
+                     program actually produces; enumerators sharing a value are
+                     one case, never several
+```
+
+Clang must supply the correct nominal declaration, fixed underlying integer
+type, and enumerator constants. Exact underlying-type casts preserve values.
+Nominal identity is retained through VIR and proof-argument checks, then
+represented by the existing machine-integer core. The kernel knows no Clang enum
+declaration.
+
+### Provider-independent obligations
+
+The projector gives proof binders analysis-only parameters so Clang types and
+looks up expressions that mention them. Elaboration maps them back to the value
+the binding denotes, adjusting quantified references without capture. That
+mapping, and correct arm scoping, are correspondence obligations of the engine
+rather than of any provider, so they are discharged once. Tests cover nested
+scopes, forged premises, wrong representation types, leaking values and
+evidence, false residual goals, omitted, newly added and aliased cases, and
+tampered generated kernel evidence.
+
+Representations with no provider are refused at the provider boundary by name.
+Nothing about their states is assumed, and arm syntax does not make a class a
+sum.
 
 Proof declarations use the existing blanking erasure. No runtime program text,
-ABI, memory semantics, or dynamic validation changes. C++17/20/23 end-to-end tests
-compile the erased projection independently and compare behavior, including an
-unnamed runtime value. Verification still reruns from source; no cached proof
-acceptance or serialized artifact format is introduced.
+ABI, memory semantics, or dynamic validation changes. C++17/20/23 end-to-end
+tests compile the erased projection independently and compare behavior,
+including an unnamed runtime value. Verification still reruns from source; no
+cached proof acceptance or serialized artifact format is introduced.

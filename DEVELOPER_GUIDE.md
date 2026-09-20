@@ -614,9 +614,12 @@ using PaymentResult = std::variant<Receipt, Error>;
 
 Now contradictory states are structurally impossible.
 
-The variant example below describes the specified direction. The current
-prototype implements `cases` for defined scoped enum parameters (SPEC.md 20.5),
-with an explicit residual arm:
+The variant example below describes the specified direction. `cases` itself is
+representation-independent: what states a value has comes from a decomposition
+provider for its resolved C++ type, and everything else — arm matching, binders,
+exhaustiveness, evidence, erasure — is shared. One provider exists today, for
+scoped enumerations (SPEC.md 20.5), whose states include an explicit residual
+arm:
 
 ```cpp
 enum class Flag : unsigned { set = 1u };
@@ -629,9 +632,25 @@ proof flag_identity(Flag flag) proves(flag == flag) {
 ```
 
 `value` has type `unsigned`, and `other` names evidence supplied by the residual
-path. Variants, products, pointers and omission of impossible arms remain
-unsupported. A failed written arm is an error even when automation could prove
-the enclosing proposition.
+path. A failed written arm is an error even when automation could prove the
+enclosing proposition.
+
+Variants, optionals, expected, pointers and products have no provider yet, and
+`cases` on them is refused by name. The reason is the formal value model, not
+the case engine: the core's terms range over machine integers, so there is
+nothing to discriminate a variant's alternative or a pointer's nullness on.
+ROADMAP.md sequences that work. Omission of impossible arms is also still
+refused.
+
+### Adding a representation
+
+Implement one provider under `compiler/decomposition/` and register it, then add
+its semantic tests. A provider answers three questions for a resolved type:
+which cases exist, what condition holds in each, and which case a written label
+denotes. It supplies no evidence, no lowering, no diagnostics and no parsing —
+those already exist once, for every representation. If the representation
+reserves a label for a state with no C++ expression, add it to
+`decomposition/labels.hpp` beside the provider.
 
 Executable code keeps branching with ordinary C++, such as `std::visit`. A proof can split the value into its cases:
 

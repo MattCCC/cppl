@@ -61,7 +61,9 @@ CPPL_TEST(aliased_enumerators_denote_one_case_reached_by_either_name) {
     // Clang resolves either spelling to the same value, so either reaches the
     // same case and writing both is a duplicate.
     const auto& provider = *d::provider_for(type);
-    CPPL_CHECK_EQ(provider.resolve_label(sum, label(1, type)).value(), std::size_t{0});
+    const auto resolved = provider.resolve_label(sum, label(1, type));
+    CPPL_CHECK(resolved.has_value());
+    CPPL_CHECK_EQ(*resolved, std::size_t{0});
 }
 
 CPPL_TEST(the_value_set_is_the_underlying_type_so_a_residual_case_remains) {

@@ -115,7 +115,7 @@ cppl_add_script_test(negative_quantified_propositions negative/quantified_propos
 cppl_add_script_test(e2e_refinement_types e2e/refinement_types.sh)
 cppl_add_script_test(negative_refinement_types negative/refinement_types.sh)
 cppl_add_script_test(e2e_enum_cases e2e/enum_cases.sh)
-cppl_add_script_test(negative_enum_cases negative/enum_cases.sh)
+cppl_add_script_test(negative_proof_cases negative/proof_cases.sh)
 cppl_add_script_test(e2e_instantiated_proof e2e/instantiated_proof.sh)
 cppl_add_script_test(e2e_conditional_proof e2e/conditional_proof.sh)
 cppl_add_script_test(e2e_rewritten_proof e2e/rewritten_proof.sh)

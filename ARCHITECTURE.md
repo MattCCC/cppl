@@ -1504,6 +1504,7 @@ flowchart TD
     COMP["Compiler Orchestration"]
     FRONT["Frontend / Clang Bridge"]
     VIR["VIR / Verification"]
+    DECOMP["Decomposition Providers"]
     AUTO["Automation"]
     KERNEL["Kernel"]
     CORE["Formal Core"]
@@ -1516,10 +1517,16 @@ flowchart TD
     COMP --> VIR
 
     FRONT --> VIR
+    VIR --> DECOMP
     VIR --> AUTO
+    DECOMP --> AUTO
     AUTO --> KERNEL
     KERNEL --> CORE
 ```
+
+Decomposition providers sit on top of the VIR and below proof obligations. They
+state what a C++ representation's proof-visible states are and know nothing
+about obligations, evidence or the kernel.
 
 Forbidden reverse dependencies include:
 
@@ -1542,6 +1549,7 @@ cppl/
 ├── compiler/
 │   ├── driver/
 │   ├── frontend/
+│   ├── decomposition/
 │   ├── elaboration/
 │   ├── obligations/
 │   ├── automation/
@@ -2864,6 +2872,7 @@ vir/                    the Verification IR
 clang/                  the Clang semantic bridge
 compiler/diagnostics/   the structured diagnostic model
 compiler/frontend/      lexer, contextual recognizer, projection
+compiler/decomposition/ C++ representations -> proof-visible state partitions
 compiler/elaboration/   Clang semantics + C++L syntax -> VIR
 compiler/obligations/   VIR + Laws + contracts -> core definitions and goals
 compiler/automation/    evidence production
@@ -3353,26 +3362,65 @@ named by a digest of the input's absolute path. They are inputs to Clang and
 diagnostics aids; nothing reads them back as a source of truth, and no proof
 result depends on them.
 
-## 97.9 Scoped-enum case proofs
+## 97.9 Proof decomposition
 
-The frontend recognizes a recursive tree of proof statements and arms. Its single
-projector emits probes for subjects, labels, arguments, and assumptions, preserving
-source correspondence. Extra analysis-only parameters give residual binders their
-Clang-resolved underlying types. The runtime projection blanks the enclosing proof
-as before.
+`cases` is implemented once, for every representation. `compiler/decomposition`
+holds the representation-independent decomposition model and one provider per
+C++ representation family; the rest of the pipeline is generic.
 
-The Clang bridge describes scoped-enum identity, enumerator constants and exact
-underlying machine types. VIR retains nominal identity and a `CasesStep` with typed
-subject and arm bodies. Elaboration validates labels/exhaustiveness and maps
-residual aliases back to their subject parameter, including under quantified
-propositions. Evidence names are resolved in arm scope; all nested proof references
-participate in the existing acyclic dependency traversal.
+```text
+Clang-resolved type
+    ↓  decomposition::decompose(subject)
+SumDecomposition | ProductDecomposition | Unsupported
+    ↓
+generic case engine (elaboration + obligations)
+    ↓
+existing VIR / kernel rules
+```
 
-Obligation lowering builds a chain of conditional eliminations over distinct
-enumerator values in declaration order. Each named branch checks its arm; the
-residual branch combines the checked inequalities and checks its own arm. The
-motive is the enclosing goal, shifted capture-safely under the existing rule's
-binder. Arm facts are actual kernel hypotheses and can be named by `assume`.
-The kernel needs no enum-specific rule or dependency. Unmodeled representations
-are refused as specified in `SPEC.md` 20.5; supporting variants/products later
-requires explicit runtime models, not merely additional arm labels.
+**Supporting a new C++ representation for proof-side case reasoning requires a
+sound decomposition provider for that representation. Arm parsing, binder
+handling, exhaustiveness validation, proof-state splitting, evidence
+construction, dependency checking, diagnostics, erasure and kernel lowering are
+representation-independent and must not be reimplemented per type family.**
+
+**A representation provider models ordinary C++ states for verification
+purposes. It does not introduce a new C++L runtime type, runtime pattern
+matching, runtime destructuring, or runtime control flow.**
+
+The **frontend** recognizes a recursive tree of proof statements and arms
+without knowing what any subject is. It classifies a label only as a name a
+representation reserves or an expression for Clang to resolve, reading one
+shared vocabulary (`decomposition/labels.hpp`) so the parser and the engine
+agree. The projector emits probes for subjects, labels, arguments and
+assumptions, preserving source correspondence, and declares binders as
+analysis-only parameters. The runtime projection blanks the enclosing proof as
+before.
+
+The **Clang bridge** describes a type's resolved representation: its USR, its
+qualified name, and, for an enumeration, its enumerator constants. Provider
+selection uses that identity, never a spelling.
+
+**VIR** retains the representation on the type and carries a `CasesStep` whose
+arms record which case each claims - never the representation's own notion of a
+state.
+
+**Elaboration** asks the provider for the partition, resolves each written label
+through it, checks binder arity against the case's bindings, checks
+exhaustiveness against the partition, and maps binder probe parameters back to
+the value the binding denotes, including under quantified propositions. Evidence
+names resolve in arm scope; nested proof references participate in the existing
+acyclic dependency traversal.
+
+**Obligation lowering** asks the provider again rather than trusting the arms,
+lowers each discriminator with the ordinary expression lowering, and builds a
+chain of conditional eliminations over them in partition order. Each case's
+branch checks its arm; the remaining branch combines the checked negations with
+conjunction introduction and checks the tail arm. The motive is the enclosing
+goal, shifted capture-safely under the existing rule's binder. Arm facts are
+real kernel hypotheses and can be named by `assume`.
+
+The kernel needs no case rule and no per-representation rule. A representation
+no provider models is refused at the provider boundary by name (`SPEC.md` 20.5);
+adding `std::variant`, `std::optional`, `std::expected`, pointer or product
+providers requires a formal value model for them first, not more arm labels.

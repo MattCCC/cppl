@@ -1954,50 +1954,147 @@ A case may be closed by evidence that it cannot occur.
 Impossibility MUST be established formally rather than guessed from control-flow heuristics.
 
 ---
-## 20.5 Current implemented fragment
+## 20.5 Proof decomposition
 
-Proof-side `cases` is implemented for parameters of defined scoped enumerations
-(`enum class` and `enum struct`) with a modeled, non-Boolean underlying integer
-type. Clang supplies the enum identity, underlying width and signedness, and
-constant enumerator values. The logical value ranges over the **entire underlying
-integer type**, including values with no enumerator. This is the fixed-underlying
-C++ enum model, not a finite domain inferred from the listed names.
+`cases` is representation-independent. What states a value has is supplied by a
+**decomposition provider** for its resolved C++ representation; everything else
+is the **generic case engine** and is shared by every representation.
 
-One qualified label is required for each distinct enumerator value. Either name
-of an alias may label that case; using both is a duplicate. Named arms take no
-binders. An explicit `unnamed(value)` arm takes exactly one binder, of the exact
-underlying C++ type. Arms can nest and use `refl`, `assume`, `exact`, `apply`, and
-`rewrite`; proof dependencies inside arms are checked like top-level steps.
+```text
+representation provider
+    knows the sound logical state model of one C++ representation family
 
-A named arm supplies `subject == enumerator`. The residual arm supplies the
-left-associated conjunction of `value != enumerator_value` for every distinct
-value in declaration order, or the single exclusion when there is only one.
-Individual exclusions are also available in the residual path. `assume` names
-these existing premises; a different proposition is refused. An empty enum has
-only the residual arm, which supplies no exclusion. Binders and named evidence
-remain local to their arm. Binder names must not duplicate an enclosing value
-parameter or binder in this prototype.
+generic case engine
+    performs arm matching, binder handling, exhaustiveness validation,
+    proof-state splitting, evidence construction, dependency checking,
+    diagnostics, erasure and kernel lowering
+```
+
+**Supporting a new C++ representation for proof-side case reasoning requires a
+sound decomposition provider for that representation. Arm parsing, binder
+handling, exhaustiveness validation, proof-state splitting, evidence
+construction, dependency checking, diagnostics, erasure and kernel lowering are
+representation-independent and MUST NOT be reimplemented per type family.**
+
+**A representation provider models ordinary C++ states for verification
+purposes. It does not introduce a new C++L runtime type, runtime pattern
+matching, runtime destructuring, or runtime control flow.**
+
+### 20.5.1 Decompositions
+
+A provider answers for a resolved type with one of:
+
+```text
+unsupported            no provider models this representation
+SumDecomposition       alternative states
+ProductDecomposition   constituent components
+```
+
+Provider selection is by Clang-resolved semantic identity, never by spelling, so
+aliases, qualified names and template specializations that resolve to one
+declaration select one provider.
+
+A `SumDecomposition` lists its cases in a fixed order. Each case carries a
+**discriminator**: an ordinary modeled Boolean condition on the subject that
+holds in exactly that case. A case may also carry bindings. Exhaustiveness is
+one of:
+
+```text
+ResidualRequired   the named discriminators do not cover the state space, so a
+                   named residual case completes the partition and MUST be
+                   written
+Complete           the named discriminators are jointly exhaustive, so the last
+                   case is the negation of the others
+```
+
+A provider MUST NOT supply the residual discriminator: it is derived as "no
+named discriminator holds". No implicit wildcard exists, and no wildcard arm is
+admitted (§20.3). A representation that gains a state therefore makes a proof
+that wrote no arm for it non-exhaustive, and the verifier reports the missing
+case rather than absorbing it.
+
+### 20.5.2 Arms
+
+A case label is either a name the representation **reserves** for a state with
+no C++ expression, or a **qualified** C++ expression that Clang resolves and the
+provider maps to a case. An unqualified label that is not reserved is refused,
+which keeps a reserved label distinct from an enumerator of the same spelling.
+
+An arm names exactly as many binders as its case supplies bindings. A binding
+denotes a value the C++ object model already provides; it creates no object,
+copy, conversion or temporary. Binder names must not duplicate an enclosing
+value parameter or binder. Binders and names bound inside an arm stay local to
+it.
+
+Arms nest and may use `refl`, `assume`, `exact`, `apply`, and `rewrite`. Proof
+dependencies inside arms are checked exactly like top-level steps, so recursion
+cannot hide in an arm. `assume` may name a fact the case supplies; it may not
+introduce a new one. At most 64 arms and 32 nested case statements are
+recognized, subject also to the existing proof-resource limits.
+
+The subject must denote one stable value for the whole statement. This
+implementation requires a value parameter; an expression that could be evaluated
+more than once, or whose value could change, is refused with a diagnostic rather
+than stabilized silently.
+
+### 20.5.3 Evidence
+
+The engine splits the enclosing goal on the discriminators in order, using the
+existing conditional-elimination rule. Each arm proves the original goal under
+its case's fact. The remaining branch, in which every discriminator is known
+false, receives their left-associated conjunction, built with conjunction
+introduction from the facts the branch already carries.
+
+Case splitting therefore produces compositions of the existing
+conditional-elimination, implication, conjunction and equality rules. There is
+no case rule, no per-representation kernel rule, no axiom, no runtime check and
+no runtime representation. Exhaustiveness is a property of evidence the kernel
+rechecks: a provider that described the wrong partition can only fail to produce
+a proof, never forge one.
+
+### 20.5.4 Implemented providers
+
+| Representation | Model | Residual state |
+| --- | --- | --- |
+| scoped enumeration | one case per distinct enumerator value | `unnamed` |
+
+A scoped enumeration (`enum class`, `enum struct`) with a visible definition and
+a modeled, non-Boolean underlying integer type decomposes into one case per
+distinct enumerator value, in declaration order, plus the residual case
+`unnamed`. Clang supplies the enum identity, underlying width and signedness,
+and the constant enumerator values. The logical value ranges over the **entire
+underlying integer type**, because that is the C++ value set of a scoped enum;
+it is not a finite domain inferred from the listed names.
+
+Enumerators that share a value are aliases naming one case, reachable by either
+name; writing both is a duplicate. Named cases bind nothing. The residual case
+binds one value: the subject at its exact underlying type, as an alias.
 
 Enum values, constants, comparisons, and explicit `static_cast` from a scoped
 enum to its **exact underlying type** are modeled. Other enum casts and implicit
 conversions remain refused. The existing integer-literal representation cannot
-express unsigned enumerators above `INT64_MAX`; enums containing them are refused.
-Bool-backed enums, unscoped enums, enums without a visible definition, compound
-subjects, `std::variant`, `std::optional`, class/product decomposition and pointer
-cases remain unsupported. Ordinary unverified C++ uses of those types are
-unaffected.
+express unsigned enumerators above `INT64_MAX`; enums containing them are
+refused.
 
-This prototype requires all arms to be written. Omission based on impossible-case
-evidence (§20.4) is not implemented; the compiler reports an omitted arm instead
-of supplying an assumption. At most 64 arms and 32 nested case statements are
-recognized, subject also to the existing proof-resource limits. No wildcard is
-admitted. Adding a distinct enumerator requires a new arm even when an old
-residual arm was present.
+### 20.5.5 Representations without a provider
 
-Case splitting produces compositions of the existing conditional-elimination,
-implication, conjunction, and equality rules. The kernel independently checks
-every branch. There is no new kernel rule, axiom, runtime check, or runtime
-representation. See RFC 0013 and `TRUST.md` 41.2 for correspondence responsibilities.
+A representation no provider models is refused at the provider boundary, naming
+the resolved C++ type. It is never reinterpreted as a sum because a proof used
+arm syntax on it, and its states are never guessed.
+
+`std::variant`, `std::optional`, `std::expected`, pointers, and class, `std::pair`,
+`std::tuple` and array products have no provider, because the formal core has no
+value model for them: its terms range over machine integers only (§29,
+`FOUNDATIONS.md`). Stating that a variant holds alternative 1, that a pointer is
+null, or that a struct has a given field requires values and observers the core
+cannot yet express, so a provider for them cannot be sound today. Adding one is
+foundational work on the value model, recorded in `ROADMAP.md`, not a change to
+the case engine. Ordinary unverified C++ uses of those types are unaffected.
+
+Omission based on impossible-case evidence (§20.4) is not implemented; the
+compiler reports an omitted arm rather than supplying an assumption.
+
+See RFC 0013 and `TRUST.md` 41.2 for correspondence responsibilities.
 
 ---
 

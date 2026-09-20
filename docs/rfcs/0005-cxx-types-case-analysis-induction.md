@@ -223,9 +223,18 @@ added. No implementation, test, or editor grammar used the removed words. Trust
 and runtime behavior do not change until these constructs are implemented.
 
 Implementations need kernel-checked evidence, with positive, negative, and
-adversarial tests. The scoped-enum implementation (RFC 0013) derives case analysis
-from existing conditional elimination and needs no additional kernel rule.
-Induction principles still need their own checked justification. Tests must cover:
+adversarial tests.
+
+Case analysis is implemented once, for every representation, over decomposition
+providers (RFC 0013). Scoped enumerations were the first vertical implementation
+and are now the first provider; nothing in this RFC implies that a representation
+needs its own `cases` implementation. The generic engine derives case analysis
+from existing conditional elimination and needs no additional kernel rule, for
+enumerations or for any later representation whose states are distinguished by
+decidable conditions on modeled values.
+
+Induction principles still need their own checked justification, and stay
+separate from finite case decomposition. Tests must cover:
 
 - out-of-range enumeration values, valueless variants, and omitted residual
   cases

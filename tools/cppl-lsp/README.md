@@ -459,6 +459,25 @@ The final completion list may combine results from both sources before returning
 
 `cppl-lsp` adds C++L knowledge rather than replacing Clang's understanding of C++.
 
+### Case arms
+
+Arm completion, residual arms, binder completion, duplicate-arm and missing-arm
+diagnostics, invalid-label diagnostics, hover, and go-to-definition for a
+referenced state all read the **same decomposition model the verifier uses**
+(`compiler/decomposition`, SPEC.md 20.5). There is no second list of a
+representation's states anywhere in the editor path: a provider describes a
+partition once, and both verification and the editor consume it.
+
+This means arm support is not written per representation. Completion offers
+whatever cases the subject's provider lists, plus its residual label when its
+exhaustiveness model has one — `unnamed` for a scoped enumeration today, and
+whatever a later provider names. Stale exhaustiveness after a source change
+falls out of the same model: a representation that gains a state gains a case,
+and the proof that wrote no arm for it reports a missing case.
+
+Editor support uses the arm syntax the specification already defines
+(`docs/GRAMMAR.md` 5.6). It invents no editor-only syntax.
+
 ---
 
 ## Semantic tokens

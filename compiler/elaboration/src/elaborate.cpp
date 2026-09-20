@@ -443,6 +443,7 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
     std::uint32_t& next_expression_id, diagnostics::Engine& engine) {
     const std::size_t parameter_count = parameters.size();
     std::vector<std::string> value_names;
+    value_names.reserve(parameters.size());
     for (const auto& parameter : parameters)
         value_names.push_back(parameter.name);
     std::vector<std::string> assumed;

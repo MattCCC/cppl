@@ -196,15 +196,26 @@ alias the program keeps, and make membership an obligation at every site a value
 enters the type. Refined parameters supply their predicate to the body and refined
 results are proven on every return. The boundary is in `SPEC.md` 17.3.1.
 
-Proof-side `cases` over defined scoped enums is `PROTOTYPE`: nested arms,
-Clang-resolved enumerators, aliases, explicit `unnamed(value)`, scoped premises,
-and proof dependency checking produce evidence for existing kernel rules. See
-`SPEC.md` 20.5 for the supported fragment and resource limits.
+Proof-side `cases` is `IMPLEMENTED` as a representation-independent engine:
+subject analysis, arm matching, binders and scope, nesting, exhaustiveness,
+evidence construction, dependency checking, diagnostics and erasure are shared
+by every representation and produce evidence for existing kernel rules. What
+states a value has comes from a decomposition provider for its resolved C++
+type.
 
-This slice does **not** implement induction, case analysis over other C++
-types, loop termination, ghost state, `unsafe`, `trusted`, proof `let`, solvers,
-proof caching, or any verification of the C++ memory model.
-Those remain `SPECIFIED` below.
+One provider is `IMPLEMENTED`: scoped enumerations, with one case per distinct
+enumerator value and the residual case `unnamed`. Representations with no
+provider are refused at the provider boundary by name.
+
+`std::variant`, `std::optional`, `std::expected`, pointers and product
+representations have **no provider**, and cannot have a sound one until the
+formal core has a value model for them: its terms range over machine integers
+only. That is foundational work, sequenced in `ROADMAP.md`, not a change to the
+case engine. See `SPEC.md` 20.5 for the boundary and resource limits.
+
+This slice does **not** implement induction, loop termination, ghost state,
+`unsafe`, `trusted`, proof `let`, solvers, proof caching, or any verification of
+the C++ memory model. Those remain `SPECIFIED` below.
 
 ---
 
@@ -591,12 +602,16 @@ RFC 0005).
 
 | Capability                                  | Status        |
 | ------------------------------------------- | ------------- |
-| `cases` over defined scoped enums           | `PROTOTYPE`   |
-| Cases over variants, products and pointers | `SPECIFIED`   |
-| Enum residual `unnamed(value)`              | `PROTOTYPE`   |
-| Other residual cases                       | `SPECIFIED`   |
-| Exhaustiveness over modeled enum states     | `PROTOTYPE`   |
-| Enum arm binders and named premises         | `PROTOTYPE`   |
+| Generic case engine (all representations)   | `IMPLEMENTED` |
+| Arm binders, scope and named premises       | `IMPLEMENTED` |
+| Exhaustiveness from a provider's partition  | `IMPLEMENTED` |
+| Scoped-enumeration provider                 | `IMPLEMENTED` |
+| Enum residual `unnamed(value)`              | `IMPLEMENTED` |
+| `std::variant` provider                     | `SPECIFIED`   |
+| `std::optional` / `std::expected` providers | `SPECIFIED`   |
+| Pointer null / non-null provider            | `SPECIFIED`   |
+| Product decomposition providers             | `SPECIFIED`   |
+| Formal value model for the above            | `NOT STARTED` |
 | Impossible cases                            | `SPECIFIED`   |
 | `induction` with explicit arms / short form | `SPECIFIED`   |
 | Machine-integer induction principles        | `SPECIFIED`   |
