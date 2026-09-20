@@ -141,12 +141,27 @@ reject opaque 'not modeled' <<'CPP'
 enum class E : unsigned;
 proof bad(E s) proves(true) { cases s { unnamed(v) => { refl; } } }
 CPP
-reject variant 'not modeled' <<'CPP'
+# A representation with no formal value model is refused by name, and is never
+# reinterpreted as a sum because a proof used arm syntax on it.
+reject variant "type 'std::variant<int, unsigned int>', which is not modeled" <<'CPP'
 #include <variant>
 proof bad(std::variant<int, unsigned> s) proves(true) { cases s { unnamed(v) => { refl; } } }
 CPP
-reject pointer 'not modeled' <<'CPP'
+reject optional "type 'std::optional<int>', which is not modeled" <<'CPP'
+#include <optional>
+proof bad(std::optional<int> s) proves(true) { cases s { unnamed(v) => { refl; } } }
+CPP
+reject pointer "type 'int \*', which is not modeled" <<'CPP'
 proof bad(int* p) proves(true) { cases p { unnamed(v) => { refl; } } }
+CPP
+reject product "type 'Point', which is not modeled" <<'CPP'
+struct Point { int x; int y; };
+proof bad(Point s) proves(true) { cases s { unnamed(v) => { refl; } } }
+CPP
+# A modeled value that no provider decomposes fails at the provider boundary,
+# naming the resolved C++ type rather than the machine type it is carried in.
+reject no_provider "proof decomposition is not defined for 'int'" <<'CPP'
+proof bad(int s) proves(s == s) { cases s { unnamed(v) => { refl; } } }
 CPP
 reject narrowed_cast 'exact underlying type' <<'CPP'
 enum class E : unsigned { a };

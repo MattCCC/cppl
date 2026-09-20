@@ -50,7 +50,9 @@ std::optional<vir::Type> convert_type(const clangbridge::Type& type) {
     // decomposition provider may model. Nothing is inferred from a spelling:
     // this is the identity Clang resolved (SPEC.md 20.5).
     converted->representation.identity = type.representation.identity;
-    converted->representation.name = type.representation.name;
+    // The resolved C++ spelling is kept for every type, so a diagnostic can
+    // name what the author wrote even when no provider models it.
+    converted->representation.name = type.representation.name.empty() ? type.spelling : type.representation.name;
     for (const clangbridge::Enumerator& enumerator : type.representation.enumerators) {
         converted->representation.enumerators.push_back(vir::Enumerator{enumerator.name, enumerator.value});
     }

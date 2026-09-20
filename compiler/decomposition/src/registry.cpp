@@ -32,7 +32,7 @@ Decomposition decompose(const Subject& subject) {
     // Failing here, at the provider boundary, is what keeps the engine
     // representation-independent: no representation is reinterpreted as another
     // because a proof used arm syntax on it.
-    return Unsupported{type.representation.is_known() ? type.representation.name : describe(type),
+    return Unsupported{type.representation.name.empty() ? describe(type) : type.representation.name,
                        "no decomposition provider models this resolved C++ representation"};
 }
 
