@@ -93,6 +93,26 @@ std::string spelled_indices(const TokenStream& stream, const RefinementType& ref
     return result;
 }
 
+// Declares a proof binder as a probe parameter, so expressions inside the arm
+// that mention it are looked up and type-checked by Clang like any other C++.
+//
+// This is the one place where the *syntax* of a binding depends on the
+// representation family, because the projector runs before any semantic
+// information exists: it cannot ask a provider what the binder's C++ type is.
+// The binding's *meaning* is not decided here - the provider states that, and
+// the generic engine remaps the probe parameter onto the value the binding
+// denotes before anything is lowered (SPEC.md 20.5).
+//
+// Today one family exposes binders: representations carried in a scalar, whose
+// binder names that scalar. A family whose binder has another C++ type
+// contributes its spelling here, beside its provider.
+void append_binder(std::string& parameters, const std::string& subject, const std::string& binder) {
+    if (!parameters.empty()) {
+        parameters += ", ";
+    }
+    parameters += "__underlying_type(decltype(" + subject + ")) " + binder;
+}
+
 } // namespace
 
 std::string canonical_lowering(const TokenStream& stream, const RefinementType& refinement) {
@@ -298,14 +318,15 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
                 if (statement.kind == ProofStatementKind::Cases) {
                     expression_probe(statement.proposition, statement.location, projected.case_names, "case_");
                     for (const ProofArm& arm : statement.arms) {
-                        if (!arm.residual)
+                        // A label that is a C++ expression is resolved by Clang,
+                        // like every other expression a proof mentions. A
+                        // reserved label names a state that has no expression,
+                        // so there is nothing to resolve.
+                        if (!arm.keyword_label)
                             expression_probe(arm.label, arm.location, projected.case_names, "case_");
                         std::string scoped = parameters;
-                        for (const std::string& binder : arm.binders) {
-                            if (!scoped.empty())
-                                scoped += ", ";
-                            scoped += "__underlying_type(decltype(" + statement.reference + ")) " + binder;
-                        }
+                        for (const std::string& binder : arm.binders)
+                            append_binder(scoped, statement.reference, binder);
                         self(self, arm.statements, scoped);
                     }
                     continue;

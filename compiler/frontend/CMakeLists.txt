@@ -14,7 +14,7 @@ target_include_directories(cppl_frontend PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
 
 target_link_libraries(cppl_frontend
-    PUBLIC cppl_source cppl_diagnostics
+    PUBLIC cppl_source cppl_diagnostics cppl_case_labels
     PRIVATE cppl_project_options)
 
 add_library(cppl::frontend ALIAS cppl_frontend)

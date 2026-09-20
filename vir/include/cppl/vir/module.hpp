@@ -148,6 +148,15 @@ struct RewriteStep {
 };
 
 struct CaseArm;
+
+// `cases s { ... }` - proof-side reasoning over the states of an ordinary C++
+// value (SPEC.md 20). It is not runtime control flow and generates no runtime
+// code: every arm proves the enclosing goal under the facts its case supplies.
+//
+// Nothing here names a representation. The subject's decomposition provider
+// says what the cases are; this records only which of them each arm claims to
+// prove, so the obligation layer can ask the provider again and check that the
+// arms cover the partition it describes.
 struct CasesStep {
     Expr subject;
     std::vector<CaseArm> arms;
@@ -159,7 +168,13 @@ struct ProofStep {
 };
 
 struct CaseArm {
-    std::optional<std::int64_t> value; // absent for unnamed(value)
+    // Which case of the subject's decomposition this arm proves. Absent for the
+    // residual case, which is the one the provider does not enumerate.
+    std::optional<std::uint32_t> descriptor;
+
+    // The label as the provider spells it, for diagnostics only.
+    std::string label;
+
     std::vector<ProofStep> steps;
     source::SourceLocation location;
 };

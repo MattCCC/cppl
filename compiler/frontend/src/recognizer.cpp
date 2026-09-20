@@ -1,8 +1,10 @@
+#include "cppl/decomposition/labels.hpp"
 #include "cppl/frontend/syntax.hpp"
 
 #include <algorithm>
 #include <array>
 #include <optional>
+#include <string_view>
 
 namespace cppl::frontend {
 
@@ -422,15 +424,27 @@ bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std
                        tokens[cursor + 1].kind == TokenKind::Identifier)
                     cursor += 2;
                 arm.label = {tokens[start].span.offset, tokens[cursor - 1].span.end() - tokens[start].span.offset};
-                arm.residual = cursor == start + 1 && tokens[start].is_identifier("unnamed");
+                arm.spelling = std::string(stream.spelling(arm.label));
+                // Which kind of label this is belongs to the representation, not
+                // to the syntax. The parser only separates a name a
+                // representation reserves for a state with no C++ expression
+                // from a label Clang is to resolve; which case either denotes is
+                // settled later, by the provider (SPEC.md 20.5).
+                arm.keyword_label =
+                    cursor == start + 1 && decomposition::label_kind(arm.spelling) == decomposition::LabelKind::Keyword;
                 if (tokens[start].is_identifier("_")) {
                     report(engine, stream, tokens[start], diagnostics::Category::CpplSyntax,
                            "cases has no wildcard arm");
                     return false;
                 }
-                if (!arm.residual && cursor == start + 1) {
+                // An unqualified name is a reserved label or nothing. Requiring
+                // qualification everywhere else is what keeps a reserved label
+                // distinct from an enumerator that happens to share its
+                // spelling, such as `unnamed` in `enum class State { unnamed }`.
+                if (!arm.keyword_label && cursor == start + 1) {
                     report(engine, stream, tokens[start], diagnostics::Category::UnsupportedSemantics,
-                           "enum case labels must be qualified, as in 'State::idle'");
+                           "a case label must be qualified, as in 'State::idle', unless it is a "
+                           "name the representation reserves");
                     return false;
                 }
                 if (cursor < end && tokens[cursor].is_punctuator("(")) {

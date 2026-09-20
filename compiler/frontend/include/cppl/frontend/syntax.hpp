@@ -78,10 +78,22 @@ struct ProofStatement {
     std::vector<ProofArm> arms;
 };
 
+// One arm of a `cases` statement (GRAMMAR.md 5.6).
+//
+// The recognizer reads arm syntax without knowing what the subject is. Which
+// case a label denotes, how many binders the case supplies, and whether the
+// arms are exhaustive are all settled later against the subject's decomposition
+// provider (SPEC.md 20.5).
 struct ProofArm {
+    // The label's source span, kept so diagnostics and editors point at what
+    // was written, and its spelling, which is what a reserved label is matched
+    // against.
     source::ByteSpan label;
+    std::string spelling;
     source::SourceLocation location;
-    bool residual = false;
+    // The label is a name a representation reserves for a state that has no C++
+    // expression, rather than an expression for Clang to resolve.
+    bool keyword_label = false;
     std::vector<std::string> binders;
     std::vector<ProofStatement> statements;
 };
