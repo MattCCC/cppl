@@ -385,6 +385,25 @@ A function returning `Percentage` must produce an integer together with sufficie
 
 Simple refinement obligations may be discharged automatically by arithmetic solvers.
 
+Refinement is a property of values, not a change of representation. The subset
+relation is what carries evidence in each direction:
+
+```text
+{ x : T | P(x) }  <:  T                        needs nothing
+T                 <:  { x : T | P(x) }         needs a proof of P
+{ x : T | P(x) }  <:  { x : T | Q(x) }         needs  forall x : T, P(x) -> Q(x)
+```
+
+The first is why a refined value is usable as its base value, and the second is why
+every flow into a refinement type is an obligation. Composing refinements conjoins
+their predicates, so `{ x : {y : T | P(y)} | Q(x) }` is `{ x : T | P(x) /\ Q(x) }`,
+with the same base type underneath.
+
+Because the base type is what exists at run time, two distinct refinements of one
+base type are the same type to the machine and different types to the
+verifier. Nothing about the machine's view is allowed to depend on which one a value
+was given.
+
 ## Termination and consistency
 
 Proof-producing computation cannot be allowed to justify arbitrary propositions by never returning.

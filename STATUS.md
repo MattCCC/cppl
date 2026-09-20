@@ -70,7 +70,8 @@ declares Laws it:
 6. submits the author's evidence, or its own when none was written, to the
    trusted kernel;
 7. reports `PROVEN` only on kernel acceptance, and fails the build otherwise;
-8. checks that erasure only deleted text, and hands the runtime program to Clang.
+8. checks that erasure blanked proof-only text and lowered each runtime-bearing
+   declaration to exactly the C++ it means, and hands the runtime program to Clang.
 
 The verified fragment is deliberately small: a Law states a modeled proposition
 over built-in integer expressions, optionally under one `expects`
@@ -189,10 +190,15 @@ kernel. Termination is not proven; `decreases`, `do`/`while`, range-based `for`
 and `for` without a condition are rejected. Loops add no kernel rule; the loop
 rule is correspondence trust (`TRUST.md` 41.2).
 
+Refinement types are `PROTOTYPE`: `type R = T where (P);` and its indexed form
+declare a verification-level type over an ordinary C++ base type, lower to the
+alias the program keeps, and make membership an obligation at every site a value
+enters the type. Refined parameters supply their predicate to the body and refined
+results are proven on every return. The boundary is in `SPEC.md` 17.3.1.
+
 This slice does **not** implement induction, case analysis (`cases`) over C++
-types, dependent types, refinement types, loop termination, ghost state,
-`unsafe`, `trusted`, proof `let`, solvers, proof caching, or any verification of
-the C++ memory model.
+types, loop termination, ghost state, `unsafe`, `trusted`, proof `let`, solvers,
+proof caching, or any verification of the C++ memory model.
 Those remain `SPECIFIED` below.
 
 ---
@@ -296,8 +302,8 @@ The project should not claim broad language implementation before the proof sema
 | logical equivalence           | `PROTOTYPE`   |
 | disjunction                   | `PROTOTYPE`   |
 | existential quantification    | `SPECIFIED`   |
-| dependent types               | `SPECIFIED`   |
-| refinement types              | `SPECIFIED`   |
+| dependent types               | `PROTOTYPE`   |
+| refinement types              | `PROTOTYPE`   |
 | algebraic data types          | `NOT PLANNED` |
 | runtime pattern matching      | `NOT PLANNED` |
 | impossible-state elimination  | `SPECIFIED`   |
@@ -740,11 +746,14 @@ Foreign code must not automatically count as verified.
 | ABI-equivalence tests            | `NOT STARTED` |
 | Formal erasure correctness proof | `NOT STARTED` |
 
-Erasure currently removes law declarations and the `pure` specifier, and the
-implementation checks a strong property rather than asserting success: the
-runtime program must be the analysed program with formal spans blanked, with
-byte positions and line numbering unchanged. Equivalence is therefore
-established structurally for the constructs implemented, not proven in general.
+Erasure currently removes law declarations, proofs, contracts, loop invariants and
+the `pure` specifier, and lowers a refinement type declaration to the alias it
+means. The implementation checks a strong property rather than asserting success:
+the runtime program must be the analysed program with proof-only spans blanked and
+each runtime-bearing declaration replaced by the canonical C++ recomputed from that
+declaration, with line numbering unchanged (`TRUST.md` 10.1). Equivalence is
+therefore established structurally for the constructs implemented, not proven in
+general.
 
 C++L's intended mature pipeline is:
 

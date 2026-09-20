@@ -137,6 +137,33 @@ struct LoopSpecification {
     std::uint32_t body_open_column = 0;
 };
 
+// type name [(index parameters)] = base-type where (predicate);
+//                                            (SPEC.md 17, 18; GRAMMAR.md 14, 16)
+//
+// A refinement type is a verification-level type over an ordinary C++ base type:
+// `{ self : T | P(self) }`. It has no runtime representation of its own, so this
+// declaration is runtime-bearing rather than proof-only: it lowers to the alias
+// `using name = base;` in the program, and only the predicate leaves it. The
+// predicate is resolved through the analysis projection with `self` bound to a
+// value of the base type, like every other specification expression.
+struct RefinementType {
+    std::string name;
+    source::SourceRange range; // the whole declaration, including its ';'
+    source::SourceLocation keyword_location;
+    std::uint32_t end_line = 0; // presumed line of the terminating ';'
+
+    // The index parameter list, empty when the declaration has none. Indices are
+    // verification-level; they never reach the alias.
+    source::ByteSpan indices;
+    bool indexed = false;
+
+    source::ByteSpan base; // the base type-id, an ordinary C++ type
+    source::SourceLocation base_location;
+
+    source::ByteSpan predicate; // the expression inside `where ( ... )`
+    source::SourceLocation predicate_location;
+};
+
 // The `pure` declaration specifier and the function it applies to (SPEC.md 13).
 struct PureMarker {
     source::ByteSpan keyword;
@@ -152,9 +179,11 @@ struct Syntax {
     std::vector<PureMarker> pure_markers;
     std::vector<VerifiedFunction> verified_functions;
     std::vector<LoopSpecification> loops;
+    std::vector<RefinementType> refinement_types;
 
     [[nodiscard]] bool empty() const noexcept {
-        return laws.empty() && proofs.empty() && pure_markers.empty() && verified_functions.empty() && loops.empty();
+        return laws.empty() && proofs.empty() && pure_markers.empty() && verified_functions.empty() && loops.empty() &&
+               refinement_types.empty();
     }
 };
 

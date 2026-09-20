@@ -2929,8 +2929,9 @@ to Clang untouched.
 The projector emits both the text analysed and the text compiled, from the same
 spans in the same pass:
 
-- the **runtime text** is the preprocessed text with every C++L-only span
-  blanked, preserving every byte position and every line;
+- the **runtime text** is the preprocessed text with every proof-only span
+  blanked, preserving every byte position and every line, and every
+  runtime-bearing declaration replaced by the canonical C++ it means;
 - the **analysis text** is the same text with each Law replaced by an ordinary
   C++ specification function, bracketed by `#line` directives so positions still
   refer to the user's source.
@@ -2938,9 +2939,22 @@ spans in the same pass:
 This keeps the single-projection invariant of section 11: there is one lowering,
 with one output selected for code generation. The relationship is checked rather
 than asserted - `compiler/erasure` verifies that the runtime text differs from
-the analysed text only by blanking inside recorded spans, and that line
-numbering is unchanged. Because erasure can only delete, it cannot introduce a
-construct from a standard later than the one the user selected.
+the analysed text only by blanking inside recorded spans, that each lowering is
+exactly what its declaration means, and that line numbering is unchanged.
+
+The two classes are described in `TRUST.md` 10.1. Proof-only syntax adds nothing
+to the runtime program, so it cannot introduce a construct from a standard later
+than the one the user selected. The one runtime-bearing declaration today is the
+refinement type, which lowers to an alias:
+
+```text
+type R = T where (P);        ->  using R = T;
+type R(I i) = T where (P);   ->  template <I i> using R = T;
+```
+
+Erasure recomputes that text from the recognized declaration rather than trusting
+the projector, and the lowering carries one newline per newline of the
+declaration, so nothing below it moves.
 
 ## 97.5 A Law is projected into a C++ specification function
 
@@ -3165,7 +3179,7 @@ checked against its original body-derived goal. No rule or axiom is added.
 Call-precondition obligations have their own origin, call-site provenance, and
 trust-report count. Caller identities include the abstract reasoning goal and
 callee obligation identities, so weakening a summary cannot reuse an identity
-based only on an unchanged executable body. Erasure remains deletion-only and
+based only on an unchanged executable body. Erasure adds nothing to a call and
 preserves every runtime call and argument.
 
 ### Path-sensitive returns

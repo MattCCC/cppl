@@ -1,0 +1,194 @@
+#!/usr/bin/env bash
+# Refinement types that must be refused (SPEC.md 17).
+#
+# A refinement declaration asserts nothing. Every value that enters the type owes
+# a proof of its predicate, and nothing here is accepted on the strength of the
+# declaration. The contextual words the syntax uses keep their ordinary C++
+# meaning everywhere else.
+set -euo pipefail
+CPPL="$1"
+WORK="$3"
+mkdir -p "$WORK"
+run=$(mktemp -d "$WORK/refinement-negative.XXXXXX")
+
+reject() {
+    local name="$1"
+    cat > "$run/$name.cpp"
+    echo 'int main() { return 0; }' >> "$run/$name.cpp"
+    if "$CPPL" -std=c++17 "$run/$name.cpp" -o "$run/$name" > "$run/$name.log" 2>&1; then
+        echo "an invalid refinement was accepted: $name" >&2
+        cat "$run/$name.log" >&2
+        exit 1
+    fi
+    test ! -e "$run/$name"
+    ! grep -q PROVEN "$run/$name.log"
+    grep -q error "$run/$name.log"
+}
+
+accept() {
+    local name="$1"
+    cat > "$run/$name.cpp"
+    if ! "$CPPL" -std=c++17 "$run/$name.cpp" -o "$run/$name" > "$run/$name.log" 2>&1; then
+        echo "valid source was refused: $name" >&2
+        cat "$run/$name.log" >&2
+        exit 1
+    fi
+    "$run/$name"
+}
+
+# Nothing bounds the value, so its membership is unproven. It is not assumed.
+reject unproven_introduction <<'CPP'
+type Percentage = int where(self >= 0 && self <= 100);
+verified int wrong(int x) ensures(result == x) {
+    Percentage p = x;
+    return p;
+}
+CPP
+
+# A value that provably fails the predicate.
+reject false_introduction <<'CPP'
+type Small = unsigned where(self < 10u);
+verified unsigned wrong(unsigned x) ensures(result == 20u) {
+    Small s = 20u;
+    return s;
+}
+CPP
+
+# The predicate a refinement inherits is not discarded: 5 is below 10 and not
+# below 3.
+reject inherited_predicate <<'CPP'
+type Small = unsigned where(self < 10u);
+type Tiny = Small where(self < 3u);
+verified unsigned wrong(unsigned x) ensures(result == 5u) {
+    Tiny t = 5u;
+    return t;
+}
+CPP
+
+# A refined result must hold on the path that returns.
+reject false_refined_result <<'CPP'
+type Small = unsigned where(self < 10u);
+verified Small wrong(unsigned x) ensures(result == 20u) {
+    return 20u;
+}
+CPP
+
+# A branch that does not establish the predicate does not discharge it.
+reject wrong_branch_fact <<'CPP'
+type NonNegative = int where(self >= 0);
+verified int wrong(int x) ensures(result == x) {
+    if (x <= 0) {
+        NonNegative n = x;
+        return n;
+    }
+    return x;
+}
+CPP
+
+# An index the value does not satisfy.
+reject index_out_of_range <<'CPP'
+type Index(unsigned n) = unsigned where(self < n);
+verified unsigned wrong(unsigned x) ensures(result == 9u) {
+    Index<8> i = 9u;
+    return i;
+}
+CPP
+
+# A refined parameter supposes its own predicate, not a stronger one.
+reject stronger_than_the_parameter <<'CPP'
+type NonNegative = int where(self >= 0);
+verified int wrong(NonNegative n) ensures(result >= 1) {
+    return n;
+}
+CPP
+
+# Malformed declarations, each reported as what it is.
+reject no_base_type <<'CPP'
+type Positive = where(self > 0);
+CPP
+reject no_predicate <<'CPP'
+type Positive = int where();
+CPP
+reject empty_index_list <<'CPP'
+type Positive() = int where(self > 0);
+CPP
+reject unterminated_predicate <<'CPP'
+type Positive = int where(self > 0;
+CPP
+reject missing_semicolon <<'CPP'
+type Positive = int where(self > 0)
+CPP
+
+# A predicate outside the modeled fragment is refused, not approximated.
+reject unmodeled_base <<'CPP'
+type Odd = double where(self > 0.0);
+CPP
+reject effectful_predicate <<'CPP'
+int counter = 0;
+int bump() { return ++counter; }
+type Odd = int where(self > bump());
+CPP
+
+# A refinement declared where this implementation does not recognize one.
+reject inside_a_function <<'CPP'
+int f() {
+    type Positive = int where(self > 0);
+    return 0;
+}
+CPP
+
+grep -q 'not shown to satisfy refinement type' "$run/unproven_introduction.log"
+grep -q 'not shown to satisfy refinement type' "$run/index_out_of_range.log"
+grep -q 'declares no base type' "$run/no_base_type.log"
+grep -q 'states no predicate' "$run/no_predicate.log"
+grep -q 'empty index list' "$run/empty_index_list.log"
+grep -q "ends with ';'" "$run/missing_semicolon.log"
+grep -q 'outside namespace scope' "$run/inside_a_function.log"
+
+# `type` and `where` are contextual (SPEC.md 3): anything that is not the complete
+# declaration form is ordinary C++ and keeps its own meaning.
+accept type_is_a_member <<'CPP'
+struct S {
+    int type;
+};
+int main() {
+    S s{0};
+    return s.type;
+}
+CPP
+accept type_is_an_alias <<'CPP'
+using type = int;
+int main() {
+    type value = 0;
+    return value;
+}
+CPP
+accept where_is_a_function <<'CPP'
+int where(int x) {
+    return x;
+}
+int main() {
+    return where(0);
+}
+CPP
+accept type_returned_by_a_function <<'CPP'
+using type = int;
+type f(int x) {
+    return x;
+}
+int main() {
+    return f(0);
+}
+CPP
+accept where_inside_a_base_type <<'CPP'
+template <class T>
+struct where {
+    T value;
+};
+int main() {
+    where<int> w{0};
+    return w.value;
+}
+CPP
+
+echo "refinement membership is proven or refused; contextual words keep their C++ meaning"

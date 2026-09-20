@@ -108,6 +108,10 @@ struct LocalVersion {
     std::string name;
     std::vector<Expr> operands; // value, body
 
+    // The type the declaration was written with, which is the erased type of the
+    // value together with any refinement the declaration named (SPEC.md 17.2).
+    Type declared;
+
     friend bool operator==(const LocalVersion&, const LocalVersion&) = default;
 };
 

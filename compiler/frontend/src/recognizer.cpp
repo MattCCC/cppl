@@ -45,6 +45,23 @@ std::size_t matching_parenthesis(const std::vector<Token>& tokens, std::size_t o
     return tokens.size();
 }
 
+std::size_t matching_bracket(const std::vector<Token>& tokens, std::size_t open) {
+    std::size_t depth = 0;
+    for (std::size_t index = open; index < tokens.size(); ++index) {
+        if (tokens[index].is_punctuator("[")) {
+            ++depth;
+        } else if (tokens[index].is_punctuator("]")) {
+            --depth;
+            if (depth == 0) {
+                return index;
+            }
+        } else if (tokens[index].kind == TokenKind::EndOfFile) {
+            break;
+        }
+    }
+    return tokens.size();
+}
+
 std::size_t matching_brace(const std::vector<Token>& tokens, std::size_t open) {
     std::size_t depth = 0;
     for (std::size_t index = open; index < tokens.size(); ++index) {
@@ -183,6 +200,128 @@ bool try_law(const TokenStream& stream, std::size_t index, diagnostics::Engine& 
     if (malformed) {
         law.clauses.clear();
         law.name.clear();
+    }
+    return true;
+}
+
+// type name [(index parameters)] = base-type where (predicate);
+//                                            (SPEC.md 17, 18; GRAMMAR.md 14, 16)
+//
+// `type` and `where` are contextual words (SPEC.md 3), so this is C++L only in
+// the complete form. Anything else spelled `type` is an ordinary C++ identifier:
+// `type x = 5;`, `type f(int);` and `using type = int;` all stay Clang's, and so
+// does a `where` written anywhere else, including inside the base type's own
+// brackets. Once the form is complete the declaration is C++L, and what is wrong
+// with it is reported here rather than left to Clang.
+bool try_refinement_type(const TokenStream& stream, std::size_t index, diagnostics::Engine& engine,
+                         RefinementType& refinement, std::size_t& next_index) {
+    const std::vector<Token>& tokens = stream.tokens();
+    if (index + 2 >= tokens.size() || tokens[index + 1].kind != TokenKind::Identifier) {
+        return false;
+    }
+
+    std::size_t cursor = index + 2;
+    std::size_t indices_open = tokens.size();
+    std::size_t indices_close = tokens.size();
+    if (tokens[cursor].is_punctuator("(")) {
+        indices_open = cursor;
+        indices_close = matching_parenthesis(tokens, cursor);
+        if (indices_close >= tokens.size()) {
+            return false;
+        }
+        cursor = indices_close + 1;
+    }
+    if (cursor >= tokens.size() || !tokens[cursor].is_punctuator("=")) {
+        return false;
+    }
+    const std::size_t equals = cursor;
+
+    // The `where` that delimits the predicate stands at the declaration's own
+    // level. One inside brackets belongs to the base type and is C++.
+    std::size_t where = tokens.size();
+    for (std::size_t scan = equals + 1; scan < tokens.size(); ++scan) {
+        if (tokens[scan].is_punctuator("(") || tokens[scan].is_punctuator("[")) {
+            const std::size_t close =
+                tokens[scan].is_punctuator("(") ? matching_parenthesis(tokens, scan) : matching_bracket(tokens, scan);
+            if (close >= tokens.size()) {
+                return false;
+            }
+            scan = close;
+        } else if (tokens[scan].is_punctuator("{") || tokens[scan].is_punctuator(";") ||
+                   tokens[scan].kind == TokenKind::EndOfFile) {
+            return false;
+        } else if (tokens[scan].is_identifier("where")) {
+            where = scan;
+            break;
+        }
+    }
+    if (where >= tokens.size()) {
+        return false;
+    }
+    if (where + 1 >= tokens.size() || !tokens[where + 1].is_punctuator("(")) {
+        return false; // `where` used as an ordinary name in the base type
+    }
+    const std::size_t predicate_close = matching_parenthesis(tokens, where + 1);
+    if (predicate_close >= tokens.size()) {
+        report(engine, stream, tokens[where + 1], diagnostics::Category::CpplSyntax,
+               "unterminated refinement predicate");
+        next_index = where + 2;
+        return true;
+    }
+
+    refinement.name = std::string(tokens[index + 1].text);
+    refinement.range.begin = stream.location_of(tokens[index + 1]);
+    refinement.keyword_location = stream.location_of(tokens[index]);
+    refinement.base_location = stream.location_of(tokens[equals + 1]);
+    refinement.base =
+        source::ByteSpan{tokens[equals].span.end(), tokens[where].span.offset - tokens[equals].span.end()};
+    refinement.predicate = source::ByteSpan{tokens[where + 1].span.end(),
+                                            tokens[predicate_close].span.offset - tokens[where + 1].span.end()};
+    refinement.predicate_location = stream.location_of(tokens[where]);
+    if (indices_open < tokens.size()) {
+        refinement.indexed = true;
+        refinement.indices = source::ByteSpan{tokens[indices_open].span.end(),
+                                              tokens[indices_close].span.offset - tokens[indices_open].span.end()};
+    }
+
+    bool malformed = false;
+    const auto blank = [&stream](const source::ByteSpan& span) {
+        return stream.spelling(span).find_first_not_of(" \t\r\n") == std::string_view::npos;
+    };
+    if (blank(refinement.base)) {
+        report(engine, stream, tokens[equals], diagnostics::Category::CpplSyntax,
+               "refinement type '" + refinement.name + "' declares no base type",
+               "a refinement restricts the values of an ordinary C++ type: 'type " + refinement.name +
+                   " = int where(...)'");
+        malformed = true;
+    }
+    if (blank(refinement.predicate)) {
+        report(engine, stream, tokens[where], diagnostics::Category::CpplSyntax,
+               "refinement type '" + refinement.name + "' states no predicate",
+               "'where' requires a specification expression over 'self'");
+        malformed = true;
+    }
+    if (refinement.indexed && blank(refinement.indices)) {
+        report(engine, stream, tokens[indices_open], diagnostics::Category::CpplSyntax,
+               "refinement type '" + refinement.name + "' declares an empty index list",
+               "write the indices the predicate uses, or no parentheses at all");
+        malformed = true;
+    }
+
+    std::size_t end = predicate_close + 1;
+    if (end >= tokens.size() || !tokens[end].is_punctuator(";")) {
+        report(engine, stream, tokens[index], diagnostics::Category::CpplSyntax,
+               "a refinement type declaration ends with ';'");
+        next_index = end;
+        return true;
+    }
+    refinement.range.span =
+        source::ByteSpan{tokens[index].span.offset, tokens[end].span.end() - tokens[index].span.offset};
+    refinement.end_line = tokens[end].line;
+    next_index = end + 1;
+
+    if (malformed) {
+        refinement.name.clear();
     }
     return true;
 }
@@ -881,6 +1020,25 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine) {
         if (!at_declaration_start(tokens, index)) {
             ++index;
             continue;
+        }
+
+        // type name [(indices)] = base where (predicate);  (GRAMMAR.md 14, 16)
+        if (tokens[index].is_identifier("type")) {
+            RefinementType refinement;
+            std::size_t next = index + 1;
+            if (try_refinement_type(stream, index, engine, refinement, next)) {
+                if (!refinement.name.empty()) {
+                    if (at_namespace_scope()) {
+                        syntax.refinement_types.push_back(std::move(refinement));
+                    } else {
+                        report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
+                               "refinement type '" + refinement.name + "' is declared outside namespace scope",
+                               "this implementation recognizes refinement types at namespace scope only");
+                    }
+                }
+                index = next;
+                continue;
+            }
         }
 
         // trusted law ... ;  (GRAMMAR.md 24)

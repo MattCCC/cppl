@@ -124,6 +124,11 @@ std::vector<obligations::ObligationResult> verify(const obligations::Program& pr
                 diagnostic.message = "loop invariant '" + obligation.subject + "' does not hold on entry";
             } else if (obligation.origin == obligations::Origin::LoopPreservation) {
                 diagnostic.message = "loop invariant '" + obligation.subject + "' is not preserved by an iteration";
+            } else if (obligation.origin == obligations::Origin::RefinementIntroduction) {
+                // The value is what must satisfy the predicate; the refinement is
+                // not something a proof can be written for.
+                diagnostic.message = "this value is not shown to satisfy refinement type '" +
+                                     obligation.subject.substr(obligation.subject.rfind(' ') + 1) + "'";
             } else {
                 diagnostic.message = "law '" + obligation.subject + "' is not proven";
             }

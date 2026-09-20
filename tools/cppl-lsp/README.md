@@ -322,6 +322,48 @@ Users should see one coherent diagnostic stream regardless of which subsystem di
 
 ---
 
+## Refinement types
+
+A refinement type is a C++L declaration that also bears a C++ type, so it is a
+case where both authorities are involved at once:
+
+```cpp
+type Percentage = int where (self >= 0 && self <= 100);
+```
+
+The division follows the ownership rule. `type`, `where`, `self`, the index
+binders and the predicate are C++L, and the C++L frontend supplies them: the
+declaration's ranges, the refinement's name, its base type, its indices and the
+membership obligations a value owes where it enters the type. The base type itself,
+every name inside the predicate and every ordinary use of the refinement name are
+C++, and Clang answers for them against the projection, where the declaration
+appears as the alias it lowers to.
+
+What the language server should therefore be able to show:
+
+```text
+Percentage
+refinement of int
+where self >= 0 && self <= 100
+erases to int
+```
+
+That last line matters: the hover must not present a refinement as a distinct
+runtime C++ class, because it is not one. It is verification-level identity over
+the base type (`SPEC.md` 17.4).
+
+The capabilities this touches are declaration highlighting for `type` and `where`,
+hover and type information combining the refinement with its base, go-to-definition
+from a use of the name to the declaration, completion of refinement names where a
+type is expected, and the membership diagnostics the frontend produces. Ordinary
+C++ completion and navigation inside the predicate and the base type stay Clang's.
+
+Source mapping is what keeps this usable. A refinement declaration lowers to an
+alias in place, carrying one newline per newline of the declaration, so a Clang
+diagnostic on any later line still maps to the line the author wrote.
+
+---
+
 ## Verification information
 
 C++L introduces information that ordinary C++ language servers cannot expose.

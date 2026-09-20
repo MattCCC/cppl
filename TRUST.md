@@ -307,6 +307,43 @@ ordinary C++
 
 The erasure implementation must preserve the runtime behavior defined by the verified program.
 
+## 10.1 Two classes of C++L syntax
+
+C++L syntax falls into two classes, and erasure treats them differently. The
+distinction is checked, not assumed:
+
+```text
+proof-only syntax
+    -> blanked: every byte becomes a space, so nothing is added or altered
+
+runtime-bearing declarations
+    -> replaced by the canonical C++ the declaration means
+```
+
+Laws, proofs, contracts, loop invariants and the `verified` and `pure` specifiers
+are proof-only. Every byte position and line of the surrounding program is
+preserved, so a construct from a later standard can never appear in the runtime
+program because nothing appears there at all.
+
+A refinement type declaration is runtime-bearing, because a refinement has the
+runtime representation of its base type (`SPEC.md` 17.4) and the program names it:
+
+```text
+erase(type R = T where (P);)        =  using R = T;
+erase(type R(I i) = T where (P);)   =  template <I i> using R = T;
+```
+
+The lowering is deterministic and derived from the declaration alone. The erasure
+check recomputes it from the recognized declaration and compares, so the projector
+cannot put anything else in a declaration's place, and it carries one newline per
+newline in the declaration, so no line of the program moves. What is introduced is
+an alias, which every standard C++L targets already has; no wrapper type,
+constructor, predicate, runtime check or ABI-visible state is generated.
+
+This class is deliberately narrow. It exists for declarations whose C++ runtime
+representation must remain present, and it is not a general source-to-source
+rewrite: Clang remains the authority for ordinary C++ syntax and semantics.
+
 The erasure pass MUST NOT silently:
 
 - remove required runtime validation

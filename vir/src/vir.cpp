@@ -128,4 +128,13 @@ const Function* Module::find(const SymbolId& symbol) const {
     return nullptr;
 }
 
+const RefinementDeclaration* Module::find_refinement(std::string_view name) const {
+    for (const RefinementDeclaration& refinement : refinements) {
+        if (refinement.name == name) {
+            return &refinement;
+        }
+    }
+    return nullptr;
+}
+
 } // namespace cppl::vir

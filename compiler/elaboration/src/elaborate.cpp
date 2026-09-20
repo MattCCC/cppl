@@ -24,17 +24,27 @@ void report(diagnostics::Engine& engine, diagnostics::Category category, const s
 }
 
 std::optional<vir::Type> convert_type(const clangbridge::Type& type) {
+    std::optional<vir::Type> converted;
     switch (type.kind) {
         case clangbridge::TypeKind::Int:
-            return vir::Type::integer(type.width, type.is_signed);
-        case clangbridge::TypeKind::Bool:
-            return vir::Type::boolean();
-        case clangbridge::TypeKind::Proposition:
-            return vir::Type::proposition();
-        case clangbridge::TypeKind::Unsupported:
+            converted = vir::Type::integer(type.width, type.is_signed);
             break;
+        case clangbridge::TypeKind::Bool:
+            converted = vir::Type::boolean();
+            break;
+        case clangbridge::TypeKind::Proposition:
+            converted = vir::Type::proposition();
+            break;
+        case clangbridge::TypeKind::Unsupported:
+            return std::nullopt;
     }
-    return std::nullopt;
+    // The base type is what the value is; the refinements are what is known
+    // about it (SPEC.md 17). Both are carried, so verification can tell
+    // `Percentage` from `int` while code generation cannot.
+    for (const clangbridge::Refinement& refinement : type.refinements) {
+        converted->refinements.push_back(vir::Refinement{refinement.name, refinement.arguments});
+    }
+    return converted;
 }
 
 vir::BinaryOp convert_operator(clangbridge::BinaryOp op) {
@@ -244,6 +254,9 @@ class ExpressionElaborator {
             vir::LocalVersion converted;
             converted.version = bound->version;
             converted.name = bound->name;
+            if (const std::optional<vir::Type> declared = convert_type(bound->declared)) {
+                converted.declared = *declared;
+            }
             for (const auto& operand : bound->operands) {
                 auto value = convert(operand);
                 if (!value)
@@ -579,6 +592,75 @@ void elaborate_contract(const Request& request, const frontend::VerifiedFunction
 //
 // Nothing here decides whether a proof holds. It decides only what the author
 // wrote: which law is named, at which arguments, and which proof a step uses.
+// A refinement type declaration: the base type and the predicate, as Clang
+// resolved them (SPEC.md 17).
+//
+// The probe binds the declaration's indices and then `self`, in that order, so
+// the base type is the last parameter's type and the indices are the ones before
+// it. Nothing about the predicate is read from the source here: what it means is
+// the expression Clang resolved in the probe's body.
+void elaborate_refinements(const Request& request, std::uint32_t& next_expression_id, Result& result,
+                           diagnostics::Engine& engine) {
+    for (std::size_t index = 0; index < request.syntax.refinement_types.size(); ++index) {
+        const frontend::RefinementType& declaration = request.syntax.refinement_types[index];
+        const auto probe =
+            std::ranges::find_if(request.projection.refinement_probes, [index](const frontend::RefinementProbe& entry) {
+                return entry.refinement_index == index;
+            });
+        if (probe == request.projection.refinement_probes.end()) {
+            continue;
+        }
+
+        const std::string subject = "refinement type '" + declaration.name + "'";
+        const clangbridge::Function* function = find_projected(request.unit, probe->probe, probe->location);
+        if (function == nullptr || !function->returned_value.has_value()) {
+            report(engine, diagnostics::Category::Elaboration, declaration.predicate_location,
+                   "the predicate of " + subject + " was not resolved",
+                   function == nullptr ? "Clang did not resolve the projected predicate"
+                                       : "the predicate produced no value");
+            continue;
+        }
+
+        const std::optional<std::vector<vir::Parameter>> parameters = convert_parameters(*function, engine, subject);
+        if (!parameters.has_value()) {
+            continue;
+        }
+        if (parameters->empty()) {
+            report(engine, diagnostics::Category::Elaboration, declaration.predicate_location,
+                   "the predicate of " + subject + " states no value to refine");
+            continue;
+        }
+
+        ExpressionElaborator elaborator(next_expression_id);
+        std::optional<vir::Expr> predicate = elaborator.convert(*function->returned_value);
+        if (!predicate.has_value()) {
+            const auto& failure = elaborator.failure();
+            report(engine, diagnostics::Category::UnsupportedSemantics,
+                   failure.has_value() && failure->location.is_valid() ? failure->location
+                                                                       : declaration.predicate_location,
+                   subject + " has a predicate this implementation does not model: " +
+                       (failure.has_value() ? failure->reason : "it has no representation"));
+            continue;
+        }
+        if (!predicate->type.is_boolean() && !predicate->type.is_proposition()) {
+            report(engine, diagnostics::Category::UnsupportedSemantics, declaration.predicate_location,
+                   subject + " states a predicate of type '" + vir::describe(predicate->type) + "'",
+                   "a refinement predicate states a proposition about 'self'");
+            continue;
+        }
+        predicate->provenance.range.begin = declaration.predicate_location;
+
+        vir::RefinementDeclaration refined;
+        refined.name = declaration.name;
+        refined.base = parameters->back().type;
+        refined.indices.assign(parameters->begin(), parameters->end() - 1);
+        refined.predicate = std::move(*predicate);
+        refined.range = declaration.range;
+        refined.predicate_range.begin = declaration.predicate_location;
+        result.module.refinements.push_back(std::move(refined));
+    }
+}
+
 void elaborate_proofs(const Request& request, const std::map<std::string, vir::LawId>& admitted_laws,
                       const std::map<std::string, std::string>& law_names, std::uint32_t& next_expression_id,
                       Result& result, diagnostics::Engine& engine) {
@@ -911,6 +993,7 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
         result.module.laws.push_back(std::move(law));
     }
 
+    elaborate_refinements(request, next_expression_id, result, engine);
     elaborate_proofs(request, admitted_laws, law_names, next_expression_id, result, engine);
     return result;
 }

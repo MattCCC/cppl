@@ -384,7 +384,7 @@ std::expected<kernel::Proposition, Failure> lower_proposition(const vir::Expr& e
         auto body = lower_proposition(quantified->body[0], definitions, parameter_count + quantified->binders.size());
         if (!body)
             return body;
-        for (auto binder : std::views::reverse(quantified->binders)) {
+        for (const auto& binder : std::views::reverse(quantified->binders)) {
             const auto type = lower_type(binder);
             if (!type)
                 return fail("unsupported quantifier binder type", location);
@@ -1700,6 +1700,49 @@ Program generate(const vir::Module& module, const elaboration::Result& elaborate
         obligation.id = identify(program.context, law.name, goal);
         obligation.goal = std::move(goal);
         program.obligations.push_back(std::move(obligation));
+    }
+
+    // A refinement type's predicate, stated once so every site a value enters
+    // that type can ask for it (SPEC.md 17.2). It is a proposition over the
+    // declaration's indices and the value, and it becomes an obligation only
+    // where a value actually enters the type - a declaration asserts nothing.
+    for (const auto& refinement : module.refinements) {
+        RefinementPredicate stated;
+        stated.name = refinement.name;
+        bool modeled = true;
+        for (const auto& index : refinement.indices) {
+            const std::optional<kernel::Type> type = detail::core_type(index.type);
+            if (!type.has_value()) {
+                report(engine, diagnostics::Category::UnsupportedSemantics, refinement.range.begin,
+                       "refinement type '" + refinement.name + "' has an index of type '" + vir::describe(index.type) +
+                           "', which the formal core does not represent");
+                modeled = false;
+                break;
+            }
+            stated.parameters.push_back(*type);
+        }
+        if (!modeled) {
+            continue;
+        }
+        const std::optional<kernel::Type> base = detail::core_type(refinement.base);
+        if (!base.has_value()) {
+            report(engine, diagnostics::Category::UnsupportedSemantics, refinement.range.begin,
+                   "refinement type '" + refinement.name + "' refines '" + vir::describe(refinement.base) +
+                       "', which the formal core does not represent");
+            continue;
+        }
+        stated.parameters.push_back(*base);
+
+        auto predicate = lower_proposition(refinement.predicate, definitions, stated.parameters.size());
+        if (!predicate) {
+            report(engine, diagnostics::Category::UnsupportedSemantics, predicate.error().location,
+                   "refinement type '" + refinement.name +
+                       "' cannot be stated to the formal core: " + predicate.error().reason,
+                   explain(predicate.error()));
+            continue;
+        }
+        stated.predicate = std::move(*predicate);
+        program.refinements.push_back(std::move(stated));
     }
 
     detail::generate_contracts(module, definitions, program, engine, explain);

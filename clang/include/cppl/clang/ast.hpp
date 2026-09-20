@@ -25,11 +25,25 @@ enum class TypeKind : std::uint8_t {
     Unsupported,
 };
 
+// A refinement the written type named, with the values its indices were applied
+// at (SPEC.md 17, 18). Clang canonicalizes a refinement to its base type, which
+// is exactly right for the runtime program and wrong for verification, so the
+// name the author wrote is recorded here beside the canonical facts.
+struct Refinement {
+    std::string name;
+    std::vector<std::int64_t> arguments;
+
+    friend bool operator==(const Refinement&, const Refinement&) = default;
+};
+
 struct Type {
     TypeKind kind = TypeKind::Unsupported;
     std::uint16_t width = 0; // value bits, for Int
     bool is_signed = true;
     std::string spelling;
+
+    // Outermost refinement first. Empty for an ordinary C++ type.
+    std::vector<Refinement> refinements;
 
     friend bool operator==(const Type&, const Type&) = default;
 };
@@ -103,6 +117,11 @@ struct LocalVersion {
     std::uint32_t version = 0;
     std::string name;
     std::vector<Expr> operands; // value, body
+
+    // The type the declaration was written with. The value's own type is the
+    // erased one; this keeps what was declared, so a refinement the declaration
+    // named is still known where the value enters it (SPEC.md 17.2).
+    Type declared;
 };
 
 // A read of the version of a local that is current at this point.

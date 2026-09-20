@@ -198,8 +198,11 @@ kernel-checked linear order reasoning, and `while`/`for` loops with explicit
 invariants (partial correctness) are prototyped. The formal language is now
 under way: explicit equality, universal quantification, implication, conjunction,
 disjunction and equivalence are prototyped as propositions, and formal operands
-compose through them. Next in that core are existential quantification with its
-proof surface, dependent and refinement types, induction and termination. Memory/reference reasoning, signed arithmetic with
+compose through them. Refinement and indexed refinement types are prototyped: they
+declare a verification-level type over an ordinary C++ base type, lower to the
+alias the program keeps, and make membership an obligation wherever a value enters
+one. Next in that core are existential quantification with its proof surface,
+induction and termination. Memory/reference reasoning, signed arithmetic with
 overflow obligations, and SMT remain later work. See `STATUS.md` for the
 supported fragment.
 

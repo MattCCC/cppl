@@ -935,6 +935,15 @@ formal-index-parameter-list
         {"," parameter-declaration}
 ```
 
+An index written as a bare name, with no type of its own, takes the type being
+refined:
+
+```cpp
+type Index(n) = std::size_t where (self < n);
+```
+
+is `type Index(std::size_t n) = std::size_t where (self < n);`.
+
 Example:
 
 ```cpp

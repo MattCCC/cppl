@@ -1600,6 +1600,31 @@ explicit trusted boundary
 
 A value of refinement type may be used as its base value while retaining the refinement proposition as known evidence within verified reasoning.
 
+### 17.3.1 Current refinement fragment
+
+The implementation accepts refinement declarations at namespace scope, over modeled
+built-in integer and Boolean base types, with or without indices. The base type and
+the predicate are resolved by Clang; `self` is an ordinary parameter of the base
+type, so it is a name Clang binds rather than one C++L invents.
+
+Membership is an obligation, never an assumption. A value entering a refinement
+type inside a verified function - today, a local declaration - states its predicate
+where it enters, under whatever the path supposes there, so a branch fact can
+discharge it. A refined parameter's predicate is supposed inside the body, and the
+author does not restate it as an `expects` clause. A refined result is stated with
+the postcondition and proven on every path that returns. Using a refined value as
+its base value requires nothing further.
+
+A refinement whose base type is another refinement states both predicates: the one
+written and every one it inherits (17.5). An indexed refinement states its
+predicate at the values its indices were applied at.
+
+Not yet modeled, and refused rather than approximated: assignment into a refined
+local, refined call arguments and refined returns of an unverified function,
+refinement implication between two different refinement types, refined members,
+references and pointers, and refinements in templated contexts. A refinement over a
+base type outside the modeled fragment is refused where it is declared.
+
 ---
 
 ## 17.4 Runtime representation
@@ -1607,6 +1632,21 @@ A value of refinement type may be used as its base value while retaining the ref
 Unless explicitly specified otherwise, a refinement type has the runtime representation of its base type.
 
 Its refinement proof is erased.
+
+A refinement declaration therefore lowers to the alias it means, and that alias is
+what the program keeps:
+
+```text
+type R = T where (P);        ->  using R = T;
+type R(I i) = T where (P);   ->  template <I i> using R = T;
+```
+
+The lowering MUST be deterministic and derived from the declaration alone. It MUST
+NOT introduce a wrapper type, a constructor, a hidden field, a runtime predicate, a
+runtime check, an RTTI distinction, ABI-visible state, or a different object
+layout. Verification-level identity is separate from this representation: two
+refinements of one base type erase to the same C++ type and remain distinct
+refinement types (`TRUST.md` 10.1).
 
 For example:
 
@@ -1621,6 +1661,21 @@ int
 ```
 
 while carrying additional compile-time proof information.
+
+---
+
+## 17.5 Refinement composition
+
+A refinement whose base type is another refinement states the conjunction of the
+applicable predicates. The inner predicate MUST NOT be discarded:
+
+```cpp
+type NonNegative = int where (self >= 0);
+type Percentage = NonNegative where (self <= 100);
+```
+
+A value entering `Percentage` owes `self >= 0 && self <= 100`. Erasure still
+reaches the ultimate ordinary C++ base representation, `int`.
 
 ---
 

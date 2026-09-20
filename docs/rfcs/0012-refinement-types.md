@@ -1,0 +1,102 @@
+# Refinement and indexed refinement types
+
+Status: implemented. Semantics are SPEC.md 17, 17.5, 18 and GRAMMAR.md 14, 15, 16.
+
+A refinement type is a verification-level type over an ordinary C++ base type:
+
+```text
+R = { self : T | P(self) }
+```
+
+It introduces no runtime representation of its own. Two refinements of one base
+type are the same type to the machine and different types to the verifier.
+
+## Erasure gains a second class
+
+The declaration form cannot survive an erasure that only deletes. Blanking
+
+```cpp
+type Percentage = int where (self >= 0 && self <= 100);
+```
+
+leaves `Percentage` undeclared in the runtime program, so SPEC.md 17.4 - a
+refinement has the runtime representation of its base type - could not hold for any
+use of the name. Every other C++L form is additive decoration around text that is
+already valid C++; this one is not.
+
+C++L syntax therefore has two erasure classes (TRUST.md 10.1). Proof-only syntax is
+blanked as before. A runtime-bearing declaration is replaced by the canonical C++ it
+means:
+
+```text
+type R = T where (P);        ->  using R = T;
+type R(I i) = T where (P);   ->  template <I i> using R = T;
+```
+
+The lowering is derived from the declaration alone, and `compiler/erasure`
+recomputes it from the recognized declaration rather than trusting the projector, so
+nothing else can be put in a declaration's place. It carries one newline per newline
+of the declaration, so no line of the program moves and a Clang diagnostic below one
+still maps to the line the author wrote. An alias is C++11, so no construct from a
+later standard is introduced. The class is deliberately narrow: it is for
+declarations whose runtime representation must remain present, not a general
+source-to-source rewrite.
+
+## Semantic model
+
+`type` and `where` stay contextual. Only the complete form is C++L, so `type x = 5;`,
+`type f(int);`, `using type = int;` and a `where` inside the base type's brackets all
+remain ordinary C++.
+
+Clang resolves the base type and the predicate. `self` is projected as an ordinary
+parameter of the base type, and each index as a parameter before it, so every name in
+a predicate is one Clang binds. An index written as a bare name takes the base type.
+
+Refinement identity is carried beside the erased type rather than in place of it:
+`vir::Type` keeps its base together with the refinements it names and the values
+their indices were applied at. Ordinary type comparison is the erased one, because
+that is what code generation and arithmetic are about; refinement identity is asked
+where verification needs it. Clang canonicalizes a refinement to its base type, so
+the name is recovered from the alias declaration the written type came through -
+not from the type's spelling.
+
+## Introduction and elimination
+
+A declaration asserts nothing. Membership is an obligation with its own origin,
+stated where a value enters the type and closed under what the path supposes there,
+so a branch fact discharges it:
+
+```cpp
+if (x >= 0) {
+    NonNegative n = x;   // owes  x >= 0, which the branch establishes
+}
+```
+
+Elimination is the other direction. A refined parameter's predicate is supposed
+inside the body, so the author never restates it as an `expects` clause; a refined
+result is stated with the postcondition and proven on every path that returns; and
+using a refined value as its base value requires nothing.
+
+A refinement of a refinement states every predicate that applies, so a value
+entering `Percentage = NonNegative where (self <= 100)` owes both. An indexed
+refinement states its predicate at the values its indices were applied at, which
+Clang has already evaluated.
+
+## Trust
+
+Kernel rules, assumptions, axioms and trusted mechanisms added: zero. A refinement
+predicate becomes an ordinary proposition and its obligations are checked by the
+kernel like any other. No wrapper type, constructor, hidden field, runtime
+predicate, runtime check, RTTI distinction or ABI-visible state is generated, and no
+unproven membership is accepted or turned into a runtime check.
+
+What is new in the trust boundary is the second erasure class, which is why erasure
+recomputes each lowering and why the tests check the emitted C++ as text and run the
+erased program compiled by Clang alone.
+
+## Boundary
+
+Not modeled, and refused rather than approximated: assignment into a refined local,
+refined call arguments, refined returns of an unverified function, implication
+between two different refinement types, refined members, references and pointers,
+and refinements in templated contexts. SPEC.md 17.3.1 states the fragment.

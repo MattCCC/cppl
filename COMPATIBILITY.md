@@ -287,10 +287,13 @@ suite: an ordinary program compiles and runs unchanged in each, and a program
 using C++L words as ordinary identifiers does too.
 
 The compiler is built as C++23. The program handed to code generation is the
-user's own text with formal spans blanked, so erasure can only delete and can
-never introduce a construct from a later standard. That property is checked
-directly: the runtime program is emitted and compiled on its own under
-`-std=c++17 -pedantic-errors -Werror`.
+user's own text with proof-only spans blanked, so nothing is added where C++L
+syntax stood. The one exception is a declaration whose runtime representation must
+remain present: a refinement type lowers to the alias it means, `using R = T;`,
+which is C++11 and therefore available in every standard C++L targets
+(`TRUST.md` 10.1). Erasure can never introduce a construct from a later standard.
+That property is checked directly: the runtime program is emitted and compiled on
+its own under `-std=c++17 -pedantic-errors -Werror`.
 
 ## Contextual recognition
 

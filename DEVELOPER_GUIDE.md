@@ -478,6 +478,37 @@ can rely on:
 
 provided construction of `Percentage` is properly verified or runtime-validated.
 
+The syntax the compiler accepts today parenthesizes the predicate, and an indexed
+refinement names its indices:
+
+```cpp
+type Percentage = int where(self >= 0 && self <= 100);
+type Index(unsigned n) = unsigned where(self < n);
+```
+
+At runtime a `Percentage` *is* an `int`. The declaration lowers to `using
+Percentage = int;` and nothing else: no wrapper, no check, no layout change. What
+the refinement adds is compile time only:
+
+```cpp
+verified int clamped(int x) ensures(result >= 0) {
+    if (x >= 0) {
+        Percentage p = x;   // the branch proves 0 <= x; 0 <= x <= 100 is owed here
+        return p;
+    }
+    return 0;
+}
+```
+
+Every value that enters the type owes its predicate where it enters, and the fact
+that a branch established it is enough. Going the other way is free: a
+`Percentage` is usable wherever an `int` is, and a refined parameter's predicate is
+already known inside the body, so there is no need to repeat it as an `expects`
+clause.
+
+A refinement of a refinement keeps both predicates, so a value entering the inner
+one owes all of them.
+
 ---
 
 # 13. Runtime validation

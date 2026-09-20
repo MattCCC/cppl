@@ -24,6 +24,16 @@ struct Selection {
         source::ProjectionShape shape;
     };
     std::vector<PropositionProbe> proposition_probes;
+
+    // The refinement types declared in this unit (SPEC.md 17). Clang resolves
+    // their aliases like any other, so the bridge needs the names to tell a
+    // refinement apart from an ordinary alias to the same base type.
+    struct Refinement {
+        std::string name;
+        std::string probe; // the generated function stating its predicate
+        std::size_t index_count = 0;
+    };
+    std::vector<Refinement> refinements;
 };
 
 struct ParseRequest {

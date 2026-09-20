@@ -130,7 +130,7 @@ v::Expr local(std::uint32_t version) {
 v::Expr versioned(std::uint32_t version, v::Expr value, v::Expr body) {
     v::Expr expression;
     expression.type = body.type;
-    expression.node = v::LocalVersion{version, "y", {std::move(value), std::move(body)}};
+    expression.node = v::LocalVersion{version, "y", {std::move(value), std::move(body)}, {}};
     return expression;
 }
 
@@ -441,11 +441,11 @@ v::Function counting(v::Expr invariant, std::uint32_t loop_id = 0) {
     v::Expr step;
     step.type = vUnsigned;
     step.node = v::Binary{v::BinaryOp::Add, {local(1), number(1)}};
-    auto iteration = control(v::LocalVersion{2, "i", {std::move(step), control(v::Iterate{loop_id, {local(2)}})}});
+    auto iteration = control(v::LocalVersion{2, "i", {std::move(step), control(v::Iterate{loop_id, {local(2)}})}, {}});
     auto head =
         control(v::Conditional{{compare(v::BinaryOp::Less, local(1), parameter(0)), std::move(iteration), local(1)}});
     auto loop = control(v::Loop{0, {1}, {"i"}, 1, {local(0), std::move(invariant), std::move(head)}});
-    function.returned_value = control(v::LocalVersion{0, "i", {number(0), std::move(loop)}});
+    function.returned_value = control(v::LocalVersion{0, "i", {number(0), std::move(loop)}, {}});
     function.contract = v::Contract{{}, equality(parameter(1), parameter(0)), {}};
     return function;
 }

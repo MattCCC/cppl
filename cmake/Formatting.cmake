@@ -99,6 +99,14 @@ list(
     "/generated/"
 )
 
+# `tmp/` is ignored scratch. It holds C++L sources and emitted runtime text,
+# neither of which is C++ this project's style applies to.
+list(
+    FILTER CPPL_FORMAT_FILES
+    EXCLUDE REGEX
+    "/tmp/"
+)
+
 list(
     SORT CPPL_FORMAT_FILES
 )

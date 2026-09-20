@@ -81,18 +81,40 @@ struct PropositionProbe {
     source::ProjectionShape shape;
 };
 
+// A refinement type's predicate, projected so Clang resolves it with `self`
+// bound to a value of the base type and each index bound to its own parameter.
+// The proposition itself is supplied by this record; the probe only asks Clang
+// what the expression means (SPEC.md 17.1).
+struct RefinementProbe {
+    std::string name;  // the refinement type's own name
+    std::string probe; // the generated function stating its predicate
+    std::size_t refinement_index = 0;
+    std::size_t index_count = 0; // parameters standing before `self`
+    source::SourceLocation location;
+    source::ProjectionShape shape;
+};
+
+// A runtime-bearing C++L declaration and the canonical C++ it lowers to
+// (`TRUST.md` 7.1). The text is recomputed from the declaration when erasure is
+// checked, so the projector cannot put anything else in its place.
+struct RuntimeLowering {
+    source::ByteSpan span; // the declaration in the scanned text
+    std::string text;      // the canonical C++ that replaces it
+};
+
 // One projector, two texts.
 //
-// `runtime` is the program: the scanned text with every C++L-only span blanked.
+// `runtime` is the program: the scanned text with every proof-only span blanked
+// and every runtime-bearing declaration replaced by the canonical C++ it means.
 // `analysis` is the same text with those spans replaced by the specification
 // functions Clang needs to resolve. Both come from the same spans in the same
 // pass, so the runtime program C++L verifies and the runtime program Clang
 // compiles cannot drift apart (ARCHITECTURE.md 10, 11).
 //
 // Blanking preserves every byte position and every line of the text that
-// remains, so erasure can only delete: no construct is ever inserted into the
-// runtime program, which is what keeps a C++17 target C++17
-// (COMPATIBILITY.md).
+// remains. A canonical lowering preserves every line, so no line number moves,
+// and introduces only the declaration C++ already has a spelling for, which is
+// what keeps a C++17 target C++17 (COMPATIBILITY.md).
 struct Projection {
     std::string analysis;
     std::string runtime;
@@ -101,6 +123,8 @@ struct Projection {
     std::vector<ContractFunctions> contract_functions;
     std::vector<LoopInvariantMarker> loop_invariants;
     std::vector<PropositionProbe> proposition_probes;
+    std::vector<RefinementProbe> refinement_probes;
+    std::vector<RuntimeLowering> runtime_lowerings;
     std::vector<diagnostics::Diagnostic> diagnostics;
 
     // Positions of executable declarations copied into the analysis buffer.
@@ -120,5 +144,16 @@ struct ProjectionOptions {
 };
 
 [[nodiscard]] Projection project(const TokenStream& stream, const Syntax& syntax, const ProjectionOptions& options);
+
+// The canonical C++ a refinement declaration lowers to (SPEC.md 17.4):
+//
+//     type R = T where (P);              ->  using R = T;
+//     type R(I i) = T where (P);         ->  template <I i> using R = T;
+//
+// Deterministic and derived from the declaration alone, so erasure can check the
+// runtime program against it without trusting the projector. The result carries
+// one newline per newline in the declaration, so no line moves. An index written
+// without a type takes the base type.
+[[nodiscard]] std::string canonical_lowering(const TokenStream& stream, const RefinementType& refinement);
 
 } // namespace cppl::frontend

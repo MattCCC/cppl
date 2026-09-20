@@ -3,6 +3,7 @@
 #include "formal_projection.hpp"
 
 #include <algorithm>
+#include <ranges>
 
 namespace cppl::frontend {
 
@@ -25,7 +26,90 @@ struct Edit {
     std::optional<std::size_t> specification_index = std::nullopt;
 };
 
+// The tokens of a span, on one line. Two tokens the author wrote adjacently stay
+// adjacent, so a type-id reads as it was written; anything between them - space,
+// newline or comment - becomes one space. Restating the tokens rather than
+// copying the bytes is what keeps a comment or a line break out of the result.
+std::string spelled_tokens(const TokenStream& stream, const source::ByteSpan& span) {
+    std::string text;
+    std::size_t previous_end = 0;
+    for (const Token& token : stream.tokens()) {
+        if (token.span.offset < span.offset || token.span.end() > span.end()) {
+            continue;
+        }
+        if (token.kind == TokenKind::EndOfFile) {
+            break;
+        }
+        if (!text.empty() && token.span.offset != previous_end) {
+            text += ' ';
+        }
+        text += token.text;
+        previous_end = token.span.end();
+    }
+    return text;
+}
+
+// An index parameter list, with a bare name given the base type. GRAMMAR.md 16
+// declares indices with ordinary parameter syntax; `type Index(n) = T where(...)`
+// names one whose type is the type it refines.
+std::string spelled_indices(const TokenStream& stream, const RefinementType& refinement) {
+    const std::string base = spelled_tokens(stream, refinement.base);
+    std::string result;
+    std::string parameter;
+    std::size_t token_count = 0;
+    std::size_t previous_end = 0;
+    const auto flush = [&] {
+        if (parameter.empty()) {
+            return;
+        }
+        if (!result.empty()) {
+            result += ", ";
+        }
+        // A single token is a bare name, so its type is the one being refined.
+        result += token_count == 1 ? base + " " + parameter : parameter;
+        parameter.clear();
+        token_count = 0;
+    };
+    for (const Token& token : stream.tokens()) {
+        if (token.span.offset < refinement.indices.offset || token.span.end() > refinement.indices.end()) {
+            continue;
+        }
+        if (token.kind == TokenKind::EndOfFile) {
+            break;
+        }
+        if (token.is_punctuator(",")) {
+            flush();
+            previous_end = token.span.end();
+            continue;
+        }
+        if (!parameter.empty() && token.span.offset != previous_end) {
+            parameter += ' ';
+        }
+        parameter += token.text;
+        previous_end = token.span.end();
+        ++token_count;
+    }
+    flush();
+    return result;
+}
+
 } // namespace
+
+std::string canonical_lowering(const TokenStream& stream, const RefinementType& refinement) {
+    std::string text;
+    if (refinement.indexed) {
+        text += "template <" + spelled_indices(stream, refinement) + "> ";
+    }
+    text += "using " + refinement.name + " = " + spelled_tokens(stream, refinement.base) + ";";
+    // Every line of the declaration stays a line of the program, so nothing
+    // below it moves.
+    for (const char character : stream.spelling(refinement.range.span)) {
+        if (character == '\n') {
+            text += '\n';
+        }
+    }
+    return text;
+}
 
 Projection project(const TokenStream& stream, const Syntax& syntax, const ProjectionOptions& options) {
     const std::string_view text = stream.text();
@@ -86,6 +170,55 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         replacement += line_directive(end_line, begin.file);
         return replacement;
     };
+
+    // A refinement type is runtime-bearing: the program keeps the alias it means
+    // and loses only its predicate (SPEC.md 17.4, TRUST.md 7.1). The analysis
+    // text gets the same alias, so every ordinary use of the name is Clang's, and
+    // a probe stating the predicate with `self` and the indices bound.
+    for (std::size_t index = 0; index < syntax.refinement_types.size(); ++index) {
+        const RefinementType& refinement = syntax.refinement_types[index];
+        const std::string lowering = canonical_lowering(stream, refinement);
+        projection.runtime_lowerings.push_back(RuntimeLowering{refinement.range.span, lowering});
+
+        const std::string suffix = std::to_string(index) + (options.unit_key.empty() ? "" : "_" + options.unit_key);
+        RefinementProbe probe;
+        probe.name = refinement.name;
+        probe.probe = options.generated_prefix + "refinement_" + suffix;
+        probe.refinement_index = index;
+        probe.location = refinement.predicate_location;
+
+        std::string parameters = refinement.indexed ? spelled_indices(stream, refinement) : std::string{};
+        probe.index_count = parameters.empty() ? 0 : 1 + static_cast<std::size_t>(std::ranges::count(parameters, ','));
+        if (!parameters.empty()) {
+            parameters += ", ";
+        }
+        // `self` is an ordinary parameter of the base type, which is what makes
+        // it a name Clang resolves rather than one C++L invents (SPEC.md 17.1).
+        parameters += spelled_tokens(stream, refinement.base) + " self";
+
+        std::string replacement = "\n";
+        replacement += line_directive(refinement.keyword_location.line, refinement.keyword_location.file);
+        replacement += lowering.substr(0, lowering.find_last_of(';') + 1);
+        replacement += "\n";
+        replacement += line_directive(refinement.predicate_location.line, refinement.keyword_location.file);
+        replacement += "[[maybe_unused]] static bool " + probe.probe + "(" + parameters + ")";
+
+        const auto formula = detail::project_formula(stream, refinement.predicate);
+        if (formula.failure) {
+            diagnostics::Diagnostic diagnostic;
+            diagnostic.severity = diagnostics::Severity::Error;
+            diagnostic.category = diagnostics::Category::UnsupportedSemantics;
+            diagnostic.location = refinement.predicate_location;
+            diagnostic.message = "refinement type '" + refinement.name + "': " + *formula.failure;
+            projection.diagnostics.push_back(std::move(diagnostic));
+        }
+        probe.shape = formula.shape;
+        replacement += " { return (" + formula.expression + "); }\n";
+        replacement += line_directive(refinement.end_line, refinement.keyword_location.file);
+
+        projection.refinement_probes.push_back(std::move(probe));
+        edits.push_back(Edit{refinement.range.span, std::move(replacement)});
+    }
 
     for (std::size_t index = 0; index < syntax.laws.size(); ++index) {
         const LawDeclaration& law = syntax.laws[index];
@@ -278,6 +411,19 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         replacement += line_directive(loop.body_open_line, loop.keyword_location.file);
         replacement.append(loop.body_open_column - 1, ' ');
         edits.push_back(Edit{source::ByteSpan{loop.body_open, 0}, std::move(replacement)});
+    }
+
+    // The runtime text is otherwise the scanned text with proof-only spans
+    // blanked, so the lowerings are applied last and from the back, where no
+    // offset recorded above them has moved yet.
+    std::ranges::sort(projection.runtime_lowerings, [](const RuntimeLowering& lhs, const RuntimeLowering& rhs) {
+        return lhs.span.offset < rhs.span.offset;
+    });
+    for (const RuntimeLowering& lowering : std::views::reverse(projection.runtime_lowerings)) {
+        if (lowering.span.end() > projection.runtime.size()) {
+            continue;
+        }
+        projection.runtime.replace(lowering.span.offset, lowering.span.length, lowering.text);
     }
 
     std::ranges::sort(edits, [](const Edit& lhs, const Edit& rhs) {

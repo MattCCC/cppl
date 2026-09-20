@@ -156,6 +156,85 @@ Expr unsupported_expression(CXCursor cursor, std::string reason) {
     return expr;
 }
 
+// The refinements a declaration's written type names, outermost first (SPEC.md
+// 17, 18).
+//
+// Clang canonicalizes `Percentage` to `int`, which is exactly right for the
+// runtime program and loses the verification-level identity, so the alias
+// declaration the type came through is what names it here. A refinement of a
+// refinement contributes every predicate that applies to the value, because each
+// alias is followed to the type it stands for.
+//
+// An indexed refinement was applied at values rather than at types, and those
+// values are not reachable through the type. They stand as the declaration's own
+// leading children, after the reference to the alias template, where Clang has
+// already evaluated them.
+std::vector<Refinement> refinements_of(CXCursor declared, CXType written,
+                                       const std::vector<Selection::Refinement>& known) {
+    std::vector<Refinement> found;
+    if (known.empty()) {
+        return found;
+    }
+
+    std::vector<std::int64_t> arguments;
+    const CXCursor initializer = clang_Cursor_getVarDeclInitializer(declared);
+    for (const CXCursor& child : children_of(declared)) {
+        if (clang_Cursor_isNull(initializer) == 0 && clang_equalCursors(child, initializer) != 0) {
+            break;
+        }
+        const CXCursorKind kind = clang_getCursorKind(child);
+        if (kind == CXCursor_TemplateRef || kind == CXCursor_TypeRef || kind == CXCursor_NamespaceRef) {
+            continue;
+        }
+        // Index arguments stand before anything the declaration itself contains.
+        if (clang_isDeclaration(kind) != 0 || clang_isStatement(kind) != 0) {
+            break;
+        }
+        if (CXEvalResult evaluated = clang_Cursor_Evaluate(child)) {
+            const bool integral = clang_EvalResult_getKind(evaluated) == CXEval_Int;
+            const long long value = integral ? clang_EvalResult_getAsLongLong(evaluated) : 0;
+            clang_EvalResult_dispose(evaluated);
+            if (integral) {
+                arguments.push_back(static_cast<std::int64_t>(value));
+                continue;
+            }
+        }
+        break;
+    }
+
+    // An alias chain is finite, and this bounds it even if Clang hands back one
+    // that is not.
+    for (unsigned step = 0; step < 32; ++step) {
+        const CXCursor declaration = clang_getTypeDeclaration(written);
+        const CXCursorKind kind = clang_getCursorKind(declaration);
+        if (kind != CXCursor_TypeAliasDecl && kind != CXCursor_TypedefDecl && kind != CXCursor_TypeAliasTemplateDecl) {
+            break;
+        }
+        const std::string name = take(clang_getCursorSpelling(declaration));
+        const auto entry =
+            std::ranges::find_if(known, [&](const Selection::Refinement& candidate) { return candidate.name == name; });
+        if (entry == known.end()) {
+            break; // an ordinary alias, which refines nothing
+        }
+
+        Refinement refinement;
+        refinement.name = name;
+        if (entry->index_count != 0 && arguments.size() >= entry->index_count) {
+            refinement.arguments.assign(arguments.begin(),
+                                        arguments.begin() + static_cast<std::ptrdiff_t>(entry->index_count));
+        }
+        found.push_back(std::move(refinement));
+
+        const CXType underlying = clang_getTypedefDeclUnderlyingType(declaration);
+        if (underlying.kind == CXType_Invalid || clang_equalTypes(underlying, written) != 0) {
+            break;
+        }
+        written = underlying;
+        arguments.clear(); // only the written type's own application has values here
+    }
+    return found;
+}
+
 // A local's identity is the declaration Clang resolved; its current logical
 // version is what a read of it denotes. Shadowing needs no rule of its own,
 // because an inner declaration is a different declaration.
@@ -680,6 +759,7 @@ struct BodyLowering {
     const std::vector<CXCursor>& parameters;
     Type result_type;
     std::string invariant_prefix; // the projector's generated invariant declarations
+    const std::vector<Selection::Refinement>* refinements = nullptr;
     std::uint32_t next_version = 0;
     std::uint32_t next_loop = 0;
     std::vector<const LoopFrame*> frames;
@@ -693,11 +773,11 @@ struct BodyLowering {
         return std::nullopt;
     }
 
-    Expr bind(std::uint32_t version, std::string name, Expr value, Expr body, CXCursor at) {
+    Expr bind(std::uint32_t version, std::string name, Expr value, Expr body, CXCursor at, Type declared = {}) {
         Expr expr;
         expr.type = body.type;
         expr.location = presumed_location(clang_getCursorLocation(at));
-        expr.node = LocalVersion{version, std::move(name), {std::move(value), std::move(body)}};
+        expr.node = LocalVersion{version, std::move(name), {std::move(value), std::move(body)}, std::move(declared)};
         return expr;
     }
 
@@ -1029,9 +1109,12 @@ struct BodyLowering {
         if (clang_getCursorTLSKind(declaration) != CXTLS_None) {
             return reject("thread-local '" + name + "' is not modeled");
         }
-        const Type type = convert_type(clang_getCursorType(declaration));
+        Type type = convert_type(clang_getCursorType(declaration));
         if (type.kind == TypeKind::Unsupported) {
             return reject("local '" + name + "' has type '" + type.spelling + "', which is not modeled");
+        }
+        if (refinements != nullptr) {
+            type.refinements = refinements_of(declaration, clang_getCursorType(declaration), *refinements);
         }
         CXCursor initializer = clang_Cursor_getVarDeclInitializer(declaration);
         if (clang_Cursor_isNull(initializer) != 0) {
@@ -1056,7 +1139,7 @@ struct BodyLowering {
         if (!body) {
             return std::nullopt;
         }
-        return bind(version, name, std::move(value), std::move(*body), declaration);
+        return bind(version, name, std::move(value), std::move(*body), declaration, type);
     }
 
     // The local a write targets. Only a local of this body is ever written.
@@ -1194,7 +1277,7 @@ struct BodyLowering {
 };
 
 void extract_body(Function& function, CXCursor cursor, const std::vector<CXCursor>& parameters,
-                  const std::string& invariant_prefix) {
+                  const std::string& invariant_prefix, const std::vector<Selection::Refinement>& refinements) {
     const std::vector<CXCursor> members = children_of(cursor);
 
     std::size_t body_index = members.size();
@@ -1211,7 +1294,7 @@ void extract_body(Function& function, CXCursor cursor, const std::vector<CXCurso
     function.has_body = true;
 
     const std::vector<CXCursor> statements = children_of(members[body_index]);
-    BodyLowering lowering{parameters, function.result, invariant_prefix, 0, 0, {}, {}, {}};
+    BodyLowering lowering{parameters, function.result, invariant_prefix, &refinements, 0, 0, {}, {}, {}};
     function.returned_value = lowering.lower_statements(Continuation{nullptr, &statements, 0}, {}, 0);
     if (!function.returned_value) {
         function.body_rejection = lowering.rejection.empty() ? "every path must return a value" : lowering.rejection;
@@ -1495,10 +1578,20 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
         function.location = presumed_location(clang_getCursorLocation(cursor));
         function.analysis_offset = physical_offset(cursor);
 
+        // A refinement on a parameter or a result is verification-level identity
+        // Clang canonicalizes away, so it is recovered from the written type here
+        // (SPEC.md 17.3): a refined parameter carries its predicate into the body,
+        // and a refined result states one at every return.
+        function.result.refinements =
+            refinements_of(cursor, clang_getCursorResultType(cursor), request.selection.refinements);
+
         const std::vector<CXCursor> parameter_cursors = parameters_of(cursor);
         for (const CXCursor& parameter : parameter_cursors) {
+            Type parameter_type = convert_type(clang_getCursorType(parameter));
+            parameter_type.refinements =
+                refinements_of(parameter, clang_getCursorType(parameter), request.selection.refinements);
             function.parameters.push_back(
-                Parameter{take(clang_getCursorSpelling(parameter)), convert_type(clang_getCursorType(parameter))});
+                Parameter{take(clang_getCursorSpelling(parameter)), std::move(parameter_type)});
         }
 
         // The projector's invariant declarations share the generated prefix,
@@ -1511,7 +1604,8 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
             extract_body(function, cursor, parameter_cursors,
                          request.selection.specification_prefix.empty()
                              ? std::string()
-                             : request.selection.specification_prefix + "invariant_");
+                             : request.selection.specification_prefix + "invariant_",
+                         request.selection.refinements);
         }
         result.functions.push_back(std::move(function));
     }

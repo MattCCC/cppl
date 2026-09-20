@@ -33,8 +33,9 @@ enum class Origin : std::uint8_t {
     FunctionContract,
     CallPrecondition,
     ReturnPath,
-    LoopEntry,        // a loop invariant holds when the loop is entered
-    LoopPreservation, // an iteration re-establishes a loop invariant
+    LoopEntry,             // a loop invariant holds when the loop is entered
+    LoopPreservation,      // an iteration re-establishes a loop invariant
+    RefinementIntroduction // a value enters a refinement type (SPEC.md 17.2)
 };
 
 std::string describe(Origin origin);
@@ -81,11 +82,26 @@ struct WrittenProof {
 // Everything the kernel needs in order to decide the obligations of one
 // translation unit: the definitions it may unfold, the goals themselves, and
 // the evidence authors wrote for them.
+// A refinement type's predicate, ready to be stated of a value (SPEC.md 17).
+//
+// `parameters` are the declaration's indices and then the value being refined,
+// in that order, so the predicate is specialized at index values and the value
+// exactly as a callee's precondition is specialized at a call's arguments.
+struct RefinementPredicate {
+    std::string name;
+    std::vector<kernel::Type> parameters;
+    kernel::Proposition predicate;
+};
+
 struct Program {
     kernel::Context context;
     std::vector<Obligation> obligations;
     std::vector<WrittenProof> proofs;
     std::vector<ContractVerification> contracts;
+    std::vector<RefinementPredicate> refinements;
+
+    // The predicate a refinement name states, or null when nothing declares it.
+    [[nodiscard]] const RefinementPredicate* refinement(std::string_view name) const;
 
     // Laws whose written proof was refused. Their obligation stays open: the
     // author said how the law is established, and that evidence did not hold.

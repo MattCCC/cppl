@@ -41,6 +41,38 @@ kernel::Proposition specialize(kernel::Proposition proposition, const std::vecto
     return proposition;
 }
 
+// What a value must satisfy to stand as a value of `type` (SPEC.md 17.2).
+//
+// A refinement of a refinement states both predicates, because both apply to the
+// value (SPEC.md 17.5), and an indexed refinement states its predicate at the
+// values its indices were applied at (SPEC.md 18). An unrefined type requires
+// nothing, which is what makes ordinary C++ unaffected.
+std::optional<kernel::Proposition> membership(const Program& program, const vir::Type& type,
+                                              const kernel::Term& value) {
+    std::optional<kernel::Proposition> required;
+    for (const vir::Refinement& refinement : type.refinements) {
+        const RefinementPredicate* stated = program.refinement(refinement.name);
+        if (stated == nullptr || stated->parameters.empty()) {
+            continue;
+        }
+        // Indices first, then the value: the order the predicate binds them in.
+        if (refinement.arguments.size() + 1 != stated->parameters.size()) {
+            continue;
+        }
+        std::vector<kernel::Term> arguments;
+        arguments.reserve(stated->parameters.size());
+        for (std::size_t index = 0; index < refinement.arguments.size(); ++index) {
+            arguments.push_back(
+                kernel::Term::literal(stated->parameters[index].integer_type(), refinement.arguments[index]));
+        }
+        arguments.push_back(value);
+        kernel::Proposition applied = specialize(stated->predicate, stated->parameters, arguments);
+        required = required.has_value() ? kernel::Proposition::conjunction(std::move(*required), std::move(applied))
+                                        : std::move(applied);
+    }
+    return required;
+}
+
 kernel::Proposition postcondition_at(const ContractVerification& callee, std::vector<kernel::Term> arguments,
                                      kernel::Term value) {
     std::vector<kernel::Type> parameters = callee.parameters;
@@ -240,7 +272,7 @@ std::expected<void, Failure> append_calls(const vir::Expr& expression, const vir
 // The contract itself: its types, postcondition and precondition, lowered
 // from the specification expressions alone.
 std::expected<void, Failure> state_contract(const vir::Function& function, const DefinitionMap& pure_definitions,
-                                            ContractVerification& plan) {
+                                            const Program& program, ContractVerification& plan) {
     plan.function = function.id;
     plan.name = function.qualified_name;
     if (!function.contract.has_value()) {
@@ -264,12 +296,32 @@ std::expected<void, Failure> state_contract(const vir::Function& function, const
         return std::unexpected(post.error());
     }
     plan.postcondition = std::move(*post);
+
+    // A refined result is part of what the function guarantees, so it is stated
+    // with the postcondition and proven on every path that returns (SPEC.md
+    // 17.2). The value is the innermost variable here, as `result` is.
+    if (const auto refined = membership(program, function.result, kernel::Term::variable(kernel::VarIndex{0}))) {
+        plan.postcondition = kernel::Proposition::conjunction(std::move(plan.postcondition), *refined);
+    }
+
     for (const auto& precondition : contract.preconditions) {
         auto pre = lower_predicate(precondition, pure_definitions, plan.parameters.size());
         if (!pre) {
             return std::unexpected(pre.error());
         }
         plan.preconditions.push_back(std::move(*pre));
+    }
+
+    // A refined parameter is known to satisfy its predicate inside the body: the
+    // caller proved it where the value entered the type, so here it is supposed
+    // rather than proven again (SPEC.md 17.3). The author does not restate it.
+    for (std::size_t index = 0; index < function.parameters.size(); ++index) {
+        const auto refined =
+            membership(program, function.parameters[index].type,
+                       kernel::Term::variable(kernel::parameter_reference(plan.parameters.size(), index)));
+        if (refined.has_value()) {
+            plan.preconditions.push_back(*refined);
+        }
     }
     return {};
 }
@@ -279,7 +331,7 @@ std::expected<ContractVerification, Failure> build(const vir::Function& function
                                                    const std::map<std::string, std::size_t>& established,
                                                    Program& program) {
     ContractVerification plan;
-    if (auto stated = state_contract(function, pure_definitions, plan); !stated) {
+    if (auto stated = state_contract(function, pure_definitions, program, plan); !stated) {
         return std::unexpected(stated.error());
     }
     if (!function.contract.has_value()) {
@@ -332,6 +384,27 @@ std::expected<ContractVerification, Failure> build(const vir::Function& function
             if (!calls)
                 return std::unexpected(calls.error());
             if (step.binding != nullptr) {
+                // A value entering a refinement type must be shown to satisfy its
+                // predicate, where it enters it and under what the path supposes
+                // there (SPEC.md 17.2). Nothing is assumed from the declaration.
+                if (step.binding->declared.is_refined()) {
+                    auto actual = lower_value(*step.value, definitions, plan.parameters.size(), nullptr, &versions);
+                    auto abstract = lower_value(*step.value, pure_definitions,
+                                                plan.parameters.size() + path.calls.size(), &bindings, &versions);
+                    if (!actual || !abstract) {
+                        return std::unexpected(!actual ? actual.error() : abstract.error());
+                    }
+                    const auto required = membership(program, step.binding->declared, *actual);
+                    const auto reasoning = membership(program, step.binding->declared, *abstract);
+                    if (required.has_value() && reasoning.has_value()) {
+                        obligations.push_back(obligation_for(
+                            program, path, Origin::RefinementIntroduction,
+                            function.qualified_name + " -> " + step.binding->declared.refinements.front().name,
+                            step.value->provenance.range,
+                            close(plan, path, 0, path.conditions.size(), false, *required),
+                            close(plan, path, path.calls.size(), path.conditions.size(), true, *reasoning)));
+                    }
+                }
                 if (!versions.emplace(step.binding->version, step.value).second) {
                     return std::unexpected(Failure{"malformed local version", step.value->provenance.range.begin, {}});
                 }
@@ -743,7 +816,7 @@ std::expected<ContractVerification, Failure> build_partial(const vir::Function& 
                                                            const std::map<std::string, std::size_t>& established,
                                                            Program& program) {
     ContractVerification plan;
-    if (auto stated = state_contract(function, pure_definitions, plan); !stated) {
+    if (auto stated = state_contract(function, pure_definitions, program, plan); !stated) {
         return std::unexpected(stated.error());
     }
     plan.partial = true;

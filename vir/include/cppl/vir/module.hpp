@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <variant>
 #include <vector>
 
@@ -162,12 +163,34 @@ struct Proof {
     source::SourceRange range;
 };
 
+// A refinement type: an ordinary C++ base type and a predicate its values
+// satisfy (SPEC.md 17).
+//
+// `predicate` is stated over the declaration's indices and one more parameter, in
+// last position, standing for the value being refined. That parameter is what
+// `self` denotes; it exists only in the specification. The type has no runtime
+// representation of its own, so nothing here reaches code generation - what the
+// program keeps is the base type (SPEC.md 17.4).
+struct RefinementDeclaration {
+    std::string name;
+    Type base;
+    std::vector<Parameter> indices;
+    Expr predicate;
+    source::SourceRange range;
+    source::SourceRange predicate_range;
+};
+
 struct Module {
     std::vector<Function> functions;
     std::vector<Law> laws;
     std::vector<Proof> proofs;
+    std::vector<RefinementDeclaration> refinements;
 
     [[nodiscard]] const Function* find(const SymbolId& symbol) const;
+
+    // The declaration a refinement name stands for, or null when the name is not
+    // one this unit declares.
+    [[nodiscard]] const RefinementDeclaration* find_refinement(std::string_view name) const;
 };
 
 } // namespace cppl::vir

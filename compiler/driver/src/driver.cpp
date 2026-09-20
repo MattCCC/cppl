@@ -310,6 +310,17 @@ UnitOutcome compile_unit(const Options& options, const Input& input, const std::
     for (const auto& proposition : projection.proposition_probes) {
         request.selection.proposition_probes.push_back({proposition.name, proposition.shape});
     }
+    // A refinement type resolves to its base type like any other alias, so the
+    // bridge is told which names carry a predicate (SPEC.md 17).
+    for (const auto& refinement : projection.refinement_probes) {
+        // A predicate that is an ordinary C++ expression is read from the probe's
+        // body, exactly as a law's proposition is; one that states formal syntax
+        // is read from its recorded shape.
+        if (refinement.shape.kind != source::ProjectionKind::Expression) {
+            request.selection.proposition_probes.push_back({refinement.probe, refinement.shape});
+        }
+        request.selection.refinements.push_back({refinement.name, refinement.probe, refinement.index_count});
+    }
     for (const auto& declaration : projection.declaration_offsets) {
         request.selection.offsets.push_back(declaration.analysis);
     }

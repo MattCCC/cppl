@@ -14,10 +14,16 @@ struct Report {
     std::size_t erased_spans = 0;
     std::size_t erased_bytes = 0;
 
-    // The checked properties. Both must hold for the runtime program to be
+    // Runtime-bearing declarations, and the bytes of canonical C++ they lowered
+    // to (TRUST.md 7.1).
+    std::size_t lowered_spans = 0;
+    std::size_t lowered_bytes = 0;
+
+    // The checked properties. All three must hold for the runtime program to be
     // accepted for code generation.
-    bool only_deletions = false;  // no byte was added or altered, only blanked
-    bool lines_preserved = false; // every line of the remaining program is where it was
+    bool only_deletions = false;      // outside a lowering, no byte was added or altered
+    bool lines_preserved = false;     // every line of the remaining program is where it was
+    bool lowerings_canonical = false; // each lowering is exactly what its declaration means
 };
 
 struct Erased {
@@ -27,11 +33,17 @@ struct Erased {
 
 // Selects the runtime program and checks that erasure did what it claims.
 //
-// The property checked here is stronger than "the formal syntax is gone": the
-// runtime text must be the scanned text with C++L-only spans blanked and
-// nothing else changed. That is what makes erasure unable to alter runtime
-// behaviour, and unable to introduce a construct the target standard does not
-// have (TRUST.md 7, COMPATIBILITY.md).
+// The property checked here is stronger than "the formal syntax is gone". C++L
+// syntax falls into two classes (TRUST.md 7):
+//
+//   - proof-only syntax is blanked, so no byte is added or altered;
+//   - a runtime-bearing declaration is replaced by the canonical C++ it means,
+//     which this function recomputes from the declaration itself rather than
+//     taking the projector's word for it.
+//
+// Every line stays where it was in both cases. That is what makes erasure unable
+// to alter runtime behaviour, and unable to introduce a construct the target
+// standard does not have (TRUST.md 7, COMPATIBILITY.md).
 [[nodiscard]] Erased erase(const frontend::TokenStream& stream, const frontend::Syntax& syntax,
                            const frontend::Projection& projection, diagnostics::Engine& engine);
 
