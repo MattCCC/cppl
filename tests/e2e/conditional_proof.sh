@@ -17,10 +17,10 @@ report="$run/conditional_proof.report"
 
 "$CPPL" -std=c++17 "$FIXTURES/conditional_proof.cpp" -o "$binary" --cppl-trust-report > "$report"
 
-# Six laws, four of them conditional, every one closed by the evidence the
+# Eight laws, six of them stating a premise, every one closed by the evidence the
 # author wrote. A supposed premise is never a trusted one.
-grep -Eq "^Laws proven: +6$" "$report"
-grep -Eq "^ +by a written proof: +6$" "$report"
+grep -Eq "^Laws proven: +8$" "$report"
+grep -Eq "^ +by a written proof: +8$" "$report"
 grep -Eq "^Unresolved obligations: +0$" "$report"
 grep -Eq "^Laws trusted: +0$" "$report"
 grep -Eq "^Trusted external axioms: +0$" "$report"
@@ -35,7 +35,7 @@ fi
 for standard in c++20 c++23; do
     "$CPPL" "-std=$standard" "$FIXTURES/conditional_proof.cpp" \
         -o "$run/conditional_proof_$standard" --cppl-trust-report > "$run/report_$standard"
-    grep -Eq "^ +by a written proof: +6$" "$run/report_$standard"
+    grep -Eq "^ +by a written proof: +8$" "$run/report_$standard"
     "$run/conditional_proof_$standard" > /dev/null
 done
 

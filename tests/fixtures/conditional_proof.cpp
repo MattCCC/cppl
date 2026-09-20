@@ -89,6 +89,32 @@ proof increment_is_stable_again_holds(unsigned x)
     exact h;
 }
 
+// An application that leaves two goals behind, not one. A chained implication
+// supposes its premises in turn, so applying its conclusion leaves each of them
+// as a goal of its own, in the order they were supposed, and the statements that
+// follow close them one at a time.
+law twice_guarded(unsigned x)
+    ensures(identity(x) == x -> add_one(x) == add_one(x) -> add_one(identity(x)) == add_one(x));
+
+proof twice_guarded_holds(unsigned x)
+    proves(twice_guarded(x))
+{
+    assume first : identity(x) == x;
+    assume second : add_one(x) == add_one(x);
+    refl;
+}
+
+law both_premises_discharged(unsigned x)
+    ensures(add_one(identity(x)) == add_one(x));
+
+proof both_premises_discharged_holds(unsigned x)
+    proves(both_premises_discharged(x))
+{
+    apply twice_guarded_holds(x);
+    refl;
+    refl;
+}
+
 int main() {
     std::cout << add_one(identity(40u)) << "\n";
     return 0;
