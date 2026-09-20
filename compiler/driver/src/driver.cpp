@@ -23,8 +23,13 @@
 #include <optional>
 #include <sstream>
 #include <string>
-#include <unistd.h>
 #include <vector>
+#ifdef _WIN32
+#include <cstdint>
+#include <random>
+#else
+#include <unistd.h>
+#endif
 
 namespace cppl::driver {
 
@@ -71,10 +76,35 @@ class ScratchDirectory {
         if (error) {
             return;
         }
+#ifdef _WIN32
+        // The per-user temporary directory is already private, so a name no
+        // other process holds is enough. create_directory reports false without
+        // an error when the name is taken, which is the collision to retry.
+        std::mt19937_64 generator{std::random_device{}()};
+        for (int attempt = 0; attempt < 64; ++attempt) {
+            std::string name = "cppl-";
+            const std::uint64_t value = generator();
+            for (int shift = 60; shift >= 0; shift -= 4) {
+                name.push_back("0123456789abcdef"[(value >> shift) & 0xF]);
+            }
+            const std::filesystem::path candidate = temporary / name;
+            std::error_code creation;
+            if (std::filesystem::create_directory(candidate, creation)) {
+                path_ = candidate;
+                return;
+            }
+            if (creation) {
+                return;
+            }
+        }
+#else
+        // mkdtemp creates the directory owner-only, so the preprocessed source
+        // and the projections are not exposed in a shared temporary directory.
         std::string pattern = (temporary / "cppl-XXXXXX").string();
         if (const char* created = ::mkdtemp(pattern.data())) {
             path_ = created;
         }
+#endif
     }
 
     ScratchDirectory(const ScratchDirectory&) = delete;
