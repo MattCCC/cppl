@@ -477,7 +477,7 @@ std::size_t return_paths(const Expr& expression) {
 std::size_t file_offset(CXSourceLocation location) {
     unsigned offset = 0;
     clang_getFileLocation(location, nullptr, nullptr, nullptr, &offset);
-    return offset;
+    return static_cast<std::size_t>(offset);
 }
 
 // The parts of a `for` header. libclang omits an empty part instead of marking
@@ -487,7 +487,7 @@ struct ForParts {
     std::optional<CXCursor> initialization;
     std::optional<CXCursor> condition;
     std::optional<CXCursor> increment;
-    CXCursor body{};
+    CXCursor body = clang_getNullCursor();
 };
 
 std::optional<ForParts> for_parts(CXCursor statement) {
@@ -645,9 +645,9 @@ struct Continuation {
 
 // A loop about to be entered.
 struct LoopHeader {
-    CXCursor statement{};
-    CXCursor condition{};
-    CXCursor body{};
+    CXCursor statement = clang_getNullCursor();
+    CXCursor condition = clang_getNullCursor();
+    CXCursor body = clang_getNullCursor();
     std::optional<CXCursor> increment;
     const Continuation* exit = nullptr; // what follows the loop
 };
@@ -655,7 +655,7 @@ struct LoopHeader {
 // A loop whose body is being lowered.
 struct LoopFrame {
     std::uint32_t id = 0;
-    CXCursor statement{};
+    CXCursor statement = clang_getNullCursor();
     Locals head;                      // the locals at the head, each carried one at its head version
     std::vector<std::size_t> carried; // positions in `head` that the loop writes
     std::optional<CXCursor> increment;
@@ -1216,7 +1216,7 @@ void extract_body(Function& function, CXCursor cursor, const std::vector<CXCurso
 std::size_t physical_offset(CXCursor cursor) {
     unsigned offset = 0;
     clang_getFileLocation(clang_getCursorLocation(cursor), nullptr, nullptr, nullptr, &offset);
-    return offset;
+    return static_cast<std::size_t>(offset);
 }
 
 struct Collector {
