@@ -94,9 +94,29 @@ What is new in the trust boundary is the second erasure class, which is why eras
 recomputes each lowering and why the tests check the emitted C++ as text and run the
 erased program compiled by Clang alone.
 
+## Flows and implication
+
+Every flow of a value into a refinement type states the predicate, not only the one
+a declaration spells. An assignment or update carries the local's declared type just
+as its declaration did, so a write cannot reach a refined local without owing what
+the declaration owed. An argument of a call to a verified function owes the
+parameter's predicate through that function's precondition, which is where a refined
+parameter's predicate already lives.
+
+Crossing between two refinements of one base type is implication and nothing else
+(SPEC.md 17.3.2). A value already of a refinement type carries its predicate, so the
+goal at the crossing is `P(v) -> Q(v)` under the path conditions there: the looser
+direction discharges from what the value has, the stricter direction owes the rest.
+No runtime check exists in either direction, because there is nothing to check - both
+types are `T` once erased.
+
+That same erasure makes two refinements of one base type one C++ signature, so two
+overloads distinguished only by which refinement they name are a redefinition. The
+analysis text carries the aliases, so Clang reports it at the declaration the author
+wrote rather than in emitted output.
+
 ## Boundary
 
-Not modeled, and refused rather than approximated: assignment into a refined local,
-refined call arguments, refined returns of an unverified function, implication
-between two different refinement types, refined members, references and pointers,
-and refinements in templated contexts. SPEC.md 17.3.1 states the fragment.
+Not modeled, and refused rather than approximated: refined returns of an unverified
+function, refined members, references and pointers, and refinements in templated
+contexts. SPEC.md 17.3.1 states the fragment.

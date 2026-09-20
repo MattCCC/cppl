@@ -94,6 +94,48 @@ verified unsigned wrong(unsigned x) ensures(result == 9u) {
 }
 CPP
 
+# An assignment into a refined local owes the predicate exactly as the
+# declaration did. A write is not a way around the obligation.
+reject unproven_assignment <<'CPP'
+type NonNegative = int where(self >= 0);
+verified int wrong(int x) ensures(result == x) {
+    NonNegative n = 0;
+    n = x;
+    return n;
+}
+CPP
+
+# An update is the assignment it means, so it owes the predicate too.
+reject unproven_update <<'CPP'
+type Small = unsigned where(self < 10u);
+verified unsigned wrong(unsigned x) ensures(result == 20u) {
+    Small s = 0u;
+    s += 20u;
+    return s;
+}
+CPP
+
+# The stricter direction of the subset relation needs the implication proven.
+# `NonNegative` does not imply `Percentage`.
+reject narrowing_without_proof <<'CPP'
+type NonNegative = int where(self >= 0);
+type Percentage = NonNegative where(self <= 100);
+verified int wrong(NonNegative n) ensures(result == n) {
+    Percentage p = n;
+    return p;
+}
+CPP
+
+# Two refinements of one base type erase to the same C++ signature, so two
+# overloads distinguished only by them are one function. That is reported where
+# the author wrote it, not discovered later in the emitted program.
+reject erased_overload_collision <<'CPP'
+type NonNegative = int where(self >= 0);
+type Percentage = NonNegative where(self <= 100);
+int f(NonNegative x) { return x; }
+int f(Percentage x) { return x; }
+CPP
+
 # A refined parameter supposes its own predicate, not a stronger one.
 reject stronger_than_the_parameter <<'CPP'
 type NonNegative = int where(self >= 0);
@@ -139,6 +181,10 @@ CPP
 
 grep -q 'not shown to satisfy refinement type' "$run/unproven_introduction.log"
 grep -q 'not shown to satisfy refinement type' "$run/index_out_of_range.log"
+grep -q 'not shown to satisfy refinement type' "$run/unproven_assignment.log"
+grep -q 'not shown to satisfy refinement type' "$run/unproven_update.log"
+grep -q 'not shown to satisfy refinement type' "$run/narrowing_without_proof.log"
+grep -q "redefinition of 'f'" "$run/erased_overload_collision.log"
 grep -q 'declares no base type' "$run/no_base_type.log"
 grep -q 'states no predicate' "$run/no_predicate.log"
 grep -q 'empty index list' "$run/empty_index_list.log"

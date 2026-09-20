@@ -1176,8 +1176,12 @@ struct BodyLowering {
         if (!body) {
             return std::nullopt;
         }
+        // The version an assignment establishes is a value entering the local's
+        // declared type exactly as the declaration's was, so it carries the same
+        // type - refinement and all. Dropping it here would let a write into a
+        // refined local escape the obligation its declaration owed (SPEC.md 17.2).
         return bind(version, take(clang_getCursorSpelling(locals[local].declaration)), std::move(value),
-                    std::move(*body), statement);
+                    std::move(*body), statement, locals[local].type);
     }
 
     std::optional<Expr> lower_assignment(CXCursor statement, const Continuation& next, const Locals& locals,

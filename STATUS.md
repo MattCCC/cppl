@@ -558,14 +558,24 @@ is not implemented.
 
 | Capability                              | Status        |
 | --------------------------------------- | ------------- |
-| Predicate refinements                   | `SPECIFIED`   |
-| Static refinement construction          | `SPECIFIED`   |
+| Predicate refinements                   | `PROTOTYPE`   |
+| Static refinement construction          | `PROTOTYPE`   |
 | Runtime checked refinement construction | `SPECIFIED`   |
-| Refinement elimination                  | `SPECIFIED`   |
-| Refinement subtyping                    | `NOT STARTED` |
+| Refinement elimination                  | `PROTOTYPE`   |
+| Refinement subtyping                    | `PROTOTYPE`   |
+| Indexed refinements                     | `PROTOTYPE`   |
 | Arithmetic refinement solving           | `NOT STARTED` |
 | Bitvector refinements                   | `NOT STARTED` |
 | User-defined refinement predicates      | `SPECIFIED`   |
+
+A refinement declaration lowers to the alias it means and adds no runtime
+representation. Membership is an obligation at every modeled flow into the type - a
+local declaration, an assignment or update, a verified call's argument, a return -
+closed under the path conditions where the value enters, so a branch fact discharges
+it. Subtyping is the implication between predicates and carries no runtime check in
+either direction (`SPEC.md` 17.3.2). Refined returns of an unverified function,
+refined members, references and pointers, and refinements in templated contexts are
+refused rather than approximated.
 
 ---
 

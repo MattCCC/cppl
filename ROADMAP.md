@@ -200,8 +200,10 @@ under way: explicit equality, universal quantification, implication, conjunction
 disjunction and equivalence are prototyped as propositions, and formal operands
 compose through them. Refinement and indexed refinement types are prototyped: they
 declare a verification-level type over an ordinary C++ base type, lower to the
-alias the program keeps, and make membership an obligation wherever a value enters
-one. Next in that core are existential quantification with its proof surface,
+alias the program keeps, make membership an obligation wherever a value enters one -
+a declaration, an assignment, a verified call's argument, a return - and treat
+crossing between two of them as the implication between their predicates. Next in
+that core are existential quantification with its proof surface,
 induction and termination. Memory/reference reasoning, signed arithmetic with
 overflow obligations, and SMT remain later work. See `STATUS.md` for the
 supported fragment.

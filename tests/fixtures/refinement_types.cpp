@@ -61,6 +61,31 @@ verified unsigned short_indexed(unsigned x) ensures(result == 1u) {
     return s;
 }
 
+// An assignment is a value entering the local's declared type just as its
+// declaration was, so the write owes the predicate and a branch fact discharges it.
+verified int assigned(int x) ensures(result >= 0) {
+    NonNegative n = 0;
+    if (x >= 0) {
+        n = x;
+    }
+    return n;
+}
+
+// An update is the assignment it means, so it owes the predicate as well.
+verified unsigned updated(unsigned x) ensures(result == 1u) {
+    Small s = 0u;
+    s += 1u;
+    return s;
+}
+
+// The looser direction of the subset relation: every `Percentage` is a
+// `NonNegative`, because the predicate it carries implies that one's (SPEC.md
+// 17.3.2). Nothing is checked at run time to cross it.
+verified int widened(Percentage p) ensures(result >= 0) {
+    NonNegative n = p;
+    return n;
+}
+
 // A refined value used as its base value needs no further proof (SPEC.md 17.3).
 pure int identity(int x) {
     return x;
@@ -79,5 +104,6 @@ using type = int;
 int main() {
     Holder holder{7};
     type ordinary = holder.type;
-    std::printf("%d %d %d %u %u\n", fifty(0), from_a_branch(1), keeps(2), indexed(0u), where(ordinary) - 7u);
+    std::printf("%d %d %d %u %u %d %u %d\n", fifty(0), from_a_branch(1), keeps(2), indexed(0u),
+                where(ordinary) - 7u, assigned(4), updated(0u), widened(9));
 }

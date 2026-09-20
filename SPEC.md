@@ -1607,23 +1607,47 @@ built-in integer and Boolean base types, with or without indices. The base type 
 the predicate are resolved by Clang; `self` is an ordinary parameter of the base
 type, so it is a name Clang binds rather than one C++L invents.
 
-Membership is an obligation, never an assumption. A value entering a refinement
-type inside a verified function - today, a local declaration - states its predicate
-where it enters, under whatever the path supposes there, so a branch fact can
-discharge it. A refined parameter's predicate is supposed inside the body, and the
-author does not restate it as an `expects` clause. A refined result is stated with
-the postcondition and proven on every path that returns. Using a refined value as
-its base value requires nothing further.
+Membership is an obligation, never an assumption. Every flow of a value into a
+refinement type inside a verified function states its predicate where the value
+enters, under whatever the path supposes there, so a branch fact can discharge it.
+The flows modeled are a local declaration, an assignment or update to a local, an
+argument of a call to a verified function, and a return. A refined parameter's
+predicate is supposed inside the body, and the author does not restate it as an
+`expects` clause. A refined result is stated with the postcondition and proven on
+every path that returns. Using a refined value as its base value requires nothing
+further.
 
 A refinement whose base type is another refinement states both predicates: the one
 written and every one it inherits (17.5). An indexed refinement states its
 predicate at the values its indices were applied at.
 
-Not yet modeled, and refused rather than approximated: assignment into a refined
-local, refined call arguments and refined returns of an unverified function,
-refinement implication between two different refinement types, refined members,
-references and pointers, and refinements in templated contexts. A refinement over a
-base type outside the modeled fragment is refused where it is declared.
+Not yet modeled, and refused rather than approximated: refined returns of an
+unverified function, refined members, references and pointers, and refinements in
+templated contexts. A refinement over a base type outside the modeled fragment is
+refused where it is declared.
+
+---
+
+### 17.3.2 Refinement implication
+
+A value already of a refinement type carries that type's predicate into any further
+flow, so crossing between two refinements of one base type is the implication
+between their predicates and nothing else:
+
+```text
+{ self : T | P(self) }  <:  { self : T | Q(self) }    needs  forall self : T, P(self) -> Q(self)
+```
+
+The obligation this states is `P(v) -> Q(v)` at the value that crosses, under the
+path conditions where it crosses. The looser direction is therefore discharged from
+the predicate the value already has, and the stricter direction owes the part that
+does not follow. Nothing is checked at run time in either direction: the crossing
+has no runtime representation to check, because both types erase to `T` (17.4).
+
+Because both directions are decided by implication, two refinements that erase to
+one C++ type are also one C++ signature. Two overloads distinguished only by which
+refinement they name are the same function, and that is reported at the declaration
+the author wrote.
 
 ---
 

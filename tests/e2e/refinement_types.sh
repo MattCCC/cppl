@@ -16,11 +16,11 @@ for standard in c++17 c++20 c++23; do
     "$CPPL" "-std=$standard" "$FIXTURES/refinement_types.cpp" -o "$run/program" \
         --cppl-trust-report "--cppl-emit-projection=$run/runtime.cpp" > "$run/report"
     grep -Eq '^Laws proven: +1$' "$run/report"
-    grep -Eq '^Function contracts proven: +7$' "$run/report"
+    grep -Eq '^Function contracts proven: +10$' "$run/report"
     grep -Eq '^Unresolved obligations: +0$' "$run/report"
     grep -Eq '^Laws trusted: +0$' "$run/report"
     grep -Eq '^Trusted external axioms: +0$' "$run/report"
-    test "$("$run/program")" = '50 1 2 3 0'
+    test "$("$run/program")" = '50 1 2 3 0 4 1 9'
 
     # The canonical lowering, verified as text: a refinement declaration becomes
     # the alias for its base type and nothing else. No wrapper, no predicate, no

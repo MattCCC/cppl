@@ -509,6 +509,37 @@ clause.
 A refinement of a refinement keeps both predicates, so a value entering the inner
 one owes all of them.
 
+Every flow into the type owes the predicate, not only a declaration. An assignment
+carries the local's declared type, so this is caught:
+
+```cpp
+Percentage p = 0;
+p = x;              // owes 0 <= x <= 100 here, exactly as the declaration did
+```
+
+and so is passing `x` where a verified function takes a `Percentage`.
+
+Crossing between two refinements of one base type is the implication between their
+predicates. Going from the stricter to the looser costs nothing, because the value
+already carries what the looser one asks:
+
+```cpp
+type NonNegative = int where(self >= 0);
+type Percentage = NonNegative where(self <= 100);
+
+verified int widened(Percentage p) ensures(result >= 0) {
+    NonNegative n = p;   // p >= 0 is part of what Percentage already gives
+    return n;
+}
+```
+
+The other direction owes the part that does not follow - here `p <= 100`. No runtime
+check is inserted either way; there is nothing to check, since both types are `int`.
+
+One consequence of that erasure is worth knowing: two overloads distinguished only
+by which refinement they name are the same C++ function, and the compiler says so at
+the declaration.
+
 ---
 
 # 13. Runtime validation

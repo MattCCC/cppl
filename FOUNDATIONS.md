@@ -395,7 +395,9 @@ T                 <:  { x : T | P(x) }         needs a proof of P
 ```
 
 The first is why a refined value is usable as its base value, and the second is why
-every flow into a refinement type is an obligation. Composing refinements conjoins
+every flow into a refinement type is an obligation. The third is what crossing
+between two refinements of one base type amounts to: the value already carries `P`,
+so what it owes is only the part of `Q` that `P` does not give. Composing refinements conjoins
 their predicates, so `{ x : {y : T | P(y)} | Q(x) }` is `{ x : T | P(x) /\ Q(x) }`,
 with the same base type underneath.
 
