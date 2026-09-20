@@ -244,6 +244,43 @@ CPPL_TEST(the_analysis_program_carries_the_proposition_a_statement_assumes) {
     }
 }
 
+CPPL_TEST(formal_connectives_are_recorded_with_specification_precedence) {
+    // Equivalence is looser than implication, which is looser than `&&`, and a
+    // chain of equivalences groups to the left (GRAMMAR.md 30, 33). Classical
+    // logic cannot tell the two groupings of a chain apart, so the recorded
+    // shape is what pins which one the projector built.
+    const std::string source =
+        "# 1 \"main.cpp\"\n"
+        "law loosest(unsigned x)\n"
+        "    ensures(Eq<unsigned>(x, x) && Eq<unsigned>(x, x) -> Eq<unsigned>(x, x) <-> Eq<unsigned>(x, x));\n"
+        "law chained(unsigned x)\n"
+        "    ensures(Eq<unsigned>(x, x) <-> Eq<unsigned>(x, x) <-> Eq<unsigned>(x, x));\n"
+        "int main() { return 0; }\n";
+
+    cppl::diagnostics::Engine engine;
+    const cppl::frontend::TokenStream stream = cppl::frontend::lex(source, "main.cpp");
+    const cppl::frontend::Syntax syntax = cppl::frontend::recognize(stream, engine);
+    const cppl::frontend::Projection projection =
+        cppl::frontend::project(stream, syntax, cppl::frontend::ProjectionOptions{});
+
+    CPPL_CHECK(projection.diagnostics.empty());
+    CPPL_CHECK_EQ(projection.proposition_probes.size(), std::size_t{2});
+
+    using Kind = cppl::source::ProjectionKind;
+    const cppl::source::ProjectionShape& loosest = projection.proposition_probes[0].shape;
+    CPPL_CHECK(loosest.kind == Kind::Equivalence);
+    CPPL_CHECK_EQ(loosest.children.size(), std::size_t{2});
+    CPPL_CHECK(loosest.children[0].kind == Kind::Implication);
+    CPPL_CHECK(loosest.children[0].children[0].kind == Kind::Conjunction);
+    CPPL_CHECK(loosest.children[0].children[1].kind == Kind::Equality);
+    CPPL_CHECK(loosest.children[1].kind == Kind::Equality);
+
+    const cppl::source::ProjectionShape& chained = projection.proposition_probes[1].shape;
+    CPPL_CHECK(chained.kind == Kind::Equivalence);
+    CPPL_CHECK(chained.children[0].kind == Kind::Equivalence);
+    CPPL_CHECK(chained.children[1].kind == Kind::Equality);
+}
+
 CPPL_TEST(erasure_reports_the_properties_it_checked) {
     cppl::diagnostics::Engine engine;
     const cppl::frontend::TokenStream stream = cppl::frontend::lex(kUnit, "main.cpp");

@@ -85,6 +85,11 @@ struct Universal {
 struct Implication {
     std::vector<Expr> operands;
 };
+struct Connective {
+    enum class Kind : std::uint8_t { Conjunction, Equivalence };
+    Kind kind = Kind::Conjunction;
+    std::vector<Expr> operands;
+};
 struct Conditional {
     std::vector<Expr> operands;
 }; // condition, true return, false return
@@ -140,7 +145,7 @@ struct Expr {
     Type type;
     source::SourceLocation location;
     std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, LocalVersion, LocalRef, Loop, Iterate,
-                 FormalEquality, Universal, Implication, Unsupported>
+                 FormalEquality, Universal, Implication, Connective, Unsupported>
         node;
 };
 

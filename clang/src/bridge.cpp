@@ -4,6 +4,7 @@
 #include <clang-c/Index.h>
 #include <cstdint>
 #include <limits>
+#include <ranges>
 #include <utility>
 
 namespace cppl::clangbridge {
@@ -138,11 +139,11 @@ std::string qualified_name_of(CXCursor cursor) {
     }
 
     std::string qualified;
-    for (auto part = parts.rbegin(); part != parts.rend(); ++part) {
+    for (auto& part : std::views::reverse(parts)) {
         if (!qualified.empty()) {
             qualified += "::";
         }
-        qualified += *part;
+        qualified += part;
     }
     return qualified;
 }
@@ -454,7 +455,12 @@ Expr build_expression(CXCursor cursor, const std::vector<CXCursor>& parameters, 
 
 std::vector<CXCursor> parameters_of(CXCursor cursor) {
     std::vector<CXCursor> parameters;
+    // Negative for a cursor that is not a function; there are then no arguments.
     const int count = clang_Cursor_getNumArguments(cursor);
+    if (count <= 0) {
+        return parameters;
+    }
+    parameters.reserve(static_cast<std::size_t>(count));
     for (int index = 0; index < count; ++index) {
         parameters.push_back(clang_Cursor_getArgument(cursor, static_cast<unsigned>(index)));
     }
@@ -1339,17 +1345,22 @@ std::expected<Expr, std::string> build_formal(CXCursor cursor, const source::Pro
         result.node = std::move(quantified);
         return result;
     }
-    if (shape.kind == Kind::Implication) {
+    if (shape.kind == Kind::Implication || shape.kind == Kind::Conjunction || shape.kind == Kind::Equivalence) {
         if (!binders.empty() || shape.children.size() != 2 || statements.size() != 2)
-            return std::unexpected("implication requires exactly two propositions");
-        Implication implication;
+            return std::unexpected("logical connective requires exactly two propositions");
+        std::vector<Expr> operands;
         for (std::size_t index = 0; index < 2; ++index) {
             auto operand = build_formal(statements[index], shape.children[index], parameters, depth + 1);
             if (!operand)
                 return operand;
-            implication.operands.push_back(std::move(*operand));
+            operands.push_back(std::move(*operand));
         }
-        result.node = std::move(implication);
+        if (shape.kind == Kind::Implication)
+            result.node = Implication{std::move(operands)};
+        else
+            result.node = Connective{shape.kind == Kind::Conjunction ? Connective::Kind::Conjunction
+                                                                     : Connective::Kind::Equivalence,
+                                     std::move(operands)};
         return result;
     }
     return std::unexpected("unknown formal projection form");

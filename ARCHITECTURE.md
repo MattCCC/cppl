@@ -3014,6 +3014,13 @@ sides or the selected projection. Proposition substitution, dependency traversal
 and obligation hashing all recurse into both sides. RFC 0009 describes the
 boundary; SPEC.md 7.6 owns its meaning.
 
+When conjunction has formal operands, the single projector uses the same
+two-statement lambda shape as implication. Typed bridge/VIR connective nodes
+preserve those operands without pretending propositions are C++ Boolean values.
+Equivalence uses that projection too and lowers to `And(Implies(P,Q), Implies(Q,P))`.
+Only lowering expands the derived connective; the kernel keeps one logical
+representation. See RFC 0010.
+
 A proof declaration is projected the same way. Its `proves` clause becomes the
 body of a generated function or an explicit-equality probe. Clang resolves
 the C++ parts; its statements are C++L and are never projected into C++ at all.

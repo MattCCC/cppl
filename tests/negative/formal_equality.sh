@@ -70,9 +70,10 @@ CPP
 reject false_contract <<'CPP'
 verified unsigned wrong(unsigned x) ensures(Eq<unsigned>(result, x)) { return x + 1u; }
 CPP
-reject nested_formal <<'CPP'
-template<class T> bool Eq(T, T) { return true; }
-proof wrong(int x) proves(Eq<int>(x, x) && x == x) { refl; }
+# An explicit equality may compose through a connective (SPEC.md 7.6), but it is
+# not a value another explicit equality can compare.
+reject formal_operand_of_formal <<'CPP'
+proof wrong(int x) proves(Eq<bool>(Eq<int>(x, x), Eq<int>(x, x))) { refl; }
 CPP
 reject failed_dependency <<'CPP'
 proof first(int x) proves(Eq<int>(x, 0)) { refl; }
@@ -84,6 +85,6 @@ grep -q 'uses itself as its own evidence' "$run/self_reference.log"
 grep -q 'depends on itself' "$run/mutual_reference.log"
 grep -q 'kernel-rejection' "$run/false.log"
 grep -q 'was not admitted' "$run/failed_dependency.log"
-grep -q 'unsupported-semantics' "$run/nested_formal.log"
+grep -q 'unsupported-semantics' "$run/formal_operand_of_formal.log"
 column=$(awk 'NR == 1 { print index($0, "(x, x)") + 1 }' "$run/wrong_type.cpp")
 grep -q "wrong_type.cpp:1:$column:" "$run/wrong_type.log"

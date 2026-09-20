@@ -71,6 +71,11 @@ std::string describe(const Expr& expr) {
                 return node.operands.size() == 2
                            ? "(" + describe(node.operands[0]) + " -> " + describe(node.operands[1]) + ")"
                            : "<malformed-implication>";
+            } else if constexpr (std::is_same_v<Node, Connective>) {
+                const auto op = node.kind == Connective::Kind::Conjunction ? " && " : " <-> ";
+                return node.operands.size() == 2
+                           ? "(" + describe(node.operands[0]) + op + describe(node.operands[1]) + ")"
+                           : "<malformed-connective>";
             } else if constexpr (std::is_same_v<Node, FormalEquality>) {
                 return node.operands.size() == 2
                            ? "Eq<" + describe(node.operand_type) + ">(" + describe(node.operands[0]) + ", " +

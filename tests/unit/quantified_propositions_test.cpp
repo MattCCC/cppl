@@ -192,6 +192,50 @@ CPPL_TEST(a_false_implication_is_rejected_by_the_kernel) {
     CPPL_CHECK(!checked[0].verdict.is_proven());
 }
 
+CPPL_TEST(equivalence_is_two_opposite_kernel_implications) {
+    cppl::diagnostics::Engine engine;
+    v::Expr goal;
+    goal.type = v::Type::proposition();
+    const auto side = equality(value(0), value(0));
+    goal.node = v::Connective{v::Connective::Kind::Equivalence, {side, side}};
+    const auto program = generate(goal, engine);
+    CPPL_CHECK(!engine.has_errors());
+    const auto& quantified = std::get<k::Forall>(program.obligations.at(0).goal.node);
+    const auto& pair = std::get<k::And>(quantified.body->node);
+    const auto& forward = std::get<k::Implies>(pair.left->node);
+    const auto& backward = std::get<k::Implies>(pair.right->node);
+    CPPL_CHECK(*forward.premise == *backward.conclusion);
+    CPPL_CHECK(*forward.conclusion == *backward.premise);
+    const auto verified = cppl::automation::verify(program, engine);
+    CPPL_CHECK(!engine.has_errors());
+    CPPL_CHECK(verified.at(0).verdict.is_proven());
+}
+
+CPPL_TEST(malformed_formal_connectives_are_refused) {
+    for (const auto kind : {v::Connective::Kind::Conjunction, v::Connective::Kind::Equivalence}) {
+        for (unsigned attack = 0; attack < 5; ++attack) {
+            v::Expr goal;
+            goal.type = v::Type::proposition();
+            goal.node = v::Connective{kind, {equality(value(0), value(0)), equality(value(0), value(0))}};
+            auto& operands = std::get<v::Connective>(goal.node).operands;
+            if (attack == 0)
+                operands.clear();
+            if (attack == 1)
+                operands.pop_back();
+            if (attack == 2)
+                operands.push_back(operands[0]);
+            if (attack == 3)
+                goal.type = v::Type::boolean();
+            if (attack == 4)
+                operands[1] = value(0);
+            cppl::diagnostics::Engine engine;
+            const auto program = generate(goal, engine);
+            CPPL_CHECK(engine.has_errors());
+            CPPL_CHECK(program.obligations.empty());
+        }
+    }
+}
+
 CPPL_TEST(a_conjunction_lowers_to_two_kernel_checked_propositions) {
     cppl::diagnostics::Engine engine;
     const auto same = predicate(value(0), value(0));

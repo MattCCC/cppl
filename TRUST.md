@@ -1158,6 +1158,12 @@ and proofs also include conjunctions. There are no new assumptions, axioms,
 trusted mechanisms, or external dependencies. Obligation identities include
 both ordered sides, their reachable definitions, and the new version stamps.
 
+Formal conjunction composition and equivalence (RFC 0010) add no kernel rule,
+axiom, or trusted mechanism. The bridge reads a recorded two-operand projection;
+lowering expands equivalence to a conjunction of opposite implications. Clang
+still resolves every C++ leaf. Correct connective shape and operator precedence
+remain correspondence trust, covered by positive and negative source tests.
+
 **Machine arithmetic** (`SPEC.md` 7.1.1, 7.5; RFC 0006) enlarges the logical
 TCB explicitly, and moved the kernel and core versions to 0.3.0. Two parts must be
 right for a `PROVEN` result to mean what it says:

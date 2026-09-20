@@ -202,6 +202,24 @@ std::size_t implication_operator(const std::vector<Token>& tokens, std::size_t b
     return end;
 }
 
+// Equivalence associates to the left; implication associates to the right.
+// Bracketed C++ expressions remain opaque and are always resolved by Clang.
+std::size_t connective_operator(const std::vector<Token>& tokens, std::size_t begin, std::size_t end, Kind kind) {
+    std::size_t found = end;
+    for (std::size_t index = begin; index < end; ++index) {
+        const auto token = tokens[index].text;
+        if (token == "(" || token == "{" || token == "[") {
+            index = matching(tokens, index, end);
+            if (index == end)
+                return kUnbalanced;
+        } else if ((kind == Kind::Equivalence && token == "->" && is_equivalence(tokens, begin, index)) ||
+                   (kind == Kind::Conjunction && token == "&&")) {
+            found = index;
+        }
+    }
+    return found;
+}
+
 FormulaProjection formula(const TokenStream& stream, source::ByteSpan expression, unsigned depth) {
     if (depth > 128)
         return {{}, {}, "proposition nesting exceeds the supported limit"};
@@ -212,23 +230,29 @@ FormulaProjection formula(const TokenStream& stream, source::ByteSpan expression
         return {{}, {}, "a proposition cannot be empty"};
     expression = span_of(tokens, begin, end);
 
-    // Implication is right associative, so the first operator carries the rest.
-    const std::size_t arrow = implication_operator(tokens, begin, end);
-    if (arrow == kUnbalanced)
-        return {{}, {}, "unbalanced proposition delimiters"};
-    if (arrow != end && is_equivalence(tokens, begin, arrow))
-        return {{}, {}, "logical equivalence is not supported yet"};
-    if (arrow != end) {
-        auto left = formula(stream, span_of(tokens, begin, arrow), depth + 1);
-        auto right = formula(stream, span_of(tokens, arrow + 1, end), depth + 1);
+    const auto paired = [&](Kind kind, std::size_t before, std::size_t after) {
+        auto left = formula(stream, span_of(tokens, begin, before), depth + 1);
+        auto right = formula(stream, span_of(tokens, after, end), depth + 1);
         if (left.failure)
             return left;
         if (right.failure)
             return right;
-        return {{Kind::Implication, {left.shape, right.shape}},
-                "[=]() { (" + left.expression + "); (" + right.expression + "); }",
-                {}};
-    }
+        return FormulaProjection{
+            {kind, {left.shape, right.shape}}, "[=]() { (" + left.expression + "); (" + right.expression + "); }", {}};
+    };
+
+    const std::size_t equivalence = connective_operator(tokens, begin, end, Kind::Equivalence);
+    if (equivalence == kUnbalanced)
+        return {{}, {}, "unbalanced proposition delimiters"};
+    if (equivalence != end)
+        return paired(Kind::Equivalence, equivalence - 1, equivalence + 1);
+
+    // Implication is right associative, so the first operator carries the rest.
+    const std::size_t arrow = implication_operator(tokens, begin, end);
+    if (arrow == kUnbalanced)
+        return {{}, {}, "unbalanced proposition delimiters"};
+    if (arrow != end)
+        return paired(Kind::Implication, arrow, arrow + 1);
 
     if (quantifier_form(tokens, begin, end) == end) {
         if (tokens[begin].is_identifier("exists"))
@@ -248,8 +272,12 @@ FormulaProjection formula(const TokenStream& stream, source::ByteSpan expression
         const auto type = std::string(stream.spelling(eq->type));
         return {{Kind::Equality, {}}, "([](" + type + ", " + type + ") {})(" + copied(stream, eq->arguments) + ")", {}};
     }
-    if (contains_formal_syntax(stream, expression))
+    if (contains_formal_syntax(stream, expression)) {
+        const std::size_t conjunction = connective_operator(tokens, begin, end, Kind::Conjunction);
+        if (conjunction != end && conjunction != kUnbalanced)
+            return paired(Kind::Conjunction, conjunction, conjunction + 1);
         return {{}, {}, "nested or malformed formal syntax is not supported in this proposition"};
+    }
     return {{Kind::Expression, {}}, copied(stream, expression), {}};
 }
 

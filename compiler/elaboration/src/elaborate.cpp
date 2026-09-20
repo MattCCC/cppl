@@ -114,6 +114,25 @@ class ExpressionElaborator {
             result.node = std::move(converted);
             return result;
         }
+        if (const auto* connective = std::get_if<clangbridge::Connective>(&expr.node)) {
+            vir::Connective converted;
+            switch (connective->kind) {
+                case clangbridge::Connective::Kind::Conjunction:
+                    converted.kind = vir::Connective::Kind::Conjunction;
+                    break;
+                case clangbridge::Connective::Kind::Equivalence:
+                    converted.kind = vir::Connective::Kind::Equivalence;
+                    break;
+            }
+            for (const auto& operand : connective->operands) {
+                auto value = convert(operand);
+                if (!value)
+                    return std::nullopt;
+                converted.operands.push_back(std::move(*value));
+            }
+            result.node = std::move(converted);
+            return result;
+        }
         if (const auto* implication = std::get_if<clangbridge::Implication>(&expr.node)) {
             vir::Implication converted;
             for (const auto& operand : implication->operands) {

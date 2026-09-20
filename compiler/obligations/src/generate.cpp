@@ -11,6 +11,7 @@
 #include <limits>
 #include <map>
 #include <optional>
+#include <ranges>
 #include <set>
 #include <utility>
 #include <variant>
@@ -329,10 +330,52 @@ class TermLowering {
 // A C++ equality between built-in integer values denotes propositional equality
 // of those values. The correspondence holds for this operand type only, and is
 // established here rather than assumed anywhere else (SPEC.md 7.3).
+// Equivalence duplicates both operands in its derived core representation.
+// Bound that expansion before allocating it; source nesting alone is not a
+// useful bound for repeated equivalences.
+bool fits_proposition(const vir::Expr& expression, std::size_t copies, std::size_t& remaining, unsigned depth = 0) {
+    if (depth > 128 || copies > remaining)
+        return false;
+    remaining -= copies;
+    return std::visit(
+        [&](const auto& node) {
+            using Node = std::decay_t<decltype(node)>;
+            if constexpr (std::is_same_v<Node, vir::Connective>) {
+                if (node.kind == vir::Connective::Kind::Equivalence) {
+                    if (copies > remaining / 2)
+                        return false;
+                    remaining -= 2 * copies; // And plus two Implies nodes
+                    copies *= 2;
+                }
+            }
+            if constexpr (requires { node.operands; }) {
+                for (const auto& operand : node.operands)
+                    if (!fits_proposition(operand, copies, remaining, depth + 1))
+                        return false;
+            } else if constexpr (requires { node.arguments; }) {
+                for (const auto& argument : node.arguments)
+                    if (!fits_proposition(argument, copies, remaining, depth + 1))
+                        return false;
+            } else if constexpr (std::is_same_v<Node, vir::Universal>) {
+                if (node.binders.size() > remaining / copies)
+                    return false;
+                remaining -= node.binders.size() * copies;
+                for (const auto& body : node.body)
+                    if (!fits_proposition(body, copies, remaining, depth + 1))
+                        return false;
+            }
+            return true;
+        },
+        expression.node);
+}
+
 std::expected<kernel::Proposition, Failure> lower_proposition(const vir::Expr& expression,
                                                               const DefinitionMap& definitions,
                                                               std::size_t parameter_count) {
     const source::SourceLocation& location = expression.provenance.range.begin;
+    std::size_t expansion_budget = 16384;
+    if (!fits_proposition(expression, 1, expansion_budget))
+        return fail("logical proposition expansion exceeds the supported limit", location);
 
     if (const auto* quantified = std::get_if<vir::Universal>(&expression.node)) {
         if (!expression.type.is_proposition() || quantified->binders.empty() || quantified->body.size() != 1)
@@ -340,8 +383,8 @@ std::expected<kernel::Proposition, Failure> lower_proposition(const vir::Expr& e
         auto body = lower_proposition(quantified->body[0], definitions, parameter_count + quantified->binders.size());
         if (!body)
             return body;
-        for (auto binder = quantified->binders.rbegin(); binder != quantified->binders.rend(); ++binder) {
-            const auto type = lower_type(*binder);
+        for (auto binder : std::views::reverse(quantified->binders)) {
+            const auto type = lower_type(binder);
             if (!type)
                 return fail("unsupported quantifier binder type", location);
             *body = kernel::Proposition::for_all(*type, std::move(*body));
@@ -368,6 +411,25 @@ std::expected<kernel::Proposition, Failure> lower_proposition(const vir::Expr& e
     if (const auto* binary = std::get_if<vir::Binary>(&expression.node);
         binary != nullptr && binary->op == vir::BinaryOp::Or) {
         return fail("logical disjunction is not supported yet", location);
+    }
+
+    if (const auto* connective = std::get_if<vir::Connective>(&expression.node)) {
+        if (!expression.type.is_proposition() || connective->operands.size() != 2)
+            return fail("malformed logical connective", location);
+        auto left = lower_proposition(connective->operands[0], definitions, parameter_count);
+        if (!left)
+            return left;
+        auto right = lower_proposition(connective->operands[1], definitions, parameter_count);
+        if (!right)
+            return right;
+        switch (connective->kind) {
+            case vir::Connective::Kind::Conjunction:
+                return kernel::Proposition::conjunction(std::move(*left), std::move(*right));
+            case vir::Connective::Kind::Equivalence:
+                return kernel::Proposition::conjunction(kernel::Proposition::implication(*left, *right),
+                                                        kernel::Proposition::implication(*right, *left));
+        }
+        return fail("unknown logical connective", location);
     }
 
     if (const auto* implication = std::get_if<vir::Implication>(&expression.node)) {
@@ -411,10 +473,10 @@ std::expected<kernel::Proposition, Failure> lower_proposition(const vir::Expr& e
 // Closes a proposition over a declaration's parameters, outermost first.
 std::optional<kernel::Proposition> quantify_over(const std::vector<vir::Parameter>& parameters,
                                                  kernel::Proposition body, std::string& unrepresented) {
-    for (auto parameter = parameters.rbegin(); parameter != parameters.rend(); ++parameter) {
-        const std::optional<kernel::Type> binder = lower_type(parameter->type);
+    for (const auto& parameter : std::views::reverse(parameters)) {
+        const std::optional<kernel::Type> binder = lower_type(parameter.type);
         if (!binder.has_value()) {
-            unrepresented = vir::describe(parameter->type);
+            unrepresented = vir::describe(parameter.type);
             return std::nullopt;
         }
         body = kernel::Proposition::for_all(*binder, std::move(body));
@@ -878,8 +940,8 @@ std::optional<kernel::Proposition> make_rewrite_context(const kernel::Propositio
 }
 
 kernel::ProofTerm quantify(const std::vector<kernel::Type>& binders, kernel::ProofTerm term) {
-    for (auto binder = binders.rbegin(); binder != binders.rend(); ++binder) {
-        term = kernel::ProofTerm::forall_introduction(*binder, std::move(term));
+    for (auto binder : std::views::reverse(binders)) {
+        term = kernel::ProofTerm::forall_introduction(binder, std::move(term));
     }
     return term;
 }

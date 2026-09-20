@@ -1486,7 +1486,8 @@ The parser MUST interpret operators according to C++ precedence except where the
 
 Built-in `&&` between supported C++ Boolean predicates is currently lifted to
 conjunction; its supported placements and proof behavior are in SPEC.md 7.6.
-`||` and `<->` are recognized but remain unsupported by verification.
+Formal propositions also compose through `&&` and `<->` (SPEC.md 7.6-7.7).
+`||` is recognized but remains unsupported by verification.
 
 From tighter to looser:
 

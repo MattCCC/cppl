@@ -86,6 +86,12 @@ struct Implication {
     std::vector<Expr> operands;
     friend bool operator==(const Implication&, const Implication&) = default;
 };
+struct Connective {
+    enum class Kind : std::uint8_t { Conjunction, Equivalence };
+    Kind kind = Kind::Conjunction;
+    std::vector<Expr> operands;
+    friend bool operator==(const Connective&, const Connective&) = default;
+};
 
 struct Conditional {
     std::vector<Expr> operands; // condition, true return, false return
@@ -144,7 +150,7 @@ struct Expr {
     Type type;
     Provenance provenance;
     std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, LocalVersion, LocalRef, Loop, Iterate,
-                 FormalEquality, Universal, Implication>
+                 FormalEquality, Universal, Implication, Connective>
         node;
 
     friend bool operator==(const Expr&, const Expr&) = default;

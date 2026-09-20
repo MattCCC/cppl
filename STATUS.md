@@ -111,8 +111,9 @@ quantifiers and implications. Introduction proves both sides; elimination expose
 either side of a checked premise. Written `refl`, `exact`, `apply`, and `rewrite`
 compose with conjunctive goals, and arithmetic automation uses explicit evidence
 for conjunctive facts. This adds two kernel rules (core/kernel 0.4.0), no
-assumptions or axioms. Formal forms as `&&` operands, value/guard/invariant uses
-of `&&`, disjunction and equivalence remain unsupported (SPEC.md 7.6).
+assumptions or axioms. Formal propositions now also compose as `&&` operands;
+logical equivalence `<->` lowers to both implications, using those same rules.
+Value/guard/invariant uses of `&&` and disjunction remain unsupported (SPEC.md 7.6-7.7).
 Everything else is reported as unsupported and produces no obligation. See
 `ARCHITECTURE.md` 97 for the implemented structure and `TRUST.md` 41 for what
 must be trusted today.
@@ -287,6 +288,7 @@ The project should not claim broad language implementation before the proof sema
 | universal quantification      | `PROTOTYPE`   |
 | implication                   | `PROTOTYPE`   |
 | conjunction                   | `PROTOTYPE`   |
+| logical equivalence           | `PROTOTYPE`   |
 | disjunction                   | `SPECIFIED`   |
 | existential quantification    | `SPECIFIED`   |
 | dependent types               | `SPECIFIED`   |

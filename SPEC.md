@@ -466,9 +466,14 @@ The current implementation accepts `Eq<T>(a, b)` as a complete Law, proof,
 precondition, postcondition, or assumed proposition for modeled built-in
 integer and Boolean types. `T` and both arguments are resolved by Clang;
 conversions outside the modeled fragment are refused. The logical form remains
-distinct from a C++ `operator==` invocation. Nested explicit logical forms are
-not yet supported. These implementation limits do not narrow the semantics
-above.
+distinct from a C++ `operator==` invocation. Explicit equalities compose through
+conjunction, implication and equivalence and under universal quantification, but
+are not themselves values another explicit equality can compare. Formal
+propositions used as ordinary C++ values are refused. Inside a specification
+expression the `Eq<T>(a, b)` spelling is read as this formal form even where an
+ordinary C++ declaration of that name is visible; that declaration keeps its own
+meaning everywhere else, including at runtime. These implementation limits do not
+narrow the semantics above.
 
 ---
 
@@ -564,13 +569,25 @@ unsupported or effectful operand.
 can reuse evidence for the whole conjunction; `apply` can establish it after
 discharging the evidence's premises. `rewrite` traverses both sides. Automation
 may construct or project conjunction evidence, including for arithmetic facts,
-but the kernel checks every introduction and elimination.
+but the kernel checks every introduction and elimination. No written statement
+selects one side of a conjunctive premise: a named premise is used whole, and
+elimination is left to automation, which the kernel still checks.
 
-Explicit formal forms such as `Eq<T>` used as operands of `&&`, and `&&` used
-as a value, runtime guard in a verified body, or loop invariant are not yet
-modeled and are refused. Disjunction and logical equivalence remain unsupported.
+Explicit formal forms may be operands of conjunction. `&&` used as a value,
+runtime guard in a verified body, or loop invariant is not yet modeled and is
+refused. Disjunction remains unsupported.
 These limits do not change ordinary unverified C++ expressions or their runtime
 evaluation. See RFC 0009 for the implementation and trust rationale.
+
+---
+
+## 7.7 Logical equivalence
+
+`P <-> Q` denotes `(P -> Q) && (Q -> P)` as specified in GRAMMAR.md 30.
+Both directions require explicit kernel-checked evidence. It adds no kernel
+rule or assumption. Equivalence is looser than implication and conjunction;
+repeated equivalence associates to the left. It composes with explicit equality,
+quantifiers, implications and conjunctions wherever a proposition is accepted.
 
 ---
 
