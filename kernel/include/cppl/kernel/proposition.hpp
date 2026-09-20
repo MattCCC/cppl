@@ -59,11 +59,11 @@ struct Proposition {
     std::variant<Eq, Forall, Implies, And> node;
 
     static Proposition equality(Type type, Term lhs, Term rhs) {
-        return Proposition{Eq{std::move(type), std::move(lhs), std::move(rhs)}};
+        return Proposition{Eq{type, std::move(lhs), std::move(rhs)}};
     }
 
     static Proposition for_all(Type binder, Proposition body) {
-        return Proposition{Forall{std::move(binder), Box<Proposition>{std::move(body)}}};
+        return Proposition{Forall{binder, Box<Proposition>{std::move(body)}}};
     }
 
     static Proposition implication(Proposition premise, Proposition conclusion) {

@@ -43,7 +43,7 @@ Term bound() {
 }
 
 ProofTerm introduce(Type binder) {
-    return ProofTerm::forall_introduction(std::move(binder), ProofTerm::reflexivity());
+    return ProofTerm::forall_introduction(binder, ProofTerm::reflexivity());
 }
 
 } // namespace

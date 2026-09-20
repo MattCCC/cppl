@@ -433,7 +433,7 @@ CPPL_TEST(conditional_elimination_wrong_motive) {
     const auto when_false = two32();
 
     // if 0 = 0 then 1 else 2  =>  1
-    const auto selected = when_true;
+    const auto& selected = when_true;
 
     // Goal: selected = 1, which is true
     const auto goal = Proposition::equality(u32(), selected, one32());

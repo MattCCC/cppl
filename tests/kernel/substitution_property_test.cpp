@@ -5,6 +5,7 @@
 #include "cppl/testing/test.hpp"
 
 #include <cstdint>
+#include <ranges>
 #include <vector>
 
 namespace {
@@ -178,8 +179,8 @@ CPPL_TEST(repeated_instantiation_agrees_with_direct_environment_evaluation) {
         for (std::uint32_t assignment = 0; assignment < 64; ++assignment) {
             const Environment values{assignment % 4, (assignment / 4) % 4, assignment / 16};
             auto instance = body;
-            for (auto value = values.rbegin(); value != values.rend(); ++value) {
-                instance = k::instantiate(instance, lit(*value));
+            for (unsigned int value : std::views::reverse(values)) {
+                instance = k::instantiate(instance, lit(value));
             }
             CPPL_CHECK_EQ(evaluate(body, values), evaluate(instance, {}));
         }

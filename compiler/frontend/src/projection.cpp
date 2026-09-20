@@ -287,6 +287,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
     });
 
     std::vector<std::size_t> declarations;
+    declarations.reserve(syntax.pure_markers.size());
     for (const auto& marker : syntax.pure_markers)
         declarations.push_back(marker.function_offset);
     for (const auto& function : syntax.verified_functions)

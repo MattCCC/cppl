@@ -3,6 +3,7 @@
 #include "cppl/kernel/substitution.hpp"
 
 #include <algorithm>
+#include <ranges>
 #include <variant>
 
 namespace cppl::automation {
@@ -15,6 +16,7 @@ struct Step {
 
 std::vector<kernel::Term> parameters_of(const obligations::ContractVerification& function) {
     std::vector<kernel::Term> parameters;
+    parameters.reserve(function.parameters.size());
     for (std::size_t index = 0; index < function.parameters.size(); ++index) {
         parameters.push_back(kernel::Term::variable(kernel::parameter_reference(function.parameters.size(), index)));
     }
@@ -76,12 +78,11 @@ kernel::ProofTerm close(const obligations::ContractVerification& function, kerne
     for (std::size_t index = conditions; index > 0; --index) {
         proof = kernel::ProofTerm::implication_introduction(path->conditions[index - 1].actual, std::move(proof));
     }
-    for (auto precondition = function.preconditions.rbegin(); precondition != function.preconditions.rend();
-         ++precondition) {
-        proof = kernel::ProofTerm::implication_introduction(*precondition, std::move(proof));
+    for (const auto& precondition : std::views::reverse(function.preconditions)) {
+        proof = kernel::ProofTerm::implication_introduction(precondition, std::move(proof));
     }
-    for (auto parameter = function.parameters.rbegin(); parameter != function.parameters.rend(); ++parameter) {
-        proof = kernel::ProofTerm::forall_introduction(*parameter, std::move(proof));
+    for (auto parameter : std::views::reverse(function.parameters)) {
+        proof = kernel::ProofTerm::forall_introduction(parameter, std::move(proof));
     }
     return proof;
 }
@@ -218,6 +219,7 @@ std::expected<Evidence, std::string> Composition::propose(std::size_t obligation
 
     auto reasoning = instantiate(Step{*stage.reasoning, candidate->proof}, parameters_of(function));
     std::vector<kernel::Term> values;
+    values.reserve(stage.prefix);
     for (std::size_t index = 0; index < stage.prefix; ++index) {
         values.push_back(path.calls[index].value);
     }

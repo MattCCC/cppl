@@ -8,6 +8,7 @@
 #include <functional>
 #include <limits>
 #include <map>
+#include <ranges>
 #include <set>
 #include <utility>
 #include <variant>
@@ -490,9 +491,9 @@ class Prover {
         }
         if (!proof)
             return std::nullopt;
-        for (auto step = steps.rbegin(); step != steps.rend(); ++step) {
-            proof = k::ProofTerm::equality_elimination(step->equality.type, step->equality.lhs, step->equality.rhs,
-                                                       step->motive, step->equality.evidence, std::move(*proof));
+        for (auto& step : std::views::reverse(steps)) {
+            proof = k::ProofTerm::equality_elimination(step.equality.type, step.equality.lhs, step.equality.rhs,
+                                                       step.motive, step.equality.evidence, std::move(*proof));
         }
         return proof;
     }
@@ -503,14 +504,14 @@ class Prover {
         bool changed = false;
         for (std::size_t budget = 0; budget < kMaxRewrites; ++budget) {
             bool applied = false;
-            for (auto equality = known.rbegin(); equality != known.rend(); ++equality) {
-                if (equality->lhs == equality->rhs || occurs(equality->rhs, equality->lhs))
+            for (const auto& equality : std::views::reverse(known)) {
+                if (equality.lhs == equality.rhs || occurs(equality.rhs, equality.lhs))
                     continue;
-                auto motive = obligations::rewrite_context(current, equality->lhs);
+                auto motive = obligations::rewrite_context(current, equality.lhs);
                 if (!motive)
                     continue;
-                current = k::instantiate(*motive, equality->rhs);
-                steps.push_back(Rewrite{*equality, std::move(*motive)});
+                current = k::instantiate(*motive, equality.rhs);
+                steps.push_back(Rewrite{equality, std::move(*motive)});
                 applied = true;
                 break;
             }

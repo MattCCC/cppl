@@ -98,7 +98,7 @@ class Lexer {
         end.column = column();
         tokens_.push_back(end);
 
-        return TokenStream(text_, std::move(tokens_), std::move(files_));
+        return {text_, std::move(tokens_), std::move(files_)};
     }
 
   private:

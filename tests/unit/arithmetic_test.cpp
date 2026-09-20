@@ -5,6 +5,8 @@
 #include "cppl/kernel/check.hpp"
 #include "cppl/testing/test.hpp"
 
+#include <ranges>
+
 namespace {
 
 namespace k = cppl::kernel;
@@ -36,8 +38,8 @@ k::Proposition equal(const k::IntType& type, k::Term a, k::Term b) {
 // forall binders. premises -> conclusion
 k::Proposition closed(const k::IntType& type, std::size_t binders, std::vector<k::Proposition> premises,
                       k::Proposition conclusion) {
-    for (auto premise = premises.rbegin(); premise != premises.rend(); ++premise) {
-        conclusion = k::Proposition::implication(std::move(*premise), std::move(conclusion));
+    for (auto& premise : std::views::reverse(premises)) {
+        conclusion = k::Proposition::implication(std::move(premise), std::move(conclusion));
     }
     for (std::size_t index = 0; index < binders; ++index) {
         conclusion = k::Proposition::for_all(k::Type{type}, std::move(conclusion));

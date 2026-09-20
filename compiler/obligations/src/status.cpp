@@ -209,13 +209,13 @@ Verdict Verdict::proven(const kernel::Acceptance& acceptance, const Obligation& 
     // The acceptance must be for this obligation's goal. Holding an acceptance
     // for some other proposition establishes nothing about this one.
     if (!(acceptance.proposition() == obligation.goal)) {
-        return Verdict(Status::Unresolved, "the kernel accepted a different proposition than this obligation states");
+        return {Status::Unresolved, "the kernel accepted a different proposition than this obligation states"};
     }
-    return Verdict(Status::Proven, {});
+    return {Status::Proven, {}};
 }
 
 Verdict Verdict::unresolved(std::string reason) {
-    return Verdict(Status::Unresolved, std::move(reason));
+    return {Status::Unresolved, std::move(reason)};
 }
 
 } // namespace cppl::obligations

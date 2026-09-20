@@ -13,6 +13,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -34,13 +35,13 @@ k::Term prim(k::PrimOp op, const k::IntType& type, std::vector<k::Term> argument
     return k::Term::primitive(op, type, std::move(arguments));
 }
 k::Term add(const k::IntType& t, k::Term a, k::Term b) {
-    return prim(k::PrimOp::AddWrap, t, {a, b});
+    return prim(k::PrimOp::AddWrap, t, {std::move(a), std::move(b)});
 }
 k::Term sub(const k::IntType& t, k::Term a, k::Term b) {
-    return prim(k::PrimOp::SubWrap, t, {a, b});
+    return prim(k::PrimOp::SubWrap, t, {std::move(a), std::move(b)});
 }
 k::Term mul(const k::IntType& t, k::Term a, k::Term b) {
-    return prim(k::PrimOp::MulWrap, t, {a, b});
+    return prim(k::PrimOp::MulWrap, t, {std::move(a), std::move(b)});
 }
 
 k::Term normal(const k::Term& term) {
@@ -90,6 +91,7 @@ std::uint64_t evaluate(const k::Term& term, const std::vector<std::uint64_t>& en
     }
     const auto& node = std::get<k::Prim>(term.node);
     std::vector<std::uint64_t> values;
+    values.reserve(node.arguments.size());
     for (const auto& argument : node.arguments)
         values.push_back(evaluate(argument, environment));
     const auto& t = node.type;
@@ -272,10 +274,10 @@ CPPL_TEST(comparisons_are_decided_only_where_the_machine_type_decides_them) {
     const auto y = var(0);
     const k::Type boolean{k::kBoolean};
     const auto holds = [&](const k::IntType& type, k::PrimOp op, k::Term a, k::Term b) {
-        return definitional(type, prim(op, type, {a, b}), lit(k::kBoolean, 1), 2, &boolean);
+        return definitional(type, prim(op, type, {std::move(a), std::move(b)}), lit(k::kBoolean, 1), 2, &boolean);
     };
     const auto fails = [&](const k::IntType& type, k::PrimOp op, k::Term a, k::Term b) {
-        return definitional(type, prim(op, type, {a, b}), lit(k::kBoolean, 0), 2, &boolean);
+        return definitional(type, prim(op, type, {std::move(a), std::move(b)}), lit(k::kBoolean, 0), 2, &boolean);
     };
     // Unsigned values are at least zero and at most the maximum.
     CPPL_CHECK(holds(kU32, k::PrimOp::GreaterEqual, x, lit(kU32, 0)));

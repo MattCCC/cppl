@@ -164,6 +164,6 @@ struct Syntax {
 // complete grammatical context makes the ordinary C++ reading impossible
 // (SPEC.md 3, 3.1). Ordinary declarations such as `int law = 1;` are left
 // untouched.
-[[nodiscard]] Syntax recognize(const TokenStream& tokens, diagnostics::Engine& diagnostics);
+[[nodiscard]] Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine);
 
 } // namespace cppl::frontend
