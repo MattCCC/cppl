@@ -65,6 +65,14 @@ struct Assumption {
         return validate_proposition(context, locals, *conjunction->right, limits, depth + 1);
     }
 
+    // Nor a disjunction.
+    if (const auto* disjunction = std::get_if<Or>(&proposition.node)) {
+        if (auto left = validate_proposition(context, locals, *disjunction->left, limits, depth + 1); !left) {
+            return left;
+        }
+        return validate_proposition(context, locals, *disjunction->right, limits, depth + 1);
+    }
+
     const auto& equality = std::get<Eq>(proposition.node);
     for (const Term* side : {&equality.lhs, &equality.rhs}) {
         auto type = type_of(context, locals, *side, limits);
@@ -268,6 +276,40 @@ struct Assumption {
         return {};
     }
 
+    // Disjunction elimination closes a goal of any shape: what it establishes is
+    // whatever both cases establish, so the goal is checked once under each side
+    // and the disjunction itself is never resolved to one of them.
+    if (const auto* cases = std::get_if<DisjunctionElimination>(&proof.node)) {
+        if (auto well_formed = validate_proposition(context, locals, *cases->disjunction, limits, depth + 1);
+            !well_formed) {
+            return well_formed;
+        }
+
+        const auto* disjunction = std::get_if<Or>(&cases->disjunction->node);
+        if (disjunction == nullptr) {
+            return reject(RejectionKind::ProofShapeMismatch, "cases were taken on evidence for " +
+                                                                 describe(*cases->disjunction) +
+                                                                 ", which is not a disjunction");
+        }
+
+        if (auto evidence =
+                check_under(context, locals, assumptions, *cases->disjunction, *cases->evidence, limits, depth + 1);
+            !evidence) {
+            return evidence;
+        }
+
+        // Each case is evidence that its own side is enough for the goal. They
+        // are ordinary implications, so the premise a case may use is the one an
+        // enclosing introduction puts in the context, exactly as anywhere else.
+        const Proposition from_left = Proposition::implication(*disjunction->left, proposition);
+        if (auto left = check_under(context, locals, assumptions, from_left, *cases->left_case, limits, depth + 1);
+            !left) {
+            return left;
+        }
+        const Proposition from_right = Proposition::implication(*disjunction->right, proposition);
+        return check_under(context, locals, assumptions, from_right, *cases->right_case, limits, depth + 1);
+    }
+
     // Equality elimination closes a goal of any shape too: the context it
     // transports through decides what the result says, not the goal.
     if (const auto* transport = std::get_if<EqualityElimination>(&proof.node)) {
@@ -379,6 +421,20 @@ struct Assumption {
             return left;
         }
         return check_under(context, locals, assumptions, *conjunction->right, *introduction->right, limits, depth + 1);
+    }
+
+    // A disjunction is introduced by establishing one of its sides. The side is
+    // selected by the evidence but stated by the goal, so a proof cannot widen
+    // the goal to a side it finds easier.
+    if (const auto* disjunction = std::get_if<Or>(&proposition.node)) {
+        const auto* introduction = std::get_if<DisjunctionIntroduction>(&proof.node);
+        if (introduction == nullptr) {
+            return reject(RejectionKind::ProofShapeMismatch,
+                          "a disjunction goal is established by introducing one of its sides, or by "
+                          "eliminating evidence for it");
+        }
+        const Proposition& side = introduction->right ? *disjunction->right : *disjunction->left;
+        return check_under(context, locals, assumptions, side, *introduction->evidence, limits, depth + 1);
     }
 
     const auto& equality = std::get<Eq>(proposition.node);

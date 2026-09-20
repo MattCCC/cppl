@@ -126,6 +126,42 @@ struct ConjunctionElimination {
     friend bool operator==(const ConjunctionElimination&, const ConjunctionElimination&) = default;
 };
 
+// Introduction of a disjunction: evidence for one of its sides (SPEC.md 7.8).
+//
+//     p : A              p : B
+//     ------------       ------------
+//       A \/ B             A \/ B
+//
+// The goal states both sides, so neither is restated here: the kernel takes the
+// selected side from the goal and checks the evidence against it. Establishing
+// one side is the only way in; nothing here decides which side is true.
+struct DisjunctionIntroduction {
+    Box<ProofTerm> evidence;
+    bool right = false;
+
+    friend bool operator==(const DisjunctionIntroduction&, const DisjunctionIntroduction&) = default;
+};
+
+// Elimination of a disjunction: the goal, proven under each side (SPEC.md 7.8).
+//
+//     p : A \/ B      q : A -> C      r : B -> C
+//     ------------------------------------------
+//                        C
+//
+// The disjunction eliminated from is restated, as the other eliminations restate
+// theirs, because the goal names neither side. The kernel checks the evidence
+// against the restatement and then checks each case against its own side of it,
+// so a case that covers the wrong side, or a restatement that is not what the
+// evidence establishes, can only fail. Nothing here learns which side holds.
+struct DisjunctionElimination {
+    Box<Proposition> disjunction;
+    Box<ProofTerm> evidence;
+    Box<ProofTerm> left_case;
+    Box<ProofTerm> right_case;
+
+    friend bool operator==(const DisjunctionElimination&, const DisjunctionElimination&) = default;
+};
+
 // Elimination of an equality: evidence transported through a proposition
 // context (SPEC.md 7.2).
 //
@@ -239,7 +275,7 @@ struct ConditionalElimination {
 struct ProofTerm {
     std::variant<Reflexivity, ForallIntroduction, ForallElimination, Hypothesis, ImplicationIntroduction,
                  ImplicationElimination, EqualityElimination, ConditionalElimination, LinearArithmetic,
-                 ConjunctionIntroduction, ConjunctionElimination>
+                 ConjunctionIntroduction, ConjunctionElimination, DisjunctionIntroduction, DisjunctionElimination>
         node;
 
     static ProofTerm reflexivity() {
@@ -290,6 +326,17 @@ struct ProofTerm {
     static ProofTerm conjunction_elimination(Proposition conjunction, ProofTerm evidence, bool right) {
         return ProofTerm{ConjunctionElimination{Box<Proposition>{std::move(conjunction)},
                                                 Box<ProofTerm>{std::move(evidence)}, right}};
+    }
+
+    static ProofTerm disjunction_introduction(ProofTerm evidence, bool right) {
+        return ProofTerm{DisjunctionIntroduction{Box<ProofTerm>{std::move(evidence)}, right}};
+    }
+
+    static ProofTerm disjunction_elimination(Proposition disjunction, ProofTerm evidence, ProofTerm left_case,
+                                             ProofTerm right_case) {
+        return ProofTerm{
+            DisjunctionElimination{Box<Proposition>{std::move(disjunction)}, Box<ProofTerm>{std::move(evidence)},
+                                   Box<ProofTerm>{std::move(left_case)}, Box<ProofTerm>{std::move(right_case)}}};
     }
 
     static ProofTerm forall_elimination(Proposition quantified, ProofTerm evidence, Term argument) {

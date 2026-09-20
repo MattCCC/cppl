@@ -58,6 +58,11 @@ Proposition shift(const Proposition& proposition, std::uint32_t amount, std::uin
                                         shift(*conjunction->right, amount, cutoff));
     }
 
+    if (const auto* disjunction = std::get_if<Or>(&proposition.node)) {
+        return Proposition::disjunction(shift(*disjunction->left, amount, cutoff),
+                                        shift(*disjunction->right, amount, cutoff));
+    }
+
     const auto& equality = std::get<Eq>(proposition.node);
     return Proposition::equality(equality.type, shift(equality.lhs, amount, cutoff),
                                  shift(equality.rhs, amount, cutoff));
@@ -108,6 +113,11 @@ Proposition instantiate(const Proposition& body, const Term& argument, std::uint
     if (const auto* conjunction = std::get_if<And>(&body.node)) {
         return Proposition::conjunction(instantiate(*conjunction->left, argument, depth),
                                         instantiate(*conjunction->right, argument, depth));
+    }
+
+    if (const auto* disjunction = std::get_if<Or>(&body.node)) {
+        return Proposition::disjunction(instantiate(*disjunction->left, argument, depth),
+                                        instantiate(*disjunction->right, argument, depth));
     }
 
     const auto& equality = std::get<Eq>(body.node);

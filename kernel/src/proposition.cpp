@@ -37,6 +37,9 @@ std::string describe(const Proposition& proposition) {
     if (const auto* conjunction = std::get_if<And>(&proposition.node)) {
         return "(" + describe(*conjunction->left) + " && " + describe(*conjunction->right) + ")";
     }
+    if (const auto* disjunction = std::get_if<Or>(&proposition.node)) {
+        return "(" + describe(*disjunction->left) + " || " + describe(*disjunction->right) + ")";
+    }
     const auto& equality = std::get<Eq>(proposition.node);
     return "Eq<" + describe(equality.type) + ">(" + describe(equality.lhs) + ", " + describe(equality.rhs) + ")";
 }

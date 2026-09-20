@@ -196,10 +196,10 @@ composition, conditionals with path obligations and integer comparisons, and
 locals, assignments and their updates, unsigned machine arithmetic with
 kernel-checked linear order reasoning, and `while`/`for` loops with explicit
 invariants (partial correctness) are prototyped. The formal language is now
-under way: explicit equality, universal quantification, implication, conjunction
-and equivalence are prototyped as propositions, and formal operands compose
-through them. Next in that core are disjunction, existential quantification with
-its proof surface, dependent and refinement types, induction and termination. Memory/reference reasoning, signed arithmetic with
+under way: explicit equality, universal quantification, implication, conjunction,
+disjunction and equivalence are prototyped as propositions, and formal operands
+compose through them. Next in that core are existential quantification with its
+proof surface, dependent and refinement types, induction and termination. Memory/reference reasoning, signed arithmetic with
 overflow obligations, and SMT remain later work. See `STATUS.md` for the
 supported fragment.
 

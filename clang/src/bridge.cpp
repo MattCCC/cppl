@@ -1345,7 +1345,8 @@ std::expected<Expr, std::string> build_formal(CXCursor cursor, const source::Pro
         result.node = std::move(quantified);
         return result;
     }
-    if (shape.kind == Kind::Implication || shape.kind == Kind::Conjunction || shape.kind == Kind::Equivalence) {
+    if (shape.kind == Kind::Implication || shape.kind == Kind::Conjunction || shape.kind == Kind::Disjunction ||
+        shape.kind == Kind::Equivalence) {
         if (!binders.empty() || shape.children.size() != 2 || statements.size() != 2)
             return std::unexpected("logical connective requires exactly two propositions");
         std::vector<Expr> operands;
@@ -1355,12 +1356,14 @@ std::expected<Expr, std::string> build_formal(CXCursor cursor, const source::Pro
                 return operand;
             operands.push_back(std::move(*operand));
         }
-        if (shape.kind == Kind::Implication)
+        if (shape.kind == Kind::Implication) {
             result.node = Implication{std::move(operands)};
-        else
-            result.node = Connective{shape.kind == Kind::Conjunction ? Connective::Kind::Conjunction
-                                                                     : Connective::Kind::Equivalence,
-                                     std::move(operands)};
+        } else {
+            const auto kind = shape.kind == Kind::Conjunction   ? Connective::Kind::Conjunction
+                              : shape.kind == Kind::Disjunction ? Connective::Kind::Disjunction
+                                                                : Connective::Kind::Equivalence;
+            result.node = Connective{kind, std::move(operands)};
+        }
         return result;
     }
     return std::unexpected("unknown formal projection form");

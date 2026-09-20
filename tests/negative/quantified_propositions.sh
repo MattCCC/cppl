@@ -173,10 +173,7 @@ verified unsigned f(unsigned x) expects(x == 0u && x == 1u) ensures(result == x)
 verified unsigned wrong(unsigned x) ensures(result == x) { return f(x); }
 CPP
 
-# Unmodeled logical forms and value uses are refused explicitly.
-reject disjunction <<'CPP'
-law wrong(unsigned x) ensures(x == x || x != x);
-CPP
+# Value uses of a connective are refused explicitly.
 reject conjunction_as_value <<'CPP'
 pure bool wrong(bool x, bool y) { return x && y; }
 law use(bool x, bool y) ensures(wrong(x, y));
@@ -196,5 +193,4 @@ CPP
 
 grep -q 'kernel-rejection' "$run/false_right_conjunct.log"
 grep -q 'kernel-rejection' "$run/conjunction_capture.log"
-grep -q 'logical disjunction is not supported yet' "$run/disjunction.log"
 grep -q 'not modeled as a value' "$run/conjunction_as_value.log"

@@ -86,7 +86,7 @@ struct Implication {
     std::vector<Expr> operands;
 };
 struct Connective {
-    enum class Kind : std::uint8_t { Conjunction, Equivalence };
+    enum class Kind : std::uint8_t { Conjunction, Disjunction, Equivalence };
     Kind kind = Kind::Conjunction;
     std::vector<Expr> operands;
 };

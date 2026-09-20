@@ -113,7 +113,11 @@ compose with conjunctive goals, and arithmetic automation uses explicit evidence
 for conjunctive facts. This adds two kernel rules (core/kernel 0.4.0), no
 assumptions or axioms. Formal propositions now also compose as `&&` operands;
 logical equivalence `<->` lowers to both implications, using those same rules.
-Value/guard/invariant uses of `&&` and disjunction remain unsupported (SPEC.md 7.6-7.7).
+Disjunction is `PROTOTYPE` on two further kernel rules (core/kernel 0.5.0), again
+with no assumptions or axioms: `||` is introduced from one side and used by a
+case analysis over both, automation shapes both and the kernel checks them, and
+nothing grants `P || not P`. Value/guard/invariant uses of `&&` and `||` remain
+unsupported (SPEC.md 7.6-7.8).
 Everything else is reported as unsupported and produces no obligation. See
 `ARCHITECTURE.md` 97 for the implemented structure and `TRUST.md` 41 for what
 must be trusted today.
@@ -185,9 +189,10 @@ kernel. Termination is not proven; `decreases`, `do`/`while`, range-based `for`
 and `for` without a condition are rejected. Loops add no kernel rule; the loop
 rule is correspondence trust (`TRUST.md` 41.2).
 
-This slice does **not** implement induction, case analysis (`cases`), dependent
-types, refinement types, loop termination, ghost state, `unsafe`, `trusted`, disjunction,
-proof `let`, solvers, proof caching, or any verification of the C++ memory model.
+This slice does **not** implement induction, case analysis (`cases`) over C++
+types, dependent types, refinement types, loop termination, ghost state,
+`unsafe`, `trusted`, proof `let`, solvers, proof caching, or any verification of
+the C++ memory model.
 Those remain `SPECIFIED` below.
 
 ---
@@ -289,7 +294,7 @@ The project should not claim broad language implementation before the proof sema
 | implication                   | `PROTOTYPE`   |
 | conjunction                   | `PROTOTYPE`   |
 | logical equivalence           | `PROTOTYPE`   |
-| disjunction                   | `SPECIFIED`   |
+| disjunction                   | `PROTOTYPE`   |
 | existential quantification    | `SPECIFIED`   |
 | dependent types               | `SPECIFIED`   |
 | refinement types              | `SPECIFIED`   |

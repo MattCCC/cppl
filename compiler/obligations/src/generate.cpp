@@ -225,8 +225,9 @@ class TermLowering {
             // refused rather than encoded as a Boolean.
             if (binary->op == vir::BinaryOp::And || binary->op == vir::BinaryOp::Or) {
                 return fail("'" + vir::describe(binary->op) +
-                                "' states a proposition and is not modeled as a value: state each side where a "
-                                "value is required, such as a condition or a loop invariant",
+                                "' states a proposition and is not modeled as a value: this position requires a "
+                                "value, such as a condition a path is taken on or a loop invariant" +
+                                (binary->op == vir::BinaryOp::And ? ", so state each side separately" : ""),
                             location);
             }
             if (const auto op = comparison(binary->op)) {
@@ -395,22 +396,23 @@ std::expected<kernel::Proposition, Failure> lower_proposition(const vir::Expr& e
     // operands state (SPEC.md 7.6). Each operand is a
     // side-effect-free specification expression, so short-circuiting changes
     // which of them C++ evaluates and never what the statement means.
+    // `||` states the disjunction of its operands for the same reason (SPEC.md
+    // 7.7): both are pure specification expressions, so which of them C++ would
+    // evaluate does not enter into what the proposition says.
     if (const auto* binary = std::get_if<vir::Binary>(&expression.node);
-        binary != nullptr && binary->op == vir::BinaryOp::And) {
+        binary != nullptr && (binary->op == vir::BinaryOp::And || binary->op == vir::BinaryOp::Or)) {
+        const bool conjunction = binary->op == vir::BinaryOp::And;
         if (!expression.type.is_boolean() || binary->operands.size() != 2 || !binary->operands[0].type.is_boolean() ||
             !binary->operands[1].type.is_boolean())
-            return fail("malformed conjunction", location);
+            return fail(conjunction ? "malformed conjunction" : "malformed disjunction", location);
         auto left = lower_proposition(binary->operands[0], definitions, parameter_count);
         if (!left)
             return left;
         auto right = lower_proposition(binary->operands[1], definitions, parameter_count);
         if (!right)
             return right;
-        return kernel::Proposition::conjunction(std::move(*left), std::move(*right));
-    }
-    if (const auto* binary = std::get_if<vir::Binary>(&expression.node);
-        binary != nullptr && binary->op == vir::BinaryOp::Or) {
-        return fail("logical disjunction is not supported yet", location);
+        return conjunction ? kernel::Proposition::conjunction(std::move(*left), std::move(*right))
+                           : kernel::Proposition::disjunction(std::move(*left), std::move(*right));
     }
 
     if (const auto* connective = std::get_if<vir::Connective>(&expression.node)) {
@@ -425,6 +427,8 @@ std::expected<kernel::Proposition, Failure> lower_proposition(const vir::Expr& e
         switch (connective->kind) {
             case vir::Connective::Kind::Conjunction:
                 return kernel::Proposition::conjunction(std::move(*left), std::move(*right));
+            case vir::Connective::Kind::Disjunction:
+                return kernel::Proposition::disjunction(std::move(*left), std::move(*right));
             case vir::Connective::Kind::Equivalence:
                 return kernel::Proposition::conjunction(kernel::Proposition::implication(*left, *right),
                                                         kernel::Proposition::implication(*right, *left));
@@ -580,6 +584,12 @@ void encode(source::Hasher& hasher, const kernel::Proposition& proposition) {
         encode(hasher, *conjunction->right);
         return;
     }
+    if (const auto* disjunction = std::get_if<kernel::Or>(&proposition.node)) {
+        hasher.update_u8(24);
+        encode(hasher, *disjunction->left);
+        encode(hasher, *disjunction->right);
+        return;
+    }
     const auto& equality = std::get<kernel::Eq>(proposition.node);
     hasher.update_u8(21);
     encode(hasher, equality.type);
@@ -614,6 +624,11 @@ void collect_dependencies(const kernel::Context& context, const kernel::Proposit
     if (const auto* conjunction = std::get_if<kernel::And>(&proposition.node)) {
         collect_dependencies(context, *conjunction->left, reached);
         collect_dependencies(context, *conjunction->right, reached);
+        return;
+    }
+    if (const auto* disjunction = std::get_if<kernel::Or>(&proposition.node)) {
+        collect_dependencies(context, *disjunction->left, reached);
+        collect_dependencies(context, *disjunction->right, reached);
         return;
     }
     const auto& equality = std::get<kernel::Eq>(proposition.node);
@@ -712,6 +727,20 @@ bool conclusion_is_applicable(const kernel::Proposition& available, const kernel
     if (available_and != nullptr || goal_and != nullptr) {
         reason = available_and != nullptr ? "it states a conjunction the goal does not"
                                           : "the goal states a conjunction it does not";
+        return false;
+    }
+
+    const auto* available_or = std::get_if<kernel::Or>(&available.node);
+    const auto* goal_or = std::get_if<kernel::Or>(&goal.node);
+
+    if (available_or != nullptr && goal_or != nullptr) {
+        return conclusion_is_applicable(*available_or->left, *goal_or->left, reason) &&
+               conclusion_is_applicable(*available_or->right, *goal_or->right, reason);
+    }
+
+    if (available_or != nullptr || goal_or != nullptr) {
+        reason = available_or != nullptr ? "it states a disjunction the goal does not"
+                                         : "the goal states a disjunction it does not";
         return false;
     }
 
@@ -887,6 +916,10 @@ kernel::Proposition abstract_occurrences(const kernel::Proposition& proposition,
     if (const auto* conjunction = std::get_if<kernel::And>(&proposition.node)) {
         return kernel::Proposition::conjunction(abstract_occurrences(*conjunction->left, target, depth, found),
                                                 abstract_occurrences(*conjunction->right, target, depth, found));
+    }
+    if (const auto* disjunction = std::get_if<kernel::Or>(&proposition.node)) {
+        return kernel::Proposition::disjunction(abstract_occurrences(*disjunction->left, target, depth, found),
+                                                abstract_occurrences(*disjunction->right, target, depth, found));
     }
     const auto& equality = std::get<kernel::Eq>(proposition.node);
     return kernel::Proposition::equality(equality.type, abstract_occurrences(equality.lhs, target, depth, found),

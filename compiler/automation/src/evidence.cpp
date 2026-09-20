@@ -14,6 +14,10 @@ std::optional<Evidence> propose(const kernel::Context& context, const kernel::Pr
     const auto accepted = [&](const kernel::ProofTerm& proof) {
         return kernel::check(context, goal, proof, kernel::CoreLimits{}).has_value();
     };
+    // A disjunctive goal holds by one of its sides, and which one is not decided
+    // here: the candidate for each side is offered in turn and the kernel accepts
+    // at most the ones that hold. A goal without a disjunction is unaffected,
+    // because the two candidates are then identical.
     kernel::ProofTerm definitional = obligations::definitional_evidence(goal);
     if (accepted(definitional)) {
         return Evidence{std::move(definitional), "definitional-equality"};
@@ -21,6 +25,12 @@ std::optional<Evidence> propose(const kernel::Context& context, const kernel::Pr
     kernel::ProofTerm rewritten = obligations::automatic_evidence(goal);
     if (accepted(rewritten)) {
         return Evidence{std::move(rewritten), "premise-and-definitional-equality"};
+    }
+    for (const auto& proposed :
+         {obligations::definitional_evidence(goal, true), obligations::automatic_evidence(goal, true)}) {
+        if (accepted(proposed)) {
+            return Evidence{proposed, "premise-and-definitional-equality"};
+        }
     }
     for (const bool rewriting : {false, true}) {
         if (auto arithmetic = arithmetic_evidence(context, goal, rewriting);

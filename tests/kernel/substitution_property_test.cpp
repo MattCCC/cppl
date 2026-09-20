@@ -45,7 +45,7 @@ k::Term term(Random& random, std::uint32_t variables, unsigned depth) {
 }
 
 k::Proposition proposition(Random& random, std::uint32_t variables, unsigned depth) {
-    const auto choice = random.below(depth == 0 ? 1 : 4);
+    const auto choice = random.below(depth == 0 ? 1 : 5);
     if (choice == 1) {
         return k::Proposition::for_all(type, proposition(random, variables + 1, depth - 1));
     }
@@ -58,6 +58,11 @@ k::Proposition proposition(Random& random, std::uint32_t variables, unsigned dep
         auto left = proposition(random, variables, depth - 1);
         auto right = proposition(random, variables, depth - 1);
         return k::Proposition::conjunction(std::move(left), std::move(right));
+    }
+    if (choice == 4) {
+        auto left = proposition(random, variables, depth - 1);
+        auto right = proposition(random, variables, depth - 1);
+        return k::Proposition::disjunction(std::move(left), std::move(right));
     }
     auto lhs = term(random, variables, 2);
     auto rhs = term(random, variables, 2);
@@ -100,6 +105,9 @@ bool evaluate(const k::Proposition& value, Environment environment) {
     if (const auto* conjunction = std::get_if<k::And>(&value.node)) {
         return evaluate(*conjunction->left, environment) && evaluate(*conjunction->right, environment);
     }
+    if (const auto* disjunction = std::get_if<k::Or>(&value.node)) {
+        return evaluate(*disjunction->left, environment) || evaluate(*disjunction->right, environment);
+    }
     const auto& forall = std::get<k::Forall>(value.node);
     environment.push_back(0);
     for (std::uint32_t x = 0; x < 4; ++x) {
@@ -120,6 +128,12 @@ k::ProofTerm reflexive_shape(const k::Proposition& goal) {
     if (const auto* conjunction = std::get_if<k::And>(&goal.node)) {
         return k::ProofTerm::conjunction_introduction(reflexive_shape(*conjunction->left),
                                                       reflexive_shape(*conjunction->right));
+    }
+    // One side is enough for a disjunction, and this shape always offers the
+    // left one, so a goal whose left side is false is rejected even when the
+    // right side holds.
+    if (const auto* disjunction = std::get_if<k::Or>(&goal.node)) {
+        return k::ProofTerm::disjunction_introduction(reflexive_shape(*disjunction->left), false);
     }
     return k::ProofTerm::reflexivity();
 }

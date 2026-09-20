@@ -69,11 +69,6 @@ reject equivalence_is_looser <<'CPP'
 law wrong(unsigned x) ensures(x == 0u -> x == x <-> x == 0u);
 CPP
 
-# Disjunction is refused rather than read as some other connective.
-reject formal_disjunction <<'CPP'
-law wrong(unsigned x) ensures(Eq<unsigned>(x, x) || x == x);
-CPP
-
 # A boundary, not a soundness claim: no written spelling projects one side out
 # of a conjunctive premise. Automation does it, and the kernel checks it.
 reject written_conjunction_side <<'CPP'

@@ -43,6 +43,14 @@ std::string describe(const ProofTerm& proof) {
     if (const auto* taken = std::get_if<ConjunctionElimination>(&proof.node)) {
         return std::string(taken->right ? "and_elim_right(" : "and_elim_left(") + describe(*taken->evidence) + ")";
     }
+    if (const auto* introduction = std::get_if<DisjunctionIntroduction>(&proof.node)) {
+        return std::string(introduction->right ? "or_intro_right(" : "or_intro_left(") +
+               describe(*introduction->evidence) + ")";
+    }
+    if (const auto* cases = std::get_if<DisjunctionElimination>(&proof.node)) {
+        return "or_elim(" + describe(*cases->evidence) + ", " + describe(*cases->left_case) + ", " +
+               describe(*cases->right_case) + ")";
+    }
     return "refl";
 }
 

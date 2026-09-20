@@ -55,8 +55,21 @@ struct And {
     friend bool operator==(const And&, const And&) = default;
 };
 
+// Disjunction (SPEC.md 7.8, GRAMMAR.md 33). `left || right` is established by
+// evidence for one of its sides, and evidence for it establishes only what both
+// sides establish, so using it means proving the goal under each side.
+//
+// Neither side binds a term variable, so de Bruijn indices mean the same in
+// both.
+struct Or {
+    Box<Proposition> left;
+    Box<Proposition> right;
+
+    friend bool operator==(const Or&, const Or&) = default;
+};
+
 struct Proposition {
-    std::variant<Eq, Forall, Implies, And> node;
+    std::variant<Eq, Forall, Implies, And, Or> node;
 
     static Proposition equality(Type type, Term lhs, Term rhs) {
         return Proposition{Eq{type, std::move(lhs), std::move(rhs)}};
@@ -72,6 +85,10 @@ struct Proposition {
 
     static Proposition conjunction(Proposition left, Proposition right) {
         return Proposition{And{Box<Proposition>{std::move(left)}, Box<Proposition>{std::move(right)}}};
+    }
+
+    static Proposition disjunction(Proposition left, Proposition right) {
+        return Proposition{Or{Box<Proposition>{std::move(left)}, Box<Proposition>{std::move(right)}}};
     }
 
     friend bool operator==(const Proposition&, const Proposition&) = default;

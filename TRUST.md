@@ -1143,6 +1143,8 @@ The core has eleven rules:
 9. Linear arithmetic
 10. Conjunction introduction
 11. Conjunction elimination (left or right)
+12. Disjunction introduction (left or right)
+13. Disjunction elimination (cases over both sides)
 ```
 
 Each is a capability, not an assumption.
@@ -1163,6 +1165,20 @@ axiom, or trusted mechanism. The bridge reads a recorded two-operand projection;
 lowering expands equivalence to a conjunction of opposite implications. Clang
 still resolves every C++ leaf. Correct connective shape and operator precedence
 remain correspondence trust, covered by positive and negative source tests.
+
+**Disjunction** (`SPEC.md` 7.8; RFC 0011) explicitly adds two further rules and
+moves the kernel/core versions to 0.5.0. Introduction checks the evidence against
+the side of the goal it selects. Elimination validates the restated disjunction,
+checks its evidence, and then checks each case against an implication from its
+own side, so no new hypothesis mechanism is trusted. Nothing grants that one side
+of a disjunction holds: there is no excluded middle in the core, and a goal
+needing it is unproven. Automation may shape an introduction or a case analysis,
+and the kernel checks whichever it submits. Negative tests cover a false
+disjunction, excluded middle, a side wrongly taken from a disjunctive premise, a
+case that covers the wrong side, invented evidence, malformed operands, binder
+capture and hypothesis indices inside a case. There are no new assumptions,
+axioms, trusted mechanisms, or external dependencies. Obligation identities
+distinguish a disjunction from a conjunction of the same ordered sides.
 
 **Machine arithmetic** (`SPEC.md` 7.1.1, 7.5; RFC 0006) enlarges the logical
 TCB explicitly, and moved the kernel and core versions to 0.3.0. Two parts must be

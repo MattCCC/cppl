@@ -1484,10 +1484,10 @@ The parser MUST interpret operators according to C++ precedence except where the
 
 # 33. Specification operator precedence
 
-Built-in `&&` between supported C++ Boolean predicates is currently lifted to
-conjunction; its supported placements and proof behavior are in SPEC.md 7.6.
-Formal propositions also compose through `&&` and `<->` (SPEC.md 7.6-7.7).
-`||` is recognized but remains unsupported by verification.
+Built-in `&&` and `||` between supported C++ Boolean predicates are currently
+lifted to conjunction and disjunction; their supported placements and proof
+behavior are in SPEC.md 7.6 and 7.8. Formal propositions also compose through
+`&&`, `||` and `<->` (SPEC.md 7.6-7.8).
 
 From tighter to looser:
 

@@ -87,9 +87,24 @@ struct Supposed {
     std::size_t binders = 0;
 };
 
+// How a candidate is shaped where the goal or the premises leave a choice. It
+// selects a shape; it never decides that a proposition holds, and every shape it
+// produces is put to the kernel.
+struct Shaping {
+    std::vector<Supposed>& supposed;
+    // Which side of a disjunctive goal to introduce.
+    bool prefer_right = false;
+    // Disjunctive premises already split on the way here, so each is split once
+    // and the case analysis terminates.
+    std::vector<kernel::Proposition> split;
+};
+
 // What a premise standing in scope makes available, with the evidence that
 // reaches it. A conjunction offers itself and, by conjunction elimination, what
 // each of its sides offers in turn.
+//
+// A disjunction offers only itself: neither side follows from it. Using one is
+// the case analysis below.
 void reachable(const kernel::Proposition& premise, kernel::ProofTerm evidence,
                std::vector<std::pair<kernel::Proposition, kernel::ProofTerm>>& available) {
     available.emplace_back(premise, evidence);
@@ -118,21 +133,22 @@ std::vector<std::pair<kernel::Proposition, kernel::ProofTerm>> in_scope(const st
 // `skip` is how many of the available propositions have already been rewritten
 // with on the way here. Each rewrite may only use one standing further out than
 // the last, so the sequence of rewrites is finite.
-kernel::ProofTerm shaped_evidence(const kernel::Proposition& goal, std::vector<Supposed>& supposed, std::size_t binders,
+kernel::ProofTerm shaped_evidence(const kernel::Proposition& goal, Shaping& shaping, std::size_t binders,
                                   std::size_t skip = 0) {
     if (const auto* quantified = std::get_if<kernel::Forall>(&goal.node)) {
         return kernel::ProofTerm::forall_introduction(quantified->binder,
-                                                      shaped_evidence(*quantified->body, supposed, binders + 1));
+                                                      shaped_evidence(*quantified->body, shaping, binders + 1));
     }
 
     if (const auto* implication = std::get_if<kernel::Implies>(&goal.node)) {
-        supposed.push_back(Supposed{*implication->premise, binders});
-        kernel::ProofTerm body = shaped_evidence(*implication->conclusion, supposed, binders);
-        supposed.pop_back();
+        shaping.supposed.push_back(Supposed{*implication->premise, binders});
+        kernel::ProofTerm body = shaped_evidence(*implication->conclusion, shaping, binders);
+        shaping.supposed.pop_back();
         return kernel::ProofTerm::implication_introduction(*implication->premise, std::move(body));
     }
 
-    const std::vector<std::pair<kernel::Proposition, kernel::ProofTerm>> available = in_scope(supposed, binders);
+    const std::vector<std::pair<kernel::Proposition, kernel::ProofTerm>> available =
+        in_scope(shaping.supposed, binders);
 
     // A goal that is exactly a premise supposed on the way in, or a side of one,
     // is closed by that premise, innermost first. This is a structural match
@@ -147,8 +163,38 @@ kernel::ProofTerm shaped_evidence(const kernel::Proposition& goal, std::vector<S
     // Each side of a conjunction is a goal in its own right, and the premises
     // standing here are available to both.
     if (const auto* conjunction = std::get_if<kernel::And>(&goal.node)) {
-        return kernel::ProofTerm::conjunction_introduction(shaped_evidence(*conjunction->left, supposed, binders),
-                                                           shaped_evidence(*conjunction->right, supposed, binders));
+        return kernel::ProofTerm::conjunction_introduction(shaped_evidence(*conjunction->left, shaping, binders),
+                                                           shaped_evidence(*conjunction->right, shaping, binders));
+    }
+
+    // A disjunctive goal is established by one of its sides. Which one is not
+    // something this candidate can know, so it introduces the side it was shaped
+    // for and leaves the decision to the kernel.
+    if (const auto* disjunction = std::get_if<kernel::Or>(&goal.node)) {
+        const kernel::Proposition& side = shaping.prefer_right ? *disjunction->right : *disjunction->left;
+        return kernel::ProofTerm::disjunction_introduction(shaped_evidence(side, shaping, binders),
+                                                           shaping.prefer_right);
+    }
+
+    // A disjunctive premise is used by proving the goal again under each of its
+    // sides. Nothing here resolves the disjunction: both branches are built, and
+    // each side is supposed only inside its own branch.
+    for (const auto& [proposition, evidence] : available) {
+        const auto* disjunction = std::get_if<kernel::Or>(&proposition.node);
+        if (disjunction == nullptr || std::ranges::find(shaping.split, proposition) != shaping.split.end()) {
+            continue;
+        }
+        shaping.split.push_back(proposition);
+        const auto under = [&](const kernel::Proposition& side) {
+            shaping.supposed.push_back(Supposed{side, binders});
+            kernel::ProofTerm body = shaped_evidence(goal, shaping, binders);
+            shaping.supposed.pop_back();
+            return kernel::ProofTerm::implication_introduction(side, std::move(body));
+        };
+        kernel::ProofTerm left = under(*disjunction->left);
+        kernel::ProofTerm right = under(*disjunction->right);
+        shaping.split.pop_back();
+        return kernel::ProofTerm::disjunction_elimination(proposition, evidence, std::move(left), std::move(right));
     }
 
     for (std::size_t index = skip; index < available.size(); ++index) {
@@ -162,7 +208,7 @@ kernel::ProofTerm shaped_evidence(const kernel::Proposition& goal, std::vector<S
             const auto rewritten = kernel::instantiate(*motive, equality->rhs);
             return kernel::ProofTerm::equality_elimination(equality->type, equality->lhs, equality->rhs,
                                                            std::move(*motive), evidence,
-                                                           shaped_evidence(rewritten, supposed, binders, index + 1));
+                                                           shaped_evidence(rewritten, shaping, binders, index + 1));
         }
         if (!(equality->type == kernel::Type{kernel::kBoolean})) {
             motive = rewrite_context(goal, equality->rhs);
@@ -173,9 +219,9 @@ kernel::ProofTerm shaped_evidence(const kernel::Proposition& goal, std::vector<S
                                                   kernel::Term::variable(kernel::VarIndex{0})),
                     evidence, kernel::ProofTerm::reflexivity());
                 const auto rewritten = kernel::instantiate(*motive, equality->lhs);
-                return kernel::ProofTerm::equality_elimination(
-                    equality->type, equality->rhs, equality->lhs, std::move(*motive), std::move(symmetry),
-                    shaped_evidence(rewritten, supposed, binders, index + 1));
+                return kernel::ProofTerm::equality_elimination(equality->type, equality->rhs, equality->lhs,
+                                                               std::move(*motive), std::move(symmetry),
+                                                               shaped_evidence(rewritten, shaping, binders, index + 1));
             }
         }
     }
@@ -185,24 +231,30 @@ kernel::ProofTerm shaped_evidence(const kernel::Proposition& goal, std::vector<S
 
 } // namespace
 
-kernel::ProofTerm definitional_evidence(const kernel::Proposition& goal) {
+kernel::ProofTerm definitional_evidence(const kernel::Proposition& goal, bool prefer_right) {
     if (const auto* quantified = std::get_if<kernel::Forall>(&goal.node)) {
-        return kernel::ProofTerm::forall_introduction(quantified->binder, definitional_evidence(*quantified->body));
+        return kernel::ProofTerm::forall_introduction(quantified->binder,
+                                                      definitional_evidence(*quantified->body, prefer_right));
     }
     if (const auto* implication = std::get_if<kernel::Implies>(&goal.node)) {
-        return kernel::ProofTerm::implication_introduction(*implication->premise,
-                                                           definitional_evidence(*implication->conclusion));
+        return kernel::ProofTerm::implication_introduction(
+            *implication->premise, definitional_evidence(*implication->conclusion, prefer_right));
     }
     if (const auto* conjunction = std::get_if<kernel::And>(&goal.node)) {
-        return kernel::ProofTerm::conjunction_introduction(definitional_evidence(*conjunction->left),
-                                                           definitional_evidence(*conjunction->right));
+        return kernel::ProofTerm::conjunction_introduction(definitional_evidence(*conjunction->left, prefer_right),
+                                                           definitional_evidence(*conjunction->right, prefer_right));
+    }
+    if (const auto* disjunction = std::get_if<kernel::Or>(&goal.node)) {
+        const kernel::Proposition& side = prefer_right ? *disjunction->right : *disjunction->left;
+        return kernel::ProofTerm::disjunction_introduction(definitional_evidence(side, prefer_right), prefer_right);
     }
     return kernel::ProofTerm::reflexivity();
 }
 
-kernel::ProofTerm automatic_evidence(const kernel::Proposition& goal) {
+kernel::ProofTerm automatic_evidence(const kernel::Proposition& goal, bool prefer_right) {
     std::vector<Supposed> supposed;
-    return shaped_evidence(goal, supposed, 0);
+    Shaping shaping{supposed, prefer_right, {}};
+    return shaped_evidence(goal, shaping, 0);
 }
 
 Verdict Verdict::proven(const kernel::Acceptance& acceptance, const Obligation& obligation) {

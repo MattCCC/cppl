@@ -120,6 +120,9 @@ class ExpressionElaborator {
                 case clangbridge::Connective::Kind::Conjunction:
                     converted.kind = vir::Connective::Kind::Conjunction;
                     break;
+                case clangbridge::Connective::Kind::Disjunction:
+                    converted.kind = vir::Connective::Kind::Disjunction;
+                    break;
                 case clangbridge::Connective::Kind::Equivalence:
                     converted.kind = vir::Connective::Kind::Equivalence;
                     break;

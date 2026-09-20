@@ -100,9 +100,13 @@ struct Program {
 };
 
 // Written refl introduces binders but never uses the hypotheses it introduces.
-[[nodiscard]] kernel::ProofTerm definitional_evidence(const kernel::Proposition& goal);
+//
+// A disjunctive goal has two shapes of evidence and nothing here decides which
+// side holds, so `prefer_right` selects the one this candidate introduces. The
+// caller offers both and the kernel decides; neither is believed.
+[[nodiscard]] kernel::ProofTerm definitional_evidence(const kernel::Proposition& goal, bool prefer_right = false);
 
-[[nodiscard]] kernel::ProofTerm automatic_evidence(const kernel::Proposition& goal);
+[[nodiscard]] kernel::ProofTerm automatic_evidence(const kernel::Proposition& goal, bool prefer_right = false);
 
 [[nodiscard]] std::optional<kernel::Proposition> rewrite_context(const kernel::Proposition& goal,
                                                                  const kernel::Term& target);

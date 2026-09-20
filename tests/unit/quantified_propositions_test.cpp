@@ -52,6 +52,13 @@ v::Expr conjunction(v::Expr left, v::Expr right) {
     return result;
 }
 
+v::Expr disjunction(v::Expr left, v::Expr right) {
+    v::Expr result;
+    result.type = v::Type::boolean();
+    result.node = v::Binary{v::BinaryOp::Or, {std::move(left), std::move(right)}};
+    return result;
+}
+
 cppl::obligations::Program generate(v::Expr proposition, cppl::diagnostics::Engine& engine) {
     cppl::elaboration::Result elaborated;
     v::Law law;
@@ -212,7 +219,8 @@ CPPL_TEST(equivalence_is_two_opposite_kernel_implications) {
 }
 
 CPPL_TEST(malformed_formal_connectives_are_refused) {
-    for (const auto kind : {v::Connective::Kind::Conjunction, v::Connective::Kind::Equivalence}) {
+    for (const auto kind :
+         {v::Connective::Kind::Conjunction, v::Connective::Kind::Disjunction, v::Connective::Kind::Equivalence}) {
         for (unsigned attack = 0; attack < 5; ++attack) {
             v::Expr goal;
             goal.type = v::Type::proposition();
@@ -273,6 +281,100 @@ CPPL_TEST(malformed_conjunctions_never_become_obligations) {
         CPPL_CHECK(engine.has_errors());
         CPPL_CHECK(program.obligations.empty());
     }
+}
+
+CPPL_TEST(a_disjunction_lowers_to_a_kernel_disjunction) {
+    cppl::diagnostics::Engine engine;
+    const auto same = predicate(value(0), value(0));
+    v::Expr zero;
+    zero.type = integer;
+    zero.node = v::IntLiteral{0};
+    const auto other = predicate(value(0), zero);
+
+    // Only the left side holds of every value, so acceptance means the side that
+    // holds was the one introduced.
+    const auto program = generate(disjunction(same, other), engine);
+    CPPL_CHECK(!engine.has_errors());
+    const auto& outer = std::get<k::Forall>(program.obligations.at(0).goal.node);
+    CPPL_CHECK(std::holds_alternative<k::Or>(outer.body->node));
+    const auto checked = cppl::automation::verify(program, engine);
+    CPPL_CHECK(!engine.has_errors());
+    CPPL_CHECK(checked[0].verdict.is_proven());
+
+    // And the mirrored goal, whose holding side is the right one.
+    cppl::diagnostics::Engine mirrored;
+    const auto swapped = generate(disjunction(other, same), mirrored);
+    CPPL_CHECK(cppl::automation::verify(swapped, mirrored)[0].verdict.is_proven());
+    CPPL_CHECK(!mirrored.has_errors());
+}
+
+CPPL_TEST(a_disjunction_of_two_unestablished_sides_is_not_proven) {
+    cppl::diagnostics::Engine engine;
+    v::Expr zero;
+    zero.type = integer;
+    zero.node = v::IntLiteral{0};
+    v::Expr one;
+    one.type = integer;
+    one.node = v::IntLiteral{1};
+
+    // x = 0 || x = 1 holds at some values and not at others, so neither side can
+    // be introduced for the quantified goal.
+    const auto program = generate(disjunction(predicate(value(0), zero), predicate(value(0), one)), engine);
+    const auto checked = cppl::automation::verify(program, engine);
+    CPPL_CHECK(!checked[0].verdict.is_proven());
+    CPPL_CHECK(engine.has_errors());
+}
+
+CPPL_TEST(a_disjunctive_premise_is_used_by_cases) {
+    cppl::diagnostics::Engine engine;
+    v::Expr zero;
+    zero.type = integer;
+    zero.node = v::IntLiteral{0};
+
+    // (x = 0 || x = 0) -> x = 0 holds by the same conclusion in both cases, and
+    // the evidence for it is a case analysis the kernel checks.
+    const auto side = predicate(value(0), zero);
+    const auto program = generate(implication(disjunction(side, side), equality(value(0), zero)), engine);
+    CPPL_CHECK(!engine.has_errors());
+    const auto checked = cppl::automation::verify(program, engine);
+    CPPL_CHECK(!engine.has_errors());
+    CPPL_CHECK(checked[0].verdict.is_proven());
+}
+
+CPPL_TEST(malformed_disjunctions_never_become_obligations) {
+    for (unsigned attack = 0; attack < 5; ++attack) {
+        const auto same = predicate(value(0), value(0));
+        auto expression = disjunction(same, same);
+        auto& operands = std::get<v::Binary>(expression.node).operands;
+        if (attack == 0)
+            operands.pop_back();
+        if (attack == 1)
+            operands.push_back(same);
+        if (attack == 2)
+            expression.type = integer;
+        if (attack == 3)
+            operands[1] = value(0);
+        if (attack == 4)
+            operands[1] = equality(value(0), value(0)); // not a C++ Boolean operand
+        cppl::diagnostics::Engine engine;
+        const auto program = generate(expression, engine);
+        CPPL_CHECK(engine.has_errors());
+        CPPL_CHECK(program.obligations.empty());
+    }
+}
+
+CPPL_TEST(a_disjunction_is_a_different_obligation_than_a_conjunction) {
+    cppl::diagnostics::Engine engine;
+    const auto same = predicate(value(0), value(0));
+    v::Expr zero;
+    zero.type = integer;
+    zero.node = v::IntLiteral{0};
+    const auto other = predicate(value(0), zero);
+    const auto first = generate(disjunction(same, other), engine).obligations.at(0).id;
+    CPPL_CHECK(first == generate(disjunction(same, other), engine).obligations.at(0).id);
+    CPPL_CHECK(!(first == generate(disjunction(other, same), engine).obligations.at(0).id));
+    CPPL_CHECK(!(first == generate(conjunction(same, other), engine).obligations.at(0).id));
+    CPPL_CHECK(!(first == generate(implication(same, other), engine).obligations.at(0).id));
 }
 
 CPPL_TEST(conjunction_identity_tracks_both_sides_and_their_order) {

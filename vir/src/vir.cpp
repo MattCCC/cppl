@@ -72,7 +72,9 @@ std::string describe(const Expr& expr) {
                            ? "(" + describe(node.operands[0]) + " -> " + describe(node.operands[1]) + ")"
                            : "<malformed-implication>";
             } else if constexpr (std::is_same_v<Node, Connective>) {
-                const auto op = node.kind == Connective::Kind::Conjunction ? " && " : " <-> ";
+                const auto op = node.kind == Connective::Kind::Conjunction   ? " && "
+                                : node.kind == Connective::Kind::Disjunction ? " || "
+                                                                             : " <-> ";
                 return node.operands.size() == 2
                            ? "(" + describe(node.operands[0]) + op + describe(node.operands[1]) + ")"
                            : "<malformed-connective>";

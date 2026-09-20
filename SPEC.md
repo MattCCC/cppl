@@ -575,7 +575,7 @@ elimination is left to automation, which the kernel still checks.
 
 Explicit formal forms may be operands of conjunction. `&&` used as a value,
 runtime guard in a verified body, or loop invariant is not yet modeled and is
-refused. Disjunction remains unsupported.
+refused.
 These limits do not change ordinary unverified C++ expressions or their runtime
 evaluation. See RFC 0009 for the implementation and trust rationale.
 
@@ -588,6 +588,42 @@ Both directions require explicit kernel-checked evidence. It adds no kernel
 rule or assumption. Equivalence is looser than implication and conjunction;
 repeated equivalence associates to the left. It composes with explicit equality,
 quantifiers, implications and conjunctions wherever a proposition is accepted.
+
+---
+
+## 7.8 Disjunction
+
+The proposition `P || Q` requires evidence for one of its sides. Its kernel
+introduction rule checks that evidence against the side it selects, which the
+goal states; evidence MUST NOT select a side the goal does not state.
+Elimination takes checked evidence for the whole disjunction together with
+evidence that each side is enough for the conclusion, and yields that
+conclusion. Neither side follows from the disjunction alone.
+
+`P || not P` is not granted. A conclusion that requires knowing which side holds
+is unproven, never assumed. Disjunction binds no variables; substitution and
+shifting act on both sides under the same surrounding binders.
+
+### 7.8.1 Current disjunction fragment
+
+The implementation lifts Clang-resolved built-in `||` between modeled Boolean
+specification expressions into disjunction, and admits explicit formal forms as
+its operands. It is supported in Laws, direct proof propositions, `expects`,
+`ensures`, and `assume`, including inside a `forall` body, on either side of an
+implication, and nested within itself. Only pure, modeled operands are admitted;
+short-circuiting cannot conceal an unsupported or effectful operand.
+
+`refl` introduces a disjunction when a side closes definitionally. `exact` can
+reuse evidence for the whole disjunction and `apply` can establish it after
+discharging the evidence's premises, as for any other proposition. A disjunctive
+premise is used by automation, which proves the goal under each side and submits
+the case analysis to the kernel; no written statement selects a side or takes
+cases, as none selects a side of a conjunction (7.6.1).
+
+`||` used as a value, runtime guard in a verified body, or loop invariant is not
+modeled and is refused. These limits do not change ordinary unverified C++
+expressions or their runtime evaluation. See RFC 0011 for the implementation and
+trust rationale.
 
 ---
 

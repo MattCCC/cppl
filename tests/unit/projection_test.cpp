@@ -255,6 +255,8 @@ CPPL_TEST(formal_connectives_are_recorded_with_specification_precedence) {
         "    ensures(Eq<unsigned>(x, x) && Eq<unsigned>(x, x) -> Eq<unsigned>(x, x) <-> Eq<unsigned>(x, x));\n"
         "law chained(unsigned x)\n"
         "    ensures(Eq<unsigned>(x, x) <-> Eq<unsigned>(x, x) <-> Eq<unsigned>(x, x));\n"
+        "law between(unsigned x)\n"
+        "    ensures(Eq<unsigned>(x, x) && Eq<unsigned>(x, x) || Eq<unsigned>(x, x) -> Eq<unsigned>(x, x));\n"
         "int main() { return 0; }\n";
 
     cppl::diagnostics::Engine engine;
@@ -264,7 +266,7 @@ CPPL_TEST(formal_connectives_are_recorded_with_specification_precedence) {
         cppl::frontend::project(stream, syntax, cppl::frontend::ProjectionOptions{});
 
     CPPL_CHECK(projection.diagnostics.empty());
-    CPPL_CHECK_EQ(projection.proposition_probes.size(), std::size_t{2});
+    CPPL_CHECK_EQ(projection.proposition_probes.size(), std::size_t{3});
 
     using Kind = cppl::source::ProjectionKind;
     const cppl::source::ProjectionShape& loosest = projection.proposition_probes[0].shape;
@@ -279,6 +281,14 @@ CPPL_TEST(formal_connectives_are_recorded_with_specification_precedence) {
     CPPL_CHECK(chained.kind == Kind::Equivalence);
     CPPL_CHECK(chained.children[0].kind == Kind::Equivalence);
     CPPL_CHECK(chained.children[1].kind == Kind::Equality);
+
+    // `||` stands between them: looser than `&&`, tighter than `->`.
+    const cppl::source::ProjectionShape& between = projection.proposition_probes[2].shape;
+    CPPL_CHECK(between.kind == Kind::Implication);
+    CPPL_CHECK(between.children[0].kind == Kind::Disjunction);
+    CPPL_CHECK(between.children[0].children[0].kind == Kind::Conjunction);
+    CPPL_CHECK(between.children[0].children[1].kind == Kind::Equality);
+    CPPL_CHECK(between.children[1].kind == Kind::Equality);
 }
 
 CPPL_TEST(erasure_reports_the_properties_it_checked) {

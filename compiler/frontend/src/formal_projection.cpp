@@ -213,7 +213,7 @@ std::size_t connective_operator(const std::vector<Token>& tokens, std::size_t be
             if (index == end)
                 return kUnbalanced;
         } else if ((kind == Kind::Equivalence && token == "->" && is_equivalence(tokens, begin, index)) ||
-                   (kind == Kind::Conjunction && token == "&&")) {
+                   (kind == Kind::Disjunction && token == "||") || (kind == Kind::Conjunction && token == "&&")) {
             found = index;
         }
     }
@@ -273,9 +273,13 @@ FormulaProjection formula(const TokenStream& stream, source::ByteSpan expression
         return {{Kind::Equality, {}}, "([](" + type + ", " + type + ") {})(" + copied(stream, eq->arguments) + ")", {}};
     }
     if (contains_formal_syntax(stream, expression)) {
-        const std::size_t conjunction = connective_operator(tokens, begin, end, Kind::Conjunction);
-        if (conjunction != end && conjunction != kUnbalanced)
-            return paired(Kind::Conjunction, conjunction, conjunction + 1);
+        // `||` is looser than `&&` (GRAMMAR.md 33), so when both stand at this
+        // level the disjunction is the outer one.
+        for (const Kind kind : {Kind::Disjunction, Kind::Conjunction}) {
+            const std::size_t at = connective_operator(tokens, begin, end, kind);
+            if (at != end && at != kUnbalanced)
+                return paired(kind, at, at + 1);
+        }
         return {{}, {}, "nested or malformed formal syntax is not supported in this proposition"};
     }
     return {{Kind::Expression, {}}, copied(stream, expression), {}};

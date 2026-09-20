@@ -3021,6 +3021,14 @@ Equivalence uses that projection too and lowers to `And(Implies(P,Q), Implies(Q,
 Only lowering expands the derived connective; the kernel keeps one logical
 representation. See RFC 0010.
 
+Disjunction takes the same path to a kernel `Or`, with one difference in the
+proof producer: a disjunctive goal has two shapes of evidence and a disjunctive
+premise is used by a case analysis rather than by projection. The producer offers
+the shapes - an introduction of either side, and a case analysis that proves the
+goal again under each side, splitting each premise once - and the kernel decides
+which, if any, holds. No strategy learns which side is true, and none is granted.
+See RFC 0011; SPEC.md 7.8 owns its meaning.
+
 A proof declaration is projected the same way. Its `proves` clause becomes the
 body of a generated function or an explicit-equality probe. Clang resolves
 the C++ parts; its statements are C++L and are never projected into C++ at all.
