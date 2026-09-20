@@ -113,8 +113,7 @@ CPPL_TEST(comparisons_and_selection_reject_malformed_core_terms) {
     // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
     const auto unknown_opcode = k::Term::primitive(static_cast<k::PrimOp>(255), u32.integer_type(), {});
     for (const auto& malformed :
-         {unknown_opcode,
-          compare(k::PrimOp::Less, number(1), k::Term::literal(i32.integer_type(), 1)),
+         {unknown_opcode, compare(k::PrimOp::Less, number(1), k::Term::literal(i32.integer_type(), 1)),
           k::Term::primitive(k::PrimOp::Less, u32.integer_type(), {number(1)}),
           k::Term::primitive(k::PrimOp::Select, u32.integer_type(), {number(1), number(1), number(2)}),
           k::Term::primitive(k::PrimOp::Select, u32.integer_type(), {boolean, number(1), boolean}),

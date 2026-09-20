@@ -373,8 +373,8 @@ std::expected<ContractVerification, Failure> build(const vir::Function& function
     if (leaves.size() > 1) {
         plan.obligation = program.obligations.size() + obligations.size();
         auto goal = close(plan, {}, 0, 0, false, kernel::instantiate(plan.postcondition, plan.returned_value));
-        auto obligation = obligation_for(program, {}, Origin::FunctionContract, function.qualified_name,
-                                         contract.range, goal, goal);
+        auto obligation =
+            obligation_for(program, {}, Origin::FunctionContract, function.qualified_name, contract.range, goal, goal);
         source::Hasher hasher;
         hasher.update_field("verified-paths-v1");
         hasher.update_field(obligation.id.digest.to_short_hex(64));
