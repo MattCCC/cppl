@@ -1,6 +1,7 @@
 #include "arithmetic.hpp"
 
 #include "cppl/kernel/substitution.hpp"
+#include "cppl/kernel/types.hpp"
 #include "cppl/obligations/obligation.hpp"
 
 #include <algorithm>
@@ -41,7 +42,7 @@ Wide gcd(Wide lhs, Wide rhs) {
     lhs = magnitude(lhs);
     rhs = magnitude(rhs);
     while (rhs != 0) {
-        const Wide rest = lhs % rhs;
+        const Wide rest = k::remainder(lhs, rhs);
         lhs = rhs;
         rhs = rest;
     }
@@ -70,10 +71,10 @@ void reduce(Row& row) {
         return;
     }
     for (Wide& value : row.coefficients)
-        value /= divisor;
+        value = k::divide(value, divisor);
     for (Wide& value : row.origin)
-        value /= divisor;
-    row.constant /= divisor;
+        value = k::divide(value, divisor);
+    row.constant = k::divide(row.constant, divisor);
 }
 
 // Fourier-Motzkin elimination. Returns the multiples of `active` that sum to a
@@ -145,8 +146,8 @@ std::optional<std::vector<Wide>> eliminate(const std::vector<k::LinearConstraint
                 // Each row is scaled by the other's coefficient over their
                 // common divisor, the least that cancels the variable.
                 const Wide common = gcd(upper->coefficients[variable], lower->coefficients[variable]);
-                const Wide a = upper->coefficients[variable] / common;
-                const Wide b = -lower->coefficients[variable] / common;
+                const Wide a = k::divide(upper->coefficients[variable], common);
+                const Wide b = k::divide(-lower->coefficients[variable], common);
                 Row combined{std::vector<Wide>(variables, 0), 0, std::vector<Wide>(active.size(), 0)};
                 bool fits = true;
                 for (std::size_t index = 0; fits && index < variables; ++index) {

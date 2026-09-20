@@ -87,9 +87,24 @@ use. Direct propositions have their own written-proof obligations and are counte
 separately from Laws. Explicit `Eq<T>` currently supports modeled integer and
 Boolean types as a complete Law, proof, precondition, postcondition, or `assume`
 proposition. Clang resolves its type and arguments; an unmodeled conversion is
-refused. Nested formal forms and explicit quantifiers remain unsupported.
+refused.
 `exact` and `apply` on equality goals can bridge definitionally equal operands
 using explicit equality-substitution and reflexivity evidence.
+
+A proposition may also state explicit universal quantification,
+`forall (T x, ...) { P }`, and implication, `P -> Q`, in any of those same
+places. The binders are ordinary C++ parameters Clang resolves, and they name the
+innermost variables: a binder that shadows a parameter denotes the binder. A
+statement written under such a binder means what it would anywhere else, so
+`assume` and `rewrite` reach a goal however deeply it quantifies. A binder is not
+a name a statement can use, so evidence that stays quantified cannot be
+instantiated at one. `forall` and `exists` are formal only in that complete form,
+and an `->` outside all brackets is implication, so a program that spells its own
+`forall` or dereferences inside an expression keeps its own meaning. Existential
+quantification, quantifiers in loop invariants, and formal forms nested inside an
+ordinary C++ expression are refused. See `SPEC.md` 8.1-8.3 and 9.1. Both forms
+lower onto the quantifier and implication the kernel already had, and added no
+kernel rule.
 Everything else is reported as unsupported and produces no obligation. See
 `ARCHITECTURE.md` 97 for the implemented structure and `TRUST.md` 41 for what
 must be trusted today.

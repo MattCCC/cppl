@@ -75,6 +75,15 @@ struct FormalEquality {
     std::vector<Expr> operands;
     friend bool operator==(const FormalEquality&, const FormalEquality&) = default;
 };
+struct Universal {
+    std::vector<Type> binders;
+    std::vector<Expr> body;
+    friend bool operator==(const Universal&, const Universal&) = default;
+};
+struct Implication {
+    std::vector<Expr> operands;
+    friend bool operator==(const Implication&, const Implication&) = default;
+};
 
 struct Conditional {
     std::vector<Expr> operands; // condition, true return, false return
@@ -133,7 +142,7 @@ struct Expr {
     Type type;
     Provenance provenance;
     std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, LocalVersion, LocalRef, Loop, Iterate,
-                 FormalEquality>
+                 FormalEquality, Universal, Implication>
         node;
 
     friend bool operator==(const Expr&, const Expr&) = default;

@@ -302,8 +302,8 @@ UnitOutcome compile_unit(const Options& options, const Input& input, const std::
     request.arguments.emplace_back("c++-cpp-output");
     request.arguments.emplace_back("-w");
     request.selection.specification_prefix = projection_options.generated_prefix;
-    for (const auto& equality : projection.equality_probes) {
-        request.selection.equality_probes.push_back(equality.name);
+    for (const auto& proposition : projection.proposition_probes) {
+        request.selection.proposition_probes.push_back({proposition.name, proposition.shape});
     }
     for (const auto& declaration : projection.declaration_offsets) {
         request.selection.offsets.push_back(declaration.analysis);

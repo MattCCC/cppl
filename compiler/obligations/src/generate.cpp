@@ -322,6 +322,32 @@ std::expected<kernel::Proposition, Failure> lower_proposition(const vir::Expr& e
                                                               std::size_t parameter_count) {
     const source::SourceLocation& location = expression.provenance.range.begin;
 
+    if (const auto* quantified = std::get_if<vir::Universal>(&expression.node)) {
+        if (!expression.type.is_proposition() || quantified->binders.empty() || quantified->body.size() != 1)
+            return fail("malformed universal proposition", location);
+        auto body = lower_proposition(quantified->body[0], definitions, parameter_count + quantified->binders.size());
+        if (!body)
+            return body;
+        for (auto binder = quantified->binders.rbegin(); binder != quantified->binders.rend(); ++binder) {
+            const auto type = lower_type(*binder);
+            if (!type)
+                return fail("unsupported quantifier binder type", location);
+            *body = kernel::Proposition::for_all(*type, std::move(*body));
+        }
+        return body;
+    }
+    if (const auto* implication = std::get_if<vir::Implication>(&expression.node)) {
+        if (!expression.type.is_proposition() || implication->operands.size() != 2)
+            return fail("malformed implication proposition", location);
+        auto premise = lower_proposition(implication->operands[0], definitions, parameter_count);
+        if (!premise)
+            return premise;
+        auto conclusion = lower_proposition(implication->operands[1], definitions, parameter_count);
+        if (!conclusion)
+            return conclusion;
+        return kernel::Proposition::implication(std::move(*premise), std::move(*conclusion));
+    }
+
     if (const auto* equality = std::get_if<vir::FormalEquality>(&expression.node)) {
         const auto type = lower_type(equality->operand_type);
         if (!expression.type.is_proposition() || !type || equality->operands.size() != 2 ||
@@ -649,12 +675,30 @@ std::optional<kernel::Proposition> claimed_proposition(const vir::Proof& proof, 
 struct Instantiation {
     kernel::Proposition proposition;
     kernel::ProofTerm term;
+
+    // Whether an instantiation argument mentions a variable. Such evidence
+    // means something only underneath the binders it was stated in, so it
+    // cannot stand where those binders have not been introduced.
+    bool open = false;
 };
 
+bool mentions_variable(const kernel::Term& term) {
+    if (const auto* call = std::get_if<kernel::Call>(&term.node))
+        return std::ranges::any_of(call->arguments, [](const auto& argument) { return mentions_variable(argument); });
+    if (const auto* primitive = std::get_if<kernel::Prim>(&term.node))
+        return std::ranges::any_of(primitive->arguments,
+                                   [](const auto& argument) { return mentions_variable(argument); });
+    return std::holds_alternative<kernel::Var>(term.node);
+}
+
+// `depth` is how many binders enclose the goal this evidence is being offered
+// for. The proof's parameters are the outermost of them, so an argument naming
+// one is lowered against that depth rather than against the parameter list.
 std::optional<Instantiation> instantiate_evidence(const vir::Proof& proof, const std::string& evidence,
                                                   Instantiation state, const std::vector<vir::Expr>& arguments,
-                                                  const DefinitionMap& definitions, diagnostics::Engine& engine) {
-    TermLowering lowering(definitions, proof.parameters.size());
+                                                  std::size_t depth, const DefinitionMap& definitions,
+                                                  diagnostics::Engine& engine) {
+    TermLowering lowering(definitions, depth);
 
     for (const vir::Expr& argument : arguments) {
         const source::SourceLocation& location = argument.provenance.range.begin;
@@ -687,6 +731,7 @@ std::optional<Instantiation> instantiate_evidence(const vir::Proof& proof, const
         }
 
         kernel::Proposition eliminated = kernel::instantiate(*quantified->body, *term);
+        state.open = state.open || mentions_variable(*term);
         state.term = kernel::ProofTerm::forall_elimination(std::move(state.proposition), std::move(state.term), *term);
         state.proposition = std::move(eliminated);
     }
@@ -756,10 +801,10 @@ kernel::Term abstract_occurrences(const kernel::Term& term, const kernel::Term& 
 // the rule, and it is the whole rule: nothing is searched for and nothing is
 // weighed. The context is then handed to the kernel as part of the proof term,
 // and the kernel checks that filling it yields the goal, so a choice made here
-// can only fail to prove something — never prove the wrong thing.
+// can only fail to prove something - never prove the wrong thing.
 std::optional<kernel::Proposition> make_rewrite_context(const kernel::Proposition& goal, const kernel::Term& target) {
-    // The context stands underneath one more binder than the goal does — the
-    // hole itself — so the goal is restated for that depth before the
+    // The context stands underneath one more binder than the goal does - the
+    // hole itself - so the goal is restated for that depth before the
     // occurrences are taken out of it.
     bool found = false;
     kernel::Proposition motive = abstract_occurrences(kernel::shift(goal, 1), kernel::shift(target, 1), 0, found);
@@ -851,6 +896,13 @@ struct Body {
     std::vector<std::pair<std::uint32_t, kernel::Proposition>> assumptions;
     std::uint32_t assumed = 0;
     std::size_t cursor = 0;
+
+    // How many binders enclose the goal being proved. A goal states a
+    // proposition that may quantify over binders of its own, so this is not the
+    // proof's parameter count: it is what every term written here is stated
+    // underneath, and what keeps a name in a statement denoting the same
+    // variable however deeply the goal nests (SPEC.md 8).
+    std::size_t depth = 0;
 };
 
 std::optional<kernel::ProofTerm> prove(Body& body, const kernel::Proposition& goal, diagnostics::Engine& engine);
@@ -868,6 +920,7 @@ std::optional<kernel::ProofTerm> suppose(Body& body, const vir::ProofStep& step,
 
     std::vector<kernel::Type> binders;
     const kernel::Proposition* inner = under_quantifiers(goal, binders);
+    const std::size_t depth = body.depth + binders.size();
 
     const auto* implication = std::get_if<kernel::Implies>(&inner->node);
     if (implication == nullptr) {
@@ -878,7 +931,7 @@ std::optional<kernel::ProofTerm> suppose(Body& body, const vir::ProofStep& step,
     }
 
     std::expected<kernel::Proposition, Failure> written =
-        lower_proposition(assumed.proposition, body.definitions, body.proof.parameters.size());
+        lower_proposition(assumed.proposition, body.definitions, depth);
     if (!written) {
         report(engine, diagnostics::Category::UnsupportedSemantics,
                written.error().location.is_valid() ? written.error().location : step.location,
@@ -896,7 +949,9 @@ std::optional<kernel::ProofTerm> suppose(Body& body, const vir::ProofStep& step,
     }
 
     body.assumptions.emplace_back(position, *implication->premise);
+    const std::size_t enclosing = std::exchange(body.depth, depth);
     std::optional<kernel::ProofTerm> rest = prove(body, *implication->conclusion, engine);
+    body.depth = enclosing;
     body.assumptions.pop_back();
     if (!rest.has_value()) {
         return std::nullopt;
@@ -942,14 +997,16 @@ std::optional<kernel::ProofTerm> transport(Body& body, const vir::ProofStep& ste
                                            const kernel::Proposition& goal, diagnostics::Engine& engine) {
     std::vector<kernel::Type> binders;
     const kernel::Proposition* inner = under_quantifiers(goal, binders);
+    const std::size_t depth = body.depth + binders.size();
 
     std::optional<Instantiation> evidence = named_evidence(body, step, rewritten.evidence, engine);
     if (!evidence.has_value()) {
         return std::nullopt;
     }
 
-    std::optional<Instantiation> instantiated = instantiate_evidence(
-        body.proof, rewritten.evidence.name, std::move(*evidence), rewritten.arguments, body.definitions, engine);
+    std::optional<Instantiation> instantiated =
+        instantiate_evidence(body.proof, rewritten.evidence.name, std::move(*evidence), rewritten.arguments, depth,
+                             body.definitions, engine);
     if (!instantiated.has_value()) {
         return std::nullopt;
     }
@@ -974,7 +1031,9 @@ std::optional<kernel::ProofTerm> transport(Body& body, const vir::ProofStep& ste
     }
 
     const kernel::Proposition remaining = kernel::instantiate(*motive, equality->rhs);
+    const std::size_t enclosing = std::exchange(body.depth, depth);
     std::optional<kernel::ProofTerm> rest = prove(body, remaining, engine);
+    body.depth = enclosing;
     if (!rest.has_value()) {
         return std::nullopt;
     }
@@ -1013,28 +1072,32 @@ std::optional<kernel::ProofTerm> prove(Body& body, const kernel::Proposition& go
     const std::vector<vir::Expr>& arguments =
         exact != nullptr ? exact->arguments : std::get<vir::ApplyStep>(step.node).arguments;
 
+    std::vector<kernel::Type> binders;
+    const kernel::Proposition* inner = under_quantifiers(goal, binders);
+    const std::size_t depth = body.depth + binders.size();
+
     std::optional<Instantiation> evidence = named_evidence(body, step, reference, engine);
     if (!evidence.has_value()) {
         return std::nullopt;
     }
 
     std::optional<Instantiation> instantiated =
-        instantiate_evidence(proof, reference.name, std::move(*evidence), arguments, body.definitions, engine);
+        instantiate_evidence(proof, reference.name, std::move(*evidence), arguments, depth, body.definitions, engine);
     if (!instantiated.has_value()) {
         return std::nullopt;
     }
 
     // Two readings of the statement, in a fixed order: the goal as it stands,
     // then the goal with its own quantifiers introduced. An argument may be a
-    // closed term, or it may mention the proof's parameters, in which case the
-    // statement it leaves is open in them. Which reading the goal asks for is
-    // settled by comparing propositions, never by searching.
-    std::vector<kernel::Type> binders;
-    const kernel::Proposition* inner = under_quantifiers(goal, binders);
-
+    // closed term, or it may mention a variable, in which case the statement it
+    // leaves means something only underneath the binders it was stated in and
+    // the second reading is the only one available. Which reading the goal asks
+    // for is settled by comparing propositions, never by searching.
     std::string reason;
-    std::optional<std::size_t> discharge =
-        premises_before_the_goal(body.context, instantiated->proposition, goal, exact != nullptr, reason);
+    std::optional<std::size_t> discharge;
+    if (!instantiated->open || binders.empty()) {
+        discharge = premises_before_the_goal(body.context, instantiated->proposition, goal, exact != nullptr, reason);
+    }
     if (discharge.has_value()) {
         binders.clear();
     } else if (!binders.empty()) {
@@ -1043,17 +1106,27 @@ std::optional<kernel::ProofTerm> prove(Body& body, const kernel::Proposition& go
     }
 
     if (!discharge.has_value()) {
+        std::string note = "it establishes " + kernel::describe(instantiated->proposition);
+        // A binder a proposition writes for itself has no name a statement can
+        // use, so evidence left quantified over one cannot be instantiated here.
+        if (std::holds_alternative<kernel::Forall>(instantiated->proposition.node) &&
+            !std::holds_alternative<kernel::Forall>(inner->node)) {
+            note += ", which stays quantified over a variable no statement here can name";
+        }
+        note += ", and the goal is " + kernel::describe(goal);
         report(engine, diagnostics::Category::ProofFailure, step.location,
                exact != nullptr ? "'" + reference.name + "' does not prove what proof '" + proof.name + "' claims"
                                 : "the conclusion of '" + reference.name + "' cannot be applied to what proof '" +
                                       proof.name + "' claims: " + reason,
-               "it establishes " + kernel::describe(instantiated->proposition) + ", and the goal is " +
-                   kernel::describe(goal));
+               std::move(note));
         return std::nullopt;
     }
 
     kernel::ProofTerm term = std::move(instantiated->term);
     kernel::Proposition current = std::move(instantiated->proposition);
+    // A premise left by the reading that introduced the goal's quantifiers is
+    // stated underneath them.
+    const std::size_t enclosing = std::exchange(body.depth, binders.empty() ? body.depth : depth);
     for (std::size_t remaining = *discharge; remaining > 0; --remaining) {
         const auto& implication = std::get<kernel::Implies>(current.node);
         kernel::Proposition premise = *implication.premise;
@@ -1063,11 +1136,13 @@ std::optional<kernel::ProofTerm> prove(Body& body, const kernel::Proposition& go
         // statements that follow are what close it.
         std::optional<kernel::ProofTerm> discharged = prove(body, premise, engine);
         if (!discharged.has_value()) {
+            body.depth = enclosing;
             return std::nullopt;
         }
         term = kernel::ProofTerm::implication_elimination(std::move(current), std::move(term), std::move(*discharged));
         current = std::move(conclusion);
     }
+    body.depth = enclosing;
 
     const auto& target = binders.empty() ? goal : *inner;
     if (convertible_equality(body.context, current, target)) {

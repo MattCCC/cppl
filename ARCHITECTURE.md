@@ -2974,6 +2974,34 @@ or logical helper is inserted into a user namespace. The probe is linked by
 projection identity even when overloads share a presumed source location.
 Unsupported nested formal forms fail before C++ analysis.
 
+Universal quantification and implication are projected the same way, and by the
+same means: the projector records the shape of the formal form it emitted, and
+emits C++ that makes Clang resolve everything inside it. A `forall (T x) { P }`
+becomes a lambda taking those parameters and returning `P`, so Clang declares the
+binders, resolves their types, and binds every use of them in the body. A
+`P -> Q` becomes a lambda whose body is `P;` then `Q;`, so each side is resolved
+in the scope the author wrote it in. The bridge walks the recorded shape against
+the resolved lambda, refusing anything that is not the shape it emitted, and
+reads the binders Clang declared as the quantifier's binder types. The typed
+bridge and VIR carry quantifier and implication nodes of proposition type;
+lowering constructs the kernel's existing `Forall` and `Implies`. A binder is a
+parameter Clang scoped, so it shadows an outer name exactly as C++ does, and it
+becomes the innermost de Bruijn index of the lowered proposition. No C++
+declaration named `forall`, `exists` or `->` is inserted anywhere.
+
+Which spellings are formal is decided before C++ analysis, from syntax alone: a
+quantifier word is formal only in the complete parenthesized-and-braced form, and
+`->` is implication only outside all brackets. Everything else is left for Clang
+to resolve as the C++ it is.
+
+Because a proposition may now quantify over binders of its own, the number of
+binders enclosing a goal is no longer the number of parameters its declaration
+has. Proof lowering therefore carries that depth and states every term and
+assumed proposition against it, which is what makes a name in a statement denote
+the same variable however deeply the goal nests. Evidence instantiated at a term
+that mentions a variable means something only underneath the binders it was
+stated in, and is offered only there.
+
 ## 97.5.1 A written proof is elaborated, never believed
 
 A proof declaration is projected the same way. Its `proves` clause becomes the

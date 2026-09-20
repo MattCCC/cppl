@@ -14,6 +14,14 @@ enum class Signedness : std::uint8_t { Signed, Unsigned };
 // overflow rejects rather than wraps.
 using Wide = __int128;
 
+// Truncating division and remainder of `Wide`, computed in 64-bit pieces.
+//
+// Targets whose compiler runtime is not linked in (clang targeting the MSVC ABI
+// on Windows) have no 128-bit division helper, so `Wide` values are never
+// divided with `/` or `%` directly. `denominator` must not be zero.
+[[nodiscard]] Wide divide(Wide numerator, Wide denominator);
+[[nodiscard]] Wide remainder(Wide numerator, Wide denominator);
+
 // A machine integer type: exactly `width` value bits with the stated
 // signedness. The formal core never exchanges these for unbounded mathematical
 // integers (SPEC.md 29 "Machine arithmetic").

@@ -272,8 +272,8 @@ class Builder {
     }
 
     static Wide floor_divide(Wide numerator, Wide denominator) {
-        Wide quotient = numerator / denominator;
-        if (numerator % denominator != 0 && (numerator < 0) != (denominator < 0)) {
+        Wide quotient = divide(numerator, denominator);
+        if (remainder(numerator, denominator) != 0 && (numerator < 0) != (denominator < 0)) {
             --quotient;
         }
         return quotient;

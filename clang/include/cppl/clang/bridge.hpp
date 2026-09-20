@@ -2,6 +2,7 @@
 
 #include "cppl/clang/ast.hpp"
 #include "cppl/source/location.hpp"
+#include "cppl/source/projection.hpp"
 
 #include <expected>
 #include <string>
@@ -18,7 +19,11 @@ namespace cppl::clangbridge {
 struct Selection {
     std::string specification_prefix;
     std::vector<std::size_t> offsets;
-    std::vector<std::string> equality_probes;
+    struct PropositionProbe {
+        std::string name;
+        source::ProjectionShape shape;
+    };
+    std::vector<PropositionProbe> proposition_probes;
 };
 
 struct ParseRequest {

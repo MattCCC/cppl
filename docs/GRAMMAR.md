@@ -1321,6 +1321,13 @@ ensures(
 );
 ```
 
+A quantifier word begins a quantifier expression only in the complete form
+above. `forall` or `exists` followed by anything else is an ordinary C++
+identifier, and the expression around it is resolved by Clang. The
+implementation boundary of `forall` is described in SPEC.md 8.1; the
+parameter-declaration-list and the propositions inside the block are resolved by
+Clang, not by a fabricated declaration.
+
 Existential quantifier:
 
 ```ebnf
@@ -1328,6 +1335,8 @@ exists-expression
     ::= "exists" "(" parameter-declaration-list ")"
         specification-block
 ```
+
+Existential quantification is recognised and refused; see SPEC.md 9.1.
 
 Example:
 
@@ -1372,6 +1381,12 @@ is:
 ```
 
 This operator MUST NOT be introduced into ordinary runtime C++ expression grammar.
+
+Because `->` is also C++ member access, and because implication is looser than
+every C++ operator (33 below), an `->` outside all brackets in a specification
+expression is implication, and one inside them is C++. Member access is
+therefore written parenthesized. The implementation boundary is described in
+SPEC.md 8.3.
 
 ---
 

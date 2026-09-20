@@ -2,6 +2,7 @@
 
 #include "cppl/frontend/syntax.hpp"
 #include "cppl/frontend/token.hpp"
+#include "cppl/source/projection.hpp"
 
 #include <cstddef>
 #include <optional>
@@ -25,8 +26,8 @@ struct SpecificationFunction {
     // has none. It is generated rather than named after the Law, because only
     // the Law's conclusion is what a proof names.
     std::string premise_name;
-    std::size_t analysis_offset = 0; // name token in the physical analysis buffer
-    std::string equality_probe = {}; // unique projection identity, independent of #line
+    std::size_t analysis_offset = 0;    // name token in the physical analysis buffer
+    std::string proposition_probe = {}; // unique projection identity, independent of #line
 };
 
 // The ordinary C++ function a proof declaration's `proves` clause is projected
@@ -73,10 +74,11 @@ struct LoopInvariantMarker {
 // Eq template. Its analysis-only probe asks Clang to resolve a two-parameter
 // lambda call at the stated type. The bridge reads the resolved arguments,
 // while the proposition itself is supplied by this explicit projection record.
-struct EqualityProbe {
+struct PropositionProbe {
     std::string owner;
     std::string name;
     source::SourceLocation location;
+    source::ProjectionShape shape;
 };
 
 // One projector, two texts.
@@ -98,7 +100,7 @@ struct Projection {
     std::vector<ProofFunction> proof_functions;
     std::vector<ContractFunctions> contract_functions;
     std::vector<LoopInvariantMarker> loop_invariants;
-    std::vector<EqualityProbe> equality_probes;
+    std::vector<PropositionProbe> proposition_probes;
     std::vector<diagnostics::Diagnostic> diagnostics;
 
     // Positions of executable declarations copied into the analysis buffer.

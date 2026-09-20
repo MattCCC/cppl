@@ -34,6 +34,7 @@
       "Bash(cp:*)",
       "Bash(mv:*)",
       "Bash(git:*)",
+      "Bash(git apply:*)",
       "Bash(git stash:*)",
       "Bash(make:*)",
       "Bash(cmake:*)",
@@ -48,10 +49,7 @@
       "Bash(git worktree list:*)",
       "Bash(git worktree remove:*)"
     ],
-    "ask": [
-      "Bash(rm:*)",
-      "Bash(chmod:*)"
-    ],
+    "ask": ["Bash(rm:*)", "Bash(chmod:*)"],
     "deny": [
       "Edit(.claude/hooks/**)",
       "Write(.claude/hooks/**)",
@@ -63,7 +61,6 @@
       "Write(.claude/settings.local.json)",
       "Bash(git reset:*)",
       "Bash(git restore:*)",
-      "Bash(git apply:*)",
       "Bash(git clean:*)",
       "Bash(git checkout:*)",
       "Bash(git switch:*)",

@@ -59,6 +59,14 @@ std::string describe(const Expr& expr) {
                 }
                 text += ")";
                 return text;
+            } else if constexpr (std::is_same_v<Node, Universal>) {
+                return node.body.size() == 1
+                           ? "forall(" + std::to_string(node.binders.size()) + "). " + describe(node.body[0])
+                           : "<malformed-universal>";
+            } else if constexpr (std::is_same_v<Node, Implication>) {
+                return node.operands.size() == 2
+                           ? "(" + describe(node.operands[0]) + " -> " + describe(node.operands[1]) + ")"
+                           : "<malformed-implication>";
             } else if constexpr (std::is_same_v<Node, FormalEquality>) {
                 return node.operands.size() == 2
                            ? "Eq<" + describe(node.operand_type) + ">(" + describe(node.operands[0]) + ", " +

@@ -1,10 +1,14 @@
 #include "cppl/frontend/projection.hpp"
 
+#include "formal_projection.hpp"
+
 #include <algorithm>
 
 namespace cppl::frontend {
 
 namespace {
+
+using detail::line_directive;
 
 void blank(std::string& buffer, const source::ByteSpan& span) {
     const std::size_t end = std::min(span.end(), buffer.size());
@@ -15,112 +19,11 @@ void blank(std::string& buffer, const source::ByteSpan& span) {
     }
 }
 
-std::string quote_path(std::string_view path) {
-    std::string quoted = "\"";
-    for (char character : path) {
-        if (character == '\\' || character == '"') {
-            quoted.push_back('\\');
-        }
-        quoted.push_back(character);
-    }
-    quoted.push_back('"');
-    return quoted;
-}
-
-// Inserted text changes physical line numbering, so each insertion states the
-// line it stands for and restores the numbering after itself. Diagnostics from
-// inside a specification function then point at the law that produced it.
-std::string line_directive(std::uint32_t line, std::string_view file) {
-    if (file.empty() || line == 0) {
-        return {};
-    }
-    return "#line " + std::to_string(line) + " " + quote_path(file) + "\n";
-}
-
 struct Edit {
     source::ByteSpan span;
     std::string replacement;
     std::optional<std::size_t> specification_index = std::nullopt;
 };
-
-struct EqualitySyntax {
-    source::ByteSpan type;
-    source::ByteSpan arguments;
-    source::SourceLocation arguments_location;
-};
-
-// Delimit only the formal wrapper. In particular the arguments are copied as
-// one C++ argument list: templates, commas, lookup and conversions belong to
-// Clang. Ordinary expressions that are not this complete form are untouched.
-std::optional<EqualitySyntax> equality_syntax(const TokenStream& stream, source::ByteSpan expression) {
-    const auto& tokens = stream.tokens();
-    std::size_t begin = static_cast<std::size_t>(
-        std::lower_bound(tokens.begin(), tokens.end(), expression.offset,
-                         [](const Token& token, std::size_t offset) { return token.span.offset < offset; }) -
-        tokens.begin());
-    std::size_t end = begin;
-    while (end < tokens.size() && tokens[end].span.end() <= expression.end() &&
-           tokens[end].kind != TokenKind::EndOfFile)
-        ++end;
-    const auto matching = [&](std::size_t from, std::string_view open, std::string_view close) {
-        unsigned depth = 0;
-        for (std::size_t i = from; i < end; ++i) {
-            if (tokens[i].text == open)
-                ++depth;
-            if (tokens[i].text == close && --depth == 0)
-                return i;
-        }
-        return end;
-    };
-    while (begin < end && tokens[begin].text == "(" && matching(begin, "(", ")") == end - 1) {
-        ++begin;
-        --end;
-    }
-    if (end - begin < 6 || tokens[begin].text != "Eq" || tokens[begin + 1].text != "<")
-        return std::nullopt;
-    unsigned angles = 1;
-    std::size_t close = begin + 2;
-    for (; close < end; ++close) {
-        const auto token = tokens[close].text;
-        if (token == "(" || token == "[") {
-            close = matching(close, token, token == "(" ? ")" : "]");
-            if (close == end)
-                return std::nullopt;
-        } else if (token == "<") {
-            ++angles;
-        } else if (token == ">" || token == ">>") {
-            const unsigned count = token == ">>" ? 2 : 1;
-            if (count > angles)
-                return std::nullopt;
-            if (angles <= count)
-                break;
-            angles -= count;
-        }
-    }
-    if (close + 1 >= end || tokens[close + 1].text != "(" || matching(close + 1, "(", ")") != end - 1)
-        return std::nullopt;
-    // The final '>' can be the second character of a C++ '>>' token.
-    const std::size_t type_end = tokens[close].span.offset + (tokens[close].text == ">>" && angles == 2 ? 1 : 0);
-    auto location = stream.location_of(tokens[close + 1]);
-    ++location.column;
-    return EqualitySyntax{{tokens[begin + 2].span.offset, type_end - tokens[begin + 2].span.offset},
-                          {tokens[close + 1].span.end(), tokens[end - 1].span.offset - tokens[close + 1].span.end()},
-                          std::move(location)};
-}
-
-bool contains_formal_equality(const TokenStream& stream, source::ByteSpan expression) {
-    const auto& tokens = stream.tokens();
-    const auto start =
-        std::lower_bound(tokens.begin(), tokens.end(), expression.offset,
-                         [](const Token& token, std::size_t offset) { return token.span.offset < offset; });
-    for (std::size_t index = static_cast<std::size_t>(start - tokens.begin());
-         index + 1 < tokens.size() && tokens[index].span.offset < expression.end(); ++index) {
-        if (tokens[index + 1].span.end() <= expression.end() && tokens[index].text == "Eq" &&
-            tokens[index + 1].text == "<")
-            return true;
-    }
-    return false;
-}
 
 } // namespace
 
@@ -144,7 +47,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
     const auto emit = [&stream, &projection,
                        &options](std::string_view name, std::string_view parameters, const source::ByteSpan& expression,
                                  const source::SourceLocation& begin, std::uint32_t end_line,
-                                 std::size_t* name_offset = nullptr, std::string* equality_name = nullptr) {
+                                 std::size_t* name_offset = nullptr, std::string* proposition_name = nullptr) {
         std::string replacement = "\n";
         replacement += line_directive(begin.line, begin.file);
         replacement += "[[maybe_unused]] static bool ";
@@ -153,37 +56,29 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         replacement += name;
         replacement += "(";
         replacement += parameters;
-        if (const auto equality = equality_syntax(stream, expression);
-            equality && !contains_formal_equality(stream, equality->arguments)) {
-            replacement += ");\n";
-            const std::string probe = options.generated_prefix + "equality_" +
-                                      std::to_string(projection.equality_probes.size()) +
-                                      (options.unit_key.empty() ? "" : "_" + options.unit_key);
-            projection.equality_probes.push_back({std::string(name), probe, begin});
-            if (equality_name != nullptr)
-                *equality_name = probe;
-            replacement += line_directive(begin.line, begin.file);
-            replacement += "[[maybe_unused]] static auto " + probe + "(";
-            replacement += parameters;
-            replacement += ") { return ([](";
-            replacement += stream.spelling(equality->type);
-            replacement += ", ";
-            replacement += stream.spelling(equality->type);
-            replacement += ") {})(\n";
-            replacement += line_directive(equality->arguments_location.line, equality->arguments_location.file);
-            replacement.append(equality->arguments_location.column - 1, ' ');
-            replacement += stream.spelling(equality->arguments);
-            replacement += "); }\n";
-            replacement += line_directive(end_line, begin.file);
-            return replacement;
-        }
-        if (contains_formal_equality(stream, expression)) {
+        const auto formula = detail::project_formula(stream, expression);
+        if (formula.failure) {
             diagnostics::Diagnostic diagnostic;
             diagnostic.severity = diagnostics::Severity::Error;
             diagnostic.category = diagnostics::Category::UnsupportedSemantics;
             diagnostic.location = begin;
-            diagnostic.message = "nested or malformed formal Eq is not supported in this proposition";
+            diagnostic.message = *formula.failure;
             projection.diagnostics.push_back(std::move(diagnostic));
+        }
+        if (formula.shape.kind != source::ProjectionKind::Expression) {
+            replacement += ");\n";
+            const std::string probe = options.generated_prefix + "proposition_" +
+                                      std::to_string(projection.proposition_probes.size()) +
+                                      (options.unit_key.empty() ? "" : "_" + options.unit_key);
+            projection.proposition_probes.push_back({std::string(name), probe, begin, formula.shape});
+            if (proposition_name != nullptr)
+                *proposition_name = probe;
+            replacement += line_directive(begin.line, begin.file);
+            replacement += "[[maybe_unused]] static auto " + probe + "(";
+            replacement += parameters;
+            replacement += ") { return (" + formula.expression + "); }\n";
+            replacement += line_directive(end_line, begin.file);
+            return replacement;
         }
         replacement += ") { return (";
         replacement += stream.spelling(expression);
@@ -204,7 +99,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         SpecificationFunction projected{law.name, index, {}};
         std::string replacement =
             emit(law.name, stream.spelling(law.parameters), proposition->expression, law.keyword_location, law.end_line,
-                 &projected.analysis_offset, &projected.equality_probe);
+                 &projected.analysis_offset, &projected.proposition_probe);
 
         // A precondition is a specification expression of the Law's own
         // parameters, so it is projected exactly like the conclusion, under a
@@ -270,7 +165,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
             }
             std::string name = options.generated_prefix + "assumption_" + suffix + "_" +
                                std::to_string(projected.assumption_names.size());
-            if (contains_formal_equality(stream, statement.proposition)) {
+            if (detail::contains_formal_syntax(stream, statement.proposition)) {
                 replacement += emit(name, stream.spelling(proof.parameters), statement.proposition,
                                     statement.proposition_location, proof.end_line);
             } else {
@@ -354,12 +249,12 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
 
         std::string replacement = "\n";
         for (std::size_t position = 0; position < loop.invariants.size(); ++position) {
-            if (contains_formal_equality(stream, loop.invariants[position].expression)) {
+            if (detail::contains_formal_syntax(stream, loop.invariants[position].expression)) {
                 diagnostics::Diagnostic diagnostic;
                 diagnostic.severity = diagnostics::Severity::Error;
                 diagnostic.category = diagnostics::Category::UnsupportedSemantics;
                 diagnostic.location = loop.invariants[position].location;
-                diagnostic.message = "formal Eq in a loop invariant is not supported yet";
+                diagnostic.message = "formal syntax in a loop invariant is not supported yet";
                 projection.diagnostics.push_back(std::move(diagnostic));
             }
             LoopInvariantMarker marker;

@@ -475,3 +475,27 @@ CPPL_TEST(wrapping_is_part_of_the_system) {
     CPPL_CHECK(system->variables[1].lowest == 0);
     CPPL_CHECK(system->variables[1].highest == 1);
 }
+
+CPPL_TEST(wide_division_truncates_toward_zero_in_every_sign) {
+    const auto check_pair = [](k::Wide numerator, k::Wide denominator, k::Wide quotient, k::Wide rest) {
+        CPPL_CHECK(k::divide(numerator, denominator) == quotient);
+        CPPL_CHECK(k::remainder(numerator, denominator) == rest);
+    };
+    check_pair(7, 2, 3, 1);
+    check_pair(-7, 2, -3, -1);
+    check_pair(7, -2, -3, 1);
+    check_pair(-7, -2, 3, -1);
+    check_pair(6, 3, 2, 0);
+    check_pair(1, 4, 0, 1);
+    check_pair(0, 5, 0, 0);
+
+    // Above 64 bits, where the target may have no division helper of its own.
+    const k::Wide big = (k::Wide{1} << 100) + 5;
+    check_pair(big, k::Wide{1} << 100, 1, 5);
+    check_pair(k::Wide{5} << 100, 5, k::Wide{1} << 100, 0);
+    check_pair(-big, k::Wide{3} << 101, 0, -big);
+
+    const k::Wide least = -(k::Wide{1} << 126) * 2;
+    check_pair(least, 2, -(k::Wide{1} << 126), 0);
+    check_pair(least + 1, -1, -(least + 1), 0);
+}

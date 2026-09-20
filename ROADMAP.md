@@ -195,9 +195,11 @@ Current sequence: single-return verified functions and verified-call contract
 composition, conditionals with path obligations and integer comparisons, and
 locals, assignments and their updates, unsigned machine arithmetic with
 kernel-checked linear order reasoning, and `while`/`for` loops with explicit
-invariants (partial correctness) are prototyped. Next is the formal language
-and proof core (propositions, proofs, dependent and refinement types,
-induction and termination). Memory/reference reasoning, signed arithmetic with
+invariants (partial correctness) are prototyped. The formal language is now
+under way: explicit equality, universal quantification and implication are
+prototyped as propositions. Next in that core are the remaining connectives,
+existential quantification with its proof surface, dependent and refinement
+types, induction and termination. Memory/reference reasoning, signed arithmetic with
 overflow obligations, and SMT remain later work. See `STATUS.md` for the
 supported fragment.
 

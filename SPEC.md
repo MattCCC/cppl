@@ -577,6 +577,61 @@ Conceptually:
 
 ---
 
+## 8.1 Current explicit-quantification fragment
+
+The current implementation accepts `forall (T x, ...) { P }` as a complete Law,
+proof, precondition, postcondition, or assumed proposition. At least one binder
+is required, and each binder type must be a modeled built-in integer or Boolean
+type; anything else is refused. The binders are ordinary C++ parameters resolved
+by Clang, and they name the innermost variables of the proposition: a binder
+that shadows a parameter denotes the binder, as it would in C++.
+
+A binder is not a name any proof statement can use. Evidence is written of the
+parameters a Law or proof declares, so a proposition quantified over its own
+binder cannot be instantiated at a term chosen in a proof body. What a statement
+may do under such a binder is suppose the premise standing there and prove the
+proposition it leaves.
+
+Loop invariants and quantifiers nested inside an ordinary C++ expression are
+refused. `forall` is a formal form only in the complete form above: spelled
+anywhere else, it is an ordinary C++ identifier with its own meaning.
+
+These implementation limits do not narrow the semantics above.
+
+---
+
+## 8.2 Implication
+
+A specification expression may state implication with `->`, which is looser than
+every ordinary C++ operator and right associative (GRAMMAR.md 29, 33):
+
+```cpp
+ensures(x == 0u -> identity(x) == 0u)
+```
+
+denotes conceptually:
+
+```text
+P -> Q
+```
+
+which claims nothing about `P`: what it states is `Q` under the supposition of
+`P`. A Law written `expects(P) ensures(Q)` states the same proposition, and both
+are discharged the same way.
+
+---
+
+## 8.3 Current implication fragment
+
+The current implementation accepts `->` between two specification expressions in
+the same contexts as 8.1. Because `->` is also C++ member access, and because an
+implication is looser than every C++ operator, `->` outside all brackets in a
+specification expression is implication. Member access inside a specification
+expression is therefore written inside parentheses, where the enclosing
+expression is C++ and the whole of it is resolved by Clang.
+
+---
+
 # 9. Existential quantification
 
 C++L supports existential propositions.
@@ -604,6 +659,14 @@ proof that the witness satisfies the proposition
 ```
 
 Failure to find a witness does not prove that none exists.
+
+---
+
+## 9.1 Current existential fragment
+
+Existential quantification is not implemented. The complete form above is
+recognised and refused with a diagnostic saying so; nothing approximates it.
+Spelled in any other form, `exists` is an ordinary C++ identifier.
 
 ---
 

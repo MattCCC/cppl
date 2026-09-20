@@ -1291,7 +1291,19 @@ weight are deliberately few and are stated explicitly in the implementation:
 - `rewrite e;` chooses which occurrences of a term the goal's context
   abstracts. That choice is this layer's, and it is all this layer does: the
   context goes to the kernel, which checks the equality, checks what is
-  transported through it, and derives the resulting proposition itself.
+  transported through it, and derives the resulting proposition itself;
+- `forall (T x, ...) { P }` is the core's universal quantifier over those binder
+  types, outermost binder first, and `P -> Q` is the core's implication. The
+  binders are parameters Clang declared and scoped, so a name in the body denotes
+  what C++ says it denotes, and the innermost binder is de Bruijn index zero.
+  Which spellings are formal at all is decided from syntax before Clang runs:
+  a quantifier word only in its complete form, an `->` only outside all brackets.
+  Both forms only construct propositions the kernel already had, so neither adds
+  a rule, an axiom or an assumption;
+- a statement in a proof body is stated against the number of binders enclosing
+  the goal it is written for, which a proposition's own quantifiers add to. A
+  defect there can only state a term at the wrong depth, which the kernel refuses
+  as out of scope or as a proposition that is not the goal.
 
 Anything outside those rules is reported as unsupported and yields no
 obligation. No construct is approximated.

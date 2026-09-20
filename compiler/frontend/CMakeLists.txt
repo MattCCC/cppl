@@ -5,6 +5,7 @@
 # macros are already expanded and constructs contributed by headers are visible
 # (SPEC.md 3.2).
 add_library(cppl_frontend STATIC
+    src/formal_projection.cpp
     src/lexer.cpp
     src/projection.cpp
     src/recognizer.cpp)

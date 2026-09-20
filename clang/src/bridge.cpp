@@ -1260,60 +1260,119 @@ Severity convert_severity(CXDiagnosticSeverity severity) {
     return Severity::Error;
 }
 
-// Only a projector-named equality probe reaches this path. The empty lambda
-// has no logical meaning: its signature makes Clang perform ordinary argument
-// checking, and the two converted arguments become the operands of formal Eq.
-void extract_equality(Function& function, CXCursor cursor, const std::vector<CXCursor>& parameters) {
-    function.has_body = true;
-    function.body_rejection = "malformed formal equality probe";
+// The schema describes only syntax emitted by the projector. Every C++ leaf,
+// parameter type and declaration reference is resolved independently by Clang.
+std::expected<Expr, std::string> build_formal(CXCursor cursor, const source::ProjectionShape& shape,
+                                              const std::vector<CXCursor>& parameters, unsigned depth) {
+    using Kind = source::ProjectionKind;
+    if (depth > kMaxExpressionDepth)
+        return std::unexpected("formal proposition nests too deeply");
+    if (shape.kind == Kind::Expression) {
+        if (!shape.children.empty())
+            return std::unexpected("malformed expression projection");
+        return build_expression(cursor, parameters, {}, 0);
+    }
+    while (clang_getCursorKind(cursor) == CXCursor_UnexposedExpr || clang_getCursorKind(cursor) == CXCursor_ParenExpr) {
+        const auto children = children_of(cursor);
+        if (children.size() != 1)
+            return std::unexpected("malformed formal expression wrapper");
+        cursor = children[0];
+    }
+    Expr result;
+    result.type.kind = TypeKind::Proposition;
+    result.type.spelling = "Prop";
+    result.location = presumed_location(clang_getCursorLocation(cursor));
+
+    if (shape.kind == Kind::Equality) {
+        if (!shape.children.empty() || clang_getCursorKind(cursor) != CXCursor_CallExpr)
+            return std::unexpected("malformed equality probe");
+        const auto method = clang_getCursorReferenced(cursor);
+        const auto formals = parameters_of(method);
+        if (clang_getCursorKind(method) != CXCursor_CXXMethod || formals.size() != 2 ||
+            clang_Cursor_getNumArguments(cursor) != 3)
+            return std::unexpected("malformed equality operands");
+        const auto first = clang_getCanonicalType(clang_getCursorType(formals[0]));
+        const auto second = clang_getCanonicalType(clang_getCursorType(formals[1]));
+        if (clang_equalTypes(first, second) == 0)
+            return std::unexpected("equality operand types differ");
+        FormalEquality equality{convert_type(first), {}};
+        // The first operator() argument is the closure object.
+        for (unsigned index = 1; index < 3; ++index)
+            equality.operands.push_back(build_expression(clang_Cursor_getArgument(cursor, index), parameters, {}, 0));
+        result.node = std::move(equality);
+        return result;
+    }
+
+    if (clang_getCursorKind(cursor) != CXCursor_LambdaExpr)
+        return std::unexpected("formal scope is not a projected C++ lambda");
+    std::vector<CXCursor> binders;
     std::vector<CXCursor> bodies;
     for (const auto child : children_of(cursor)) {
+        if (clang_getCursorKind(child) == CXCursor_ParmDecl)
+            binders.push_back(child);
         if (clang_getCursorKind(child) == CXCursor_CompoundStmt)
             bodies.push_back(child);
     }
     if (bodies.size() != 1)
-        return;
+        return std::unexpected("formal scope requires one body");
     const auto statements = children_of(bodies[0]);
-    if (statements.size() != 1 || clang_getCursorKind(statements[0]) != CXCursor_ReturnStmt)
-        return;
-    auto values = children_of(statements[0]);
-    if (values.size() != 1)
-        return;
-    CXCursor call = values[0];
-    while (clang_getCursorKind(call) == CXCursor_UnexposedExpr || clang_getCursorKind(call) == CXCursor_ParenExpr) {
-        values = children_of(call);
+    if (shape.kind == Kind::Universal) {
+        if (binders.empty() || shape.children.size() != 1 || statements.size() != 1 ||
+            clang_getCursorKind(statements[0]) != CXCursor_ReturnStmt)
+            return std::unexpected("forall requires binders and one proposition");
+        const auto values = children_of(statements[0]);
+        if (values.size() != 1)
+            return std::unexpected("forall has no proposition");
+        auto scope = parameters;
+        scope.insert(scope.end(), binders.begin(), binders.end());
+        auto body = build_formal(values[0], shape.children[0], scope, depth + 1);
+        if (!body)
+            return body;
+        Universal quantified;
+        for (const auto binder : binders)
+            quantified.binders.push_back(convert_type(clang_getCursorType(binder)));
+        quantified.body.push_back(std::move(*body));
+        result.node = std::move(quantified);
+        return result;
+    }
+    if (shape.kind == Kind::Implication) {
+        if (!binders.empty() || shape.children.size() != 2 || statements.size() != 2)
+            return std::unexpected("implication requires exactly two propositions");
+        Implication implication;
+        for (std::size_t index = 0; index < 2; ++index) {
+            auto operand = build_formal(statements[index], shape.children[index], parameters, depth + 1);
+            if (!operand)
+                return operand;
+            implication.operands.push_back(std::move(*operand));
+        }
+        result.node = std::move(implication);
+        return result;
+    }
+    return std::unexpected("unknown formal projection form");
+}
+
+void extract_formal(Function& function, CXCursor cursor, const std::vector<CXCursor>& parameters,
+                    const source::ProjectionShape& shape) {
+    function.has_body = true;
+    function.body_rejection = "malformed formal proposition probe";
+    for (const auto child : children_of(cursor)) {
+        if (clang_getCursorKind(child) != CXCursor_CompoundStmt)
+            continue;
+        const auto statements = children_of(child);
+        if (statements.size() != 1 || clang_getCursorKind(statements[0]) != CXCursor_ReturnStmt)
+            return;
+        const auto values = children_of(statements[0]);
         if (values.size() != 1)
             return;
-        call = values[0];
+        auto expression = build_formal(values[0], shape, parameters, 0);
+        if (!expression) {
+            function.body_rejection = expression.error();
+            return;
+        }
+        function.returned_value = std::move(*expression);
+        function.body_rejection.reset();
+        return;
     }
-    if (clang_getCursorKind(call) != CXCursor_CallExpr)
-        return;
-    const CXCursor method = clang_getCursorReferenced(call);
-    if (clang_getCursorKind(method) != CXCursor_CXXMethod)
-        return;
-    const auto formals = parameters_of(method);
-    if (formals.size() != 2)
-        return;
-    const CXType first = clang_getCanonicalType(clang_getCursorType(formals[0]));
-    const CXType second = clang_getCanonicalType(clang_getCursorType(formals[1]));
-    if (clang_equalTypes(first, second) == 0)
-        return;
-    const int count = clang_Cursor_getNumArguments(call);
-    // libclang includes the closure object as the first operator() argument.
-    if (count != 3)
-        return;
-    FormalEquality equality;
-    equality.operand_type = convert_type(first);
-    for (unsigned index = 1; index < 3; ++index) {
-        equality.operands.push_back(build_expression(clang_Cursor_getArgument(call, index), parameters, {}, 0));
-    }
-    Expr expression;
-    expression.type.kind = TypeKind::Proposition;
-    expression.type.spelling = "Prop";
-    expression.location = function.location;
-    expression.node = std::move(equality);
-    function.returned_value = std::move(expression);
-    function.body_rejection.reset();
 }
 
 } // namespace
@@ -1426,9 +1485,10 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
 
         // The projector's invariant declarations share the generated prefix,
         // which no ordinary declaration may use.
-        if (std::ranges::find(request.selection.equality_probes, function.name) !=
-            request.selection.equality_probes.end()) {
-            extract_equality(function, cursor, parameter_cursors);
+        const auto probe = std::ranges::find_if(request.selection.proposition_probes,
+                                                [&](const auto& selected) { return selected.name == function.name; });
+        if (probe != request.selection.proposition_probes.end()) {
+            extract_formal(function, cursor, parameter_cursors, probe->shape);
         } else {
             extract_body(function, cursor, parameter_cursors,
                          request.selection.specification_prefix.empty()

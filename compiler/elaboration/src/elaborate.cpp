@@ -88,6 +88,40 @@ class ExpressionElaborator {
         result.type = *type;
         result.provenance.range.begin = expr.location;
 
+        if (const auto* quantified = std::get_if<clangbridge::Universal>(&expr.node)) {
+            if (quantified->binders.empty() || quantified->body.size() != 1) {
+                failure_ = Failure{"malformed universal proposition", expr.location};
+                return std::nullopt;
+            }
+            vir::Universal converted;
+            for (const auto& binder : quantified->binders) {
+                auto binder_type = convert_type(binder);
+                if (!binder_type || binder_type->is_proposition()) {
+                    failure_ =
+                        Failure{"quantifier binder type '" + binder.spelling + "' is not modeled", expr.location};
+                    return std::nullopt;
+                }
+                converted.binders.push_back(*binder_type);
+            }
+            auto body = convert(quantified->body[0]);
+            if (!body)
+                return std::nullopt;
+            converted.body.push_back(std::move(*body));
+            result.node = std::move(converted);
+            return result;
+        }
+        if (const auto* implication = std::get_if<clangbridge::Implication>(&expr.node)) {
+            vir::Implication converted;
+            for (const auto& operand : implication->operands) {
+                auto value = convert(operand);
+                if (!value)
+                    return std::nullopt;
+                converted.operands.push_back(std::move(*value));
+            }
+            result.node = std::move(converted);
+            return result;
+        }
+
         if (const auto* equality = std::get_if<clangbridge::FormalEquality>(&expr.node)) {
             const auto operand_type = convert_type(equality->operand_type);
             if (!operand_type || (!operand_type->is_integer() && !operand_type->is_boolean()) ||
@@ -312,7 +346,7 @@ std::optional<std::vector<vir::Parameter>> convert_parameters(const clangbridge:
 // fragment C++L models.
 const clangbridge::Function* proposition_function(const Request& request, std::string_view generated,
                                                   const source::SourceLocation& written) {
-    for (const auto& probe : request.projection.equality_probes) {
+    for (const auto& probe : request.projection.proposition_probes) {
         if (probe.owner == generated && probe.location.file == written.file && probe.location.line == written.line) {
             return find_projected(request.unit, probe.name, probe.location);
         }
@@ -782,8 +816,8 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
             law_names.emplace(function->usr, declaration.name);
         }
         const std::string law_usr = function != nullptr ? function->usr : std::string{};
-        if (function != nullptr && !specification.equality_probe.empty()) {
-            function = find_projected(request.unit, specification.equality_probe, declaration.keyword_location);
+        if (function != nullptr && !specification.proposition_probe.empty()) {
+            function = find_projected(request.unit, specification.proposition_probe, declaration.keyword_location);
         }
         if (function == nullptr || !function->returned_value.has_value()) {
             report(engine, diagnostics::Category::Elaboration, declaration.range.begin,

@@ -76,6 +76,13 @@ struct FormalEquality {
     Type operand_type;
     std::vector<Expr> operands;
 };
+struct Universal {
+    std::vector<Type> binders;
+    std::vector<Expr> body;
+};
+struct Implication {
+    std::vector<Expr> operands;
+};
 struct Conditional {
     std::vector<Expr> operands;
 }; // condition, true return, false return
@@ -131,7 +138,7 @@ struct Expr {
     Type type;
     source::SourceLocation location;
     std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, LocalVersion, LocalRef, Loop, Iterate,
-                 FormalEquality, Unsupported>
+                 FormalEquality, Universal, Implication, Unsupported>
         node;
 };
 
