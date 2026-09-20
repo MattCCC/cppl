@@ -72,9 +72,9 @@ declares Laws it:
 7. reports `PROVEN` only on kernel acceptance, and fails the build otherwise;
 8. checks that erasure only deleted text, and hands the runtime program to Clang.
 
-The verified fragment is deliberately small: a Law is one comparison between two
-built-in integer expressions, optionally stated under one `expects`
-precondition of the same shape, universally quantified over its parameters, over
+The verified fragment is deliberately small: a Law states a modeled proposition
+over built-in integer expressions, optionally under one `expects`
+precondition, universally quantified over its parameters, over
 functions declared `pure` whose bodies are a single `return` of a modeled
 expression. A proof declaration claims a Law at arguments of its choosing or states a modeled
 proposition directly, including explicit `Eq<T>(a, b)`,
@@ -105,6 +105,14 @@ quantification, quantifiers in loop invariants, and formal forms nested inside a
 ordinary C++ expression are refused. See `SPEC.md` 8.1-8.3 and 9.1. Both forms
 lower onto the quantifier and implication the kernel already had, and added no
 kernel rule.
+Conjunction of supported Boolean predicates is now `PROTOTYPE`: nested `&&`
+works in Laws, direct proofs, preconditions, postconditions and `assume`, under
+quantifiers and implications. Introduction proves both sides; elimination exposes
+either side of a checked premise. Written `refl`, `exact`, `apply`, and `rewrite`
+compose with conjunctive goals, and arithmetic automation uses explicit evidence
+for conjunctive facts. This adds two kernel rules (core/kernel 0.4.0), no
+assumptions or axioms. Formal forms as `&&` operands, value/guard/invariant uses
+of `&&`, disjunction and equivalence remain unsupported (SPEC.md 7.6).
 Everything else is reported as unsupported and produces no obligation. See
 `ARCHITECTURE.md` 97 for the implemented structure and `TRUST.md` 41 for what
 must be trusted today.
@@ -177,7 +185,7 @@ and `for` without a condition are rejected. Loops add no kernel rule; the loop
 rule is correspondence trust (`TRUST.md` 41.2).
 
 This slice does **not** implement induction, case analysis (`cases`), dependent
-types, refinement types, loop termination, ghost state, `unsafe`, `trusted`, conjunction,
+types, refinement types, loop termination, ghost state, `unsafe`, `trusted`, disjunction,
 proof `let`, solvers, proof caching, or any verification of the C++ memory model.
 Those remain `SPECIFIED` below.
 
@@ -224,7 +232,8 @@ updates, and `while`/`for` loops against explicit invariants (partial
 correctness). All six integer comparisons are
 represented structurally. The original function/call slices use seven rules;
 path composition adds one conditional-elimination rule, and machine arithmetic
-adds one linear-arithmetic rule, bringing the core to nine, with zero logical
+adds one linear-arithmetic rule; conjunction adds introduction and elimination,
+bringing the core to eleven, with zero logical
 assumptions and zero runtime checks. Locals and loops add none. Unsigned arithmetic is
 normalized as a ring modulo `2^width`, and order consequences are kernel-checked.
 This completes the imperative foundation (ROADMAP large slice 1). Next is the
@@ -277,7 +286,8 @@ The project should not claim broad language implementation before the proof sema
 | direct proposition proofs     | `PROTOTYPE`   |
 | universal quantification      | `PROTOTYPE`   |
 | implication                   | `PROTOTYPE`   |
-| conjunction / disjunction     | `SPECIFIED`   |
+| conjunction                   | `PROTOTYPE`   |
+| disjunction                   | `SPECIFIED`   |
 | existential quantification    | `SPECIFIED`   |
 | dependent types               | `SPECIFIED`   |
 | refinement types              | `SPECIFIED`   |
@@ -342,7 +352,7 @@ The project should not claim broad language implementation before the proof sema
 | Mechanized core calculus             | `NOT STARTED` |
 | Meta-theory / soundness proofs       | `NOT STARTED` |
 
-The kernel implements nine rules:
+The kernel implements eleven rules:
 
 ```text
 1. Reflexivity
@@ -354,10 +364,12 @@ The kernel implements nine rules:
 7. Hypothesis use
 8. Conditional elimination
 9. Linear arithmetic
+10. Conjunction introduction
+11. Conjunction elimination (left or right)
 ```
 
-They act over propositions built from equality, universal quantification and
-implication. The kernel's terms are variables, machine-integer literals,
+They act over propositions built from equality, universal quantification,
+implication and conjunction. The kernel's terms are variables, machine-integer literals,
 applications of admitted definitions, and primitives: wrapping addition,
 subtraction and multiplication, the six comparisons, boolean negation and
 selection. It admits no recursion, which is why it needs no termination checker

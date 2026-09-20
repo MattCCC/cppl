@@ -101,7 +101,7 @@ proof already_closed_holds(unsigned x)
     refl;
 }
 
-// Preconditions are conjoined, and conjunction is not part of the formal core.
+// Multiple Law preconditions are still refused; use one explicit conjunction.
 law two_preconditions(unsigned x)
     expects(identity(x) == x)
     expects(add_one(x) == add_one(x))

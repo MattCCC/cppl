@@ -541,6 +541,39 @@ they do in any sound logic. The rule adds no assumption.
 
 ---
 
+## 7.6 Conjunction
+
+The proposition `P && Q` requires evidence for both `P` and `Q`. Its kernel
+introduction rule checks each proof against its own side. Elimination takes
+checked evidence for the whole conjunction and yields the selected side; the
+other side MUST NOT be silently dropped before checking that evidence.
+Conjunction binds no variables. Substitution and shifting act on both sides
+under the same surrounding binders.
+
+### 7.6.1 Current conjunction fragment
+
+The implementation lifts Clang-resolved built-in `&&` between modeled Boolean
+specification expressions into conjunction. It supports nested conjunctions in
+Laws, direct proof propositions, `expects`, `ensures`, and `assume`, including
+inside a `forall` body or on either side of implication. Ordinary C++ operands,
+operator selection, types and conversions remain Clang's responsibility.
+Only pure, modeled operands are admitted; short-circuiting cannot conceal an
+unsupported or effectful operand.
+
+`refl` introduces a conjunction when each side closes definitionally. `exact`
+can reuse evidence for the whole conjunction; `apply` can establish it after
+discharging the evidence's premises. `rewrite` traverses both sides. Automation
+may construct or project conjunction evidence, including for arithmetic facts,
+but the kernel checks every introduction and elimination.
+
+Explicit formal forms such as `Eq<T>` used as operands of `&&`, and `&&` used
+as a value, runtime guard in a verified body, or loop invariant are not yet
+modeled and are refused. Disjunction and logical equivalence remain unsupported.
+These limits do not change ordinary unverified C++ expressions or their runtime
+evaluation. See RFC 0009 for the implementation and trust rationale.
+
+---
+
 # 8. Universal quantification
 
 Parameters of a `law` are universally quantified unless explicitly stated otherwise.

@@ -3004,6 +3004,16 @@ stated in, and is offered only there.
 
 ## 97.5.1 A written proof is elaborated, never believed
 
+Conjunction needs no synthetic C++ declaration or extra projection. Clang's
+built-in `&&` node reaches typed VIR unchanged; proposition lowering recursively
+lifts its Boolean operands into a kernel `And`. No term-level short-circuit
+semantics are invented: value uses are refused in the verified fragment. The
+proof producer builds explicit introduction and elimination evidence, including
+when passing conjunctive facts to arithmetic automation. The kernel checks both
+sides or the selected projection. Proposition substitution, dependency traversal,
+and obligation hashing all recurse into both sides. RFC 0009 describes the
+boundary; SPEC.md 7.6 owns its meaning.
+
 A proof declaration is projected the same way. Its `proves` clause becomes the
 body of a generated function or an explicit-equality probe. Clang resolves
 the C++ parts; its statements are C++L and are never projected into C++ at all.

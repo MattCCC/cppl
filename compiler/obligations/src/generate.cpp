@@ -59,6 +59,8 @@ std::optional<kernel::PrimOp> comparison(vir::BinaryOp op) {
         case vir::BinaryOp::Add:
         case vir::BinaryOp::Sub:
         case vir::BinaryOp::Mul:
+        case vir::BinaryOp::And:
+        case vir::BinaryOp::Or:
             return std::nullopt;
     }
     return std::nullopt;
@@ -216,6 +218,16 @@ class TermLowering {
         }
 
         if (const auto* binary = std::get_if<vir::Binary>(&expr.node)) {
+            // `&&` and `||` state a proposition, and a proposition is not a
+            // value: nothing computes one. Where a value is required - a
+            // returned expression, a condition a path is taken on - they are
+            // refused rather than encoded as a Boolean.
+            if (binary->op == vir::BinaryOp::And || binary->op == vir::BinaryOp::Or) {
+                return fail("'" + vir::describe(binary->op) +
+                                "' states a proposition and is not modeled as a value: state each side where a "
+                                "value is required, such as a condition or a loop invariant",
+                            location);
+            }
             if (const auto op = comparison(binary->op)) {
                 if (binary->operands.size() != 2 || !expr.type.is_boolean()) {
                     return fail("malformed comparison", location);
@@ -336,6 +348,28 @@ std::expected<kernel::Proposition, Failure> lower_proposition(const vir::Expr& e
         }
         return body;
     }
+    // C++ `&&` between Boolean operands states the conjunction of what those
+    // operands state (SPEC.md 7.6). Each operand is a
+    // side-effect-free specification expression, so short-circuiting changes
+    // which of them C++ evaluates and never what the statement means.
+    if (const auto* binary = std::get_if<vir::Binary>(&expression.node);
+        binary != nullptr && binary->op == vir::BinaryOp::And) {
+        if (!expression.type.is_boolean() || binary->operands.size() != 2 || !binary->operands[0].type.is_boolean() ||
+            !binary->operands[1].type.is_boolean())
+            return fail("malformed conjunction", location);
+        auto left = lower_proposition(binary->operands[0], definitions, parameter_count);
+        if (!left)
+            return left;
+        auto right = lower_proposition(binary->operands[1], definitions, parameter_count);
+        if (!right)
+            return right;
+        return kernel::Proposition::conjunction(std::move(*left), std::move(*right));
+    }
+    if (const auto* binary = std::get_if<vir::Binary>(&expression.node);
+        binary != nullptr && binary->op == vir::BinaryOp::Or) {
+        return fail("logical disjunction is not supported yet", location);
+    }
+
     if (const auto* implication = std::get_if<vir::Implication>(&expression.node)) {
         if (!expression.type.is_proposition() || implication->operands.size() != 2)
             return fail("malformed implication proposition", location);
@@ -478,6 +512,12 @@ void encode(source::Hasher& hasher, const kernel::Proposition& proposition) {
         encode(hasher, *implication->conclusion);
         return;
     }
+    if (const auto* conjunction = std::get_if<kernel::And>(&proposition.node)) {
+        hasher.update_u8(23);
+        encode(hasher, *conjunction->left);
+        encode(hasher, *conjunction->right);
+        return;
+    }
     const auto& equality = std::get<kernel::Eq>(proposition.node);
     hasher.update_u8(21);
     encode(hasher, equality.type);
@@ -507,6 +547,11 @@ void collect_dependencies(const kernel::Context& context, const kernel::Proposit
     if (const auto* implication = std::get_if<kernel::Implies>(&proposition.node)) {
         collect_dependencies(context, *implication->premise, reached);
         collect_dependencies(context, *implication->conclusion, reached);
+        return;
+    }
+    if (const auto* conjunction = std::get_if<kernel::And>(&proposition.node)) {
+        collect_dependencies(context, *conjunction->left, reached);
+        collect_dependencies(context, *conjunction->right, reached);
         return;
     }
     const auto& equality = std::get<kernel::Eq>(proposition.node);
@@ -591,6 +636,20 @@ bool conclusion_is_applicable(const kernel::Proposition& available, const kernel
     if (available_implies != nullptr || goal_implies != nullptr) {
         reason = available_implies != nullptr ? "it supposes a premise the goal does not"
                                               : "the goal supposes a premise it does not";
+        return false;
+    }
+
+    const auto* available_and = std::get_if<kernel::And>(&available.node);
+    const auto* goal_and = std::get_if<kernel::And>(&goal.node);
+
+    if (available_and != nullptr && goal_and != nullptr) {
+        return conclusion_is_applicable(*available_and->left, *goal_and->left, reason) &&
+               conclusion_is_applicable(*available_and->right, *goal_and->right, reason);
+    }
+
+    if (available_and != nullptr || goal_and != nullptr) {
+        reason = available_and != nullptr ? "it states a conjunction the goal does not"
+                                          : "the goal states a conjunction it does not";
         return false;
     }
 
@@ -762,6 +821,10 @@ kernel::Proposition abstract_occurrences(const kernel::Proposition& proposition,
     if (const auto* implication = std::get_if<kernel::Implies>(&proposition.node)) {
         return kernel::Proposition::implication(abstract_occurrences(*implication->premise, target, depth, found),
                                                 abstract_occurrences(*implication->conclusion, target, depth, found));
+    }
+    if (const auto* conjunction = std::get_if<kernel::And>(&proposition.node)) {
+        return kernel::Proposition::conjunction(abstract_occurrences(*conjunction->left, target, depth, found),
+                                                abstract_occurrences(*conjunction->right, target, depth, found));
     }
     const auto& equality = std::get<kernel::Eq>(proposition.node);
     return kernel::Proposition::equality(equality.type, abstract_occurrences(equality.lhs, target, depth, found),

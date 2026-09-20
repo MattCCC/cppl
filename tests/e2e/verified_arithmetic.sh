@@ -15,7 +15,7 @@ for standard in c++17 c++20 c++23; do
     grep -Eq '^Unresolved obligations: +0$' "$run/report"
     grep -Eq '^Trusted solvers: +0$' "$run/report"
     grep -Eq '^Trusted external axioms: +0$' "$run/report"
-    grep -Eq '^Formal core version: +cppl-core-0\.3\.0$' "$run/report"
+    grep -Eq '^Formal core version: +cppl-core-0\.4\.0$' "$run/report"
     "$run/program"
     grep -Fq 'return x * (y + z);' "$run/runtime.cpp"
     grep -Fq 'm = m - 1u;' "$run/runtime.cpp"

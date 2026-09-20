@@ -1129,7 +1129,7 @@ That is the whole logical TCB. It links no other component, includes no header
 outside itself, and holds no global state. `tests/architecture` checks both
 properties on every run.
 
-The core has nine rules:
+The core has eleven rules:
 
 ```text
 1. Reflexivity
@@ -1141,12 +1141,25 @@ The core has nine rules:
 7. Hypothesis use
 8. Conditional elimination
 9. Linear arithmetic
+10. Conjunction introduction
+11. Conjunction elimination (left or right)
 ```
 
 Each is a capability, not an assumption.
 
+**Conjunction** (`SPEC.md` 7.6; RFC 0009) explicitly adds two rules to the
+logical TCB and moves the kernel/core versions to 0.4.0. Introduction checks both
+pieces of evidence against the two sides of the goal. Elimination validates the
+restated conjunction, checks its evidence, and requires the selected side to
+equal the goal. Shifting and substitution recurse into both sides without adding
+a binder. Negative tests cover a false side, forged or mismatched evidence,
+ill-typed and unbound propositions, and binder capture; generated propositions
+and proofs also include conjunctions. There are no new assumptions, axioms,
+trusted mechanisms, or external dependencies. Obligation identities include
+both ordered sides, their reachable definitions, and the new version stamps.
+
 **Machine arithmetic** (`SPEC.md` 7.1.1, 7.5; RFC 0006) enlarges the logical
-TCB explicitly, and the kernel and core versions are 0.3.0. Two parts must be
+TCB explicitly, and moved the kernel and core versions to 0.3.0. Two parts must be
 right for a `PROVEN` result to mean what it says:
 
 - _The polynomial normal form._ Wrapping addition, subtraction and
@@ -1259,6 +1272,10 @@ weight are deliberately few and are stated explicitly in the implementation:
 
 - a C++ equality between two built-in integer values of the same type denotes
   propositional equality of those values (`SPEC.md` 7.3);
+- Clang-resolved built-in `&&` between modeled, pure Boolean specification
+  expressions denotes conjunction (`SPEC.md` 7.6). Both operands must lower
+  successfully, even if C++ would short-circuit. No overloaded operator,
+  side effect, or unsupported conversion receives this correspondence;
 - C++ `+`, `-` and `*` are lowered onto the core's wrapping primitives **only**
   for unsigned operands of one modeled type, where C++ arithmetic is modular
   and the two agree exactly. Operands narrower than `int` reach the bridge as a

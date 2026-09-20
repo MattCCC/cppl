@@ -38,6 +38,20 @@ v::Expr implication(v::Expr premise, v::Expr conclusion) {
     return result;
 }
 
+v::Expr predicate(v::Expr left, v::Expr right) {
+    v::Expr result;
+    result.type = v::Type::boolean();
+    result.node = v::Binary{v::BinaryOp::Equal, {std::move(left), std::move(right)}};
+    return result;
+}
+
+v::Expr conjunction(v::Expr left, v::Expr right) {
+    v::Expr result;
+    result.type = v::Type::boolean();
+    result.node = v::Binary{v::BinaryOp::And, {std::move(left), std::move(right)}};
+    return result;
+}
+
 cppl::obligations::Program generate(v::Expr proposition, cppl::diagnostics::Engine& engine) {
     cppl::elaboration::Result elaborated;
     v::Law law;
@@ -176,4 +190,95 @@ CPPL_TEST(a_false_implication_is_rejected_by_the_kernel) {
     const auto checked = cppl::automation::verify(program, engine);
     CPPL_CHECK(engine.has_errors());
     CPPL_CHECK(!checked[0].verdict.is_proven());
+}
+
+CPPL_TEST(a_conjunction_lowers_to_two_kernel_checked_propositions) {
+    cppl::diagnostics::Engine engine;
+    const auto same = predicate(value(0), value(0));
+    const auto program = generate(conjunction(same, conjunction(same, same)), engine);
+    CPPL_CHECK(!engine.has_errors());
+    CPPL_CHECK_EQ(program.obligations.size(), std::size_t{1});
+    const auto& outer = std::get<k::Forall>(program.obligations[0].goal.node);
+    CPPL_CHECK(std::holds_alternative<k::And>(outer.body->node));
+    const auto checked = cppl::automation::verify(program, engine);
+    CPPL_CHECK(!engine.has_errors());
+    CPPL_CHECK(checked[0].verdict.is_proven());
+}
+
+CPPL_TEST(malformed_conjunctions_never_become_obligations) {
+    for (unsigned attack = 0; attack < 7; ++attack) {
+        const auto same = predicate(value(0), value(0));
+        auto expression = conjunction(same, same);
+        auto& operands = std::get<v::Binary>(expression.node).operands;
+        if (attack == 0)
+            operands.pop_back();
+        if (attack == 1)
+            operands.push_back(same);
+        if (attack == 2)
+            expression.type = integer;
+        if (attack == 3)
+            operands[0] = value(0);
+        if (attack == 4)
+            operands[1] = value(0);
+        if (attack == 5)
+            operands[1] = predicate(value(1), value(1));
+        if (attack == 6)
+            operands[1] = equality(value(0), value(0)); // not a C++ Boolean operand
+        cppl::diagnostics::Engine engine;
+        const auto program = generate(expression, engine);
+        CPPL_CHECK(engine.has_errors());
+        CPPL_CHECK(program.obligations.empty());
+    }
+}
+
+CPPL_TEST(conjunction_identity_tracks_both_sides_and_their_order) {
+    cppl::diagnostics::Engine engine;
+    const auto same = predicate(value(0), value(0));
+    v::Expr zero;
+    zero.type = integer;
+    zero.node = v::IntLiteral{0};
+    const auto other = predicate(value(0), zero);
+    const auto first = generate(conjunction(same, other), engine).obligations.at(0).id;
+    CPPL_CHECK(first == generate(conjunction(same, other), engine).obligations.at(0).id);
+    CPPL_CHECK(!(first == generate(conjunction(same, same), engine).obligations.at(0).id));
+    CPPL_CHECK(!(first == generate(conjunction(other, other), engine).obligations.at(0).id));
+    CPPL_CHECK(!(first == generate(conjunction(other, same), engine).obligations.at(0).id));
+    CPPL_CHECK(!(first == generate(implication(same, other), engine).obligations.at(0).id));
+    CPPL_CHECK(!engine.has_errors());
+}
+
+CPPL_TEST(conjunction_identity_tracks_definitions_reached_from_either_side) {
+    const auto identity = [](bool right, std::int64_t returned) {
+        cppl::elaboration::Result elaborated;
+        v::Function function;
+        function.id = v::FunctionId{0};
+        function.symbol = v::SymbolId{"constant"};
+        function.qualified_name = "constant";
+        function.result = integer;
+        function.purity = v::Purity::Pure;
+        v::Expr body;
+        body.type = integer;
+        body.node = v::IntLiteral{returned};
+        function.returned_value = body;
+        elaborated.module.functions.push_back(function);
+        v::Expr call;
+        call.type = integer;
+        call.node = v::Call{function.symbol, function.qualified_name, {}};
+        const auto dependent = predicate(call, call);
+        const auto same = predicate(value(0), value(0));
+        v::Law law;
+        law.name = "dependency";
+        law.parameters = {{"x", integer}};
+        law.proposition = right ? conjunction(same, dependent) : conjunction(dependent, same);
+        elaborated.module.laws.push_back(law);
+        cppl::diagnostics::Engine engine;
+        const auto program = cppl::obligations::generate(elaborated.module, elaborated, engine);
+        CPPL_CHECK(!engine.has_errors());
+        CPPL_CHECK_EQ(program.obligations.size(), std::size_t{1});
+        return program.obligations.at(0).id;
+    };
+    for (const bool right : {false, true}) {
+        CPPL_CHECK(identity(right, 0) == identity(right, 0));
+        CPPL_CHECK(!(identity(right, 0) == identity(right, 1)));
+    }
 }

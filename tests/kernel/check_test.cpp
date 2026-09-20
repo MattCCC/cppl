@@ -818,6 +818,163 @@ CPPL_TEST(evidence_offered_for_transport_is_itself_checked) {
     CPPL_CHECK(result.error().kind == RejectionKind::NotDefinitionallyEqual);
 }
 
+namespace {
+
+// 0 = 0, which reflexivity establishes.
+Proposition settled() {
+    return Proposition::equality(unsigned32(), zero(), zero());
+}
+
+// 0 = 1, which nothing establishes.
+Proposition unsettled() {
+    return Proposition::equality(unsigned32(), zero(), Term::literal(kUnsigned32, 1));
+}
+
+} // namespace
+
+CPPL_TEST(a_conjunction_is_established_by_evidence_for_each_side) {
+    const cppl::kernel::Context context;
+    const Proposition goal = Proposition::conjunction(settled(), settled());
+
+    const auto result = cppl::kernel::check(
+        context, goal, ProofTerm::conjunction_introduction(ProofTerm::reflexivity(), ProofTerm::reflexivity()),
+        CoreLimits{});
+
+    CPPL_CHECK(result.has_value());
+    CPPL_CHECK(result->proposition() == goal);
+}
+
+CPPL_TEST(a_conjunction_with_one_side_unestablished_is_rejected) {
+    const cppl::kernel::Context context;
+    for (const bool second : {false, true}) {
+        const Proposition goal = second ? Proposition::conjunction(settled(), unsettled())
+                                        : Proposition::conjunction(unsettled(), settled());
+
+        const auto result = cppl::kernel::check(
+            context, goal, ProofTerm::conjunction_introduction(ProofTerm::reflexivity(), ProofTerm::reflexivity()),
+            CoreLimits{});
+
+        CPPL_CHECK(!result.has_value());
+        CPPL_CHECK(result.error().kind == RejectionKind::NotDefinitionallyEqual);
+    }
+}
+
+CPPL_TEST(a_conjunction_goal_requires_conjunction_introduction) {
+    const cppl::kernel::Context context;
+    const Proposition goal = Proposition::conjunction(settled(), settled());
+
+    // Reflexivity establishes each side on its own, and establishes nothing
+    // about the conjunction of them.
+    const auto result = cppl::kernel::check(context, goal, ProofTerm::reflexivity(), CoreLimits{});
+
+    CPPL_CHECK(!result.has_value());
+    CPPL_CHECK(result.error().kind == RejectionKind::ProofShapeMismatch);
+}
+
+CPPL_TEST(either_side_of_a_conjunction_follows_from_it) {
+    const cppl::kernel::Context context;
+    // x = 0 && 0 = 0, supposed, gives each of its sides.
+    const Proposition conjunction = Proposition::conjunction(is_zero(), settled());
+    for (const bool right : {false, true}) {
+        const Proposition side = right ? settled() : is_zero();
+        const Proposition goal = Proposition::for_all(unsigned32(), Proposition::implication(conjunction, side));
+
+        const auto result = cppl::kernel::check(
+            context, goal,
+            ProofTerm::forall_introduction(
+                unsigned32(), ProofTerm::implication_introduction(
+                                  conjunction, ProofTerm::conjunction_elimination(
+                                                   conjunction, ProofTerm::hypothesis(HypothesisIndex{0}), right))),
+            CoreLimits{});
+
+        CPPL_CHECK(result.has_value());
+    }
+}
+
+CPPL_TEST(a_side_taken_from_a_conjunction_must_be_the_goal) {
+    const cppl::kernel::Context context;
+    const Proposition conjunction = Proposition::conjunction(is_zero(), settled());
+    // The left side is supposed and the right side is claimed.
+    const Proposition goal = Proposition::for_all(unsigned32(), Proposition::implication(conjunction, is_zero()));
+
+    const auto result = cppl::kernel::check(
+        context, goal,
+        ProofTerm::forall_introduction(
+            unsigned32(), ProofTerm::implication_introduction(
+                              conjunction, ProofTerm::conjunction_elimination(
+                                               conjunction, ProofTerm::hypothesis(HypothesisIndex{0}), true))),
+        CoreLimits{});
+
+    CPPL_CHECK(!result.has_value());
+    CPPL_CHECK(result.error().kind == RejectionKind::ProofShapeMismatch);
+}
+
+CPPL_TEST(a_conjunction_cannot_be_invented_to_eliminate_from) {
+    const cppl::kernel::Context context;
+    // Nothing establishes the conjunction this elimination restates, so the
+    // side it takes is not available either.
+    const Proposition conjunction = Proposition::conjunction(settled(), unsettled());
+
+    const auto result = cppl::kernel::check(
+        context, settled(),
+        ProofTerm::conjunction_elimination(
+            conjunction, ProofTerm::conjunction_introduction(ProofTerm::reflexivity(), ProofTerm::reflexivity()),
+            false),
+        CoreLimits{});
+
+    CPPL_CHECK(!result.has_value());
+    CPPL_CHECK(result.error().kind == RejectionKind::NotDefinitionallyEqual);
+}
+
+CPPL_TEST(a_side_cannot_be_taken_from_evidence_that_is_not_a_conjunction) {
+    const cppl::kernel::Context context;
+
+    const auto result = cppl::kernel::check(
+        context, settled(), ProofTerm::conjunction_elimination(settled(), ProofTerm::reflexivity(), false),
+        CoreLimits{});
+
+    CPPL_CHECK(!result.has_value());
+    CPPL_CHECK(result.error().kind == RejectionKind::ProofShapeMismatch);
+}
+
+CPPL_TEST(a_malformed_conjunction_is_not_a_proposition) {
+    const cppl::kernel::Context context;
+    // One side is an equality between operands of different widths.
+    const Proposition goal =
+        Proposition::conjunction(settled(), Proposition::equality(unsigned32(), Term::literal(kUnsigned8, 0), zero()));
+
+    const auto result = cppl::kernel::check(
+        context, goal, ProofTerm::conjunction_introduction(ProofTerm::reflexivity(), ProofTerm::reflexivity()),
+        CoreLimits{});
+
+    CPPL_CHECK(!result.has_value());
+    CPPL_CHECK(result.error().kind == RejectionKind::MalformedProposition);
+}
+
+CPPL_TEST(a_conjunction_carries_its_binder_into_both_sides) {
+    const cppl::kernel::Context context;
+    // forall x : u32. (x = x && x = x), which holds of the binder on both sides.
+    const Proposition side = Proposition::equality(unsigned32(), bound(), bound());
+    const Proposition goal = Proposition::for_all(unsigned32(), Proposition::conjunction(side, side));
+
+    const auto result = cppl::kernel::check(
+        context, goal,
+        ProofTerm::forall_introduction(
+            unsigned32(), ProofTerm::conjunction_introduction(ProofTerm::reflexivity(), ProofTerm::reflexivity())),
+        CoreLimits{});
+
+    CPPL_CHECK(result.has_value());
+
+    // The same conjunction stated of a variable with no binder over it is not a
+    // proposition at all.
+    const auto unbound = cppl::kernel::check(
+        context, Proposition::conjunction(side, side),
+        ProofTerm::conjunction_introduction(ProofTerm::reflexivity(), ProofTerm::reflexivity()), CoreLimits{});
+
+    CPPL_CHECK(!unbound.has_value());
+    CPPL_CHECK(unbound.error().kind == RejectionKind::MalformedProposition);
+}
+
 CPPL_TEST(a_context_whose_hole_stands_at_the_wrong_type_is_rejected) {
     const cppl::kernel::Context context;
 

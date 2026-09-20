@@ -182,6 +182,12 @@ void strip_parentheses(const std::vector<Token>& tokens, std::size_t& begin, std
 // `unbalanced` when the delimiters do not nest.
 constexpr std::size_t kUnbalanced = static_cast<std::size_t>(-1);
 
+// `<->` is logical equivalence (GRAMMAR.md 30). C++ has no such punctuator, so
+// it reaches here as a `<` the `->` follows with nothing in between.
+bool is_equivalence(const std::vector<Token>& tokens, std::size_t begin, std::size_t index) {
+    return index > begin && tokens[index - 1].text == "<" && tokens[index - 1].span.end() == tokens[index].span.offset;
+}
+
 std::size_t implication_operator(const std::vector<Token>& tokens, std::size_t begin, std::size_t end) {
     for (std::size_t index = begin; index < end; ++index) {
         const auto token = tokens[index].text;
@@ -210,6 +216,8 @@ FormulaProjection formula(const TokenStream& stream, source::ByteSpan expression
     const std::size_t arrow = implication_operator(tokens, begin, end);
     if (arrow == kUnbalanced)
         return {{}, {}, "unbalanced proposition delimiters"};
+    if (arrow != end && is_equivalence(tokens, begin, arrow))
+        return {{}, {}, "logical equivalence is not supported yet"};
     if (arrow != end) {
         auto left = formula(stream, span_of(tokens, begin, arrow), depth + 1);
         auto right = formula(stream, span_of(tokens, arrow + 1, end), depth + 1);

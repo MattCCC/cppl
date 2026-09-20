@@ -36,6 +36,10 @@ std::string describe(BinaryOp op) {
             return ">";
         case BinaryOp::GreaterEqual:
             return ">=";
+        case BinaryOp::And:
+            return "&&";
+        case BinaryOp::Or:
+            return "||";
     }
     return "<unknown-operator>";
 }

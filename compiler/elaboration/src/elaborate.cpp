@@ -57,6 +57,10 @@ vir::BinaryOp convert_operator(clangbridge::BinaryOp op) {
             return vir::BinaryOp::Greater;
         case clangbridge::BinaryOp::GreaterEqual:
             return vir::BinaryOp::GreaterEqual;
+        case clangbridge::BinaryOp::And:
+            return vir::BinaryOp::And;
+        case clangbridge::BinaryOp::Or:
+            return vir::BinaryOp::Or;
         case clangbridge::BinaryOp::Unsupported:
             break;
     }
@@ -828,16 +832,15 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
         }
 
         // A Law states its conclusion under its precondition. More than one
-        // precondition conjoins them (GRAMMAR.md 3), and conjunction is not
-        // part of the formal core, so it is refused rather than approximated.
+        // precondition conjoins them (GRAMMAR.md 3); naming separate clauses
+        // with assume is not implemented, so require one explicit proposition.
         const auto preconditions = std::ranges::count_if(declaration.clauses, [](const frontend::Clause& clause) {
             return clause.kind == frontend::ClauseKind::Expects;
         });
         if (preconditions > 1) {
             report(engine, diagnostics::Category::UnsupportedSemantics, declaration.premise()->location,
                    "law '" + declaration.name + "' has " + std::to_string(preconditions) + " expects clauses",
-                   "multiple preconditions are conjoined, and conjunction is not part of the "
-                   "formal core; this implementation accepts one expects clause");
+                   "this implementation accepts one expects clause; combine its predicates with &&");
             continue;
         }
 

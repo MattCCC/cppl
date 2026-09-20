@@ -422,6 +422,10 @@ Expr build_expression(CXCursor cursor, const std::vector<CXCursor>& parameters, 
             mapped = BinaryOp::Greater;
         } else if (op == CXBinaryOperator_GE) {
             mapped = BinaryOp::GreaterEqual;
+        } else if (op == CXBinaryOperator_LAnd) {
+            mapped = BinaryOp::And;
+        } else if (op == CXBinaryOperator_LOr) {
+            mapped = BinaryOp::Or;
         }
         if (mapped == BinaryOp::Unsupported) {
             return unsupported_expression(cursor, "operator '" + take(clang_getBinaryOperatorKindSpelling(op)) +

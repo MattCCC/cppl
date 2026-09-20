@@ -30,6 +30,8 @@ enum class BinaryOp : std::uint8_t {
     LessEqual,
     Greater,
     GreaterEqual,
+    And, // C++ `&&` between Boolean operands
+    Or,  // C++ `||` between Boolean operands
 };
 
 std::string describe(BinaryOp op);

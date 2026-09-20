@@ -74,6 +74,20 @@ CPPL_TEST(a_loop_exit_pins_its_counter) {
     CPPL_CHECK(!proven(closed(kU32, 2, {holds(k::PrimOp::Less, kU32, i, n, false)}, equal(kU32, i, n))));
 }
 
+CPPL_TEST(conjunctions_compose_with_checked_machine_arithmetic) {
+    const auto x = var(0);
+    const auto below_ten = holds(k::PrimOp::Less, kU32, x, lit(kU32, 10));
+    const auto positive = holds(k::PrimOp::Greater, kU32, x, lit(kU32, 0));
+    const auto premise = k::Proposition::conjunction(below_ten, positive);
+    const auto increment = add(kU32, x, lit(kU32, 1));
+    const auto conclusion = k::Proposition::conjunction(holds(k::PrimOp::LessEqual, kU32, increment, lit(kU32, 10)),
+                                                        holds(k::PrimOp::Greater, kU32, increment, lit(kU32, 1)));
+    CPPL_CHECK(proven(closed(kU32, 1, {premise}, conclusion)));
+    // Either missing premise makes one conjunct false, including at wraparound.
+    CPPL_CHECK(!proven(closed(kU32, 1, {below_ten}, conclusion)));
+    CPPL_CHECK(!proven(closed(kU32, 1, {positive}, conclusion)));
+}
+
 CPPL_TEST(an_accumulator_follows_its_counter_to_the_exit) {
     // forall a n i r. r == a * i -> i <= n -> !(i < n) -> r == a * n. The
     // counter's equality comes from arithmetic; the product needs rewriting.

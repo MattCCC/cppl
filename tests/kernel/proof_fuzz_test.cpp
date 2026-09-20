@@ -1,4 +1,4 @@
-// Reproducible structural fuzzing of all nine proof constructors, with false
+// Reproducible structural fuzzing of all eleven proof constructors, with false
 // closed goals as the rejection oracle. No frontend or automation is involved.
 #include "cppl/kernel/check.hpp"
 #include "cppl/testing/test.hpp"
@@ -42,10 +42,12 @@ k::Proposition claim(Random& random) {
     auto goal = eq(random.below(4), random.below(4));
     if (random.below(2))
         goal = k::Proposition::for_all(type, std::move(goal));
+    if (random.below(3) == 0)
+        goal = k::Proposition::conjunction(eq(random.below(4), random.below(4)), std::move(goal));
     return goal;
 }
 k::ProofTerm proof(Random& random, unsigned depth) {
-    const auto choice = random.below(depth == 0 ? 2 : 9);
+    const auto choice = random.below(depth == 0 ? 2 : 11);
     if (choice == 0)
         return k::ProofTerm::reflexivity();
     if (choice == 1)
@@ -66,6 +68,10 @@ k::ProofTerm proof(Random& random, unsigned depth) {
         return k::ProofTerm::conditional_elimination(type, k::Term::literal(boolean.integer_type(), random.below(3)),
                                                      term(random), term(random), claim(random),
                                                      proof(random, depth - 1), proof(random, depth - 1));
+    if (choice == 8)
+        return k::ProofTerm::conjunction_introduction(proof(random, depth - 1), proof(random, depth - 1));
+    if (choice == 9)
+        return k::ProofTerm::conjunction_elimination(claim(random), proof(random, depth - 1), random.below(2) != 0);
     std::vector<k::ArithmeticFact> facts;
     facts.push_back(k::ArithmeticFact{claim(random), k::Box<k::ProofTerm>{proof(random, depth - 1)}});
     return k::ProofTerm::linear_arithmetic(

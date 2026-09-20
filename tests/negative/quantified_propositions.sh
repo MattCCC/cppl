@@ -125,3 +125,83 @@ grep -q 'no statement here can name' "$run/quantified_evidence.log"
 grep -qE 'nesting|deeply' "$run/deep_nesting.log"
 grep -q 'kernel-rejection' "$run/false_universal.log"
 grep -q 'undeclared identifier' "$run/binder_named_in_a_statement.log"
+
+# Both conjuncts require evidence. A true side cannot hide a false one.
+reject false_left_conjunct <<'CPP'
+law wrong(unsigned x) ensures(x != x && x == x);
+CPP
+reject false_right_conjunct <<'CPP'
+law wrong(unsigned x) ensures(x == x && x != x);
+CPP
+reject false_nested_conjunct <<'CPP'
+law wrong(unsigned x) ensures(x == x && (x == x && x != x));
+CPP
+reject unrelated_conjunct <<'CPP'
+law wrong(unsigned x, unsigned y) expects(x == 0u && y == 1u) ensures(x == 1u);
+CPP
+reject conjunction_capture <<'CPP'
+law wrong(unsigned x) expects(x == 0u && x != 1u)
+    ensures(forall (unsigned x) { x == 0u && x != 1u });
+CPP
+reject wrong_conjunction_evidence <<'CPP'
+proof pair(unsigned x) proves(x == x && x + 1u == x + 1u) { refl; }
+proof wrong(unsigned x) proves(x == x && x != x) { exact pair(x); }
+CPP
+reject equality_for_conjunction <<'CPP'
+proof single(unsigned x) proves(x == x) { refl; }
+proof wrong(unsigned x) proves(x == x && x == x) { exact single(x); }
+CPP
+reject wrong_written_conjunction <<'CPP'
+law valid(unsigned x) ensures(x == x && x == x);
+proof wrong(unsigned x) proves(valid(x)) { exact missing; }
+CPP
+reject conjunction_cycle <<'CPP'
+proof wrong(unsigned x) proves(x != x && x != x) { exact wrong(x); }
+CPP
+reject conjunction_wrong_type <<'CPP'
+struct S {};
+law wrong(S x) ensures(x && x);
+CPP
+reject malformed_conjunction <<'CPP'
+law wrong(unsigned x) ensures(x == x &&);
+CPP
+reject false_conjunctive_contract <<'CPP'
+verified unsigned wrong(unsigned x) ensures(result == x && result != x) { return x; }
+CPP
+reject unproved_conjunctive_precondition <<'CPP'
+verified unsigned f(unsigned x) expects(x == 0u && x == 1u) ensures(result == x) { return x; }
+verified unsigned wrong(unsigned x) ensures(result == x) { return f(x); }
+CPP
+
+# Unmodeled logical forms and value uses are refused explicitly.
+reject disjunction <<'CPP'
+law wrong(unsigned x) ensures(x == x || x != x);
+CPP
+reject equivalence <<'CPP'
+law wrong(unsigned x) ensures(x == x <-> x == x);
+CPP
+reject formal_conjunct <<'CPP'
+law wrong(unsigned x) ensures(Eq<unsigned>(x, x) && Eq<unsigned>(x, x));
+CPP
+reject conjunction_as_value <<'CPP'
+pure bool wrong(bool x, bool y) { return x && y; }
+law use(bool x, bool y) ensures(wrong(x, y));
+CPP
+reject conjunction_as_condition <<'CPP'
+verified unsigned wrong(unsigned x) ensures(result == x) {
+    if (x == 0u && x != 1u) return x;
+    return x;
+}
+CPP
+reject conjunction_in_invariant <<'CPP'
+verified unsigned wrong(unsigned x) ensures(result == x) {
+    while (x != x) invariant(x == x && x == x) { }
+    return x;
+}
+CPP
+
+grep -q 'kernel-rejection' "$run/false_right_conjunct.log"
+grep -q 'kernel-rejection' "$run/conjunction_capture.log"
+grep -q 'logical equivalence is not supported yet' "$run/equivalence.log"
+grep -q 'logical disjunction is not supported yet' "$run/disjunction.log"
+grep -q 'not modeled as a value' "$run/conjunction_as_value.log"

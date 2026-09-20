@@ -43,8 +43,20 @@ struct Implies {
     friend bool operator==(const Implies&, const Implies&) = default;
 };
 
+// Conjunction (SPEC.md 7.6, GRAMMAR.md 33). `left && right` is established by
+// evidence for each side, and evidence for it establishes either side.
+//
+// Neither side binds a term variable, so de Bruijn indices mean the same in
+// both.
+struct And {
+    Box<Proposition> left;
+    Box<Proposition> right;
+
+    friend bool operator==(const And&, const And&) = default;
+};
+
 struct Proposition {
-    std::variant<Eq, Forall, Implies> node;
+    std::variant<Eq, Forall, Implies, And> node;
 
     static Proposition equality(Type type, Term lhs, Term rhs) {
         return Proposition{Eq{std::move(type), std::move(lhs), std::move(rhs)}};
@@ -56,6 +68,10 @@ struct Proposition {
 
     static Proposition implication(Proposition premise, Proposition conclusion) {
         return Proposition{Implies{Box<Proposition>{std::move(premise)}, Box<Proposition>{std::move(conclusion)}}};
+    }
+
+    static Proposition conjunction(Proposition left, Proposition right) {
+        return Proposition{And{Box<Proposition>{std::move(left)}, Box<Proposition>{std::move(right)}}};
     }
 
     friend bool operator==(const Proposition&, const Proposition&) = default;

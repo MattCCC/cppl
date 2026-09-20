@@ -53,6 +53,11 @@ Proposition shift(const Proposition& proposition, std::uint32_t amount, std::uin
                                         shift(*implication->conclusion, amount, cutoff));
     }
 
+    if (const auto* conjunction = std::get_if<And>(&proposition.node)) {
+        return Proposition::conjunction(shift(*conjunction->left, amount, cutoff),
+                                        shift(*conjunction->right, amount, cutoff));
+    }
+
     const auto& equality = std::get<Eq>(proposition.node);
     return Proposition::equality(equality.type, shift(equality.lhs, amount, cutoff),
                                  shift(equality.rhs, amount, cutoff));
@@ -98,6 +103,11 @@ Proposition instantiate(const Proposition& body, const Term& argument, std::uint
     if (const auto* implication = std::get_if<Implies>(&body.node)) {
         return Proposition::implication(instantiate(*implication->premise, argument, depth),
                                         instantiate(*implication->conclusion, argument, depth));
+    }
+
+    if (const auto* conjunction = std::get_if<And>(&body.node)) {
+        return Proposition::conjunction(instantiate(*conjunction->left, argument, depth),
+                                        instantiate(*conjunction->right, argument, depth));
     }
 
     const auto& equality = std::get<Eq>(body.node);

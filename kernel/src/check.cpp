@@ -57,6 +57,14 @@ struct Assumption {
         return validate_proposition(context, locals, *implication->conclusion, limits, depth + 1);
     }
 
+    // A conjunction binds nothing either.
+    if (const auto* conjunction = std::get_if<And>(&proposition.node)) {
+        if (auto left = validate_proposition(context, locals, *conjunction->left, limits, depth + 1); !left) {
+            return left;
+        }
+        return validate_proposition(context, locals, *conjunction->right, limits, depth + 1);
+    }
+
     const auto& equality = std::get<Eq>(proposition.node);
     for (const Term* side : {&equality.lhs, &equality.rhs}) {
         auto type = type_of(context, locals, *side, limits);
@@ -231,6 +239,35 @@ struct Assumption {
         return {};
     }
 
+    // Conjunction elimination closes a goal of any shape: the side taken from
+    // the restated conjunction decides what it establishes, not the goal.
+    if (const auto* taken = std::get_if<ConjunctionElimination>(&proof.node)) {
+        if (auto well_formed = validate_proposition(context, locals, *taken->conjunction, limits, depth + 1);
+            !well_formed) {
+            return well_formed;
+        }
+
+        const auto* conjunction = std::get_if<And>(&taken->conjunction->node);
+        if (conjunction == nullptr) {
+            return reject(RejectionKind::ProofShapeMismatch, "a side was taken from evidence for " +
+                                                                 describe(*taken->conjunction) +
+                                                                 ", which is not a conjunction");
+        }
+
+        if (auto evidence =
+                check_under(context, locals, assumptions, *taken->conjunction, *taken->evidence, limits, depth + 1);
+            !evidence) {
+            return evidence;
+        }
+
+        const Proposition& side = taken->right ? *conjunction->right : *conjunction->left;
+        if (!(side == proposition)) {
+            return reject(RejectionKind::ProofShapeMismatch, "that side of the conjunction is " + describe(side) +
+                                                                 ", which is not the goal " + describe(proposition));
+        }
+        return {};
+    }
+
     // Equality elimination closes a goal of any shape too: the context it
     // transports through decides what the result says, not the goal.
     if (const auto* transport = std::get_if<EqualityElimination>(&proof.node)) {
@@ -327,6 +364,21 @@ struct Assumption {
             check_under(context, locals, assumptions, *implication->conclusion, *introduction->body, limits, depth + 1);
         assumptions.pop_back();
         return body;
+    }
+
+    // A conjunction is introduced by establishing each side. Both sides come
+    // from the goal, so evidence cannot substitute a weaker pair.
+    if (const auto* conjunction = std::get_if<And>(&proposition.node)) {
+        const auto* introduction = std::get_if<ConjunctionIntroduction>(&proof.node);
+        if (introduction == nullptr) {
+            return reject(RejectionKind::ProofShapeMismatch, "a conjunction goal requires conjunction-introduction");
+        }
+        if (auto left =
+                check_under(context, locals, assumptions, *conjunction->left, *introduction->left, limits, depth + 1);
+            !left) {
+            return left;
+        }
+        return check_under(context, locals, assumptions, *conjunction->right, *introduction->right, limits, depth + 1);
     }
 
     const auto& equality = std::get<Eq>(proposition.node);

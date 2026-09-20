@@ -1,5 +1,5 @@
 // Propositions that state more than a single equality: universal
-// quantification (SPEC.md 8) and implication (SPEC.md 7.2.2).
+// quantification (SPEC.md 8), implication (SPEC.md 8.2), and conjunction (SPEC.md 7.6).
 //
 // Both are written in the source and carried to the kernel as the quantifier
 // and implication it already had. Nothing here introduces a C++ declaration
@@ -74,6 +74,56 @@ proof guarded_by_the_parameter_holds(unsigned x) proves(guarded_by_the_parameter
 // A proof declaration states its own quantified proposition, with no law.
 proof identity_is_identity(unsigned x) proves(forall (unsigned y) { Eq<unsigned>(identity(y), y) }) { refl; }
 
+// Conjunction states both of its sides, and evidence for it establishes either.
+law both_sides(unsigned x) expects(x == 0u) ensures(add_one(x) == 1u && identity(x) == 0u);
+proof both_sides_holds(unsigned x) proves(both_sides(x)) {
+    assume h : x == 0u;
+    rewrite h;
+    refl;
+}
+
+// A conjunctive premise is usable as each of its sides, and a conjunctive
+// conclusion is established one side at a time.
+law from_one_side(unsigned x, unsigned y) expects(x == 1u && y == 2u) ensures(identity(x) == 1u);
+
+law conjunction_chain(unsigned x) expects(x == 0u) ensures(x == 0u && add_one(x) == 1u && identity(x) == 0u);
+
+// Reusable evidence retains the whole conjunction and its dependencies.
+proof both_reflexive(unsigned x) proves(x == x && identity(x) == x) { refl; }
+proof reuse_both(unsigned x) proves(x == x && identity(x) == x) { exact both_reflexive(x); }
+proof requiring_pair(unsigned x)
+    proves(x == x && x + 1u == x + 1u -> identity(x) == x && add_one(x) == x + 1u) {
+    assume h : x == x && x + 1u == x + 1u;
+    refl;
+}
+proof apply_pair(unsigned x) proves(identity(x) == x && add_one(x) == x + 1u) {
+    apply requiring_pair(x);
+    refl;
+}
+
+law from_right_side(unsigned x, unsigned y) expects(x == 1u && y == 2u) ensures(identity(y) == 2u);
+law nested_premise(unsigned x, unsigned y, unsigned z)
+    expects(x == 1u && (y == 2u && z == 3u)) ensures(z == 3u && y == 2u);
+
+law named_conjunction(unsigned x) expects(x == 0u && x != 1u) ensures(x == 0u && x != 1u);
+proof named_conjunction_holds(unsigned x) proves(named_conjunction(x)) {
+    assume h : x == 0u && x != 1u;
+    exact h;
+}
+
+// Conjunction is tighter than implication (GRAMMAR.md 33), so this supposes the
+// conjunction and concludes the equality.
+law tighter_than_implication(unsigned x) ensures(x == 0u && x != 1u -> add_one(x) == 1u);
+
+// Under a binder, and of a quantified body.
+law everywhere_both(unsigned x) ensures(forall (unsigned y) { identity(y) == y && add_one(y) == y + 1u });
+law conjunction_under_binder(unsigned x)
+    expects(x == 0u && x != 1u)
+    ensures(forall (unsigned y) { x == 0u && y == y });
+
+law conjunctive_arithmetic(unsigned x)
+    expects(x < 10u && x > 0u) ensures(x + 1u <= 10u && x + 1u > 1u);
+
 // Contracts carry the same propositions.
 verified unsigned keep(unsigned x)
     expects(Eq<unsigned>(x, 2u) -> Eq<unsigned>(x, 2u))
@@ -81,9 +131,29 @@ verified unsigned keep(unsigned x)
     return x;
 }
 
+// A contract states a conjunction of what it guarantees, and supposes a
+// conjunction of what it requires.
+verified unsigned twice(unsigned x)
+    expects(x == 1u && x != 0u)
+    ensures(result == 2u && result != 0u) {
+    return x + x;
+}
+
+verified unsigned call_twice(unsigned x)
+    expects(x == 1u && x != 0u)
+    ensures(result == 2u && result != 0u) {
+    return twice(x);
+}
+
+verified unsigned preserve_path(unsigned x)
+    ensures(result == x && result + 1u == x + 1u) {
+    if (x == 0u) return 0u;
+    return x;
+}
+
 int main() {
     Holder holder{40u};
     Holder* pointer = &holder;
     // Runtime `->` is untouched: verification never reaches into the program.
-    std::printf("%u %u %u\n", pointer->value, forall(1u), exists(keep(2u)));
+    std::printf("%u %u %u %u\n", pointer->value, forall(1u), exists(keep(2u)), preserve_path(call_twice(1u)));
 }

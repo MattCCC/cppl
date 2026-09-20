@@ -34,6 +34,9 @@ std::string describe(const Proposition& proposition) {
     if (const auto* implication = std::get_if<Implies>(&proposition.node)) {
         return "(" + describe(*implication->premise) + " -> " + describe(*implication->conclusion) + ")";
     }
+    if (const auto* conjunction = std::get_if<And>(&proposition.node)) {
+        return "(" + describe(*conjunction->left) + " && " + describe(*conjunction->right) + ")";
+    }
     const auto& equality = std::get<Eq>(proposition.node);
     return "Eq<" + describe(equality.type) + ">(" + describe(equality.lhs) + ", " + describe(equality.rhs) + ")";
 }

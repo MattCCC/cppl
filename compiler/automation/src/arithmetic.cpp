@@ -384,22 +384,42 @@ class Prover {
                 return std::nullopt;
             return k::ProofTerm::implication_introduction(*implication->premise, std::move(*body));
         }
+        if (const auto* conjunction = std::get_if<k::And>(&goal.node)) {
+            auto left = prove(*conjunction->left);
+            if (!left)
+                return std::nullopt;
+            auto right = prove(*conjunction->right);
+            if (!right)
+                return std::nullopt;
+            return k::ProofTerm::conjunction_introduction(std::move(*left), std::move(*right));
+        }
         return rewriting_ ? rewrite_then_close(goal) : by_arithmetic(goal);
     }
 
   private:
+    // Only equality leaves enter arithmetic. Every projection from a
+    // conjunctive premise carries evidence the kernel checks independently.
+    static void append_facts(const k::Proposition& proposition, k::ProofTerm evidence,
+                             std::vector<k::ArithmeticFact>& result) {
+        if (const auto* conjunction = std::get_if<k::And>(&proposition.node)) {
+            append_facts(*conjunction->left, k::ProofTerm::conjunction_elimination(proposition, evidence, false),
+                         result);
+            append_facts(*conjunction->right,
+                         k::ProofTerm::conjunction_elimination(proposition, std::move(evidence), true), result);
+        } else if (std::holds_alternative<k::Eq>(proposition.node)) {
+            result.push_back(k::ArithmeticFact{proposition, k::Box<k::ProofTerm>{std::move(evidence)}});
+        }
+    }
+
     // The premises in scope, restated at the leaf, each with its hypothesis.
     std::vector<k::ArithmeticFact> facts() const {
         std::vector<k::ArithmeticFact> result;
         for (std::size_t index = 0; index < premises_.size(); ++index) {
             const Premise& premise = premises_[index];
-            if (!std::holds_alternative<k::Eq>(premise.proposition.node)) {
-                continue;
-            }
-            result.push_back(k::ArithmeticFact{
+            append_facts(
                 k::shift(premise.proposition, static_cast<std::uint32_t>(binders_.size() - premise.binders)),
-                k::Box<k::ProofTerm>{k::ProofTerm::hypothesis(
-                    k::HypothesisIndex{static_cast<std::uint32_t>(premises_.size() - 1 - index)})}});
+                k::ProofTerm::hypothesis(k::HypothesisIndex{static_cast<std::uint32_t>(premises_.size() - 1 - index)}),
+                result);
         }
         return result;
     }

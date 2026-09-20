@@ -44,7 +44,7 @@ k::Term term(Random& random, std::uint32_t variables, unsigned depth) {
 }
 
 k::Proposition proposition(Random& random, std::uint32_t variables, unsigned depth) {
-    const auto choice = random.below(depth == 0 ? 1 : 3);
+    const auto choice = random.below(depth == 0 ? 1 : 4);
     if (choice == 1) {
         return k::Proposition::for_all(type, proposition(random, variables + 1, depth - 1));
     }
@@ -52,6 +52,11 @@ k::Proposition proposition(Random& random, std::uint32_t variables, unsigned dep
         auto premise = proposition(random, variables, depth - 1);
         auto conclusion = proposition(random, variables, depth - 1);
         return k::Proposition::implication(std::move(premise), std::move(conclusion));
+    }
+    if (choice == 3) {
+        auto left = proposition(random, variables, depth - 1);
+        auto right = proposition(random, variables, depth - 1);
+        return k::Proposition::conjunction(std::move(left), std::move(right));
     }
     auto lhs = term(random, variables, 2);
     auto rhs = term(random, variables, 2);
@@ -91,6 +96,9 @@ bool evaluate(const k::Proposition& value, Environment environment) {
     if (const auto* implication = std::get_if<k::Implies>(&value.node)) {
         return !evaluate(*implication->premise, environment) || evaluate(*implication->conclusion, environment);
     }
+    if (const auto* conjunction = std::get_if<k::And>(&value.node)) {
+        return evaluate(*conjunction->left, environment) && evaluate(*conjunction->right, environment);
+    }
     const auto& forall = std::get<k::Forall>(value.node);
     environment.push_back(0);
     for (std::uint32_t x = 0; x < 4; ++x) {
@@ -107,6 +115,10 @@ k::ProofTerm reflexive_shape(const k::Proposition& goal) {
     }
     if (const auto* implies = std::get_if<k::Implies>(&goal.node)) {
         return k::ProofTerm::implication_introduction(*implies->premise, reflexive_shape(*implies->conclusion));
+    }
+    if (const auto* conjunction = std::get_if<k::And>(&goal.node)) {
+        return k::ProofTerm::conjunction_introduction(reflexive_shape(*conjunction->left),
+                                                      reflexive_shape(*conjunction->right));
     }
     return k::ProofTerm::reflexivity();
 }
@@ -178,7 +190,9 @@ CPPL_TEST(generated_quantified_proofs_are_checked_against_a_finite_model) {
     Random random;
     unsigned accepted = 0;
     unsigned rejected = 0;
-    for (unsigned sample = 0; sample < 800; ++sample) {
+    // Conjunctive goals hold only when both sides do, so more draws are taken
+    // to keep both outcomes well represented.
+    for (unsigned sample = 0; sample < 2400; ++sample) {
         const auto goal = k::Proposition::for_all(type, proposition(random, 1, 3));
         const auto result = k::check({}, goal, reflexive_shape(goal), {});
         if (result) {

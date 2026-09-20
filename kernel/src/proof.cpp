@@ -37,6 +37,12 @@ std::string describe(const ProofTerm& proof) {
     if (const auto* transport = std::get_if<EqualityElimination>(&proof.node)) {
         return "eq_elim(" + describe(*transport->equality) + ", " + describe(*transport->evidence) + ")";
     }
+    if (const auto* introduction = std::get_if<ConjunctionIntroduction>(&proof.node)) {
+        return "and_intro(" + describe(*introduction->left) + ", " + describe(*introduction->right) + ")";
+    }
+    if (const auto* taken = std::get_if<ConjunctionElimination>(&proof.node)) {
+        return std::string(taken->right ? "and_elim_right(" : "and_elim_left(") + describe(*taken->evidence) + ")";
+    }
     return "refl";
 }
 
