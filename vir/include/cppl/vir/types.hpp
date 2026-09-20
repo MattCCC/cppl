@@ -39,23 +39,56 @@ struct Refinement {
     friend bool operator==(const Refinement&, const Refinement&) = default;
 };
 
+// One enumerator of a scoped enumeration, as Clang resolved it. Enumerators
+// that share a value are aliases of one another and name one logical case; they
+// are all kept so diagnostics can name whichever one an author wrote.
+struct Enumerator {
+    std::string name;
+    std::int64_t value = 0;
+
+    friend bool operator==(const Enumerator&, const Enumerator&) = default;
+};
+
+// The resolved identity of a C++ representation whose proof-visible states a
+// decomposition provider models (SPEC.md 20.5).
+//
+// `identity` is Clang's USR, so provider selection is by resolved semantic
+// identity and never by spelling: an alias, a qualified name and a template
+// specialization that resolve to one declaration share it.
+struct Representation {
+    std::string identity;
+    // The qualified name, for diagnostics only.
+    std::string name;
+    std::vector<Enumerator> enumerators;
+
+    [[nodiscard]] bool is_known() const noexcept {
+        return !identity.empty();
+    }
+
+    friend bool operator==(const Representation& lhs, const Representation& rhs) {
+        return lhs.identity == rhs.identity;
+    }
+};
+
 struct Type {
     std::variant<IntType, BoolType, PropositionType> node;
 
     // Outermost refinement first, so a refinement of a refinement keeps every
     // predicate that applies to the value (SPEC.md 17.5).
     std::vector<Refinement> refinements;
-    std::string enumeration;
-    std::vector<std::int64_t> enumerators;
+
+    // The C++ representation this type stands for, when it is one a provider
+    // may model. Empty for a plain modeled scalar.
+    Representation representation;
 
     static Type integer(std::uint16_t width, bool is_signed) {
-        return Type{IntType{width, is_signed}, {}, {}, {}};
+        return Type{IntType{width, is_signed}, {}, {}};
     }
     static Type boolean() {
-        return Type{BoolType{}, {}, {}, {}};
+        return Type{BoolType{}, {}, {}};
     }
     static Type proposition() {
-        return Type{PropositionType{}, {}, {}, {}};
+        return Type{PropositionType{}, {}, {}};
     }
     [[nodiscard]] bool is_proposition() const noexcept {
         return std::holds_alternative<PropositionType>(node);
@@ -80,14 +113,21 @@ struct Type {
     // The same type with its refinements dropped: what the value is once erased,
     // and what ordinary C++ reasoning is about.
     [[nodiscard]] Type erased() const {
-        return Type{node, {}, enumeration, enumerators};
+        return Type{node, {}, representation};
+    }
+
+    // The scalar the representation is carried in, with the representation
+    // forgotten. This is what a binder that names the underlying value denotes;
+    // it is the same runtime value, reasoned about as a plain machine integer.
+    [[nodiscard]] Type underlying() const {
+        return Type{node, refinements, {}};
     }
 
     // Erased C++ identity. Two refinements of one base type are equal here,
     // because they are the same type at runtime; verification-level identity is
     // a separate question, asked where it matters.
     friend bool operator==(const Type& lhs, const Type& rhs) {
-        return lhs.node == rhs.node && lhs.enumeration == rhs.enumeration;
+        return lhs.node == rhs.node && lhs.representation == rhs.representation;
     }
 };
 

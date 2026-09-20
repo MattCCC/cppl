@@ -90,7 +90,7 @@ Type convert_type(CXType type) {
             // Bool-backed and wide enums remain outside this initial model.
             if (underlying.kind != TypeKind::Int)
                 break;
-            std::vector<std::int64_t> values;
+            std::vector<Enumerator> enumerators;
             for (const CXCursor& child : children_of(definition)) {
                 if (clang_getCursorKind(child) != CXCursor_EnumConstantDecl)
                     continue;
@@ -98,15 +98,15 @@ Type convert_type(CXType type) {
                     clang_getEnumConstantDeclUnsignedValue(child) >
                         static_cast<unsigned long long>(std::numeric_limits<std::int64_t>::max()))
                     return converted;
-                const auto value = static_cast<std::int64_t>(clang_getEnumConstantDeclValue(child));
-                if (std::ranges::find(values, value) == values.end())
-                    values.push_back(value);
+                enumerators.push_back(Enumerator{take(clang_getCursorSpelling(child)),
+                                                 static_cast<std::int64_t>(clang_getEnumConstantDeclValue(child))});
             }
             converted.kind = underlying.kind;
             converted.width = underlying.width;
             converted.is_signed = underlying.is_signed;
-            converted.enumeration = take(clang_getCursorUSR(declaration));
-            converted.enumerators = std::move(values);
+            converted.representation.identity = take(clang_getCursorUSR(declaration));
+            converted.representation.name = take(clang_getTypeSpelling(canonical));
+            converted.representation.enumerators = std::move(enumerators);
             break;
         }
         case CXType_Bool:
@@ -289,7 +289,7 @@ std::optional<std::size_t> find_local(const Locals& locals, CXCursor declaration
 // type C++L does not model is never "the same" as anything.
 bool same_modeled_value(const Type& outer, const Type& inner) {
     return outer.kind != TypeKind::Unsupported && outer.kind == inner.kind && outer.width == inner.width &&
-           outer.is_signed == inner.is_signed && outer.enumeration == inner.enumeration;
+           outer.is_signed == inner.is_signed && outer.representation == inner.representation;
 }
 
 // Whether C++ performs arithmetic on this type only after promoting it to
@@ -428,8 +428,9 @@ Expr build_expression(CXCursor cursor, const std::vector<CXCursor>& parameters, 
         if (operand != children.end()) {
             const Type destination = convert_type(clang_getCursorType(cursor));
             const Type source = convert_type(clang_getCursorType(*operand));
-            if (!source.enumeration.empty() && destination.enumeration.empty() && destination.kind == TypeKind::Int &&
-                destination.width == source.width && destination.is_signed == source.is_signed) {
+            if (!source.representation.identity.empty() && destination.representation.identity.empty() &&
+                destination.kind == TypeKind::Int && destination.width == source.width &&
+                destination.is_signed == source.is_signed) {
                 Expr expression = build_expression(*operand, parameters, locals, depth + 1);
                 expression.type = destination;
                 return expression;

@@ -7,6 +7,12 @@
 namespace cppl::vir {
 
 std::string describe(const Type& type) {
+    // A value that stands for a C++ representation is named the way it was
+    // written, not by the scalar it is carried in: a diagnostic about a scoped
+    // enum should say `State`, not `i32`.
+    if (type.representation.is_known() && !type.representation.name.empty()) {
+        return type.representation.name;
+    }
     if (type.is_proposition())
         return "Prop";
     if (type.is_boolean()) {

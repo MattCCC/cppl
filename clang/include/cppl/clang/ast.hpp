@@ -36,6 +36,32 @@ struct Refinement {
     friend bool operator==(const Refinement&, const Refinement&) = default;
 };
 
+// One enumerator, as Clang resolved it. Enumerators sharing a value are aliases
+// naming one logical case; all are kept so a diagnostic can name the one an
+// author wrote.
+struct Enumerator {
+    std::string name;
+    std::int64_t value = 0;
+
+    friend bool operator==(const Enumerator&, const Enumerator&) = default;
+};
+
+// The resolved identity of a C++ representation whose proof-visible states a
+// decomposition provider may model (SPEC.md 20.5).
+//
+// `identity` is the declaration's USR, so a provider selects on resolved
+// semantic identity rather than on a spelling: aliases, qualified names and
+// template specializations that resolve to one declaration share it.
+struct Representation {
+    std::string identity;
+    std::string name; // qualified name, for diagnostics only
+    std::vector<Enumerator> enumerators;
+
+    friend bool operator==(const Representation& lhs, const Representation& rhs) {
+        return lhs.identity == rhs.identity;
+    }
+};
+
 struct Type {
     TypeKind kind = TypeKind::Unsupported;
     std::uint16_t width = 0; // value bits, for Int
@@ -45,10 +71,10 @@ struct Type {
     // Outermost refinement first. Empty for an ordinary C++ type.
     std::vector<Refinement> refinements;
 
-    // Scoped enums have exactly their fixed underlying type's value set.
-    // Identity and enumerators come from Clang, never from parsed spellings.
-    std::string enumeration;
-    std::vector<std::int64_t> enumerators;
+    // A scoped enum has exactly its fixed underlying type's value set, so the
+    // representation records what the named states are without narrowing the
+    // value set to them.
+    Representation representation;
 
     friend bool operator==(const Type&, const Type&) = default;
 };
