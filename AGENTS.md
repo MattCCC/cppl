@@ -1084,6 +1084,7 @@ Prefer:
 - explicit provenance
 - small trusted modules
 - short commits type: title
+- All commits MUST use exactly one line.
 
 Avoid:
 
