@@ -1,5 +1,7 @@
 #include "cppl/elaboration/elaborate.hpp"
 
+#include "cppl/decomposition/decomposition.hpp"
+
 #include <algorithm>
 #include <map>
 #include <optional>
@@ -44,8 +46,14 @@ std::optional<vir::Type> convert_type(const clangbridge::Type& type) {
     for (const clangbridge::Refinement& refinement : type.refinements) {
         converted->refinements.push_back(vir::Refinement{refinement.name, refinement.arguments});
     }
-    converted->enumeration = type.enumeration;
-    converted->enumerators = type.enumerators;
+    // What C++ representation the value stands for, when it is one a
+    // decomposition provider may model. Nothing is inferred from a spelling:
+    // this is the identity Clang resolved (SPEC.md 20.5).
+    converted->representation.identity = type.representation.identity;
+    converted->representation.name = type.representation.name;
+    for (const clangbridge::Enumerator& enumerator : type.representation.enumerators) {
+        converted->representation.enumerators.push_back(vir::Enumerator{enumerator.name, enumerator.value});
+    }
     return converted;
 }
 
@@ -502,58 +510,129 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
                 auto subject = convert_probe(projected.case_names, next_case, statement.location);
                 if (!subject)
                     return std::nullopt;
+
+                // The subject must denote one stable value for the whole
+                // statement, because every arm reasons about the same value. A
+                // parameter does; an expression that could be evaluated twice,
+                // or whose value could change, does not.
                 const auto* parameter = std::get_if<vir::ParameterRef>(&subject->node);
-                if (!parameter || subject->type.enumeration.empty() || !subject->type.is_integer()) {
+                if (parameter == nullptr) {
                     report(engine, diagnostics::Category::UnsupportedSemantics, statement.location,
-                           "cases currently requires a parameter of a defined scoped enum type");
+                           "the subject of cases must be a value parameter",
+                           "an arbitrary expression is not yet stabilized in the proof model, so it "
+                           "cannot be the subject of a case split");
                     return std::nullopt;
                 }
+
+                // What the states are is the representation's business, not the
+                // engine's. A representation no provider models fails here, at
+                // the provider boundary, naming the resolved C++ type.
+                const decomposition::Subject described{*subject, statement.location};
+                const decomposition::Decomposition decomposed = decomposition::decompose(described);
+                if (const auto* unsupported = std::get_if<decomposition::Unsupported>(&decomposed)) {
+                    report(engine, diagnostics::Category::UnsupportedSemantics, statement.location,
+                           "proof decomposition is not defined for '" + unsupported->representation + "'",
+                           unsupported->reason);
+                    return std::nullopt;
+                }
+                if (std::holds_alternative<decomposition::ProductDecomposition>(decomposed)) {
+                    report(engine, diagnostics::Category::UnsupportedSemantics, statement.location,
+                           "'" + describe(subject->type) + "' decomposes into components, not cases",
+                           "cases reasons over alternative states; a product exposes its components "
+                           "through component binders instead");
+                    return std::nullopt;
+                }
+                const auto& sum = std::get<decomposition::SumDecomposition>(decomposed);
+                const decomposition::Provider& provider = *decomposition::provider_for(subject->type);
+                const bool residual_required =
+                    sum.exhaustiveness == decomposition::ExhaustivenessModel::ResidualRequired;
+
                 const std::uint32_t subject_parameter = parameter->parameter;
                 vir::CasesStep cases{*subject, {}};
-                std::set<std::int64_t> covered;
+                std::vector<bool> covered(sum.cases.size(), false);
                 bool residual = false;
+
                 for (const auto& arm : statement.arms) {
                     vir::CaseArm converted;
                     converted.location = arm.location;
-                    if (arm.residual) {
-                        if (residual || arm.binders.size() != 1) {
+
+                    // A reserved label names the residual state, so it is
+                    // matched against the partition's own residual label rather
+                    // than resolved as an expression.
+                    const std::vector<decomposition::ProofBinding>* bindings = nullptr;
+                    if (arm.keyword_label) {
+                        const std::string& written = arm.spelling;
+                        if (!residual_required || written != sum.residual.text) {
                             report(engine, diagnostics::Category::Elaboration, arm.location,
-                                   "a scoped enum has at most one unnamed(value) arm, with exactly one value binder");
+                                   "'" + written + "' is not a case of '" + describe(subject->type) + "'",
+                                   residual_required ? "its residual case is '" + sum.residual.text + "'"
+                                                     : "this representation has no residual case");
+                            return std::nullopt;
+                        }
+                        if (residual) {
+                            report(engine, diagnostics::Category::Elaboration, arm.location,
+                                   "duplicate case '" + written + "'");
                             return std::nullopt;
                         }
                         residual = true;
+                        converted.label = sum.residual.text;
+                        bindings = &sum.residual_bindings;
                     } else {
                         auto label = convert_probe(projected.case_names, next_case, arm.location);
                         if (!label)
                             return std::nullopt;
-                        const auto* value = std::get_if<vir::IntLiteral>(&label->node);
-                        if (!value || !(label->type == subject->type) || !arm.binders.empty()) {
+                        const std::optional<std::size_t> index = provider.resolve_label(sum, *label);
+                        if (!index || !(label->type == subject->type)) {
                             report(engine, diagnostics::Category::Elaboration, arm.location,
-                                   "a named enum arm requires an enumerator of the subject type and no binders");
+                                   "this label does not name a case of '" + describe(subject->type) + "'");
                             return std::nullopt;
                         }
-                        if (!covered.insert(value->value).second) {
+                        const decomposition::CaseDescriptor& descriptor = sum.cases[*index];
+                        if (covered[*index]) {
                             report(engine, diagnostics::Category::Elaboration, arm.location,
-                                   "duplicate enum case (enumerator aliases denote the same case)");
+                                   "duplicate case '" + descriptor.label.text + "'",
+                                   "labels that denote one state name one case");
                             return std::nullopt;
                         }
-                        converted.value = value->value;
+                        covered[*index] = true;
+                        converted.descriptor = static_cast<std::uint32_t>(*index);
+                        converted.label = descriptor.label.text;
+                        bindings = &descriptor.bindings;
                     }
+
+                    // A case supplies exactly the bindings its provider
+                    // describes, so an arm names exactly that many.
+                    if (arm.binders.size() != bindings->size()) {
+                        report(engine, diagnostics::Category::Elaboration, arm.location,
+                               "case '" + converted.label + "' binds " + std::to_string(bindings->size()) +
+                                   " value(s), but this arm names " + std::to_string(arm.binders.size()));
+                        return std::nullopt;
+                    }
+
                     const auto enclosing_assumed = assumed.size();
-                    if (arm.residual) {
-                        if (std::ranges::find(value_names, arm.binders[0]) != value_names.end()) {
+                    const auto enclosing_aliases = aliases.size();
+                    for (std::size_t index = 0; index < arm.binders.size(); ++index) {
+                        if (std::ranges::find(value_names, arm.binders[index]) != value_names.end()) {
                             report(engine, diagnostics::Category::Elaboration, arm.location,
-                                   "case binder duplicates an enclosing value name");
+                                   "case binder '" + arm.binders[index] + "' duplicates an enclosing value name");
+                            return std::nullopt;
+                        }
+                        // An alias denotes the subject itself, so the probe
+                        // parameter the projector declared for it is remapped
+                        // onto the subject and nothing is created at runtime.
+                        if ((*bindings)[index].kind != decomposition::BindingKind::Alias) {
+                            report(engine, diagnostics::Category::UnsupportedSemantics, arm.location,
+                                   "case binder '" + arm.binders[index] + "' would project a component",
+                                   "only bindings that alias the subject are modeled so far");
                             return std::nullopt;
                         }
                         aliases.push_back(subject_parameter);
-                        value_names.push_back(arm.binders[0]);
+                        value_names.push_back(arm.binders[index]);
                     }
+
                     auto nested = self(self, arm.statements);
-                    if (arm.residual) {
-                        aliases.pop_back();
-                        value_names.pop_back();
-                    }
+                    aliases.resize(enclosing_aliases);
+                    value_names.resize(parameter_count + enclosing_aliases);
                     assumed.resize(enclosing_assumed);
                     assumed_types.resize(enclosing_assumed);
                     if (!nested)
@@ -561,18 +640,24 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
                     converted.steps = std::move(*nested);
                     cases.arms.push_back(std::move(converted));
                 }
-                // This prototype requires written arms, including the residual.
-                // Omitted impossible cases await an explicit evidence-producing path.
-                for (const auto value : subject->type.enumerators) {
-                    if (!covered.contains(value)) {
+
+                // Exhaustiveness comes from the partition the provider
+                // described. A state it lists and no arm claims is a missing
+                // case, so adding a state to a representation makes a proof
+                // that did not account for it stop being exhaustive.
+                for (std::size_t index = 0; index < sum.cases.size(); ++index) {
+                    if (!covered[index]) {
                         report(engine, diagnostics::Category::ProofFailure, statement.location,
-                               "non-exhaustive cases: a named enumerator has no arm");
+                               "non-exhaustive cases: '" + sum.cases[index].label.text + "' has no arm");
                         return std::nullopt;
                     }
                 }
-                if (!residual) {
+                if (residual_required && !residual) {
                     report(engine, diagnostics::Category::ProofFailure, statement.location,
-                           "non-exhaustive cases: unnamed(value) needs an explicit arm in this prototype");
+                           "non-exhaustive cases: '" + sum.residual.text + "' has no arm",
+                           "'" + describe(subject->type) +
+                               "' has states beyond the ones it names, and "
+                               "no wildcard absorbs them");
                     return std::nullopt;
                 }
                 step.node = std::move(cases);
@@ -659,12 +744,17 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
                 if (!argument.has_value()) {
                     return std::nullopt;
                 }
+                // Two values of one machine layout are not interchangeable when
+                // they stand for different C++ representations, so a proof is
+                // not instantiated at a value of the wrong one.
                 const auto index = arguments.size();
                 if (index < expected_arguments.size() &&
-                    (!argument->type.enumeration.empty() || !expected_arguments[index].enumeration.empty()) &&
+                    (argument->type.representation.is_known() || expected_arguments[index].representation.is_known()) &&
                     !(argument->type == expected_arguments[index])) {
                     report(engine, diagnostics::Category::Elaboration, written.location,
-                           "proof argument has a different enum type from its quantified parameter");
+                           "proof argument has type '" + describe(argument->type) +
+                               "', but its quantified parameter has type '" + describe(expected_arguments[index]) +
+                               "'");
                     return std::nullopt;
                 }
                 arguments.push_back(std::move(*argument));

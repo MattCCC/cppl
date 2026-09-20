@@ -12,7 +12,7 @@ target_include_directories(cppl_obligations PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
 
 target_link_libraries(cppl_obligations
-    PUBLIC cppl_kernel cppl_vir cppl_elaboration cppl_source cppl_diagnostics
+    PUBLIC cppl_kernel cppl_vir cppl_decomposition cppl_elaboration cppl_source cppl_diagnostics
     PRIVATE cppl_project_options)
 
 add_library(cppl::obligations ALIAS cppl_obligations)

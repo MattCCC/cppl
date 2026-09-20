@@ -1,5 +1,6 @@
 #include "cppl/obligations/generate.hpp"
 
+#include "cppl/decomposition/decomposition.hpp"
 #include "cppl/kernel/check.hpp"
 #include "cppl/kernel/substitution.hpp"
 #include "cppl/kernel/version.hpp"
@@ -1212,9 +1213,21 @@ std::optional<kernel::ProofTerm> transport(Body& body, const vir::ProofStep& ste
                                                                      std::move(*rest)));
 }
 
-// Enum splitting is derived evidence: every comparison is a total machine
-// comparison, and conditional elimination checks both branches independently.
-// No enumeration-completeness assertion reaches the kernel.
+// At most this many arms in one statement, so malformed VIR cannot make
+// evidence construction grow without bound. Proof-resource limits apply too.
+constexpr std::size_t kMaxCaseArms = 64;
+
+// Case splitting is derived evidence, not a new rule.
+//
+// A provider describes a partition as a list of discriminator conditions. Each
+// is an ordinary modeled comparison, and machine comparison is total, so
+// conditional elimination on one splits any goal into two branches the kernel
+// checks independently. Splitting on the discriminators in turn leaves one
+// remaining branch, in which every discriminator is known false; that is the
+// tail case, and it receives their conjunction. No completeness claim about the
+// representation reaches the kernel: exhaustiveness is a property of evidence
+// the kernel rechecks, and a provider that described the wrong partition can
+// only fail to produce a proof, never forge one.
 std::optional<kernel::ProofTerm> prove_cases(Body& body, const vir::ProofStep& step, const vir::CasesStep& cases,
                                              const kernel::Proposition& goal, diagnostics::Engine& engine) {
     std::vector<kernel::Type> binders;
@@ -1223,31 +1236,62 @@ std::optional<kernel::ProofTerm> prove_cases(Body& body, const vir::ProofStep& s
     scoped.depth += binders.size();
     for (auto& assumption : scoped.assumptions)
         assumption.second = kernel::shift(assumption.second, static_cast<std::uint32_t>(binders.size()));
-    auto subject = TermLowering(body.definitions, scoped.depth).lower(cases.subject);
-    auto type = lower_type(cases.subject.type);
-    if (!subject || !type || cases.subject.type.enumeration.empty()) {
-        report(engine, diagnostics::Category::ProofFailure, step.location, "malformed enum case subject");
+
+    // The partition is asked of the provider here, not taken from the arms.
+    // What the frontend recorded is only which case each arm claims; whether
+    // those claims cover the representation is decided against the provider's
+    // own description.
+    const decomposition::Decomposition decomposed = decomposition::decompose({cases.subject, step.location});
+    const auto* sum = std::get_if<decomposition::SumDecomposition>(&decomposed);
+    if (sum == nullptr) {
+        report(engine, diagnostics::Category::ProofFailure, step.location,
+               "the subject of this case split has no sum decomposition");
         return std::nullopt;
     }
-    const std::set<std::int64_t> expected(cases.subject.type.enumerators.begin(), cases.subject.type.enumerators.end());
-    std::set<std::int64_t> actual;
-    std::size_t residuals = 0;
-    for (const auto& arm : cases.arms) {
-        if (arm.value) {
-            if (!actual.insert(*arm.value).second) {
-                report(engine, diagnostics::Category::ProofFailure, arm.location, "duplicate enum case evidence");
+
+    TermLowering lowering(body.definitions, scoped.depth);
+    std::vector<kernel::Term> discriminators;
+    for (const decomposition::CaseDescriptor& descriptor : sum->cases) {
+        auto condition = lowering.lower(descriptor.discriminator);
+        if (!condition) {
+            report(engine, diagnostics::Category::ProofFailure, step.location,
+                   "case '" + descriptor.label.text + "' cannot be stated: " + condition.error().reason);
+            return std::nullopt;
+        }
+        discriminators.push_back(std::move(*condition));
+    }
+
+    // Which arm proves which case, checked against the provider's partition.
+    const bool residual_required = sum->exhaustiveness == decomposition::ExhaustivenessModel::ResidualRequired;
+    std::vector<const vir::CaseArm*> claimed(sum->cases.size(), nullptr);
+    const vir::CaseArm* residual = nullptr;
+    for (const vir::CaseArm& arm : cases.arms) {
+        if (arm.descriptor.has_value()) {
+            if (*arm.descriptor >= claimed.size() || claimed[*arm.descriptor] != nullptr) {
+                report(engine, diagnostics::Category::ProofFailure, arm.location, "malformed case evidence");
                 return std::nullopt;
             }
-        } else {
-            ++residuals;
+            claimed[*arm.descriptor] = &arm;
+            continue;
         }
+        if (residual != nullptr || !residual_required) {
+            report(engine, diagnostics::Category::ProofFailure, arm.location, "malformed case evidence");
+            return std::nullopt;
+        }
+        residual = &arm;
     }
-    if (expected.size() != cases.subject.type.enumerators.size() || expected != actual || residuals != 1 ||
-        cases.arms.size() > 64) {
-        report(engine, diagnostics::Category::ProofFailure, step.location,
-               "malformed or incomplete enum case evidence");
+    if (std::ranges::find(claimed, nullptr) != claimed.end() || (residual_required && residual == nullptr) ||
+        cases.arms.size() > kMaxCaseArms) {
+        report(engine, diagnostics::Category::ProofFailure, step.location, "incomplete case evidence");
         return std::nullopt;
     }
+
+    // The branch in which every discriminator is false. When the partition
+    // needs a residual case that is its arm; otherwise the last named case is
+    // exactly the negation of the others, and splitting stops one short of it.
+    const std::size_t splits = residual_required ? sum->cases.size() : sum->cases.size() - 1;
+    const vir::CaseArm& tail = residual_required ? *residual : *claimed.back();
+
     constexpr auto anonymous = std::numeric_limits<std::uint32_t>::max();
     const auto arm_proof = [&](Body context, const vir::CaseArm& arm) -> std::optional<kernel::ProofTerm> {
         context.steps = &arm.steps;
@@ -1261,15 +1305,15 @@ std::optional<kernel::ProofTerm> prove_cases(Body& body, const vir::ProofStep& s
         }
         return evidence;
     };
+
     const auto split = [&](auto&& self, Body context, std::size_t position) -> std::optional<kernel::ProofTerm> {
-        if (position == cases.subject.type.enumerators.size()) {
-            const auto residual = std::ranges::find_if(cases.arms, [](const auto& arm) { return !arm.value; });
-            if (residual == cases.arms.end())
-                return std::nullopt;
-            if (position == 0)
-                return arm_proof(context, *residual);
-            // Supply one residual case fact: the left-associated conjunction of
-            // all exclusions in declaration order, derived from the path facts.
+        if (position == splits) {
+            if (position == 0) {
+                return arm_proof(context, tail);
+            }
+            // Supply the tail case's fact: the left-associated conjunction of
+            // every exclusion, in the partition's own order, built from the
+            // path facts this branch already carries.
             auto fact = context.assumptions[context.assumptions.size() - position].second;
             auto evidence = kernel::ProofTerm::hypothesis({static_cast<std::uint32_t>(position - 1)});
             for (std::size_t index = 1; index < position; ++index) {
@@ -1280,36 +1324,33 @@ std::optional<kernel::ProofTerm> prove_cases(Body& body, const vir::ProofStep& s
                     kernel::ProofTerm::hypothesis({static_cast<std::uint32_t>(position - index - 1)}));
             }
             context.assumptions.emplace_back(anonymous, fact);
-            auto arm = arm_proof(context, *residual);
+            auto arm = arm_proof(context, tail);
             if (!arm)
                 return std::nullopt;
             return kernel::ProofTerm::implication_elimination(
                 kernel::Proposition::implication(fact, *inner),
                 kernel::ProofTerm::implication_introduction(fact, std::move(*arm)), std::move(evidence));
         }
-        const auto value = cases.subject.type.enumerators[position];
-        const auto arm =
-            std::ranges::find_if(cases.arms, [&](const auto& candidate) { return candidate.value == value; });
-        if (arm == cases.arms.end())
-            return std::nullopt;
-        const auto condition = kernel::Term::primitive(kernel::PrimOp::Equal, type->integer_type(),
-                                                       {*subject, kernel::Term::literal(type->integer_type(), value)});
+
+        const kernel::Term& condition = discriminators[position];
         const auto positive = kernel::predicate(condition, true);
         const auto negative = kernel::predicate(condition, false);
-        Body yes = context;
-        yes.assumptions.emplace_back(anonymous, positive);
-        auto at_value = arm_proof(yes, *arm);
-        if (!at_value)
+        Body holds = context;
+        holds.assumptions.emplace_back(anonymous, positive);
+        auto at_case = arm_proof(holds, *claimed[position]);
+        if (!at_case)
             return std::nullopt;
         context.assumptions.emplace_back(anonymous, negative);
         auto otherwise = self(self, context, position + 1);
         if (!otherwise)
             return std::nullopt;
         return kernel::ProofTerm::conditional_elimination(
-            *type, condition, *subject, *subject, kernel::shift(*inner, 1),
-            kernel::ProofTerm::implication_introduction(positive, std::move(*at_value)),
+            kernel::Type{kernel::kBoolean}, condition, kernel::Term::literal(kernel::kBoolean, 1),
+            kernel::Term::literal(kernel::kBoolean, 1), kernel::shift(*inner, 1),
+            kernel::ProofTerm::implication_introduction(positive, std::move(*at_case)),
             kernel::ProofTerm::implication_introduction(negative, std::move(*otherwise)));
     };
+
     auto evidence = split(split, scoped, 0);
     if (!evidence)
         return std::nullopt;

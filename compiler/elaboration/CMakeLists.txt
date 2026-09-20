@@ -5,7 +5,7 @@ target_include_directories(cppl_elaboration PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
 
 target_link_libraries(cppl_elaboration
-    PUBLIC cppl_vir cppl_clang cppl_frontend cppl_diagnostics
+    PUBLIC cppl_vir cppl_decomposition cppl_clang cppl_frontend cppl_diagnostics
     PRIVATE cppl_project_options)
 
 add_library(cppl::elaboration ALIAS cppl_elaboration)
