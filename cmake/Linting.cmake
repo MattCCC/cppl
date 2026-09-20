@@ -145,6 +145,11 @@ endif()
 # Targets
 # -----------------------------------------------------------------------------
 
+# -hide-progress suppresses run-clang-tidy's per-file "[n/m] <full clang-tidy
+# command line>" lines, which otherwise print the entire invocation (binary
+# path, sysroot args, build path) once per translation unit for no
+# diagnostic value.
+
 add_custom_target(
     lint
 
@@ -155,11 +160,15 @@ add_custom_target(
         -j
         ${CPPL_LINT_JOBS}
         -quiet
+        -hide-progress
         -clang-tidy-binary
         "${CPPL_CLANG_TIDY}"
         -clang-apply-replacements-binary
         "${CPPL_CLANG_APPLY_REPLACEMENTS}"
         ${CPPL_CLANG_TIDY_EXTRA_ARGS}
+
+    COMMAND
+        "${CMAKE_COMMAND}" -E echo "success"
 
     WORKING_DIRECTORY
         "${PROJECT_SOURCE_DIR}"
@@ -182,6 +191,7 @@ add_custom_target(
         -j
         ${CPPL_LINT_JOBS}
         -quiet
+        -hide-progress
         -clang-tidy-binary
         "${CPPL_CLANG_TIDY}"
         -clang-apply-replacements-binary
@@ -189,6 +199,9 @@ add_custom_target(
         ${CPPL_CLANG_TIDY_EXTRA_ARGS}
         -fix
         -format
+
+    COMMAND
+        "${CMAKE_COMMAND}" -E echo "success"
 
     WORKING_DIRECTORY
         "${PROJECT_SOURCE_DIR}"

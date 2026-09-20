@@ -48,32 +48,49 @@ endif()
 # Source discovery
 # -----------------------------------------------------------------------------
 
-file(
-    GLOB_RECURSE CPPL_FORMAT_FILES
-    CONFIGURE_DEPENDS
-    LIST_DIRECTORIES false
-
-    "${PROJECT_SOURCE_DIR}/*.c"
-    "${PROJECT_SOURCE_DIR}/*.cc"
-    "${PROJECT_SOURCE_DIR}/*.cpp"
-    "${PROJECT_SOURCE_DIR}/*.cxx"
-
-    "${PROJECT_SOURCE_DIR}/*.h"
-    "${PROJECT_SOURCE_DIR}/*.hh"
-    "${PROJECT_SOURCE_DIR}/*.hpp"
-    "${PROJECT_SOURCE_DIR}/*.hxx"
-
-    "${PROJECT_SOURCE_DIR}/*.inc"
-    "${PROJECT_SOURCE_DIR}/*.ipp"
-    "${PROJECT_SOURCE_DIR}/*.tpp"
+# Globbing is rooted at each top-level source directory rather than at
+# PROJECT_SOURCE_DIR so that build trees are never walked at all. Globbing
+# the whole project and filtering "/build/" out afterward still made
+# CONFIGURE_DEPENDS watch that directory: test runs continuously write and
+# remove scratch .cpp files under build/, so every build/lint/format-check
+# invocation re-triggered a noisy CMake reconfigure.
+set(
+    CPPL_FORMAT_ROOTS
+    clang
+    compiler
+    kernel
+    src
+    stdlib
+    tests
+    tools
+    vir
 )
 
-# Never format generated or externally-owned code.
-list(
-    FILTER CPPL_FORMAT_FILES
-    EXCLUDE REGEX
-    "/build/"
-)
+set(CPPL_FORMAT_FILES)
+
+foreach(CPPL_FORMAT_ROOT IN LISTS CPPL_FORMAT_ROOTS)
+    file(
+        GLOB_RECURSE CPPL_FORMAT_ROOT_FILES
+        CONFIGURE_DEPENDS
+        LIST_DIRECTORIES false
+
+        "${PROJECT_SOURCE_DIR}/${CPPL_FORMAT_ROOT}/*.c"
+        "${PROJECT_SOURCE_DIR}/${CPPL_FORMAT_ROOT}/*.cc"
+        "${PROJECT_SOURCE_DIR}/${CPPL_FORMAT_ROOT}/*.cpp"
+        "${PROJECT_SOURCE_DIR}/${CPPL_FORMAT_ROOT}/*.cxx"
+
+        "${PROJECT_SOURCE_DIR}/${CPPL_FORMAT_ROOT}/*.h"
+        "${PROJECT_SOURCE_DIR}/${CPPL_FORMAT_ROOT}/*.hh"
+        "${PROJECT_SOURCE_DIR}/${CPPL_FORMAT_ROOT}/*.hpp"
+        "${PROJECT_SOURCE_DIR}/${CPPL_FORMAT_ROOT}/*.hxx"
+
+        "${PROJECT_SOURCE_DIR}/${CPPL_FORMAT_ROOT}/*.inc"
+        "${PROJECT_SOURCE_DIR}/${CPPL_FORMAT_ROOT}/*.ipp"
+        "${PROJECT_SOURCE_DIR}/${CPPL_FORMAT_ROOT}/*.tpp"
+    )
+
+    list(APPEND CPPL_FORMAT_FILES ${CPPL_FORMAT_ROOT_FILES})
+endforeach()
 
 list(
     FILTER CPPL_FORMAT_FILES
@@ -126,6 +143,9 @@ if(CPPL_FORMAT_FILES)
             -style=file
             ${CPPL_FORMAT_FILES}
 
+        COMMAND
+            "${CMAKE_COMMAND}" -E echo "success"
+
         WORKING_DIRECTORY
             "${PROJECT_SOURCE_DIR}"
 
@@ -145,6 +165,9 @@ if(CPPL_FORMAT_FILES)
             --Werror
             -style=file
             ${CPPL_FORMAT_FILES}
+
+        COMMAND
+            "${CMAKE_COMMAND}" -E echo "success"
 
         WORKING_DIRECTORY
             "${PROJECT_SOURCE_DIR}"

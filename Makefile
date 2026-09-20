@@ -93,9 +93,24 @@ help:
 		'  make check' \
 		'  make asan'
 
+# CMake's own build-system regeneration (driven by CONFIGURE_DEPENDS/
+# add_custom_command DEPENDS) already reconfigures incrementally and quietly
+# as part of `cmake --build`. Re-running `cmake --preset` unconditionally on
+# every `make` invocation duplicated that work and reprinted the full
+# configure banner for every target in a `make check` chain. A stamp file
+# (rather than CMakeCache.txt itself) tracks this: CMake only rewrites the
+# cache's mtime when its content changes, so it stays permanently older than
+# CMakeLists.txt after any unrelated bulk-touch (e.g. a fresh checkout) and
+# would force a reconfigure on every invocation forever.
+CMAKE_STAMP := $(BUILD_DIR)/.cmake-configured
+
 ## configure: Configure selected preset
-configure:
+configure: $(CMAKE_STAMP)
+
+$(CMAKE_STAMP): CMakeLists.txt CMakePresets.json
 	$(CMAKE) --preset $(PRESET)
+	@mkdir -p "$(BUILD_DIR)"
+	@touch "$(CMAKE_STAMP)"
 
 ## build: Configure and build selected preset
 build: configure
