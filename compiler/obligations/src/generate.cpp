@@ -1280,8 +1280,10 @@ std::optional<kernel::ProofTerm> prove_cases(Body& body, const vir::ProofStep& s
         }
         residual = &arm;
     }
+    // A partition with no residual case and no cases at all would claim the
+    // subject has no states, which is not something evidence can establish.
     if (std::ranges::find(claimed, nullptr) != claimed.end() || (residual_required && residual == nullptr) ||
-        cases.arms.size() > kMaxCaseArms) {
+        (!residual_required && sum->cases.empty()) || cases.arms.size() > kMaxCaseArms) {
         report(engine, diagnostics::Category::ProofFailure, step.location, "incomplete case evidence");
         return std::nullopt;
     }

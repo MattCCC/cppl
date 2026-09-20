@@ -2037,6 +2037,14 @@ implementation requires a value parameter; an expression that could be evaluated
 more than once, or whose value could change, is refused with a diagnostic rather
 than stabilized silently.
 
+Case-derived facts are flow-sensitive in general. `cases` is currently available
+only in proof bodies, where the subject is a proof parameter and nothing can
+assign to it, so no case fact can go stale and none is carried across a
+mutation. Where `cases` becomes available over values that can change, its facts
+MUST participate in the same mutation and alias invalidation framework as every
+other proof fact — a provider MUST NOT be given an invalidation mechanism of its
+own.
+
 ### 20.5.3 Evidence
 
 The engine splits the enclosing goal on the discriminators in order, using the
