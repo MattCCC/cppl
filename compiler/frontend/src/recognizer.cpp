@@ -382,12 +382,97 @@ bool read_proof_arguments(const TokenStream& stream, std::size_t open, std::size
 // here: the proposition a proof discharges is resolved by Clang from the
 // projected text, never by this recognizer.
 bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std::size_t body_close,
-                           diagnostics::Engine& engine, std::vector<ProofStatement>& statements) {
+                           diagnostics::Engine& engine, std::vector<ProofStatement>& statements, unsigned nesting = 0) {
     const std::vector<Token>& tokens = stream.tokens();
+    if (nesting > 32) {
+        report(engine, stream, tokens[body_open], diagnostics::Category::CpplSyntax,
+               "proof arms nest deeper than the supported limit");
+        return false;
+    }
 
     std::size_t cursor = body_open + 1;
     while (cursor < body_close) {
         const Token& token = tokens[cursor];
+
+        if (token.is_identifier("cases") && cursor + 2 < body_close &&
+            tokens[cursor + 1].kind == TokenKind::Identifier && tokens[cursor + 2].is_punctuator("{")) {
+            ProofStatement statement;
+            statement.kind = ProofStatementKind::Cases;
+            statement.reference = std::string(tokens[cursor + 1].text);
+            statement.proposition = tokens[cursor + 1].span;
+            statement.location = stream.location_of(token);
+            const std::size_t end = matching_brace(tokens, cursor + 2);
+            if (end >= body_close) {
+                report(engine, stream, token, diagnostics::Category::CpplSyntax, "unterminated cases statement");
+                return false;
+            }
+            cursor += 3;
+            bool malformed = false;
+            while (cursor < end) {
+                malformed = true;
+                ProofArm arm;
+                arm.location = stream.location_of(tokens[cursor]);
+                const std::size_t start = cursor;
+                if (tokens[cursor].is_punctuator("::"))
+                    ++cursor;
+                if (cursor >= end || tokens[cursor].kind != TokenKind::Identifier)
+                    break;
+                ++cursor;
+                while (cursor + 1 < end && tokens[cursor].is_punctuator("::") &&
+                       tokens[cursor + 1].kind == TokenKind::Identifier)
+                    cursor += 2;
+                arm.label = {tokens[start].span.offset, tokens[cursor - 1].span.end() - tokens[start].span.offset};
+                arm.residual = cursor == start + 1 && tokens[start].is_identifier("unnamed");
+                if (tokens[start].is_identifier("_")) {
+                    report(engine, stream, tokens[start], diagnostics::Category::CpplSyntax,
+                           "cases has no wildcard arm");
+                    return false;
+                }
+                if (!arm.residual && cursor == start + 1) {
+                    report(engine, stream, tokens[start], diagnostics::Category::UnsupportedSemantics,
+                           "enum case labels must be qualified, as in 'State::idle'");
+                    return false;
+                }
+                if (cursor < end && tokens[cursor].is_punctuator("(")) {
+                    ++cursor;
+                    if (cursor >= end || tokens[cursor].kind != TokenKind::Identifier)
+                        break;
+                    while (cursor < end && tokens[cursor].kind == TokenKind::Identifier) {
+                        arm.binders.emplace_back(tokens[cursor++].text);
+                        if (cursor >= end || !tokens[cursor].is_punctuator(","))
+                            break;
+                        ++cursor;
+                        if (cursor >= end || tokens[cursor].kind != TokenKind::Identifier) {
+                            report(engine, stream, tokens[cursor], diagnostics::Category::CpplSyntax,
+                                   "a case binder list requires an identifier after ','");
+                            return false;
+                        }
+                    }
+                    if (cursor >= end || !tokens[cursor].is_punctuator(")"))
+                        break;
+                    ++cursor;
+                }
+                // The C++ token stream spells the proof arrow as '=' followed by '>'.
+                if (cursor + 2 >= end || !tokens[cursor].is_punctuator("=") || !tokens[cursor + 1].is_punctuator(">") ||
+                    !tokens[cursor + 2].is_punctuator("{"))
+                    break;
+                cursor += 2;
+                const std::size_t close = matching_brace(tokens, cursor);
+                if (close >= end || !read_proof_statements(stream, cursor, close, engine, arm.statements, nesting + 1))
+                    return false;
+                statement.arms.push_back(std::move(arm));
+                malformed = false;
+                cursor = close + 1;
+            }
+            if (malformed || cursor != end || statement.arms.empty() || statement.arms.size() > 64) {
+                report(engine, stream, tokens[cursor], diagnostics::Category::CpplSyntax,
+                       "cases requires 1 to 64 arms of the form 'label(binders) => { proof statements }'");
+                return false;
+            }
+            statements.push_back(std::move(statement));
+            cursor = end + 1;
+            continue;
+        }
 
         if (token.is_identifier("refl") && cursor + 1 < body_close && tokens[cursor + 1].is_punctuator(";")) {
             ProofStatement statement;
@@ -921,6 +1006,8 @@ std::string describe(ProofStatementKind kind) {
             return "assume";
         case ProofStatementKind::Rewrite:
             return "rewrite";
+        case ProofStatementKind::Cases:
+            return "cases";
     }
     return "unknown";
 }

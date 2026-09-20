@@ -196,7 +196,12 @@ alias the program keeps, and make membership an obligation at every site a value
 enters the type. Refined parameters supply their predicate to the body and refined
 results are proven on every return. The boundary is in `SPEC.md` 17.3.1.
 
-This slice does **not** implement induction, case analysis (`cases`) over C++
+Proof-side `cases` over defined scoped enums is `PROTOTYPE`: nested arms,
+Clang-resolved enumerators, aliases, explicit `unnamed(value)`, scoped premises,
+and proof dependency checking produce evidence for existing kernel rules. See
+`SPEC.md` 20.5 for the supported fragment and resource limits.
+
+This slice does **not** implement induction, case analysis over other C++
 types, loop termination, ghost state, `unsafe`, `trusted`, proof `let`, solvers,
 proof caching, or any verification of the C++ memory model.
 Those remain `SPECIFIED` below.
@@ -292,7 +297,7 @@ The project should not claim broad language implementation before the proof sema
 | `rewrite`                     | `PROTOTYPE`   |
 | multi-statement proof bodies  | `PROTOTYPE`   |
 | proof `let`                   | `SPECIFIED`   |
-| proof case analysis `cases`   | `SPECIFIED`   |
+| proof case analysis `cases`   | `PROTOTYPE`   |
 | proposition types             | `PROTOTYPE`   |
 | explicit `Eq<T>` propositions | `PROTOTYPE`   |
 | direct proposition proofs     | `PROTOTYPE`   |
@@ -586,10 +591,12 @@ RFC 0005).
 
 | Capability                                  | Status        |
 | ------------------------------------------- | ------------- |
-| `cases` over C++ values                     | `SPECIFIED`   |
-| Residual cases (`unnamed`, `valueless`, …)  | `SPECIFIED`   |
-| Exhaustiveness over C++ state spaces        | `SPECIFIED`   |
-| Arm binders and `assume`-named premises     | `SPECIFIED`   |
+| `cases` over defined scoped enums           | `PROTOTYPE`   |
+| Cases over variants, products and pointers | `SPECIFIED`   |
+| Enum residual `unnamed(value)`              | `PROTOTYPE`   |
+| Other residual cases                       | `SPECIFIED`   |
+| Exhaustiveness over modeled enum states     | `PROTOTYPE`   |
+| Enum arm binders and named premises         | `PROTOTYPE`   |
 | Impossible cases                            | `SPECIFIED`   |
 | `induction` with explicit arms / short form | `SPECIFIED`   |
 | Machine-integer induction principles        | `SPECIFIED`   |

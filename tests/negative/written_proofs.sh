@@ -103,7 +103,7 @@ grep -q "definitionally equal" "$run/unsound_apply.log"
 # not establish it all fail, each where it was written.
 refuse rejected_conditionals
 grep -q "'h' does not name the premise this goal supposes" "$run/rejected_conditionals.log"
-grep -q "'h' has no premise to stand for" "$run/rejected_conditionals.log"
+grep -q "'h' has no matching premise to stand for" "$run/rejected_conditionals.log"
 grep -q "proof 'unguarded_holds' leaves a goal open" "$run/rejected_conditionals.log"
 grep -q "has already closed every goal it states" "$run/rejected_conditionals.log"
 grep -q "law 'two_preconditions' has 2 expects clauses" "$run/rejected_conditionals.log"

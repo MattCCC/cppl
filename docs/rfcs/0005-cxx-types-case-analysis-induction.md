@@ -222,8 +222,10 @@ The contextual words `data` and `match` are removed. The proof statements
 added. No implementation, test, or editor grammar used the removed words. Trust
 and runtime behavior do not change until these constructs are implemented.
 
-When they are, case analysis and each induction principle will need kernel
-rules, with positive, negative, and adversarial tests. The tests must cover:
+Implementations need kernel-checked evidence, with positive, negative, and
+adversarial tests. The scoped-enum implementation (RFC 0013) derives case analysis
+from existing conditional elimination and needs no additional kernel rule.
+Induction principles still need their own checked justification. Tests must cover:
 
 - out-of-range enumeration values, valueless variants, and omitted residual
   cases

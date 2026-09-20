@@ -81,6 +81,34 @@ Type convert_type(CXType type) {
     // Layout is asked only of built-in integer types, which always have one.
     long long size = 0;
     switch (canonical.kind) {
+        case CXType_Enum: {
+            const CXCursor declaration = clang_getTypeDeclaration(canonical);
+            const CXCursor definition = clang_getCursorDefinition(declaration);
+            if (clang_EnumDecl_isScoped(declaration) == 0 || clang_Cursor_isNull(definition) != 0)
+                break;
+            const Type underlying = convert_type(clang_getEnumDeclIntegerType(declaration));
+            // Bool-backed and wide enums remain outside this initial model.
+            if (underlying.kind != TypeKind::Int)
+                break;
+            std::vector<std::int64_t> values;
+            for (const CXCursor& child : children_of(definition)) {
+                if (clang_getCursorKind(child) != CXCursor_EnumConstantDecl)
+                    continue;
+                if (!underlying.is_signed &&
+                    clang_getEnumConstantDeclUnsignedValue(child) >
+                        static_cast<unsigned long long>(std::numeric_limits<std::int64_t>::max()))
+                    return converted;
+                const auto value = static_cast<std::int64_t>(clang_getEnumConstantDeclValue(child));
+                if (std::ranges::find(values, value) == values.end())
+                    values.push_back(value);
+            }
+            converted.kind = underlying.kind;
+            converted.width = underlying.width;
+            converted.is_signed = underlying.is_signed;
+            converted.enumeration = take(clang_getCursorUSR(declaration));
+            converted.enumerators = std::move(values);
+            break;
+        }
         case CXType_Bool:
             converted.kind = TypeKind::Bool;
             break;
@@ -261,7 +289,7 @@ std::optional<std::size_t> find_local(const Locals& locals, CXCursor declaration
 // type C++L does not model is never "the same" as anything.
 bool same_modeled_value(const Type& outer, const Type& inner) {
     return outer.kind != TypeKind::Unsupported && outer.kind == inner.kind && outer.width == inner.width &&
-           outer.is_signed == inner.is_signed;
+           outer.is_signed == inner.is_signed && outer.enumeration == inner.enumeration;
 }
 
 // Whether C++ performs arithmetic on this type only after promoting it to
@@ -391,6 +419,25 @@ Expr build_expression(CXCursor cursor, const std::vector<CXCursor>& parameters, 
 
     const CXCursorKind kind = clang_getCursorKind(cursor);
 
+    // Only the value-preserving scoped-enum -> exact underlying-type cast is
+    // modeled. Clang resolves both types; all other casts still fail closed.
+    if (kind == CXCursor_CXXStaticCastExpr) {
+        const auto children = children_of(cursor);
+        const auto operand = std::ranges::find_if(
+            children, [](CXCursor child) { return clang_isExpression(clang_getCursorKind(child)) != 0; });
+        if (operand != children.end()) {
+            const Type destination = convert_type(clang_getCursorType(cursor));
+            const Type source = convert_type(clang_getCursorType(*operand));
+            if (!source.enumeration.empty() && destination.enumeration.empty() && destination.kind == TypeKind::Int &&
+                destination.width == source.width && destination.is_signed == source.is_signed) {
+                Expr expression = build_expression(*operand, parameters, locals, depth + 1);
+                expression.type = destination;
+                return expression;
+            }
+        }
+        return unsupported_expression(cursor, "only a scoped enum cast to its exact underlying type is modeled");
+    }
+
     // Nodes Clang inserts that carry no meaning of their own are traversed
     // through, but only while they do not change the value. A node that changes
     // the value is a conversion, and conversions are not modeled yet.
@@ -411,6 +458,13 @@ Expr build_expression(CXCursor cursor, const std::vector<CXCursor>& parameters, 
 
     if (kind == CXCursor_DeclRefExpr) {
         const CXCursor referenced = clang_getCursorReferenced(cursor);
+        if (clang_getCursorKind(referenced) == CXCursor_EnumConstantDecl) {
+            Expr expression;
+            expression.type = convert_type(clang_getCursorType(cursor));
+            expression.location = presumed_location(clang_getCursorLocation(cursor));
+            expression.node = IntLiteral{static_cast<std::int64_t>(clang_getEnumConstantDeclValue(referenced))};
+            return expression;
+        }
         if (const std::optional<std::size_t> local = find_local(locals, referenced)) {
             Expr expr;
             expr.type = locals[*local].type;

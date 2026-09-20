@@ -1061,6 +1061,8 @@ struct Body {
     // underneath, and what keeps a name in a statement denoting the same
     // variable however deeply the goal nests (SPEC.md 8).
     std::size_t depth = 0;
+    const std::vector<vir::ProofStep>* steps = &proof.steps;
+    source::SourceLocation body_location = proof.range.begin;
 };
 
 std::optional<kernel::ProofTerm> prove(Body& body, const kernel::Proposition& goal, diagnostics::Engine& engine);
@@ -1080,21 +1082,30 @@ std::optional<kernel::ProofTerm> suppose(Body& body, const vir::ProofStep& step,
     const kernel::Proposition* inner = under_quantifiers(goal, binders);
     const std::size_t depth = body.depth + binders.size();
 
+    auto written = lower_proposition(assumed.proposition, body.definitions, depth);
+    if (!written) {
+        report(engine, diagnostics::Category::UnsupportedSemantics, step.location,
+               "the assumed proposition cannot be stated: " + written.error().reason);
+        return std::nullopt;
+    }
+    // Case premises already stand in the context. Naming one does not create
+    // another assumption or consume an implication from the enclosing goal.
+    constexpr auto anonymous = std::numeric_limits<std::uint32_t>::max();
+    for (std::size_t index = body.assumptions.size(); index > 0; --index) {
+        auto& premise = body.assumptions[index - 1];
+        if (premise.first == anonymous &&
+            kernel::shift(premise.second, static_cast<std::uint32_t>(binders.size())) == *written) {
+            premise.first = position;
+            auto result = prove(body, goal, engine);
+            body.assumptions[index - 1].first = anonymous;
+            return result;
+        }
+    }
     const auto* implication = std::get_if<kernel::Implies>(&inner->node);
     if (implication == nullptr) {
         report(engine, diagnostics::Category::ProofFailure, step.location,
-               "'" + assumed.name + "' has no premise to stand for",
-               "the goal here is " + kernel::describe(*inner) + ", which supposes nothing");
-        return std::nullopt;
-    }
-
-    std::expected<kernel::Proposition, Failure> written =
-        lower_proposition(assumed.proposition, body.definitions, depth);
-    if (!written) {
-        report(engine, diagnostics::Category::UnsupportedSemantics,
-               written.error().location.is_valid() ? written.error().location : step.location,
-               "proof '" + body.proof.name +
-                   "' assumes a proposition the formal core cannot state: " + written.error().reason);
+               "'" + assumed.name + "' has no matching premise to stand for",
+               "the goal here is " + kernel::describe(*inner));
         return std::nullopt;
     }
 
@@ -1201,17 +1212,124 @@ std::optional<kernel::ProofTerm> transport(Body& body, const vir::ProofStep& ste
                                                                      std::move(*rest)));
 }
 
+// Enum splitting is derived evidence: every comparison is a total machine
+// comparison, and conditional elimination checks both branches independently.
+// No enumeration-completeness assertion reaches the kernel.
+std::optional<kernel::ProofTerm> prove_cases(Body& body, const vir::ProofStep& step, const vir::CasesStep& cases,
+                                             const kernel::Proposition& goal, diagnostics::Engine& engine) {
+    std::vector<kernel::Type> binders;
+    const auto* inner = under_quantifiers(goal, binders);
+    Body scoped = body;
+    scoped.depth += binders.size();
+    for (auto& assumption : scoped.assumptions)
+        assumption.second = kernel::shift(assumption.second, static_cast<std::uint32_t>(binders.size()));
+    auto subject = TermLowering(body.definitions, scoped.depth).lower(cases.subject);
+    auto type = lower_type(cases.subject.type);
+    if (!subject || !type || cases.subject.type.enumeration.empty()) {
+        report(engine, diagnostics::Category::ProofFailure, step.location, "malformed enum case subject");
+        return std::nullopt;
+    }
+    const std::set<std::int64_t> expected(cases.subject.type.enumerators.begin(), cases.subject.type.enumerators.end());
+    std::set<std::int64_t> actual;
+    std::size_t residuals = 0;
+    for (const auto& arm : cases.arms) {
+        if (arm.value) {
+            if (!actual.insert(*arm.value).second) {
+                report(engine, diagnostics::Category::ProofFailure, arm.location, "duplicate enum case evidence");
+                return std::nullopt;
+            }
+        } else {
+            ++residuals;
+        }
+    }
+    if (expected.size() != cases.subject.type.enumerators.size() || expected != actual || residuals != 1 ||
+        cases.arms.size() > 64) {
+        report(engine, diagnostics::Category::ProofFailure, step.location,
+               "malformed or incomplete enum case evidence");
+        return std::nullopt;
+    }
+    constexpr auto anonymous = std::numeric_limits<std::uint32_t>::max();
+    const auto arm_proof = [&](Body context, const vir::CaseArm& arm) -> std::optional<kernel::ProofTerm> {
+        context.steps = &arm.steps;
+        context.cursor = 0;
+        context.body_location = arm.location;
+        auto evidence = prove(context, *inner, engine);
+        if (evidence && context.cursor != arm.steps.size()) {
+            report(engine, diagnostics::Category::ProofFailure, arm.steps[context.cursor].location,
+                   "case arm has already closed its goal");
+            return std::nullopt;
+        }
+        return evidence;
+    };
+    const auto split = [&](auto&& self, Body context, std::size_t position) -> std::optional<kernel::ProofTerm> {
+        if (position == cases.subject.type.enumerators.size()) {
+            const auto residual = std::ranges::find_if(cases.arms, [](const auto& arm) { return !arm.value; });
+            if (residual == cases.arms.end())
+                return std::nullopt;
+            if (position == 0)
+                return arm_proof(context, *residual);
+            // Supply one residual case fact: the left-associated conjunction of
+            // all exclusions in declaration order, derived from the path facts.
+            auto fact = context.assumptions[context.assumptions.size() - position].second;
+            auto evidence = kernel::ProofTerm::hypothesis({static_cast<std::uint32_t>(position - 1)});
+            for (std::size_t index = 1; index < position; ++index) {
+                fact = kernel::Proposition::conjunction(
+                    std::move(fact), context.assumptions[context.assumptions.size() - position + index].second);
+                evidence = kernel::ProofTerm::conjunction_introduction(
+                    std::move(evidence),
+                    kernel::ProofTerm::hypothesis({static_cast<std::uint32_t>(position - index - 1)}));
+            }
+            context.assumptions.emplace_back(anonymous, fact);
+            auto arm = arm_proof(context, *residual);
+            if (!arm)
+                return std::nullopt;
+            return kernel::ProofTerm::implication_elimination(
+                kernel::Proposition::implication(fact, *inner),
+                kernel::ProofTerm::implication_introduction(fact, std::move(*arm)), std::move(evidence));
+        }
+        const auto value = cases.subject.type.enumerators[position];
+        const auto arm =
+            std::ranges::find_if(cases.arms, [&](const auto& candidate) { return candidate.value == value; });
+        if (arm == cases.arms.end())
+            return std::nullopt;
+        const auto condition = kernel::Term::primitive(kernel::PrimOp::Equal, type->integer_type(),
+                                                       {*subject, kernel::Term::literal(type->integer_type(), value)});
+        const auto positive = kernel::predicate(condition, true);
+        const auto negative = kernel::predicate(condition, false);
+        Body yes = context;
+        yes.assumptions.emplace_back(anonymous, positive);
+        auto at_value = arm_proof(yes, *arm);
+        if (!at_value)
+            return std::nullopt;
+        context.assumptions.emplace_back(anonymous, negative);
+        auto otherwise = self(self, context, position + 1);
+        if (!otherwise)
+            return std::nullopt;
+        return kernel::ProofTerm::conditional_elimination(
+            *type, condition, *subject, *subject, kernel::shift(*inner, 1),
+            kernel::ProofTerm::implication_introduction(positive, std::move(*at_value)),
+            kernel::ProofTerm::implication_introduction(negative, std::move(*otherwise)));
+    };
+    auto evidence = split(split, scoped, 0);
+    if (!evidence)
+        return std::nullopt;
+    return quantify(binders, std::move(*evidence));
+}
+
 std::optional<kernel::ProofTerm> prove(Body& body, const kernel::Proposition& goal, diagnostics::Engine& engine) {
     const vir::Proof& proof = body.proof;
 
-    if (body.cursor >= proof.steps.size()) {
-        report(engine, diagnostics::Category::ProofFailure, proof.range.begin,
+    if (body.cursor >= body.steps->size()) {
+        report(engine, diagnostics::Category::ProofFailure, body.body_location,
                "proof '" + proof.name + "' leaves a goal open",
                "nothing in its body establishes " + kernel::describe(goal));
         return std::nullopt;
     }
 
-    const vir::ProofStep& step = proof.steps[body.cursor++];
+    const vir::ProofStep& step = (*body.steps)[body.cursor++];
+
+    if (const auto* cases = std::get_if<vir::CasesStep>(&step.node))
+        return prove_cases(body, step, *cases, goal, engine);
 
     if (std::holds_alternative<vir::ReflexivityStep>(step.node)) {
         return definitional_evidence(goal);
@@ -1362,7 +1480,18 @@ void lower_proofs(const vir::Module& module, const elaboration::Result& elaborat
             // is what keeps circular evidence from ever producing one.
             bool admitted = true;
             bool ready = true;
-            for (const vir::ProofStep& step : proof.steps) {
+            std::vector<const vir::ProofStep*> dependencies;
+            const auto collect = [&](auto&& self, const std::vector<vir::ProofStep>& steps) -> void {
+                for (const auto& step : steps) {
+                    dependencies.push_back(&step);
+                    if (const auto* cases = std::get_if<vir::CasesStep>(&step.node))
+                        for (const auto& arm : cases->arms)
+                            self(self, arm.steps);
+                }
+            };
+            collect(collect, proof.steps);
+            for (const vir::ProofStep* dependency : dependencies) {
+                const vir::ProofStep& step = *dependency;
                 const vir::Reference* reference = nullptr;
                 if (const auto* used = std::get_if<vir::ExactStep>(&step.node)) {
                     reference = &used->evidence;

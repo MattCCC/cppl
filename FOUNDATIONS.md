@@ -245,6 +245,12 @@ C++L applies this principle to the values a C++ program already has. It does not
 
 Case analysis is the non-recursive form of the same idea: one obligation per case of a value. The cases cover every state the C++ type permits, including residual states such as an enumeration value that matches no enumerator.
 
+The scoped-enum prototype maps values to their exact fixed underlying machine
+integer domain. Its case split is derived using conditional elimination on
+equality comparisons, with the residual path retaining every inequality. Thus
+exhaustiveness does not rely on assuming that every enum value has a name, and
+no additional logical rule is necessary for this fragment.
+
 The normative rules are in `SPEC.md` §20–§21.
 
 ## Equality

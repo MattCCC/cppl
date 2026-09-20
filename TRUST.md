@@ -1166,7 +1166,7 @@ That is the whole logical TCB. It links no other component, includes no header
 outside itself, and holds no global state. `tests/architecture` checks both
 properties on every run.
 
-The core has eleven rules:
+The core has thirteen rules:
 
 ```text
 1. Reflexivity
@@ -1548,3 +1548,35 @@ Each of these requires an explicit update to this document before it is merged:
 - reusing a cached proof result;
 - any lowering rule that equates a C++ operation with a core primitive whose
   behaviour differs on some input.
+
+## 41.6 Scoped-enum proof cases
+
+`SPEC.md` 20.5 and RFC 0013 add no logical kernel rule, axiom, logical assumption,
+trusted solver, dependency, or proof acceptance mechanism. Kernel/core versions
+remain 0.5.0. Every named and residual branch is expressed through existing
+conditional elimination; implication introduction supplies its checked premise,
+and conjunction introduction combines residual exclusions. Written proof failure
+still has no automation fallback.
+
+The existing correspondence TCB now also covers the bridge's scoped-enum mapping:
+Clang must supply the correct nominal declaration, fixed underlying integer type,
+and enumerator constants. Lowering models the entire underlying value set, never
+just the named constants. Exact underlying-type casts preserve values. Nominal
+identity is retained through VIR and proof-argument checks, then represented by
+the existing machine-integer core. The kernel knows no Clang enum declaration.
+An incorrect frontend case list cannot hide an underlying value from its checked
+residual branch, but could violate the language requirement to revisit new named
+cases; source tests pin that requirement separately.
+
+The projector gives residual binders analysis-only parameters with Clang's
+underlying type. Elaboration maps them back to the subject's value, adjusting
+quantified references without capture. This mapping and correct arm scoping are
+correspondence obligations. Tests cover nested scopes, forged premises, wrong enum
+types, leaking values/evidence, false residual goals, omitted/new/aliased cases,
+and tampered generated kernel evidence.
+
+Proof declarations use the existing blanking erasure. No runtime program text,
+ABI, memory semantics, or dynamic validation changes. C++17/20/23 end-to-end tests
+compile the erased projection independently and compare behavior, including an
+unnamed runtime value. Verification still reruns from source; no cached proof
+acceptance or serialized artifact format is introduced.

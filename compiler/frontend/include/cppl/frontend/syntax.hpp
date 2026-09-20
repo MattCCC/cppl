@@ -47,6 +47,7 @@ enum class ProofStatementKind : std::uint8_t {
     Apply,
     Assume,
     Rewrite,
+    Cases,
 };
 
 std::string describe(ProofStatementKind kind);
@@ -58,6 +59,8 @@ struct ProofArgument {
     source::ByteSpan span;
     source::SourceLocation location;
 };
+
+struct ProofArm;
 
 struct ProofStatement {
     ProofStatementKind kind = ProofStatementKind::Reflexivity;
@@ -72,6 +75,15 @@ struct ProofStatement {
     source::SourceLocation proposition_location;
 
     source::SourceLocation location;
+    std::vector<ProofArm> arms;
+};
+
+struct ProofArm {
+    source::ByteSpan label;
+    source::SourceLocation location;
+    bool residual = false;
+    std::vector<std::string> binders;
+    std::vector<ProofStatement> statements;
 };
 
 // proof name(parameters) proves(proposition) { statements }   (GRAMMAR.md 4)

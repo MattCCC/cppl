@@ -1954,6 +1954,53 @@ A case may be closed by evidence that it cannot occur.
 Impossibility MUST be established formally rather than guessed from control-flow heuristics.
 
 ---
+## 20.5 Current implemented fragment
+
+Proof-side `cases` is implemented for parameters of defined scoped enumerations
+(`enum class` and `enum struct`) with a modeled, non-Boolean underlying integer
+type. Clang supplies the enum identity, underlying width and signedness, and
+constant enumerator values. The logical value ranges over the **entire underlying
+integer type**, including values with no enumerator. This is the fixed-underlying
+C++ enum model, not a finite domain inferred from the listed names.
+
+One qualified label is required for each distinct enumerator value. Either name
+of an alias may label that case; using both is a duplicate. Named arms take no
+binders. An explicit `unnamed(value)` arm takes exactly one binder, of the exact
+underlying C++ type. Arms can nest and use `refl`, `assume`, `exact`, `apply`, and
+`rewrite`; proof dependencies inside arms are checked like top-level steps.
+
+A named arm supplies `subject == enumerator`. The residual arm supplies the
+left-associated conjunction of `value != enumerator_value` for every distinct
+value in declaration order, or the single exclusion when there is only one.
+Individual exclusions are also available in the residual path. `assume` names
+these existing premises; a different proposition is refused. An empty enum has
+only the residual arm, which supplies no exclusion. Binders and named evidence
+remain local to their arm. Binder names must not duplicate an enclosing value
+parameter or binder in this prototype.
+
+Enum values, constants, comparisons, and explicit `static_cast` from a scoped
+enum to its **exact underlying type** are modeled. Other enum casts and implicit
+conversions remain refused. The existing integer-literal representation cannot
+express unsigned enumerators above `INT64_MAX`; enums containing them are refused.
+Bool-backed enums, unscoped enums, enums without a visible definition, compound
+subjects, `std::variant`, `std::optional`, class/product decomposition and pointer
+cases remain unsupported. Ordinary unverified C++ uses of those types are
+unaffected.
+
+This prototype requires all arms to be written. Omission based on impossible-case
+evidence (§20.4) is not implemented; the compiler reports an omitted arm instead
+of supplying an assumption. At most 64 arms and 32 nested case statements are
+recognized, subject also to the existing proof-resource limits. No wildcard is
+admitted. Adding a distinct enumerator requires a new arm even when an old
+residual arm was present.
+
+Case splitting produces compositions of the existing conditional-elimination,
+implication, conjunction, and equality rules. The kernel independently checks
+every branch. There is no new kernel rule, axiom, runtime check, or runtime
+representation. See RFC 0013 and `TRUST.md` 41.2 for correspondence responsibilities.
+
+---
+
 
 # 21. Induction
 

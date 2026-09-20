@@ -494,6 +494,11 @@ needs an arm unless the proof context proves it impossible. There is no wildcard
 arm (SPEC.md 20). `cases` is not runtime control flow and generates no runtime
 code.
 
+The current prototype supports defined scoped enum parameters with qualified
+named arms and an explicit `unnamed(value)` arm. It requires every arm to be
+written; other representations and omission of impossible cases remain refused.
+The precise implementation boundary is SPEC.md 20.5.
+
 ---
 
 ## 5.7 `induction`

@@ -45,6 +45,11 @@ struct Type {
     // Outermost refinement first. Empty for an ordinary C++ type.
     std::vector<Refinement> refinements;
 
+    // Scoped enums have exactly their fixed underlying type's value set.
+    // Identity and enumerators come from Clang, never from parsed spellings.
+    std::string enumeration;
+    std::vector<std::int64_t> enumerators;
+
     friend bool operator==(const Type&, const Type&) = default;
 };
 

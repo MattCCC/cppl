@@ -252,12 +252,12 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
     // proof's own scope, so it is projected as a function returning it. The
     // deduced return type is the type Clang gives the expression, with no
     // conversion imposed on the way out.
-    const auto emit_expression = [&stream](std::string_view name, const source::ByteSpan& parameters,
+    const auto emit_expression = [&stream](std::string_view name, std::string_view parameters,
                                            const source::ByteSpan& expression, const source::SourceLocation& location) {
         std::string head = "[[maybe_unused]] static auto ";
         head += name;
         head += "(";
-        head += stream.spelling(parameters);
+        head += parameters;
         head += ") { return (";
         // The expression's bytes are copied verbatim, so aligning the start of
         // the copy with the column it came from makes every column inside it
@@ -283,32 +283,52 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         std::string replacement = emit(projected.name, stream.spelling(proof.parameters), proof.proposition,
                                        proof.keyword_location, proof.end_line);
 
-        for (const ProofStatement& statement : proof.statements) {
-            for (const ProofArgument& argument : statement.arguments) {
-                std::string name = options.generated_prefix + "argument_" + suffix + "_" +
-                                   std::to_string(projected.argument_names.size());
-                replacement += line_directive(argument.location.line, proof.keyword_location.file);
-                replacement += emit_expression(name, proof.parameters, argument.span, argument.location);
-                replacement += line_directive(proof.end_line, proof.keyword_location.file);
-                projected.argument_names.push_back(std::move(name));
+        const auto emit_steps = [&](auto&& self, const std::vector<ProofStatement>& statements,
+                                    const std::string& parameters) -> void {
+            for (const ProofStatement& statement : statements) {
+                const auto expression_probe = [&](const source::ByteSpan& span, const source::SourceLocation& at,
+                                                  std::vector<std::string>& names, std::string_view kind) {
+                    std::string name =
+                        options.generated_prefix + std::string(kind) + suffix + "_" + std::to_string(names.size());
+                    replacement += line_directive(at.line, proof.keyword_location.file);
+                    replacement += emit_expression(name, parameters, span, at);
+                    replacement += line_directive(proof.end_line, proof.keyword_location.file);
+                    names.push_back(std::move(name));
+                };
+                if (statement.kind == ProofStatementKind::Cases) {
+                    expression_probe(statement.proposition, statement.location, projected.case_names, "case_");
+                    for (const ProofArm& arm : statement.arms) {
+                        if (!arm.residual)
+                            expression_probe(arm.label, arm.location, projected.case_names, "case_");
+                        std::string scoped = parameters;
+                        for (const std::string& binder : arm.binders) {
+                            if (!scoped.empty())
+                                scoped += ", ";
+                            scoped += "__underlying_type(decltype(" + statement.reference + ")) " + binder;
+                        }
+                        self(self, arm.statements, scoped);
+                    }
+                    continue;
+                }
+                for (const ProofArgument& argument : statement.arguments)
+                    expression_probe(argument.span, argument.location, projected.argument_names, "argument_");
+                if (statement.kind != ProofStatementKind::Assume)
+                    continue;
+                std::string name = options.generated_prefix + "assumption_" + suffix + "_" +
+                                   std::to_string(projected.assumption_names.size());
+                if (detail::contains_formal_syntax(stream, statement.proposition)) {
+                    replacement +=
+                        emit(name, parameters, statement.proposition, statement.proposition_location, proof.end_line);
+                } else {
+                    replacement += line_directive(statement.proposition_location.line, proof.keyword_location.file);
+                    replacement +=
+                        emit_expression(name, parameters, statement.proposition, statement.proposition_location);
+                    replacement += line_directive(proof.end_line, proof.keyword_location.file);
+                }
+                projected.assumption_names.push_back(std::move(name));
             }
-
-            if (statement.kind != ProofStatementKind::Assume) {
-                continue;
-            }
-            std::string name = options.generated_prefix + "assumption_" + suffix + "_" +
-                               std::to_string(projected.assumption_names.size());
-            if (detail::contains_formal_syntax(stream, statement.proposition)) {
-                replacement += emit(name, stream.spelling(proof.parameters), statement.proposition,
-                                    statement.proposition_location, proof.end_line);
-            } else {
-                replacement += line_directive(statement.proposition_location.line, proof.keyword_location.file);
-                replacement +=
-                    emit_expression(name, proof.parameters, statement.proposition, statement.proposition_location);
-                replacement += line_directive(proof.end_line, proof.keyword_location.file);
-            }
-            projected.assumption_names.push_back(std::move(name));
-        }
+        };
+        emit_steps(emit_steps, proof.statements, std::string(stream.spelling(proof.parameters)));
 
         edits.push_back(Edit{proof.range.span, std::move(replacement)});
         projection.proof_functions.push_back(std::move(projected));

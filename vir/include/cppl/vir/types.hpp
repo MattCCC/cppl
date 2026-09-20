@@ -45,15 +45,17 @@ struct Type {
     // Outermost refinement first, so a refinement of a refinement keeps every
     // predicate that applies to the value (SPEC.md 17.5).
     std::vector<Refinement> refinements;
+    std::string enumeration;
+    std::vector<std::int64_t> enumerators;
 
     static Type integer(std::uint16_t width, bool is_signed) {
-        return Type{IntType{width, is_signed}, {}};
+        return Type{IntType{width, is_signed}, {}, {}, {}};
     }
     static Type boolean() {
-        return Type{BoolType{}, {}};
+        return Type{BoolType{}, {}, {}, {}};
     }
     static Type proposition() {
-        return Type{PropositionType{}, {}};
+        return Type{PropositionType{}, {}, {}, {}};
     }
     [[nodiscard]] bool is_proposition() const noexcept {
         return std::holds_alternative<PropositionType>(node);
@@ -78,14 +80,14 @@ struct Type {
     // The same type with its refinements dropped: what the value is once erased,
     // and what ordinary C++ reasoning is about.
     [[nodiscard]] Type erased() const {
-        return Type{node, {}};
+        return Type{node, {}, enumeration, enumerators};
     }
 
     // Erased C++ identity. Two refinements of one base type are equal here,
     // because they are the same type at runtime; verification-level identity is
     // a separate question, asked where it matters.
     friend bool operator==(const Type& lhs, const Type& rhs) {
-        return lhs.node == rhs.node;
+        return lhs.node == rhs.node && lhs.enumeration == rhs.enumeration;
     }
 };
 

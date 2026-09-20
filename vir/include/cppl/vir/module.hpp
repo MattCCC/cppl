@@ -147,8 +147,20 @@ struct RewriteStep {
     friend bool operator==(const RewriteStep&, const RewriteStep&) = default;
 };
 
+struct CaseArm;
+struct CasesStep {
+    Expr subject;
+    std::vector<CaseArm> arms;
+};
+
 struct ProofStep {
-    std::variant<ReflexivityStep, ExactStep, ApplyStep, AssumeStep, RewriteStep> node;
+    std::variant<ReflexivityStep, ExactStep, ApplyStep, AssumeStep, RewriteStep, CasesStep> node;
+    source::SourceLocation location;
+};
+
+struct CaseArm {
+    std::optional<std::int64_t> value; // absent for unnamed(value)
+    std::vector<ProofStep> steps;
     source::SourceLocation location;
 };
 

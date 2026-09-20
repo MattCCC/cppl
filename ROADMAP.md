@@ -261,6 +261,12 @@ Exit criterion:
 
 # Phase 7 - Induction and recursive proofs
 
+The first case-analysis vertical slice is a `PROTOTYPE`: defined scoped enums,
+explicit unnamed values, nested proof arms, scoped premises, and independently
+checked evidence using existing kernel rules (RFC 0013). Cases over other C++
+representations and omitted impossible cases remain ahead. This does not deliver
+induction or recursive proof admission.
+
 Implement, over ordinary C++ types:
 
 - exhaustive case analysis (`cases`)

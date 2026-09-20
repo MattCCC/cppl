@@ -44,6 +44,8 @@ std::optional<vir::Type> convert_type(const clangbridge::Type& type) {
     for (const clangbridge::Refinement& refinement : type.refinements) {
         converted->refinements.push_back(vir::Refinement{refinement.name, refinement.arguments});
     }
+    converted->enumeration = type.enumeration;
+    converted->enumerators = type.enumerators;
     return converted;
 }
 
@@ -425,102 +427,266 @@ std::optional<vir::Expr> convert_projected(const Request& request, std::string_v
 // instantiated at, and the proposition an `assume` names, are ordinary C++ and
 // are read back from the functions the projector emitted for them, so Clang
 // alone decides what each one denotes.
-std::optional<std::vector<vir::ProofStep>> convert_statements(const Request& request,
-                                                              const frontend::ProofDeclaration& declaration,
-                                                              const frontend::ProofFunction& projected,
-                                                              const std::map<std::string, std::size_t>& declared,
-                                                              std::uint32_t& next_expression_id,
-                                                              diagnostics::Engine& engine) {
-    std::vector<vir::ProofStep> steps;
+std::optional<std::vector<vir::ProofStep>> convert_statements(
+    const Request& request, const frontend::ProofDeclaration& declaration, const frontend::ProofFunction& projected,
+    const std::map<std::string, std::size_t>& declared, const std::vector<vir::Parameter>& parameters,
+    std::uint32_t& next_expression_id, diagnostics::Engine& engine) {
+    const std::size_t parameter_count = parameters.size();
+    std::vector<std::string> value_names;
+    for (const auto& parameter : parameters)
+        value_names.push_back(parameter.name);
     std::vector<std::string> assumed;
+    std::vector<std::vector<vir::Type>> assumed_types;
+    const auto quantified_types = [](const vir::Expr& proposition) {
+        std::vector<vir::Type> types;
+        const vir::Expr* inner = &proposition;
+        while (const auto* quantified = std::get_if<vir::Universal>(&inner->node)) {
+            types.insert(types.end(), quantified->binders.begin(), quantified->binders.end());
+            if (quantified->body.size() != 1)
+                break;
+            inner = &quantified->body[0];
+        }
+        return types;
+    };
     std::size_t next_argument = 0;
     std::size_t next_assumption = 0;
+    std::size_t next_case = 0;
+    // A residual binder is an alias for the subject's underlying value. Probe
+    // parameters give it C++ lookup/type checking; this map removes those
+    // analysis-only parameters before formal lowering, including under binders.
+    std::vector<std::uint32_t> aliases;
+    const auto remap = [&](auto&& self, vir::Expr& expression) -> void {
+        std::visit(
+            [&](auto& node) {
+                using Node = std::decay_t<decltype(node)>;
+                if constexpr (std::is_same_v<Node, vir::ParameterRef>) {
+                    if (node.parameter >= parameter_count) {
+                        const auto index = node.parameter - parameter_count;
+                        node.parameter = index < aliases.size()
+                                             ? aliases[index]
+                                             : node.parameter - static_cast<std::uint32_t>(aliases.size());
+                    }
+                } else if constexpr (requires { node.operands; }) {
+                    for (auto& child : node.operands)
+                        self(self, child);
+                } else if constexpr (requires { node.arguments; }) {
+                    for (auto& child : node.arguments)
+                        self(self, child);
+                } else if constexpr (requires { node.body; }) {
+                    for (auto& child : node.body)
+                        self(self, child);
+                }
+            },
+            expression.node);
+    };
+    const auto convert_probe = [&](const std::vector<std::string>& names, std::size_t& next,
+                                   const source::SourceLocation& location) -> std::optional<vir::Expr> {
+        if (next >= names.size())
+            return std::nullopt;
+        auto expression = convert_projected(request, names[next++], location, next_expression_id,
+                                            "statement of proof '" + declaration.name + "'", engine);
+        if (expression)
+            remap(remap, *expression);
+        return expression;
+    };
+    const auto convert_steps =
+        [&](auto&& self,
+            const std::vector<frontend::ProofStatement>& statements) -> std::optional<std::vector<vir::ProofStep>> {
+        std::vector<vir::ProofStep> steps;
 
-    for (const frontend::ProofStatement& statement : declaration.statements) {
-        vir::ProofStep step;
-        step.location = statement.location;
+        for (const frontend::ProofStatement& statement : statements) {
+            vir::ProofStep step;
+            step.location = statement.location;
 
-        if (statement.kind == frontend::ProofStatementKind::Reflexivity) {
-            step.node = vir::ReflexivityStep{};
+            if (statement.kind == frontend::ProofStatementKind::Cases) {
+                auto subject = convert_probe(projected.case_names, next_case, statement.location);
+                if (!subject)
+                    return std::nullopt;
+                const auto* parameter = std::get_if<vir::ParameterRef>(&subject->node);
+                if (!parameter || subject->type.enumeration.empty() || !subject->type.is_integer()) {
+                    report(engine, diagnostics::Category::UnsupportedSemantics, statement.location,
+                           "cases currently requires a parameter of a defined scoped enum type");
+                    return std::nullopt;
+                }
+                const std::uint32_t subject_parameter = parameter->parameter;
+                vir::CasesStep cases{*subject, {}};
+                std::set<std::int64_t> covered;
+                bool residual = false;
+                for (const auto& arm : statement.arms) {
+                    vir::CaseArm converted;
+                    converted.location = arm.location;
+                    if (arm.residual) {
+                        if (residual || arm.binders.size() != 1) {
+                            report(engine, diagnostics::Category::Elaboration, arm.location,
+                                   "a scoped enum has at most one unnamed(value) arm, with exactly one value binder");
+                            return std::nullopt;
+                        }
+                        residual = true;
+                    } else {
+                        auto label = convert_probe(projected.case_names, next_case, arm.location);
+                        if (!label)
+                            return std::nullopt;
+                        const auto* value = std::get_if<vir::IntLiteral>(&label->node);
+                        if (!value || !(label->type == subject->type) || !arm.binders.empty()) {
+                            report(engine, diagnostics::Category::Elaboration, arm.location,
+                                   "a named enum arm requires an enumerator of the subject type and no binders");
+                            return std::nullopt;
+                        }
+                        if (!covered.insert(value->value).second) {
+                            report(engine, diagnostics::Category::Elaboration, arm.location,
+                                   "duplicate enum case (enumerator aliases denote the same case)");
+                            return std::nullopt;
+                        }
+                        converted.value = value->value;
+                    }
+                    const auto enclosing_assumed = assumed.size();
+                    if (arm.residual) {
+                        if (std::ranges::find(value_names, arm.binders[0]) != value_names.end()) {
+                            report(engine, diagnostics::Category::Elaboration, arm.location,
+                                   "case binder duplicates an enclosing value name");
+                            return std::nullopt;
+                        }
+                        aliases.push_back(subject_parameter);
+                        value_names.push_back(arm.binders[0]);
+                    }
+                    auto nested = self(self, arm.statements);
+                    if (arm.residual) {
+                        aliases.pop_back();
+                        value_names.pop_back();
+                    }
+                    assumed.resize(enclosing_assumed);
+                    assumed_types.resize(enclosing_assumed);
+                    if (!nested)
+                        return std::nullopt;
+                    converted.steps = std::move(*nested);
+                    cases.arms.push_back(std::move(converted));
+                }
+                // This prototype requires written arms, including the residual.
+                // Omitted impossible cases await an explicit evidence-producing path.
+                for (const auto value : subject->type.enumerators) {
+                    if (!covered.contains(value)) {
+                        report(engine, diagnostics::Category::ProofFailure, statement.location,
+                               "non-exhaustive cases: a named enumerator has no arm");
+                        return std::nullopt;
+                    }
+                }
+                if (!residual) {
+                    report(engine, diagnostics::Category::ProofFailure, statement.location,
+                           "non-exhaustive cases: unnamed(value) needs an explicit arm in this prototype");
+                    return std::nullopt;
+                }
+                step.node = std::move(cases);
+                steps.push_back(std::move(step));
+                continue;
+            }
+
+            if (statement.kind == frontend::ProofStatementKind::Reflexivity) {
+                step.node = vir::ReflexivityStep{};
+                steps.push_back(std::move(step));
+                continue;
+            }
+
+            if (statement.kind == frontend::ProofStatementKind::Assume) {
+                auto proposition =
+                    convert_probe(projected.assumption_names, next_assumption, statement.proposition_location);
+                if (!proposition.has_value()) {
+                    return std::nullopt;
+                }
+                assumed_types.push_back(quantified_types(*proposition));
+                step.node = vir::AssumeStep{statement.reference, std::move(*proposition)};
+                assumed.push_back(statement.reference);
+                steps.push_back(std::move(step));
+                continue;
+            }
+
+            // A premise bound in this body is the more local binding, so it is
+            // looked for first, and the innermost one of its name wins.
+            std::optional<vir::Reference> evidence;
+            std::vector<vir::Type> expected_arguments;
+            for (std::size_t position = assumed.size(); position > 0; --position) {
+                if (assumed[position - 1] == statement.reference) {
+                    expected_arguments = assumed_types[position - 1];
+                    evidence = vir::Reference{vir::HypothesisRef{static_cast<std::uint32_t>(position - 1)},
+                                              statement.reference};
+                    break;
+                }
+            }
+
+            if (!evidence.has_value()) {
+                const auto target = declared.find(statement.reference);
+                if (target == declared.end()) {
+                    report(engine, diagnostics::Category::Elaboration, statement.location,
+                           "no proof or assumed premise named '" + statement.reference + "' is in scope here",
+                           "'" + describe(statement.kind) + "' names a proof declaration or a name bound by 'assume'");
+                    return std::nullopt;
+                }
+                if (statement.reference == declaration.name) {
+                    report(engine, diagnostics::Category::ProofFailure, statement.location,
+                           "proof '" + declaration.name + "' uses itself as its own evidence",
+                           "this formal core has no induction rule, so a proof cannot depend on "
+                           "itself");
+                    return std::nullopt;
+                }
+                evidence = vir::Reference{vir::ProofRef{vir::ProofId{static_cast<std::uint32_t>(target->second)}},
+                                          statement.reference};
+                const auto projected_target =
+                    std::ranges::find_if(request.projection.proof_functions, [&](const auto& candidate) {
+                        return candidate.proof_index == target->second;
+                    });
+                if (projected_target != request.projection.proof_functions.end()) {
+                    const auto& target_declaration = request.syntax.proofs[target->second];
+                    const auto* function =
+                        proposition_function(request, projected_target->name, target_declaration.keyword_location);
+                    if (function) {
+                        for (const auto& parameter : function->parameters)
+                            if (auto type = convert_type(parameter.type))
+                                expected_arguments.push_back(*type);
+                        if (function->returned_value) {
+                            ExpressionElaborator reader(next_expression_id);
+                            if (auto proposition = reader.convert(*function->returned_value)) {
+                                auto quantified = quantified_types(*proposition);
+                                expected_arguments.insert(expected_arguments.end(), quantified.begin(),
+                                                          quantified.end());
+                            }
+                        }
+                    }
+                }
+            }
+
+            std::vector<vir::Expr> arguments;
+            for (const frontend::ProofArgument& written : statement.arguments) {
+                auto argument = convert_probe(projected.argument_names, next_argument, written.location);
+                if (!argument.has_value()) {
+                    return std::nullopt;
+                }
+                const auto index = arguments.size();
+                if (index < expected_arguments.size() &&
+                    (!argument->type.enumeration.empty() || !expected_arguments[index].enumeration.empty()) &&
+                    !(argument->type == expected_arguments[index])) {
+                    report(engine, diagnostics::Category::Elaboration, written.location,
+                           "proof argument has a different enum type from its quantified parameter");
+                    return std::nullopt;
+                }
+                arguments.push_back(std::move(*argument));
+            }
+
+            switch (statement.kind) {
+                case frontend::ProofStatementKind::Exact:
+                    step.node = vir::ExactStep{std::move(*evidence), std::move(arguments)};
+                    break;
+                case frontend::ProofStatementKind::Rewrite:
+                    step.node = vir::RewriteStep{std::move(*evidence), std::move(arguments)};
+                    break;
+                default:
+                    step.node = vir::ApplyStep{std::move(*evidence), std::move(arguments)};
+                    break;
+            }
             steps.push_back(std::move(step));
-            continue;
         }
 
-        if (statement.kind == frontend::ProofStatementKind::Assume) {
-            if (next_assumption >= projected.assumption_names.size()) {
-                return std::nullopt; // the projection and the syntax disagree
-            }
-            std::optional<vir::Expr> proposition = convert_projected(
-                request, projected.assumption_names[next_assumption++], statement.proposition_location,
-                next_expression_id, "the proposition '" + declaration.name + "' assumes", engine);
-            if (!proposition.has_value()) {
-                return std::nullopt;
-            }
-            step.node = vir::AssumeStep{statement.reference, std::move(*proposition)};
-            assumed.push_back(statement.reference);
-            steps.push_back(std::move(step));
-            continue;
-        }
-
-        // A premise bound in this body is the more local binding, so it is
-        // looked for first, and the innermost one of its name wins.
-        std::optional<vir::Reference> evidence;
-        for (std::size_t position = assumed.size(); position > 0; --position) {
-            if (assumed[position - 1] == statement.reference) {
-                evidence =
-                    vir::Reference{vir::HypothesisRef{static_cast<std::uint32_t>(position - 1)}, statement.reference};
-                break;
-            }
-        }
-
-        if (!evidence.has_value()) {
-            const auto target = declared.find(statement.reference);
-            if (target == declared.end()) {
-                report(engine, diagnostics::Category::Elaboration, statement.location,
-                       "no proof or assumed premise named '" + statement.reference + "' is in scope here",
-                       "'" + describe(statement.kind) + "' names a proof declaration or a name bound by 'assume'");
-                return std::nullopt;
-            }
-            if (statement.reference == declaration.name) {
-                report(engine, diagnostics::Category::ProofFailure, statement.location,
-                       "proof '" + declaration.name + "' uses itself as its own evidence",
-                       "this formal core has no induction rule, so a proof cannot depend on "
-                       "itself");
-                return std::nullopt;
-            }
-            evidence = vir::Reference{vir::ProofRef{vir::ProofId{static_cast<std::uint32_t>(target->second)}},
-                                      statement.reference};
-        }
-
-        std::vector<vir::Expr> arguments;
-        for (const frontend::ProofArgument& written : statement.arguments) {
-            if (next_argument >= projected.argument_names.size()) {
-                return std::nullopt; // the projection and the syntax disagree
-            }
-            std::optional<vir::Expr> argument = convert_projected(
-                request, projected.argument_names[next_argument++], written.location, next_expression_id,
-                "the term proof '" + declaration.name + "' instantiates '" + statement.reference + "' at", engine);
-            if (!argument.has_value()) {
-                return std::nullopt;
-            }
-            arguments.push_back(std::move(*argument));
-        }
-
-        switch (statement.kind) {
-            case frontend::ProofStatementKind::Exact:
-                step.node = vir::ExactStep{std::move(*evidence), std::move(arguments)};
-                break;
-            case frontend::ProofStatementKind::Rewrite:
-                step.node = vir::RewriteStep{std::move(*evidence), std::move(arguments)};
-                break;
-            default:
-                step.node = vir::ApplyStep{std::move(*evidence), std::move(arguments)};
-                break;
-        }
-        steps.push_back(std::move(step));
-    }
-
-    return steps;
+        return steps;
+    };
+    return convert_steps(convert_steps, declaration.statements);
 }
 
 // Reads a verified function's contract back from the functions it was projected
@@ -737,7 +903,7 @@ void elaborate_proofs(const Request& request, const std::map<std::string, vir::L
         // their types; which proposition they state is worked out where the
         // law's own proposition is known, by instantiating it at them.
         std::optional<std::vector<vir::ProofStep>> steps =
-            convert_statements(request, declaration, projected, declared, next_expression_id, engine);
+            convert_statements(request, declaration, projected, declared, *parameters, next_expression_id, engine);
         if (!steps.has_value()) {
             if (law)
                 result.laws_with_refused_proofs.push_back(*law);

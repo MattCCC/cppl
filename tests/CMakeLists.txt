@@ -75,6 +75,8 @@ target_link_libraries(unit_formal_equality_test PRIVATE cppl_automation)
 
 cppl_add_unit_test(unit_quantified_propositions_test unit/quantified_propositions_test.cpp)
 target_link_libraries(unit_quantified_propositions_test PRIVATE cppl_automation)
+cppl_add_unit_test(unit_enum_cases_test unit/enum_cases_test.cpp)
+target_link_libraries(unit_enum_cases_test PRIVATE cppl_obligations)
 
 # Driver-level suites. They exercise the installed command exactly as a
 # developer or CI would.
@@ -108,6 +110,8 @@ cppl_add_script_test(e2e_disjunction e2e/disjunction.sh)
 cppl_add_script_test(negative_quantified_propositions negative/quantified_propositions.sh)
 cppl_add_script_test(e2e_refinement_types e2e/refinement_types.sh)
 cppl_add_script_test(negative_refinement_types negative/refinement_types.sh)
+cppl_add_script_test(e2e_enum_cases e2e/enum_cases.sh)
+cppl_add_script_test(negative_enum_cases negative/enum_cases.sh)
 cppl_add_script_test(e2e_instantiated_proof e2e/instantiated_proof.sh)
 cppl_add_script_test(e2e_conditional_proof e2e/conditional_proof.sh)
 cppl_add_script_test(e2e_rewritten_proof e2e/rewritten_proof.sh)

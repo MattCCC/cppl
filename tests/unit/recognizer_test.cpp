@@ -342,3 +342,40 @@ CPPL_TEST(a_loop_termination_measure_is_refused_rather_than_ignored) {
     CPPL_CHECK(result.engine.has_errors());
     CPPL_CHECK(result.syntax.loops.empty());
 }
+
+CPPL_TEST(case_arms_are_nested_proof_statements_with_source_locations) {
+    Recognized result;
+    recognize("proof p(E s) proves(true) {\n"
+              " cases s { E::a => { cases s { unnamed(v) => { refl; } } }\n"
+              " unnamed(value) => { assume h : value != 0; refl; } } }",
+              result);
+    CPPL_CHECK(!result.engine.has_errors());
+    const auto& statement = result.syntax.proofs[0].statements[0];
+    CPPL_CHECK(statement.kind == cppl::frontend::ProofStatementKind::Cases);
+    CPPL_CHECK_EQ(statement.arms.size(), std::size_t{2});
+    CPPL_CHECK_EQ(statement.arms[0].location.line, 2u);
+    CPPL_CHECK_EQ(statement.arms[1].binders[0], std::string("value"));
+    CPPL_CHECK(statement.arms[1].residual);
+}
+
+CPPL_TEST(cases_and_residual_names_remain_ordinary_cpp_identifiers) {
+    Recognized result;
+    recognize("int cases(int unnamed) { return unnamed; }\n"
+              "struct induction { int valueless; };",
+              result);
+    CPPL_CHECK(!result.engine.has_errors());
+    CPPL_CHECK(result.syntax.empty());
+}
+
+CPPL_TEST(case_nesting_is_bounded_before_recursive_projection) {
+    std::string text = "proof p(E s) proves(true) {";
+    for (unsigned i = 0; i < 34; ++i)
+        text += " cases s { E::a => {";
+    text += "refl;";
+    for (unsigned i = 0; i < 34; ++i)
+        text += "} }";
+    text += "}";
+    Recognized result;
+    recognize(text, result);
+    CPPL_CHECK(result.engine.has_errors());
+}

@@ -614,6 +614,25 @@ using PaymentResult = std::variant<Receipt, Error>;
 
 Now contradictory states are structurally impossible.
 
+The variant example below describes the specified direction. The current
+prototype implements `cases` for defined scoped enum parameters (SPEC.md 20.5),
+with an explicit residual arm:
+
+```cpp
+enum class Flag : unsigned { set = 1u };
+proof flag_identity(Flag flag) proves(flag == flag) {
+    cases flag {
+        Flag::set => { assume selected : flag == Flag::set; rewrite selected; refl; }
+        unnamed(value) => { assume other : value != 1u; refl; }
+    }
+}
+```
+
+`value` has type `unsigned`, and `other` names evidence supplied by the residual
+path. Variants, products, pointers and omission of impossible arms remain
+unsupported. A failed written arm is an error even when automation could prove
+the enclosing proposition.
+
 Executable code keeps branching with ordinary C++, such as `std::visit`. A proof can split the value into its cases:
 
 ```cpp

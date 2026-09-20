@@ -45,6 +45,8 @@ struct ProofFunction {
     // One generated function per `assume` statement, in written order, stating
     // the proposition that statement names.
     std::vector<std::string> assumption_names;
+    // Subjects and named labels of cases, in depth-first source order.
+    std::vector<std::string> case_names;
 };
 
 // The ordinary C++ functions a verified function's contract is projected into.

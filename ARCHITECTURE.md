@@ -3352,3 +3352,27 @@ Projections are written under the system temporary directory, in a directory
 named by a digest of the input's absolute path. They are inputs to Clang and
 diagnostics aids; nothing reads them back as a source of truth, and no proof
 result depends on them.
+
+## 97.9 Scoped-enum case proofs
+
+The frontend recognizes a recursive tree of proof statements and arms. Its single
+projector emits probes for subjects, labels, arguments, and assumptions, preserving
+source correspondence. Extra analysis-only parameters give residual binders their
+Clang-resolved underlying types. The runtime projection blanks the enclosing proof
+as before.
+
+The Clang bridge describes scoped-enum identity, enumerator constants and exact
+underlying machine types. VIR retains nominal identity and a `CasesStep` with typed
+subject and arm bodies. Elaboration validates labels/exhaustiveness and maps
+residual aliases back to their subject parameter, including under quantified
+propositions. Evidence names are resolved in arm scope; all nested proof references
+participate in the existing acyclic dependency traversal.
+
+Obligation lowering builds a chain of conditional eliminations over distinct
+enumerator values in declaration order. Each named branch checks its arm; the
+residual branch combines the checked inequalities and checks its own arm. The
+motive is the enclosing goal, shifted capture-safely under the existing rule's
+binder. Arm facts are actual kernel hypotheses and can be named by `assume`.
+The kernel needs no enum-specific rule or dependency. Unmodeled representations
+are refused as specified in `SPEC.md` 20.5; supporting variants/products later
+requires explicit runtime models, not merely additional arm labels.
