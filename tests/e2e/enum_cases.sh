@@ -27,6 +27,7 @@ if "$CPPL" "$run/added.cpp" -o "$run/added" > "$run/added.log" 2>&1; then
     exit 1
 fi
 test ! -e "$run/added"
-grep -q 'named enumerator has no arm' "$run/added.log"
+# The diagnostic names the state that gained no arm, not just that one did.
+grep -q "non-exhaustive cases: 'One::added' has no arm" "$run/added.log"
 ! grep -q PROVEN "$run/added.log"
 echo 'enum cases verify, survive erasure, and reject newly added alternatives'

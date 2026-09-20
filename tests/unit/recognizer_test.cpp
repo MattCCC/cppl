@@ -355,7 +355,12 @@ CPPL_TEST(case_arms_are_nested_proof_statements_with_source_locations) {
     CPPL_CHECK_EQ(statement.arms.size(), std::size_t{2});
     CPPL_CHECK_EQ(statement.arms[0].location.line, 2u);
     CPPL_CHECK_EQ(statement.arms[1].binders[0], std::string("value"));
-    CPPL_CHECK(statement.arms[1].residual);
+    // The parser classifies the label without knowing the subject: `unnamed` is
+    // a name a representation reserves, `E::a` is an expression to resolve.
+    CPPL_CHECK(statement.arms[1].keyword_label);
+    CPPL_CHECK_EQ(statement.arms[1].spelling, std::string("unnamed"));
+    CPPL_CHECK(!statement.arms[0].keyword_label);
+    CPPL_CHECK_EQ(statement.arms[0].spelling, std::string("E::a"));
 }
 
 CPPL_TEST(cases_and_residual_names_remain_ordinary_cpp_identifiers) {

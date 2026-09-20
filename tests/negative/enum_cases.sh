@@ -20,21 +20,21 @@ reject() {
         exit 1
     fi
 }
-reject missing_residual 'unnamed(value) needs an explicit arm' <<'CPP'
+reject missing_residual "non-exhaustive cases: 'unnamed' has no arm" <<'CPP'
 enum class E { a };
 proof bad(E s) proves(s == E::a) { cases s { E::a => { assume h : s == E::a; exact h; } } }
 CPP
-reject missing_named 'named enumerator has no arm' <<'CPP'
+reject missing_named "non-exhaustive cases: 'E::b' has no arm" <<'CPP'
 enum class E { a, b };
 proof bad(E s) proves(s == s) { cases s { E::a => { refl; } unnamed(v) => { refl; } } }
 CPP
-reject duplicate_alias 'duplicate enum case' <<'CPP'
+reject duplicate_alias "duplicate case 'E::a'" <<'CPP'
 enum class E { a, alias = a };
 proof bad(E s) proves(s == s) {
     cases s { E::a => { refl; } E::alias => { refl; } unnamed(v) => { refl; } }
 }
 CPP
-reject wrong_enum 'enumerator of the subject type' <<'CPP'
+reject wrong_enum "does not name a case of 'E'" <<'CPP'
 enum class E { a };
 enum class F { a };
 proof bad(E s) proves(s == s) { cases s { F::a => { refl; } unnamed(v) => { refl; } } }
@@ -84,17 +84,17 @@ proof bad(E s) proves(s == s) {
     cases s { E::a => { refl; } unnamed(s) => { assume h : s == 0; refl; } }
 }
 CPP
-reject extra_binder 'exactly one value binder' <<'CPP'
+reject extra_binder "binds 1 value(s), but this arm names 2" <<'CPP'
 enum class E { a };
 proof bad(E s) proves(s == s) {
     cases s { E::a => { refl; } unnamed(x, y) => { refl; } }
 }
 CPP
-reject missing_binder 'exactly one value binder' <<'CPP'
+reject missing_binder "binds 1 value(s), but this arm names 0" <<'CPP'
 enum class E { a };
 proof bad(E s) proves(s == s) { cases s { E::a => { refl; } unnamed => { refl; } } }
 CPP
-reject named_binder 'no binders' <<'CPP'
+reject named_binder "binds 0 value(s), but this arm names 1" <<'CPP'
 enum class E { a };
 proof bad(E s) proves(s == s) { cases s { E::a(x) => { refl; } unnamed(v) => { refl; } } }
 CPP
@@ -165,13 +165,13 @@ proof bad(E s) proves(forall(unsigned x) { x == static_cast<unsigned>(s) }) {
 }
 CPP
 echo 'enum cases reject malformed, incomplete, forged, escaping, cyclic, and unsupported proofs'
-reject wrong_proof_argument 'different enum type' <<'CPP'
+reject wrong_proof_argument "proof argument has type 'F', but its quantified parameter has type 'E'" <<'CPP'
 enum class E : unsigned { a };
 enum class F : unsigned { a };
 proof identity(E s) proves(s == s) { refl; }
 proof bad(F s) proves(s == s) { exact identity(s); }
 CPP
-reject wrong_quantified_enum_argument 'different enum type' <<'CPP'
+reject wrong_quantified_enum_argument "but its quantified parameter has type 'E'" <<'CPP'
 enum class E : unsigned { a };
 enum class F : unsigned { a };
 proof identity() proves(forall(E s) { s == s }) { refl; }

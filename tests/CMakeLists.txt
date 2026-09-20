@@ -75,8 +75,12 @@ target_link_libraries(unit_formal_equality_test PRIVATE cppl_automation)
 
 cppl_add_unit_test(unit_quantified_propositions_test unit/quantified_propositions_test.cpp)
 target_link_libraries(unit_quantified_propositions_test PRIVATE cppl_automation)
-cppl_add_unit_test(unit_enum_cases_test unit/enum_cases_test.cpp)
-target_link_libraries(unit_enum_cases_test PRIVATE cppl_obligations)
+# The generic case engine, then one suite per provider for its state model.
+cppl_add_unit_test(unit_decomposition_test unit/decomposition_test.cpp)
+target_link_libraries(unit_decomposition_test PRIVATE cppl_obligations)
+
+cppl_add_unit_test(unit_scoped_enum_provider_test unit/scoped_enum_provider_test.cpp)
+target_link_libraries(unit_scoped_enum_provider_test PRIVATE cppl_decomposition)
 
 # Driver-level suites. They exercise the installed command exactly as a
 # developer or CI would.
