@@ -63,6 +63,24 @@ bool is_supported(const IntType& type) {
            (type.signedness == Signedness::Signed || type.signedness == Signedness::Unsigned);
 }
 
+bool is_supported(const Type& type) {
+    std::size_t nodes = 0;
+    const auto valid = [&](auto&& self, const Type& current, unsigned depth) -> bool {
+        if (++nodes > 4096 || depth > 64)
+            return false;
+        if (current.is_integer())
+            return is_supported(current.integer_type());
+        const auto& value = std::get<ValueType>(current.node);
+        if (value.identity.empty() || value.identity.size() > 4096 || value.projections.size() > 256)
+            return false;
+        for (const auto& projection : value.projections)
+            if (!self(self, projection, depth + 1))
+                return false;
+        return true;
+    };
+    return valid(valid, type, 0);
+}
+
 std::int64_t minimum_value(const IntType& type) {
     if (!is_supported(type) || type.signedness == Signedness::Unsigned) {
         return 0;
@@ -131,7 +149,11 @@ std::string describe(const Type& type) {
     if (type.is_integer()) {
         return describe(type.integer_type());
     }
-    return "<unknown-type>";
+    const auto& value = std::get<ValueType>(type.node);
+    std::string result = "value[" + std::to_string(value.identity.size()) + ":" + value.identity + "]{";
+    for (const auto& projection : value.projections)
+        result += describe(projection) + ";";
+    return result + "}";
 }
 
 } // namespace cppl::kernel

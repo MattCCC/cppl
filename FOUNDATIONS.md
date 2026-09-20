@@ -259,11 +259,14 @@ The scoped-enumeration provider maps values to their exact fixed underlying
 machine integer domain, so exhaustiveness never relies on assuming that every
 enum value has a name.
 
-The domain of this core is machine integers. A representation whose states
-cannot be stated over that domain — a variant's alternative, a pointer's
-nullness, a product's components — has no provider, because it has no values to
-discriminate on yet. Extending the value model is foundational work and precedes
-any such provider; nothing is approximated in the meantime.
+The core also admits abstract nominal value sorts with finite typed observation
+signatures. For `v : V(i; T0, ..., Tn)`, observation `pi_k(v)` has type `Tk`.
+This is a total uninterpreted function, with no computation rule beyond
+congruence and no axiom stating anything about its result. Abstract equality
+remains intensional; products gain no extensionality rule. Signatures are
+finite trees, so substitution and normalization remain structurally bounded.
+Partial C++ observers are exposed only under their defined-state premise;
+outside that state their logical totalization supplies no usable C++ fact.
 
 The normative rules are in `SPEC.md` §20–§21.
 

@@ -272,6 +272,12 @@ std::strong_ordering compare(const Term& lhs, const Term& rhs) {
                     return order;
                 }
                 return compare_lists(left.arguments, right.arguments);
+            } else if constexpr (std::is_same_v<Node, Projection>) {
+                if (const auto order = describe(left.domain) <=> describe(right.domain); order != 0)
+                    return order;
+                if (const auto order = left.index <=> right.index; order != 0)
+                    return order;
+                return compare_lists(left.arguments, right.arguments);
             } else {
                 if (const auto order = static_cast<std::uint8_t>(left.op) <=> static_cast<std::uint8_t>(right.op);
                     order != 0) {

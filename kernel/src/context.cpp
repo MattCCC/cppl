@@ -14,11 +14,8 @@ std::unexpected<CoreError> fail(CoreErrorKind kind, std::string detail) {
 }
 
 [[nodiscard]] std::expected<void, CoreError> validate_type(const Type& type) {
-    if (!type.is_integer()) {
-        return fail(CoreErrorKind::MalformedType, "type is not a recognized core type");
-    }
-    if (!is_supported(type.integer_type())) {
-        return fail(CoreErrorKind::MalformedType, "integer type has an unsupported width or signedness");
+    if (!is_supported(type)) {
+        return fail(CoreErrorKind::MalformedType, "unsupported or malformed core type");
     }
     return {};
 }
@@ -82,6 +79,20 @@ std::unexpected<CoreError> fail(CoreErrorKind kind, std::string detail) {
                 }
                 return definition->result;
 
+            } else if constexpr (std::is_same_v<Node, Projection>) {
+                if (!is_supported(node.domain) || !node.domain.is_value())
+                    return fail(CoreErrorKind::MalformedType, "projection requires a valid abstract domain");
+                const auto& signature = std::get<ValueType>(node.domain.node);
+                if (node.index >= signature.projections.size())
+                    return fail(CoreErrorKind::MalformedPrimitive, "projection index is outside its signature");
+                if (node.arguments.size() != 1)
+                    return fail(CoreErrorKind::ArityMismatch, "projection requires exactly one subject");
+                auto subject = type_of_impl(context, locals, node.arguments[0], limits, depth + 1);
+                if (!subject)
+                    return subject;
+                if (*subject != node.domain)
+                    return fail(CoreErrorKind::TypeMismatch, "projection subject does not match its domain signature");
+                return signature.projections[node.index];
             } else {
                 const Type type{node.type};
                 if (auto valid = validate_type(type); !valid) {
@@ -214,7 +225,14 @@ std::unexpected<CoreError> fail(CoreErrorKind kind, std::string detail) {
                 }
 
                 ++steps;
-                return normalize_primitive(node.op, node.type, std::move(arguments), limits, steps);
+                if constexpr (std::is_same_v<Node, Projection>) {
+                    if (!is_supported(node.domain) || !node.domain.is_value() || arguments.size() != 1 ||
+                        node.index >= std::get<ValueType>(node.domain.node).projections.size())
+                        return fail(CoreErrorKind::MalformedPrimitive, "malformed projection");
+                    return Term{Projection{node.domain, node.index, std::move(arguments)}};
+                } else {
+                    return normalize_primitive(node.op, node.type, std::move(arguments), limits, steps);
+                }
             }
         },
         term.node);
@@ -236,6 +254,8 @@ std::string describe_with_names(const Context& context, const Term& term) {
                 if constexpr (std::is_same_v<Node, Call>) {
                     const Definition* definition = context.lookup(node.callee);
                     text = definition != nullptr ? definition->name : "def#" + std::to_string(node.callee.value);
+                } else if constexpr (std::is_same_v<Node, Projection>) {
+                    text = "project[" + describe(node.domain) + "," + std::to_string(node.index) + "]";
                 } else {
                     text = describe(node.op);
                 }

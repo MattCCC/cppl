@@ -1275,3 +1275,10 @@ proven sound
 ```
 
 The credibility of a proof-oriented language depends on maintaining those distinctions precisely.
+
+## Abstract observation core
+
+The core supports nominal abstract values and typed logical projections, with
+independent malformed-evidence and substitution tests. This is implemented
+value-model infrastructure; it does not by itself promote source decomposition
+providers, mutation analysis, or editor tooling to implemented status.

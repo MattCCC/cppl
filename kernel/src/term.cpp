@@ -86,6 +86,9 @@ std::string describe(const Term& term) {
                 return std::to_string(node.value) + ":" + describe(node.type);
             } else if constexpr (std::is_same_v<Node, Call>) {
                 return "def#" + std::to_string(node.callee.value) + describe_arguments(node.arguments);
+            } else if constexpr (std::is_same_v<Node, Projection>) {
+                return "project[" + describe(node.domain) + "," + std::to_string(node.index) + "]" +
+                       describe_arguments(node.arguments);
             } else {
                 return describe(node.op) + ":" + describe(node.type) + describe_arguments(node.arguments);
             }

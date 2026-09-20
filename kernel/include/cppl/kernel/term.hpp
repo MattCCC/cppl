@@ -81,8 +81,16 @@ struct Prim {
     friend bool operator==(const Prim&, const Prim&) = default;
 };
 
+struct Projection {
+    Type domain;
+    std::uint32_t index = 0;
+    std::vector<Term> arguments; // exactly one, of domain type
+
+    friend bool operator==(const Projection&, const Projection&) = default;
+};
+
 struct Term {
-    std::variant<Var, Literal, Call, Prim> node;
+    std::variant<Var, Literal, Call, Prim, Projection> node;
 
     static Term variable(VarIndex index) {
         return Term{Var{index}};
@@ -95,6 +103,9 @@ struct Term {
     }
     static Term primitive(PrimOp op, IntType type, std::vector<Term> arguments) {
         return Term{Prim{op, type, std::move(arguments)}};
+    }
+    static Term project(Type domain, std::uint32_t index, Term subject) {
+        return Term{Projection{std::move(domain), index, {std::move(subject)}}};
     }
 
     friend bool operator==(const Term&, const Term&) = default;

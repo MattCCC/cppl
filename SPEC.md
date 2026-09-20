@@ -2060,6 +2060,22 @@ no runtime representation. Exhaustiveness is a property of evidence the kernel
 rechecks: a provider that described the wrong partition can only fail to produce
 a proof, never forge one.
 
+### Abstract values and typed observations
+
+The core additionally admits nominal abstract value sorts `V(identity; T0, ...,
+Tn)` and total logical projections `project<i>(v) : Ti`. A projection is
+well-typed only if its subject has exactly its declared domain and signature
+and its index belongs to that signature. Signatures are finite, acyclic and
+resource-bounded. They are part of semantic identity and obligation hashes.
+Abstract values are not integers and admit no machine arithmetic.
+
+Projection normalization only normalizes its subject. No state, payload value,
+constructor identity, injectivity, surjectivity, or product extensionality is
+assumed. Equality and substitution use the existing rules. Providers supply the
+correspondence between C++ observations and these logical functions; a logical
+projection never performs a runtime operation. A payload observation may be
+exposed to source only in the state where the C++ payload exists.
+
 ### 20.5.4 Implemented providers
 
 | Representation | Model | Residual state |

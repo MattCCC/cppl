@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <string>
 #include <variant>
+#include <vector>
 
 namespace cppl::kernel {
 
@@ -47,11 +48,31 @@ bool is_representable(const IntType& type, std::int64_t value);
 // Two's-complement reduction of `value` into `type`.
 std::int64_t wrap_into(const IntType& type, std::int64_t value);
 
+struct Type;
+
+// An abstract value with a finite signature of total logical observations.
+// Identity is nominal; the signature is also part of type identity. Neither
+// storage nor a C++ representation is exposed to the kernel.
+struct ValueType {
+    std::string identity;
+    std::vector<Type> projections;
+
+    friend bool operator==(const ValueType&, const ValueType&) = default;
+};
+
 struct Type {
-    std::variant<IntType> node;
+    std::variant<IntType, ValueType> node;
 
     static Type integer(std::uint16_t width, Signedness signedness) {
         return Type{IntType{width, signedness}};
+    }
+
+    static Type value(std::string identity, std::vector<Type> projections = {}) {
+        return Type{ValueType{std::move(identity), std::move(projections)}};
+    }
+
+    [[nodiscard]] bool is_value() const noexcept {
+        return std::holds_alternative<ValueType>(node);
     }
 
     [[nodiscard]] bool is_integer() const noexcept {
@@ -65,6 +86,9 @@ struct Type {
 
     friend bool operator==(const Type&, const Type&) = default;
 };
+
+// Includes structural bounds: malformed recursive signatures fail closed.
+bool is_supported(const Type& type);
 
 std::string describe(const IntType& type);
 std::string describe(const Type& type);

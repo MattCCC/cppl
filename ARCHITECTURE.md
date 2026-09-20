@@ -3424,3 +3424,12 @@ The kernel needs no case rule and no per-representation rule. A representation
 no provider models is refused at the provider boundary by name (`SPEC.md` 20.5);
 adding `std::variant`, `std::optional`, `std::expected`, pointer or product
 providers requires a formal value model for them first, not more arm labels.
+
+### Abstract value boundary
+
+Core/kernel 0.6.0 carries nominal abstract sorts with finite typed observation
+signatures. The compiler supplies correspondence; the kernel validates every
+projection against its subject's complete domain signature. Abstract values
+cannot enter machine arithmetic. Projection terms participate in substitution,
+normalization, deterministic ordering, dependency traversal and obligation
+hashing. This is one generic value mechanism, independent of providers.

@@ -36,6 +36,13 @@ Term shift(const Term& term, std::uint32_t amount, std::uint32_t cutoff) {
         return Term::primitive(primitive->op, primitive->type, std::move(arguments));
     }
 
+    if (const auto* projection = std::get_if<Projection>(&term.node)) {
+        Projection result = *projection;
+        for (auto& child : result.arguments)
+            child = shift(child, amount, cutoff);
+        return Term{std::move(result)};
+    }
+
     return term; // a literal denotes the same value under any binder
 }
 
@@ -95,6 +102,13 @@ Term instantiate(const Term& body, const Term& argument, std::uint32_t depth) {
             arguments.push_back(instantiate(nested, argument, depth));
         }
         return Term::primitive(primitive->op, primitive->type, std::move(arguments));
+    }
+
+    if (const auto* projection = std::get_if<Projection>(&body.node)) {
+        Projection result = *projection;
+        for (auto& child : result.arguments)
+            child = instantiate(child, argument, depth);
+        return Term{std::move(result)};
     }
 
     return body;

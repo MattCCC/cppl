@@ -1628,3 +1628,16 @@ ABI, memory semantics, or dynamic validation changes. C++17/20/23 end-to-end
 tests compile the erased projection independently and compare behavior,
 including an unnamed runtime value. Verification still reruns from source; no
 cached proof acceptance or serialized artifact format is introduced.
+
+### Abstract value extension (core/kernel 0.6.0)
+
+Abstract nominal sorts carry finite typed observation signatures. The kernel
+checks the entire domain signature, projection index, argument arity and subject
+type; substitution traverses the subject and normalization does not invent
+projection values. Signature identity participates in obligation hashing.
+
+This expands the core typing and normalization TCB. It adds one generic term
+form and one generic type form, zero proof inference rules, zero axioms and zero
+logical assumptions. No representation-specific rule or independent acceptance
+mechanism is added. Corruption tests cover domains, signatures, indices, result
+types, arity, binder substitution and attempts to invent observation values.

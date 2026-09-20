@@ -136,3 +136,15 @@ escape and capture, self and mutual dependencies, malformed arms, written
 failure without fallback, and representations with no provider. Unit tests
 corrupt VIR partitions and generated kernel evidence; the kernel remains the
 final authority. No test result is treated as proof of soundness.
+
+## Abstract observation signature
+
+The generalized value model admits `V(identity; T0, ..., Tn)` and checked
+`project<i>(v) : Ti`, as specified in SPEC.md 20.5. It needs no new inference
+rule: equality, substitution and conditional elimination already apply to the
+resulting typed propositions. A signature is part of identity, so changing a
+component invalidates old evidence. Observation normalization never unfolds C++
+code or assumes a constructor or payload value. The core/kernel version is
+0.6.0; the typing and normalization TCB grows, without axioms or logical
+assumptions. This removes the scalar-only core restriction; provider and source
+integration status is stated separately from availability of this core model.

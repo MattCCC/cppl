@@ -529,6 +529,15 @@ void encode(source::Hasher& hasher, const kernel::Term& term);
 void encode(source::Hasher& hasher, const kernel::Proposition& proposition);
 
 void encode(source::Hasher& hasher, const kernel::Type& type) {
+    if (type.is_value()) {
+        hasher.update_u8(2);
+        const auto& value = std::get<kernel::ValueType>(type.node);
+        hasher.update_field(value.identity);
+        hasher.update_u64(value.projections.size());
+        for (const auto& projection : value.projections)
+            encode(hasher, projection);
+        return;
+    }
     hasher.update_u8(1);
     const kernel::IntType& integer = type.integer_type();
     hasher.update_u64(integer.width);
@@ -553,6 +562,13 @@ void encode(source::Hasher& hasher, const kernel::Term& term) {
                 for (const kernel::Term& argument : node.arguments) {
                     encode(hasher, argument);
                 }
+            } else if constexpr (std::is_same_v<Node, kernel::Projection>) {
+                hasher.update_u8(14);
+                encode(hasher, node.domain);
+                hasher.update_u64(node.index);
+                hasher.update_u64(node.arguments.size());
+                for (const auto& argument : node.arguments)
+                    encode(hasher, argument);
             } else {
                 hasher.update_u8(13);
                 hasher.update_u8(static_cast<std::uint8_t>(node.op));
@@ -649,11 +665,11 @@ void collect_dependencies(const kernel::Context& context, const kernel::Term& te
         }
         return;
     }
-    if (const auto* primitive = std::get_if<kernel::Prim>(&term.node)) {
-        for (const kernel::Term& argument : primitive->arguments) {
-            collect_dependencies(context, argument, reached);
-        }
-    }
+    std::visit([&](const auto& node) {
+        if constexpr (requires { node.arguments; })
+            for (const auto& argument : node.arguments)
+                collect_dependencies(context, argument, reached);
+    }, term.node);
 }
 
 // The identity of an obligation is the content it depends on: the formal core
