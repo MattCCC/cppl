@@ -49,7 +49,7 @@ reject static_local 'automatic storage' \
     'verified unsigned f(unsigned x) ensures(result == x) { static unsigned y = 0u; return x; }'
 reject thread_local_local 'thread-local' \
     'verified unsigned f(unsigned x) ensures(result == x) { thread_local unsigned y = 0u; return x; }'
-reject reference_local 'not modeled' \
+reject reference_local 'does not satisfy its contract' \
     'verified unsigned f(unsigned x) ensures(result == x) { unsigned y = x; unsigned& r = y; r = 0u; return y; }'
 reject volatile_local 'not modeled' \
     'verified unsigned f(unsigned x) ensures(result == x) { volatile unsigned y = x; return y; }'
@@ -98,8 +98,8 @@ reject assignment_in_guard 'not modeled' \
     'verified unsigned f(unsigned x) ensures(result == 0u) { unsigned y = 0u; if ((y = x) == 0u) return y; return 0u; }'
 reject comma_assignments 'only if/else' \
     'verified unsigned f(unsigned x) ensures(result == 2u) { unsigned y = 0u; y = 1u, y = 2u; return y; }'
-reject forwarding_reference 'not modeled' \
-    'verified unsigned f(unsigned x) ensures(result == x) { unsigned y = x; auto&& r = y; return y; }'
+reject forwarding_reference 'does not satisfy its contract' \
+    'verified unsigned f(unsigned x) ensures(result == x) { unsigned y = x; auto&& r = y; r = 0u; return y; }'
 reject lambda_capture 'not modeled' \
     'verified unsigned f(unsigned x) ensures(result == x) { unsigned y = x; auto g = [&] { y = 0u; }; g(); return y; }'
 reject structured_binding 'only variable declarations' \

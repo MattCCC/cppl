@@ -528,6 +528,7 @@ CPPL_TEST(a_loop_rebinding_a_live_version_is_refused) {
 
 CPPL_TEST(unknown_refinement_metadata_cannot_drop_a_local_obligation) {
     auto function = counting(compare(v::BinaryOp::LessEqual, local(1), parameter(0)));
+    CPPL_CHECK(function.returned_value.has_value());
     auto& first_version = std::get<v::LocalVersion>(function.returned_value->node);
     first_version.declared = vUnsigned;
     first_version.declared.refinements.push_back({"missing", {}});

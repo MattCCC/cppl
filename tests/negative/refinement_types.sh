@@ -140,6 +140,50 @@ reject unchecked_refined_array <<'CPP'
 type Positive = int where(self > 0);
 Positive values[2] = {0, 0};
 CPP
+reject mutable_reference_cannot_bypass_membership <<'CPP'
+type Positive = int where(self > 0);
+verified int wrong() ensures(result == 0) {
+    Positive x = 1;
+    int& r = x;
+    r = 0;
+    return x;
+}
+CPP
+reject refined_reference_does_not_keep_a_stale_fact <<'CPP'
+type Positive = int where(self > 0);
+verified int wrong() ensures(result > 0) {
+    int x = 1;
+    const Positive& r = x;
+    x = 0;
+    return r;
+}
+CPP
+reject refined_reference_binding_requires_membership <<'CPP'
+type Positive = int where(self > 0);
+verified int wrong() ensures(result == 0) {
+    int x = 0;
+    const Positive& r = x;
+    return x;
+}
+CPP
+reject refined_reference_write_requires_membership <<'CPP'
+type Positive = int where(self > 0);
+verified int wrong() ensures(result == 0) {
+    int x = 1;
+    Positive& r = x;
+    r = 0;
+    return x;
+}
+CPP
+reject reference_update_observes_current_version <<'CPP'
+verified unsigned wrong() ensures(result == 2u) {
+    unsigned x = 1u;
+    unsigned& r = x;
+    x = 8u;
+    ++r;
+    return x;
+}
+CPP
 reject implicit_refined_postcondition <<'CPP'
 type Positive = int where(self > 0);
 verified Positive wrong() { return 0; }
@@ -397,6 +441,44 @@ verified Positive choose(bool b) {
 verified Positive from_path(int x) expects(x > 0) { return x; }
 verified int caller() ensures(result > 0) { return one(); }
 int main() { return caller() == 1 && choose(false) == 2 && from_path(3) == 3 ? 0 : 1; }
+CPP
+accept local_reference_tracks_storage <<'CPP'
+type Small = unsigned where(self < 10u);
+using SmallReference = const Small&;
+verified unsigned forwarding(unsigned x) ensures(result == x) {
+    unsigned y = x;
+    auto&& r = y;
+    return r;
+}
+verified unsigned write_alias() ensures(result == 3u) {
+    Small x = 1u;
+    unsigned& r = x;
+    unsigned& s = r;
+    r = 2u;
+    ++s;
+    return x;
+}
+verified unsigned read_alias() ensures(result == 3u) {
+    unsigned x = 1u;
+    SmallReference r = x;
+    x = 3u;
+    return r;
+}
+verified unsigned invalidate_view() ensures(result == 20u) {
+    unsigned x = 1u;
+    const Small& r = x;
+    x = 20u;
+    return r;
+}
+verified unsigned loop_alias() ensures(result == 9u) {
+    Small x = 0u;
+    unsigned& r = x;
+    while (r < 9u) invariant(x <= 9u) { ++r; }
+    return x;
+}
+int main() {
+    return forwarding(4u) == 4u && write_alias() == 3u && read_alias() == 3u && invalidate_view() == 20u && loop_alias() == 9u ? 0 : 1;
+}
 CPP
 
 echo "refinement membership is proven or refused; contextual words keep their C++ meaning"

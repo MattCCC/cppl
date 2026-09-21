@@ -420,17 +420,38 @@ struct Local {
     CXCursor declaration;
     std::uint32_t version = 0;
     Type type;
+    std::optional<std::size_t> referent = std::nullopt;
 };
 
 using Locals = std::vector<Local>;
 
-std::optional<std::size_t> find_local(const Locals& locals, CXCursor declaration) {
+// Preserve pointee sugar while following aliases to a reference. Canonicalizing
+// first would discard the refinement attached to that pointee.
+CXType reference_value_type(CXType written) {
+    for (unsigned depth = 0; depth < kMaxExpressionDepth; ++depth) {
+        if (written.kind == CXType_LValueReference || written.kind == CXType_RValueReference)
+            return clang_getPointeeType(written);
+        const auto declaration = clang_getTypeDeclaration(written);
+        const auto underlying = clang_getTypedefDeclUnderlyingType(declaration);
+        if (underlying.kind == CXType_Invalid)
+            break;
+        written = underlying;
+    }
+    return CXType{CXType_Invalid, {nullptr, nullptr}};
+}
+
+std::optional<std::size_t> find_binding(const Locals& locals, CXCursor declaration) {
     for (std::size_t index = locals.size(); index > 0; --index) {
         if (clang_equalCursors(locals[index - 1].declaration, declaration) != 0) {
             return index - 1;
         }
     }
     return std::nullopt;
+}
+
+std::optional<std::size_t> find_local(const Locals& locals, CXCursor declaration) {
+    const auto binding = find_binding(locals, declaration);
+    return binding ? std::optional{locals[*binding].referent.value_or(*binding)} : std::nullopt;
 }
 
 // Whether two Clang types denote the same modeled value. Qualifiers are not
@@ -446,6 +467,9 @@ bool same_modeled_value(const Type& outer, const Type& inner) {
 // `int`. An update of such a local converts the promoted result back, which is
 // a conversion C++L does not model.
 bool promoted_before_arithmetic(CXType type) {
+    const auto canonical = clang_getCanonicalType(type);
+    if (canonical.kind == CXType_LValueReference || canonical.kind == CXType_RValueReference)
+        type = reference_value_type(type);
     switch (clang_getCanonicalType(type).kind) {
         case CXType_Int:
         case CXType_UInt:
@@ -933,6 +957,27 @@ struct WriteScan {
     std::vector<bool>* written;
 };
 
+std::optional<std::size_t> written_storage(CXCursor declaration, const Locals& locals, unsigned depth = 0) {
+    if (const auto local = find_local(locals, declaration))
+        return local;
+    if (depth > kMaxExpressionDepth || clang_getCursorKind(declaration) != CXCursor_VarDecl)
+        return std::nullopt;
+    const auto type = clang_getCanonicalType(clang_getCursorType(declaration));
+    if (type.kind != CXType_LValueReference && type.kind != CXType_RValueReference)
+        return std::nullopt;
+    auto initializer = clang_Cursor_getVarDeclInitializer(declaration);
+    while (clang_getCursorKind(initializer) == CXCursor_UnexposedExpr ||
+           clang_getCursorKind(initializer) == CXCursor_ParenExpr) {
+        const auto inner = children_of(initializer);
+        if (inner.size() != 1)
+            return std::nullopt;
+        initializer = inner[0];
+    }
+    return clang_getCursorKind(initializer) == CXCursor_DeclRefExpr
+               ? written_storage(clang_getCursorReferenced(initializer), locals, depth + 1)
+               : std::nullopt;
+}
+
 void mark_write(CXCursor cursor, const WriteScan& scan) {
     const CXCursorKind kind = clang_getCursorKind(cursor);
     const bool assigns =
@@ -962,7 +1007,7 @@ void mark_write(CXCursor cursor, const WriteScan& scan) {
     if (clang_getCursorKind(target) != CXCursor_DeclRefExpr) {
         return;
     }
-    if (const std::optional<std::size_t> local = find_local(*scan.locals, clang_getCursorReferenced(target))) {
+    if (const auto local = written_storage(clang_getCursorReferenced(target), *scan.locals)) {
         (*scan.written)[*local] = true;
     }
 }
@@ -1401,7 +1446,11 @@ struct BodyLowering {
         if (clang_getCursorTLSKind(declaration) != CXTLS_None) {
             return reject("thread-local '" + name + "' is not modeled");
         }
-        Type type = convert_type(clang_getCursorType(declaration));
+        const CXType written = clang_getCursorType(declaration);
+        const auto canonical = clang_getCanonicalType(written);
+        const bool reference = canonical.kind == CXType_LValueReference || canonical.kind == CXType_RValueReference;
+        const CXType value_type = reference ? reference_value_type(written) : written;
+        Type type = convert_type(value_type);
         // A verified body states a local as one modeled value under logical
         // versioning. A structural value has components rather than such a
         // value: it is a proof-side decomposition subject, not something this
@@ -1410,7 +1459,7 @@ struct BodyLowering {
             return reject("local '" + name + "' has type '" + type.spelling + "', which is not modeled");
         }
         if (refinements != nullptr) {
-            auto resolved = refinements_of(declaration, clang_getCursorType(declaration), *refinements);
+            auto resolved = refinements_of(declaration, value_type, *refinements);
             if (!resolved)
                 return reject(resolved.error());
             type.refinements = std::move(*resolved);
@@ -1418,6 +1467,26 @@ struct BodyLowering {
         CXCursor initializer = clang_Cursor_getVarDeclInitializer(declaration);
         if (clang_Cursor_isNull(initializer) != 0) {
             return reject("local '" + name + "' is declared without an initializer, so it holds no modeled value");
+        }
+        std::optional<std::size_t> referent;
+        if (reference) {
+            CXCursor subject = initializer;
+            while (clang_getCursorKind(subject) == CXCursor_UnexposedExpr ||
+                   clang_getCursorKind(subject) == CXCursor_ParenExpr) {
+                const auto inner = children_of(subject);
+                if (inner.size() != 1)
+                    break;
+                subject = inner[0];
+            }
+            if (clang_getCursorKind(subject) == CXCursor_DeclRefExpr) {
+                referent = find_local(locals, clang_getCursorReferenced(subject));
+            }
+            if (!referent) {
+                return reject("reference '" + name +
+                              "' must bind a tracked local object; this reference binding is not modeled");
+            }
+            if (!same_modeled_value(type, locals[*referent].type))
+                return reject("reference binding changes the modeled value type");
         }
         if (clang_getCursorKind(initializer) == CXCursor_InitListExpr) {
             const std::vector<CXCursor> elements = children_of(initializer);
@@ -1433,7 +1502,7 @@ struct BodyLowering {
         }
         const std::uint32_t version = next_version++;
         Locals declaring = locals;
-        declaring.push_back(Local{declaration, version, type});
+        declaring.push_back(Local{declaration, version, type, referent});
         std::optional<Expr> body = lower_declaration(declared, index + 1, next, declaring, depth);
         if (!body) {
             return std::nullopt;
@@ -1455,7 +1524,7 @@ struct BodyLowering {
         }
         const CXCursor declaration = clang_getCursorReferenced(target);
         const std::string name = take(clang_getCursorSpelling(declaration));
-        const std::optional<std::size_t> local = find_local(locals, declaration);
+        const std::optional<std::size_t> local = find_binding(locals, declaration);
         if (!local) {
             if (clang_getCursorKind(declaration) == CXCursor_ParmDecl) {
                 return reject("assigning to parameter '" + name +
@@ -1470,7 +1539,8 @@ struct BodyLowering {
                               const Locals& locals, unsigned depth) {
         const std::uint32_t version = next_version++;
         Locals assigned = locals;
-        assigned[local].version = version;
+        const std::size_t storage = locals[local].referent.value_or(local);
+        assigned[storage].version = version;
         std::optional<Expr> body = lower_statements(next, assigned, depth + 1);
         if (!body) {
             return std::nullopt;
@@ -1479,8 +1549,13 @@ struct BodyLowering {
         // declared type exactly as the declaration's was, so it carries the same
         // type - refinement and all. Dropping it here would let a write into a
         // refined local escape the obligation its declaration owed (SPEC.md 17.2).
+        Type required = locals[storage].type;
+        for (const auto& refinement : locals[local].type.refinements) {
+            if (std::ranges::find(required.refinements, refinement) == required.refinements.end())
+                required.refinements.push_back(refinement);
+        }
         return bind(version, take(clang_getCursorSpelling(locals[local].declaration)), std::move(value),
-                    std::move(*body), statement, locals[local].type);
+                    std::move(*body), statement, required);
     }
 
     std::optional<Expr> lower_assignment(CXCursor statement, const Continuation& next, const Locals& locals,
@@ -1556,7 +1631,7 @@ struct BodyLowering {
         Expr current;
         current.type = target.type;
         current.location = presumed_location(clang_getCursorLocation(operands[0]));
-        current.node = LocalRef{target.version, name};
+        current.node = LocalRef{locals[target.referent.value_or(*local)].version, name};
 
         Expr amount;
         if (operands.size() == 2) {
