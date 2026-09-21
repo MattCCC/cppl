@@ -16,8 +16,8 @@ valid C++L
 ## Read first
 
 - `AGENTS.md`
-- `SPEC.md`
-- `COMPATIBILITY.md`
+- `docs/SPEC.md`
+- `docs/COMPATIBILITY.md`
 - affected Clang integration
 
 ## Cover

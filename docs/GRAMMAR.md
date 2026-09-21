@@ -1,6 +1,6 @@
 # Grammar and declaration syntax
 
-This is the normative concrete grammar referenced by [SPEC.md](../SPEC.md).
+This is the normative concrete grammar referenced by [SPEC.md](../docs/SPEC.md).
 [RFC 0015](rfcs/0015-canonical-language-surface.md) reconciles earlier spellings.
 Ordinary C++ categories below retain the selected C++ grammar and Clang semantics.
 EBNF uses quoted tokens, `[]` for optional parts, `{}` for repetition and `|`

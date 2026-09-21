@@ -10,8 +10,8 @@ A cached proof may be reused only when all proof-relevant inputs remain semantic
 ## Read first
 
 - `AGENTS.md`
-- `TRUST.md`
-- `ARCHITECTURE.md`
+- `docs/TRUST.md`
+- `docs/ARCHITECTURE.md`
 - artifact/cache format definitions
 
 ## Cache dependencies may include

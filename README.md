@@ -364,7 +364,7 @@ A Law is a theorem, not a runtime assertion, Boolean test, unit test, or comment
 
 For practical C++L usage, including contracts, Laws, proofs, refinement types, `ghost`, `cases`, induction, loop invariants, termination, trusted boundaries, headers and source files, templates, formatting, and project organization, see [DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md).
 
-For the normative language definition, see [SPEC.md](SPEC.md).
+For the normative language definition, see [SPEC.md](docs/SPEC.md).
 
 For the proof model and trusted computing base, see [TRUST.md](TRUST.md).
 
@@ -592,7 +592,7 @@ verified unsigned clamp(unsigned x)
 The first path uses `x <= 10u` as evidence; the second computes `10u <= 10u`.
 Both paths must pass the kernel. The runtime `if` and returns stay unchanged.
 All six integer comparisons are supported, including in call preconditions.
-See [SPEC.md](SPEC.md#127-path-sensitive-verification) for the boundary.
+See [SPEC.md](docs/SPEC.md#127-path-sensitive-verification) for the boundary.
 
 Bodies may also use ordinary locals and assignments:
 
@@ -613,7 +613,7 @@ Each write is a logical version of that local, and each return proves its
 contract from the versions its own path established. What follows a branch is
 verified once per arm, so nothing merges and no kernel rule is added. A call
 bound to a local proves its precondition where the body makes the call, not
-where the value is read. See [SPEC.md](SPEC.md#128-locals-and-assignments) for
+where the value is read. See [SPEC.md](docs/SPEC.md#128-locals-and-assignments) for
 the boundary.
 
 Unsigned arithmetic is reasoned about as the machine performs it, modulo
@@ -642,7 +642,7 @@ that `i < n` gives `i + 1u <= n` is proven by a linear-arithmetic certificate
 the kernel checks against constraints it derives itself, including the
 possibility that `i + 1u` wraps. Without `y <= x`, `x - y` could wrap past `x`,
 and the contract would be rejected. Signed arithmetic is rejected until its
-overflow obligations exist. See [SPEC.md](SPEC.md#711-machine-integer-arithmetic)
+overflow obligations exist. See [SPEC.md](docs/SPEC.md#711-machine-integer-arithmetic)
 for the rules.
 
 Loops are verified against the invariants written on them:
@@ -666,7 +666,7 @@ only the invariant and `!(i < n)` are known, which together give `i == n`.
 This is partial correctness: termination is not proven, so the contract is
 reported as partial and `count_to` never becomes a definition a Law could
 unfold. The runtime loop is unchanged. See
-[SPEC.md](SPEC.md#243-verified-loops) for the boundary.
+[SPEC.md](docs/SPEC.md#243-verified-loops) for the boundary.
 
 The remaining examples use features this implementation does not accept yet.
 Laws are meant to state domain requirements over user-defined types:
@@ -812,13 +812,13 @@ None alone provide the intended proof-aware language model.
 ## Documentation
 
 - [DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) - practical developer guide with examples
-- [SPEC.md](SPEC.md) - normative C++L language semantics
-- [ARCHITECTURE.md](ARCHITECTURE.md) - compiler structure, component boundaries, and data flow
-- [DESIGN.md](DESIGN.md) - design rationale and major language/compiler decisions
-- [FOUNDATIONS.md](FOUNDATIONS.md) - mathematical foundations and intellectual lineage
-- [TRUST.md](TRUST.md) - Trusted Computing Base, assumptions, and trust boundaries
-- [COMPATIBILITY.md](COMPATIBILITY.md) - C++ source, ABI, toolchain, and standard compatibility
-- [STATUS.md](STATUS.md) - current implementation status and verification maturity
+- [SPEC.md](docs/SPEC.md) - normative C++L language semantics
+- [ARCHITECTURE.md](docs/ARCHITECTURE.md) - compiler structure, component boundaries, and data flow
+- [DESIGN.md](docs/DESIGN.md) - design rationale and major language/compiler decisions
+- [FOUNDATIONS.md](docs/FOUNDATIONS.md) - mathematical foundations and intellectual lineage
+- [TRUST.md](docs/TRUST.md) - Trusted Computing Base, assumptions, and trust boundaries
+- [COMPATIBILITY.md](docs/COMPATIBILITY.md) - C++ source, ABI, toolchain, and standard compatibility
+- [STATUS.md](docs/STATUS.md) - current implementation status and verification maturity
 - [ROADMAP.md](ROADMAP.md) - planned implementation sequence and milestones
 - [SECURITY.md](SECURITY.md) - soundness and security policy
 - [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md) - intellectual and project credits

@@ -1003,7 +1003,7 @@ Canonical presentation puts one space before each clause's opening parenthesis
 and puts clauses on continuation lines. Refinement `where (P)` stays attached
 to the declaration. Ordinary C++ prefix specifiers precede `verified pure`.
 The shared formatter owns presentation; spelling/cardinality/order are defined
-by the [normative grammar](docs/GRAMMAR.md).
+by the [normative grammar](./GRAMMAR.md).
 
 ### 11.5.1 Declaration contracts
 
@@ -3998,8 +3998,8 @@ because the implementation needed the statement to be true
 
 ## Canonical surface conformance
 
-[RFC 0015](docs/rfcs/0015-canonical-language-surface.md) reconciles historical
-surface examples. [GRAMMAR.md](docs/GRAMMAR.md) is the single concrete grammar;
-[DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) is the practical usage guide. Implementation
+[RFC 0015](./rfcs/0015-canonical-language-surface.md) reconciles historical
+surface examples. [GRAMMAR.md](./GRAMMAR.md) is the single concrete grammar;
+[DEVELOPER_GUIDE.md](./DEVELOPER_GUIDE.md) is the practical usage guide. Implementation
 fragment notes constrain available verification power, never authorize an
 alternate surface spelling or unchecked acceptance.

@@ -10,7 +10,7 @@ Diagnostics explain proof state; they do not change proof semantics.
 ## Read first
 
 - `AGENTS.md`
-- relevant `SPEC.md`
+- relevant `docs/SPEC.md`
 - diagnostic architecture
 - affected proof/VIR representation
 

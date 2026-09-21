@@ -11,11 +11,11 @@ Review the design before optimizing the implementation.
 
 - `AGENTS.md`
 - the RFC
-- relevant `SPEC.md`
-- `DESIGN.md`
-- `TRUST.md`
-- `COMPATIBILITY.md`
-- `ARCHITECTURE.md`
+- relevant `docs/SPEC.md`
+- `docs/DESIGN.md`
+- `docs/TRUST.md`
+- `docs/COMPATIBILITY.md`
+- `docs/ARCHITECTURE.md`
 
 ## Require the RFC to answer
 

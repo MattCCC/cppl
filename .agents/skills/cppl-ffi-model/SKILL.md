@@ -10,9 +10,9 @@ Foreign code is not automatically verified.
 ## Read first
 
 - `AGENTS.md`
-- `SPEC.md`
-- `TRUST.md`
-- `COMPATIBILITY.md`
+- `docs/SPEC.md`
+- `docs/TRUST.md`
+- `docs/COMPATIBILITY.md`
 
 ## Define the boundary
 
@@ -44,6 +44,6 @@ Values entering a verified domain must satisfy their claimed invariants through:
 - explicit trust;
 - or explicit unsafe handling.
 
-Update `TRUST.md` when new foreign assumptions are introduced.
+Update `docs/TRUST.md` when new foreign assumptions are introduced.
 
 Add tests at both sides of the boundary.

@@ -10,8 +10,8 @@ Solvers automate reasoning; they do not silently become theorem authorities.
 ## Read first
 
 - `AGENTS.md`
-- `TRUST.md`
-- relevant `SPEC.md`
+- `docs/TRUST.md`
+- relevant `docs/SPEC.md`
 - solver integration code
 
 ## Define explicitly
@@ -37,6 +37,6 @@ version dependencies:
 - solver models are counterexamples/evidence, not proof by themselves;
 - certificates should be independently checked where practical.
 
-If solver results are trusted directly, update `TRUST.md` and trust reporting.
+If solver results are trusted directly, update `docs/TRUST.md` and trust reporting.
 
 Add adversarial encoding tests.

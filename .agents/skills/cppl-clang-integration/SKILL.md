@@ -10,8 +10,8 @@ The default is to reuse Clang rather than implement C++ again.
 ## Read first
 
 - `AGENTS.md`
-- `ARCHITECTURE.md`
-- `COMPATIBILITY.md`
+- `docs/ARCHITECTURE.md`
+- `docs/COMPATIBILITY.md`
 - relevant Clang API documentation
 
 ## Workflow

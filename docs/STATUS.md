@@ -122,7 +122,7 @@ are elaborated into the routes they select between (SPEC.md 12.7). Value and
 invariant uses of `&&` and `||` remain unsupported, because a proposition is not
 a value (SPEC.md 7.6-7.8).
 Everything else is reported as unsupported and produces no obligation. See
-`ARCHITECTURE.md` 97 for the implemented structure and `TRUST.md` 41 for what
+`docs/ARCHITECTURE.md` 97 for the implemented structure and `TRUST.md` 41 for what
 must be trusted today.
 
 A precondition is supposed, never granted: `expects (P) ensures (Q)` states
@@ -416,7 +416,7 @@ implication and conjunction. The kernel's terms are variables, machine-integer l
 applications of admitted definitions, and primitives: wrapping addition,
 subtraction and multiplication, the six comparisons, boolean negation and
 selection. It admits no recursion, which is why it needs no termination checker
-yet (`ARCHITECTURE.md` 97.7).
+yet (`docs/ARCHITECTURE.md` 97.7).
 
 Reflexivity decides definitional equality by normalization, which puts machine
 arithmetic in polynomial normal form modulo `2^width` and comparisons in
@@ -1086,7 +1086,7 @@ a proof for it is refused. A build with no such declaration reports zero trusted
 axioms, because that is true of it. The trust report prints counts it can
 substantiate, and says _not analysed_ where C++L does not yet look.
 
-See [TRUST.md](TRUST.md).
+See [TRUST.md](./TRUST.md).
 
 ---
 
@@ -1112,7 +1112,7 @@ See [SECURITY.md](SECURITY.md).
 | -------------------------- | ------------- |
 | `README.md`                | `SPECIFIED`   |
 | `SPEC.md`                  | `SPECIFIED`   |
-| `docs/GRAMMAR.md`          | `SPECIFIED`   |
+| `GRAMMAR.md`               | `SPECIFIED`   |
 | `DESIGN.md`                | `SPECIFIED`   |
 | `FOUNDATIONS.md`           | `SPECIFIED`   |
 | `TRUST.md`                 | `SPECIFIED`   |

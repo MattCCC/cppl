@@ -73,7 +73,7 @@ Supported ordinary C++ must remain valid C++L.
 
 Mandatory rules:
 
-- C++L-specific words should be contextual, not globally reserved, unless `SPEC.md` explicitly requires otherwise.
+- C++L-specific words should be contextual, not globally reserved, unless `docs/SPEC.md` explicitly requires otherwise.
 - Existing C++ keywords take precedence.
 - Do not repurpose existing C++ keywords for unrelated C++L semantics.
 - Do not reinterpret valid supported C++ syntax.
@@ -374,7 +374,7 @@ as logical equality.
 
 Changes to equality semantics require:
 
-- `SPEC.md` update
+- `docs/SPEC.md` update
 - RFC when substantial
 - positive tests
 - negative tests
@@ -915,13 +915,16 @@ Use each document for one purpose:
 README.md
     mission and overview
 
-SPEC.md
+docs/SPEC.md
     normative language semantics
+
+docs/GRAMMAR.md
+    normative concrete grammar referenced by docs/SPEC.md
 
 FOUNDATIONS.md
     mathematical foundations
 
-DESIGN.md
+docs/DESIGN.md
     design rationale
 
 ARCHITECTURE.md
@@ -939,7 +942,7 @@ ROADMAP.md
 STATUS.md
     implementation maturity
 
-DEVELOPER_GUIDE.md
+docs/DEVELOPER_GUIDE.md
     how to work in the language and extend the compiler
 
 tools/<tool>/README.md
@@ -963,7 +966,7 @@ Reference the authoritative document.
 
 # 31. Mandatory documentation updates
 
-Update `SPEC.md` when changing:
+Update `docs/docs/SPEC.md` when changing:
 
 - language meaning
 - proof rules
@@ -986,7 +989,7 @@ Update `TRUST.md` when changing:
 - trusted assumptions
 - cache trust
 
-Update `ARCHITECTURE.md` when changing:
+Update `docs/ARCHITECTURE.md` when changing:
 
 - compiler stages
 - component boundaries
@@ -1111,7 +1114,7 @@ Before completing a significant change, verify:
 
 ```text
 Does this change language meaning?
-Does SPEC.md need updating?
+Does docs/SPEC.md need updating?
 
 Does this change the TCB?
 Does TRUST.md need updating?
@@ -1265,7 +1268,7 @@ TRUST.md states what is not inferred
 
 # Storage and memory invariants
 
-These govern the generic storage model (`SPEC.md` 12.10, RFC 0014). It is
+These govern the generic storage model (`docs/SPEC.md` 12.10, RFC 0014). It is
 generic on purpose: refinement types consume it and must never define it.
 
 - Storage is modeled as places, regions, capabilities and versions. A place is

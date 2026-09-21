@@ -10,9 +10,9 @@ Proof information must disappear without changing required runtime behavior.
 ## Read first
 
 - `AGENTS.md`
-- `SPEC.md`
-- `TRUST.md`
-- `ARCHITECTURE.md`
+- `docs/SPEC.md`
+- `docs/TRUST.md`
+- `docs/ARCHITECTURE.md`
 - erasure tests
 
 ## Core obligation
@@ -52,4 +52,4 @@ runtime semantics after erasure
 - malformed erasure input
 - native Clang compilation
 
-Update `TRUST.md` if erasure trust changes.
+Update `docs/TRUST.md` if erasure trust changes.

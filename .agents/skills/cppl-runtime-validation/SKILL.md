@@ -12,8 +12,8 @@ It is not runtime theorem proving.
 ## Read first
 
 - `AGENTS.md`
-- `SPEC.md`
-- `TRUST.md`
+- `docs/SPEC.md`
+- `docs/TRUST.md`
 - relevant boundary model
 
 ## Required flow

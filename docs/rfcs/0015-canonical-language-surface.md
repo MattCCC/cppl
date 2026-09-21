@@ -3,7 +3,7 @@
 Status: Accepted (owner-directed syntax standardization)
 
 This RFC supersedes surface spellings and formatting examples in RFCs 0001–0014.
-[SPEC.md](../../SPEC.md) owns semantics; [the grammar](../GRAMMAR.md) owns concrete
+[SPEC.md](../../docs/SPEC.md) owns semantics; [the grammar](../GRAMMAR.md) owns concrete
 syntax. It does not introduce a new proof rule, axiom, mathematical domain or
 runtime representation.
 

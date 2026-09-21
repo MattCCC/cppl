@@ -10,8 +10,8 @@ Determine exactly what must be believed after the change.
 ## Read first
 
 - `AGENTS.md`
-- `TRUST.md`
-- relevant `SPEC.md` sections
+- `docs/TRUST.md`
+- relevant `docs/SPEC.md` sections
 
 ## Questions
 

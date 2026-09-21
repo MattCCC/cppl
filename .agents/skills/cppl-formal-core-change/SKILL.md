@@ -10,9 +10,9 @@ Changes to the formal core can alter the meaning of every proof.
 ## Read first
 
 - `AGENTS.md`
-- `SPEC.md`
-- `FOUNDATIONS.md`
-- `TRUST.md`
+- `docs/SPEC.md`
+- `docs/FOUNDATIONS.md`
+- `docs/TRUST.md`
 - formalization/proofs if present
 - relevant RFCs
 

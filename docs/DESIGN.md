@@ -24,16 +24,16 @@ Those are defined elsewhere.
 
 ## Document boundaries
 
-| Document                             | Responsibility                                              |
-| ------------------------------------ | ----------------------------------------------------------- |
-| [SPEC.md](SPEC.md)                   | Normative language semantics                                |
-| [GRAMMAR.md](docs/GRAMMAR.md)        | Normative concrete syntax and grammar                       |
-| [COMPATIBILITY.md](COMPATIBILITY.md) | C++ source, ABI, standard, and toolchain compatibility      |
-| [TRUST.md](TRUST.md)                 | Trusted Computing Base, assumptions, and trust boundaries   |
-| [ARCHITECTURE.md](ARCHITECTURE.md)   | Compiler structure, components, dependencies, and data flow |
-| [FOUNDATIONS.md](FOUNDATIONS.md)     | Mathematical foundations and intellectual lineage           |
-| [STATUS.md](STATUS.md)               | Actual implementation maturity                              |
-| [ROADMAP.md](ROADMAP.md)             | Planned implementation sequence                             |
+| Document                               | Responsibility                                              |
+| -------------------------------------- | ----------------------------------------------------------- |
+| [SPEC.md](./SPEC.md)                   | Normative language semantics                                |
+| [GRAMMAR.md](./GRAMMAR.md)             | Normative concrete syntax and grammar                       |
+| [COMPATIBILITY.md](./COMPATIBILITY.md) | C++ source, ABI, standard, and toolchain compatibility      |
+| [TRUST.md](./TRUST.md)                 | Trusted Computing Base, assumptions, and trust boundaries   |
+| [ARCHITECTURE.md](./ARCHITECTURE.md)   | Compiler structure, components, dependencies, and data flow |
+| [FOUNDATIONS.md](./FOUNDATIONS.md)     | Mathematical foundations and intellectual lineage           |
+| [STATUS.md](./STATUS.md)               | Actual implementation maturity                              |
+| [ROADMAP.md](ROADMAP.md)               | Planned implementation sequence                             |
 
 When this document discusses a language feature, it explains the **reason for the feature** rather than defining its exact semantics.
 
@@ -907,7 +907,7 @@ truth authority
 
 The exact trusted boundary is documented in `TRUST.md`.
 
-The implementation structure belongs in `ARCHITECTURE.md`.
+The implementation structure belongs in `docs/ARCHITECTURE.md`.
 
 ---
 
@@ -1258,7 +1258,7 @@ The design therefore strongly favors proof erasure.
 
 The normative erasure semantics belong in `SPEC.md`.
 
-The implementation of erasure belongs in `ARCHITECTURE.md`.
+The implementation of erasure belongs in `docs/ARCHITECTURE.md`.
 
 ---
 
@@ -1547,7 +1547,7 @@ the native compiler executes another
 
 The design therefore favors reusing mature C++ semantic infrastructure.
 
-The current implementation strategy is documented in `ARCHITECTURE.md`.
+The current implementation strategy is documented in `docs/ARCHITECTURE.md`.
 
 ---
 
@@ -1561,7 +1561,7 @@ The motivation is not loyalty to one implementation.
 
 It is to avoid building and maintaining a second complete C++ frontend without a compelling reason.
 
-The exact dependency and integration model belongs in `ARCHITECTURE.md`.
+The exact dependency and integration model belongs in `docs/ARCHITECTURE.md`.
 
 ---
 
@@ -1610,7 +1610,7 @@ C++L therefore benefits from a verification-oriented representation derived from
 
 The key design constraint is that this representation should describe the same program rather than inventing a competing interpretation.
 
-Its concrete form belongs in `ARCHITECTURE.md`.
+Its concrete form belongs in `docs/ARCHITECTURE.md`.
 
 ---
 
@@ -1637,7 +1637,7 @@ and:
 runtime meaning
 ```
 
-The mechanisms used to maintain that relationship belong in `ARCHITECTURE.md` and `TRUST.md`.
+The mechanisms used to maintain that relationship belong in `docs/ARCHITECTURE.md` and `TRUST.md`.
 
 ---
 
@@ -1695,7 +1695,7 @@ Clever abstractions can make such code harder to inspect.
 
 The design therefore favors deliberately boring implementation techniques in the most sensitive parts of the verifier.
 
-Exact coding and dependency rules belong in `AGENTS.md`, `TRUST.md`, and `ARCHITECTURE.md`.
+Exact coding and dependency rules belong in `AGENTS.md`, `TRUST.md`, and `docs/ARCHITECTURE.md`.
 
 ---
 
@@ -1883,7 +1883,7 @@ would make those workflows difficult to trust.
 
 C++L therefore values deterministic semantic results even when search strategies themselves may use heuristics.
 
-The concrete mechanisms belong in `ARCHITECTURE.md`.
+The concrete mechanisms belong in `docs/ARCHITECTURE.md`.
 
 ---
 
@@ -1913,7 +1913,7 @@ source change
 prove entire repository again
 ```
 
-The implementation strategy belongs in `ARCHITECTURE.md`.
+The implementation strategy belongs in `docs/ARCHITECTURE.md`.
 
 ---
 
@@ -2092,7 +2092,7 @@ replacing one solver adapter
 parallelizing verification
 ```
 
-`ARCHITECTURE.md` therefore owns the implementation structure.
+`docs/ARCHITECTURE.md` therefore owns the implementation structure.
 
 `DESIGN.md` records only the reasons behind major architectural directions where those reasons are useful for future decisions.
 
@@ -2584,7 +2584,7 @@ Does it create permanent architecture debt?
 Does it scale to large C++ repositories?
 ```
 
-The actual implementation invariants are documented in `ARCHITECTURE.md`, `TRUST.md`, and `AGENTS.md`.
+The actual implementation invariants are documented in `docs/ARCHITECTURE.md`, `TRUST.md`, and `AGENTS.md`.
 
 ---
 

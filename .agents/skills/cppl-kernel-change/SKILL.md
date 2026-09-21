@@ -10,9 +10,9 @@ Kernel changes receive the highest review standard.
 ## Read first
 
 - `AGENTS.md`
-- `SPEC.md`
-- `FOUNDATIONS.md`
-- `TRUST.md`
+- `docs/SPEC.md`
+- `docs/FOUNDATIONS.md`
+- `docs/TRUST.md`
 - relevant formalization
 - relevant kernel tests
 
@@ -64,4 +64,4 @@ Every semantic kernel change needs:
 
 Run `cppl-soundness-review` mentally or as a composed skill.
 
-Update `TRUST.md` if the TCB or trusted rule set changes.
+Update `docs/TRUST.md` if the TCB or trusted rule set changes.

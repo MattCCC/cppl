@@ -10,9 +10,9 @@ Implement proof ergonomics without weakening the kernel.
 ## Read first
 
 - `AGENTS.md`
-- relevant `SPEC.md`
-- `FOUNDATIONS.md`
-- `TRUST.md`
+- relevant `docs/SPEC.md`
+- `docs/FOUNDATIONS.md`
+- `docs/TRUST.md`
 - accepted RFC if required
 
 ## Workflow
@@ -30,7 +30,7 @@ Implement proof ergonomics without weakening the kernel.
 7. Add proofs that must fail.
 8. Add malformed evidence tests.
 9. Check termination and equality interactions.
-10. Update `STATUS.md`.
+10. Update `docs/STATUS.md`.
 
 A new tactic is not automatically a new trusted rule.
 

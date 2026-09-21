@@ -10,9 +10,9 @@ Keep the formal specification separate from a particular library implementation.
 ## Read first
 
 - `AGENTS.md`
-- `SPEC.md`
-- `TRUST.md`
-- `COMPATIBILITY.md`
+- `docs/SPEC.md`
+- `docs/TRUST.md`
+- `docs/COMPATIBILITY.md`
 - relevant C++ standard requirements
 
 ## For each model identify

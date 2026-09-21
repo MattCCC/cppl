@@ -2,7 +2,7 @@
 
 C++L builds on decades of work in mathematical logic, type theory, formal verification, programming-language design, automated reasoning, and C++ systems engineering.
 
-The mathematical foundations are described in detail in [FOUNDATIONS.md](FOUNDATIONS.md).
+The mathematical foundations are described in detail in [FOUNDATIONS.md](docs/FOUNDATIONS.md).
 
 C++L does not claim invention of propositions-as-types, dependent type theory, Hoare logic, refinement typing, SMT solving, or the other established ideas on which its proof system is built. There are many amazing people with amazing projects out there who have been serving as inspiration for this.
 

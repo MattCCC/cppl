@@ -27,7 +27,7 @@ It does **not** redefine language semantics or trust policy.
 Authoritative documents:
 
 ```text
-SPEC.md
+docs/SPEC.md
     language semantics
 
 TRUST.md
@@ -36,7 +36,7 @@ TRUST.md
 FOUNDATIONS.md
     mathematical foundations
 
-DESIGN.md
+docs/DESIGN.md
     design rationale
 
 COMPATIBILITY.md

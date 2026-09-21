@@ -11,8 +11,8 @@ Soundness vulnerabilities have priority over feature work.
 
 - `AGENTS.md`
 - `SECURITY.md`
-- `TRUST.md`
-- relevant `SPEC.md`
+- `docs/TRUST.md`
+- relevant `docs/SPEC.md`
 - affected implementation
 
 ## Workflow

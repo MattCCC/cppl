@@ -10,9 +10,9 @@ Proof semantics must correspond to the C++ that actually executes.
 ## Read first
 
 - `AGENTS.md`
-- `SPEC.md`
-- `COMPATIBILITY.md`
-- `ARCHITECTURE.md`
+- `docs/SPEC.md`
+- `docs/COMPATIBILITY.md`
+- `docs/ARCHITECTURE.md`
 - relevant C++ standard/Clang behavior
 
 ## For every modeled feature specify

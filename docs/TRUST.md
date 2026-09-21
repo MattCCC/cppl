@@ -4,7 +4,7 @@ This document defines the **Trusted Computing Base (TCB)** and trust boundaries 
 
 It does **not** define C++L language semantics.
 
-Language syntax and semantics are defined in [SPEC.md](SPEC.md).
+Language syntax and semantics are defined in [SPEC.md](docs/SPEC.md).
 
 The purpose of this document is to answer:
 
@@ -1689,7 +1689,7 @@ relative to that assumption (`SPEC.md` 27.2).
 Each of these requires an explicit update to this document before it is merged:
 
 - admitting recursive definitions (the termination argument in
-  `ARCHITECTURE.md` 97.7 would no longer hold);
+  `docs/ARCHITECTURE.md` 97.7 would no longer hold);
 - admitting a function with a partial-correctness contract as a core
   definition, or stating its contract as a theorem about its value;
 - any axiom or assumed contract. A `trusted law` is the one implemented form of

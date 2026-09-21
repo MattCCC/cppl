@@ -10,11 +10,11 @@ Treat the change as potentially adversarial.
 ## Read first
 
 - `AGENTS.md`
-- `SPEC.md`
-- `TRUST.md`
+- `docs/SPEC.md`
+- `docs/TRUST.md`
 - relevant implementation and tests
 
-Read `FOUNDATIONS.md` when the change affects the formal calculus.
+Read `docs/FOUNDATIONS.md` when the change affects the formal calculus.
 
 ## Review
 

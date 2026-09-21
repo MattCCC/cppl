@@ -27,7 +27,7 @@ SECURITY.md       vulnerability policy
 2. Identify which document owns that claim.
 3. Keep the authoritative definition there.
 4. Replace duplicated definitions elsewhere with short references.
-5. Check examples against `STATUS.md`.
+5. Check examples against `docs/STATUS.md`.
 6. Distinguish planned syntax from implemented syntax.
 7. Check terminology and verification statuses for consistency.
 8. Never modify normative semantics merely to make documentation agree with implementation.

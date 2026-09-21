@@ -10,10 +10,10 @@ Architecture must preserve a clear direction of authority.
 ## Read first
 
 - `AGENTS.md`
-- `ARCHITECTURE.md`
-- `DESIGN.md`
-- `TRUST.md`
-- `ROADMAP.md`
+- `docs/ARCHITECTURE.md`
+- `docs/DESIGN.md`
+- `docs/TRUST.md`
+- `docs/ROADMAP.md`
 - relevant RFCs
 
 ## Preserve the direction
@@ -51,8 +51,8 @@ Determine:
 - Does the frontend gain proof authority?
 - Does the design introduce a temporary bridge?
 - Can that bridge become accidental permanent architecture?
-- Does `ARCHITECTURE.md` need new diagrams?
+- Does `docs/ARCHITECTURE.md` need new diagrams?
 
 Prefer one authoritative path over parallel implementations.
 
-Update `ARCHITECTURE.md` with the implementation change.
+Update `docs/ARCHITECTURE.md` with the implementation change.

@@ -10,7 +10,7 @@ Performance work must preserve semantics, proof status, trust, and determinism.
 ## Read first
 
 - `AGENTS.md`
-- `ARCHITECTURE.md`
+- `docs/ARCHITECTURE.md`
 - relevant performance tests/benchmarks
 
 ## Workflow

@@ -10,10 +10,10 @@ A release must accurately state what C++L actually guarantees.
 ## Read first
 
 - `AGENTS.md`
-- `SPEC.md`
-- `TRUST.md`
-- `STATUS.md`
-- `COMPATIBILITY.md`
+- `docs/SPEC.md`
+- `docs/TRUST.md`
+- `docs/STATUS.md`
+- `docs/COMPATIBILITY.md`
 - `SECURITY.md`
 - `CHANGELOG.md` when present
 
@@ -23,7 +23,7 @@ Confirm:
 
 - specification matches implementation;
 - TCB documentation matches reality;
-- `STATUS.md` is current;
+- `docs/STATUS.md` is current;
 - supported C++ modes are accurate;
 - platform support is accurate;
 - negative proof tests pass;

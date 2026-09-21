@@ -10,8 +10,8 @@ VIR represents formal meaning, not arbitrary frontend structure.
 ## Read first
 
 - `AGENTS.md`
-- `ARCHITECTURE.md`
-- relevant `SPEC.md`
+- `docs/ARCHITECTURE.md`
+- relevant `docs/SPEC.md`
 - VIR definitions and lowering tests
 
 ## Preserve
@@ -37,7 +37,7 @@ VIR should remain:
 6. Update serialization/hash logic if applicable.
 7. Add equivalent-source and malformed-input tests.
 8. Check cache invalidation.
-9. Update `ARCHITECTURE.md` for structural VIR changes.
+9. Update `docs/ARCHITECTURE.md` for structural VIR changes.
 
 ## Do not
 

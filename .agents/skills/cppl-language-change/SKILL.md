@@ -12,18 +12,18 @@ Use this skill when a change affects C++L language semantics.
 Read the relevant parts of:
 
 - `AGENTS.md`
-- `SPEC.md`
-- `DESIGN.md`
-- `COMPATIBILITY.md`
-- `STATUS.md`
+- `docs/SPEC.md`
+- `docs/DESIGN.md`
+- `docs/COMPATIBILITY.md`
+- `docs/STATUS.md`
 - relevant files under `docs/rfcs/`
 
-Also read `TRUST.md` if proof authority, assumptions, erasure, or the TCB may change.
+Also read `docs/TRUST.md` if proof authority, assumptions, erasure, or the TCB may change.
 
 ## Workflow
 
 1. State the semantic change independently of its implementation.
-2. Identify the existing rule in `SPEC.md`.
+2. Identify the existing rule in `docs/SPEC.md`.
 3. Define the new rule precisely.
 4. Check that valid supported C++ remains valid C++L.
 5. Check contextual-keyword, parsing, template, macro, and module interactions.
@@ -34,7 +34,7 @@ Also read `TRUST.md` if proof authority, assumptions, erasure, or the TCB may ch
 10. Update the normative specification before treating implementation behavior as authoritative.
 11. Implement the smallest coherent architecture.
 12. Add positive and negative conformance tests.
-13. Update `STATUS.md`.
+13. Update `docs/STATUS.md`.
 
 ## Mandatory outcome
 
