@@ -27,7 +27,7 @@ Those are defined elsewhere.
 | Document                             | Responsibility                                              |
 | ------------------------------------ | ----------------------------------------------------------- |
 | [SPEC.md](SPEC.md)                   | Normative language semantics                                |
-| [GRAMMAR.md](docs/GRAMMAR.md)             | Normative concrete syntax and grammar                       |
+| [GRAMMAR.md](docs/GRAMMAR.md)        | Normative concrete syntax and grammar                       |
 | [COMPATIBILITY.md](COMPATIBILITY.md) | C++ source, ABI, standard, and toolchain compatibility      |
 | [TRUST.md](TRUST.md)                 | Trusted Computing Base, assumptions, and trust boundaries   |
 | [ARCHITECTURE.md](ARCHITECTURE.md)   | Compiler structure, components, dependencies, and data flow |
@@ -154,30 +154,30 @@ represent as part of its language semantics.
 
 The fundamental relationship is:
 
-$$
-C++ \subset C++L
-$$
+```math
+\mathrm{C{+}{+}} \subset \mathrm{C{+}{+}L}
+```
 
 Equivalently, every valid C++ program is also a valid C++L program:
 
-$$
-\forall p \in C++,\quad p \in C++L
-$$
+```math
+\forall p \in \mathrm{C{+}{+}}, \quad p \in \mathrm{C{+}{+}L}
+```
 
 C++L adds compile-time language constructs while retaining C++ as the runtime
 execution language. Those constructs admit erasure to ordinary C++:
 
-$$
-\operatorname{erase} : C++L \rightarrow C++
-$$
+```math
+\mathrm{erase} : \mathrm{C{+}{+}L} \to \mathrm{C{+}{+}}
+```
 
 The central runtime requirement is semantic preservation:
 
-$$
-\llbracket \operatorname{erase}(p) \rrbracket
+```math
+\mathrm{Sem}_{\mathrm{runtime}}(p)
 =
-\llbracket p \rrbracket_{\mathrm{runtime}}
-$$
+\mathrm{Sem}_{\mathrm{runtime}}(\mathrm{erase}(p))
+```
 
 Thus C++L extends the language used to state and prove program properties
 without introducing a second runtime semantics.
