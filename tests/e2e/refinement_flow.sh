@@ -407,6 +407,53 @@ struct S { int x; S(int v) : x(v) {} };
 verified int f() ensures(result == 1) { S s(1); return s.x; }
 CPP
 
+# --- Element places ----------------------------------------------------------
+#
+# An array is a record whose members are its elements, so a constant index names
+# a place exactly as a field name does. A variable index names no single place
+# and is refused, because deciding which element it selects needs the extent
+# obligations the capability model supplies, not a guess.
+
+accept array_constant_index <<'CPP'
+verified int f() ensures(result == 2) { int a[3]{1, 2, 3}; return a[1]; }
+CPP
+
+accept element_write_is_seen <<'CPP'
+verified int f() ensures(result == 9) { int a[3]{1, 2, 3}; a[1] = 9; return a[1]; }
+CPP
+
+accept other_elements_untouched <<'CPP'
+verified int f() ensures(result == 1) { int a[3]{1, 2, 3}; a[1] = 9; return a[0]; }
+CPP
+
+refuse element_write_does_not_reach_a_sibling 'does not satisfy its contract' <<'CPP'
+verified int f() ensures(result == 9) { int a[3]{1, 2, 3}; a[1] = 9; return a[0]; }
+CPP
+
+refuse written_element_keeps_no_old_value 'does not satisfy its contract' <<'CPP'
+verified int f() ensures(result == 2) { int a[3]{1, 2, 3}; a[1] = 9; return a[1]; }
+CPP
+
+refuse subscript_outside_the_extent 'cannot state as a value' <<'CPP'
+verified int f() ensures(result == 0) { int a[3]{1, 2, 3}; return a[7]; }
+CPP
+
+# A variable index must not be resolved to some element: it names no place here.
+refuse variable_index_read 'cannot state as a value' <<'CPP'
+verified int f(unsigned i) expects(i < 3u) ensures(result > 0) { int a[3]{1, 2, 3}; return a[i]; }
+CPP
+
+refuse variable_index_write 'extent obligations of RFC 0014' <<'CPP'
+verified int f(unsigned i) expects(i < 3u) ensures(result == 1) { int a[3]{1, 2, 3}; a[i] = 5; return a[0]; }
+CPP
+
+# A member that is itself an aggregate needs a place path, not one field index.
+refuse nested_aggregate_member 'which is not modeled' <<'CPP'
+struct Inner { int v; };
+struct Outer { Inner i; };
+verified int f() ensures(result == 5) { Outer o{{5}}; return o.i.v; }
+CPP
+
 # --- Gaps: refused today, and the reason must stay visible -------------------
 #
 # These are reasoning or modeling gaps, not soundness boundaries. Each is

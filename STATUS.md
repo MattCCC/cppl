@@ -680,6 +680,13 @@ refinement obligations they owe; declared refined members stay refused, because
 ordinary code still constructs records without generating any obligation, which
 is the remaining half of that boundary.
 
+An array local is the same model: it is a record whose members are its elements,
+so a constant index names a place and a write reaches exactly that element. A
+variable index is refused rather than resolved to some element, because deciding
+which element it names soundly requires the extent obligations of RFC 0014. A
+member that is itself an aggregate is refused too: the place model carries one
+field index, and a nested member needs a place path.
+
 The same membership checks cover partial-correctness bodies containing loops and
 their callers, including unused refined locals. Corrupt or unresolved refinement
 metadata fails closed. This closes a verification gap without promoting the

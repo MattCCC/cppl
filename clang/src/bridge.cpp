@@ -537,6 +537,34 @@ std::optional<std::size_t> tracked_member(CXCursor cursor, const Locals& locals)
     return find_local(locals, clang_getCursorReferenced(object), index);
 }
 
+// The tracked place a subscript names, if its object is a tracked local and its
+// index is a constant Clang evaluated. A variable index names no single place
+// here: which element it selects is not decided, and deciding it soundly needs
+// the extent obligation of the capability model rather than a guess.
+std::optional<std::size_t> tracked_element(CXCursor cursor, const Locals& locals) {
+    const auto children = children_of(cursor);
+    if (children.size() != 2)
+        return std::nullopt;
+    CXCursor object = children[0];
+    while (clang_getCursorKind(object) == CXCursor_UnexposedExpr || clang_getCursorKind(object) == CXCursor_ParenExpr) {
+        const auto inner = children_of(object);
+        if (inner.size() != 1)
+            return std::nullopt;
+        object = inner[0];
+    }
+    if (clang_getCursorKind(object) != CXCursor_DeclRefExpr)
+        return std::nullopt;
+    CXEvalResult evaluated = clang_Cursor_Evaluate(children[1]);
+    if (evaluated == nullptr)
+        return std::nullopt;
+    const bool integral = clang_EvalResult_getKind(evaluated) == CXEval_Int;
+    const long long index = integral ? clang_EvalResult_getAsLongLong(evaluated) : -1;
+    clang_EvalResult_dispose(evaluated);
+    if (index < 0)
+        return std::nullopt;
+    return find_local(locals, clang_getCursorReferenced(object), static_cast<std::uint32_t>(index));
+}
+
 // Whether two Clang types denote the same modeled value. Qualifiers are not
 // part of a value, so a read of a `const` local is the value it holds; two
 // spellings that Clang laid out identically are the same machine integer. A
@@ -745,6 +773,16 @@ Expr build_expression(CXCursor cursor, const std::vector<CXCursor>& parameters, 
     if (kind == CXCursor_ArraySubscriptExpr) {
         const auto children = children_of(cursor);
         if (children.size() == 2) {
+            // An element of a tracked array is its own place, read at its own
+            // current version, so a write to one element leaves the others
+            // alone (SPEC.md 12.10).
+            if (const auto element = tracked_element(cursor, locals)) {
+                Expr expr;
+                expr.type = locals[*element].type;
+                expr.location = presumed_location(clang_getCursorLocation(cursor));
+                expr.node = LocalRef{locals[*element].version, locals[*element].spelling};
+                return expr;
+            }
             Expr subject = build_expression(strip(children[0]), parameters, locals, depth + 1);
             if (subject.type.representation.kind == source::RepresentationKind::Array) {
                 if (CXEvalResult evaluated = clang_Cursor_Evaluate(children[1])) {
@@ -1811,7 +1849,12 @@ struct BodyLowering {
                                         const std::vector<CXCursor>& declared, std::size_t index,
                                         const Continuation& next, const Locals& locals, unsigned depth) {
         const auto& components = type.representation.components;
-        if (type.representation.kind != source::RepresentationKind::Record || components.empty() ||
+        const bool array = type.representation.kind == source::RepresentationKind::Array;
+        // An array is a record whose members are its elements, so a constant
+        // index names a place exactly as a field name does. A variable index
+        // does not: which place it names is not decided here, and deciding it
+        // needs the extent obligation the capability model supplies.
+        if ((type.representation.kind != source::RepresentationKind::Record && !array) || components.empty() ||
             type.projections.size() != components.size()) {
             return reject("local '" + name + "' has type '" + type.spelling + "', which is not modeled");
         }
@@ -1839,32 +1882,35 @@ struct BodyLowering {
                           " members; partial aggregate initialization is not modeled");
         }
 
+        const auto written = [&](std::size_t member) {
+            return array ? name + "[" + components[member].name + "]" : name + "." + components[member].name;
+        };
+
         Locals declaring = locals;
         std::vector<std::uint32_t> versions;
         std::vector<Expr> values;
         for (std::size_t member = 0; member < components.size(); ++member) {
             const Type& member_type = type.projections[member];
             if (member_type.kind == TypeKind::Unsupported || member_type.kind == TypeKind::Value) {
-                return reject("member '" + name + "." + components[member].name + "' has type '" +
-                              member_type.spelling + "', which is not modeled");
+                return reject("member '" + written(member) + "' has type '" + member_type.spelling +
+                              "', which is not modeled");
             }
             std::vector<std::size_t> invalidated;
             auto evaluated = evaluate(elements[member], declaring, invalidated);
             if (!evaluated)
                 return std::nullopt;
             if (!invalidated.empty())
-                return reject("initializing '" + name + "." + components[member].name +
+                return reject("initializing '" + written(member) +
                               "' has uncertain aliases; use a separate call statement");
             if (!std::holds_alternative<Unsupported>(evaluated->node) &&
                 !same_modeled_value(member_type, evaluated->type)) {
-                return reject("initializing '" + name + "." + components[member].name + "' of type '" +
-                              member_type.spelling + "' from '" + evaluated->type.spelling +
-                              "' is a conversion that is not modeled");
+                return reject("initializing '" + written(member) + "' of type '" + member_type.spelling + "' from '" +
+                              evaluated->type.spelling + "' is a conversion that is not modeled");
             }
             versions.push_back(next_version++);
             values.push_back(std::move(*evaluated));
             declaring.push_back(Local{declaration, versions.back(), member_type, std::nullopt, false,
-                                      static_cast<std::uint32_t>(member), name + "." + components[member].name});
+                                      static_cast<std::uint32_t>(member), written(member)});
         }
 
         std::optional<Expr> body = lower_declaration(declared, index + 1, next, declaring, depth);
@@ -1873,8 +1919,8 @@ struct BodyLowering {
         // Innermost member last, so each member's version is established before
         // the body that reads it and the version order matches the binding order.
         for (std::size_t member = components.size(); member > 0; --member) {
-            body = bind(versions[member - 1], name + "." + components[member - 1].name, std::move(values[member - 1]),
-                        std::move(*body), declaration, type.projections[member - 1]);
+            body = bind(versions[member - 1], written(member - 1), std::move(values[member - 1]), std::move(*body),
+                        declaration, type.projections[member - 1]);
         }
         return body;
     }
@@ -1999,6 +2045,12 @@ struct BodyLowering {
                 return member;
             return reject("this member's object is not tracked storage of this body, so writing it has no modeled "
                           "effect");
+        }
+        if (clang_getCursorKind(target) == CXCursor_ArraySubscriptExpr) {
+            if (const auto element = tracked_element(target, locals))
+                return element;
+            return reject("this subscript does not name one tracked element: writing through a variable index "
+                          "requires the extent obligations of RFC 0014, which are not implemented");
         }
         if (clang_getCursorKind(target) != CXCursor_DeclRefExpr) {
             return reject("only a local variable is assigned in a modeled body");

@@ -59,8 +59,15 @@ reject widening_initializer 'not modeled' \
     'verified unsigned f(unsigned x) ensures(result == x) { unsigned long y = x; return x; }'
 reject narrowing_assignment 'not modeled' \
     'verified unsigned f(unsigned x, unsigned long z) ensures(result == x) { unsigned y = x; y = z; return y; }'
-reject aggregate_initializer "type 'unsigned int\[2\]', which is not modeled" \
-    'verified unsigned f(unsigned x) ensures(result == x) { unsigned y[2] = {x, x}; return x; }'
+# An array local is tracked as one place per element (SPEC.md 12.10), so an
+# element holds what its initializer put there and nothing more. A claim about
+# one that its construction does not establish must still fail.
+reject aggregate_element_is_not_unconstrained 'does not satisfy its contract' \
+    'verified unsigned f(unsigned x) ensures(result == 0u) { unsigned y[2] = {x, x}; return y[1]; }'
+# A variable index names no single place, so it is refused rather than resolved
+# to some element; deciding which needs the extent obligations of RFC 0014.
+reject variable_index_names_no_place 'cannot state as a value' \
+    'verified unsigned f(unsigned x, unsigned i) expects(i < 2u) ensures(result == x) { unsigned y[2] = {x, x}; return y[i]; }'
 reject empty_braces 'single modeled value' \
     'verified unsigned f(unsigned x) ensures(result == x) { unsigned y{}; return x; }'
 reject typedef_declaration 'only variable declarations' \
