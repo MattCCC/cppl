@@ -25,18 +25,26 @@ ships today is:
 initialize / initialized / shutdown / exit
 textDocument/didOpen, didChange, didClose   full-document sync
 textDocument/publishDiagnostics             from the real compile pipeline
+textDocument/formatting                     canonical C++L clause placement
+textDocument/rangeFormatting                scoped to the requested range
+textDocument/onTypeFormatting               scoped to the smallest safe unit
 ```
 
 Diagnostics come from `driver::compile_buffer` over the live buffer — the same
 pipeline the CLI runs — so the server holds no decomposition, exhaustiveness or
 verification logic of its own. A structural linter adds contextual C++L checks
 over the syntax that pipeline already recognized, rather than recognizing it a
-second time.
+second time. `publishDiagnostics` also reports canonical-formatting style
+violations (severity `Warning`, category `Style`) from the same formatter
+engine used to fix them, so an editor sees a clause-placement problem before
+the user ever asks to format.
 
-The server advertises only `textDocumentSync`. **Hover, navigation, completion,
-semantic tokens and incremental sync are specified below but not implemented**,
-and are deliberately not advertised as capabilities: an editor is told what the
-server can do, never what it intends to do. `STATUS.md` tracks this.
+The server advertises `textDocumentSync`, `documentFormattingProvider`,
+`documentRangeFormattingProvider`, and `documentOnTypeFormattingProvider`.
+**Hover, navigation, completion, and semantic tokens are specified below but
+not implemented**, and are deliberately not advertised as capabilities: an
+editor is told what the server can do, never what it intends to do. `STATUS.md`
+tracks this.
 
 ---
 
@@ -385,6 +393,57 @@ C++ completion and navigation inside the predicate and the base type stay Clang'
 Source mapping is what keeps this usable. A refinement declaration lowers to an
 alias in place, carrying one newline per newline of the declaration, so a Clang
 diagnostic on any later line still maps to the line the author wrote.
+
+---
+
+## Formatting
+
+`cppl-lsp` and the standalone `cppl-format` CLI (`tools/cppl-format/`) share
+one canonical-formatting engine, `compiler/formatter`: both call the same
+`format_document`/`format_ranges`/`format_on_type` functions and produce
+byte-identical output, the same way both already share one compile pipeline
+(`cppl::driver::compile_buffer`).
+
+Ordinary C++ formatting is delegated to `clang-format` via the repository's
+existing subprocess/tool-driver abstraction — the formatter does not link
+LibFormat or reimplement clang-format's own layout rules. The engine only
+relocates C++L-specific clauses:
+
+```text
+expects(...)
+ensures(...)
+invariant(...)
+proves(...)
+```
+
+Each begins its own continuation line, indented one level from the enclosing
+declaration or loop header, with the opening `{` on its own separate line back
+at the declaration's column, and no whitespace between the clause keyword and
+its `(`:
+
+```cpp
+verified int fifty(int x)
+    ensures(result == 50)
+{
+    return 50;
+}
+```
+
+Refinement `where` clauses stay inline and are never relocated:
+
+```cpp
+type Percentage = int where(self >= 0 && self <= 100);
+```
+
+`textDocument/rangeFormatting` and `textDocument/onTypeFormatting` are scoped:
+a requested range or cursor position expands only to the complete C++L clause
+or ordinary-C++ line it touches, never to the whole document, and clauses
+outside that region are left untouched.
+
+The same clause-placement rule is reported as `Style`-category warnings
+through `publishDiagnostics` (`formatter::check_style`) — a pure token-position
+check with no `clang-format` subprocess, so it is cheap enough to run on every
+edit.
 
 ---
 
@@ -1040,15 +1099,14 @@ See `vscode/cppl-vscode/README.md` for extension-specific configuration
 ## Currently unsupported
 
 This is a first production-quality vertical slice: transport, document
-synchronization, and diagnostics. The following are explicitly out of scope
-for this milestone and are not implemented:
+synchronization, diagnostics, and canonical C++L formatting. The following are
+explicitly out of scope for this milestone and are not implemented:
 
 ```text
 hover
 completion
 go-to-definition / references
 rename
-document formatting
 semantic tokens
 proof search / interactive proof state
 incremental (as opposed to full) text document sync

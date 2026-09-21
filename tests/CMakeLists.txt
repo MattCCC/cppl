@@ -108,10 +108,24 @@ target_link_libraries(lsp_json_test PRIVATE cppl_lsp)
 cppl_add_unit_test(lsp_transport_test unit/lsp_transport_test.cpp)
 target_link_libraries(lsp_transport_test PRIVATE cppl_lsp)
 
+# Proves the LSP formatting handlers and the shared cppl::formatter engine
+# they wrap produce byte-identical output (ARCHITECTURE.md: one engine, not
+# a parallel implementation per surface).
+cppl_add_unit_test(lsp_formatting_test unit/lsp_formatting_test.cpp)
+target_link_libraries(lsp_formatting_test PRIVATE cppl_lsp cppl_formatter)
+
 # Driver-level suites. They exercise the installed command exactly as a
 # developer or CI would.
 set(CPPL_TEST_FIXTURES "${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
 set(CPPL_TEST_WORK "${CMAKE_CURRENT_BINARY_DIR}/work")
+
+# compiler/formatter: the one canonical-formatting engine shared by cppl-lsp
+# and the cppl-format CLI. Exercised directly against inline C++L snippets
+# and, for the idempotency property, against the real fixture corpus above.
+cppl_add_unit_test(formatter_test unit/formatter_test.cpp)
+target_link_libraries(formatter_test PRIVATE cppl_formatter)
+target_compile_definitions(formatter_test PRIVATE
+    CPPL_TEST_FIXTURES_DIR="${CPPL_TEST_FIXTURES}")
 
 # The primary acceptance invariant (task spec): the LSP pipeline must not
 # introduce a diagnostic that the CLI itself would not, over the same real
@@ -128,6 +142,12 @@ function(cppl_add_script_test name script)
                      $<TARGET_FILE:cppl> "${CPPL_TEST_FIXTURES}" "${CPPL_TEST_WORK}"
                      "${CPPL_DEFAULT_CLANG}")
 endfunction()
+
+# cppl-format: the CLI surface of compiler/formatter (--check/-i), exercised
+# as an installed command exactly as a developer or CI would invoke it.
+add_test(NAME format_check
+         COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/format/format_check.sh"
+                 $<TARGET_FILE:cppl-format> "${CPPL_TEST_FIXTURES}" "${CPPL_TEST_WORK}")
 
 cppl_add_script_test(conformance_ordinary_cpp conformance/ordinary_cpp.sh)
 cppl_add_script_test(conformance_contextual_identifiers conformance/contextual_identifiers.sh)
