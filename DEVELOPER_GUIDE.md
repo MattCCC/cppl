@@ -235,6 +235,168 @@ caller facts
     -> new caller facts
 ```
 
+### 2.2. Calling verified code from ordinary C++
+
+`verified` does not insert runtime precondition checks.
+
+Consider:
+
+```cpp
+verified unsigned withdraw(unsigned balance, unsigned amount)
+    expects (amount <= balance)
+    ensures (result == balance - amount)
+{
+    return balance - amount;
+}
+```
+
+A verified caller must prove:
+
+```text
+amount <= balance
+```
+
+before making the call.
+
+Ordinary unverified C++ can still call the erased runtime function. C++L does not
+silently insert:
+
+```cpp
+assert(amount <= balance);
+```
+
+or any equivalent check.
+
+Therefore:
+
+```text
+verified caller
+    -> must prove `expects`
+
+ordinary C++ caller
+    -> no compile-time C++L proof unless that caller is also verified
+
+runtime caller outside C++L verification
+    -> no hidden contract enforcement
+```
+
+If a public API must reject invalid runtime input, add explicit runtime validation
+at the boundary.
+
+For example, conceptually:
+
+```cpp
+bool try_withdraw(
+    unsigned balance,
+    unsigned amount,
+    unsigned& result)
+{
+    if (amount > balance) {
+        return false;
+    }
+
+    result = withdraw(balance, amount);
+    return true;
+}
+```
+
+The validation executes at runtime. The verified `withdraw` contract does not.
+
+This distinction is fundamental:
+
+```text
+expects (...)
+    = proof obligation
+
+runtime validation
+    = executable check
+```
+
+Do not use a compile-time contract where the application actually requires a
+runtime security, protocol or input-validation check.
+
+### 2.3. Calling ordinary or unverified functions from verified code
+
+A verified function may not invent semantics for an ordinary function call.
+
+Suppose:
+
+```cpp
+unsigned external_value();
+```
+
+and:
+
+```cpp
+verified unsigned use_external()
+    ensures (result <= 100u)
+{
+    return external_value();
+}
+```
+
+The declaration of `external_value` alone does not prove that its result is at
+most `100u`.
+
+Verified code can rely on an external call only through information that C++L can
+soundly justify, such as:
+
+```text
+a checked verified contract
+a checked pure/formal model
+explicit runtime validation
+an explicit trusted boundary
+```
+
+If a call may mutate storage, the verifier must also account for those effects.
+
+An unmodeled call must never become an implicit theorem merely because ordinary
+C++ permits the call.
+
+The general rule is:
+
+```text
+ordinary C++ says:
+    "this call is well-typed"
+
+C++L additionally asks:
+    "what may this call return or mutate, and what evidence justifies that?"
+```
+
+If the verifier cannot answer the second question soundly, verification fails or
+the relevant facts are conservatively invalidated.
+
+### 2.4. Contracts and exceptional exits
+
+`ensures (...)` describes a normal return.
+
+For example:
+
+```cpp
+verified int f()
+    ensures (result > 0)
+{
+    ...
+}
+```
+
+means that every successfully completed normal return must satisfy:
+
+```text
+result > 0
+```
+
+It does not automatically describe an exception path.
+
+After a potentially throwing call, a postcondition is available only on the path
+where that call completed normally.
+
+`noexcept` retains its ordinary C++ meaning. C++L does not reinterpret it as a
+proof annotation.
+
+If exception behavior cannot be modeled soundly by the verifier, verification of
+that path must be rejected rather than treating the operation as non-throwing.
+
 ## 3. `result`, `old` and normal post-state
 
 `result` denotes the returned value only in a non-void function postcondition.
@@ -730,7 +892,7 @@ exists (unsigned x) { P(x) }
 means:
 
 ```text
-there is at least one unsigned x for which P(x) holds
+there is at least one x for which P(x) holds
 ```
 
 Both forms are proof-only:
@@ -747,19 +909,60 @@ exists
 
 They do not enumerate runtime values.
 
-For example:
+#### Quantifier domains are determined by their types
+
+The binder type matters.
+
+This:
 
 ```cpp
-law every_percentage_is_bounded()
-    proves (
-        forall (unsigned x) {
-            x <= 100u -> x <= 100u
-        }
-    );
+forall (unsigned x) {
+    P(x)
+}
 ```
 
-does not generate a loop over all `unsigned` values. The verifier reasons about
-the quantified proposition symbolically.
+quantifies over the values of the C++ `unsigned` machine type.
+
+It does not mean mathematical natural numbers.
+
+Likewise:
+
+```cpp
+forall (@N n) {
+    P(n)
+}
+```
+
+quantifies over mathematical natural numbers, while:
+
+```cpp
+forall (@Z z) {
+    P(z)
+}
+```
+
+quantifies over mathematical integers.
+
+Therefore these domains are different:
+
+```text
+unsigned
+    -> finite C++ machine domain
+
+@N
+    -> unbounded mathematical natural numbers
+
+@Z
+    -> unbounded mathematical integers
+```
+
+Machine arithmetic retains its C++ semantics inside machine-typed propositions.
+For example, unsigned arithmetic wraps according to the C++ machine model.
+
+Mathematical domains use their specified mathematical semantics.
+
+Never silently transfer a theorem between a machine domain and an unbounded
+mathematical domain without a checked conversion or relation.
 
 Nested quantifiers are allowed where the logical model supports them:
 
@@ -777,57 +980,18 @@ law equality_is_symmetric()
 An existential proposition requires witness evidence. It is not enough to show
 that no contradiction was found.
 
-For example:
-
-```cpp
-law an_unsigned_zero_exists()
-    proves (exists (unsigned x) { x == 0u });
-```
-
-must ultimately be justified by evidence corresponding to a concrete witness such
-as `0u`, according to the proof grammar.
-
 A useful mental model is:
 
 ```text
 forall
-    = introduce an arbitrary value and prove the property for it
+    = introduce an arbitrary value and prove the property
 
 exists
     = provide a witness and prove the property for that witness
 ```
 
 Quantified variables are proof/specification binders. They do not introduce
-runtime variables, storage, allocation, object lifetime or ABI-visible state.
-
-The canonical syntax is:
-
-```cpp
-forall (Type name) {
-    proposition
-}
-
-exists (Type name) {
-    proposition
-}
-```
-
-Inside `proves (...)`, this becomes:
-
-```cpp
-law example()
-    proves (
-        forall (unsigned x) {
-            exists (unsigned y) {
-                y == x
-            }
-        }
-    );
-```
-
-`forall` and `exists` are contextual C++L words. Outside a C++L specification
-context, ordinary C++ identifiers with those names remain ordinary C++ where
-the grammar permits them.
+runtime storage, allocation, lifetime or ABI-visible state.
 
 ## 6. Refinement types
 
@@ -1037,6 +1201,159 @@ verified Positive strengthen(NonNegative value)
 ```
 
 This is rejected unless the current context also proves `value > 0`.
+
+### 6.2. Refinements at runtime and ABI boundaries
+
+A refinement has verification identity but no extra runtime representation.
+
+For example:
+
+```cpp
+type Positive = int where (self > 0);
+```
+
+erases to a representation equivalent to:
+
+```cpp
+int
+```
+
+at the native ABI boundary.
+
+There is no hidden runtime tag saying:
+
+```text
+this int is Positive
+```
+
+and there is no hidden constructor performing validation.
+
+This has an important consequence for external and unverified callers.
+
+Suppose a public C++L API declares:
+
+```cpp
+verified int consume(Positive value)
+    ensures (result > 0);
+```
+
+The verifier can rely on the refinement when a checked C++L caller proves the
+crossing.
+
+But after erasure, the native ABI receives an `int`.
+
+Code outside the verified C++L boundary must therefore not be assumed to have
+proved:
+
+```text
+value > 0
+```
+
+merely because the source-level declaration used `Positive`.
+
+At an FFI, plugin, network, deserialization, C API or other unverified boundary,
+use:
+
+```text
+runtime validation
+or
+an explicit trusted boundary
+```
+
+before treating the incoming base representation as a refinement.
+
+The rule is:
+
+```text
+refinement spelling
+    != runtime validation
+
+refinement erasure
+    != runtime type check
+
+verified crossing
+    = proof that the predicate holds
+```
+
+This is also why refinements do not create distinct native overload identities.
+
+### 6.3. Refinement mutation and alias invalidation
+
+Refinement facts belong to logical value versions, not permanently to variable
+names.
+
+For example:
+
+```cpp
+type Positive = int where (self > 0);
+
+verified void set_one(Positive& value)
+{
+    value = 1;
+}
+```
+
+the new stored value must satisfy:
+
+```text
+1 > 0
+```
+
+A write such as:
+
+```cpp
+value = 0;
+```
+
+is rejected because it would establish a new value version that does not satisfy
+the declared refinement.
+
+Aliasing also matters.
+
+Consider:
+
+```cpp
+verified void mutate(int& value);
+
+verified int example(Positive& positive, int& alias)
+{
+    mutate(alias);
+    return positive;
+}
+```
+
+If `alias` may refer to the same storage as `positive`, a call that can mutate
+`alias` may invalidate previously known facts about `positive`.
+
+The verifier must therefore conservatively invalidate facts about any storage
+that the call may modify through an alias.
+
+A `const` reference does not make the underlying object globally immutable:
+
+```cpp
+const int& view = value;
+int& writer = value;
+```
+
+Mutation through `writer` changes what `view` observes.
+
+C++L must reason about storage identity and possible aliases, not merely variable
+spelling.
+
+The practical rule is:
+
+```text
+read
+    -> may use facts about the current logical version
+
+write
+    -> creates a new logical version
+
+possible alias write
+    -> invalidates facts that may refer to that storage
+```
+
+A postcondition may establish new facts after the mutation.
 
 ## 7. Pure functions
 
