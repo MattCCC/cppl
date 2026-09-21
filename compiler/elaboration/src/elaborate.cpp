@@ -1349,6 +1349,7 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
         law.parameters = *parameters;
         law.proposition = std::move(*proposition);
         law.range = declaration.range;
+        law.trusted = declaration.trusted;
         law.proposition_range.begin = declaration.proposition()->location;
         admitted_laws.emplace(law_usr, law.id);
         result.module.laws.push_back(std::move(law));

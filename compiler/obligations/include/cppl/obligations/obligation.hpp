@@ -54,6 +54,11 @@ struct Obligation {
     std::optional<vir::LawId> law;
     std::optional<vir::ProofId> proof;
 
+    // An explicit assumption the author wrote `trusted` for (SPEC.md 27).
+    // Nothing discharges it: it is reported as TRUSTED, never as proven, and
+    // the trust report names it.
+    bool trusted = false;
+
     kernel::Proposition goal;
     source::SourceRange range;
 };

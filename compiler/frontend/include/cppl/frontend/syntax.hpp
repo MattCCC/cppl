@@ -35,6 +35,10 @@ struct LawDeclaration {
     source::ByteSpan parameters;
     std::vector<Clause> clauses;
 
+    // Whether the author wrote `trusted law` (SPEC.md 27): the proposition is
+    // assumed, not proved, and is reported as an explicit trusted assumption.
+    bool trusted = false;
+
     [[nodiscard]] const Clause* proposition() const;
 
     // The precondition the proposition is stated under, if the law has one.

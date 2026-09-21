@@ -277,6 +277,10 @@ Verdict Verdict::proven(const kernel::Acceptance& acceptance, const Obligation& 
     return {Status::Proven, {}};
 }
 
+Verdict Verdict::trusted(std::string declaration) {
+    return {Status::Trusted, std::move(declaration)};
+}
+
 Verdict Verdict::unresolved(std::string reason) {
     return {Status::Unresolved, std::move(reason)};
 }

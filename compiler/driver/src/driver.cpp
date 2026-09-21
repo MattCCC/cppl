@@ -34,6 +34,7 @@ struct Summary {
     std::size_t proven_by_written_proof = 0;
     std::size_t proofs_proven = 0;
     std::size_t unresolved = 0;
+    std::vector<std::string> trusted; // one entry per explicit assumption
 };
 
 struct UnitOutcome {
@@ -192,6 +193,7 @@ UnitOutcome compile_unit(const Options& options, const Input& input, const std::
     summary.proven_by_written_proof += result.counters.proven_by_written_proof;
     summary.proofs_proven += result.counters.proofs_proven;
     summary.unresolved += result.counters.unresolved;
+    summary.trusted.insert(summary.trusted.end(), result.counters.trusted.begin(), result.counters.trusted.end());
 
     return outcome;
 }
@@ -207,7 +209,10 @@ void print_trust_report(const Options& options, const Summary& summary) {
     std::cout << "Laws proven:                 " << summary.proven << "\n";
     std::cout << "  by a written proof:        " << summary.proven_by_written_proof << "\n";
     std::cout << "Proof declarations proven:   " << summary.proofs_proven << "\n";
-    std::cout << "Laws trusted:                0\n";
+    std::cout << "Laws trusted:                " << summary.trusted.size() << "\n";
+    for (const std::string& assumption : summary.trusted) {
+        std::cout << "  assumed:                 " << assumption << "\n";
+    }
     std::cout << "Function contracts proven:   " << summary.contracts_proven << "\n";
     std::cout << "  partial correctness only:  " << summary.partial_contracts_proven << "\n";
     std::cout << "Call preconditions proven:   " << summary.call_preconditions_proven << "\n";
@@ -217,7 +222,7 @@ void print_trust_report(const Options& options, const Summary& summary) {
     std::cout << "Runtime validation sites:    0\n";
     std::cout << "Unverified FFI boundaries:   not analysed\n\n";
     std::cout << "Trusted solvers:             0\n";
-    std::cout << "Trusted external axioms:     0\n\n";
+    std::cout << "Trusted external axioms:     " << summary.trusted.size() << "\n\n";
     std::cout << "Kernel version:              " << kernel::kKernelVersion << "\n";
     std::cout << "Formal core version:         " << kernel::kFormalCoreVersion << "\n";
     std::cout << "Compiler version:            " << CPPL_VERSION << "\n";

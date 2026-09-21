@@ -32,6 +32,12 @@ class Verdict {
   public:
     [[nodiscard]] static Verdict proven(const kernel::Acceptance& acceptance, const Obligation& obligation);
 
+    // An assumption the author stated explicitly (SPEC.md 27). This is not a
+    // weaker kind of proof: nothing was proved, and the trust report names every
+    // one of these. It exists so that a gap C++L cannot close is recorded where
+    // it can be audited, instead of being closed silently.
+    [[nodiscard]] static Verdict trusted(std::string declaration);
+
     [[nodiscard]] static Verdict unresolved(std::string reason);
 
     [[nodiscard]] Status status() const noexcept {
@@ -42,6 +48,9 @@ class Verdict {
     }
     [[nodiscard]] bool is_proven() const noexcept {
         return status_ == Status::Proven;
+    }
+    [[nodiscard]] bool is_trusted() const noexcept {
+        return status_ == Status::Trusted;
     }
 
   private:

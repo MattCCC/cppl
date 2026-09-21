@@ -1946,6 +1946,7 @@ Program generate(const vir::Module& module, const elaboration::Result& elaborate
         obligation.subject = law.name;
         obligation.origin = Origin::LawProposition;
         obligation.range = law.range;
+        obligation.trusted = law.trusted;
         obligation.id = identify(program.context, law.name, goal);
         obligation.goal = std::move(goal);
         program.obligations.push_back(std::move(obligation));

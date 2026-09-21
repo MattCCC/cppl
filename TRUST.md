@@ -1658,10 +1658,32 @@ AI systems              no privileged path exists
 FFI contracts           none can be declared
 ```
 
-A trust report therefore shows zero trusted solvers and zero trusted external
-axioms, and says so because it is true, not because the fields are unfilled.
-Unverified FFI boundaries are reported as _not analysed_ rather than as zero:
-C++L does not yet look for them.
+A trust report therefore shows zero trusted solvers, and says so because it is
+true, not because the field is unfilled. Unverified FFI boundaries are reported
+as _not analysed_ rather than as zero: C++L does not yet look for them.
+
+Trusted external axioms are no longer always zero. A `trusted law` (`SPEC.md`
+27) is an explicit assumption: its proposition is stated to the formal core and
+admitted without proof. This is the one mechanism by which a proposition becomes
+usable without evidence, and it exists so that a fact C++L cannot establish - an
+external API contract, an OS guarantee - is recorded where it can be audited
+rather than closed silently.
+
+Its discipline is what keeps it from being a hole:
+
+- it is written by the author, never inferred, and never a fallback for a failed
+  proof (`AGENTS.md` 23; `SPEC.md` 27.3 forbids converting unsupported, unknown,
+  timeout, unverified or unsafe into trusted);
+- its status is `TRUSTED`, never `PROVEN`, and it is not counted among proven
+  laws;
+- every one is named in the trust report with its source location, so the
+  assumption set of a build is enumerable rather than merely counted;
+- declaring a law trusted and also writing a proof for it is refused: the
+  declaration would be asking both to assume and to prove the same proposition.
+
+A trusted law may state something false. That is the author's explicit choice,
+and recording it is the point; a theorem derived from it has valid evidence only
+relative to that assumption (`SPEC.md` 27.2).
 
 ## 41.5 What would enlarge the TCB
 
@@ -1671,7 +1693,10 @@ Each of these requires an explicit update to this document before it is merged:
   `ARCHITECTURE.md` 97.7 would no longer hold);
 - admitting a function with a partial-correctness contract as a core
   definition, or stating its contract as a theorem about its value;
-- any axiom, `trusted` declaration or assumed contract;
+- any axiom or assumed contract. A `trusted law` is the one implemented form of
+  this, and each one enlarges the assumption set of the build that contains it;
+  the trust report names them individually for exactly that reason (section
+  41.4);
 - trusting a solver result that is not independently checked;
 - reusing a cached proof result;
 - any lowering rule that equates a C++ operation with a core primitive whose

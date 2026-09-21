@@ -1174,16 +1174,34 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine) {
             }
         }
 
-        // trusted law ... ;  (GRAMMAR.md 24)
+        // trusted law ... ;  (GRAMMAR.md 24, SPEC.md 27)
+        //
+        // The proposition is assumed rather than proved. It is recorded as an
+        // explicit trusted assumption, counted in the trust report, and never
+        // reported as proven.
         if (tokens[index].is_identifier("trusted") && index + 1 < tokens.size() &&
             tokens[index + 1].is_identifier("law")) {
-            LawDeclaration probe;
+            LawDeclaration law;
             std::size_t next = index + 2;
-            if (try_law(stream, index + 1, engine, probe, next)) {
-                report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
-                       "trusted laws are not supported by this implementation",
-                       "a trusted law introduces an explicit assumption; this implementation "
-                       "cannot yet record one, and will not silently drop it");
+            if (try_law(stream, index + 1, engine, law, next)) {
+                if (!law.name.empty()) {
+                    if (at_namespace_scope()) {
+                        law.trusted = true;
+                        law.keyword_location = stream.location_of(tokens[index]);
+                        // `try_law` measured the declaration from `law`, so the
+                        // span must be widened to cover `trusted` as well: the
+                        // projector blanks exactly this span, and a keyword left
+                        // behind would reach Clang as ordinary C++.
+                        law.range.span = source::ByteSpan{tokens[index].span.offset,
+                                                          law.range.span.end() - tokens[index].span.offset};
+                        syntax.laws.push_back(std::move(law));
+                    } else {
+                        report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
+                               "a trusted law must be declared at namespace scope",
+                               "a trusted assumption is a unit-level declaration, so that the trust report can "
+                               "name it");
+                    }
+                }
                 index = next;
                 continue;
             }

@@ -75,6 +75,12 @@ struct Law {
     source::SourceRange range;
     source::SourceRange proposition_range;
     source::SourceRange premise_range;
+
+    // An explicit assumption (SPEC.md 27). Its proposition is still stated to
+    // the formal core, so it must be expressible and it can be used like any
+    // other law; what differs is that nothing discharges it, and its status is
+    // TRUSTED rather than PROVEN.
+    bool trusted = false;
 };
 
 // The written proof steps of GRAMMAR.md 5, resolved.

@@ -89,12 +89,35 @@ CPPL_TEST(a_law_with_two_propositions_is_rejected) {
     CPPL_CHECK(result.syntax.laws.empty());
 }
 
-CPPL_TEST(a_trusted_law_is_refused_rather_than_treated_as_proven) {
+CPPL_TEST(a_trusted_law_is_recognized_as_an_explicit_assumption) {
     Recognized result;
     recognize("trusted law assumed(int x)\n    ensures(x == x);\n", result);
 
-    CPPL_CHECK(result.engine.has_errors());
-    CPPL_CHECK(result.syntax.laws.empty());
+    CPPL_CHECK(!result.engine.has_errors());
+    CPPL_CHECK(result.syntax.laws.size() == 1);
+    CPPL_CHECK(result.syntax.laws[0].trusted);
+    CPPL_CHECK(result.syntax.laws[0].name == "assumed");
+}
+
+CPPL_TEST(an_ordinary_law_is_not_trusted) {
+    Recognized result;
+    recognize("law ordinary(int x)\n    ensures(x == x);\n", result);
+
+    CPPL_CHECK(!result.engine.has_errors());
+    CPPL_CHECK(result.syntax.laws.size() == 1);
+    CPPL_CHECK(!result.syntax.laws[0].trusted);
+}
+
+// The span the projector blanks must cover `trusted` as well, or the keyword
+// reaches Clang as ordinary C++ and the declaration fails to parse.
+CPPL_TEST(a_trusted_law_span_covers_its_keyword) {
+    Recognized result;
+    const std::string text = "trusted law assumed(int x)\n    ensures(x == x);\n";
+    recognize(text, result);
+
+    CPPL_CHECK(result.syntax.laws.size() == 1);
+    CPPL_CHECK(result.syntax.laws[0].range.span.offset == 0);
+    CPPL_CHECK(text.substr(result.syntax.laws[0].range.span.offset, 7) == "trusted");
 }
 
 CPPL_TEST(a_proof_declaration_is_recognized) {

@@ -56,6 +56,34 @@ std::vector<obligations::ObligationResult> verify(const obligations::Program& pr
         // back to a strategy that might close the goal another way.
         const obligations::WrittenProof* written = program.proof_for(obligation);
 
+        // An explicit assumption is not proved and never looks for evidence
+        // (SPEC.md 27). It is recorded as TRUSTED so the trust report can name
+        // it. Writing a proof for one is a contradiction in the declaration:
+        // the author asked both to assume it and to prove it.
+        if (obligation.trusted) {
+            if (written != nullptr) {
+                diagnostics::Diagnostic diagnostic;
+                diagnostic.severity = diagnostics::Severity::Error;
+                diagnostic.category = diagnostics::Category::UnsupportedSemantics;
+                diagnostic.location = written->range.begin;
+                diagnostic.message = "law '" + obligation.subject +
+                                     "' is declared trusted, so it is assumed and a "
+                                     "written proof for it has nothing to discharge";
+                diagnostic.notes.push_back(
+                    {"remove 'trusted' to prove it, or remove the proof to assume it", obligation.range.begin});
+                engine.report(std::move(diagnostic));
+                results.push_back(obligations::ObligationResult{
+                    obligation, obligations::Verdict::unresolved("a trusted law has no obligation to discharge"), {}});
+                continue;
+            }
+            results.push_back(obligations::ObligationResult{
+                obligation,
+                obligations::Verdict::trusted(obligation.range.begin.file + ":" +
+                                              std::to_string(obligation.range.begin.line)),
+                "explicit trusted assumption"});
+            continue;
+        }
+
         // A law whose written proof was refused stays open. The reason was
         // reported where the proof was refused, and the compiler does not go
         // looking for evidence the author did not ask for.

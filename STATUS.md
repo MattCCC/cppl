@@ -834,12 +834,12 @@ facility of the roadmap, which is not the same as C++ unsigned arithmetic.
 | Capability                          | Status        |
 | ----------------------------------- | ------------- |
 | `unsafe` syntax                     | `SPECIFIED`   |
-| `trusted` syntax                    | `SPECIFIED`   |
+| `trusted law`                       | `IMPLEMENTED` |
 | Unsafe-to-verified transition rules | `SPECIFIED`   |
 | Trust propagation                   | `SPECIFIED`   |
 | Assumption closure                  | `SPECIFIED`   |
 | Trust reporting                     | `SPECIFIED`   |
-| Trust report implementation         | `NOT STARTED` |
+| Trust report implementation         | `PARTIAL`     |
 
 The intended verification statuses are:
 
@@ -851,6 +851,13 @@ UNSAFE
 UNVERIFIED
 UNRESOLVED
 ```
+
+`PROVEN` and `TRUSTED` are distinct implemented states, and `UNRESOLVED` is the
+fail-closed default. A `trusted law` is assumed rather than proved and is named
+in the trust report with its location; writing a proof for one is refused, since
+the declaration would ask both to assume and to prove it. Trust propagation and
+per-Law assumption closure are not implemented: the report enumerates the
+assumptions a build makes, not which proofs depend on which of them.
 
 ---
 
@@ -1070,10 +1077,14 @@ Until concurrency semantics exist, concurrency must not be silently treated usin
 | Per-Law assumption closure  | `NOT STARTED` |
 | Trust-report implementation | `PARTIAL`     |
 
-The implemented TCB is stated in `TRUST.md` 41. There are no axioms and no
-trusted declarations, because no mechanism to introduce one exists yet: a
-`trusted law` is refused rather than accepted. The trust report prints counts it
-can substantiate, and says _not analysed_ where C++L does not yet look.
+The implemented TCB is stated in `TRUST.md` 41. There are no axioms. A
+`trusted law` (`SPEC.md` 27) is the one implemented way to admit a proposition
+without proof: it is stated to the formal core, given status `TRUSTED` rather
+than `PROVEN`, never counted among proven laws, and named individually in the
+trust report with its source location. Declaring a law trusted and also writing
+a proof for it is refused. A build with no such declaration reports zero trusted
+axioms, because that is true of it. The trust report prints counts it can
+substantiate, and says _not analysed_ where C++L does not yet look.
 
 See [TRUST.md](TRUST.md).
 

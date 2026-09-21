@@ -244,6 +244,11 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
             if (result.obligation.law && program.proof_for(result.obligation) != nullptr) {
                 ++outcome.counters.proven_by_written_proof;
             }
+        } else if (result.verdict.is_trusted()) {
+            // An explicit assumption is neither proven nor unresolved: it is a
+            // recorded gap (SPEC.md 27.1). Counting it as unresolved would fail
+            // the build; counting it as proven would hide it.
+            outcome.counters.trusted.push_back(result.obligation.subject + " (" + result.verdict.reason() + ")");
         } else {
             ++outcome.counters.unresolved;
         }
