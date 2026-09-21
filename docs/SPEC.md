@@ -2,33 +2,47 @@
 
 **C++L - C++ with Laws**
 
-Status: Draft specification
+Status: Normative target specification
 
-This document defines the normative language semantics of C++L.
+This document is the primary normative definition of C++L language semantics.
+It specifies the language that a complete conforming implementation MUST provide.
+It is intentionally independent of repository progress, implementation staging
+and engineering limitations.
 
-It defines what C++L programs mean.
+Repository source, tests and `STATUS.md` describe implementation state; they do
+not weaken, narrow or redefine this specification.
 
-It does **not** define:
+This document defines what C++L programs mean. It does **not** define:
 
-- compiler architecture;
-- implementation component boundaries;
-- proof-kernel implementation;
-- solver implementation;
-- caching;
+- compiler architecture or implementation component boundaries;
+- proof-kernel implementation technique;
+- solver implementation technique;
+- caching or incremental-build strategy;
 - editor integration;
 - release planning;
-- current implementation status.
+- repository implementation status.
 
-Those belong in:
+Those concerns belong in `ARCHITECTURE.md`, `DESIGN.md`, `FOUNDATIONS.md`,
+`TRUST.md`, `COMPATIBILITY.md` and `STATUS.md` as appropriate.
 
-```text
-ARCHITECTURE.md
-TRUST.md
-DESIGN.md
-FOUNDATIONS.md
-COMPATIBILITY.md
-STATUS.md
-```
+A complete implementation MUST implement every non-optional language construct
+and semantic obligation defined here and in the normative grammar. A missing
+implementation feature is an implementation defect or incomplete conformance; it
+MUST NOT be reinterpreted as permission to change the language semantics.
+
+When documents disagree:
+
+1. this specification is authoritative for language meaning and semantic
+   obligations;
+2. `GRAMMAR.md` is authoritative for concrete parsing forms consistent with this
+   specification;
+3. `FOUNDATIONS.md` may formalize the proof calculus without changing the source
+   language meaning stated here;
+4. `TRUST.md` defines the trusted-computing-base and correspondence obligations;
+5. `COMPATIBILITY.md` defines supported C++ language/library modes and platform
+   compatibility;
+6. `STATUS.md`, roadmaps, tests and implementation notes are non-normative with
+   respect to language meaning.
 
 ---
 
@@ -156,7 +170,17 @@ The following identifiers have special meaning only inside their corresponding s
 result
 old
 self
+readable
+writable
+size
+at
+contains
 ```
+
+`readable` and `writable` are the memory propositions of §12.10. `size`, `at`
+and `contains` have proof-intrinsic meaning only for the mathematical domains
+defined in §19.1. Outside those formal contexts, identically spelled names remain
+ordinary C++ identifiers.
 
 The following words have special meaning only as proof statements inside a proof body (§15):
 
@@ -167,6 +191,7 @@ apply
 assume
 rewrite
 cases
+decompose
 induction
 ```
 
@@ -174,7 +199,10 @@ C++L does not define `data` or `match`. It introduces no algebraic data types an
 
 The mathematical-domain spellings `@N`, `@Z`, `@Seq`, `@Set` and `@Map` are C++L tokens (§19.1). No valid C++ program contains them outside literals and comments.
 
-Residual case labels such as `unnamed` and `valueless` have meaning only as arm labels of the construct that defines them (§20.1). They are not reserved identifiers.
+Proof-arm labels such as `unnamed`, `alternative`, `valueless`, `some`, `none`,
+`value`, `error`, `null`, `non_null`, `components`, `zero` and `successor` have
+C++L meaning only in the corresponding `cases`, `decompose` or `induction` arm
+position. They are not globally reserved identifiers.
 
 Existing C++ keywords retain their existing C++ meaning.
 
@@ -192,9 +220,25 @@ belongs to C++ and is not a C++L contract keyword.
 
 ## 3.1 C++-first disambiguation
 
-When a token sequence is valid ordinary C++ in the current context, the ordinary C++ interpretation takes precedence.
+Outside a grammatical C++L construct, when a token sequence is valid ordinary
+C++ in the current context, the ordinary C++ interpretation takes precedence.
 
-C++L contextual interpretation applies only where the complete grammatical context identifies a C++L construct.
+Once the parser has entered a C++L specification or proof context, syntax that
+this specification assigns a formal meaning takes precedence within that
+context. This includes, where grammatically applicable:
+
+```text
+Eq<T>(...)
+forall (...)
+exists (...)
+->
+<->
+&&
+||
+```
+
+Only the operands or subexpressions that the C++L grammar designates as ordinary
+C++ expressions are then resolved with ordinary C++ meaning by Clang.
 
 For example:
 
@@ -206,9 +250,16 @@ void proof();
 struct ghost {};
 ```
 
-remains ordinary C++.
+remains ordinary C++ because no C++L grammatical context has been entered.
 
-C++L MUST NOT globally reinterpret those identifiers.
+Conversely, an `Eq<T>(a, b)` appearing where the specification grammar expects a
+formal proposition denotes C++L propositional equality even if an ordinary C++
+entity named `Eq` is visible. Likewise, top-level `->` in the implication
+position defined by the specification grammar denotes implication rather than
+member access.
+
+C++L MUST NOT globally reinterpret contextual identifiers or operators outside
+their defined grammatical contexts.
 
 ---
 
@@ -351,6 +402,12 @@ This does not turn C++ `bool` into the same type as `Prop`.
 
 It is a defined conversion from a pure Boolean expression into a proposition.
 
+When the specification grammar consumes tokens such as `&&`, `||`, `->`, `<->`
+or `Eq<T>(...)` as formal syntax, those tokens are not first interpreted as one
+complete ordinary C++ Boolean expression. Their C++L logical semantics apply,
+and the ordinary C++ subexpressions forming their operands remain subject to
+Clang resolution and defined-behavior requirements.
+
 ---
 
 # 7. Logical equality
@@ -399,38 +456,23 @@ if `identity` is defined to return its argument.
 
 ### 7.1.1 Machine-integer arithmetic
 
-The formal core's wrapping addition, subtraction and multiplication of a
-machine integer type of width `w` are the operations of the ring of integers
-modulo `2^w`, whatever the type's signedness. Normalization MUST read a term
-built from them as a polynomial over its non-arithmetic subterms, with
-coefficients modulo `2^w`, and MUST render that polynomial in one canonical
-form. Two such terms are therefore definitionally equal exactly when they are
-equal as polynomials; every commutative-ring identity, including associativity,
-commutativity, distributivity, the identities of zero and one, cancellation of
-addition, and exact folding of constants, is definitional. Such equality implies
-equality of machine values under every assignment, never the converse: a
-polynomial identity that holds only for particular widths is not definitional.
+Definitional normalization of machine integers MUST respect the exact semantics
+of the selected C++ integer type. For an unsigned type of width `w`, addition,
+subtraction and multiplication are interpreted modulo `2^w`. For signed integer
+operations, normalization is valid only on paths where the corresponding C++
+operation has defined behavior; signed overflow MUST NOT be modeled as wrapping.
 
-Comparisons MUST be normalized only by rewrites that are identities of the
-machine type:
+Normalization MAY use algebraic canonicalization only for identities that are
+valid for every value of the modeled machine type under those semantics. It MUST
+NOT use mathematical-integer rewrites that fail for bounded machine arithmetic.
 
-```text
-a > b   is  b < a
-a <= b  is  !(b < a)
-a >= b  is  !(a < b)
-a != b  is  !(a == b)
-!!c     is  c
-a == b  is  (a - b) == 0, stated of the difference or its negation
-```
+Comparison normalization MAY use logically equivalent rewrites, but MUST preserve
+the signedness, width, promotions and defined-behavior requirements selected by
+C++.
 
-`a < b` is decided only when both operands are literals, when they are
-identical, or at the bounds of the type (`a < min` and `max < b` are false). No
-arithmetic is moved across `<`: order is not cancellative under wrapping, so
-`x + 1 < y + 1` and `x < y` stay distinct. A selection whose arms are equal is
-that arm; a selection on a negated condition exchanges its arms.
-
-Normalization MUST fail rather than approximate when a polynomial exceeds the
-implementation's size bounds.
+Definitional normalization is deterministic. If a verifier cannot normalize a
+term soundly, it MUST leave the term opaque or reject the attempted proof; it
+MUST NOT approximate it with a stronger proposition.
 
 ---
 
@@ -457,23 +499,6 @@ Conceptually:
 ```text
 refl : Proof<Eq<T>(x, x)>
 ```
-
----
-
-### 7.2.1 Current explicit-equality fragment
-
-The current implementation accepts `Eq<T>(a, b)` as a complete Law, proof,
-precondition, postcondition, or assumed proposition for modeled built-in
-integer and Boolean types. `T` and both arguments are resolved by Clang;
-conversions outside the modeled fragment are refused. The logical form remains
-distinct from a C++ `operator==` invocation. Explicit equalities compose through
-conjunction, implication and equivalence and under universal quantification, but
-are not themselves values another explicit equality can compare. Formal
-propositions used as ordinary C++ values are refused. Inside a specification
-expression the `Eq<T>(a, b)` spelling is read as this formal form even where an
-ordinary C++ declaration of that name is visible; that declaration keeps its own
-meaning everywhere else, including at runtime. These implementation limits do not
-narrow the semantics above.
 
 ---
 
@@ -514,70 +539,51 @@ Approximate equality MUST NOT silently become formal equality.
 
 ---
 
-## 7.5 Linear arithmetic over machine integers
+## 7.5 Arithmetic reasoning over machine integers
 
-Order consequences such as `i < n -> i + 1 <= n` are not identities and are
-not definitional. They are established by a proof rule whose premises are facts,
-each an equality or comparison with its own evidence, and whose conclusion is an
-equality or comparison.
-
-The kernel MUST state the facts and the negation of the conclusion as integer
-linear constraints itself:
+Arithmetic proof rules MUST reason about the exact machine semantics of the
+resolved C++ types. A consequence such as:
 
 ```text
-each distinct monomial m of type T      an integer variable v, min(T) <= v <= max(T)
-a term t of type T whose polynomial     sum(c_m * v_m) + c - 2^w * k,
-  is not a single monomial                with k a fresh integer variable,
-                                          bounded by min(T) and max(T)
-a == b  (values)                        L_a = L_b
-(a < b) == 1,  (a < b) == 0              L_a + 1 <= L_b,  L_b <= L_a
-(a == b) == 0                           L_a + 1 <= L_b  or  L_b + 1 <= L_a
+i < n -> i + 1 <= n
 ```
 
-This encoding is exact for two's-complement arithmetic: the machine value of
-`t` is the only value within the bounds of `T` that differs from its polynomial
-by a multiple of `2^w`. A certificate MUST then show that the system has no
-integer solution, by a tree of Farkas sums (nonnegative multiples of standing
-constraints whose sum has no variable and a positive constant), integer splits
-(a linear form is at most zero or at least one) and case splits on disjunctions.
-The kernel MUST check every step with exact arithmetic and MUST refuse, never
-wrap, on overflow. Contradictory facts establish any arithmetic conclusion, as
-they do in any sound logic. The rule adds no assumption.
+requires evidence that includes every side condition needed for the C++ operation
+to be defined and for the implication to hold at the relevant width and
+signedness.
+
+A conforming proof checker MAY use normalization, decision procedures, SMT,
+Presburger arithmetic, certificate checking or other automation, but acceptance
+requires sound evidence according to the formal proof rules. Solver success alone
+is not proof.
+
+Contradictory established premises may prove any proposition according to ordinary
+logic, but contradiction itself must be established from valid premises. Machine
+integer overflow, conversion, comparison and promotion rules MUST NOT be silently
+replaced by unbounded-integer reasoning.
 
 ---
 
 ## 7.6 Conjunction
 
-The proposition `P && Q` requires evidence for both `P` and `Q`. Its kernel
-introduction rule checks each proof against its own side. Elimination takes
-checked evidence for the whole conjunction and yields the selected side; the
-other side MUST NOT be silently dropped before checking that evidence.
-Conjunction binds no variables. Substitution and shifting act on both sides
-under the same surrounding binders.
+In specification and proof context:
 
-### 7.6.1 Current conjunction fragment
+```text
+P && Q
+```
 
-The implementation lifts Clang-resolved built-in `&&` between modeled Boolean
-specification expressions into conjunction. It supports nested conjunctions in
-Laws, direct proof propositions, `expects`, `ensures`, and `assume`, including
-inside a `forall` body or on either side of implication. Ordinary C++ operands,
-operator selection, types and conversions remain Clang's responsibility.
-Only pure, modeled operands are admitted; short-circuiting cannot conceal an
-unsupported or effectful operand.
+denotes logical conjunction. Evidence for the conjunction requires evidence for
+both `P` and `Q`; checked evidence for the conjunction permits elimination of
+either side.
 
-`refl` introduces a conjunction when each side closes definitionally. `exact`
-can reuse evidence for the whole conjunction; `apply` can establish it after
-discharging the evidence's premises. `rewrite` traverses both sides. Automation
-may construct or project conjunction evidence, including for arithmetic facts,
-but the kernel checks every introduction and elimination. No written statement
-selects one side of a conjunctive premise: a named premise is used whole, and
-elimination is left to automation, which the kernel still checks.
+Specification conjunction is proof-domain composition, not runtime C++
+short-circuit execution. Each operand must therefore be a well-formed proposition
+with defined specification semantics under the proof context in which the
+conjunction is formed. Runtime `&&` appearing in executable C++ retains ordinary
+C++ short-circuit semantics (§12.7).
 
-Explicit formal forms may be operands of conjunction. `&&` used as a value,
-runtime guard in a verified body, or loop invariant is not yet modeled and is
-refused.
-These limits do not change ordinary unverified C++ expressions or their runtime
-evaluation. See RFC 0009 for the implementation and trust rationale.
+Conjunction associates according to the normative grammar. It binds no runtime
+storage and erases completely.
 
 ---
 
@@ -593,61 +599,47 @@ quantifiers, implications and conjunctions wherever a proposition is accepted.
 
 ## 7.8 Disjunction
 
-The proposition `P || Q` requires evidence for one of its sides. Its kernel
-introduction rule checks that evidence against the side it selects, which the
-goal states; evidence MUST NOT select a side the goal does not state.
-Elimination takes checked evidence for the whole disjunction together with
-evidence that each side is enough for the conclusion, and yields that
-conclusion. Neither side follows from the disjunction alone.
+In specification and proof context:
 
-`P || not P` is not granted. A conclusion that requires knowing which side holds
-is unproven, never assumed. Disjunction binds no variables; substitution and
-shifting act on both sides under the same surrounding binders.
+```text
+P || Q
+```
 
-### 7.8.1 Current disjunction fragment
+denotes logical disjunction. Evidence for the disjunction identifies and proves
+at least one side. Elimination of a disjunction requires establishing the target
+conclusion from each possible side.
 
-The implementation lifts Clang-resolved built-in `||` between modeled Boolean
-specification expressions into disjunction, and admits explicit formal forms as
-its operands. It is supported in Laws, direct proof propositions, `expects`,
-`ensures`, and `assume`, including inside a `forall` body, on either side of an
-implication, and nested within itself. Only pure, modeled operands are admitted;
-short-circuiting cannot conceal an unsupported or effectful operand.
+`P || !P` is not an implicit axiom. Classical principles may be used only when
+specified by the formal foundation and represented by valid evidence.
 
-`refl` introduces a disjunction when a side closes definitionally. `exact` can
-reuse evidence for the whole disjunction and `apply` can establish it after
-discharging the evidence's premises, as for any other proposition. A disjunctive
-premise is used by automation, which proves the goal under each side and submits
-the case analysis to the kernel; no written statement selects a side or takes
-cases, as none selects a side of a conjunction (7.6.1).
+Specification disjunction is proof-domain composition, not runtime C++
+short-circuit execution. Each operand must be a well-formed proposition with
+defined specification semantics. Runtime `||` retains ordinary C++ short-circuit
+semantics (§12.7).
 
-`||` used as a value, runtime guard in a verified body, or loop invariant is not
-modeled and is refused. These limits do not change ordinary unverified C++
-expressions or their runtime evaluation. See RFC 0011 for the implementation and
-trust rationale.
+Disjunction binds no runtime storage and erases completely.
 
 ---
 
 # 8. Universal quantification
 
-Parameters of a `law` are universally quantified unless explicitly stated otherwise.
+Parameters of a `law` or `proof` are universally quantified unless a more local
+binder shadows them.
 
 For example:
 
 ```cpp
-law nonnegative_square(int x)
-    proves (square(x) >= 0);
+law nonnegative_identity(unsigned x)
+    proves (x == x);
 ```
 
 denotes conceptually:
 
 ```text
-∀ x : int,
-    square(x) >= 0
+forall x : unsigned, x == x
 ```
 
-subject to the selected C++ machine semantics.
-
-Explicit universal quantification MAY be written in specification context as:
+Explicit universal quantification is written:
 
 ```cpp
 forall (T x) {
@@ -655,80 +647,76 @@ forall (T x) {
 }
 ```
 
-Conceptually:
+Multiple binders are permitted:
 
-```text
-∀ x : T, P(x)
+```cpp
+forall (T x, U y) {
+    proposition
+}
 ```
 
----
+A binder type is a verification type: an ordinary C++ type whose values have a
+formal model, a refinement of such a type, or a proof-only mathematical domain.
+The binder ranges over the complete value domain of that type. In particular,
+`forall (unsigned x)` ranges over the complete machine-`unsigned` value set,
+whereas `forall (@N x)` ranges over mathematical natural numbers.
 
-## 8.1 Current explicit-quantification fragment
+Quantifier binders introduce proof-domain variables only. They allocate no
+runtime storage and generate no runtime loop.
 
-The current implementation accepts `forall (T x, ...) { P }` as a complete Law,
-proof, precondition, postcondition, or assumed proposition. At least one binder
-is required, and each binder type must be a modeled built-in integer or Boolean
-type; anything else is refused. The binders are ordinary C++ parameters resolved
-by Clang, and they name the innermost variables of the proposition: a binder
-that shadows a parameter denotes the binder, as it would in C++.
+## 8.1 Universal introduction and elimination
 
-A binder is not a name any proof statement can use. Evidence is written of the
-parameters a Law or proof declares, so a proposition quantified over its own
-binder cannot be instantiated at a term chosen in a proof body. What a statement
-may do under such a binder is suppose the premise standing there and prove the
-proposition it leaves.
+To prove `forall (T x) { P(x) }`, the proof must establish `P(x)` for an arbitrary
+fresh `x : T` without assuming any property of `x` beyond facts supplied by its
+type and surrounding premises.
 
-Loop invariants and quantifiers nested inside an ordinary C++ expression are
-refused. `forall` is a formal form only in the complete form above: spelled
-anywhere else, it is an ordinary C++ identifier with its own meaning.
+Checked evidence for `forall (T x) { P(x) }` may be instantiated at any
+well-typed term `t : T` to produce evidence for `P(t)`. Instantiation performs
+capture-avoiding substitution and preserves all refinement and definedness
+obligations of `t`.
 
-These implementation limits do not narrow the semantics above.
-
----
+Nested universal quantifiers follow the same rule from outermost to innermost.
 
 ## 8.2 Implication
 
-A specification expression may state implication with `->`, which is looser than
-every ordinary C++ operator and right associative (GRAMMAR.md 29, 33):
-
-```cpp
-ensures (x == 0u -> identity(x) == 0u)
-```
-
-denotes conceptually:
+In specification and proof context:
 
 ```text
 P -> Q
 ```
 
-which claims nothing about `P`: what it states is `Q` under the supposition of
-`P`. A Law written `expects (P) ensures (Q)` states the same proposition, and both
-are discharged the same way.
+denotes logical implication and is right-associative according to `GRAMMAR.md`.
+It claims `Q` under the premise `P`; it does not assert `P`.
 
----
+A Law:
 
-## 8.3 Current implication fragment
+```cpp
+law L(T x)
+    expects (P(x))
+    proves (Q(x));
+```
 
-The current implementation accepts `->` between two specification expressions in
-the same contexts as 8.1. Because `->` is also C++ member access, and because an
-implication is looser than every C++ operator, `->` outside all brackets in a
-specification expression is implication. Member access inside a specification
-expression is therefore written inside parentheses, where the enclosing
-expression is C++ and the whole of it is resolved by Clang.
+therefore denotes the universally quantified implication:
+
+```text
+forall x : T, P(x) -> Q(x)
+```
+
+Implication introduction adds its premise to the proof context and requires proof
+of its conclusion. Implication elimination requires evidence for both the
+implication and its premise.
+
+Within specification/proof grammar, the implication token takes its C++L meaning.
+Ordinary C++ pointer member access `p->member` remains ordinary C++ when parsed as
+an ordinary C++ subexpression. Parentheses may be used to make that boundary
+explicit. The grammar MUST disambiguate the two without changing runtime C++
+semantics.
 
 ---
 
 # 9. Existential quantification
 
-C++L supports existential propositions.
-
-Conceptually:
-
-```text
-∃ x : T, P(x)
-```
-
-The specification form is:
+C++L supports existential propositions:
 
 ```cpp
 exists (T x) {
@@ -736,23 +724,46 @@ exists (T x) {
 }
 ```
 
-Proof of an existential proposition requires:
+Conceptually:
 
 ```text
-a witness
-+
-proof that the witness satisfies the proposition
+exists x : T, P(x)
 ```
 
-Failure to find a witness does not prove that none exists.
+A binder type follows the same verification-type rules as §8.
 
----
+Proof of an existential proposition requires both:
 
-## 9.1 Current existential fragment
+```text
+a witness w : T
++
+proof evidence for P(w)
+```
 
-Existential quantification is not implemented. The complete form above is
-recognised and refused with a diagnostic saying so; nothing approximates it.
-Spelled in any other form, `exists` is an ordinary C++ identifier.
+Conceptually, existential introduction is:
+
+```text
+w : T
+p : Proof<P(w)>
+-----------------
+Proof<exists (T x) { P(x) }>
+```
+
+Existential elimination may use a checked existential only by introducing a fresh
+witness and its property locally; neither may escape a scope in a way that would
+make the result depend on the hidden witness.
+
+The witness is proof-domain evidence and has no runtime identity merely because it
+witnesses an existential proposition.
+
+The source proof language has no standalone `witness` statement. An existential
+goal is closed either by `exact` evidence already establishing the existential or
+by proof automation that constructs a concrete witness together with
+kernel-checkable existential-introduction evidence. Automation MUST expose enough
+proof evidence for independent checking; failure to find a witness proves
+nothing.
+
+`exists` produces no runtime search or allocation and erases completely.
 
 ---
 
@@ -874,6 +885,21 @@ Changing a Law changes the formal specification of the program.
 
 A compiler, verifier, tactic, or automated agent MUST NOT weaken a Law merely to make an implementation verify.
 
+## 10.6 Scope and member Laws
+
+A Law may appear at namespace or class scope wherever permitted by the normative
+grammar. Namespace lookup follows ordinary C++ scope rules for referenced C++
+entities.
+
+A class-scope Law may refer to the implicit object through ordinary C++ member
+lookup and `this` where that expression is valid. It does not create a runtime
+member function. Its proposition is quantified over every explicit parameter and
+over every implicit object state required by the Law's C++ member context.
+
+A Law declared in an unnamed namespace has translation-unit-local formal identity.
+A Law intended for use across translation units must be available through the
+verification interface seen by its users.
+
 ---
 
 # 11. Function contracts
@@ -900,8 +926,8 @@ expects (condition)
 Example:
 
 ```cpp
-int divide(int x, int y)
-    expects (y != 0)
+verified unsigned divide(unsigned x, unsigned y)
+    expects (y != 0u)
 {
     return x / y;
 }
@@ -923,8 +949,8 @@ ensures (condition)
 
 Example:
 
-```text
-int abs_value(int x)
+```cpp
+verified int abs_value(int x)
     ensures (result >= 0)
 {
     ...
@@ -948,16 +974,19 @@ denotes the function's returned value.
 Example:
 
 ```cpp
-int identity(int x)
+verified int identity(int x)
     ensures (result == x)
 {
     return x;
 }
 ```
 
-`result` is not globally reserved. Its return-value meaning is invalid in a Law, a void postcondition, a precondition or a refinement predicate; ordinary C++ names retain their ordinary meaning outside the special context.
+`result` is not globally reserved. Its return-value meaning is invalid in a Law,
+a void postcondition, a precondition or a refinement predicate; ordinary C++ names
+retain their ordinary meaning outside the special context.
 
-It has special meaning only within a relevant postcondition.
+It has special meaning only within a relevant postcondition and introduces no
+runtime variable, parameter, storage or computation.
 
 ---
 
@@ -974,16 +1003,17 @@ denotes the semantic value of `expression` in the function pre-state.
 Example:
 
 ```cpp
-void withdraw(Account& account, int amount)
-    expects (amount >= 0)
-    expects (amount <= account.balance)
+verified void withdraw(Account& account, int amount)
+    expects (amount >= 0 && amount <= account.balance)
     ensures (account.balance == old(account.balance) - amount)
 {
     account.balance -= amount;
 }
 ```
 
-`old(expression)` is legal as a snapshot only in a function postcondition. Its expression is resolved in the function entry state, must be well-defined there, and cannot use `result` or nested `old`. Elsewhere `old` is an ordinary C++ name.
+`old(expression)` is legal as a snapshot only in a function postcondition. Its
+expression is resolved in the function entry state, must be well-defined there,
+and cannot use `result` or nested `old`. Elsewhere `old` is an ordinary C++ name.
 
 `old(expression)` is a formal snapshot.
 
@@ -993,17 +1023,33 @@ It does not imply that a runtime copy must be created.
 
 ## 11.5 Clause cardinality, ordering and layout
 
-Specification predicates and measures MUST be parenthesized. A construct has
-at most one clause of each kind. Function clauses are `expects`, `ensures`,
+Specification predicates and measures MUST be parenthesized. A construct has at
+most one clause of each kind. Function clauses are `expects`, `ensures`,
 `decreases`; Law clauses are `expects`, `proves`; loop clauses are `invariant`,
 `decreases`, in those orders. Conjoined predicates belong in a single `&&`
 expression. A measure list is lexicographic and MUST NOT be merged as conjunction.
 
-Canonical presentation puts one space before each clause's opening parenthesis
-and puts clauses on continuation lines. Refinement `where (P)` stays attached
-to the declaration. Ordinary C++ prefix specifiers precede `verified pure`.
-The shared formatter owns presentation; spelling/cardinality/order are defined
-by the [normative grammar](./GRAMMAR.md).
+Whitespace between a clause word and its opening parenthesis is not semantically
+significant. A conforming parser MUST therefore accept both:
+
+```cpp
+ensures(result == x)
+```
+
+and:
+
+```cpp
+ensures (result == x)
+```
+
+as the same clause.
+
+Canonical presentation puts one space before each clause's opening parenthesis and
+puts clauses on continuation lines. Refinement `where (P)` stays attached to the
+declaration. Ordinary C++ prefix specifiers precede `verified pure`. Canonical presentation is defined by the normative grammar and formatting rules;
+whitespace normalization does not alter semantics.
+
+---
 
 ### 11.5.1 Declaration contracts
 
@@ -1026,7 +1072,7 @@ obligations. Omission of `ensures` does not waive those obligations.
 
 ## 11.6 Normal-return semantics
 
-Unless a separate exceptional contract mechanism is explicitly defined, `ensures` applies to normal function return.
+`ensures` applies to normal function return. C++L defines no separate exceptional-postcondition clause.
 
 It does not by itself claim:
 
@@ -1068,6 +1114,70 @@ assert(...)
 or equivalent runtime behavior.
 
 Runtime validation is a distinct mechanism.
+
+## 11.9 Member functions and the implicit object
+
+A member-function contract uses ordinary C++ member lookup and `this`. The
+identifier `self` is reserved for refinement predicates and is not an alternate
+name for the implicit object.
+
+For a non-static member function, preconditions observe the entry-state object.
+Postconditions observe the normal-return post-state object unless an occurrence is
+inside `old(...)`.
+
+The cv/ref qualifiers of the member function retain their ordinary C++ meaning.
+They do not by themselves prove purity, alias exclusivity or global immutability.
+
+## 11.10 Constructors and destructors
+
+A constructor has no `result` binding. Its `expects` clause is evaluated before
+object initialization using only values that are valid in that entry state.
+Its `ensures` clause describes the fully initialized object after successful
+construction.
+
+`old(member)` is invalid in a constructor when that member had no live initialized
+entry-state value. Constructor initializer lists, delegating construction, base
+construction and member initialization retain ordinary C++ order and lifetime
+semantics and must be modeled accordingly.
+
+A destructor may have an entry precondition. On normal completion, the object
+lifetime has ended, so a destructor postcondition MUST NOT read dead members or
+otherwise treat the destroyed object as live. It may refer to valid external
+state and to legal `old(...)` snapshots captured from destructor entry.
+
+Construction and destruction effects, including RAII effects during unwinding,
+are runtime C++ behavior and MUST NOT be erased or reordered by verification.
+
+## 11.11 Virtual functions and overriding contracts
+
+Virtual dispatch remains ordinary C++. A call type-checked against a base virtual
+function is verified from the base contract; the caller does not depend on which
+override executes.
+
+Every verified override MUST be substitutable for the overridden verified
+contract. For a base precondition `P_base`, override precondition `P_over`, base
+normal postcondition `Q_base`, and override normal postcondition `Q_over`, the
+override must establish:
+
+```text
+P_base -> P_over
+
+and, on normal return under P_base,
+
+Q_over -> Q_base
+```
+
+Thus an override may weaken a precondition and strengthen a postcondition, but
+must not strengthen the base precondition or weaken the base guarantee.
+
+An override MUST NOT have a broader externally observable effect set than the base
+contract permits. A base function relied upon as `pure` may be overridden only by
+a function that satisfies the same purity guarantee. If the base contract is
+required to be total, each override reachable through that virtual interface must
+also satisfy the required termination guarantee.
+
+Ordinary C++ rules for `virtual`, `override`, `final`, covariance, access and
+`noexcept` continue to apply independently of these verification obligations.
 
 ---
 
@@ -1150,376 +1260,273 @@ The trust policy and reporting requirements are defined in `TRUST.md`.
 
 ---
 
-## 12.5 Single-return verification fragment
+## 12.5 Function verification semantics
 
-For a supported definition of the form:
+For a verified function entity `f`, verification begins from its complete
+Clang-resolved C++ declaration, contract, refinement information and function
+body.
 
-```cpp
-verified T f(parameters)
-    expects (P)
-    ensures (Q)
-{
-    return expression;
-}
-```
+At function entry, the proof context contains:
 
-let `R` be the typed return term elaborated from the actual function body
-resolved by Clang. Its required obligation is:
+- the function's `expects` proposition, when present;
+- refinement predicates of refined parameters and of any refined implicit object
+  state that the contract is entitled to assume;
+- valid C++ type, lifetime and binding facts established by the language semantics;
+- no additional facts merely because the implementation would benefit from them.
 
-```text
-forall parameters. P -> Q[R/result]
-```
+Verification MUST establish for every reachable execution path covered by the
+claim:
 
-When `expects` is absent, the obligation is `forall parameters. Q[R/result]`.
-Several `expects` clauses `P1`, ..., `Pn` conjoin (section 11.5) and are
-supposed in source order: `forall parameters. P1 -> ... -> Pn -> Q[R/result]`.
-A verified call must establish each `Pi` separately (section 12.6). No
-conjunction connective is required.
-Substitution MUST avoid variable capture. `result` is a specification binding
-of type `T`; it MUST NOT introduce a runtime variable, parameter, or computation.
-The return expression MUST be checked even when `Q` does not mention `result`.
+- defined behavior for every modeled runtime operation;
+- every callee precondition before the call;
+- every refinement introduction or write obligation;
+- every loop invariant and requested termination obligation;
+- the declared purity obligation when `pure` is present;
+- the function's `ensures` proposition on every normal return;
+- the refinement predicate of a refined return type on every normal return;
+- any required total-correctness property under §§22–24.
 
-The body MUST NOT be replaced by an assumed summary or a `body_semantics` axiom.
-Every generated obligation requires evidence accepted by the existing kernel.
-This fragment adds zero kernel rules and zero logical assumptions.
+For a normal return of expression `R` from a non-void function, `result` denotes
+the Clang-resolved value returned by that path. The postcondition is checked after
+capture-avoiding substitution of that logical result and after applying the
+post-state semantics of every visible storage location.
 
-The initial implementation accepts namespace-scope functions with an explicit
-built-in integer return type, integer value parameters, one `ensures` clause,
-and any number of `expects` clauses, each a comparison under section 12.7. A
-Law accepts at most one `expects` clause. Bodies contain exactly one return of a
-modeled pure expression: parameters, integer literals, unsigned addition,
-subtraction and multiplication, or calls to admitted pure definitions or
-verified functions under section 12.6. Unsigned `+`, `-` and `*` denote the
-core's wrapping operations (section 7.1.1), which C++ defines them to be for
-unsigned operands of one type (section 29.2). Clang remains authoritative for
-overloads, integer widths, and conversions; unsupported conversions, signed
-arithmetic, division, remainder, shifts and bitwise operators are rejected. Type
-aliases are resolved by Clang.
+For a `void` function, there is no `result`; the postcondition is checked against
+the normal-return post-state.
 
-Branches and multiple returns extend this fragment under section 12.7,
-locals and assignments under section 12.8, and `while` and `for` loops under
-section 24.3. Reference storage, call effects and void returns extend it under
-section 12.9. Pointer dereferences, floating point, exceptions, recursion, and
-unsupported declarators remain rejected.
-An ordinary parameter named `result` is currently unsupported on a verified
-definition because that name binds the returned value in its postcondition.
+A verified body is not replaced by an assumed summary. The summary becomes usable
+by callers only after evidence tying the body to that summary has been accepted,
+or after an explicit trusted proposition provides the required fact.
 
-Verified calls compose contracts under section 12.6. Ordinary callers remain
-permitted under section 11.7. `verified` alone does not make a function available
-for unrestricted unfolding as a `pure` definition.
-
-## 12.6 Compositional verified calls
-
-For a call `g(t)` within a supported verified body, the compiler MUST resolve
-the callee through Clang, instantiate its contract at the actual arguments,
-and generate a separate obligation for its precondition, when present. The
-caller may use its own precondition and postconditions of previously justified
-calls. The current call's postcondition MUST NOT justify its own precondition.
-
-After that obligation and the callee's contract have been kernel-proven, the
-callee's postcondition is evidence about the call's result. Caller reasoning
-uses a fresh logical result and this postcondition, without inspecting the
-callee's implementation. Even a call whose result the caller's postcondition
-ignores MUST discharge its precondition. Calls without preconditions still
-require a proven callee contract before their postconditions become available.
-
-The compiler MUST connect this abstract reasoning to the actual lowered body
-using kernel-checked evidence. Existing universal elimination, implication
-elimination, and equality substitution suffice. Conditional postconditions are
-not axioms; there are zero additional kernel rules or logical assumptions.
-
-Nested calls are processed from arguments to enclosing calls. Since supported
-expressions are pure, this logical dependency order introduces no runtime
-evaluation-order claim. Erasure leaves every runtime call and argument unchanged
-and adds no runtime checks, variables, parameters, or wrappers.
-
-The initial composition fragment requires definitions in the same translation
-unit, including included headers, and an acyclic verified-call dependency graph.
-Recursion, declaration-only contracts, calls hidden behind unsupported pure
-dependencies, and calls with neither an admitted pure definition nor a verified
-contract fail closed. Specification
-expressions retain the existing pure-definition model. Equality and unsigned
-addition are the original composition fragment; comparisons extend it under
-section 12.7, and unsigned subtraction and multiplication under section 7.1.1.
-A precondition that follows from the caller's facts only by order reasoning is
-established under section 7.5.
-
-## 12.7 Path-sensitive verification
-
-Verified bodies MAY contain ordinary `if`/`else`, nested blocks, and returns.
-Clang MUST resolve each condition and operand type. Every modeled path MUST end
-in a return; an omitted `else` continues with the following statements. Locals
-and assignments are specified in section 12.8, and loops, with their `break`
-and `continue`, in section 24.3. Switches, other jumps, exceptions, side
-effects outside section 12.9, implicit type conversions, and trailing unreachable
-statements remain unsupported.
-
-For each return term R, the compiler MUST generate and kernel-prove:
-
-```text
-forall parameters. expects -> condition_1 -> ... -> condition_n -> Q[R/result]
-```
-
-The true arm supposes its condition; the false arm supposes its negation.
-No path condition is an axiom. Each call precondition MUST be established using
-only conditions encountered before the call and previously justified call
-summaries on that path. In particular, a call within a condition cannot use
-that condition to justify itself. All paths require proof, even when their
-conditions appear contradictory: such a path is proven from the contradiction
-itself under section 7.5, never skipped as unreachable. A contract is available
-to callers only after every path and required call precondition is proven and
-their evidence is linked to the complete body.
-
-A condition is not a value position. `&&`, `||` and `!` state propositions, and
-a proposition is not a value: the core computes no boolean from one. In a
-verified condition they are therefore elaborated into the routes they select
-between, rather than lowered as values:
-
-```text
-if (A && B) T else F   ==>   if (A) { if (B) T else F } else F
-if (A || B) T else F   ==>   if (A) T else { if (B) T else F }
-if (!A)     T else F   ==>   if (A) F else T
-```
-
-Elaboration recurses, so the connectives nest to any depth. This models C++
-short-circuit evaluation exactly rather than approximating it: an operand
-appears only on the routes where C++ evaluates it, so no route can suppose a
-fact about an operand that did not execute on it. In particular the route where
-`A && B` fails is the union of `!A` and `A && !B`, represented as those routes,
-and MUST NOT be represented as one route supposing both operands false.
-Symmetrically, the route where `A || B` holds is a union and establishes neither
-side on its own. Outside a condition, `&&` and `||` remain refused as values.
-
-Contracts, Laws, and conditions support built-in integer `==`, `!=`, `<`, `<=`,
-`>`, `>=`, and logical negation of these predicates. Operands MUST have the same
-Clang-resolved modeled integer type. Identical path predicates can close goals;
-existing equality rewriting remains available. Concrete integer comparisons
-compute with their stated signedness and width. Comparisons are normalized under
-section 7.1.1, and order consequences of path conditions, preconditions and
-summaries are established under section 7.5. Signed arithmetic is not inferred.
-
-The core represents comparisons as total boolean computations, with boolean
-values encoded as unsigned one-bit integers. A declared `bool` parameter or
-result is modeled as that same one-bit unsigned integer, because C++ `bool` has
-exactly its two values, so a condition MAY be a `bool` value itself. Integral
-promotion of `bool` and `bool` literals are not modeled and are rejected as the
-conversions they are. Positive equality retains ordinary
-propositional equality; negative equality denotes the equality comparison
-evaluating to zero. Negation reverses the required comparison outcome.
-
-One conditional-elimination kernel rule combines checked true and false cases
-into the postcondition of a typed conditional term. The kernel independently
-checks both branch premises, the proposition context, and its substitution at
-the actual condition and return terms. This adds zero logical assumptions.
-Erasure MUST preserve each runtime condition, call, return, and control-flow
-edge, and MUST insert zero runtime checks. Pure specification helpers retain
-their single-return fragment.
-
-## 12.8 Locals and assignments
-
-A verified body MAY declare local variables and assign to them.
-
-A declaration MUST have automatic storage, a modeled type, and an initializer
-that is a single modeled expression: `T x = e;`, `T x{e};`, `T x(e);`, and the
-same forms with `auto` or `const`. An uninitialized local, a `static`,
-`extern`, `register` or `thread_local` declaration, a declaration of a
-pointer, `volatile` or otherwise unmodeled type, an aggregate or
-empty braced initializer, and a non-variable declaration are rejected. An
-assignment MUST name a local of the same body, with a value of the same modeled
-type. Reference and parameter writes follow section 12.9. Pointer writes and writes to
-unmodeled storage are rejected. C++ decides whether a `const` local may
-be assigned; C++L adds no `const` model of its own. Conversions in an
-initializer or an assigned value are rejected exactly as elsewhere: a
-difference in qualification alone is not a conversion, because the value read
-is the same.
-
-As a statement, `x += e`, `x -= e` and `x *= e` denote the assignment
-`x = x op e`, and `++x`, `x++`, `--x` and `x--` denote `x = x + 1` and
-`x = x - 1`, with `1` of the local's type. C++ gives them exactly that meaning
-when the local's type is not promoted before arithmetic, so a local narrower
-than `int` is rejected, as is an operand of another type. The arithmetic is
-then modeled or rejected like any other (§7.1.1, §29.2): signed updates are
-rejected until their overflow obligations exist. Other compound assignments,
-and an update used as a value rather than as a statement, are rejected.
-
-Each write gives the local its next logical **version**. A version belongs to
-the declaration Clang resolved, not to a spelling, so shadowing and nested
-scopes follow C++ name lookup and never C++L's own. A read denotes the version
-current where the read stands, and the value a version denotes is the modeled
-expression that established it. Outside a loop a version is never an unknown:
-nothing is assumed about a local. The one exception is a loop head (§24.3),
-where a local the loop writes denotes a value of which only the loop's
-invariants and condition are known. A value MUST be modeled where the version is
-established, whether or not any later expression reads it, because C++
-evaluates it there: an unread signed overflow is still undefined behavior.
-C++ scoping forbids a read before the declaration but
-puts a local in scope within its own initializer; a read there, or anywhere
-else no version of the local is current, MUST be rejected.
-
-What follows a branch is verified once per arm, under the versions that arm
-established, so a local's value after a branch is path-sensitive by
-construction. This requires no merge operation and no additional kernel rule.
-
-A local bound to a conditional expression is path-sensitive in the same way. A
-conditional states one `select` term, of which neither arm's facts are known, so
-the route splits on its condition exactly as it does for a conditional in tail
-position: the local denotes the arm the route takes, and owes any refinement
-predicate under what that route supposes (§17.2).
-
-Which conditional a route splits on is decided by what the bound value
-**denotes**, not by how it is written. A read denotes the value its version was
-given, so resolution follows reads transitively, to any depth, and a conditional
-reached through intervening locals splits exactly as a directly written one
-does. Resolution is bounded without a fixed hop limit: a version's value reads
-only versions established before it, so following reads strictly decreases the
-version and terminates. Resolution never crosses a version boundary — it takes
-the version current at the read, so a version established by a later write is
-never confused with the one before it — and a read whose version the route does
-not establish, such as a loop head version or a parameter, resolves to itself
-and stays opaque.
-
-A route's conditions correspond to the `select` nesting of the body's lowered
-value, because that nesting is what the proof is composed over: each `select` is
-discharged by conditional elimination (§12.7), and a leaf is proven under
-exactly the conditions standing above it there. Splitting MUST keep the two in
-step. Where it cannot, the body is refused rather than proven.
-
-A call in an initializer or an assigned value is evaluated where the body
-evaluates it. Its precondition MUST be proven using only the path conditions
-and summaries established **before** that statement, and its postcondition
-becomes available only from that statement onwards. A call bound to a local
-MUST be proven on every path that reaches its statement, including paths that
-never read the local.
-
-Every return MUST discharge the postcondition from the versions visible on its
-path; as in section 12.7, no path is exempted as unreachable. Verification
-models locals this way; the runtime program is not rewritten. Erasure MUST
-preserve every declaration, initializer, assignment, call, branch, and return
-as written.
-
-A read denotes its version's whole value, so the stated terms can grow faster
-than the body. An implementation MAY bound the statements on one path and the
-size of the terms it states, and MUST reject a body beyond those bounds rather
-than approximate it.
-
-## 12.9 Reference storage and normal post-state
-
-Verified scalar parameters MAY be passed by value, `T&`, `const T&`, or `T&&`.
-Clang resolves binding, reference collapsing, qualification and access legality.
-A reference denotes existing storage; it introduces no independent object or
-refinement fact. A local reference MAY also bind a modeled parameter's storage.
-Writes through it MUST use the same crossing and version mechanism as direct
-writes. By-value parameters have independent local storage; their contract
-parameter still denotes the caller's input value, as in section 12.5.
-
-A mutable reference parameter MAY alias any other reference parameter with the
-same modeled value type, including a const reference. No distinctness is inferred
-from parameter position. An exact write creates a new value version for its
-referent and fresh unconstrained versions for other possible referents. The
-written value MUST satisfy every refinement of storage it may target. A fact
-about an earlier version MUST NOT constrain a fresh version. Refinement spelling
-alone MUST NOT re-establish membership after invalidation.
-
-In `ensures`, a reference parameter denotes its value on normal return. Each
-return path supplies its current reference values to the postcondition; a refined
-reference parameter also owes its declared predicate at that boundary. Entry
-preconditions and copied local snapshots continue to name entry values.
-
-A verified call MUST prove its preconditions before introducing its result or
-post-state. A potentially mutating call replaces the actual reference arguments'
-versions, invalidates other possible aliases, and states the proven callee's
-postcondition over the new versions. Repeated actual arguments share one new
-version. Every refined actual storage owes membership on its new value, even
-when the formal parameter is an unrefined reference. Such a requirement may use
-the callee's proven postcondition; it MUST depend on successful verification of
-that callee. No call summary is an axiom. Calls through references currently
-require resolved tracked actual storage at an effectful boundary.
-
-`verified void` functions MUST verify an explicit postcondition on every normal
-exit, including `return;`, a returned void call, and fallthrough. There is no
-source `result` binding for void. Void aliases are resolved by Clang. A private
-logical completion token is used only to reuse contract bookkeeping; erasure
-introduces no runtime return value, object or check.
-
-Reference mutation and calls participate in the ordinary branch and loop rules.
-Each possible mutation is included in a loop's carried state; fresh loop-head
-values receive only invariant facts. Calls in a standalone statement, an
-initializer, an assignment's right operand, or a return are sequenced before the
-continuation. Nested effectful expressions whose ordering is not represented are
-rejected. Unsupported lifetime or exceptional-state behavior remains rejected.
-These stateful contracts use the partial-correctness obligation path, including
-for loop-free bodies; they do not introduce total core definitions.
-
-Dereferencing a pointer is rejected, in every form: `*p` as a read, `*p = e` as
-a write, `p->m`, and `p[i]`. This is not a representational limitation. A valid
-dereference requires liveness, initialization for reads, sufficient bounds,
-provenance and access permission, and `p != nullptr` establishes none of them: it
-is necessary and insufficient. A pointer's state model states `null` and
-`non_null` and MUST NOT supply the difference (section 20.5). Dereference
-therefore requires separate storage and capability obligations, defined in
-section 12.10 and specified by RFC 0014. Until that model is implemented for a
-given access form, no dereference is modeled, and no implementation may admit one
-on the strength of a non-null precondition. Pointer values, their comparisons,
-and proof-side case analysis over `null` and `non_null` are unaffected.
-
-Pure conditional expressions use Clang's resolved result type and the existing
-conditional term and branch rules. Boolean literals denote the two Boolean
-values. These additions do not model numeric promotions or signed overflow.
+All ordinary C++ syntax remains ordinary C++ syntax. Verification may reject a
+program when its required semantics or proof obligations cannot be established,
+but it MUST NOT reinterpret the runtime operation as a different C++ operation.
 
 ---
 
-## 12.10 Storage and access
+## 12.6 Compositional calls and summaries
 
-This section is the normative boundary for the storage model specified by RFC 0014. It is generic: refinement types consume it and MUST NOT define it.
+For a call to a verified function, the verifier MUST resolve the callee through
+ordinary C++ overload resolution and template instantiation, instantiate its
+formal contract at the actual arguments and prove its complete entry obligation
+before using any callee guarantee.
 
-A **place** designates storage. A place is a logical construct; it is never an
-address and never a runtime value. Places are a local's storage, a by-reference
-parameter's referent, a data member of a place, an element of an array-like
-place, the pointee a pointer value designates, or a materialized temporary. A
-member and an element are projections naming storage within a place; a pointee
-place is the only form whose construction requires a capability.
+After the entry obligation is proven, the caller may use the callee's checked
+normal-return postcondition, return-type refinement, purity/termination properties
+and verified effect summary on the corresponding path. A call's own postcondition
+MUST NOT be used to prove its precondition.
 
-Reading a place yields a value; a place itself MUST NOT be a term the proof
-kernel receives. Places are identified structurally after Clang resolution, so
-two distinct data members of one complete object are distinct places.
+The logical result of a non-void call is fresh. The caller reasons from the
+callee's checked summary rather than by assuming an arbitrary implementation.
+Inlining or unfolding is permitted only when the callee is eligible for the
+formal use in question, including purity and termination requirements.
 
-A **region** is the object a place belongs to, and carries extent, liveness and
-provenance. A member or element shares the region of the place it projects from.
+Verification metadata required for compositional checking includes, as
+applicable:
 
-A **capability** is what the current state permits at a place: `readable`,
-`writable` or `initialized`. `initialized` entails `readable`. `writable` does
-NOT entail `readable`. Neither `p != nullptr` nor a pointer's decomposition
-state entails any capability, and no capability entails `p != nullptr`. A read
-requires `initialized`; a write requires `writable`.
+```text
+contract propositions
+refinement identities and predicates
+Law/proof identities and evidence dependencies
+purity
+termination status and measures
+effect summary
+trust dependency closure
+```
 
-Two places MAY alias unless disjointness is proved. Distinct locals are
-disjoint, distinct members of one object are disjoint, and distinct proved
-indices into one array are disjoint. Any two pointee places MAY alias.
-Type-based disjointness MUST NOT be used, because it depends on
-undefined-behavior freedom the program has not been shown to have.
+That metadata MUST be associated with the C++ entity across translation units,
+headers, modules and explicit template instantiations. Native ABI symbols alone
+are not sufficient proof metadata.
 
-A write to a place MUST prove the place writable, MUST prove the written value
-satisfies every refinement of that storage before the write is bound, MUST
-establish a new version of the place, and MUST give every place that may alias
-it a fresh unconstrained version. A fresh version of refined storage owes its
-predicate again; refinement spelling alone MUST NOT re-establish membership.
+A call to ordinary unverified C++ remains executable C++. Such a call contributes
+no unstated formal facts. Its return is an unconstrained value of the resolved C++
+type except for facts guaranteed by ordinary C++ semantics, and every storage
+location it may affect is invalidated according to §12.10. A later runtime check,
+verified wrapper or explicit trusted Law may establish new facts; the unverified
+call itself does not.
 
-A call MAY change storage. A by-value parameter has no effect on caller storage,
-and neither does a parameter of const reference or const pointer type. An
-unverified callee MUST NOT be assumed pure: it may write every region reachable
-through its non-const reference and pointer parameters and every region whose
-address may have escaped. A verified callee has exactly its stated effects, and
-only after its contract and the call's entry obligations are proven. A fact
-invalidated by an effect is re-established only by a proven postcondition.
+---
 
-An access whose capability cannot be established MUST be rejected. Where a
-capability originates outside the verified world, an explicit `trusted` boundary
-MAY introduce it as a recorded trust event, which MUST name the capability, the
-place, the source location and the mechanism in the trust report. A failed
-capability obligation MUST NOT be silently downgraded to an assumption.
+## 12.7 Path-sensitive control flow
 
-Storage, regions, capabilities and versions are proof-only and erase completely.
-They introduce no runtime check, tag, metadata, wrapper or layout change.
+Verification follows ordinary C++ control flow and evaluation order. Each runtime
+branch creates proof contexts corresponding to the paths C++ can execute.
+
+For `if`, conditional expressions, `switch`, loop conditions and other Boolean
+runtime control flow, a true path may suppose the condition and a false path may
+suppose its logical negation when the condition has a sound formal model. These
+path facts are evidence scoped to the path on which they hold.
+
+Runtime `&&` and `||` retain C++ short-circuit evaluation. Verification MUST NOT
+reason about an operand on a runtime path on which C++ does not evaluate that
+operand. `!` reverses the path proposition. This runtime rule is distinct from
+proof-domain conjunction and disjunction in §§7.6 and 7.8.
+
+Every normal return, throw, `break`, `continue`, `goto`, switch edge and exceptional
+edge retains its ordinary C++ control-flow meaning. A verification engine may use
+an equivalent control-flow representation, but the resulting obligations MUST
+cover every runtime path relevant to the claimed property.
+
+A path may be discharged as impossible only from checked contradiction evidence.
+Syntactic unreachability heuristics, solver timeout or failure to enumerate a path
+MUST NOT be treated as proof of impossibility.
+
+A call, write or operation may use only facts established before that operation on
+the same path and facts that remain valid under intervening effects and aliasing.
+
+---
+
+## 12.8 Locals, assignments and logical versions
+
+Ordinary local variables retain ordinary C++ storage, lifetime, initialization,
+shadowing and destruction semantics.
+
+For verification, each successful write establishes a new logical version of the
+written place. A read denotes the version current at that program point. Logical
+versions are proof bookkeeping only and introduce no runtime object or copy.
+
+Initializers, assignments, compound assignments, increments/decrements,
+constructor calls and other writes MUST be verified according to the actual C++
+operation selected by Clang. Any conversion, arithmetic definedness, lifetime,
+refinement or capability obligation created by that operation must be discharged.
+
+After a branch, reasoning is path-sensitive. Any representation of merged control
+flow MUST preserve the exact path-dependent values and facts; merge bookkeeping
+may not manufacture equality between values established on different paths.
+
+A fact about an earlier version does not automatically constrain a later version.
+Mutation through any alias that may designate the same place invalidates facts as
+required by §12.10.
+
+Automatic object destruction at scope exit is part of the runtime path and its
+effects participate in verification. Erasure MUST NOT remove, duplicate or reorder
+ordinary local construction/destruction.
+
+---
+
+## 12.9 References, aliasing and normal post-state
+
+References retain ordinary C++ binding, collapsing, cv-qualification, lifetime
+and aliasing semantics. A reference denotes existing storage; it does not create
+independent storage merely for verification.
+
+A write through a reference is a write to its referent and establishes a new
+logical version of that place. Any other place that may alias it is invalidated or
+updated according to the proven alias relation. A `const` reference restricts
+writes through that access path but does not prove that the underlying object is
+immutable through every alias.
+
+For a function contract, value parameters denote their entry values. Reference
+and pointer observations in `ensures` denote the normal-return post-state unless
+inside `old(...)`. Repeated actual arguments that alias the same storage refer to
+one underlying post-state, not independent copies.
+
+A verified call applies its checked effect summary before its postcondition is
+made available to the caller. Facts invalidated by that effect may be recovered
+only from the postcondition, refinement guarantees or other independently checked
+evidence.
+
+Reference binding itself MUST NOT manufacture lifetime, uniqueness, initialization
+or refinement evidence beyond what ordinary C++ and the current proof context
+establish.
+
+---
+
+## 12.10 Storage, memory capabilities and effects
+
+C++L uses a single storage model for locals, members, array elements, references,
+pointers, temporaries and dynamically allocated objects. Refinements consume this
+model; they do not create a separate storage semantics.
+
+A **place** is a proof-level designation of C++ storage. A **region** is the live
+C++ object or array allocation to which a place belongs. Places and regions have
+no runtime representation of their own.
+
+For pointer-based access, the verifier tracks the C++ facts needed to justify the
+operation, including as applicable:
+
+```text
+object lifetime
+provenance
+bounds / array extent
+alignment
+initialization
+read permission
+write permission
+cv/access restrictions
+```
+
+The specification-domain predicates:
+
+```text
+readable(p)
+readable(p, n)
+writable(p)
+writable(p, n)
+```
+
+are built-in C++L memory propositions when `p` is a pointer to `T` and `n` is an
+integral element count. They are not calls to user C++ functions and have no
+runtime behavior.
+
+`readable(p, n)` means that, under the selected C++ object model, the range of `n`
+`T` objects beginning at `p` may be read for the proof path: the required objects
+are live, initialized, within the relevant object/array bounds, provenance and
+alignment are valid, and the access is permitted. `readable(p)` abbreviates one
+object.
+
+`writable(p, n)` means that the corresponding range may be written by the modeled
+operation with valid lifetime, provenance, bounds, alignment and access rights.
+It does not by itself assert the previous stored values. `writable(p)` abbreviates
+one object.
+
+A successful ordinary C++ operation may establish or consume these capabilities
+according to C++ semantics. Examples include address-of a live object, array
+construction, successful allocation, reference binding, object construction and
+validated library abstractions. A mere `p != nullptr` proves only non-nullness; it
+proves neither `readable` nor `writable`.
+
+A pointer read `*p` requires `readable(p)`. A pointer write through `*p` requires
+the write to be permitted by `writable(p)` and all C++ lifetime/type rules; after
+a successful write, facts about the new stored value are established from the
+write itself. Array subscripting and pointer arithmetic additionally require the
+bounds/provenance obligations imposed by C++ including one-past rules.
+
+Two places MAY alias unless C++ semantics and checked evidence establish
+otherwise. Distinct complete local objects are disjoint while their lifetimes do
+not overlap. Distinct non-overlapping subobjects are disjoint only when the C++
+object model establishes that fact; unions, potentially-overlapping subobjects,
+`[[no_unique_address]]`, base subobjects and implementation-defined layout MUST
+NOT be treated as disjoint merely because they have different member names.
+
+A write invalidates facts about every place that may alias the target. A call
+invalidates facts about every mutable region in its effect set. Pointer values
+passed by value may still provide access to caller storage; by-value parameter
+passing proves only that the parameter object's own storage is distinct from the
+caller argument object. `const` on a parameter or access path is not a global
+frame condition.
+
+Every verified function has a semantic **effect summary** derived from checked
+body semantics. It records the externally observable storage the function may
+read or write and other proof-relevant effects needed for composition. C++L adds
+no required `reads` or `modifies` source clause: the summary is verification
+metadata. A summary used across translation units MUST be transported and tied to
+the checked function entity.
+
+An unverified or foreign call with no checked effect summary is conservatively
+assumed capable of modifying every mutable region it can access through its
+arguments, reachable objects, globals/statics, escaped aliases, callbacks,
+virtual dispatch and other C++-permitted mechanisms. A verifier may preserve a
+fact only when it proves that the call cannot affect the place on which the fact
+depends.
+
+If the verifier cannot establish the capability, lifetime, alias or effect facts
+needed for a verified operation, the verification claim fails closed. It MUST NOT
+invent a capability or preserve a stale fact.
+
+A `trusted law` may explicitly admit a memory proposition such as `readable(...)`
+or `writable(...)`; doing so creates a normal trust dependency under §27. The
+predicate remains proof-only and does not perform a runtime memory check.
 
 ---
 
@@ -1569,7 +1576,10 @@ A raw pointer value alone does not prove referential transparency.
 
 A definition marked `pure` MUST satisfy the purity rules before its purity may be relied upon by formal reasoning.
 
-An external declaration whose purity cannot be checked MUST use an explicit trusted specification if purity is to be assumed.
+An external declaration whose purity cannot be checked MUST NOT be treated as
+pure merely from an unchecked declaration. C++L defines no `trusted pure` or
+trusted-function-contract modifier. A function whose purity is not established by
+checked semantics is unavailable for reasoning that requires purity.
 
 ---
 
@@ -1595,41 +1605,52 @@ If the function participates in proof normalization or other logic requiring tot
 
 # 14. Specification expressions
 
-Expressions used in:
+Expressions used in Laws, contracts, refinements, invariants, termination
+measures and proof propositions are specification expressions.
 
-```text
-law
-expects
-ensures
-where
-invariant
-decreases
-proof propositions
-```
+A specification expression may combine:
 
-are specification expressions.
-
----
+- pure, defined ordinary C++ expressions whose formal meaning is available;
+- formal propositions and proof-only mathematical values;
+- the logical operators and quantifiers defined by this specification;
+- built-in specification predicates such as the memory predicates of §12.10.
 
 ## 14.1 Side effects
 
-Specification expressions MUST be side-effect-free.
-
----
+Specification expressions MUST be side-effect-free. They MUST NOT perform runtime
+mutation, I/O, volatile access, observable atomic effects, allocation/deallocation
+or any other runtime side effect merely because the specification is checked.
 
 ## 14.2 Defined behavior
 
-A specification expression MUST itself have defined semantics.
+Every ordinary C++ subexpression used in a specification MUST have defined C++
+semantics under the proof context in which its value is required. Undefined
+behavior cannot establish a proposition.
 
-A property cannot be established by evaluating undefined behavior.
-
----
+Logical `&&` and `||` in specification context do not hide an undefined operand by
+runtime short-circuiting. Runtime short-circuit semantics apply only to executable
+C++ control flow (§12.7).
 
 ## 14.3 Calls
 
-A specification expression may call only functions whose formal behavior is sufficiently known for the proposition being expressed.
+A runtime function may be used as a mathematical function in a specification only
+when its checked semantics are sufficient for that use. In particular, any
+unfolded or definitionally reduced call must be pure and total for the relevant
+inputs. A verified normal-return contract may be referenced propositionally
+without granting unrestricted definitional unfolding.
 
-A function used as a mathematical function in specifications MUST satisfy the required purity and termination properties.
+An unverified function declaration, an unchecked `pure` claim or a function name
+by itself supplies no formal semantics.
+
+## 14.4 Contextual formal operators
+
+Inside specification/proof grammar, `Eq`, `forall`, `exists`, `->`, `<->`, `&&`,
+`||`, the memory predicates and other forms explicitly defined by C++L have their
+formal meanings. Outside those grammatical contexts, identically spelled names
+and operators retain ordinary C++ meaning.
+
+The grammar MUST make every boundary between formal syntax and embedded ordinary
+C++ expressions deterministic.
 
 ---
 
@@ -1712,6 +1733,146 @@ Successful search is meaningful only if it produces valid proof evidence accordi
 
 ---
 
+## 15.5 Law and proof distinction
+
+A `law` names a theorem.
+
+A `proof` names explicit reusable evidence for a proposition.
+
+Conceptually:
+
+```text
+law
+    = theorem / proposition
+
+proof
+    = named proof evidence
+```
+
+For example:
+
+```cpp
+law reflexivity(int x)
+    proves (Eq<int>(x, x));
+```
+
+states a theorem.
+
+A named proof may construct evidence for the same proposition:
+
+```cpp
+proof reflexivity_evidence(int x)
+    proves (Eq<int>(x, x))
+{
+    refl;
+}
+```
+
+A Law may also contain its explicit proof directly:
+
+```cpp
+law reflexivity(int x)
+    proves (Eq<int>(x, x))
+{
+    refl;
+}
+```
+
+A separate `proof` declaration is therefore useful when the evidence itself
+requires a reusable name, acts as a proof helper, or should remain distinct from
+the theorem declaration.
+
+Both `law` and `proof` are proof-domain constructs. Neither has ordinary runtime
+callable identity. Neither produces a runtime function merely because its syntax
+contains parameters and a body. Both erase before native execution.
+
+---
+
+## 15.6 Proof statement semantics
+
+A proof body is checked against a proof state consisting conceptually of:
+
+```text
+Γ    available premises and named evidence
+G    current goal proposition
+```
+
+A proof statement MUST transform that state only through a sound proof rule and
+MUST elaborate to kernel-checkable evidence.
+
+### 15.6.1 `refl`
+
+`refl;` closes the current goal only when the goal is an equality whose two sides
+are definitionally equal under §7.1 and §16.
+
+### 15.6.2 `exact`
+
+```cpp
+exact evidence;
+```
+
+requires `evidence` to elaborate, after valid instantiation and definitional
+conversion, to `Proof<G>`. It closes the current goal. `exact` does not coerce an
+unproven Boolean value, runtime assertion or ordinary object into proof evidence.
+
+### 15.6.3 `apply`
+
+```cpp
+apply evidence;
+```
+
+requires `evidence` to establish a proposition whose conclusion can be
+instantiated to the current goal. If its proposition is conceptually:
+
+```text
+P1 -> P2 -> ... -> G
+```
+
+then `apply` replaces the current goal with the ordered subgoals `P1`, `P2`, ... .
+Every generated subgoal requires evidence. If the evidence has no conclusion
+matching the current goal, `apply` is rejected.
+
+### 15.6.4 `assume`
+
+```cpp
+assume h : P;
+```
+
+MUST NOT manufacture `P`.
+
+It is legal in either of two cases:
+
+1. `P` is already an available, as-yet-unnamed premise in `Γ`, such as a Law
+   `expects` premise, a case discriminator premise, or an induction premise; or
+2. the current goal is definitionally an implication `P -> Q`, in which case the
+   statement performs implication introduction: it adds `P` to `Γ`, names that
+   premise `h`, and changes the current goal to `Q`.
+
+A Law application denotes the proposition of that Law instance (§10.4), so if
+that proposition is an implication, `assume` may introduce its premise by the
+second rule above.
+
+In all other cases `assume` MUST be rejected.
+
+### 15.6.5 `rewrite`
+
+```cpp
+rewrite h;
+```
+
+requires `h` to be checked evidence of an equality applicable to the current
+proof state. Rewriting MUST be implemented through equality elimination,
+substitution or an equivalent kernel-checked rule. It MUST preserve binding and
+avoid capture. If no sound rewrite is available, the statement is rejected.
+
+### 15.6.6 Structural proof statements
+
+`cases`, `decompose` and `induction` transform the proof state only according to
+the decomposition and induction rules in §§20–21. Their generated premises are
+available to `assume`; they do not become axioms.
+
+---
+
 # 16. Reflexivity
 
 C++L provides a primitive reflexivity proof equivalent to:
@@ -1740,8 +1901,6 @@ unless `a` and `b` are definitionally equal.
 
 A refinement type restricts values of an underlying type with a proposition.
 
-Basic form:
-
 ```cpp
 type Percentage = int where (self >= 0 && self <= 100);
 ```
@@ -1749,259 +1908,196 @@ type Percentage = int where (self >= 0 && self <= 100);
 Conceptually:
 
 ```text
-Percentage =
-{ x : int | 0 <= x <= 100 }
+Percentage = { x : int | 0 <= x && x <= 100 }
 ```
 
----
+A refinement has verification-level type identity while using the runtime
+representation of its ultimate ordinary C++ base type.
 
 ## 17.1 `self`
 
-Inside a refinement predicate:
+Inside `where (P)`, `self` denotes the candidate value of the refinement's base
+type. `self` is contextual and has no special meaning outside that predicate.
+
+## 17.2 Introduction and construction
+
+A value enters a refinement only when the complete refinement predicate is
+established for that value in the current proof context, or when the required
+fact is admitted explicitly through trust.
+
+A refinement obligation is created at every semantic crossing that establishes or
+changes refined storage or a refined value, including as applicable:
 
 ```text
-self
+local initialization
+parameter entry into verified reasoning
+function argument binding
+return
+assignment and compound update
+member initialization and member write
+array/element write
+construction, copy and move
+verified call post-state
 ```
 
-denotes the candidate value.
-
-`self` is contextual and has no special meaning outside that refinement predicate.
-
----
-
-## 17.2 Construction
-
-A value MUST NOT enter a refinement type through an unchecked conversion from its base type.
-
-Construction requires one of:
-
-```text
-static proof of the predicate
-successful runtime validation
-explicit trusted boundary
-```
-
----
-
-## 17.3 Elimination
-
-A value of refinement type may be used as its base value while retaining the refinement proposition as known evidence within verified reasoning.
-
-### 17.3.1 Current refinement fragment
-
-The implementation accepts refinement declarations at namespace scope, over modeled
-built-in integer and Boolean base types, with or without indices. The base type and
-the predicate are resolved by Clang; `self` is an ordinary parameter of the base
-type, so it is a name Clang binds rather than one C++L invents.
-
-Membership is an obligation, never an assumption. Every flow of a value into a
-refinement type inside a verified function states its predicate where the value
-enters, under whatever the path supposes there, so a branch fact can discharge it.
-The flows modeled are a local declaration, an assignment or update to a local, an
-argument of a call to a verified function, and a return. A refined parameter's
-predicate is supposed inside the body, and the author does not restate it as an
-`expects` clause. A refined result is stated with the postcondition and proven on
-every path that returns. Using a refined value as its base value requires nothing
-further.
-
-A verified definition with a refined result MAY omit `ensures`; its effective
-postcondition is then the result's full refinement predicate. Explicit `ensures`
-clauses conjoin with that predicate. A definition with neither a refined result
-nor an explicit postcondition is rejected. An ordinary or merely `pure` function
-return declaration cannot establish refinement evidence and is rejected unless
-the same Clang-resolved callable has a verified definition in the translation
-unit. Declaration-only verified contracts and trusted/unsafe refinement-return
-boundaries remain unavailable; their spellings do not establish evidence.
-
-A function containing a loop, or calling a function verified by loop conditions,
-MUST enforce the same refinement crossings as a function without loops. Every
-local initialization and write is checked, including a value never subsequently
-read. A loop head knows only the invariant and path facts about its fresh logical
-versions; a declared refinement is not an additional unchecked loop invariant.
-Unresolved refinement identity or index substitution MUST reject obligation
-generation rather than omit a predicate.
-
-A refinement whose base type is another refinement states both predicates: the one
-written and every one it inherits (17.5). An indexed refinement states its
-predicate at the values its indices were applied at.
-
-Ordinary `using` and `typedef` aliases preserve refinement metadata, including
-constant indices. Refinements are identified by the Clang-resolved alias
-declaration, not by an unqualified name or a presumed source location. An
-unrelated ordinary alias with the same spelling introduces no predicate.
-
-A reference local that binds a tracked local object is an alias of that object's
-storage, not a value of its own. A read through it denotes the storage's current
-logical version, and a write through it is a write to that storage: it owes the
-predicates of the reference's own refinement and of the referent's declared type
-together. A refinement fact therefore cannot outlive a write through any alias of
-the storage it describes, because there is no separate fact to go stale. Binding
-itself is a crossing and states the reference's predicate at the referent's
-current version. Modeled parameters also have tracked storage (12.9). A reference
-to an unmodeled temporary, subobject, or reference-returning call is refused.
-
-Not yet modeled, and refused rather than approximated: refined returns of an
-unverified function, refined members, pointer dereferences and pointee mutation,
-and refinements in templated contexts. Scalar reference parameters, void returns,
-and their call effects are modeled under 12.9. A refinement over a base type outside the
-modeled fragment is refused where it is declared.
-
-Explicit refined storage outside a modeled verified body, including fields and
-namespace-scope arrays, is rejected because its construction and mutation have
-no generated obligations. This is a verification limitation, not a change to the
-ordinary C++ representation or layout of the alias.
-
-A verified body tracks an aggregate local as one place per data member (section
-12.10) and checks the value every construction and write puts there. That covers
-the body-side paths; it is necessary and not sufficient, because ordinary code
-constructs records without generating any obligation. The declared refinement of
-a member therefore remains refused until the unverified construction boundary is
-checked as well.
-
-A refined member is sound only if every way of establishing or changing that
-member is checked against its refinement predicate:
-
-```text
-aggregate initialization
-default/value initialization
-constructor member initialization
-copy construction
-move construction
-copy assignment
-move assignment
-direct member assignment
-compound member update
-mutation through aliases/references/pointers
-unverified construction boundaries
-```
-
-Supplying a component's predicate on a member _read_ is not sufficient and MUST
-NOT be implemented before those obligations exist. A record enters a verified
-body as a parameter, so its construction happens in unverified code: admitting a
-refined field and stating its predicate on read would let an ordinary
-`S{-5}` establish `self > 0`, which no rule of this specification proves. The
-required order is construction and write obligations first, then member
-projection and membership reasoning.
-
----
-
-### 17.3.2 Refinement implication
-
-A value already of a refinement type carries that type's predicate into any further
-flow, so crossing between two refinements of one base type is the implication
-between their predicates and nothing else:
-
-```text
-{ self : T | P(self) }  <:  { self : T | Q(self) }    needs  forall self : T, P(self) -> Q(self)
-```
-
-The obligation this states is `P(v) -> Q(v)` at the value that crosses, under the
-path conditions where it crosses. The looser direction is therefore discharged from
-the predicate the value already has, and the stricter direction owes the part that
-does not follow. Nothing is checked at run time in either direction: the crossing
-has no runtime representation to check, because both types erase to `T` (17.4).
-
-Because both directions are decided by implication, two refinements that erase to
-one C++ type are also one C++ signature. Two overloads distinguished only by which
-refinement they name are the same function, and that is reported at the declaration
-the author wrote.
-
----
-
-## 17.4 Runtime representation
-
-Unless explicitly specified otherwise, a refinement type has the runtime representation of its base type.
-
-Its refinement proof is erased.
-
-A refinement declaration therefore lowers to the alias it means, and that alias is
-what the program keeps:
-
-```text
-type R = T where (P);        ->  using R = T;
-type R(I i) = T where (P);   ->  template <I i> using R = T;
-```
-
-The lowering MUST be deterministic and derived from the declaration alone. It MUST
-NOT introduce a wrapper type, a constructor, a hidden field, a runtime predicate, a
-runtime check, an RTTI distinction, ABI-visible state, or a different object
-layout. Verification-level identity is separate from this representation: two
-refinements of one base type erase to the same C++ type and remain distinct
-refinement types (`TRUST.md` 10.1).
+Runtime path facts may discharge the obligation. No hidden runtime validation is
+generated.
 
 For example:
 
-```text
-Percentage
+```cpp
+type Positive = int where (self > 0);
+
+verified Positive positive_or_one(int x)
+{
+    if (x > 0) {
+        return x;
+    }
+    return 1;
+}
 ```
 
-may have the same runtime representation as:
+The first return uses the branch fact; the second uses the literal value.
+
+A refined parameter supplies its predicate as an entry premise of the verified
+function. This is a formal precondition of the verified claim, not an ABI check.
+An unverified external caller can physically pass a representation-equivalent
+value that violates the refinement; in that execution the verified precondition
+was not met and no C++L guarantee that depends on it applies.
+
+## 17.3 Elimination and flow
+
+A refined value may be used as its base value without an additional proof. Its
+predicate remains available while the value/version to which it applies remains
+unchanged.
+
+A refined return type creates its own membership obligation on every normal
+return; a duplicate `ensures` is unnecessary. An explicit `ensures` may add
+additional postconditions.
+
+A write to refined storage creates a new logical version and MUST establish the
+refinement predicate for the new value. Mutation through a possible alias
+invalidates facts about an earlier version according to §12.10.
+
+## 17.4 Refinement implication and conversion
+
+For refinements over the same ultimate base type:
 
 ```text
-int
+{ self : T | P(self) } <: { self : T | Q(self) }
 ```
 
-while carrying additional compile-time proof information.
+requires evidence that the actual crossing value satisfies `Q`. A general
+stronger-to-weaker conversion is justified by proof of `P -> Q`; a weaker-to-
+stronger conversion requires the additional stronger fact at the crossing.
 
----
+No refinement conversion inserts a runtime test.
 
-## 17.5 Refinement composition
+Two overloads whose C++ signatures differ only by refinement identity erase to
+the same native signature and therefore do not form distinct C++ overloads. Such
+declarations are conflicting redeclarations unless ordinary C++ distinguishes
+them independently of the refinement.
 
-A refinement whose base type is another refinement states the conjunction of the
-applicable predicates. The inner predicate MUST NOT be discarded:
+## 17.5 Nested refinements
+
+If the base of a refinement is itself refined, all inherited predicates remain
+part of membership:
 
 ```cpp
 type NonNegative = int where (self >= 0);
 type Percentage = NonNegative where (self <= 100);
 ```
 
-A value entering `Percentage` owes `self >= 0 && self <= 100`. Erasure still
-reaches the ultimate ordinary C++ base representation, `int`.
+A `Percentage` value must establish both predicates.
 
----
+## 17.6 Refined members and elements
 
-# 18. Dependent types
+A refined data member or element is sound only if every way of establishing or
+changing that storage proves the refinement, including aggregate/value/default
+initialization where applicable, constructor initialization, copy/move
+construction, copy/move assignment, direct and compound mutation, and mutation
+through aliases.
 
-C++L supports types whose formal meaning depends on values.
+Reading a refined member MUST NOT manufacture its predicate if some construction
+or mutation path capable of producing the stored value escaped those obligations.
+The common storage model of §12.10 applies.
 
-For example:
+## 17.7 Indexed refinements
+
+A refinement family declares typed indices with parentheses and applies them with
+angle brackets:
 
 ```cpp
-type Index(std::size_t n) =
-    std::size_t where (self < n);
+type Index(unsigned n) = unsigned where (self < n);
+
+Index<4u>
 ```
 
-`Index(n)` is a family of types indexed by `n`.
+The index binder is in scope in the predicate. Each application substitutes the
+actual index capture-avoidingly and creates a distinct verification-level
+refinement identity as required by the formal type system.
 
----
+Indices used as compile-time type arguments must have the stability and C++
+template-argument properties required by §18. Proof-only indices may be erased
+when they have no runtime role.
 
-## 18.1 Dependent value stability
+## 17.8 Runtime representation and erasure
 
-A value used as a type index MUST have sufficiently stable formal meaning.
-
-Mutable arbitrary runtime state cannot silently become a compile-time type index without an explicit formal boundary.
-
----
-
-## 18.2 Dependent function meaning
-
-A result type or proposition MAY depend on function parameters.
-
+A refinement declaration lowers canonically to the underlying C++ representation.
 Conceptually:
 
 ```text
-Π (x : A), B(x)
+type R = T where (P);        ->  using R = T;
+type R(I i) = T where (P);   ->  template <I i> using R = T;
 ```
 
-describes a dependent function type.
+Erasure MUST NOT introduce a wrapper, hidden tag, constructor, validation flag,
+runtime predicate, RTTI distinction, hidden field, changed layout or changed
+calling convention solely because a value is refined.
+
+Runtime validation, when required for dynamic external input, is ordinary C++
+control flow under §28 and remains runtime code.
 
 ---
 
+# 18. Dependent and indexed formal types
+
+C++L permits verification-level type meaning to depend on values through indexed
+refinements and formal propositions.
+
+```cpp
+type Index(std::size_t n) = std::size_t where (self < n);
+```
+
+`Index<4>` applies that family at the value `4`.
+
+## 18.1 Index stability
+
+A value used in a C++L type identity must be stable for the lifetime of that type
+identity. A C++ constant template argument, a proof-only binder in a purely formal
+type, or another value whose identity is fixed by the formal context may be an
+index. Arbitrary mutable runtime state MUST NOT silently become a stable type
+index.
+
+## 18.2 Dependent function meaning
+
+A formal result type or proposition may depend on function parameters when the
+index is valid in that formal context. Conceptually this is a dependent function
+relationship:
+
+```text
+Pi (x : A), B(x)
+```
+
+This notation is explanatory; ordinary source function syntax and indexed type
+applications are the source surface. Dependent meaning MUST NOT alter ordinary
+runtime calling convention merely because the formal type carries an index.
+
 ## 18.3 Proof-only indices
 
-An index that exists solely for proof purposes MUST be erasable if it has no runtime role.
-
-Proof-only indices MUST NOT change runtime ABI merely by existing in the formal type.
+An index that exists only for proof has no runtime storage, lifetime, address,
+layout or ABI position. Erasure removes it unless the same source value also has
+an independent ordinary C++ runtime role.
 
 ---
 
@@ -2028,52 +2124,67 @@ C++L does not introduce general-purpose algebraic data types or runtime pattern 
 
 A program MUST NOT be required to restate a C++ type in a second, logical type language before properties of its values can be proven.
 
-C++L MAY provide proof-only mathematical domains (§19.1) and proof constructs such as exhaustive case analysis (§20) and induction (§21). All such constructs are erased and have no runtime representation.
-
-The rationale is recorded in `docs/rfcs/0005-cxx-types-case-analysis-induction.md`.
+C++L provides the proof-only mathematical domains of §19.1 and the proof constructs of §§20–21. All such constructs are erased and have no runtime representation.
 
 ---
 
 ## 19.1 Proof-only mathematical domains
 
-Specifications and proofs MAY use these mathematical domains:
+The core proof-only mathematical domains are:
 
 ```text
 @N           natural numbers: 0, 1, 2, ...
 @Z           mathematical integers: ..., -1, 0, 1, ...
 @Seq<T>      finite sequences of T
-@Set<T>      sets of T
+@Set<T>      finite sets of T
 @Map<K, V>   finite maps from K to V
 ```
 
-The set is closed. `@` does not introduce a general identifier namespace. Any other `@` spelling MUST be rejected unless a later specification adds user-defined mathematical domains.
+The set of `@` domain constructors is closed by this specification. Other `@Name`
+spellings are not C++L mathematical domains.
 
-`T`, `K` and `V` are verification types. A verification type is either a C++ type or another mathematical domain, as in `@Seq<int>` or `@Map<@N, @Z>`.
+`T`, `K` and `V` are verification types and may themselves be ordinary modeled
+C++ types or proof-only mathematical domains.
 
-A mathematical domain MUST be accepted only where a verification type is expected:
+Mathematical domains are legal only in proof/specification positions such as Law
+or proof parameters, quantifier binders, ghost proof state and type arguments of
+other mathematical domains. They have no runtime object representation, address,
+storage duration, ABI, `sizeof`, alignment, constructor or destructor.
+
+Equality, universal/existential quantification and definitional identity apply to
+all mathematical-domain values. `@N` and `@Z` additionally support exact
+mathematical `+`, `-`, `*` and order comparisons; `@N` subtraction requires proof
+that the result remains a natural number. Division/remainder are defined only
+when their mathematical divisor is nonzero. Integer literals in a context that
+requires `@N` or `@Z` denote the corresponding exact mathematical value; a
+negative value is not a valid `@N` literal.
+
+For `@Seq<T>`, the proof intrinsics `size(s)` and `at(s, i)` are defined, with
+`size(s) : @N`; `at(s, i)` requires `i < size(s)`. For `@Set<T>`,
+`contains(set, value)` is the core membership proposition. For `@Map<K,V>`,
+`contains(map, key)` states key membership and `at(map, key)` requires that
+membership and yields the mapped value. These names have their proof-intrinsic
+meaning only when their arguments select these mathematical domains.
+
+There is no implicit conversion between a machine integer and `@N`/`@Z`.
+Specification-only casts use explicit functional type conversion syntax:
 
 ```text
-Law and proof parameters
-quantifier binders
-ghost declarations
-arguments of another mathematical domain
+@Z(x)
+@N(x)
 ```
 
-Mathematical domains are verification-only. They have no object representation, storage, ABI, lifetime, address, `sizeof`, alignment, constructor, or destructor. Uses such as:
+for a modeled integral C++ value `x`. `@Z(x)` denotes the exact mathematical value
+represented by `x`. `@N(x)` additionally requires proof that the represented
+mathematical value is nonnegative. These conversions are proof-only and erase.
 
-```cpp
-@Z runtime_value;
-sizeof(@Z);
-new @Seq<int>();
-```
+No implicit conversion from an unbounded mathematical result back to a machine
+integer exists. Relating such a result to a machine value requires proving that
+the machine value represents the mathematical result under the selected C++
+semantics.
 
-MUST be rejected.
-
-Each spelling `@N`, `@Z`, `@Seq`, `@Set` and `@Map` is a single token written without internal whitespace (§3.2). Objective-C++ also uses `@`-prefixed constructs. Objective-C++ compatibility lies outside the core C++L grammar and may require a separate frontend mode.
-
-A C++ value is never silently a mathematical value. `int` is a machine integer; `@Z` is not (§29.1). Relating a C++ value to a mathematical one requires an explicit, defined mapping whose side conditions are proof obligations. The spelling of that mapping is not yet specified.
-
-Explanatory material may also write ℕ, ℤ, Seq⟨T⟩, Set⟨T⟩ and Map⟨K,V⟩ as metanotation for the same domains.
+The tokens `@N`, `@Z`, `@Seq`, `@Set` and `@Map` are lexically distinct C++L tokens
+and do not invoke macros named `N`, `Z`, `Seq`, `Set` or `Map`.
 
 ---
 
@@ -2087,522 +2198,278 @@ What that function states about a C++ type MUST be established by proof or decla
 
 ---
 
-# 20. Case analysis
+# 20. Proof-side case analysis and decomposition
 
-`cases` splits a proof obligation into one obligation for every case of a value.
+`cases` splits a proof obligation according to the complete logical state
+partition of a modeled C++ value. `decompose` exposes product components. Both are
+proof statements; neither creates runtime control flow or runtime pattern
+matching.
 
-Example:
+Arms use one canonical form:
 
 ```text
-enum class State { idle, running, failed };
+Label(bindings) => {
+    proof statements
+}
+```
 
-proof foo(State s)
-    proves (...)
-{
-    cases s {
-        State::idle => {
-            ...
-        }
+For a label with no bindings, parentheses are omitted.
 
-        State::running => {
-            ...
-        }
+## 20.1 Sum case sets
 
-        State::failed => {
-            ...
-        }
+The core case partitions are:
 
-        unnamed(value) => {
-            ...
-        }
+| C++ representation    | Cases                                                                 |
+| --------------------- | --------------------------------------------------------------------- |
+| scoped enumeration    | one case per distinct enumerator value, plus `unnamed(value)`         |
+| `std::variant<Ts...>` | `alternative<i>(value)` for every alternative index, plus `valueless` |
+| `std::optional<T>`    | `some(value)`, `none`                                                 |
+| `std::expected<T,E>`  | `value(payload)`, `error(reason)`                                     |
+| pointer `T*`          | `null`, `non_null`                                                    |
+
+The standard-library cases apply when the selected C++ language/library mode
+provides the corresponding standard type as defined by `COMPATIBILITY.md`.
+
+A scoped enumeration ranges over the complete value set permitted by its
+underlying integer type. `unnamed(value)` therefore represents every value equal
+to no named enumerator and binds the exact underlying integer value. Enumerators
+with equal values name the same logical case.
+
+`std::variant` alternatives are identified by index, not merely by type, so
+repeated types remain distinct. `valueless` represents
+`valueless_by_exception()`.
+
+Pointer `non_null` binds nothing. It proves only that the pointer is not null and
+provides no lifetime, provenance, bounds, initialization, ownership, readability
+or writability fact.
+
+A type not listed above has no core sum decomposition unless another normative
+section explicitly defines one. Using `cases` on a type without a case partition
+is ill-formed C++L proof syntax for that subject.
+
+## 20.2 Exhaustiveness and impossible cases
+
+A `cases` statement MUST account for every semantic case. A case is accounted for
+when either:
+
+1. an arm is present for it; or
+2. the current proof context establishes that the case discriminator is
+   impossible.
+
+There is no wildcard arm. `_` is not a C++L proof catch-all. Adding a new semantic
+state therefore makes an older proof non-exhaustive unless that state is
+independently proved impossible.
+
+Omission by impossibility requires checked contradiction evidence from the
+current proof context; it MUST NOT be inferred from heuristics or assumed by the
+case partition itself.
+
+## 20.3 Arm binders and premises
+
+Arm binders denote existing logical values exposed by the modeled C++ state. They
+create no runtime copy, object, conversion or temporary. Binder scope is the arm
+only.
+
+Each arm receives its discriminator as an available premise. `assume` may name
+that premise only according to §15.6.4. Every arm must establish the enclosing
+goal.
+
+Nested `cases`, `decompose` and `induction` are permitted; their binders and
+premises obey lexical proof scope and cannot escape.
+
+## 20.4 Product decomposition
+
+`decompose` is defined for these core product forms:
+
+```text
+complete non-union record with accessible modeled non-static data members
+std::pair
+std::tuple
+std::array
+built-in array
+```
+
+It has exactly one `components(...)` arm whose binders correspond in semantic
+order to the exposed components:
+
+```cpp
+decompose point {
+    components(x, y) => {
+        ...
     }
 }
 ```
 
-`cases` is a proof statement (§15). It is not runtime control flow and generates no runtime code.
-
----
-
-## 20.1 Case sets
-
-The cases of a value are determined by its C++ type under the selected C++ semantics.
-
-They cover the type's complete semantic state space. This includes states that have no ordinary named alternative, which are called residual cases:
-
-```text
-enumeration      each enumerator
-                 + unnamed(value), if its values exceed its enumerators
-std::variant     each alternative(value)
-                 + valueless
-std::optional    engaged(value)
-                 + empty
-pointer          null
-                 + nonnull(p)
-```
-
-Enumerator labels are written qualified, as in `State::idle`. Enumerators with the same value name the same case.
-
-Residual labels are defined by the verifier. They have meaning only as arm labels of the corresponding construct and are not reserved identifiers. Because enumerator labels are qualified, an enumerator named `unnamed` cannot collide with the residual label.
-
-`unnamed(value)` binds the underlying integer value, which equals the value of no enumerator.
-
-`nonnull(p)` establishes only that `p` is not null. It establishes nothing about the lifetime of the object `p` points to (§32).
-
-Case analysis over a type whose cases the verifier does not model MUST be rejected.
-
----
-
-## 20.2 Exhaustiveness
-
-Case analysis MUST be exhaustive over the type's complete state space, not merely over its declared names.
-
-Every case MUST either have an arm or be proven impossible from the proof context (§20.4). Otherwise the proof is rejected.
-
-There is no wildcard arm. A catch-all label such as `_` MUST be rejected. A proof written before an enumerator was added therefore stops checking when it is added, instead of silently covering it.
-
-For example, a Law can rule out the residual case of a variant:
-
-```text
-using PaymentResult = std::variant<Receipt, Error>;
-
-law settles(PaymentResult r)
-    expects (!r.valueless_by_exception())
-    proves (...);
-
-proof settles_holds(PaymentResult r)
-    proves (settles(r))
-{
-    assume intact : !r.valueless_by_exception();
-
-    cases r {
-        Receipt(receipt) => {
-            ...
-        }
-
-        Error(error) => {
-            ...
-        }
-    }
-}
-```
-
-The `valueless` case has no arm because `intact` proves it impossible.
-
----
-
-## 20.3 Arm binders and hypotheses
-
-An arm label MAY be followed by binders that name the structural components of its case, such as the value a variant alternative holds.
-
-Binders name values only, never proof evidence. The number and meaning of an arm's binders are defined by its case.
-
-Within an arm, the fact that the value belongs to that arm's case is a premise. `assume` MAY name it. The kernel MUST reject an `assume` whose proposition does not exactly match a premise the arm received.
-
-Binders and premises are available only inside their arm and MUST NOT escape it.
-
-Every arm must establish the enclosing goal.
-
----
-
-## 20.4 Impossible cases
-
-A case may be closed by evidence that it cannot occur.
-
-Impossibility MUST be established formally rather than guessed from control-flow heuristics.
-
----
-
-## 20.5 Proof decomposition
-
-`cases` is representation-independent. What states a value has is supplied by a
-**decomposition provider** for its resolved C++ representation; everything else
-is the **generic case engine** and is shared by every representation.
-
-```text
-representation provider
-    knows the sound logical state model of one C++ representation family
-
-generic case engine
-    performs arm matching, binder handling, exhaustiveness validation,
-    proof-state splitting, evidence construction, dependency checking,
-    diagnostics, erasure and kernel lowering
-```
-
-**Supporting a new C++ representation for proof-side case reasoning requires a
-sound decomposition provider for that representation. Arm parsing, binder
-handling, exhaustiveness validation, proof-state splitting, evidence
-construction, dependency checking, diagnostics, erasure and kernel lowering are
-representation-independent and MUST NOT be reimplemented per type family.**
-
-**A representation provider models ordinary C++ states for verification
-purposes. It does not introduce a new C++L runtime type, runtime pattern
-matching, runtime destructuring, or runtime control flow.**
-
-### 20.5.1 Decompositions
-
-A provider answers for a resolved type with one of:
-
-```text
-unsupported            no provider models this representation
-SumDecomposition       alternative states
-ProductDecomposition   constituent components
-```
-
-Provider selection is by Clang-resolved semantic identity, never by spelling, so
-aliases, qualified names and template specializations that resolve to one
-declaration select one provider.
-
-A `SumDecomposition` lists its cases in a fixed order. Each case carries a
-**discriminator**: an ordinary modeled Boolean condition on the subject that
-holds in exactly that case. A case may also carry bindings. Exhaustiveness is
-one of:
-
-```text
-ResidualRequired   the named discriminators do not cover the state space, so a
-                   named residual case completes the partition and MUST be
-                   written
-Complete           the named discriminators are jointly exhaustive, so the last
-                   case is the negation of the others
-```
-
-A provider MUST NOT supply the residual discriminator: it is derived as "no
-named discriminator holds". No implicit wildcard exists, and no wildcard arm is
-admitted (§20.3). A representation that gains a state therefore makes a proof
-that wrote no arm for it non-exhaustive, and the verifier reports the missing
-case rather than absorbing it.
-
-### 20.5.2 Arms
-
-A case label is either a name the representation **reserves** for a state with
-no C++ expression, or a **qualified** C++ expression that Clang resolves and the
-provider maps to a case. An unqualified label that is not reserved is refused,
-which keeps a reserved label distinct from an enumerator of the same spelling.
-
-An arm names exactly as many binders as its case supplies bindings. A binding
-denotes a value the C++ object model already provides; it creates no object,
-copy, conversion or temporary. Binder names must not duplicate an enclosing
-value parameter or binder. Binders and names bound inside an arm stay local to
-it.
-
-Arms nest and may use `refl`, `assume`, `exact`, `apply`, and `rewrite`. Proof
-dependencies inside arms are checked exactly like top-level steps, so recursion
-cannot hide in an arm. `assume` may name a fact the case supplies; it may not
-introduce a new one. At most 64 arms and 32 nested case statements are
-recognized, subject also to the existing proof-resource limits.
-
-The subject must denote one stable value for the whole statement. Any proof
-expression that denotes such a value is admitted, including a parameter of
-reference type; the subject is projected once, so an expression that would be
-evaluated more than once, or that would require an invented temporary, is
-refused with a diagnostic rather than stabilized silently.
-
-Case-derived facts are flow-sensitive in general. `cases` and `decompose` are
-available only in proof bodies, which contain proof statements alone: no
-assignment, call, construction or destruction can appear in one. No case fact
-can therefore go stale within the statement that derives it. A fact cannot
-escape one either: a subject that another object can write has reference type,
-and a reference type has no formal meaning, so no law or contract can state a
-proposition about it. Mutation and aliasing are thus excluded structurally
-rather than by analysis.
-
-Where a future revision admits `cases` over values that can change, its facts
-MUST participate in the same mutation and alias invalidation framework as every
-other proof fact — a provider MUST NOT be given an invalidation mechanism of its
-own.
-
-### 20.5.3 Evidence
-
-The engine splits the enclosing goal on the discriminators in order, using the
-existing conditional-elimination rule. Each arm proves the original goal under
-its case's fact. The remaining branch, in which every discriminator is known
-false, receives their left-associated conjunction, built with conjunction
-introduction from the facts the branch already carries.
-
-Case splitting therefore produces compositions of the existing
-conditional-elimination, implication, conjunction and equality rules. There is
-no case rule, no per-representation kernel rule, no axiom, no runtime check and
-no runtime representation. Exhaustiveness is a property of evidence the kernel
-rechecks: a provider that described the wrong partition can only fail to produce
-a proof, never forge one.
-
-### Abstract values and typed observations
-
-The core additionally admits nominal abstract value sorts `V(identity; T0, ...,
-Tn)` and total logical projections `project<i>(v) : Ti`. A projection is
-well-typed only if its subject has exactly its declared domain and signature
-and its index belongs to that signature. Signatures are finite, acyclic and
-resource-bounded. They are part of semantic identity and obligation hashes.
-Abstract values are not integers and admit no machine arithmetic.
-
-Projection normalization only normalizes its subject. No state, payload value,
-constructor identity, injectivity, surjectivity, or product extensionality is
-assumed. Equality and substitution use the existing rules. Providers supply the
-correspondence between C++ observations and these logical functions; a logical
-projection never performs a runtime operation. A payload observation may be
-exposed to source only in the state where the C++ payload exists.
-
-### 20.5.4 Implemented providers
-
-| Representation                                                  | Model                                         | Residual state                |
-| --------------------------------------------------------------- | --------------------------------------------- | ----------------------------- |
-| scoped enumeration                                              | one case per distinct enumerator value        | `unnamed`                     |
-| `std::variant`                                                  | `alternative<i>(value)` per alternative index | `valueless`                   |
-| `std::optional`                                                 | `some(value)`                                 | `none`                        |
-| `std::expected`                                                 | `value(payload)`                              | `error(reason)`               |
-| pointer                                                         | `null`                                        | `non_null`, binding nothing   |
-| record, `std::pair`, `std::tuple`, `std::array`, built-in array | one `components(...)` arm                     | none; a product has one state |
-
-A representation is recognized by its Clang-resolved canonical identity after
-substitution, never by spelling. A standard type is identified through its
-specialized template declaration in the canonical `std` namespace, skipping
-inline namespaces, so a user type spelled like a standard one is not that type,
-and a standard type reached through an alias, a template parameter or a
-dependent name is.
-
-Alternatives are identified by index, so repeated and aliased alternative types
-are distinct states. `valueless` is a state of every variant and MUST NOT be
-omitted. A pointer's `non_null` state binds nothing: it does not state that a
-live, initialized or in-bounds object exists, and MUST NOT be read as stating
-anything about lifetime, provenance, dereferenceability, bounds, ownership,
-uniqueness or dynamic type. A standard type is modeled by its public semantics
-only; no implementation's layout is read.
-
-A product has exactly one state and so is not a case analysis. It is written
-with `decompose` (§20.5.1) and generates no discriminator. Each binding is a
-logical projection onto the existing subobject: no structured binding, copy,
-move, conversion or temporary is created. Component order, types, access and
-array extents come from Clang, and a component Clang reports as inaccessible is
-refused by name.
-
-`std::expected` requires the C++23 library. Where it is unavailable the provider
-is simply not exercised.
-
-A scoped enumeration (`enum class`, `enum struct`) with a visible definition and
-a modeled, non-Boolean underlying integer type decomposes into one case per
-distinct enumerator value, in declaration order, plus the residual case
-`unnamed`. Clang supplies the enum identity, underlying width and signedness,
-and the constant enumerator values. The logical value ranges over the **entire
-underlying integer type**, because that is the C++ value set of a scoped enum;
-it is not a finite domain inferred from the listed names.
-
-Enumerators that share a value are aliases naming one case, reachable by either
-name; writing both is a duplicate. Named cases bind nothing. The residual case
-binds one value: the subject at its exact underlying type, as an alias.
-
-Enum values, constants, comparisons, and explicit `static_cast` from a scoped
-enum to its **exact underlying type** are modeled. Other enum casts and implicit
-conversions remain refused. The existing integer-literal representation cannot
-express unsigned enumerators above `INT64_MAX`; enums containing them are
-refused.
-
-### 20.5.5 Representations without a provider
-
-A representation no provider models is refused at the provider boundary, naming
-the resolved C++ type. It is never reinterpreted as a sum because a proof used
-arm syntax on it, and its states are never guessed.
-
-The following are refused, each naming its reason rather than being decomposed
-on an assumption: an incomplete type; a union, which requires an independently
-justified active-member model; a base subobject, which requires an explicit
-accessible projection; a component of unmodeled type, including a reference
-member, whose referent another object can write; and an array extent or template
-argument list that is unresolved or exceeds the proof resource limits.
-
-Omission based on impossible-case evidence (§20.4) is not implemented; the
-compiler reports an omitted arm rather than supplying an assumption.
-
-See RFC 0013 and `TRUST.md` 41.2 for correspondence responsibilities.
+Bindings are logical projections of the existing subobjects. No structured
+binding, copy, move, construction or destruction is generated at runtime.
+
+For records, base subobjects, inaccessible members, unions, potentially
+ambiguous layout or components without a formal value model are not silently
+invented as product components. If the required decomposition cannot be defined
+from ordinary C++ semantics, the `decompose` statement is ill-formed for that
+subject.
+
+## 20.5 Stability and mutation
+
+A proof-side subject denotes one logical value/version for the duration of the
+structural proof step. Case or component facts apply only to that version.
+
+If the surrounding proof system permits reasoning about mutable runtime storage,
+subsequent mutation or a call that may mutate the subject invalidates those facts
+through the normal storage/effect rules of §12.10. Case analysis does not receive
+a separate aliasing exception.
+
+## 20.6 Evidence and erasure
+
+Case/decomposition evidence MUST be reducible to ordinary checked logical rules:
+discriminator reasoning, conjunction/disjunction/implication, equality,
+substitution and the formal state partition defined above. The correspondence
+between each C++ representation and its logical partition is a trust-sensitive
+language correspondence described by `TRUST.md`; a bug in that correspondence can
+be a soundness bug and MUST NOT be treated as harmless merely because the
+resulting internal proof term is locally well-typed.
+
+`cases`, `decompose`, their binders and their proof branches erase completely.
 
 ---
 
 # 21. Induction
 
-`induction` proves a proposition for every value of a domain by applying that domain's induction principle.
-
-Example:
-
-```text
-proof add_zero(unsigned x)
-    proves (add(x, 0u) == x)
-{
-    induction x {
-        zero => {
-            refl;
-        }
-
-        successor(pred) => {
-            assume below : pred < UINT_MAX;
-            assume ih    : add(pred, 0u) == pred;
-            ...
-        }
-    }
-}
-```
-
-Each arm establishes one case of the principle. Arm binders name the case's structural components (§20.3).
-
-A step case receives its premises in its proof context: any range condition, and one induction hypothesis per recursive component. `assume` names them, and the kernel MUST reject an `assume` whose proposition does not exactly match a supplied premise. Given a well-founded tree principle (§21.3):
-
-```text
-induction tree {
-    empty => {
-        ...
-    }
-
-    node(value, left, right) => {
-        assume left_ih  : P(left);
-        assume right_ih : P(right);
-        ...
-    }
-}
-```
-
-Induction hypotheses come from the principle. A proof does not obtain one by invoking itself.
+`induction` is proof-only reasoning over a domain with a C++L-defined well-founded
+induction principle. It is distinct from `cases`: induction supplies induction
+hypotheses for structurally smaller values.
 
 The short form:
 
 ```cpp
-proof add_zero(unsigned x)
-    proves (add(x, 0u) == x)
-{
-    induction x;
-}
+induction value;
 ```
 
-leaves every case to proof automation (§15.4). Automation that closes a case MUST produce valid proof evidence. A case it cannot close leaves the proof unproven.
+requests proof automation for every case. The block form exposes the cases and
+premises explicitly.
 
-`induction` is a proof statement (§15). It is not runtime control flow and generates no runtime code.
+## 21.1 Mathematical naturals
 
----
-
-## 21.1 Induction principles
-
-Induction MUST follow the induction principle associated with the value's domain.
-
-An induction principle MUST be well founded and MUST correspond to the runtime semantics of that domain.
-
-Induction over a domain without a defined principle MUST be rejected.
-
-An implementation MAY provide convenient tactic syntax.
-
-Convenience syntax does not alter the induction rule.
-
----
-
-## 21.2 Machine integers
-
-For an unsigned integer type `T` whose maximum value is `max`, the principle has the form:
+For `@N`, the principle is:
 
 ```text
 P(0)
-
-∀ n : T,
-    n < max → P(n) → P(n + 1)
-
-therefore:
-
-∀ n : T,
-    P(n)
+forall n : @N, P(n) -> P(n + 1)
+--------------------------------
+forall n : @N, P(n)
 ```
 
-Its cases are `zero` and `successor(pred)`. The `successor` arm receives the premises `pred < max` and `P(pred)`.
+The source cases are:
 
-The successor step applies only below `max`. It never wraps.
+```text
+zero
+successor(pred)
+```
 
-Principles for other integer types MUST likewise respect their machine range and defined behavior (§29).
+The successor arm receives `pred : @N` and the induction premise `P(pred)`.
 
----
+## 21.2 Unsigned machine integers
 
-## 21.3 Pointer-linked structures
-
-A pointer type has no induction principle by type alone.
-
-A value of type `Node*` may be null, cyclic, dangling, or shared.
-
-Induction over a pointer-linked structure MUST be justified by an explicit well-founded premise, such as finite acyclic reachability under the memory model (§32).
-
-Without such a premise it MUST be rejected.
-
-The labels and premises of such a principle follow from the premise that justifies it. Their exact form is not yet specified.
-
----
-
-## 21.4 Mathematical domains
-
-For `@N` the cases are `zero` and `successor(pred)`, with no range condition. The principle has the conceptual form:
+For an unsigned machine integer type `T` with maximum `max(T)`, the principle is:
 
 ```text
 P(0)
-
-∀ n,
-    P(n) → P(n + 1)
-
-therefore:
-
-∀ n,
-    P(n)
+forall n : T, n < max(T) -> P(n) -> P(n + 1)
+------------------------------------------------
+forall n : T, P(n)
 ```
+
+The source cases are `zero` and `successor(pred)`. The successor arm receives both
+the range premise `pred < max(T)` and induction hypothesis `P(pred)`, so the
+successor step never relies on wraparound.
+
+Signed machine integers do not use this zero/successor principle because their
+value domain is not generated from zero by defined successor alone. `induction`
+on a signed machine integer is ill-formed unless another induction principle is
+explicitly defined by this specification.
+
+## 21.3 Other C++ values
+
+Raw pointers, arbitrary classes, graphs and recursive object structures do not
+acquire an induction principle merely from their C++ type. A pointer may be null,
+cyclic, dangling or shared, so pointer shape alone cannot justify structural
+induction.
+
+The core language defines no generic user-declared induction-principle syntax.
+Therefore `induction` is well-formed only for domains for which this specification
+(or another normative C++L standard section) defines the principle. Other
+subjects are rejected rather than supplied an assumed well-founded relation.
+
+## 21.4 Scope and evidence
+
+Arm binders name structural values; induction hypotheses and range conditions are
+premises supplied by the induction principle and may be named using `assume`.
+A proof cannot obtain an induction hypothesis by recursively invoking itself.
+
+Every case must prove the enclosing goal. Automation must produce evidence for
+every case. `induction` and all induction evidence erase completely.
 
 ---
 
 # 22. Termination
 
-Proof-producing computation that participates in logical reduction MUST terminate.
-
-C++L MUST NOT permit divergence to manufacture arbitrary proof evidence.
-
----
+Proof-producing computation and any runtime computation relied upon as total in
+formal reasoning MUST terminate. Divergence MUST NOT manufacture proof evidence.
 
 ## 22.1 Runtime divergence
 
-Ordinary runtime C++ functions may diverge.
-
-C++L does not globally require all C++ programs to terminate.
-
----
+Ordinary runtime C++ may diverge. A normal-return postcondition alone is a partial-
+correctness claim and does not prohibit divergence.
 
 ## 22.2 Proof-relevant computation
 
-A function used in:
+Any computation unfolded during definitional equality, proof normalization or
+other proof-relevant evaluation must be total for the evaluated inputs. A pure
+function is not automatically total.
 
-```text
-proof normalization
-definitional equality
-inductive proof computation
-total formal functions
-```
-
-MUST have termination established.
-
----
+A verified runtime function used only through a normal-return contract may remain
+partial unless total correctness is requested or required by its proof role.
 
 ## 22.3 `decreases`
 
-A termination measure may be expressed using:
+A function or loop may request a termination proof with one clause:
 
 ```cpp
-decreases (expression)
+decreases (measure)
 ```
 
-Example:
+or one lexicographic list:
 
 ```cpp
-pure unsigned gcd(unsigned a, unsigned b)
-    decreases (b)
-{
-    return b == 0u ? a : gcd(b, a % b);
-}
+decreases (outer, inner)
 ```
 
-For recursive calls, the declared measure MUST decrease according to a well-founded ordering.
+Each measure is a specification expression over a well-founded ordered domain.
+For every recursive call or continuing loop iteration, the resulting measure
+tuple must be strictly smaller lexicographically than at the source point, and
+all expressions used in the comparison must be defined.
 
----
+Writing `decreases` makes termination part of the verification claim. Failure to
+prove descent is a verification failure; the clause MUST NOT be ignored.
 
-## 22.4 Lexicographic measures
+## 22.4 Recursion and mutual recursion
 
-A C++L implementation MAY support tuples of measures interpreted lexicographically.
+For direct recursion, every recursive call must satisfy the declared descent.
+For mutually recursive functions in one recursion strongly connected component,
+the verifier must establish a common well-founded ranking sufficient for every
+recursive edge. This may be represented by compatible declared measure tuples or
+an equivalent formally checked ranking derived from them.
 
-Every accepted termination ordering MUST be well-founded.
+Recursive proof declarations and any compile-time proof computation are subject
+to the same no-divergence principle even when no runtime code exists.
+
+## 22.5 Well-founded domains
+
+`@N` with `<` and finite unsigned machine domains with their natural non-wrapping
+order are well-founded for termination measures. Lexicographic products of
+well-founded orders are well-founded. A custom order may be used only when its
+well-foundedness is itself part of the formal environment; no arbitrary C++
+overload of `<` is assumed well-founded.
 
 ---
 
@@ -2618,108 +2485,138 @@ and returns normally,
 then its postconditions hold
 ```
 
-This does not by itself prove termination.
+This is partial correctness. It does not by itself prove termination.
 
-A total-correctness claim additionally requires termination.
+A function has total correctness only when termination of every execution path
+covered by the verification claim is also established.
 
-A verified function whose body contains a loop, or calls a verified function
-whose contract is partial, has a **partial-correctness contract**. Its body is
-not a total formal function, so it MUST NOT be admitted as a definition the
-formal core may unfold, and no Law or specification expression may mention it.
-Its contract is established from verification conditions (§24.3), each of which
-is an ordinary proposition requiring kernel-checked evidence. A verified caller
-uses such a contract only as it uses any other: the call's result is a fresh
-value of which the postcondition is supposed, after the precondition has been
-proven, and the caller's own contract is then partial as well. Reports MUST
-distinguish partial-correctness contracts from total ones.
+C++L introduces no separate `total` keyword. Termination becomes
+a required obligation in either of these ways:
+
+1. the program explicitly writes `decreases (...)` on a recursive function or
+   loop, thereby requesting a termination proof for that construct; or
+2. the function is used in a proof-relevant context that requires a total formal
+   function, including definitional reduction, proof normalization or a
+   specification/Law position that depends on evaluating it (§22.2).
+
+Straight-line finite control flow requires no `decreases` clause merely to show
+termination. Recursion requires a sound well-founded argument, normally expressed
+by function-level `decreases`. A loop contributes total correctness only when its
+termination is established under §24.2. A call contributes total correctness only
+when the callee's relevant contract is total.
+
+Accordingly, the presence of a loop does not by itself permanently force a
+function to be partial: a function containing loops may have a total-correctness
+contract when every loop and called dependency required for termination has been
+proved terminating. Conversely, any loop or call whose termination is not
+established makes the containing contract partial with respect to termination.
+
+A partial-correctness function body MUST NOT be admitted as a total formal
+definition for unfolding in proof. A verified caller MAY still use its normal-
+return contract, but the caller is itself partial if its own termination depends
+on that partial call.
+
+Reports MUST distinguish partial-correctness contracts from total-correctness
+contracts.
 
 ---
 
 # 24. Loop invariants
 
-Imperative loops may carry formal invariants.
+Imperative loops in verified code may carry one `invariant` clause and one
+`decreases` clause in canonical order.
 
-Example:
+For `while` and traditional `for`:
 
-```text
+```cpp
 while (condition)
-    invariant (P)
+    invariant (I)
+    decreases (M)
 {
-    ...
+    body
+}
+
+for (init; condition; step)
+    invariant (I)
+    decreases (M)
+{
+    body
 }
 ```
 
----
+For a range-based `for`, the clauses follow the range-for header. For `do`/`while`,
+they follow `do` and precede the body:
+
+```cpp
+do
+    invariant (I)
+    decreases (M)
+{
+    body
+} while (condition);
+```
+
+Either clause may be omitted independently. A `for` with no condition is treated
+as having the constant condition `true` for verification.
 
 ## 24.1 Invariant obligations
 
-An invariant is not automatically assumed.
-
-Verification MUST establish:
+An invariant is not assumed merely because it is written. Verification must prove:
 
 ```text
-the invariant before the first iteration
+entry:
+    I holds before the first body execution
 
-and
+preservation:
+    after every path that continues to another iteration,
+    the next loop head satisfies I
 
-preservation of the invariant by every iteration
+normal exit:
+    code after a condition-controlled loop may use I together with
+    the fact that the loop condition is false
 ```
 
----
+`continue` is a continuing path and must re-establish the invariant at the proper
+next-iteration point after any `for` step semantics. `break` exits under the facts
+established on its own path; it does not automatically acquire the negated loop
+condition. `return` and `throw` leave the loop according to ordinary C++ control
+flow.
 
-## 24.2 Loop termination
+For a `do` loop, entry means immediately before the first body execution. The body
+therefore must satisfy the declared invariant even on the first iteration.
 
-When termination is part of the required property, a loop MAY use:
+For a range-based `for`, verification follows the semantic C++ expansion of range
+initialization, begin/end acquisition, iterator comparison, element binding,
+increment and destruction while preserving the source-level invariant meaning.
+The invariant holds at each iteration head after the range machinery required to
+reach that head has executed and before the user body.
 
-```cpp
-decreases (measure)
-```
+## 24.2 Loop-carried state
 
-The measure MUST strictly decrease on each continuing iteration under a well-founded ordering.
+Every place that may be modified by the loop condition, body, step, called
+functions or aliases is loop-carried state. At a generic loop head, facts about a
+carried value are available only when established by the invariant, stable
+external facts or other sound loop reasoning. The verifier MUST NOT reuse a
+pre-loop version as though it were unchanged.
 
----
+Writes, aliases and call effects inside loops follow §12.10.
 
-## 24.3 Verified loops
+## 24.3 Loop termination
 
-A verified body MAY contain `while (c) invariant (I) { body }`
-and `for (init; c; step) invariant (I) { body }`, with at most one
-invariant clause and a block body. The invariants are specification
-expressions resolved by Clang in the scope of the loop head, and conjoin.
+A loop with `decreases (M)` requests totality for that loop. The verifier must
+prove that `M` is in a well-founded domain and strictly decreases on every path
+that continues to another iteration, including `continue` paths and the
+traditional `for` step.
 
-Every local that the loop's condition, step or body writes is **carried**. At
-the head, each carried local denotes a fresh value; every other local keeps the
-version it had. The following conditions MUST each be proven, under everything
-the path supposes where they stand:
+A loop with no established termination proof may still satisfy partial
+correctness. If total correctness of the containing function is required, every
+reachable loop on the relevant paths must have termination established.
 
-```text
-entry:         for each invariant Ij, Ij holds of the carried locals' values
-               where the loop is entered
-preservation:  for each Ij and each way an iteration can end - the end of the
-               body followed by the step, or `continue` followed by the step -
-               Ij holds of the values the carried locals then hold, supposing
-               every invariant and the condition at the head of that iteration
-exit:          what follows the loop is verified supposing every invariant and
-               the negated condition of the fresh head values
-```
+## 24.4 Erasure
 
-A `break` continues with what follows the loop under the versions current at
-the `break`, supposing what the path supposes there and nothing more; a
-`return` in the body is a return path under the same suppositions. Calls in the
-condition, the step and the body are verified calls under section 12.6, proven
-where the loop makes them. Multiple invariants are proven one by one and
-supposed one by one, which is their conjunction; no conjunction connective is
-required.
-
-Loops establish partial correctness only (§23): nothing here proves that a loop
-terminates, and the function containing it has a partial-correctness contract.
-`decreases` on a loop is rejected until termination is verified rather than
-accepted unchecked. `do`/`while`, range-based `for`, a `for` without a
-condition, a condition that declares a variable, an invariant clause not
-followed by a block, and loop invariants outside a verified function are
-rejected. The generated conditions add no kernel rule and no logical
-assumption; the loop rule that generates them is part of the correspondence
-layer (`TRUST.md` 41.2). Erasure removes the invariant clauses and preserves
-every loop, condition, step, body statement, `break` and `continue` as written.
+`invariant` and `decreases` clauses erase completely. The executable loop,
+condition, range machinery, step, body, `break`, `continue`, `return`, exception
+behavior, construction and destruction remain ordinary C++ runtime behavior.
 
 ---
 
@@ -2739,7 +2636,12 @@ Ghost state may record symbolic information useful for proof. The declaration fo
 
 ## 25.1 Runtime erasure
 
-Ghost locals MUST be erased before runtime execution. They MUST NOT be converted into runtime data or used to affect runtime behavior.
+Ghost locals MUST be erased before runtime execution. They MUST NOT be converted
+into runtime data or used to affect runtime behavior. Because the entire ghost
+declaration erases, its initializer and any proof-side destruction semantics MUST
+be free of observable runtime effects. A ghost declaration that would require an
+I/O operation, mutation, volatile/atomic effect, observable constructor or
+destructor effect, or any other runtime side effect if executed MUST be rejected.
 
 ---
 
@@ -2779,7 +2681,15 @@ unsafe {
 }
 ```
 
-An ordinary function declaration may also carry contextual `unsafe` after its ordinary prefix specifiers. There is no unsafe expression form; unsafe does not combine with `verified` or `pure` to waive obligations.
+An ordinary function declaration may carry contextual `unsafe` after ordinary C++ prefix specifiers and before the return type, for example:
+
+```cpp
+unsafe unsigned read_device();
+```
+
+An `unsafe` declaration states that calls cross an unsafe runtime boundary. There
+is no unsafe expression form. `unsafe` MUST NOT be combined with `verified` or
+`pure` to waive their obligations.
 
 ---
 
@@ -2807,7 +2717,7 @@ An unsafe result may enter verified reasoning only through an explicit mechanism
 
 ```text
 runtime validation
-trusted contract
+`trusted law` evidence
 independently established proof
 ```
 
@@ -2815,7 +2725,7 @@ independently established proof
 
 ## 26.3 Unsafe dependencies
 
-If a verified proposition depends on an unmodeled fact produced only by unsafe code, the proposition remains unresolved unless that boundary is otherwise justified.
+If a verified proposition depends on a fact produced only by unsafe code and no checked or trusted evidence establishes that fact, the proposition remains unresolved.
 
 ---
 
@@ -2829,63 +2739,45 @@ Unsafe code retains ordinary C++ runtime semantics.
 
 # 27. `trusted`
 
-`trusted` introduces an explicit assumption.
+`trusted` explicitly admits a proposition without proving it. The production
+trusted surface is a `trusted law` declaration with no proof body:
 
-Example:
-
-```text
-trusted law operating_system_contract(...)
-    proves (...);
+```cpp
+trusted law external_assumption(T x)
+    expects (P(x))
+    proves (Q(x));
 ```
 
-A trusted proposition is accepted as a premise without requiring proof inside C++L.
+The proposition is accepted as an assumption relative to its declared premise.
+Its status is `TRUSTED`, not `PROVEN`.
 
----
+`trusted` is not a generic block, expression, cast, function modifier, purity
+modifier or escape hatch. Other spellings have no C++L meaning.
 
-## 27.1 Trusted is not proven
+## 27.1 Trust dependency
 
-A trusted proposition has status:
+Any proof derived from a trusted Law is valid only relative to that assumption.
+The complete transitive trust dependency closure MUST remain attached to the
+resulting evidence and reportable by tooling even though the trusted declaration
+erases from runtime code.
 
-```text
-TRUSTED
-```
+A trusted Law may state ordinary formal propositions, refinement relations and
+built-in specification propositions such as `readable(...)` or `writable(...)`.
+Such a Law admits the proposition; it does not perform runtime validation or
+change memory.
 
-not:
+## 27.2 No implicit trust
 
-```text
-PROVEN
-```
+Unsupported semantics, unknown facts, solver failure, timeout, unsafe code,
+unverified code and proof failure MUST NOT be silently converted into trust.
+Only an explicit `trusted law` introduces a trusted premise.
 
----
+## 27.3 Trusted Law restrictions
 
-## 27.2 Derived proofs
-
-A theorem derived correctly from trusted assumptions may have valid proof evidence relative to those assumptions.
-
-Its trusted dependency closure remains semantically relevant.
-
----
-
-## 27.3 No implicit trust
-
-An implementation MUST NOT silently convert:
-
-```text
-unsupported
-unknown
-timeout
-unverified
-unsafe
-proof failure
-```
-
-into:
-
-```text
-trusted
-```
-
-Trust must be explicit.
+A `trusted law` MUST end with a semicolon and MUST NOT have a proof body. Its
+proposition must be well-formed and side-effect-free even though it is not proved.
+Its parameters and `expects` premise follow ordinary Law semantics; trust does not
+change quantification or scope.
 
 ---
 
@@ -2905,27 +2797,89 @@ from:
 runtime validation
 ```
 
-Example:
+Runtime validation is performed using ordinary C++ execution. C++L does not
+require a special `validate<T>()` language construct or standard runtime validator.
+C++L ships no required runtime support library and injects no verification runtime
+into the executable.
+
+For example:
+
+```cpp
+type Percentage = int where (self >= 0 && self <= 100);
+
+verified void accept_percentage_input(int raw)
+{
+    if (raw >= 0 && raw <= 100) {
+        Percentage percentage = raw;
+    }
+}
+```
+
+The runtime `if` performs the actual validation. The refinement introduction is
+checked because it occurs in a verified body. On the successful branch, C++L
+may use the path facts:
 
 ```text
-network integer
-    ↓
-runtime predicate check
-    ↓
-Percentage
+raw >= 0
+raw <= 100
 ```
+
+to establish that `raw` satisfies the refinement predicate for `Percentage`.
+
+No hidden runtime check is generated by the refinement declaration, and
+refinement introduction is not an implicit conversion unless the current proof
+context already establishes the predicate.
 
 ---
 
 ## 28.1 Successful validation
 
-On a successful runtime-validation branch, the validated property may be used as a known fact for that concrete value.
+On a successful ordinary C++ runtime-validation path, a property established by
+that path MAY be used as evidence about the concrete runtime value.
+
+The evidence applies only where the corresponding path fact remains valid.
+
+For example:
+
+```cpp
+if (raw > 0) {
+    Positive value = raw;
+}
+```
+
+The refinement crossing is valid only on the branch where `raw > 0` has been
+established.
+
+A checked helper function MAY also establish a path fact through its verified
+contract:
+
+```cpp
+verified bool is_percentage(int value)
+    ensures (result <-> (value >= 0 && value <= 100))
+{
+    return value >= 0 && value <= 100;
+}
+```
+
+Then:
+
+```cpp
+if (is_percentage(raw)) {
+    Percentage percentage = raw;
+}
+```
+
+may use the checked postcondition of `is_percentage` to justify the refinement
+introduction. No special validation API is required.
 
 ---
 
 ## 28.2 Failed validation
 
-A failed validation MUST NOT construct the refined or validated value.
+A failed validation path MUST NOT construct or expose a refined value whose
+predicate has not been established.
+
+Failure handling remains ordinary C++ runtime behavior.
 
 ---
 
@@ -2943,7 +2897,12 @@ It is not a universal compile-time theorem.
 
 ## 28.4 Validation survives erasure
 
-Runtime checks required to establish properties of dynamic input MUST NOT be erased.
+Ordinary C++ runtime checks written by the programmer remain ordinary runtime
+behavior after C++L erasure.
+
+Only the verification interpretation of a successful validation path is erased.
+C++L itself MUST NOT add a runtime check that the programmer did not request
+through ordinary executable C++.
 
 ---
 
@@ -3079,168 +3038,193 @@ Ordinary unverified C++ retains ordinary C++ semantics.
 
 ---
 
-# 32. Object lifetime and memory
+# 32. Object lifetime, pointers and the C++ object model
 
-C++L does not replace the C++ object model.
+C++L does not replace the C++ object model. Verification of memory operations must
+respect object lifetime, storage duration, effective/dynamic type where relevant,
+alignment, provenance, bounds, aliasing, initialization, cv/access rules,
+construction, destruction and moves.
 
-Verified reasoning involving memory MUST respect relevant C++ semantics.
+The detailed proof-level storage and capability rules are in §12.10.
 
-These include:
+## 32.1 Pointers are not integer addresses
 
-```text
-object lifetime
-storage duration
-references
-pointer validity
-alignment
-bounds
-provenance
-aliasing
-moves
-destruction
-mutation
-```
+A pointer is not generally equivalent to an integer address. Converting or
+comparing pointer representations MUST preserve the guarantees and limitations of
+the selected C++ semantics. Numeric address equality alone does not establish
+provenance, lifetime or dereferenceability.
 
----
+## 32.2 Pointer access
 
-## 32.1 Pointers are not integers
+`p != nullptr` establishes only non-nullness. A dereference additionally requires
+the capability and object-model obligations of §12.10. Pointer arithmetic and
+subscript operations must remain within the C++-permitted object/array domain,
+including one-past semantics.
 
-C++L MUST NOT generally treat:
+## 32.3 References
 
-```text
-pointer
-```
+A reference carries ordinary C++ lifetime, binding and aliasing semantics. It is
+not merely an integer or an automatically valid non-null pointer. A reference does
+not establish uniqueness, global immutability or a refinement fact not otherwise
+proved.
 
-as equivalent to:
+## 32.4 Moves
 
-```text
-integer address
-```
+A move is not assumed to be a copy. The moved-to and moved-from states follow the
+actual C++ type's semantics. Facts about the pre-move object may be retained only
+when justified by the type's checked contract/model.
 
-for proof purposes.
+## 32.5 Construction and destruction
 
----
+Construction begins object lifetime only according to C++ rules. Destruction ends
+lifetime in ordinary C++ order. RAII side effects, base/member destruction,
+temporary destruction and unwinding are observable runtime semantics where C++
+makes them observable; proof erasure MUST NOT change them.
 
-## 32.2 References
+## 32.6 Potentially overlapping storage
 
-A reference carries the semantic requirements of the selected C++ object model.
-
-It is not merely an integer or an arbitrary non-null pointer.
-
----
-
-## 32.3 Moves
-
-A move is not assumed to be semantically identical to a copy.
-
-Post-move state must follow the semantics of the relevant C++ type.
-
----
-
-## 32.4 Destruction
-
-Destruction and RAII are observable runtime semantics where they have observable effects.
-
-Proof erasure MUST NOT change required destruction behavior.
+Verification MUST account for unions, base subobjects, bit-fields,
+`[[no_unique_address]]`, placement construction and other C++ cases in which
+source-level member distinction does not imply non-overlapping storage. Disjoint
+places may be assumed only from C++ semantics or checked evidence.
 
 ---
 
 # 33. Exceptions
 
-C++L preserves C++ exception semantics.
+C++L preserves ordinary C++ exception semantics.
 
-Unless otherwise specified:
+`ensures` describes normal return only. A thrown exception does not have to satisfy
+the normal postcondition unless another specification mechanism explicitly says
+so; this specification defines no separate exceptional-postcondition clause.
 
-```text
-ensures
-```
+Verified reasoning MUST nevertheless model the effects of throwing expressions,
+stack unwinding and destructors whenever they can affect a claimed property. A
+proof that a call cannot throw requires checked evidence from ordinary C++
+`noexcept` semantics and/or verified body semantics; exception freedom is never
+silently assumed.
 
-describes normal return.
+A `noexcept` function retains the ordinary C++ consequence that an escaping
+exception causes termination. Verification MUST NOT reinterpret that behavior.
 
-If a proof requires:
-
-```text
-this call cannot throw
-```
-
-that property MUST itself be established.
-
-An implementation MUST NOT silently assume exception freedom.
+Total correctness and exception behavior are distinct: termination may include
+completion by a C++ exception, while a normal-return postcondition still applies
+only to normal return.
 
 ---
 
 # 34. Concurrency
 
-C++L does not replace the C++ concurrency and memory model.
+C++L preserves the C++ concurrency and memory model. Ordinary threads, atomics,
+locks and synchronization primitives keep their C++ runtime semantics.
 
-Claims involving:
+A verification claim involving shared mutable state must account for all
+interleavings permitted by the selected C++ model, including happens-before,
+memory ordering, synchronization and data-race rules. Sequential reasoning MUST
+NOT be applied to a value that another thread may change unless synchronization
+or another proof establishes the required stability.
 
-```text
-threads
-atomics
-interleavings
-happens-before
-data-race freedom
-lock invariants
-```
+`const` does not imply cross-thread immutability. `pure` does not by itself imply
+thread safety. A non-atomic read does not become stable merely because the same
+thread has not written the object.
 
-require formal semantics sufficient for the claim being made.
-
-A verifier MUST NOT establish concurrency properties using purely sequential reasoning when concurrent behavior can invalidate that reasoning.
-
-Ordinary concurrent C++ remains ordinary C++ when no such verification claim is made.
-
----
-
-# 35. Foreign code
-
-C++L may interoperate with ordinary C, C++, platform APIs, assembly, and other foreign systems.
-
-Foreign code is not automatically formally verified.
-
-A verified caller may rely on foreign behavior only through an explicit boundary such as:
-
-```text
-verified specification
-trusted contract
-runtime validation
-unsafe boundary
-```
+C++L introduces no separate runtime concurrency system. A verified concurrent
+program succeeds only when the verifier can establish the required C++ memory-
+model properties from the program's ordinary concurrency operations and checked
+formal facts. Otherwise the verification claim fails closed.
 
 ---
 
-## 35.1 Foreign code and proofs
+# 35. Foreign and unverified code
 
-Runtime foreign code MUST NOT directly manufacture valid proof-domain values.
+C++L interoperates with ordinary C, C++, Objective-C++, assembly, platform APIs
+and other foreign systems through ordinary runtime ABI mechanisms.
 
-External proof artifacts may be accepted only if they satisfy the normal C++L proof-validation semantics.
+Foreign code is not automatically verified. A verified caller may obtain formal
+facts about a foreign interaction only from:
+
+- a checked verified wrapper whose own obligations are established;
+- explicit `trusted law` propositions;
+- ordinary runtime validation whose successful path establishes the fact; or
+- facts already guaranteed by ordinary C++ semantics independently of the
+  foreign implementation.
+
+An `unsafe` boundary permits execution but supplies no formal facts by itself.
+
+Runtime foreign code MUST NOT manufacture proof objects. External proof artifacts
+may be consumed only when they are translated into the normal C++L evidence model
+and independently checked according to the same proof rules.
+
+Foreign pointer or buffer contracts that rely on trusted memory facts may use the
+built-in memory propositions of §12.10 in an explicit `trusted law`; that trust
+remains reportable and does not generate runtime checks.
 
 ---
 
 # 36. Erasure
 
-C++L proof-only constructs are erased before ordinary runtime execution.
+C++L separates runtime C++ from verification-only language constructs.
 
-The following are proof/specification-only unless otherwise stated:
+Verification-only constructs are erased before ordinary runtime execution.
+
+These include, where applicable:
 
 ```text
 law
 proof
 proves
-ghost
 expects
 ensures
+forall
+exists
+refl
+exact
+apply
+assume
+rewrite
+cases
+decompose
+induction
+ghost
 invariant
 decreases
-proof-only type indices
+refinement predicates
+proof-only refinement indices
+proof-only mathematical values
+proof-only mathematical-domain intrinsics
+memory capability propositions
 proof evidence
+trusted verification metadata
 ```
+
+The contextual specification meanings of `result`, `old` and `self` exist only
+during verification and introduce no runtime state of their own.
+
+`verified` and `pure` are verification modifiers. Their markers erase while the
+ordinary C++ function body remains. `unsafe` is a verification marker; the marker
+erases while the ordinary C++ runtime operations inside the unsafe boundary remain.
+
+A refinement declaration may require canonical lowering to its underlying C++
+representation rather than simple token deletion.
 
 ---
 
 ## 36.1 Erasure must preserve runtime behavior
 
-Erasure MUST preserve the observable runtime semantics of the executable program.
+For every accepted C++L program `p`, erasure MUST preserve observable runtime
+semantics:
+
+```text
+Sem_runtime(p) = Sem_runtime(erase(p))
+```
+
+C++L verification may affect whether a program is accepted. It MUST NOT otherwise
+change what an accepted program does at runtime.
+
+Verification-only constructs MUST NOT introduce hidden runtime assertions, proof
+interpreters, proof tables, theorem dispatch, proof-only branches or loops,
+refinement tags, validation flags, hidden verification fields, verification-only
+constructors, observable verification-only temporaries or changed calling conventions.
 
 ---
 
@@ -3254,61 +3238,105 @@ Verification failure and runtime checking are separate mechanisms.
 
 ## 36.3 Refinement erasure
 
-Unless otherwise specified:
+Unless otherwise specified, a refinement has the runtime representation of its
+base type and its proof of membership is erased.
 
-```text
-refinement value
+For example:
+
+```cpp
+type Percentage = int where (self >= 0 && self <= 100);
 ```
 
-erases to the runtime representation of its base value.
+lowers conceptually to an ordinary C++ representation equivalent to:
 
-The proof of the refinement predicate is erased.
+```cpp
+using Percentage = int;
+```
+
+Refinement erasure MUST NOT introduce a wrapper, hidden tag, validation flag,
+additional field, automatic runtime check or different calling convention.
 
 ---
 
 ## 36.4 Ghost erasure
 
-Ghost values and ghost operations have no runtime identity.
+Ghost declarations, values and operations have no runtime identity. A ghost
+declaration erases completely, including its verification-only initialization and
+destruction semantics. Runtime computation MUST NOT depend on erased ghost state.
 
 ---
 
 ## 36.5 Runtime validation is not erased
 
-Checks required for runtime validation remain runtime behavior.
+Runtime validation written as ordinary C++ remains ordinary runtime behavior. The
+proof facts derived from a validation branch erase; the branch itself does not.
 
 ---
 
-## 36.6 No mandatory theorem runtime
+## 36.6 No C++L runtime requirement
 
-A conforming C++L program MUST NOT require a theorem VM, proof interpreter, proof garbage collector, or equivalent runtime merely because compile-time proofs were used.
+C++L ships no required runtime support library for verification and injects no
+verification runtime into the executable.
 
-C++L runtime execution remains ordinary native C++ execution unless the program itself explicitly depends on another runtime library.
+A conforming C++L program MUST NOT require a theorem VM, proof interpreter, proof
+garbage collector, proof runtime, refinement runtime, contract runtime or hidden
+validator runtime merely because C++L verification was used.
+
+Runtime execution remains ordinary native C++ execution unless the program itself
+explicitly depends on another runtime library or ordinary runtime support code.
 
 ---
 
 # 37. ABI semantics
 
-The following constructs MUST NOT by themselves change an existing C++ function's native ABI:
+Verification-only C++L constructs MUST NOT by themselves change an existing C++
+function's native ABI.
+
+This includes:
 
 ```text
 verified
 pure
 expects
 ensures
-law associations
+proves
+Law associations
 proof declarations
-case analysis and induction
-proof-only mathematical domains
+forall / exists
+proof commands
+cases
+decompose
+induction
 ghost state
-trusted metadata
-unsafe metadata
+loop invariants
+termination measures
+proof-only mathematical domains
+proof-only mathematical-domain intrinsics
+memory capability propositions
+refinement predicates
+proof-only refinement indices
+trusted verification metadata
+unsafe verification metadata
 ```
 
 Proof-only values are absent from runtime calling conventions.
 
-Refinement types use their base runtime representation unless explicitly specified otherwise.
+Refinement types use the runtime representation and ABI of their underlying C++
+base type unless this specification explicitly defines otherwise.
 
-Case analysis, induction, and proof-only mathematical domains have no runtime representation (§19–§21).
+Consequently, two declarations that differ only by refinement identity MUST NOT
+silently become distinct native overloads when their erased C++ signatures are
+the same.
+
+Proof metadata needed for verification across translation units is not native ABI
+state. A conforming implementation MUST transport or reconstruct that metadata by
+a mechanism that preserves its semantic identity and trust dependencies; it MUST
+NOT repair missing metadata by changing the native calling convention or by
+manufacturing evidence.
+
+Native ABI compatibility and verification metadata availability are separate
+properties. If required verification metadata is unavailable, verification MUST
+fail closed.
 
 ---
 
@@ -3404,7 +3432,7 @@ When verified code calls another function, one of the following must provide the
 ```text
 verified contract
 proven Law
-trusted contract
+trusted Law supplying the required proposition
 runtime-validated result
 explicitly irrelevant behavior
 ```
@@ -3415,53 +3443,97 @@ An unknown implementation MUST NOT silently contribute arbitrary formal facts.
 
 # 42. Templates
 
-C++ templates retain their normal C++ semantics.
+C++ templates retain ordinary C++ parsing, lookup, substitution, constraints,
+overload resolution, instantiation and specialization semantics.
 
-C++L declarations MAY be parameterized by C++ templates where grammatically valid.
+A C++L contract, refinement, Law or proof associated with a template is itself
+parameterized by the template's semantic parameters. Proof obligations are
+checked for the actual specialization unless they were already established by a
+valid generic proof.
 
-Proof obligations depending on concrete template values or types are obligations over the relevant instantiation unless established generically.
+A C++ constraint such as `requires` controls C++ template viability; it is not by
+itself a C++L theorem. Conversely, C++L proof evidence does not alter C++ overload
+resolution unless ordinary C++ source semantics independently do so.
 
-A proof for one template instantiation MUST NOT silently be reused for a semantically different instantiation.
+At an instantiation point, the verifier must have the formal metadata required by
+the specialization: contracts, refinement definitions, Laws/proofs, purity,
+termination/effect summaries and trust dependencies. Header definitions, modules,
+explicit-instantiation metadata or another semantically equivalent transport may
+provide it.
+
+Evidence for one specialization MUST NOT be reused for another unless a checked
+generic derivation justifies that reuse.
 
 ---
 
-# 43. Namespaces and scopes
+# 43. Namespaces, classes and formal scope
 
-C++L declarations participate in lexical scopes.
+C++L declarations participate in lexical scope while referenced C++ entities use
+ordinary C++ name lookup unless a formal binder explicitly shadows a name.
 
-C++ entities referenced by C++L constructs follow ordinary C++ name lookup unless this specification defines a distinct formal-name rule.
+Laws and proofs may appear at namespace scope. Class-scope Laws follow §10.6.
+Proof binders, quantifier binders, case binders and induction binders have lexical
+proof scope and MUST NOT escape it.
 
-Laws and proofs may be placed inside namespaces.
+Formal declaration identity is semantic rather than spelling-only: aliases,
+qualified names, overload resolution and template specialization are resolved
+through the corresponding C++ entity model before C++L attaches verification
+metadata.
 
-Formal names MUST resolve unambiguously.
+An unnamed namespace gives Laws/proofs translation-unit-local identity just as it
+does for ordinary C++ entities.
 
 ---
 
-# 44. Headers
+# 44. Declarations, headers and translation units
 
-C++L constructs may appear in supported C++ headers.
+C++L uses ordinary supported C++ source/header organization. Public verification
+interfaces normally place contracts, shared refinements and reusable Laws/proofs
+where callers can see them.
 
-Existing:
+A public verified declaration may carry the contract while its matching
+out-of-line definition carries only the ordinary C++ function body:
 
-```text
-.h
-.hpp
-.hh
+```cpp
+// account.hpp
+verified unsigned withdraw(unsigned balance, unsigned amount)
+    expects (amount <= balance)
+    ensures (result == balance - amount);
+
+// account.cpp
+unsigned withdraw(unsigned balance, unsigned amount)
+{
+    return balance - amount;
+}
 ```
 
-files do not require a separate C++L header format.
+The declaration and definition are one Clang-resolved function entity. The
+contract belongs to that entity. Repeated contracts, when present, must be
+semantically identical after parameter renaming and normal resolution;
+conflicting contracts are ill-formed.
 
-A Law or formal declaration placed in a header does not by itself change runtime ABI.
+A declaration alone does not prove its implementation. A caller may rely on its
+verified summary only when checked implementation evidence or an explicit trusted
+proposition establishes the required summary.
+
+Across translation units, the verification interface must preserve contracts,
+refinement identities/predicates, Law/proof evidence, purity, totality, effect
+summaries and trust dependencies needed by callers. This metadata is independent
+of native ABI symbols.
 
 ---
 
 # 45. Modules
 
-Where the selected C++ mode supports modules, ordinary module semantics remain C++ semantics.
+When the selected C++ mode supports modules, ordinary module parsing, ownership,
+visibility and import semantics remain C++ semantics.
 
-A C++L implementation may expose formal declarations through module interfaces.
+C++L verification metadata associated with exported declarations must be
+available to importing verification contexts with the same meaning it has in the
+defining module. Import does not weaken contracts, erase trust dependencies or
+create proof evidence that was absent from the exported verification interface.
 
-Imported formal declarations MUST preserve their proposition and trust meaning.
+C++L introduces no separate module syntax solely for proof metadata.
 
 ---
 
@@ -3544,7 +3616,7 @@ does not construct:
 Proof<P>
 ```
 
-merely because execution has not yet failed.
+merely because execution reaches that point without failure.
 
 Runtime assertions and formal proof are separate mechanisms.
 
@@ -3588,23 +3660,33 @@ Proofs may rely on that exclusivity through case analysis (§20), which must als
 
 ---
 
-# 52. Formal assumptions and implementation limitations
+# 52. Complete-conformance and fail-closed rule
 
-A language implementation may lack support for proving some semantics defined by this specification.
+This specification defines the target language independently of implementation
+progress.
 
-Lack of implementation support MUST NOT change the meaning of the language rule.
+A complete conforming implementation MUST implement every required construct and
+semantic rule defined by this specification and the normative grammar. It may use
+any sound internal architecture, solver or proof automation consistent with those
+semantics.
 
-The implementation may report:
+A particular build or tool may be incomplete during development, but such
+incompleteness is status, not language meaning. Missing support MUST NOT:
 
 ```text
-UNRESOLVED
-UNVERIFIED
-unsupported
+weaken a Law or contract
+change canonical syntax
+invent proof evidence
+silently introduce trust
+silently introduce runtime checks
+change erasure or ABI rules
+reinterpret a required feature as optional
 ```
 
-but MUST NOT invent a weaker theorem.
-
-Current implementation support is documented in `STATUS.md`.
+For a program outside the semantics expressly modeled by the language, or for a
+proof obligation that cannot be established, verification fails closed. Failure
+to implement a feature required by the language is incomplete conformance with
+this specification.
 
 ---
 
@@ -3769,23 +3851,35 @@ Verification features are opt-in and additive.
 
 # 61. Conformance requirements
 
-A conforming C++L implementation MUST:
+A complete conforming C++L implementation MUST:
 
-1. preserve valid supported C++ source compatibility;
-2. preserve ordinary C++ runtime semantics when no C++L feature changes them;
-3. treat C++L words contextually rather than globally reserving them;
-4. preserve the distinction between runtime, specification, and proof domains;
-5. preserve the distinction between proof and trust;
-6. preserve the distinction between static proof and runtime validation;
-7. reject invalid proof evidence;
-8. prevent proof-only state from affecting runtime behavior;
-9. preserve selected C++ machine arithmetic semantics;
-10. prevent verified reasoning from silently relying on undefined behavior;
-11. preserve explicit trusted and unsafe boundaries;
-12. erase proof-only constructs without changing required runtime behavior;
-13. avoid automatic runtime assertion substitution for failed proofs;
-14. preserve the meaning of verification statuses;
-15. fail rather than falsely report `PROVEN` when a required proof cannot be established.
+1. preserve valid supported C++ source compatibility when no C++L semantics are requested;
+2. preserve ordinary C++ runtime semantics and the selected C++ object/memory model;
+3. implement the contextual C++L grammar without globally reserving contextual words;
+4. implement Laws, `proof`, `proves`, proof statements and kernel-checkable evidence;
+5. implement universal and existential propositions with sound introduction and elimination;
+6. implement definitional/propositional equality, logical connectives and substitution soundly;
+7. implement `verified` contracts, path-sensitive reasoning, normal-return post-state and call composition;
+8. implement refinement and indexed/dependent refinement obligations at every defined crossing;
+9. implement purity checking and keep purity distinct from termination and `const`;
+10. implement proof-side `cases`, `decompose` and `induction` with exhaustive, sound state partitions;
+11. implement loop invariants and `decreases` termination obligations for the loop forms defined here;
+12. implement partial/total correctness distinctions and recursion termination semantics;
+13. implement the storage, alias, lifetime, pointer-capability and effect-summary rules needed by verified memory operations;
+14. implement member, constructor, destructor and virtual-override contract semantics;
+15. preserve template, namespace, class, translation-unit and module verification identity across composition;
+16. preserve selected C++ machine arithmetic, floating-point and undefined-behavior semantics;
+17. handle exceptions and concurrency without unsound sequential or no-throw assumptions;
+18. preserve explicit `trusted law` and `unsafe` boundaries and their distinct meanings;
+19. preserve the distinction between static proof, trust, runtime validation, unsafe and unverified code;
+20. reject invalid proof evidence and fail closed when required facts cannot be established;
+21. prevent proof-only and ghost state from affecting runtime behavior;
+22. erase verification-only constructs without changing required runtime behavior;
+23. preserve native ABI where this specification promises erasure-level ABI identity;
+24. avoid automatic runtime assertion/validation substitution for failed proofs;
+25. transport sufficient verification metadata for sound cross-translation-unit and module reasoning;
+26. preserve trust dependency closure in derived proof evidence and reports; and
+27. never weaken a Law, contract, refinement, memory obligation or termination obligation to make a program verify.
 
 ---
 
@@ -3800,6 +3894,8 @@ a theorem VM
 a replacement linker
 a replacement native ABI
 a mandatory runtime proof engine
+a required C++L verification runtime library
+a required C++L runtime-validation library
 a rewrite of existing C++ dependencies
 whole-program verification before any code can compile
 general-purpose algebraic data types
@@ -3851,8 +3947,8 @@ for normal return.
 ## 63.3 Preconditions
 
 ```cpp
-verified int divide(int x, int y)
-    expects (y != 0)
+verified unsigned divide(unsigned x, unsigned y)
+    expects (y != 0u)
 {
     return x / y;
 }
@@ -3861,7 +3957,7 @@ verified int divide(int x, int y)
 The verified call domain excludes:
 
 ```text
-y == 0
+y == 0uu
 ```
 
 unless another control-flow branch handles it before the division.
@@ -3998,8 +4094,11 @@ because the implementation needed the statement to be true
 
 ## Canonical surface conformance
 
-[RFC 0015](./rfcs/0015-canonical-language-surface.md) reconciles historical
-surface examples. [GRAMMAR.md](./GRAMMAR.md) is the single concrete grammar;
-[DEVELOPER_GUIDE.md](./DEVELOPER_GUIDE.md) is the practical usage guide. Implementation
-fragment notes constrain available verification power, never authorize an
-alternate surface spelling or unchecked acceptance.
+`GRAMMAR.md` defines the concrete grammar corresponding to this specification.
+`DEVELOPER_GUIDE.md` is explanatory usage material and MUST remain consistent with
+this specification. `FOUNDATIONS.md` formalizes the proof model; `TRUST.md`
+defines the trusted-computing-base and correspondence obligations.
+
+Examples, tutorials, implementation code and status documents MUST NOT establish
+an alternate language dialect. When they disagree with this specification, they
+must be corrected rather than used to weaken the normative target.
