@@ -916,3 +916,121 @@ cppl-lsp
 `cppl-lsp` exists to compose those systems into one coherent developer experience.
 
 It adds the tooling required by C++L while continuing to inherit the mature C++ understanding of the Clang ecosystem.
+
+---
+
+## How to build
+
+`cppl-lsp` builds as part of the ordinary CMake project; there is no separate
+build step.
+
+```sh
+make build
+```
+
+or, directly:
+
+```sh
+cmake --preset dev
+cmake --build build/dev
+```
+
+The executable is produced at `build/dev/bin/cppl-lsp`.
+
+---
+
+## How to run manually
+
+`cppl-lsp` speaks LSP over stdio: Content-Length-framed JSON-RPC 2.0 on
+stdin, the same framing on stdout, and nothing else on stdout (its own
+diagnostics about malformed requests or a missing Clang go to stderr).
+
+```sh
+build/dev/bin/cppl-lsp --clang /path/to/clang++ --clang-arg -std=c++20
+```
+
+`--clang` selects the Clang driver executable used to preprocess and
+semantically check documents (defaults to the toolchain's `clang++` when
+omitted); repeat `--clang-arg` for each extra flag (include paths, defines,
+target flags) the buffer-compile pipeline should forward to Clang, mirroring
+`cppl`'s own `--clang` option.
+
+There is normally no reason to type LSP JSON-RPC by hand; an editor extension
+(see below) does this. To confirm the process itself starts and speaks the
+protocol, an `initialize` request can be piped in directly:
+
+```sh
+printf 'Content-Length: 100\r\n\r\n{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":null,"rootUri":null,"capabilities":{}}}' \
+  | build/dev/bin/cppl-lsp
+```
+
+---
+
+## How to run the fixture and unit tests
+
+```sh
+make test
+```
+
+or, to run only the LSP suites:
+
+```sh
+ctest --test-dir build/dev -R '^lsp_'
+```
+
+This runs, among others, `lsp_fixtures_test`, which drives the same
+buffer-compile pipeline the server uses against real files under
+`tests/fixtures/` and asserts the primary acceptance invariant: a valid C++L
+fixture produces zero Clang/C++-semantic diagnostics, while a genuine
+ordinary-C++ error and a malformed C++L construct are still reported.
+
+`make check` additionally runs formatting and linting over the whole
+repository, including `src/lsp`, `tools/cppl-lsp`, and the driver's shared
+pipeline.
+
+---
+
+## How to launch it from VS Code
+
+A thin client extension lives at `vscode/cppl-vscode/`. It starts
+`build/dev/bin/cppl-lsp` as a child process and registers it for the `cppl`
+language ID only — it never takes over ordinary `.cpp` files.
+
+To try it against the repository's own fixtures:
+
+1. Open this repository in VS Code.
+2. Open the Run and Debug view, select "Launch cppl-vscode Extension", and
+   press F5. This opens a second VS Code window ("Extension Development
+   Host") with the extension active.
+3. In that window, open a file under `tests/fixtures/`. The repository's
+   `.vscode/settings.json` already associates `tests/fixtures/**/*.cpp` (and,
+   for the future native extension, `*.cppl`) with the `cppl` language mode,
+   so these files activate `cppl-lsp` instead of the ordinary C++ tooling.
+   Every other `.cpp` file in the repository keeps using normal C++ tooling.
+
+See `vscode/cppl-vscode/README.md` for extension-specific configuration
+(pointing it at a non-default `cppl-lsp` binary or Clang installation).
+
+---
+
+## Currently unsupported
+
+This is a first production-quality vertical slice: transport, document
+synchronization, and diagnostics. The following are explicitly out of scope
+for this milestone and are not implemented:
+
+```text
+hover
+completion
+go-to-definition / references
+rename
+document formatting
+semantic tokens
+proof search / interactive proof state
+incremental (as opposed to full) text document sync
+```
+
+`textDocument/didChange` is handled under full document sync
+(`TextDocumentSyncKind.Full`): the client resends the whole document on every
+change, which this server always accepts correctly regardless of what sync
+kind the client actually advertises support for.
