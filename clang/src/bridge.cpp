@@ -507,6 +507,13 @@ std::string unmodeled_statement(const std::string& found) {
 std::string unmodeled_expression(CXCursor cursor, CXCursorKind kind) {
     switch (kind) {
         case CXCursor_UnaryOperator:
+            // A dereference is not merely an unmodeled operator. It awaits the
+            // memory-validity obligations of RFC 0014: `p != nullptr` is
+            // necessary and insufficient for a valid dereference, and the
+            // pointer's state model may never supply the difference.
+            if (clang_getCursorUnaryOperatorKind(cursor) == CXUnaryOperator_Deref)
+                return "dereferencing a pointer requires the memory-validity obligations of RFC 0014, which are not "
+                       "implemented; 'p != nullptr' alone does not establish that 'p' may be dereferenced";
             return "operator '" + take(clang_getUnaryOperatorKindSpelling(clang_getCursorUnaryOperatorKind(cursor))) +
                    "' is not modeled";
         case CXCursor_CStyleCastExpr:
@@ -1747,6 +1754,11 @@ struct BodyLowering {
                 return reject("this assignment target is not modeled");
             }
             target = inner[0];
+        }
+        if (clang_getCursorKind(target) == CXCursor_UnaryOperator &&
+            clang_getCursorUnaryOperatorKind(target) == CXUnaryOperator_Deref) {
+            return reject("writing through a pointer requires the memory-validity obligations of RFC 0014, which are "
+                          "not implemented; 'p != nullptr' alone does not establish that 'p' may be written");
         }
         if (clang_getCursorKind(target) != CXCursor_DeclRefExpr) {
             return reject("only a local variable is assigned in a modeled body");

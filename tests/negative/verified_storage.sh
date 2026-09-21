@@ -71,3 +71,22 @@ verified int f(unsigned& x, const unsigned& y) expects(y > 0u) ensures(result > 
     return 0;
 }
 CPP
+# Dereference awaits the memory-validity obligations of RFC 0014. A non-null
+# precondition is necessary and insufficient, and the pointer's state model may
+# never supply the difference, so every dereference form stays refused.
+reject pointer_read 'memory-validity obligations of RFC 0014' <<'CPP'
+verified int f(int* p) expects(p != nullptr) ensures(result == 0) { return *p; }
+CPP
+reject pointer_write 'memory-validity obligations of RFC 0014' <<'CPP'
+verified void f(int* p) expects(p != nullptr) ensures(true) { *p = 0; }
+CPP
+reject pointer_member 'not modeled|memory-validity' <<'CPP'
+struct S { int m; };
+verified int f(S* p) expects(p != nullptr) ensures(result == 0) { return p->m; }
+CPP
+reject pointer_subscript 'not modeled|memory-validity' <<'CPP'
+verified int f(int* p) expects(p != nullptr) ensures(result == 0) { return p[0]; }
+CPP
+reject pointer_arithmetic_write 'memory-validity obligations of RFC 0014' <<'CPP'
+verified void f(int* p) expects(p != nullptr) ensures(true) { *(p + 1) = 0; }
+CPP

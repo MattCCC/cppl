@@ -611,10 +611,18 @@ about new versions; refined actual storage still owes membership. Repeated actua
 arguments share state. Branches and loop invariants use the same version model.
 This remains `PROTOTYPE`, not production-complete refinement flow.
 
-Refined members and arrays, pointer dereference effects, general casts, lambdas,
-methods, alias-return lifetimes, `old` over mutable state, and dependent object
-flows remain unimplemented. Nested effectful expressions without represented C++
-sequencing are rejected. These are implementation gaps, not completed capability.
+Refined members and arrays, general casts, lambdas, methods, alias-return
+lifetimes, `old` over mutable state, and dependent object flows remain
+unimplemented. Nested effectful expressions without represented C++ sequencing
+are rejected. These are implementation gaps, not completed capability.
+
+Pointer dereference is blocked rather than merely unimplemented. Every form
+(`*p`, `*p = e`, `p->m`, `p[i]`) is refused because dereference validity needs
+memory-validity obligations that do not exist; `p != nullptr` is necessary and
+insufficient, and the pointer's state model may not supply the difference
+(`SPEC.md` 12.9). RFC 0014 proposes those obligations and gates the work.
+Pointer values and proof-side `null`/`non_null` case analysis are `IMPLEMENTED`
+and unaffected.
 
 The same membership checks cover partial-correctness bodies containing loops and
 their callers, including unused refined locals. Corrupt or unresolved refinement

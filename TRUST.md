@@ -382,6 +382,19 @@ is generated. No body or fact from a recovery AST is accepted as evidence.
 Reference/pointer return lifetimes, pointer dereference validity, general object
 mutation and exceptional post-state are not inferred by this model.
 
+Pointer dereference validity is an absent obligation, not a trusted assumption.
+No dereference is modeled, so nothing in the trusted base depends on one being
+valid. This is deliberate: `p != nullptr` is necessary and insufficient for a
+valid dereference, and admitting `*p` on that basis would install
+`non-null implies dereferenceable` as a global assumption the kernel never
+checks. The pointer provider continues to state `null` and `non_null` only, and
+never lifetime, provenance, dereferenceability, bounds, initialization,
+ownership or uniqueness. RFC 0014 proposes separate `readable`/`writable`
+obligations, discharged by the ordinary proof system, with `trusted`/`unsafe` as
+an explicit escape hatch that records a trust event rather than assuming
+validity everywhere. Until those obligations exist, every dereference form is
+refused. This paragraph adds no kernel rule, axiom, assumption or TCB delta.
+
 An ordinary refined-return declaration is not a trusted contract. The bridge
 checks declarations outside the selected proof bodies as well as definitions:
 only a verified definition of the same Clang callable can establish that return

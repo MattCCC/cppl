@@ -147,5 +147,8 @@ reference. The common predicate instantiation is used for initialization, direct
 writes and call effects, on both total and partial-correctness paths. No new
 kernel rule, logical assumption or axiom is introduced. The storage, alias and
 post-state correspondence expands the existing frontend/obligation TCB (TRUST.md
-10.1). General object, pointer and lifetime flows are still incomplete; STATUS.md
-records those implementation gaps.
+10.1). General object and lifetime flows are still incomplete; STATUS.md records
+those implementation gaps. Refinement flow through a pointer dereference is
+blocked on the memory-validity obligations of RFC 0014, not merely unimplemented:
+a refinement may not cross into or out of `*p` while dereference validity itself
+is unproved.

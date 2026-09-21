@@ -1383,6 +1383,18 @@ rejected. Unsupported lifetime or exceptional-state behavior remains rejected.
 These stateful contracts use the partial-correctness obligation path, including
 for loop-free bodies; they do not introduce total core definitions.
 
+Dereferencing a pointer is rejected, in every form: `*p` as a read, `*p = e` as
+a write, `p->m`, and `p[i]`. This is not a representational limitation. A valid
+dereference requires liveness, initialization for reads, sufficient bounds,
+provenance and access permission, and `p != nullptr` establishes none of them: it
+is necessary and insufficient. A pointer's state model states `null` and
+`non_null` and MUST NOT supply the difference (section 20.5). Dereference
+therefore requires separate memory-validity obligations, which this
+implementation does not provide; until it does, no dereference is modeled and no
+implementation may admit one on the strength of a non-null precondition. RFC 0014
+proposes those obligations. Pointer values, their comparisons, and proof-side
+case analysis over `null` and `non_null` are unaffected.
+
 Pure conditional expressions use Clang's resolved result type and the existing
 conditional term and branch rules. Boolean literals denote the two Boolean
 values. These additions do not model numeric promotions or signed overflow.
