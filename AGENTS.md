@@ -1244,6 +1244,25 @@ TRUST.md states what is not inferred
 
 ---
 
+# Refinement storage invariants
+
+- Every write to refined storage, including a verified call effect, must use the
+  common refinement-crossing predicate machinery.
+- A refinement fact belongs to a logical value version, never to a variable name.
+- Possible mutation through an alias invalidates dependent observations unless
+  evidence establishes the new value's predicate. Const references are not a
+  global immutability guarantee.
+- Ordinary C++ binding, type identity, access and conversion semantics come from
+  Clang. Storage and logical values are separate concepts.
+- No cast automatically preserves semantic refinement information, and no
+  reference or pointer operation manufactures proof.
+- No syntax-specific refinement subsystem may bypass shared read/write/effect
+  infrastructure. New writes must also participate in loop mutation discovery.
+- A callee's post-state is usable only after its own contract and the call's entry
+  obligations are proven. Repeated actual aliases share a post-state version.
+
+---
+
 # 39. Final invariant
 
 For every Law reported as `PROVEN`, the project must be able to answer:
