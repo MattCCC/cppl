@@ -270,7 +270,9 @@ FormulaProjection formula(const TokenStream& stream, source::ByteSpan expression
 
     if (const auto eq = equality_syntax(stream, expression); eq && !contains_formal_equality(stream, eq->arguments)) {
         const auto type = std::string(stream.spelling(eq->type));
-        return {{Kind::Equality, {}}, "([](" + type + ", " + type + ") {})(" + copied(stream, eq->arguments) + ")", {}};
+        return {{Kind::Equality, {}},
+                "([](" + type + " const&, " + type + " const&) {})(" + copied(stream, eq->arguments) + ")",
+                {}};
     }
     if (contains_formal_syntax(stream, expression)) {
         // `||` is looser than `&&` (GRAMMAR.md 33), so when both stand at this

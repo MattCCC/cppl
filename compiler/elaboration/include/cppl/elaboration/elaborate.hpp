@@ -43,6 +43,8 @@ struct Request {
     const clangbridge::TranslationUnit& unit;
 };
 
+[[nodiscard]] std::optional<vir::Type> resolved_type(const clangbridge::Type& type);
+
 // Connects C++L constructs to the C++ semantics Clang resolved, and produces
 // the typed VIR those constructs mean (ARCHITECTURE.md 14).
 //

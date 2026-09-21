@@ -43,7 +43,7 @@ std::unexpected<CoreError> fail(CoreErrorKind kind, std::string detail) {
                 return type;
 
             } else if constexpr (std::is_same_v<Node, Literal>) {
-                const Type type{node.type};
+                Type type{node.type};
                 if (auto valid = validate_type(type); !valid) {
                     return std::unexpected(valid.error());
                 }
@@ -51,7 +51,7 @@ std::unexpected<CoreError> fail(CoreErrorKind kind, std::string detail) {
                     return fail(CoreErrorKind::MalformedLiteral, "literal " + std::to_string(node.value) +
                                                                      " is not representable in " + describe(node.type));
                 }
-                return type;
+                return std::move(type);
 
             } else if constexpr (std::is_same_v<Node, Call>) {
                 const Definition* definition = context.lookup(node.callee);

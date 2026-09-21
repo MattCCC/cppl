@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cppl/source/location.hpp"
+#include "cppl/source/representation.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -22,6 +23,7 @@ enum class TypeKind : std::uint8_t {
     Int,
     Bool,
     Proposition,
+    Value,
     Unsupported,
 };
 
@@ -56,6 +58,9 @@ struct Representation {
     std::string identity;
     std::string name; // qualified name, for diagnostics only
     std::vector<Enumerator> enumerators;
+    source::RepresentationKind kind = source::RepresentationKind::None;
+    std::vector<source::Component> components;
+    std::string rejection;
 
     friend bool operator==(const Representation& lhs, const Representation& rhs) {
         return lhs.identity == rhs.identity;
@@ -75,6 +80,7 @@ struct Type {
     // representation records what the named states are without narrowing the
     // value set to them.
     Representation representation;
+    std::vector<Type> projections;
 
     friend bool operator==(const Type&, const Type&) = default;
 };
@@ -119,6 +125,11 @@ struct Binary {
 struct Negation {
     std::vector<Expr> operands;
 };
+struct Projection {
+    std::uint32_t index = 0;
+    std::vector<Expr> operands; // one subject, signature supplied by its type
+};
+
 struct FormalEquality {
     Type operand_type;
     std::vector<Expr> operands;
@@ -195,7 +206,7 @@ struct Expr {
     Type type;
     source::SourceLocation location;
     std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, LocalVersion, LocalRef, Loop, Iterate,
-                 FormalEquality, Universal, Implication, Connective, Unsupported>
+                 Projection, FormalEquality, Universal, Implication, Connective, Unsupported>
         node;
 };
 

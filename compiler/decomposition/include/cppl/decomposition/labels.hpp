@@ -31,10 +31,12 @@ enum class LabelKind : std::uint8_t {
 // expressions.
 inline constexpr std::string_view kReservedLabels[] = {
     // Scoped enumerations: the underlying values equal to no enumerator.
-    "unnamed",
+    "unnamed", "valueless", "none", "some", "value", "error", "null", "non_null", "components",
 };
 
 [[nodiscard]] constexpr LabelKind label_kind(std::string_view label) {
+    if (label.starts_with("alternative<") && label.ends_with(">"))
+        return LabelKind::Keyword;
     for (const std::string_view reserved : kReservedLabels) {
         if (label == reserved) {
             return LabelKind::Keyword;

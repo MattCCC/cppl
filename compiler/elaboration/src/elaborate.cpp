@@ -37,6 +37,15 @@ std::optional<vir::Type> convert_type(const clangbridge::Type& type) {
         case clangbridge::TypeKind::Proposition:
             converted = vir::Type::proposition();
             break;
+        case clangbridge::TypeKind::Value:
+            converted = vir::Type::value();
+            for (const auto& projection : type.projections) {
+                auto component = convert_type(projection);
+                if (!component)
+                    return std::nullopt;
+                std::get<vir::ValueType>(converted->node).projections.push_back(std::move(*component));
+            }
+            break;
         case clangbridge::TypeKind::Unsupported:
             return std::nullopt;
     }
@@ -50,6 +59,9 @@ std::optional<vir::Type> convert_type(const clangbridge::Type& type) {
     // decomposition provider may model. Nothing is inferred from a spelling:
     // this is the identity Clang resolved (SPEC.md 20.5).
     converted->representation.identity = type.representation.identity;
+    converted->representation.kind = type.representation.kind;
+    converted->representation.components = type.representation.components;
+    converted->representation.rejection = type.representation.rejection;
     // The resolved C++ spelling is kept for every type, so a diagnostic can
     // name what the author wrote even when no provider models it.
     converted->representation.name = type.representation.name.empty() ? type.spelling : type.representation.name;
@@ -114,6 +126,15 @@ class ExpressionElaborator {
         result.type = *type;
         result.provenance.range.begin = expr.location;
 
+        if (const auto* projection = std::get_if<clangbridge::Projection>(&expr.node)) {
+            if (projection->operands.size() != 1)
+                return std::nullopt;
+            auto operand = convert(projection->operands[0]);
+            if (!operand)
+                return std::nullopt;
+            result.node = vir::Projection{projection->index, {std::move(*operand)}};
+            return result;
+        }
         if (const auto* quantified = std::get_if<clangbridge::Universal>(&expr.node)) {
             if (quantified->binders.empty() || quantified->body.size() != 1) {
                 failure_ = Failure{"malformed universal proposition", expr.location};
@@ -122,7 +143,10 @@ class ExpressionElaborator {
             vir::Universal converted;
             for (const auto& binder : quantified->binders) {
                 auto binder_type = convert_type(binder);
-                if (!binder_type || binder_type->is_proposition()) {
+                // Quantification ranges over a modeled domain of values. A
+                // structural value is a decomposition subject, not such a
+                // domain: nothing states what its inhabitants are.
+                if (!binder_type || binder_type->is_proposition() || binder_type->is_value()) {
                     failure_ =
                         Failure{"quantifier binder type '" + binder.spelling + "' is not modeled", expr.location};
                     return std::nullopt;
@@ -172,7 +196,8 @@ class ExpressionElaborator {
 
         if (const auto* equality = std::get_if<clangbridge::FormalEquality>(&expr.node)) {
             const auto operand_type = convert_type(equality->operand_type);
-            if (!operand_type || (!operand_type->is_integer() && !operand_type->is_boolean()) ||
+            if (!operand_type ||
+                (!operand_type->is_integer() && !operand_type->is_boolean() && !operand_type->is_value()) ||
                 equality->operands.size() != 2) {
                 failure_ = Failure{"formal equality requires two operands of a modeled C++ type", expr.location};
                 return std::nullopt;
@@ -198,7 +223,7 @@ class ExpressionElaborator {
         }
 
         if (const auto* literal = std::get_if<clangbridge::IntLiteral>(&expr.node)) {
-            if (!type->is_integer()) {
+            if (!type->is_integer() && !type->is_boolean()) {
                 failure_ = Failure{"a literal of non-integer type is not modeled", expr.location};
                 return std::nullopt;
             }
@@ -465,19 +490,22 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
     // A residual binder is an alias for the subject's underlying value. Probe
     // parameters give it C++ lookup/type checking; this map removes those
     // analysis-only parameters before formal lowering, including under binders.
-    std::vector<std::uint32_t> aliases;
+    std::vector<vir::Expr> aliases;
     const auto remap = [&](auto&& self, vir::Expr& expression) -> void {
+        if (auto* parameter = std::get_if<vir::ParameterRef>(&expression.node)) {
+            if (parameter->parameter >= parameter_count) {
+                const auto index = parameter->parameter - parameter_count;
+                if (index < aliases.size()) {
+                    expression = aliases[index];
+                } else {
+                    parameter->parameter -= static_cast<std::uint32_t>(aliases.size());
+                }
+            }
+            return;
+        }
         std::visit(
             [&](auto& node) {
-                using Node = std::decay_t<decltype(node)>;
-                if constexpr (std::is_same_v<Node, vir::ParameterRef>) {
-                    if (node.parameter >= parameter_count) {
-                        const auto index = node.parameter - parameter_count;
-                        node.parameter = index < aliases.size()
-                                             ? aliases[index]
-                                             : node.parameter - static_cast<std::uint32_t>(aliases.size());
-                    }
-                } else if constexpr (requires { node.operands; }) {
+                if constexpr (requires { node.operands; }) {
                     for (auto& child : node.operands)
                         self(self, child);
                 } else if constexpr (requires { node.arguments; }) {
@@ -509,23 +537,11 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
             vir::ProofStep step;
             step.location = statement.location;
 
-            if (statement.kind == frontend::ProofStatementKind::Cases) {
+            if (statement.kind == frontend::ProofStatementKind::Cases ||
+                statement.kind == frontend::ProofStatementKind::Decompose) {
                 auto subject = convert_probe(projected.case_names, next_case, statement.location);
                 if (!subject)
                     return std::nullopt;
-
-                // The subject must denote one stable value for the whole
-                // statement, because every arm reasons about the same value. A
-                // parameter does; an expression that could be evaluated twice,
-                // or whose value could change, does not.
-                const auto* parameter = std::get_if<vir::ParameterRef>(&subject->node);
-                if (parameter == nullptr) {
-                    report(engine, diagnostics::Category::UnsupportedSemantics, statement.location,
-                           "the subject of cases must be a value parameter",
-                           "an arbitrary expression is not yet stabilized in the proof model, so it "
-                           "cannot be the subject of a case split");
-                    return std::nullopt;
-                }
 
                 // What the states are is the representation's business, not the
                 // engine's. A representation no provider models fails here, at
@@ -538,11 +554,44 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
                            unsupported->reason);
                     return std::nullopt;
                 }
-                if (std::holds_alternative<decomposition::ProductDecomposition>(decomposed)) {
-                    report(engine, diagnostics::Category::UnsupportedSemantics, statement.location,
-                           "'" + describe(subject->type) + "' decomposes into components, not cases",
-                           "cases reasons over alternative states; a product exposes its components "
-                           "through component binders instead");
+                if (const auto* product = std::get_if<decomposition::ProductDecomposition>(&decomposed)) {
+                    if (statement.kind != frontend::ProofStatementKind::Decompose || statement.arms.size() != 1 ||
+                        statement.arms[0].spelling != "components") {
+                        report(engine, diagnostics::Category::Elaboration, statement.location,
+                               "product decomposition requires decompose subject { components(binders) => { proof } }");
+                        return std::nullopt;
+                    }
+                    const auto& arm = statement.arms[0];
+                    if (arm.binders.size() != product->fields.size()) {
+                        report(engine, diagnostics::Category::Elaboration, arm.location,
+                               "product binds " + std::to_string(product->fields.size()) + " components");
+                        return std::nullopt;
+                    }
+                    const auto outer_aliases = aliases.size();
+                    const auto outer_assumed = assumed.size();
+                    for (std::size_t i = 0; i < arm.binders.size(); ++i) {
+                        if (std::ranges::find(value_names, arm.binders[i]) != value_names.end()) {
+                            report(engine, diagnostics::Category::Elaboration, arm.location,
+                                   "component binder duplicates an enclosing name");
+                            return std::nullopt;
+                        }
+                        aliases.push_back(product->fields[i].value);
+                        value_names.push_back(arm.binders[i]);
+                    }
+                    auto nested = self(self, arm.statements);
+                    aliases.resize(outer_aliases);
+                    value_names.resize(parameter_count + outer_aliases);
+                    assumed.resize(outer_assumed);
+                    assumed_types.resize(outer_assumed);
+                    if (!nested)
+                        return std::nullopt;
+                    step.node = vir::ProductStep{*subject, std::move(*nested)};
+                    steps.push_back(std::move(step));
+                    continue;
+                }
+                if (statement.kind == frontend::ProofStatementKind::Decompose) {
+                    report(engine, diagnostics::Category::Elaboration, statement.location,
+                           "decompose requires a product; use cases for alternative states");
                     return std::nullopt;
                 }
                 const auto& sum = std::get<decomposition::SumDecomposition>(decomposed);
@@ -550,7 +599,6 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
                 const bool residual_required =
                     sum.exhaustiveness == decomposition::ExhaustivenessModel::ResidualRequired;
 
-                const std::uint32_t subject_parameter = parameter->parameter;
                 vir::CasesStep cases{*subject, {}};
                 std::vector<bool> covered(sum.cases.size(), false);
                 bool residual = false;
@@ -565,21 +613,34 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
                     const std::vector<decomposition::ProofBinding>* bindings = nullptr;
                     if (arm.keyword_label) {
                         const std::string& written = arm.spelling;
-                        if (!residual_required || written != sum.residual.text) {
-                            report(engine, diagnostics::Category::Elaboration, arm.location,
-                                   "'" + written + "' is not a case of '" + describe(subject->type) + "'",
-                                   residual_required ? "its residual case is '" + sum.residual.text + "'"
-                                                     : "this representation has no residual case");
-                            return std::nullopt;
+                        const auto named = std::ranges::find_if(
+                            sum.cases, [&](const auto& candidate) { return candidate.label.text == written; });
+                        if (named != sum.cases.end()) {
+                            const auto index = static_cast<std::size_t>(named - sum.cases.begin());
+                            if (covered[index]) {
+                                report(engine, diagnostics::Category::Elaboration, arm.location,
+                                       "duplicate case '" + written + "'");
+                                return std::nullopt;
+                            }
+                            covered[index] = true;
+                            converted.descriptor = static_cast<std::uint32_t>(index);
+                            converted.label = written;
+                            bindings = &named->bindings;
+                        } else {
+                            if (!residual_required || written != sum.residual.text) {
+                                report(engine, diagnostics::Category::Elaboration, arm.location,
+                                       "'" + written + "' is not a case of '" + describe(subject->type) + "'");
+                                return std::nullopt;
+                            }
+                            if (residual) {
+                                report(engine, diagnostics::Category::Elaboration, arm.location,
+                                       "duplicate case '" + written + "'");
+                                return std::nullopt;
+                            }
+                            residual = true;
+                            converted.label = sum.residual.text;
+                            bindings = &sum.residual_bindings;
                         }
-                        if (residual) {
-                            report(engine, diagnostics::Category::Elaboration, arm.location,
-                                   "duplicate case '" + written + "'");
-                            return std::nullopt;
-                        }
-                        residual = true;
-                        converted.label = sum.residual.text;
-                        bindings = &sum.residual_bindings;
                     } else {
                         auto label = convert_probe(projected.case_names, next_case, arm.location);
                         if (!label)
@@ -620,16 +681,9 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
                                    "case binder '" + arm.binders[index] + "' duplicates an enclosing value name");
                             return std::nullopt;
                         }
-                        // An alias denotes the subject itself, so the probe
-                        // parameter the projector declared for it is remapped
-                        // onto the subject and nothing is created at runtime.
-                        if ((*bindings)[index].kind != decomposition::BindingKind::Alias) {
-                            report(engine, diagnostics::Category::UnsupportedSemantics, arm.location,
-                                   "case binder '" + arm.binders[index] + "' would project a component",
-                                   "only bindings that alias the subject are modeled so far");
-                            return std::nullopt;
-                        }
-                        aliases.push_back(subject_parameter);
+                        auto value = (*bindings)[index].value;
+                        value.type = (*bindings)[index].type;
+                        aliases.push_back(std::move(value));
                         value_names.push_back(arm.binders[index]);
                     }
 
@@ -1255,6 +1309,10 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
     elaborate_refinements(request, next_expression_id, result, engine);
     elaborate_proofs(request, admitted_laws, law_names, next_expression_id, result, engine);
     return result;
+}
+
+std::optional<vir::Type> resolved_type(const clangbridge::Type& type) {
+    return convert_type(type);
 }
 
 } // namespace cppl::elaboration

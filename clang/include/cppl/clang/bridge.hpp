@@ -40,6 +40,8 @@ struct ParseRequest {
     std::string path;
     std::vector<std::string> arguments;
     Selection selection;
+    std::optional<std::string> content;
+    bool recover_bindings = false;
 };
 
 // Parses with Clang and returns the resolved semantic facts.

@@ -13,7 +13,7 @@ target_include_directories(cppl_driver PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
 
 target_link_libraries(cppl_driver
-    PUBLIC cppl_frontend cppl_clang cppl_elaboration cppl_obligations cppl_automation
+    PUBLIC cppl_analysis cppl_frontend cppl_clang cppl_elaboration cppl_obligations cppl_automation
            cppl_erasure cppl_diagnostics cppl_kernel
     PRIVATE cppl_project_options)
 

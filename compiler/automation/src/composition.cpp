@@ -81,7 +81,7 @@ kernel::ProofTerm close(const obligations::ContractVerification& function, kerne
     for (const auto& precondition : std::views::reverse(function.preconditions)) {
         proof = kernel::ProofTerm::implication_introduction(precondition, std::move(proof));
     }
-    for (auto parameter : std::views::reverse(function.parameters)) {
+    for (const auto& parameter : std::views::reverse(function.parameters)) {
         proof = kernel::ProofTerm::forall_introduction(parameter, std::move(proof));
     }
     return proof;

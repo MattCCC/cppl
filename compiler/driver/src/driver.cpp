@@ -1,5 +1,6 @@
 #include "cppl/driver/driver.hpp"
 
+#include "cppl/analysis/analyze.hpp"
 #include "cppl/automation/evidence.hpp"
 #include "cppl/clang/bridge.hpp"
 #include "cppl/diagnostics/diagnostic.hpp"
@@ -284,7 +285,7 @@ UnitOutcome compile_unit(const Options& options, const Input& input, const std::
     frontend::ProjectionOptions projection_options;
     projection_options.unit_key = source::hash_bytes(std::filesystem::absolute(input.path).string()).to_short_hex(12);
     const Stage projecting_stage{"projecting"};
-    const frontend::Projection projection = frontend::project(stream, syntax, projection_options);
+    frontend::Projection projection = frontend::project(stream, syntax, projection_options);
     for (const auto& diagnostic : projection.diagnostics)
         engine.report(diagnostic);
     if (engine.has_errors()) {
@@ -329,7 +330,19 @@ UnitOutcome compile_unit(const Options& options, const Input& input, const std::
     }
 
     const Stage parsing_stage{"parsing the analysis projection"};
-    const std::expected<clangbridge::TranslationUnit, std::string> unit = clangbridge::parse(request);
+    auto analyzed = analysis::analyze(stream, syntax, projection_options, request);
+    std::expected<clangbridge::TranslationUnit, std::string> unit = std::unexpected("analysis failed");
+    if (analyzed) {
+        projection = std::move(analyzed->projection);
+        unit = std::move(analyzed->unit);
+        if (!write_file(analysis_path, projection.analysis)) {
+            report(engine, diagnostics::Category::Internal, "could not write resolved analysis projection");
+            outcome.failed = true;
+            return outcome;
+        }
+    } else {
+        unit = std::unexpected(analyzed.error());
+    }
     if (!unit.has_value()) {
         report(engine, diagnostics::Category::Internal, unit.error());
         outcome.failed = true;

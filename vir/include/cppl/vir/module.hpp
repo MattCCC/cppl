@@ -162,8 +162,14 @@ struct CasesStep {
     std::vector<CaseArm> arms;
 };
 
+struct ProofStep;
+struct ProductStep {
+    Expr subject;
+    std::vector<ProofStep> steps;
+};
+
 struct ProofStep {
-    std::variant<ReflexivityStep, ExactStep, ApplyStep, AssumeStep, RewriteStep, CasesStep> node;
+    std::variant<ReflexivityStep, ExactStep, ApplyStep, AssumeStep, RewriteStep, CasesStep, ProductStep> node;
     source::SourceLocation location;
 };
 

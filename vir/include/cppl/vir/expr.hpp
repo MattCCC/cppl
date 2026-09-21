@@ -72,6 +72,12 @@ struct Negation {
     friend bool operator==(const Negation&, const Negation&) = default;
 };
 
+struct Projection {
+    std::uint32_t index = 0;
+    std::vector<Expr> operands; // one subject, signature supplied by its type
+    friend bool operator==(const Projection&, const Projection&) = default;
+};
+
 struct FormalEquality {
     Type operand_type;
     std::vector<Expr> operands;
@@ -154,7 +160,7 @@ struct Expr {
     Type type;
     Provenance provenance;
     std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, LocalVersion, LocalRef, Loop, Iterate,
-                 FormalEquality, Universal, Implication, Connective>
+                 Projection, FormalEquality, Universal, Implication, Connective>
         node;
 
     friend bool operator==(const Expr&, const Expr&) = default;

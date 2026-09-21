@@ -34,6 +34,16 @@ std::optional<kernel::Type> lower_type(const vir::Type& type) {
     if (type.is_boolean()) {
         return kernel::Type{kernel::kBoolean};
     }
+    if (type.is_value()) {
+        std::vector<kernel::Type> projections;
+        for (const auto& child : std::get<vir::ValueType>(type.node).projections) {
+            auto lowered = lower_type(child);
+            if (!lowered)
+                return std::nullopt;
+            projections.push_back(std::move(*lowered));
+        }
+        return kernel::Type::value(type.representation.identity, std::move(projections));
+    }
     if (!type.is_integer()) {
         return std::nullopt;
     }
@@ -183,12 +193,39 @@ class TermLowering {
             return kernel::Term::variable(kernel::parameter_reference(parameter_count_, parameter->parameter));
         }
 
+        if (const auto* projection = std::get_if<vir::Projection>(&expr.node)) {
+            if (projection->operands.size() != 1)
+                return fail("malformed logical projection", location);
+            auto domain = lower_type(projection->operands[0].type);
+            if (!domain || !domain->is_value())
+                return fail("projection has no abstract domain", location);
+            const auto& signature = std::get<kernel::ValueType>(domain->node).projections;
+            if (!type || projection->index >= signature.size() || signature[projection->index] != *type)
+                return fail("projection result disagrees with its domain signature", location);
+            auto subject = lower(projection->operands[0]);
+            if (!subject)
+                return subject;
+            return kernel::Term::project(*domain, projection->index, std::move(*subject));
+        }
+
         if (const auto* literal = std::get_if<vir::IntLiteral>(&expr.node)) {
             if (!type.has_value()) {
                 return fail("a literal of type '" + vir::describe(expr.type) + "' has no core representation",
                             location);
             }
-            return kernel::Term::literal(type->integer_type(), literal->value);
+            if (!type->is_integer())
+                return fail("literal requires an integer domain", location);
+            const auto integer = type->integer_type();
+            if (integer.width == 64 && integer.signedness == kernel::Signedness::Unsigned && literal->value < 0) {
+                const auto bits = static_cast<std::uint64_t>(literal->value);
+                return kernel::Term::primitive(
+                    kernel::PrimOp::AddWrap, integer,
+                    {kernel::Term::primitive(kernel::PrimOp::MulWrap, integer,
+                                             {kernel::Term::literal(integer, static_cast<std::int64_t>(bits >> 32)),
+                                              kernel::Term::literal(integer, std::int64_t{1} << 32)}),
+                     kernel::Term::literal(integer, static_cast<std::int64_t>(bits & 0xffffffffu))});
+            }
+            return kernel::Term::literal(integer, literal->value);
         }
 
         if (const auto* call = std::get_if<vir::Call>(&expr.node)) {
@@ -665,11 +702,13 @@ void collect_dependencies(const kernel::Context& context, const kernel::Term& te
         }
         return;
     }
-    std::visit([&](const auto& node) {
-        if constexpr (requires { node.arguments; })
-            for (const auto& argument : node.arguments)
-                collect_dependencies(context, argument, reached);
-    }, term.node);
+    std::visit(
+        [&](const auto& node) {
+            if constexpr (requires { node.arguments; })
+                for (const auto& argument : node.arguments)
+                    collect_dependencies(context, argument, reached);
+        },
+        term.node);
 }
 
 // The identity of an obligation is the content it depends on: the formal core
@@ -990,7 +1029,7 @@ std::optional<kernel::Proposition> make_rewrite_context(const kernel::Propositio
 }
 
 kernel::ProofTerm quantify(const std::vector<kernel::Type>& binders, kernel::ProofTerm term) {
-    for (auto binder : std::views::reverse(binders)) {
+    for (const auto& binder : std::views::reverse(binders)) {
         term = kernel::ProofTerm::forall_introduction(binder, std::move(term));
     }
     return term;
@@ -1387,6 +1426,24 @@ std::optional<kernel::ProofTerm> prove(Body& body, const kernel::Proposition& go
 
     const vir::ProofStep& step = (*body.steps)[body.cursor++];
 
+    if (const auto* product = std::get_if<vir::ProductStep>(&step.node)) {
+        const auto descriptor = decomposition::decompose({product->subject, step.location});
+        if (!std::holds_alternative<decomposition::ProductDecomposition>(descriptor)) {
+            report(engine, diagnostics::Category::ProofFailure, step.location, "malformed product decomposition");
+            return std::nullopt;
+        }
+        Body nested = body;
+        nested.steps = &product->steps;
+        nested.cursor = 0;
+        nested.body_location = step.location;
+        auto result = prove(nested, goal, engine);
+        if (result && nested.cursor != product->steps.size()) {
+            report(engine, diagnostics::Category::ProofFailure, step.location, "unused product proof statements");
+            return std::nullopt;
+        }
+        return result;
+    }
+
     if (const auto* cases = std::get_if<vir::CasesStep>(&step.node))
         return prove_cases(body, step, *cases, goal, engine);
 
@@ -1543,6 +1600,8 @@ void lower_proofs(const vir::Module& module, const elaboration::Result& elaborat
             const auto collect = [&](auto&& self, const std::vector<vir::ProofStep>& steps) -> void {
                 for (const auto& step : steps) {
                     dependencies.push_back(&step);
+                    if (const auto* product = std::get_if<vir::ProductStep>(&step.node))
+                        self(self, product->steps);
                     if (const auto* cases = std::get_if<vir::CasesStep>(&step.node))
                         for (const auto& arm : cases->arms)
                             self(self, arm.steps);

@@ -26,7 +26,7 @@ void report(diagnostics::Engine& engine, const vir::Function& function, const Fa
 }
 
 kernel::Proposition quantify(const std::vector<kernel::Type>& parameters, kernel::Proposition goal) {
-    for (auto parameter : std::views::reverse(parameters)) {
+    for (const auto& parameter : std::views::reverse(parameters)) {
         goal = kernel::Proposition::for_all(parameter, std::move(goal));
     }
     return goal;

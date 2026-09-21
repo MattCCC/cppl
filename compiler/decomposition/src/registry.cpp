@@ -8,8 +8,8 @@ namespace {
 // Provider order is fixed so decomposition is deterministic. Providers
 // recognize disjoint representations, so order does not decide meaning; it is
 // fixed because verification must be reproducible (AGENTS.md 21).
-std::array<const Provider*, 1> providers() {
-    return {&scoped_enum_provider()};
+std::array<const Provider*, 2> providers() {
+    return {&scoped_enum_provider(), &structural_provider()};
 }
 
 } // namespace

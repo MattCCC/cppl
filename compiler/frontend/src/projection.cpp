@@ -93,26 +93,6 @@ std::string spelled_indices(const TokenStream& stream, const RefinementType& ref
     return result;
 }
 
-// Declares a proof binder as a probe parameter, so expressions inside the arm
-// that mention it are looked up and type-checked by Clang like any other C++.
-//
-// This is the one place where the *syntax* of a binding depends on the
-// representation family, because the projector runs before any semantic
-// information exists: it cannot ask a provider what the binder's C++ type is.
-// The binding's *meaning* is not decided here - the provider states that, and
-// the generic engine remaps the probe parameter onto the value the binding
-// denotes before anything is lowered (SPEC.md 20.5).
-//
-// Today one family exposes binders: representations carried in a scalar, whose
-// binder names that scalar. A family whose binder has another C++ type
-// contributes its spelling here, beside its provider.
-void append_binder(std::string& parameters, const std::string& subject, const std::string& binder) {
-    if (!parameters.empty()) {
-        parameters += ", ";
-    }
-    parameters += "__underlying_type(decltype(" + subject + ")) " + binder;
-}
-
 } // namespace
 
 std::string canonical_lowering(const TokenStream& stream, const RefinementType& refinement) {
@@ -274,7 +254,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
     // conversion imposed on the way out.
     const auto emit_expression = [&stream](std::string_view name, std::string_view parameters,
                                            const source::ByteSpan& expression, const source::SourceLocation& location) {
-        std::string head = "[[maybe_unused]] static auto ";
+        std::string head = "[[maybe_unused]] static decltype(auto) ";
         head += name;
         head += "(";
         head += parameters;
@@ -300,8 +280,10 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         projected.name = options.generated_prefix + "proof_" + suffix;
         projected.proof_index = index;
 
-        std::string replacement = emit(projected.name, stream.spelling(proof.parameters), proof.proposition,
-                                       proof.keyword_location, proof.end_line);
+        const std::string binding_helper = options.generated_prefix + "binding_type_" + suffix;
+        std::string replacement = "template<class T> struct " + binding_helper + " { using type = T; };\n";
+        replacement += emit(projected.name, stream.spelling(proof.parameters), proof.proposition,
+                            proof.keyword_location, proof.end_line);
 
         const auto emit_steps = [&](auto&& self, const std::vector<ProofStatement>& statements,
                                     const std::string& parameters) -> void {
@@ -315,8 +297,9 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
                     replacement += line_directive(proof.end_line, proof.keyword_location.file);
                     names.push_back(std::move(name));
                 };
-                if (statement.kind == ProofStatementKind::Cases) {
+                if (statement.kind == ProofStatementKind::Cases || statement.kind == ProofStatementKind::Decompose) {
                     expression_probe(statement.proposition, statement.location, projected.case_names, "case_");
+                    const std::string subject_probe = projected.case_names.back();
                     for (const ProofArm& arm : statement.arms) {
                         // A label that is a C++ expression is resolved by Clang,
                         // like every other expression a proof mentions. A
@@ -325,8 +308,25 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
                         if (!arm.keyword_label)
                             expression_probe(arm.label, arm.location, projected.case_names, "case_");
                         std::string scoped = parameters;
-                        for (const std::string& binder : arm.binders)
-                            append_binder(scoped, statement.reference, binder);
+                        for (std::size_t binding = 0; binding < arm.binders.size(); ++binding) {
+                            const std::string key = options.generated_prefix + "binding_" + suffix + "_" +
+                                                    std::to_string(projection.binding_probes.size());
+                            projection.binding_probes.push_back({key, subject_probe, arm.spelling, binding,
+                                                                 statement.kind == ProofStatementKind::Decompose,
+                                                                 arm.location});
+                            if (!scoped.empty())
+                                scoped += ", ";
+                            const auto known = options.binding_types.find(key);
+                            const std::string type = known == options.binding_types.end() ? "int" : known->second;
+                            // Reference parameters ask Clang to resolve expressions without
+                            // requiring a copy, move, default constructor or runtime object.
+                            scoped += "typename ";
+                            scoped += binding_helper;
+                            scoped += "<";
+                            scoped += type;
+                            scoped += ">::type &";
+                            scoped += arm.binders[binding];
+                        }
                         self(self, arm.statements, scoped);
                     }
                     continue;

@@ -48,6 +48,7 @@ enum class ProofStatementKind : std::uint8_t {
     Assume,
     Rewrite,
     Cases,
+    Decompose,
 };
 
 std::string describe(ProofStatementKind kind);

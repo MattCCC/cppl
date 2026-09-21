@@ -13,6 +13,8 @@ std::string describe(const Type& type) {
     if (type.representation.is_known() && !type.representation.name.empty()) {
         return type.representation.name;
     }
+    if (type.is_value())
+        return "abstract value";
     if (type.is_proposition())
         return "Prop";
     if (type.is_boolean()) {
@@ -84,6 +86,10 @@ std::string describe(const Expr& expr) {
                 return node.operands.size() == 2
                            ? "(" + describe(node.operands[0]) + op + describe(node.operands[1]) + ")"
                            : "<malformed-connective>";
+            } else if constexpr (std::is_same_v<Node, Projection>) {
+                return node.operands.size() == 1
+                           ? "project<" + std::to_string(node.index) + ">(" + describe(node.operands[0]) + ")"
+                           : "<malformed-projection>";
             } else if constexpr (std::is_same_v<Node, FormalEquality>) {
                 return node.operands.size() == 2
                            ? "Eq<" + describe(node.operand_type) + ">(" + describe(node.operands[0]) + ", " +

@@ -38,7 +38,7 @@ CPP
 reject unmodeled_type <<'CPP'
 struct S {};
 bool operator==(S, S) { return true; }
-proof wrong(S x) proves(Eq<S>(x, x)) { refl; }
+proof wrong(S x, S y) proves(Eq<S>(x, y)) { refl; }
 CPP
 reject self_reference <<'CPP'
 proof wrong(int x) proves(Eq<int>(x, 0)) { exact wrong(x); }

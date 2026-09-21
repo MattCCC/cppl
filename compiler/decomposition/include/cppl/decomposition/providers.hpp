@@ -12,5 +12,6 @@
 namespace cppl::decomposition {
 
 const Provider& scoped_enum_provider();
+const Provider& structural_provider();
 
 } // namespace cppl::decomposition

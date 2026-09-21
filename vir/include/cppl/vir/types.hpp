@@ -1,5 +1,7 @@
 #pragma once
 
+#include "cppl/source/representation.hpp"
+
 #include <cstdint>
 #include <string>
 #include <variant>
@@ -60,6 +62,9 @@ struct Representation {
     // The qualified name, for diagnostics only.
     std::string name;
     std::vector<Enumerator> enumerators;
+    source::RepresentationKind kind = source::RepresentationKind::None;
+    std::vector<source::Component> components;
+    std::string rejection;
 
     [[nodiscard]] bool is_known() const noexcept {
         return !identity.empty();
@@ -70,8 +75,14 @@ struct Representation {
     }
 };
 
+struct Type;
+struct ValueType {
+    std::vector<Type> projections;
+    friend bool operator==(const ValueType&, const ValueType&) = default;
+};
+
 struct Type {
-    std::variant<IntType, BoolType, PropositionType> node;
+    std::variant<IntType, BoolType, PropositionType, ValueType> node;
 
     // Outermost refinement first, so a refinement of a refinement keeps every
     // predicate that applies to the value (SPEC.md 17.5).
@@ -86,6 +97,12 @@ struct Type {
     }
     static Type boolean() {
         return Type{BoolType{}, {}, {}};
+    }
+    static Type value() {
+        return Type{ValueType{}, {}, {}};
+    }
+    [[nodiscard]] bool is_value() const noexcept {
+        return std::holds_alternative<ValueType>(node);
     }
     static Type proposition() {
         return Type{PropositionType{}, {}, {}};

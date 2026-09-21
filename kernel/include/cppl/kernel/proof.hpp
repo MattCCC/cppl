@@ -288,8 +288,8 @@ struct ProofTerm {
 
     static ProofTerm conditional_elimination(Type type, Term condition, Term when_true, Term when_false,
                                              Proposition motive, ProofTerm true_case, ProofTerm false_case) {
-        return ProofTerm{ConditionalElimination{type, std::move(condition), std::move(when_true), std::move(when_false),
-                                                Box<Proposition>{std::move(motive)},
+        return ProofTerm{ConditionalElimination{std::move(type), std::move(condition), std::move(when_true),
+                                                std::move(when_false), Box<Proposition>{std::move(motive)},
                                                 Box<ProofTerm>{std::move(true_case)},
                                                 Box<ProofTerm>{std::move(false_case)}}};
     }
@@ -311,12 +311,13 @@ struct ProofTerm {
 
     static ProofTerm equality_elimination(Type type, Term lhs, Term rhs, Proposition motive, ProofTerm equality,
                                           ProofTerm evidence) {
-        return ProofTerm{EqualityElimination{type, std::move(lhs), std::move(rhs), Box<Proposition>{std::move(motive)},
-                                             Box<ProofTerm>{std::move(equality)}, Box<ProofTerm>{std::move(evidence)}}};
+        return ProofTerm{EqualityElimination{std::move(type), std::move(lhs), std::move(rhs),
+                                             Box<Proposition>{std::move(motive)}, Box<ProofTerm>{std::move(equality)},
+                                             Box<ProofTerm>{std::move(evidence)}}};
     }
 
     static ProofTerm forall_introduction(Type binder, ProofTerm body) {
-        return ProofTerm{ForallIntroduction{binder, Box<ProofTerm>{std::move(body)}}};
+        return ProofTerm{ForallIntroduction{std::move(binder), Box<ProofTerm>{std::move(body)}}};
     }
 
     static ProofTerm conjunction_introduction(ProofTerm left, ProofTerm right) {

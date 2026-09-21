@@ -396,19 +396,41 @@ bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std
     while (cursor < body_close) {
         const Token& token = tokens[cursor];
 
-        if (token.is_identifier("cases") && cursor + 2 < body_close &&
-            tokens[cursor + 1].kind == TokenKind::Identifier && tokens[cursor + 2].is_punctuator("{")) {
-            ProofStatement statement;
-            statement.kind = ProofStatementKind::Cases;
-            statement.reference = std::string(tokens[cursor + 1].text);
-            statement.proposition = tokens[cursor + 1].span;
-            statement.location = stream.location_of(token);
-            const std::size_t end = matching_brace(tokens, cursor + 2);
-            if (end >= body_close) {
-                report(engine, stream, token, diagnostics::Category::CpplSyntax, "unterminated cases statement");
+        if (token.is_identifier("cases") || token.is_identifier("decompose")) {
+            std::size_t open = cursor + 1;
+            unsigned parens = 0, brackets = 0;
+            for (; open < body_close; ++open) {
+                if (tokens[open].is_punctuator("("))
+                    ++parens;
+                if (tokens[open].is_punctuator(")") && parens != 0)
+                    --parens;
+                if (tokens[open].is_punctuator("["))
+                    ++brackets;
+                if (tokens[open].is_punctuator("]") && brackets != 0)
+                    --brackets;
+                if (parens == 0 && brackets == 0 && tokens[open].is_punctuator("{"))
+                    break;
+                if (tokens[open].is_punctuator(";"))
+                    break;
+            }
+            if (open >= body_close || open == cursor + 1 || !tokens[open].is_punctuator("{")) {
+                report(engine, stream, token, diagnostics::Category::CpplSyntax,
+                       "decomposition requires a subject and a body");
                 return false;
             }
-            cursor += 3;
+            ProofStatement statement;
+            statement.kind = token.is_identifier("cases") ? ProofStatementKind::Cases : ProofStatementKind::Decompose;
+            statement.proposition = {tokens[cursor + 1].span.offset,
+                                     tokens[open - 1].span.end() - tokens[cursor + 1].span.offset};
+            statement.reference = std::string(stream.spelling(statement.proposition));
+            statement.location = stream.location_of(token);
+            const std::size_t end = matching_brace(tokens, open);
+            if (end >= body_close) {
+                report(engine, stream, token, diagnostics::Category::CpplSyntax,
+                       "unterminated decomposition statement");
+                return false;
+            }
+            cursor = open + 1;
             bool malformed = false;
             while (cursor < end) {
                 malformed = true;
@@ -423,6 +445,18 @@ bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std
                 while (cursor + 1 < end && tokens[cursor].is_punctuator("::") &&
                        tokens[cursor + 1].kind == TokenKind::Identifier)
                     cursor += 2;
+                if (cursor < end && tokens[cursor].is_punctuator("<")) {
+                    unsigned angles = 0;
+                    do {
+                        if (tokens[cursor].is_punctuator("<"))
+                            ++angles;
+                        if (tokens[cursor].is_punctuator(">"))
+                            --angles;
+                        if (tokens[cursor].is_punctuator(">>"))
+                            angles = angles >= 2 ? angles - 2 : 0;
+                        ++cursor;
+                    } while (cursor < end && angles != 0);
+                }
                 arm.label = {tokens[start].span.offset, tokens[cursor - 1].span.end() - tokens[start].span.offset};
                 arm.spelling = std::string(stream.spelling(arm.label));
                 // Which kind of label this is belongs to the representation, not
@@ -430,8 +464,7 @@ bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std
                 // representation reserves for a state with no C++ expression
                 // from a label Clang is to resolve; which case either denotes is
                 // settled later, by the provider (SPEC.md 20.5).
-                arm.keyword_label =
-                    cursor == start + 1 && decomposition::label_kind(arm.spelling) == decomposition::LabelKind::Keyword;
+                arm.keyword_label = decomposition::label_kind(arm.spelling) == decomposition::LabelKind::Keyword;
                 if (tokens[start].is_identifier("_")) {
                     report(engine, stream, tokens[start], diagnostics::Category::CpplSyntax,
                            "cases has no wildcard arm");
@@ -1022,6 +1055,8 @@ std::string describe(ProofStatementKind kind) {
             return "rewrite";
         case ProofStatementKind::Cases:
             return "cases";
+        case ProofStatementKind::Decompose:
+            return "decompose";
     }
     return "unknown";
 }

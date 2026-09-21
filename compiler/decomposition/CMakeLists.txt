@@ -15,6 +15,7 @@ target_include_directories(cppl_case_labels INTERFACE
 add_library(cppl::case_labels ALIAS cppl_case_labels)
 
 add_library(cppl_decomposition STATIC
+    src/structural.cpp
     src/registry.cpp
     src/scoped_enum.cpp)
 

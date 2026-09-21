@@ -199,7 +199,7 @@ CPPL_TEST(the_analysis_program_carries_each_term_a_proof_instantiates_at) {
     // The term is emitted as an ordinary C++ expression for Clang to resolve,
     // with the type it is given deduced from the expression itself.
     const std::string& argument = projection.proof_functions[1].argument_names[0];
-    const std::size_t emitted = projection.analysis.find("static auto " + argument + "()");
+    const std::size_t emitted = projection.analysis.find("static decltype(auto) " + argument + "()");
     CPPL_CHECK(emitted != std::string::npos);
     CPPL_CHECK(projection.analysis.find("return (", emitted) != std::string::npos);
 }
@@ -234,7 +234,7 @@ CPPL_TEST(the_analysis_program_carries_the_proposition_a_statement_assumes) {
     CPPL_CHECK_EQ(projection.proof_functions[2].assumption_names.size(), std::size_t{1});
 
     const std::string& assumed = projection.proof_functions[2].assumption_names[0];
-    CPPL_CHECK(projection.analysis.find("static auto " + assumed + "(int x)") != std::string::npos);
+    CPPL_CHECK(projection.analysis.find("static decltype(auto) " + assumed + "(int x)") != std::string::npos);
 
     // The statement itself stays C++L: what reaches Clang is the proposition
     // the statement names, never the statement.

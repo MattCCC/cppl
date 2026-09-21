@@ -64,11 +64,63 @@ std::vector<CXCursor> children_of(CXCursor cursor) {
     return children;
 }
 
-Type convert_type(CXType type) {
-    const CXType canonical = clang_getCanonicalType(type);
+source::RepresentationKind library_kind(CXCursor declaration) {
+    using K = source::RepresentationKind;
+    CXCursor primary = clang_getSpecializedCursorTemplate(declaration);
+    if (clang_Cursor_isNull(primary))
+        return K::Record;
+    primary = clang_getCanonicalCursor(primary);
+    CXCursor parent = clang_getCursorSemanticParent(primary);
+    while (clang_getCursorKind(parent) == CXCursor_Namespace && clang_Cursor_isInlineNamespace(parent))
+        parent = clang_getCursorSemanticParent(parent);
+    if (clang_getCursorKind(parent) != CXCursor_Namespace || take(clang_getCursorSpelling(parent)) != "std" ||
+        clang_getCursorKind(clang_getCursorSemanticParent(parent)) != CXCursor_TranslationUnit)
+        return K::Record;
+    // This is declaration identity in the canonical standard namespace, not a
+    // spelling of a source type. Alias expansion and substitution precede it.
+    const std::string name = take(clang_getCursorSpelling(primary));
+    if (name == "variant")
+        return K::Variant;
+    if (name == "optional")
+        return K::Optional;
+    if (name == "expected")
+        return K::Expected;
+    if (name == "pair")
+        return K::Pair;
+    if (name == "tuple")
+        return K::Tuple;
+    if (name == "array")
+        return K::StdArray;
+    return K::Record;
+}
+
+// Whether a reference type is read through to its referent.
+//
+// A reference is not a value: reading one is an access to another object that
+// other code may write. Treating `T&` as `T` everywhere would let a contract be
+// proven about a parameter whose value can change under it (AGENTS.md 11), so
+// the referent is read only where the caller has established that the subject's
+// logical value is the one being reasoned about.
+enum class ReferenceModel : std::uint8_t {
+    Opaque,
+    Referent,
+};
+
+Type convert_type(CXType type, unsigned depth = 0, ReferenceModel references = ReferenceModel::Opaque) {
+    CXType canonical = clang_getCanonicalType(type);
+    if (canonical.kind == CXType_LValueReference || canonical.kind == CXType_RValueReference) {
+        if (references != ReferenceModel::Referent) {
+            Type reference;
+            reference.spelling = take(clang_getTypeSpelling(canonical));
+            return reference;
+        }
+        canonical = clang_getCanonicalType(clang_getPointeeType(canonical));
+    }
 
     Type converted;
     converted.spelling = take(clang_getTypeSpelling(canonical));
+    if (depth > 32)
+        return converted;
 
     // A volatile glvalue is read for its effect, not for a value that is a
     // function of anything C++L models, so it is not a modeled type at all
@@ -81,6 +133,101 @@ Type convert_type(CXType type) {
     // Layout is asked only of built-in integer types, which always have one.
     long long size = 0;
     switch (canonical.kind) {
+        case CXType_Pointer: {
+            converted.kind = TypeKind::Value;
+            converted.representation.identity = "pointer:" + converted.spelling;
+            converted.representation.name = converted.spelling;
+            converted.representation.kind = source::RepresentationKind::Pointer;
+            Type state;
+            state.kind = TypeKind::Bool;
+            state.spelling = "bool";
+            converted.projections.push_back(state);
+            break;
+        }
+        case CXType_ConstantArray:
+        case CXType_Record: {
+            using K = source::RepresentationKind;
+            const bool array = canonical.kind == CXType_ConstantArray;
+            const CXCursor declaration = clang_getTypeDeclaration(canonical);
+            const CXCursor definition = clang_getCursorDefinition(declaration);
+            converted.kind = TypeKind::Value;
+            auto& model = converted.representation;
+            model.name = converted.spelling;
+            model.identity = array ? "array:" + converted.spelling : take(clang_getCursorUSR(declaration));
+            model.kind = array ? K::Array : library_kind(declaration);
+            if (model.identity.empty()) {
+                converted.kind = TypeKind::Unsupported;
+                break;
+            }
+            if (!array && model.kind == K::Record && clang_Cursor_isNull(definition)) {
+                model.rejection = "proof decomposition unavailable for incomplete type";
+                break;
+            }
+            const auto component = [&](CXType child, std::string name, CXCursor origin, bool accessible = true) {
+                Type resolved = convert_type(child, depth + 1);
+                if (resolved.kind == TypeKind::Unsupported) {
+                    model.rejection = "component '" + name + "' has an unmodeled type '" + resolved.spelling + "'";
+                    return;
+                }
+                converted.projections.push_back(std::move(resolved));
+                model.components.push_back(
+                    {std::move(name), presumed_location(clang_getCursorLocation(origin)), accessible});
+            };
+            if (array || model.kind == K::StdArray) {
+                long long count = array ? clang_getArraySize(canonical) : -1;
+                CXType element =
+                    array ? clang_getArrayElementType(canonical) : clang_Type_getTemplateArgumentAsType(canonical, 0);
+                if (!array && clang_Cursor_getTemplateArgumentKind(declaration, 1) == CXTemplateArgumentKind_Integral)
+                    count = clang_Cursor_getTemplateArgumentValue(declaration, 1);
+                if (count < 0 || count > 256) {
+                    model.rejection = "array extent is unavailable or exceeds the proof resource limit";
+                    break;
+                }
+                for (long long i = 0; i < count; ++i)
+                    component(element, std::to_string(i), declaration);
+            } else if (model.kind != K::Record) {
+                const int count = clang_Type_getNumTemplateArguments(canonical);
+                if (count < 0 || count > 64) {
+                    model.rejection = "template arguments are unresolved or exceed the proof resource limit";
+                    break;
+                }
+                if (model.kind == K::Variant || model.kind == K::Optional || model.kind == K::Expected) {
+                    Type tag;
+                    tag.kind = model.kind == K::Variant ? TypeKind::Int : TypeKind::Bool;
+                    tag.width = 64;
+                    tag.is_signed = false;
+                    tag.spelling = model.kind == K::Variant ? "unsigned long long" : "bool";
+                    converted.projections.push_back(tag);
+                }
+                for (int i = 0; i < count; ++i) {
+                    CXType argument = clang_Type_getTemplateArgumentAsType(canonical, static_cast<unsigned>(i));
+                    if (model.kind == K::Expected && i == 0 && argument.kind == CXType_Void) {
+                        Type empty;
+                        empty.kind = TypeKind::Value;
+                        empty.spelling = "void";
+                        empty.representation.identity = "unit";
+                        converted.projections.push_back(empty);
+                        model.components.push_back({"value", {}, true});
+                    } else {
+                        component(argument, model.kind == K::Pair ? (i == 0 ? "first" : "second") : std::to_string(i),
+                                  declaration);
+                    }
+                }
+            } else {
+                if (clang_getCursorKind(definition) == CXCursor_UnionDecl) {
+                    model.rejection = "a union requires an independently justified active-member model";
+                    break;
+                }
+                for (const auto& child : children_of(definition)) {
+                    if (clang_getCursorKind(child) == CXCursor_FieldDecl)
+                        component(clang_getCursorType(child), take(clang_getCursorSpelling(child)), child,
+                                  clang_getCXXAccessSpecifier(child) == CX_CXXPublic);
+                    if (clang_getCursorKind(child) == CXCursor_CXXBaseSpecifier)
+                        model.rejection = "base subobject decomposition requires an explicit accessible projection";
+                }
+            }
+            break;
+        }
         case CXType_Enum: {
             const CXCursor declaration = clang_getTypeDeclaration(canonical);
             const CXCursor definition = clang_getCursorDefinition(declaration);
@@ -94,10 +241,6 @@ Type convert_type(CXType type) {
             for (const CXCursor& child : children_of(definition)) {
                 if (clang_getCursorKind(child) != CXCursor_EnumConstantDecl)
                     continue;
-                if (!underlying.is_signed &&
-                    clang_getEnumConstantDeclUnsignedValue(child) >
-                        static_cast<unsigned long long>(std::numeric_limits<std::int64_t>::max()))
-                    return converted;
                 enumerators.push_back(Enumerator{take(clang_getCursorSpelling(child)),
                                                  static_cast<std::int64_t>(clang_getEnumConstantDeclValue(child))});
             }
@@ -107,6 +250,7 @@ Type convert_type(CXType type) {
             converted.representation.identity = take(clang_getCursorUSR(declaration));
             converted.representation.name = take(clang_getTypeSpelling(canonical));
             converted.representation.enumerators = std::move(enumerators);
+            converted.representation.kind = source::RepresentationKind::ScopedEnum;
             break;
         }
         case CXType_Bool:
@@ -397,9 +541,6 @@ Expr build_integer_literal(CXCursor cursor) {
     std::int64_t value = 0;
     if (clang_EvalResult_isUnsignedInt(evaluated) != 0) {
         const unsigned long long unsigned_value = clang_EvalResult_getAsUnsigned(evaluated);
-        if (unsigned_value > static_cast<unsigned long long>(std::numeric_limits<std::int64_t>::max())) {
-            return unsupported_expression(cursor, "integer literal is outside the range the formal core represents");
-        }
         value = static_cast<std::int64_t>(unsigned_value);
     } else {
         value = static_cast<std::int64_t>(clang_EvalResult_getAsLongLong(evaluated));
@@ -418,6 +559,96 @@ Expr build_expression(CXCursor cursor, const std::vector<CXCursor>& parameters, 
     }
 
     const CXCursorKind kind = clang_getCursorKind(cursor);
+
+    const auto make_projection = [&](Expr subject, std::uint32_t index) -> Expr {
+        if (index >= subject.type.projections.size())
+            return unsupported_expression(cursor, "logical projection is outside the resolved signature");
+        Expr result;
+        result.type = subject.type.projections[index];
+        result.location = presumed_location(clang_getCursorLocation(cursor));
+        result.node = Projection{index, {std::move(subject)}};
+        return result;
+    };
+    const auto strip = [](CXCursor value) {
+        while (clang_getCursorKind(value) == CXCursor_UnexposedExpr ||
+               clang_getCursorKind(value) == CXCursor_ParenExpr) {
+            const auto nested = children_of(value);
+            if (nested.size() != 1)
+                break;
+            value = nested[0];
+        }
+        return value;
+    };
+    if (kind == CXCursor_BinaryOperator && (clang_getCursorBinaryOperatorKind(cursor) == CXBinaryOperator_EQ ||
+                                            clang_getCursorBinaryOperatorKind(cursor) == CXBinaryOperator_NE)) {
+        const auto children = children_of(cursor);
+        if (children.size() == 2) {
+            for (unsigned side = 0; side != 2; ++side) {
+                if (clang_getCursorKind(strip(children[side])) != CXCursor_CXXNullPtrLiteralExpr)
+                    continue;
+                Expr subject = build_expression(children[1 - side], parameters, locals, depth + 1);
+                if (subject.type.representation.kind != source::RepresentationKind::Pointer)
+                    continue;
+                auto nullness = make_projection(std::move(subject), 0);
+                if (clang_getCursorBinaryOperatorKind(cursor) == CXBinaryOperator_NE) {
+                    Expr negated;
+                    negated.type = nullness.type;
+                    negated.location = nullness.location;
+                    negated.node = Negation{{std::move(nullness)}};
+                    return negated;
+                }
+                return nullness;
+            }
+        }
+    }
+    if (kind == CXCursor_MemberRefExpr) {
+        const auto field = clang_getCursorReferenced(cursor);
+        const auto children = children_of(cursor);
+        if (clang_getCursorKind(field) == CXCursor_FieldDecl && children.size() == 1) {
+            Expr subject = build_expression(children[0], parameters, locals, depth + 1);
+            const auto& components = subject.type.representation.components;
+            const auto name = take(clang_getCursorSpelling(field));
+            for (std::size_t i = 0; i < components.size(); ++i)
+                if (components[i].name == name && components[i].accessible)
+                    return make_projection(std::move(subject), static_cast<std::uint32_t>(i));
+        }
+    }
+    if (kind == CXCursor_ArraySubscriptExpr) {
+        const auto children = children_of(cursor);
+        if (children.size() == 2) {
+            Expr subject = build_expression(strip(children[0]), parameters, locals, depth + 1);
+            if (subject.type.representation.kind == source::RepresentationKind::Array) {
+                if (CXEvalResult evaluated = clang_Cursor_Evaluate(children[1])) {
+                    const bool integral = clang_EvalResult_getKind(evaluated) == CXEval_Int;
+                    const auto index = integral ? clang_EvalResult_getAsLongLong(evaluated) : -1;
+                    clang_EvalResult_dispose(evaluated);
+                    if (index >= 0 && static_cast<std::size_t>(index) < subject.type.projections.size())
+                        return make_projection(std::move(subject), static_cast<std::uint32_t>(index));
+                }
+                return unsupported_expression(cursor,
+                                              "proof array index must be a constant within the resolved extent");
+            }
+        }
+    }
+    if (kind == CXCursor_CallExpr) {
+        const auto called = clang_getCursorReferenced(cursor);
+        const auto children = children_of(cursor);
+        if (clang_getCursorKind(called) == CXCursor_CXXMethod && clang_Cursor_getNumArguments(cursor) == 0 &&
+            !children.empty()) {
+            const auto member = children_of(children[0]);
+            if (member.size() == 1) {
+                Expr subject = build_expression(member[0], parameters, locals, depth + 1);
+                const auto family = subject.type.representation.kind;
+                const auto name = take(clang_getCursorSpelling(called));
+                if ((family == source::RepresentationKind::Optional ||
+                     family == source::RepresentationKind::Expected) &&
+                    name == "has_value")
+                    return make_projection(std::move(subject), 0);
+                if (family == source::RepresentationKind::Variant && name == "index")
+                    return make_projection(std::move(subject), 0);
+            }
+        }
+    }
 
     // Only the value-preserving scoped-enum -> exact underlying-type cast is
     // modeled. Clang resolves both types; all other casts still fail closed.
@@ -495,7 +726,7 @@ Expr build_expression(CXCursor cursor, const std::vector<CXCursor>& parameters, 
                                                   "declaration");
     }
 
-    if (kind == CXCursor_IntegerLiteral) {
+    if (kind == CXCursor_IntegerLiteral || kind == CXCursor_CXXBoolLiteralExpr) {
         return build_integer_literal(cursor);
     }
 
@@ -1165,7 +1396,11 @@ struct BodyLowering {
             return reject("thread-local '" + name + "' is not modeled");
         }
         Type type = convert_type(clang_getCursorType(declaration));
-        if (type.kind == TypeKind::Unsupported) {
+        // A verified body states a local as one modeled value under logical
+        // versioning. A structural value has components rather than such a
+        // value: it is a proof-side decomposition subject, not something this
+        // body model can assign and re-read.
+        if (type.kind == TypeKind::Unsupported || type.kind == TypeKind::Value) {
             return reject("local '" + name + "' has type '" + type.spelling + "', which is not modeled");
         }
         if (refinements != nullptr) {
@@ -1447,7 +1682,9 @@ std::expected<Expr, std::string> build_formal(CXCursor cursor, const source::Pro
         const auto second = clang_getCanonicalType(clang_getCursorType(formals[1]));
         if (clang_equalTypes(first, second) == 0)
             return std::unexpected("equality operand types differ");
-        FormalEquality equality{convert_type(first), {}};
+        // The equality helper takes its operands by reference so it imposes no
+        // copy on the values compared. The operand type is the referent's.
+        FormalEquality equality{convert_type(first, 0, ReferenceModel::Referent), {}};
         // The first operator() argument is the closure object.
         for (unsigned index = 1; index < 3; ++index)
             equality.operands.push_back(build_expression(clang_Cursor_getArgument(cursor, index), parameters, {}, 0));
@@ -1587,9 +1824,15 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
     }
 
     CXTranslationUnit unit = nullptr;
-    const CXErrorCode error =
-        clang_parseTranslationUnit2(index, request.path.c_str(), argv.data(), static_cast<int>(argv.size()), nullptr, 0,
-                                    CXTranslationUnit_None, &unit);
+    CXUnsavedFile unsaved{};
+    if (request.content) {
+        unsaved.Filename = request.path.c_str();
+        unsaved.Contents = request.content->data();
+        unsaved.Length = static_cast<unsigned long>(request.content->size());
+    }
+    const CXErrorCode error = clang_parseTranslationUnit2(
+        index, request.path.c_str(), argv.data(), static_cast<int>(argv.size()), request.content ? &unsaved : nullptr,
+        request.content ? 1u : 0u, CXTranslationUnit_None, &unit);
     if (error != CXError_Success || unit == nullptr) {
         return std::unexpected("Clang failed to parse '" + request.path + "'");
     }
@@ -1620,7 +1863,7 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
 
     // A rejected unit is never verified, and libclang's layout queries can
     // crash on the error types of its recovery expressions.
-    if (result.has_errors) {
+    if (result.has_errors && !request.recover_bindings) {
         return result;
     }
 
@@ -1633,7 +1876,17 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
         function.usr = take(clang_getCursorUSR(cursor));
         function.name = take(clang_getCursorSpelling(cursor));
         function.qualified_name = qualified_name_of(cursor);
-        function.result = convert_type(clang_getCursorResultType(cursor));
+        // A projected proof expression returns `decltype(auto)` over a
+        // parenthesized expression, so Clang gives it a reference type whenever
+        // the expression is a glvalue. That reference is an artifact of how the
+        // expression is handed to Clang, not something the author wrote, and the
+        // value denoted is the subject's own. An ordinary declaration's result
+        // and parameters keep reference types opaque, so a contract is never
+        // proven about a value another object can change (AGENTS.md 11).
+        const bool projected_expression = !request.selection.specification_prefix.empty() &&
+                                          function.name.starts_with(request.selection.specification_prefix);
+        function.result = convert_type(clang_getCursorResultType(cursor), 0,
+                                       projected_expression ? ReferenceModel::Referent : ReferenceModel::Opaque);
         function.location = presumed_location(clang_getCursorLocation(cursor));
         function.analysis_offset = physical_offset(cursor);
 
@@ -1646,7 +1899,13 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
 
         const std::vector<CXCursor> parameter_cursors = parameters_of(cursor);
         for (const CXCursor& parameter : parameter_cursors) {
-            Type parameter_type = convert_type(clang_getCursorType(parameter));
+            // A proof binder is projected as a reference parameter so Clang
+            // resolves it without requiring a copy, a move, a default
+            // constructor or any runtime object. It denotes the subject's own
+            // value, so the referent is what it means.
+            Type parameter_type =
+                convert_type(clang_getCursorType(parameter), 0,
+                             projected_expression ? ReferenceModel::Referent : ReferenceModel::Opaque);
             parameter_type.refinements =
                 refinements_of(parameter, clang_getCursorType(parameter), request.selection.refinements);
             function.parameters.push_back(

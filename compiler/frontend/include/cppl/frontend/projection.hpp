@@ -5,6 +5,7 @@
 #include "cppl/source/projection.hpp"
 
 #include <cstddef>
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -117,6 +118,15 @@ struct RuntimeLowering {
 // remains. A canonical lowering preserves every line, so no line number moves,
 // and introduces only the declaration C++ already has a spelling for, which is
 // what keeps a C++17 target C++17 (COMPATIBILITY.md).
+struct BindingProbe {
+    std::string key;
+    std::string subject;
+    std::string label;
+    std::size_t index = 0;
+    bool product = false;
+    source::SourceLocation location;
+};
+
 struct Projection {
     std::string analysis;
     std::string runtime;
@@ -127,6 +137,7 @@ struct Projection {
     std::vector<PropositionProbe> proposition_probes;
     std::vector<RefinementProbe> refinement_probes;
     std::vector<RuntimeLowering> runtime_lowerings;
+    std::vector<BindingProbe> binding_probes;
     std::vector<diagnostics::Diagnostic> diagnostics;
 
     // Positions of executable declarations copied into the analysis buffer.
@@ -143,6 +154,7 @@ struct Projection {
 struct ProjectionOptions {
     std::string generated_prefix = "__cppl_";
     std::string unit_key; // distinguishes generated names between units
+    std::map<std::string, std::string> binding_types;
 };
 
 [[nodiscard]] Projection project(const TokenStream& stream, const Syntax& syntax, const ProjectionOptions& options);
