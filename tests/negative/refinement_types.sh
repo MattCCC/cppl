@@ -184,6 +184,19 @@ verified unsigned wrong() ensures(result == 2u) {
     return x;
 }
 CPP
+reject reference_to_a_temporary_is_refused <<'CPP'
+type Positive = int where(self > 0);
+verified int wrong() ensures(result > 0) {
+    const Positive& r = 1 + 1;
+    return r;
+}
+CPP
+reject reference_to_a_parameter_is_refused <<'CPP'
+verified int wrong(int x) ensures(result == x) {
+    int& r = x;
+    return r;
+}
+CPP
 reject implicit_refined_postcondition <<'CPP'
 type Positive = int where(self > 0);
 verified Positive wrong() { return 0; }
@@ -343,6 +356,15 @@ grep -q 'ordinary function.*return cannot establish refinement' "$run/ordinary_r
 grep -q 'ordinary function.*return cannot establish refinement' "$run/ordinary_refined_return_definition.log"
 grep -q 'ordinary function.*return cannot establish refinement' "$run/pure_does_not_prove_refined_return.log"
 grep -q 'ordinary function.*return cannot establish refinement' "$run/ordinary_refined_reference_return.log"
+grep -q 'must bind a tracked local object' "$run/reference_to_a_temporary_is_refused.log"
+grep -q 'must bind a tracked local object' "$run/reference_to_a_parameter_is_refused.log"
+# A write through an alias is a write to the storage: the refinement is owed
+# there, and no fact about an earlier version survives it.
+grep -q 'not shown to satisfy refinement type' "$run/mutable_reference_cannot_bypass_membership.log"
+grep -q 'not shown to satisfy refinement type' "$run/refined_reference_binding_requires_membership.log"
+grep -q 'not shown to satisfy refinement type' "$run/refined_reference_write_requires_membership.log"
+grep -q 'does not satisfy its contract' "$run/refined_reference_does_not_keep_a_stale_fact.log"
+grep -q 'does not satisfy its contract' "$run/reference_update_observes_current_version.log"
 grep -q 'not shown to satisfy refinement type' "$run/index_out_of_range.log"
 grep -q 'not shown to satisfy refinement type' "$run/unproven_assignment.log"
 grep -q 'not shown to satisfy refinement type' "$run/unproven_update.log"

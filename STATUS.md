@@ -601,9 +601,15 @@ representation. Membership is an obligation at every modeled flow into the type 
 local declaration, an assignment or update, a verified call's argument, a return -
 closed under the path conditions where the value enters, so a branch fact discharges
 it. Subtyping is the implication between predicates and carries no runtime check in
-either direction (`SPEC.md` 17.3.2). Refined returns of an unverified function,
-refined members, references and pointers, and refinements in templated contexts are
-refused rather than approximated.
+either direction (`SPEC.md` 17.3.2).
+
+A reference local binding a tracked local object aliases that object's storage
+rather than holding a value, so a write through any alias is a write to the one
+storage and owes both the reference's and the referent's predicates. Stale facts
+are impossible by construction: there is no second fact to invalidate. Any other
+reference binding is refused. Refined returns of an unverified function, refined
+members, reference and pointer parameters, pointers, and refinements in templated
+contexts are refused rather than approximated.
 
 The same membership checks cover partial-correctness bodies containing loops and
 their callers, including unused refined locals. Corrupt or unresolved refinement

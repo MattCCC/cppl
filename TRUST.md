@@ -358,6 +358,18 @@ are not semantic identity. Ordinary aliases preserve predicates; unresolved
 indexed alias applications are rejected. This is frontend correspondence, not a
 new logical rule or an additional trusted user boundary.
 
+Reference locals rest on storage correspondence rather than on an aliasing
+analysis. A modeled reference local is required to bind a tracked local object
+directly; the bridge then resolves it to that object's storage, so the reference
+holds no fact of its own. Reads and writes through it are reads and writes of the
+one versioned storage, which is why no fact can become stale and why no
+invalidation mechanism is introduced. What is trusted is that Clang's resolved
+binding identifies the referent, and that a reference so bound cannot later
+denote different storage - which C++ guarantees. What is not inferred: lifetime,
+the referent of any binding that is not a direct reference to a tracked local,
+and aliasing between distinct tracked locals. Every such binding is refused. This
+adds no kernel rule, logical assumption, axiom or trusted user boundary.
+
 An ordinary refined-return declaration is not a trusted contract. The bridge
 checks declarations outside the selected proof bodies as well as definitions:
 only a verified definition of the same Clang callable can establish that return

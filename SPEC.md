@@ -1643,10 +1643,20 @@ constant indices. Refinements are identified by the Clang-resolved alias
 declaration, not by an unqualified name or a presumed source location. An
 unrelated ordinary alias with the same spelling introduces no predicate.
 
+A reference local that binds a tracked local object is an alias of that object's
+storage, not a value of its own. A read through it denotes the storage's current
+logical version, and a write through it is a write to that storage: it owes the
+predicates of the reference's own refinement and of the referent's declared type
+together. A refinement fact therefore cannot outlive a write through any alias of
+the storage it describes, because there is no separate fact to go stale. Binding
+itself is a crossing and states the reference's predicate at the referent's
+current version. A reference that binds anything other than a tracked local
+object - a temporary, a parameter, a subobject, or a call result - is refused.
+
 Not yet modeled, and refused rather than approximated: refined returns of an
-unverified function, refined members, references and pointers, and refinements in
-templated contexts. A refinement over a base type outside the modeled fragment is
-refused where it is declared.
+unverified function, refined members, reference and pointer parameters, pointers,
+and refinements in templated contexts. A refinement over a base type outside the
+modeled fragment is refused where it is declared.
 
 Explicit refined storage outside a modeled verified body, including fields and
 namespace-scope arrays, is rejected because its construction and mutation have
