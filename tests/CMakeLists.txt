@@ -85,10 +85,42 @@ target_link_libraries(unit_decomposition_test PRIVATE cppl_obligations)
 cppl_add_unit_test(unit_scoped_enum_provider_test unit/scoped_enum_provider_test.cpp)
 target_link_libraries(unit_scoped_enum_provider_test PRIVATE cppl_decomposition)
 
+# cppl-lsp: the language server library, exercised directly rather than
+# through a real subprocess/stdio pipe (ARCHITECTURE.md 61's "unit" tier).
+cppl_add_unit_test(lsp_document_test unit/lsp_document_test.cpp)
+target_link_libraries(lsp_document_test PRIVATE cppl_lsp)
+
+cppl_add_unit_test(lsp_linter_test unit/lsp_linter_test.cpp)
+target_link_libraries(lsp_linter_test PRIVATE cppl_lsp)
+
+cppl_add_unit_test(lsp_position_test unit/lsp_position_test.cpp)
+target_link_libraries(lsp_position_test PRIVATE cppl_lsp)
+
+cppl_add_unit_test(lsp_server_test unit/lsp_server_test.cpp)
+target_link_libraries(lsp_server_test PRIVATE cppl_lsp)
+
+cppl_add_unit_test(lsp_uri_test unit/lsp_uri_test.cpp)
+target_link_libraries(lsp_uri_test PRIVATE cppl_lsp)
+
+cppl_add_unit_test(lsp_json_test unit/lsp_json_test.cpp)
+target_link_libraries(lsp_json_test PRIVATE cppl_lsp)
+
+cppl_add_unit_test(lsp_transport_test unit/lsp_transport_test.cpp)
+target_link_libraries(lsp_transport_test PRIVATE cppl_lsp)
+
 # Driver-level suites. They exercise the installed command exactly as a
 # developer or CI would.
 set(CPPL_TEST_FIXTURES "${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
 set(CPPL_TEST_WORK "${CMAKE_CURRENT_BINARY_DIR}/work")
+
+# The primary acceptance invariant (task spec): the LSP pipeline must not
+# introduce a diagnostic that the CLI itself would not, over the same real
+# fixtures the driver-level suites above already exercise.
+cppl_add_unit_test(lsp_fixtures_test unit/lsp_fixtures_test.cpp)
+target_link_libraries(lsp_fixtures_test PRIVATE cppl_lsp)
+target_compile_definitions(lsp_fixtures_test PRIVATE
+    CPPL_TEST_FIXTURES_DIR="${CPPL_TEST_FIXTURES}"
+    CPPL_TEST_DEFAULT_CLANG="${CPPL_DEFAULT_CLANG}")
 
 function(cppl_add_script_test name script)
     add_test(NAME ${name}
