@@ -1617,6 +1617,14 @@ predicate is supposed inside the body, and the author does not restate it as an
 every path that returns. Using a refined value as its base value requires nothing
 further.
 
+A function containing a loop, or calling a function verified by loop conditions,
+MUST enforce the same refinement crossings as a function without loops. Every
+local initialization and write is checked, including a value never subsequently
+read. A loop head knows only the invariant and path facts about its fresh logical
+versions; a declared refinement is not an additional unchecked loop invariant.
+Unresolved refinement identity or index substitution MUST reject obligation
+generation rather than omit a predicate.
+
 A refinement whose base type is another refinement states both predicates: the one
 written and every one it inherits (17.5). An indexed refinement states its
 predicate at the values its indices were applied at.

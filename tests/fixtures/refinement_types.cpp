@@ -86,6 +86,16 @@ verified int widened(Percentage p) ensures(result >= 0) {
     return n;
 }
 
+// A loop's current version is constrained by its invariant. Every update still
+// owes membership, even when the local is not used in the postcondition.
+verified unsigned refined_loop() ensures(result == 9u) {
+    Small i = 0u;
+    while (i < 9u) invariant(i <= 9u) {
+        ++i;
+    }
+    return i;
+}
+
 // A refined value used as its base value needs no further proof (SPEC.md 17.3).
 pure int identity(int x) {
     return x;
@@ -102,6 +112,7 @@ pure int where(int x) {
 using type = int;
 
 int main() {
+    if (refined_loop() != 9u) return 1;
     Holder holder{7};
     type ordinary = holder.type;
     std::printf("%d %d %d %u %u %d %u %d\n", fifty(0), from_a_branch(1), keeps(2), indexed(0u),

@@ -525,3 +525,42 @@ CPPL_TEST(a_loop_rebinding_a_live_version_is_refused) {
     const auto program = generate_all({std::move(function)}, true);
     CPPL_CHECK(program.contracts.empty());
 }
+
+CPPL_TEST(unknown_refinement_metadata_cannot_drop_a_local_obligation) {
+    auto function = counting(compare(v::BinaryOp::LessEqual, local(1), parameter(0)));
+    auto& first_version = std::get<v::LocalVersion>(function.returned_value->node);
+    first_version.declared = vUnsigned;
+    first_version.declared.refinements.push_back({"missing", {}});
+    const auto program = generate_all({std::move(function)}, true);
+    CPPL_CHECK(program.contracts.empty());
+    CPPL_CHECK(program.obligations.empty());
+}
+
+CPPL_TEST(unknown_refinement_metadata_cannot_drop_a_parameter_or_result_obligation) {
+    for (const bool result : {false, true}) {
+        auto function = first();
+        auto& type = result ? function.result : function.parameters.front().type;
+        type.refinements.push_back({"missing", {}});
+        const auto program = generate_all({std::move(function)}, true);
+        CPPL_CHECK(program.contracts.empty());
+        CPPL_CHECK(program.obligations.empty());
+    }
+}
+
+CPPL_TEST(mismatched_refinement_indices_fail_closed) {
+    cppl::elaboration::Result elaborated;
+    v::RefinementDeclaration refinement;
+    refinement.name = "Index";
+    refinement.base = vUnsigned;
+    refinement.indices = {{"n", vUnsigned}};
+    refinement.predicate = compare(v::BinaryOp::Less, parameter(1), parameter(0));
+    elaborated.module.refinements.push_back(std::move(refinement));
+    auto function = first();
+    function.result.refinements.push_back({"Index", {}});
+    elaborated.module.functions.push_back(std::move(function));
+    cppl::diagnostics::Engine engine;
+    const auto program = o::generate(elaborated.module, elaborated, engine);
+    CPPL_CHECK(engine.has_errors());
+    CPPL_CHECK(program.contracts.empty());
+    CPPL_CHECK(program.obligations.empty());
+}

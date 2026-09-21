@@ -344,6 +344,14 @@ This class is deliberately narrow. It exists for declarations whose C++ runtime
 representation must remain present, and it is not a general source-to-source
 rewrite: Clang remains the authority for ordinary C++ syntax and semantics.
 
+Refinement membership is part of obligation-construction correspondence: both
+the total return-tree path and the partial-correctness path check every modeled
+local initialization and write. Loop heads use fresh logical versions constrained
+by their invariants. Unknown refinement predicates and unresolved index arguments
+fail closed. These checks introduce no kernel rules, logical assumptions, axioms,
+or trusted mechanisms; the existing obligation builder remains responsible for
+enumerating the crossings whose evidence the kernel checks.
+
 The erasure pass MUST NOT silently:
 
 - remove required runtime validation

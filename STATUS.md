@@ -605,6 +605,11 @@ either direction (`SPEC.md` 17.3.2). Refined returns of an unverified function,
 refined members, references and pointers, and refinements in templated contexts are
 refused rather than approximated.
 
+The same membership checks cover partial-correctness bodies containing loops and
+their callers, including unused refined locals. Corrupt or unresolved refinement
+metadata fails closed. This closes a verification gap without promoting the
+overall refinement feature beyond `PROTOTYPE`.
+
 ---
 
 # Case analysis and induction status

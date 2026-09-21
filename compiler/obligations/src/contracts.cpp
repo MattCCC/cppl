@@ -47,21 +47,27 @@ kernel::Proposition specialize(kernel::Proposition proposition, const std::vecto
 // value (SPEC.md 17.5), and an indexed refinement states its predicate at the
 // values its indices were applied at (SPEC.md 18). An unrefined type requires
 // nothing, which is what makes ordinary C++ unaffected.
-std::optional<kernel::Proposition> membership(const Program& program, const vir::Type& type,
-                                              const kernel::Term& value) {
+std::expected<std::optional<kernel::Proposition>, Failure> membership(const Program& program, const vir::Type& type,
+                                                                      const kernel::Term& value) {
     std::optional<kernel::Proposition> required;
     for (const vir::Refinement& refinement : type.refinements) {
         const RefinementPredicate* stated = program.refinement(refinement.name);
         if (stated == nullptr || stated->parameters.empty()) {
-            continue;
+            return std::unexpected(Failure{"refinement '" + refinement.name + "' has no resolved predicate", {}, {}});
         }
         // Indices first, then the value: the order the predicate binds them in.
         if (refinement.arguments.size() + 1 != stated->parameters.size()) {
-            continue;
+            return std::unexpected(
+                Failure{"refinement '" + refinement.name + "' has unresolved or mismatched indices", {}, {}});
         }
         std::vector<kernel::Term> arguments;
         arguments.reserve(stated->parameters.size());
         for (std::size_t index = 0; index < refinement.arguments.size(); ++index) {
+            if (!stated->parameters[index].is_integer() ||
+                !kernel::is_representable(stated->parameters[index].integer_type(), refinement.arguments[index])) {
+                return std::unexpected(
+                    Failure{"refinement '" + refinement.name + "' has an invalid index value", {}, {}});
+            }
             arguments.push_back(
                 kernel::Term::literal(stated->parameters[index].integer_type(), refinement.arguments[index]));
         }
@@ -300,8 +306,12 @@ std::expected<void, Failure> state_contract(const vir::Function& function, const
     // A refined result is part of what the function guarantees, so it is stated
     // with the postcondition and proven on every path that returns (SPEC.md
     // 17.2). The value is the innermost variable here, as `result` is.
-    if (const auto refined = membership(program, function.result, kernel::Term::variable(kernel::VarIndex{0}))) {
-        plan.postcondition = kernel::Proposition::conjunction(std::move(plan.postcondition), *refined);
+    const auto result_membership = membership(program, function.result, kernel::Term::variable(kernel::VarIndex{0}));
+    if (!result_membership) {
+        return std::unexpected(result_membership.error());
+    }
+    if (result_membership->has_value()) {
+        plan.postcondition = kernel::Proposition::conjunction(std::move(plan.postcondition), **result_membership);
     }
 
     for (const auto& precondition : contract.preconditions) {
@@ -319,8 +329,11 @@ std::expected<void, Failure> state_contract(const vir::Function& function, const
         const auto refined =
             membership(program, function.parameters[index].type,
                        kernel::Term::variable(kernel::parameter_reference(plan.parameters.size(), index)));
-        if (refined.has_value()) {
-            plan.preconditions.push_back(*refined);
+        if (!refined) {
+            return std::unexpected(refined.error());
+        }
+        if (refined->has_value()) {
+            plan.preconditions.push_back(**refined);
         }
     }
     return {};
@@ -396,13 +409,16 @@ std::expected<ContractVerification, Failure> build(const vir::Function& function
                     }
                     const auto required = membership(program, step.binding->declared, *actual);
                     const auto reasoning = membership(program, step.binding->declared, *abstract);
-                    if (required.has_value() && reasoning.has_value()) {
+                    if (!required || !reasoning) {
+                        return std::unexpected(!required ? required.error() : reasoning.error());
+                    }
+                    if (required->has_value() && reasoning->has_value()) {
                         obligations.push_back(obligation_for(
                             program, path, Origin::RefinementIntroduction,
                             function.qualified_name + " -> " + step.binding->declared.refinements.front().name,
                             step.value->provenance.range,
-                            close(plan, path, 0, path.conditions.size(), false, *required),
-                            close(plan, path, path.calls.size(), path.conditions.size(), true, *reasoning)));
+                            close(plan, path, 0, path.conditions.size(), false, **required),
+                            close(plan, path, path.calls.size(), path.conditions.size(), true, **reasoning)));
                     }
                 }
                 if (!versions.emplace(step.binding->version, step.value).second) {
@@ -629,8 +645,18 @@ class Conditions {
                 return evaluated;
             }
             // The value is evaluated where the local is written, read or not.
-            if (auto value = lower(bound->operands[0], scope); !value) {
+            auto value = lower(bound->operands[0], scope);
+            if (!value) {
                 return std::unexpected(value.error());
+            }
+            const auto required = membership(program_, bound->declared, *value);
+            if (!required) {
+                return std::unexpected(required.error());
+            }
+            if (required->has_value()) {
+                emit(scope, Origin::RefinementIntroduction,
+                     function_.qualified_name + " -> " + bound->declared.refinements.front().name,
+                     bound->operands[0].provenance.range, **required);
             }
             scope.versions.emplace(bound->version, &bound->operands[0]);
             return walk(bound->operands[1], std::move(scope), loops);

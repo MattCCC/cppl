@@ -144,6 +144,42 @@ verified int wrong(NonNegative n) ensures(result >= 1) {
 }
 CPP
 
+# Loop verification and callers of partial contracts use the same membership
+# checks as straight-line paths, including values that are never read.
+reject loop_does_not_skip_introduction <<'CPP'
+type Small = unsigned where(self < 10u);
+verified unsigned wrong(unsigned n) ensures(result == 0u) {
+    Small bad = 20u;
+    unsigned i = 0u;
+    while (i < n) invariant(i <= n) { ++i; }
+    return 0u;
+}
+CPP
+reject loop_does_not_skip_update <<'CPP'
+type Small = unsigned where(self < 10u);
+verified unsigned wrong(unsigned n) ensures(result == 0u) {
+    Small bad = 0u;
+    unsigned i = 0u;
+    while (i < n) invariant(i <= n) {
+        bad = 20u;
+        ++i;
+    }
+    return 0u;
+}
+CPP
+reject partial_call_does_not_skip_introduction <<'CPP'
+type Small = unsigned where(self < 10u);
+verified unsigned count(unsigned n) ensures(result == n) {
+    unsigned i = 0u;
+    while (i < n) invariant(i <= n) { ++i; }
+    return i;
+}
+verified unsigned wrong(unsigned n) ensures(result == n) {
+    Small bad = 20u;
+    return count(n);
+}
+CPP
+
 # Malformed declarations, each reported as what it is.
 reject no_base_type <<'CPP'
 type Positive = where(self > 0);
@@ -184,6 +220,9 @@ grep -q 'not shown to satisfy refinement type' "$run/index_out_of_range.log"
 grep -q 'not shown to satisfy refinement type' "$run/unproven_assignment.log"
 grep -q 'not shown to satisfy refinement type' "$run/unproven_update.log"
 grep -q 'not shown to satisfy refinement type' "$run/narrowing_without_proof.log"
+grep -q 'not shown to satisfy refinement type' "$run/loop_does_not_skip_introduction.log"
+grep -q 'not shown to satisfy refinement type' "$run/loop_does_not_skip_update.log"
+grep -q 'not shown to satisfy refinement type' "$run/partial_call_does_not_skip_introduction.log"
 grep -q "redefinition of 'f'" "$run/erased_overload_collision.log"
 grep -q 'declares no base type' "$run/no_base_type.log"
 grep -q 'states no predicate' "$run/no_predicate.log"

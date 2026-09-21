@@ -103,6 +103,11 @@ the declaration owed. An argument of a call to a verified function owes the
 parameter's predicate through that function's precondition, which is where a refined
 parameter's predicate already lives.
 
+This requirement also applies to the partial-correctness path for loops and their
+callers. Fresh loop-head versions obtain their facts from invariants; every local
+write still generates membership evidence. Missing predicate metadata or index
+arguments is an error, never an empty requirement.
+
 Crossing between two refinements of one base type is implication and nothing else
 (SPEC.md 17.3.2). A value already of a refinement type carries its predicate, so the
 goal at the crossing is `P(v) -> Q(v)` under the path conditions there: the looser
