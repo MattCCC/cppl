@@ -229,11 +229,54 @@ type Positive = int where (self > 0);
 Positive f();
 CPP
 
-# A refined member's construction has no obligation, so the declaration is
-# refused: a record is built by unverified code before it enters a verified body.
-refuse refined_member 'outside a modeled verified body' <<'CPP'
+# A refined member is ordinary refined storage: it owes its predicate where a
+# value enters it, not where it is declared (SPEC.md 17.6). Construction inside
+# a verified body is checked at the member's own place, so a value that does not
+# satisfy the predicate is refused there rather than by refusing the struct.
+refuse refined_member_construction 'not shown to satisfy refinement type' <<'CPP'
 type Positive = int where (self > 0);
 struct S { Positive p; };
+verified int f() ensures (result > 0) { S s{0}; return s.p; }
+CPP
+
+# The same crossing covers a later write to the member, through the one write
+# path every other write uses.
+refuse refined_member_write 'not shown to satisfy refinement type' <<'CPP'
+type Positive = int where (self > 0);
+struct S { Positive p; };
+verified int f() ensures (result > 0) { S s{1}; s.p = 0; return s.p; }
+CPP
+
+# A record built outside a verified body establishes its members without any
+# proof, so naming a refinement there is still refused.
+refuse refined_member_unverified_storage 'outside a modeled verified body' <<'CPP'
+type Positive = int where (self > 0);
+struct S { Positive p; };
+S global{0};
+CPP
+
+# Construction that satisfies every member predicate is proven, and the member
+# reads at the version construction established.
+accept refined_member_is_constructed_and_read <<'CPP'
+type Positive = int where (self > 0);
+struct S { Positive p; };
+verified int f() ensures (result > 0) { S s{3}; return s.p; }
+CPP
+
+# A write into the member establishes a new version that satisfies the
+# predicate, and the read that follows observes that version.
+accept refined_member_is_written <<'CPP'
+type Positive = int where (self > 0);
+struct S { Positive p; };
+verified int f() ensures (result > 0) { S s{1}; s.p = 7; return s.p; }
+CPP
+
+# Distinct members are distinct places: writing one leaves the other's fact
+# standing, and neither borrows the other's predicate.
+accept refined_members_are_distinct_places <<'CPP'
+type Positive = int where (self > 0);
+struct S { Positive a; Positive b; };
+verified int f() ensures (result > 0) { S s{1, 2}; s.a = 5; return s.b; }
 CPP
 
 # A value that does not satisfy the predicate cannot enter the type.

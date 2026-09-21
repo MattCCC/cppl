@@ -3228,8 +3228,18 @@ current where it stands. Identity is the declaration Clang resolved, so
 shadowing and nested scopes need no rule of their own, and no name is looked up
 by spelling. A branch lowers what follows it once per arm, under the versions
 that arm established, which is what makes a local's value path-sensitive
-without a merge rule or a new kernel capability. `vir::LocalVersion` and
-`vir::LocalRef` carry this; the runtime statements are not rewritten.
+without a merge rule or a new kernel capability. `vir::PlaceVersion` and
+`vir::PlaceRef` carry this; the runtime statements are not rewritten.
+
+A version belongs to a place, not to a local (`vir::Place`, `SPEC.md` 12.10,
+RFC 0014 §1). A place is a root - a local, or the referent a by-reference
+parameter designates - and a path of projections into it, so `s`, `s.x` and
+`s.x.y` are three places of one object and a member of a member needs no rule of
+its own. Identity is structural and follows Clang's resolution, never a
+spelling. A place is never a value: reading one yields a value, and the place
+itself never reaches the kernel as a term, which keeps the kernel's term
+language closed. Adding a `Deref` or symbolic `Element` root later joins the
+existing variants rather than replacing the abstraction.
 
 Obligation generation walks a path's steps in order. A guard contributes its
 condition; a version contributes the value it binds. Both contribute their calls
@@ -3250,9 +3260,15 @@ rejected, never truncated.
 ### Storage versions and call effects
 
 Clang-resolved parameter passing is separate from a parameter's logical value
-type (`source::ParameterPassing`). The bridge maps bindings to storage and routes
-writes through `BodyLowering::write`. `LocalVersion` carries an exact write;
-`UnknownVersion` carries a possible alias mutation with no inherited predicate.
+type (`source::ParameterPassing`). The bridge resolves every access form -
+a local, a member, an element, a member of one - through one resolver, reads
+through `read_place` and writes through `BodyLowering::write`, so no syntax has
+a read or write rule of its own. `PlaceVersion` carries an exact write;
+`UnknownVersion` carries a possible alias mutation with no inherited predicate,
+naming the place that went stale. Invalidation is proved only from Clang's
+resolution: distinct locals are disjoint, paths differing at a step are
+disjoint, an object and its members reach each other, and anything else may
+alias. No type-based aliasing argument is used.
 `CallEffect` identifies an argument's new logical version and declared target
 type. `ReturnState` carries the result and parameter observations at normal exit.
 All nodes retain source provenance and use the same version namespace.

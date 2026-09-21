@@ -134,7 +134,7 @@ class TermLowering {
         // value is a term, never a fresh unknown: nothing about the local is
         // assumed. The binding is scoped to the body under the version, so a
         // sibling arm's version cannot be read here even from malformed VIR.
-        if (const auto* bound = std::get_if<vir::LocalVersion>(&expr.node)) {
+        if (const auto* bound = std::get_if<vir::PlaceVersion>(&expr.node)) {
             if (bound->operands.size() != 2 || versions_.contains(bound->version)) {
                 return fail("malformed local version", location);
             }
@@ -157,20 +157,22 @@ class TermLowering {
         // A version's value reads only versions established before it, which
         // are numbered below it. Replaying under that bound makes a cycle
         // through malformed VIR a refusal rather than unbounded recursion.
-        if (const auto* local = std::get_if<vir::LocalRef>(&expr.node)) {
+        if (const auto* local = std::get_if<vir::PlaceRef>(&expr.node)) {
             // A loop's head version is a bound variable: what the path states
             // about it is all that is known.
             if (opaque_ != nullptr) {
                 if (const auto head = opaque_->find(local->version); head != opaque_->end()) {
                     if (head->second >= parameter_count_ || local->version >= replay_bound_) {
-                        return fail("'" + local->name + "' is read outside the loop that gives it a value", location);
+                        return fail("'" + describe(local->place) + "' is read outside the loop that gives it a value",
+                                    location);
                     }
                     return kernel::Term::variable(kernel::parameter_reference(parameter_count_, head->second));
                 }
             }
             const auto version = versions_.find(local->version);
             if (version == versions_.end() || local->version >= replay_bound_) {
-                return fail("'" + local->name + "' is read outside the path that gives it a value", location);
+                return fail("'" + describe(local->place) + "' is read outside the path that gives it a value",
+                            location);
             }
             const std::uint32_t enclosing = replay_bound_;
             replay_bound_ = local->version;
@@ -545,7 +547,7 @@ void collect_callees(const vir::Expr& expr, std::set<std::string>& callees) {
         for (const auto& operand : branch->operands)
             collect_callees(operand, callees);
     }
-    if (const auto* bound = std::get_if<vir::LocalVersion>(&expr.node)) {
+    if (const auto* bound = std::get_if<vir::PlaceVersion>(&expr.node)) {
         for (const auto& operand : bound->operands)
             collect_callees(operand, callees);
     }

@@ -25,6 +25,26 @@ void report(diagnostics::Engine& engine, diagnostics::Category category, const s
     engine.report(std::move(diagnostic));
 }
 
+// The bridge's place, as VIR carries it. Both layers describe the same storage
+// (SPEC.md 12.10); they are separate types because the bridge boundary does not
+// let a Clang-facing structure reach the logical core (ARCHITECTURE.md 12).
+vir::Place convert_place(const clangbridge::Place& place) {
+    vir::Place converted;
+    converted.root.kind = place.root.kind == clangbridge::PlaceRoot::Kind::Parameter
+                              ? vir::PlaceRoot::Kind::Parameter
+                              : vir::PlaceRoot::Kind::Local;
+    converted.root.id = place.root.id;
+    converted.spelling = place.spelling;
+    converted.path.reserve(place.path.size());
+    for (const auto& step : place.path) {
+        converted.path.push_back(
+            vir::PlaceStep{step.kind == clangbridge::PlaceStep::Kind::Element ? vir::PlaceStep::Kind::Element
+                                                                             : vir::PlaceStep::Kind::Field,
+                           step.index});
+    }
+    return converted;
+}
+
 std::optional<vir::Type> convert_type(const clangbridge::Type& type) {
     std::optional<vir::Type> converted;
     switch (type.kind) {
@@ -238,7 +258,8 @@ class ExpressionElaborator {
             auto body = convert(unknown->operands.front());
             if (!body)
                 return std::nullopt;
-            result.node = vir::UnknownVersion{unknown->version, *value_type, {std::move(*body)}};
+            result.node =
+                vir::UnknownVersion{unknown->version, convert_place(unknown->place), *value_type, {std::move(*body)}};
             return result;
         }
 
@@ -318,10 +339,10 @@ class ExpressionElaborator {
             return result;
         }
 
-        if (const auto* bound = std::get_if<clangbridge::LocalVersion>(&expr.node)) {
-            vir::LocalVersion converted;
+        if (const auto* bound = std::get_if<clangbridge::PlaceVersion>(&expr.node)) {
+            vir::PlaceVersion converted;
             converted.version = bound->version;
-            converted.name = bound->name;
+            converted.place = convert_place(bound->place);
             if (const std::optional<vir::Type> declared = convert_type(bound->declared)) {
                 converted.declared = *declared;
             }
@@ -335,13 +356,17 @@ class ExpressionElaborator {
             return result;
         }
 
-        if (const auto* local = std::get_if<clangbridge::LocalRef>(&expr.node)) {
-            result.node = vir::LocalRef{local->version, local->name};
+        if (const auto* place = std::get_if<clangbridge::PlaceRef>(&expr.node)) {
+            result.node = vir::PlaceRef{place->version, convert_place(place->place)};
             return result;
         }
 
         if (const auto* loop = std::get_if<clangbridge::Loop>(&expr.node)) {
-            vir::Loop converted{loop->loop, loop->heads, loop->names, 0, {}};
+            std::vector<vir::Place> places;
+            places.reserve(loop->places.size());
+            for (const auto& place : loop->places)
+                places.push_back(convert_place(place));
+            vir::Loop converted{loop->loop, loop->heads, std::move(places), 0, {}};
             // One surface invariant can state a conjunction. Each conjunct is
             // still an independent entry/preservation obligation of the one
             // loop rule; no new fact is introduced and disjunction is not split.
@@ -416,7 +441,7 @@ void collect_callees(const vir::Expr& expr, std::vector<vir::SymbolId>& callees)
         for (const auto& operand : branch->operands)
             collect_callees(operand, callees);
     }
-    if (const auto* bound = std::get_if<vir::LocalVersion>(&expr.node)) {
+    if (const auto* bound = std::get_if<vir::PlaceVersion>(&expr.node)) {
         for (const auto& operand : bound->operands)
             collect_callees(operand, callees);
     }
@@ -1295,7 +1320,7 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
                                 "a mathematical function of its arguments";
                 } else if (candidate.pure && calls_only_pure &&
                            !std::holds_alternative<vir::Conditional>(converted.returned_value->node) &&
-                           !std::holds_alternative<vir::LocalVersion>(converted.returned_value->node) &&
+                           !std::holds_alternative<vir::PlaceVersion>(converted.returned_value->node) &&
                            !std::holds_alternative<vir::Loop>(converted.returned_value->node) &&
                            !std::holds_alternative<vir::ReturnState>(converted.returned_value->node)) {
                     converted.purity = vir::Purity::Pure;

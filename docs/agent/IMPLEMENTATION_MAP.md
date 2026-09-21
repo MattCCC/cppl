@@ -37,6 +37,7 @@ Normative sources: `REFINE-*` (SPEC §17), `REFINEOBL-*` (Annex I), `DEP-*`
 | Component | Responsibility | Paths |
 | --- | --- | --- |
 | frontend | Recognize refinement declarations, `self`, indexed refinements. Keep the words contextual. | `compiler/frontend/src/recognizer.cpp`, `compiler/frontend/src/projection.cpp`, `compiler/frontend/include/cppl/frontend/syntax.hpp` |
+| places | Designate storage: a root plus a path of projections. One access resolver, one read, one write. | `vir/include/cppl/vir/place.hpp`, `clang/src/bridge.cpp` (`resolve_access`, `read_place`, `BodyLowering::write`) |
 | elaboration | Elaborate the predicate into a formal proposition over the base type. | `compiler/elaboration/src/elaborate.cpp` |
 | obligations | Emit a membership obligation at every semantic crossing. | `compiler/obligations/src/generate.cpp`, `compiler/obligations/src/contracts.cpp` |
 | analysis | Track logical versions; invalidate facts on possible-alias mutation. | `compiler/analysis/src/analyze.cpp` |
@@ -56,9 +57,14 @@ possible-alias mutation       invalidates facts about earlier versions
 refined return                creates a membership obligation on every normal
                               return
 refined member or element     preserves the predicate on every construction and
-                              write path
+                              write path, at the member's own place, owed where
+                              the value enters rather than at the next read
+semantic validity             is recursive: a record is valid when its
+                              refinement-bearing subobjects are
 refined parameter             supplies the predicate as an entry premise, not an
-                              ABI check
+                              ABI check, recursively for its subobjects
+disjointness                  is proved from Clang's resolution only, never from
+                              a type-based aliasing argument
 erasure                       uses the ultimate C++ base representation
 no path                       inserts hidden runtime validation
 ```

@@ -16,7 +16,7 @@ for standard in c++17 c++20 c++23; do
     "$CPPL" "-std=$standard" "$FIXTURES/refinement_types.cpp" -o "$run/program" \
         --cppl-trust-report "--cppl-emit-projection=$run/runtime.cpp" > "$run/report"
     grep -Eq '^Laws proven: +1$' "$run/report"
-    grep -Eq '^Function contracts proven: +13$' "$run/report"
+    grep -Eq '^Function contracts proven: +18$' "$run/report"
     grep -Eq '^Unresolved obligations: +0$' "$run/report"
     grep -Eq '^Laws trusted: +0$' "$run/report"
     grep -Eq '^Trusted external axioms: +0$' "$run/report"
@@ -33,6 +33,12 @@ for standard in c++17 c++20 c++23; do
     ! grep -q 'where' "$run/runtime.cpp"
     ! grep -q '\bself\b' "$run/runtime.cpp"
     ! grep -q 'struct Percentage\|class Percentage' "$run/runtime.cpp"
+
+    # A refined data member keeps its declared spelling and gains nothing: the
+    # record is the same record, with the same members in the same order and no
+    # tag, flag, constructor or check added for the refinement (SPEC.md 17.8).
+    grep -Fq 'Percentage level;' "$run/runtime.cpp"
+    grep -Fq 'NonNegative count;' "$run/runtime.cpp"
 
     # The program the user gets is the program Clang compiles on its own, and it
     # behaves identically: a refinement changes no runtime representation.

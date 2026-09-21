@@ -613,11 +613,28 @@ about new versions; refined actual storage still owes membership. Repeated actua
 arguments share state. Branches and loop invariants use the same version model.
 This remains `PROTOTYPE`, not production-complete refinement flow.
 
-Refined members and arrays are blocked on construction and mutation obligations,
-not merely unimplemented. Member reads deliberately carry no component
-predicate: a record is constructed by unverified code, so supplying the
-predicate on read would let `S{-5}` prove `self > 0` (`SPEC.md` 17.2, `TRUST.md`).
-A permanent regression test pins this. General casts, lambdas, methods,
+Refined data members are implemented over the generic place model. A member is a
+place of its own, reached by a path of projections out of the object it belongs
+to, so `s`, `s.x` and `s.x.y` are three places and `s.x` and `s.y` are never one.
+Construction and every later write cross into the member's own declared type
+through the one write path, and the obligation is owed where the value enters
+the member rather than deferred to a read (`SPEC.md` 17.6, Annex I
+REFINEOBL-007). A write through a reference to a member is a write to that
+place, and distinct members do not disturb one another.
+
+Semantic validity is recursive (`SPEC.md` 17.2.1): a record is valid when its
+refinement-bearing subobjects are, stated over the projections that name them.
+A verified parameter therefore supplies the validity of its refined subobjects
+as an entry premise exactly as a refined scalar parameter does (`SPEC.md`
+17.2.2), and no proof of the historical construction path is required to use it.
+`S{-5}` in a verified body is rejected by the construction obligation, and a
+record built outside a verified body is still refused at that boundary, because
+ordinary C++ establishes its members without proof. Permanent regression tests
+pin both directions, and the erasure test shows a refined member lowering to a
+plain member with identical generated code.
+
+Refined array elements at constant indices use the same place model. General
+casts, lambdas, methods, pointer dereference, symbolic subscripts,
 alias-return lifetimes, `old` over mutable state, and dependent object flows
 remain unimplemented.
 
@@ -662,30 +679,39 @@ stated in `SPEC.md` 12.10; the access forms are refused until they are
 implemented against it. Pointer values and proof-side `null`/`non_null` case
 analysis are `IMPLEMENTED` and unaffected.
 
-The storage model that gates dereference also gates refined members, subscripts,
-reference capture and returned aliases: all of them need one place, region and
-capability model rather than five, so they are sequenced behind it (RFC 0014
+The storage model that gates dereference also gates subscripts with symbolic
+indices, reference capture and returned aliases: they need one place, region and
+capability model rather than four, so they are sequenced behind it (RFC 0014
 §17). Capability tracking is a correspondence-layer responsibility and carries a
 stated TCB delta (`TRUST.md` 41.2); it adds no kernel rule, axiom or logical
 assumption.
 
-The first step of that model is implemented. A verified body tracks an aggregate
-local as one place per data member (`SPEC.md` 12.10): a member is read at its own
-version and written through the ordinary write path, so a write reaches exactly
-the member written and distinct members and distinct objects never share a fact.
-Only aggregate initialization is admitted, because a constructor call or default
-initialization would leave a tracked member holding a value the body cannot
-state. Member construction and writes inside a verified body now generate the
-refinement obligations they owe; declared refined members stay refused, because
-ordinary code still constructs records without generating any obligation, which
-is the remaining half of that boundary.
+Steps 1 to 4 of that model are implemented. A place is a root - a local, or the
+referent a by-reference parameter designates - and a path of projections into
+it, so a member of a member is an ordinary place rather than a special case.
+`PlaceVersion` and `PlaceRef` are the only version and read nodes in the VIR;
+there is no parallel local-only path. Every read resolves a place to its current
+version through one mechanism, and every write - a declaration, an assignment, a
+compound update, an increment, a member initialization, a write through a
+reference - establishes a version through one mechanism, which is where the
+refinement crossing is generated.
+
+Aliasing is conservative and proved only from what Clang resolves: distinct
+locals never share storage, and within one object paths that differ at some step
+select different members. A write to an object reaches the members inside it and
+a write to a member reaches the object it belongs to, because they are the same
+storage at different granularity. Two by-reference parameters may designate one
+object, so a write through either havocs the other. No type-based argument is
+used: strict aliasing presupposes the undefined-behavior freedom a proof has not
+established.
 
 An array local is the same model: it is a record whose members are its elements,
 so a constant index names a place and a write reaches exactly that element. A
 variable index is refused rather than resolved to some element, because deciding
-which element it names soundly requires the extent obligations of RFC 0014. A
-member that is itself an aggregate is refused too: the place model carries one
-field index, and a nested member needs a place path.
+which element it names soundly requires the extent obligations of RFC 0014.
+Only aggregate initialization is admitted for a tracked record, because a
+constructor call or default initialization would leave a tracked member holding
+a value the body cannot state.
 
 The same membership checks cover partial-correctness bodies containing loops and
 their callers, including unused refined locals. Corrupt or unresolved refinement

@@ -146,6 +146,58 @@ verified unsigned refined_reference_loop()
     return observed;
 }
 
+// A refined data member is ordinary refined storage (SPEC.md 17.6). Each member
+// is a place of its own, so construction and every later write cross into the
+// member's declared type through the same machinery a refined local uses, and a
+// write reaches exactly the member written.
+struct Reading {
+    Percentage level;
+    NonNegative count;
+};
+
+verified int member_construction()
+    ensures (result == 50)
+{
+    Reading reading{50, 3};
+    return reading.level;
+}
+
+verified int member_write()
+    ensures (result == 80)
+{
+    Reading reading{10, 0};
+    reading.level = 80;
+    return reading.level;
+}
+
+// Writing one member leaves the other's version, and its predicate, standing.
+verified int member_sibling()
+    ensures (result == 3)
+{
+    Reading reading{10, 3};
+    reading.level = 90;
+    return reading.count;
+}
+
+// A reference denotes the member's storage, so a write through it is a write to
+// that place and proves the member's predicate there (SPEC.md 12.9).
+verified int member_through_reference()
+    ensures (result == 7)
+{
+    Reading reading{10, 0};
+    int& alias = reading.level;
+    alias = 7;
+    return reading.level;
+}
+
+// A refined subobject of a parameter is valid on entry, so the body relies on
+// it without reproving it (SPEC.md 17.2.2).
+verified int member_entry_validity(Reading reading)
+    ensures (result >= 0)
+{
+    return reading.count;
+}
+
 // A refined value used as its base value needs no further proof (SPEC.md 17.3).
 pure int identity(int x) {
     return x;
@@ -168,6 +220,10 @@ int main() {
     if (implicit_percentage() != 50)
         return 1;
     if (refined_loop() != 9u)
+        return 1;
+    if (member_construction() != 50 || member_write() != 80)
+        return 1;
+    if (member_sibling() != 3 || member_through_reference() != 7)
         return 1;
     Holder holder{7};
     type ordinary = holder.type;

@@ -26,6 +26,22 @@ std::string describe(const Type& type) {
     return (integer.is_signed ? "i" : "u") + std::to_string(integer.width);
 }
 
+// How a place is written, for diagnostics. The spelling the bridge recorded is
+// what the author wrote, so it is preferred; the structural form is the
+// fallback when a place was built without one.
+std::string describe(const Place& place) {
+    if (!place.spelling.empty()) {
+        return place.spelling;
+    }
+    std::string text = place.root.kind == PlaceRoot::Kind::Parameter ? "parameter#" : "local#";
+    text += std::to_string(place.root.id);
+    for (const PlaceStep& step : place.path) {
+        text += step.kind == PlaceStep::Kind::Field ? ".field" + std::to_string(step.index)
+                                                    : "[" + std::to_string(step.index) + "]";
+    }
+    return text;
+}
+
 std::string describe(BinaryOp op) {
     switch (op) {
         case BinaryOp::Add:
@@ -104,12 +120,13 @@ std::string describe(const Expr& expr) {
                            ? "if(" + describe(node.operands[0]) + ", " + describe(node.operands[1]) + ", " +
                                  describe(node.operands[2]) + ")"
                            : "<malformed-conditional>";
-            } else if constexpr (std::is_same_v<Node, LocalVersion>) {
-                return node.operands.size() == 2 ? "let " + node.name + "#" + std::to_string(node.version) + " = " +
-                                                       describe(node.operands[0]) + " in " + describe(node.operands[1])
-                                                 : "<malformed-local>";
-            } else if constexpr (std::is_same_v<Node, LocalRef>) {
-                return node.name + "#" + std::to_string(node.version);
+            } else if constexpr (std::is_same_v<Node, PlaceVersion>) {
+                return node.operands.size() == 2 ? "let " + describe(node.place) + "#" + std::to_string(node.version) +
+                                                       " = " + describe(node.operands[0]) + " in " +
+                                                       describe(node.operands[1])
+                                                 : "<malformed-place>";
+            } else if constexpr (std::is_same_v<Node, PlaceRef>) {
+                return describe(node.place) + "#" + std::to_string(node.version);
             } else if constexpr (std::is_same_v<Node, Loop>) {
                 std::string text = "loop#" + std::to_string(node.loop) + "(";
                 for (std::size_t index = 0; index < node.operands.size(); ++index) {
@@ -122,9 +139,10 @@ std::string describe(const Expr& expr) {
                     text += describe(operand) + "; ";
                 return text + ")";
             } else if constexpr (std::is_same_v<Node, UnknownVersion>) {
-                return node.operands.size() == 1
-                           ? "havoc#" + std::to_string(node.version) + " in " + describe(node.operands.front())
-                           : "<malformed-mutation>";
+                return node.operands.size() == 1 ? "havoc " + describe(node.place) + "#" +
+                                                       std::to_string(node.version) + " in " +
+                                                       describe(node.operands.front())
+                                                 : "<malformed-mutation>";
             } else if constexpr (std::is_same_v<Node, Iterate>) {
                 std::string text = "next#" + std::to_string(node.loop) + "(";
                 for (std::size_t index = 0; index < node.operands.size(); ++index) {

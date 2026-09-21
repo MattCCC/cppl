@@ -160,26 +160,63 @@ struct Conditional {
     std::vector<Expr> operands;
 }; // condition, true return, false return
 
-// The logical version of a local a declaration or an assignment establishes.
+// One step into a place: a data member, or an array element at a constant
+// index. Numbered the way the representation's components are, so a component
+// index and a field index denote the same member.
+struct PlaceStep {
+    enum class Kind : std::uint8_t { Field, Element };
+
+    Kind kind = Kind::Field;
+    std::uint32_t index = 0;
+
+    friend bool operator==(const PlaceStep&, const PlaceStep&) = default;
+};
+
+// Which storage a place is rooted in: a local of this body, or the referent a
+// by-reference parameter designates.
+struct PlaceRoot {
+    enum class Kind : std::uint8_t { Local, Parameter };
+
+    Kind kind = Kind::Local;
+    std::uint32_t id = 0;
+
+    friend bool operator==(const PlaceRoot&, const PlaceRoot&) = default;
+};
+
+// A place designating C++ storage (SPEC.md 12.10, RFC 0014 §1): a root plus a
+// path of projections into it, so `s.a.b` is an ordinary place rather than a
+// special case. Identity is structural and comes from Clang's resolution,
+// never from the spelling, which is carried for diagnostics only.
+struct Place {
+    PlaceRoot root;
+    std::vector<PlaceStep> path;
+    std::string spelling;
+
+    friend bool operator==(const Place& lhs, const Place& rhs) {
+        return lhs.root == rhs.root && lhs.path == rhs.path;
+    }
+};
+
+// The logical version of a place a write establishes, whatever syntax wrote it.
 // `operands` are the value the version denotes and the rest of the body under
-// it. Versions belong to the declaration Clang resolved, never to a spelling,
-// and they exist only in the verification model: the runtime statements are
+// it. Versions belong to the storage Clang resolved, never to a spelling, and
+// they exist only in the verification model: the runtime statements are
 // untouched.
-struct LocalVersion {
+struct PlaceVersion {
     std::uint32_t version = 0;
-    std::string name;
+    Place place;
     std::vector<Expr> operands; // value, body
 
-    // The type the declaration was written with. The value's own type is the
-    // erased one; this keeps what was declared, so a refinement the declaration
-    // named is still known where the value enters it (SPEC.md 17.2).
+    // The type the place was declared with. The value's own type is the erased
+    // one; this keeps what was declared, so a refinement the declaration named
+    // is still known where the value enters it (SPEC.md 17.2).
     Type declared;
 };
 
-// A read of the version of a local that is current at this point.
-struct LocalRef {
+// A read of the version of a place that is current at this point.
+struct PlaceRef {
     std::uint32_t version = 0;
-    std::string name;
+    Place place;
 };
 
 // A loop, entered with its carried locals at their current versions.
@@ -194,7 +231,7 @@ struct LocalRef {
 struct Loop {
     std::uint32_t loop = 0;
     std::vector<std::uint32_t> heads;
-    std::vector<std::string> names;
+    std::vector<Place> places;
     std::uint32_t invariants = 0;
     std::vector<Expr> operands; // entry values, invariants, head
 };
@@ -214,8 +251,10 @@ struct ReturnState {
 };
 
 // Possible alias mutation: bind a fresh value without inheriting old facts.
+// The place is named so a diagnostic can say which storage went stale.
 struct UnknownVersion {
     std::uint32_t version = 0;
+    Place place;
     Type value_type;
     std::vector<Expr> operands; // continuation
 };
@@ -227,7 +266,7 @@ struct Unsupported {
 struct Expr {
     Type type;
     source::SourceLocation location;
-    std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, LocalVersion, LocalRef, Loop, Iterate,
+    std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, PlaceVersion, PlaceRef, Loop, Iterate,
                  Projection, FormalEquality, Universal, Implication, Connective, ReturnState, UnknownVersion,
                  Unsupported>
         node;

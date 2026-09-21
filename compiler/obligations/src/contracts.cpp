@@ -47,9 +47,39 @@ kernel::Proposition specialize(kernel::Proposition proposition, const std::vecto
 // value (SPEC.md 17.5), and an indexed refinement states its predicate at the
 // values its indices were applied at (SPEC.md 18). An unrefined type requires
 // nothing, which is what makes ordinary C++ unaffected.
+//
+// Membership of a structural value is membership of each of its components, at
+// the component's own declared type and over the projection that names it
+// (SPEC.md 17.6). A record is valid exactly when its subobjects are, so a
+// refined member owes its predicate wherever the whole object crosses into its
+// type and supplies it wherever the whole object is known to be valid. This is
+// one recursive rule rather than a member-specific one: the same call states a
+// scalar's refinement, a member's, and a member of a member's.
 std::expected<std::optional<kernel::Proposition>, Failure> membership(const Program& program, const vir::Type& type,
                                                                       const kernel::Term& value) {
     std::optional<kernel::Proposition> required;
+    const auto conjoin = [&required](kernel::Proposition next) {
+        required = required.has_value() ? kernel::Proposition::conjunction(std::move(*required), std::move(next))
+                                        : std::move(next);
+    };
+    if (type.is_value()) {
+        const auto& projections = std::get<vir::ValueType>(type.node).projections;
+        for (std::size_t index = 0; index < projections.size(); ++index) {
+            const std::optional<kernel::Type> domain = core_type(type);
+            const std::optional<kernel::Type> component = core_type(projections[index]);
+            if (!domain || !domain->is_value() || !component) {
+                continue;
+            }
+            auto inner = membership(program, projections[index],
+                                    kernel::Term::project(*domain, static_cast<std::uint32_t>(index), value));
+            if (!inner) {
+                return inner;
+            }
+            if (inner->has_value()) {
+                conjoin(std::move(**inner));
+            }
+        }
+    }
     for (const vir::Refinement& refinement : type.refinements) {
         const RefinementPredicate* stated =
             program.refinement(refinement.identity.empty() ? refinement.name : refinement.identity);
@@ -73,9 +103,7 @@ std::expected<std::optional<kernel::Proposition>, Failure> membership(const Prog
                 kernel::Term::literal(stated->parameters[index].integer_type(), refinement.arguments[index]));
         }
         arguments.push_back(value);
-        kernel::Proposition applied = specialize(stated->predicate, stated->parameters, arguments);
-        required = required.has_value() ? kernel::Proposition::conjunction(std::move(*required), std::move(applied))
-                                        : std::move(applied);
+        conjoin(specialize(stated->predicate, stated->parameters, arguments));
     }
     return required;
 }
@@ -129,7 +157,7 @@ void collect_calls(const vir::Expr& expression, const Contracts& contracts, std:
     } else if (const auto* unknown = std::get_if<vir::UnknownVersion>(&expression.node)) {
         for (const auto& operand : unknown->operands)
             collect_calls(operand, contracts, calls);
-    } else if (const auto* bound = std::get_if<vir::LocalVersion>(&expression.node)) {
+    } else if (const auto* bound = std::get_if<vir::PlaceVersion>(&expression.node)) {
         for (const auto& operand : bound->operands)
             collect_calls(operand, contracts, calls);
     } else if (const auto* binary = std::get_if<vir::Binary>(&expression.node)) {
@@ -157,7 +185,7 @@ bool requires_conditions(const vir::Expr& expression) {
         std::holds_alternative<vir::UnknownVersion>(expression.node)) {
         return true;
     }
-    if (const auto* bound = std::get_if<vir::LocalVersion>(&expression.node)) {
+    if (const auto* bound = std::get_if<vir::PlaceVersion>(&expression.node)) {
         return std::ranges::any_of(bound->operands, requires_conditions);
     }
     if (const auto* branch = std::get_if<vir::Conditional>(&expression.node)) {
@@ -194,7 +222,7 @@ Obligation obligation_for(const Program& program, const ReturnPath& path, Origin
 // and not where its value is eventually read.
 struct Step {
     const vir::Expr* value;
-    const vir::LocalVersion* binding; // null for a guard
+    const vir::PlaceVersion* binding; // null for a guard
     bool positive;                    // the guard's outcome on this path
 };
 
@@ -225,8 +253,8 @@ const vir::Expr* established_value(const std::vector<Step>& steps, std::uint32_t
 // to itself and is left opaque.
 const vir::Expr& denoted_value(const vir::Expr& value, const std::vector<Step>& steps) {
     const vir::Expr* current = &value;
-    for (const auto* read = std::get_if<vir::LocalRef>(&current->node); read != nullptr;
-         read = std::get_if<vir::LocalRef>(&current->node)) {
+    for (const auto* read = std::get_if<vir::PlaceRef>(&current->node); read != nullptr;
+         read = std::get_if<vir::PlaceRef>(&current->node)) {
         const vir::Expr* source = established_value(steps, read->version);
         if (source == nullptr)
             return *current;
@@ -244,7 +272,7 @@ bool reads_from_a_conditional(const vir::Expr& body, std::uint32_t version) {
     const auto visit = [&](const vir::Expr& node, bool inside, const auto& self) -> void {
         if (found)
             return;
-        if (const auto* read = std::get_if<vir::LocalRef>(&node.node)) {
+        if (const auto* read = std::get_if<vir::PlaceRef>(&node.node)) {
             found = found || (inside && read->version == version);
             return;
         }
@@ -293,7 +321,7 @@ bool reads_from_a_conditional(const vir::Expr& body, std::uint32_t version) {
 // conditional elimination, and a leaf is proven under exactly the conditions
 // that stand above it there. Splitting here in the order the conditionals are
 // written keeps the two in step, since a read replays the value it was given.
-bool bind_conditional(const vir::Expr& value, const vir::LocalVersion& binding, const vir::Expr& body,
+bool bind_conditional(const vir::Expr& value, const vir::PlaceVersion& binding, const vir::Expr& body,
                       std::vector<Step> steps, std::vector<Route>& result) {
     const vir::Expr& denoted = denoted_value(value, steps);
     const auto* choice = std::get_if<vir::Conditional>(&denoted.node);
@@ -319,7 +347,7 @@ bool bind_conditional(const vir::Expr& value, const vir::LocalVersion& binding, 
 bool routes(const vir::Expr& expression, std::vector<Step> steps, std::vector<Route>& result) {
     if (result.size() >= 128)
         return false;
-    if (const auto* bound = std::get_if<vir::LocalVersion>(&expression.node)) {
+    if (const auto* bound = std::get_if<vir::PlaceVersion>(&expression.node)) {
         if (bound->operands.size() != 2)
             return false;
         // A conditional value states one `select` term, of which neither arm's
@@ -859,7 +887,7 @@ class Conditions {
             return {};
         }
 
-        if (const auto* bound = std::get_if<vir::LocalVersion>(&expression.node)) {
+        if (const auto* bound = std::get_if<vir::PlaceVersion>(&expression.node)) {
             if (bound->operands.size() != 2 || scope.versions.contains(bound->version) ||
                 scope.opaque.contains(bound->version)) {
                 return fail("malformed local version", location);
@@ -928,7 +956,7 @@ class Conditions {
                                        std::vector<Active>& loops) {
         const source::SourceLocation& location = expression.provenance.range.begin;
         const std::size_t carried = loop.heads.size();
-        if (loop.names.size() != carried || loop.operands.size() != carried + loop.invariants + 1 ||
+        if (loop.places.size() != carried || loop.operands.size() != carried + loop.invariants + 1 ||
             std::ranges::any_of(loops, [&loop](const Active& active) { return active.loop->loop == loop.loop; })) {
             return fail("malformed loop", location);
         }
@@ -941,7 +969,8 @@ class Conditions {
             }
             const std::optional<kernel::Type> type = core_type(loop.operands[index].type);
             if (!type.has_value()) {
-                return fail("'" + loop.names[index] + "' has a type the formal core does not represent", location);
+                return fail("'" + describe(loop.places[index]) + "' has a type the formal core does not represent",
+                            location);
             }
             types.push_back(*type);
         }

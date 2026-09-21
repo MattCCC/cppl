@@ -56,20 +56,21 @@ Manifest: `features/refinement-types.yaml`
 
 | Required case | Category | Status |
 | --- | --- | --- |
-| Local initialization | positive, negative | partial — `tests/negative/refinement_types.sh` cites `REFINE-003`, `REFINE-004`, `REFINE-005` |
+| Local initialization | positive, negative | partial — `tests/negative/refinement_types.sh` cites `REFINE-008`, `REFINE-010`, `REFINEOBL-002` |
 | Parameter crossing | positive, negative | partial |
 | Return crossing | positive, negative | partial |
 | Assignment and compound update | positive, negative | partial |
-| Member initialization and write | positive, negative | needed |
-| Array/element write | positive, negative | needed |
-| Alias mutation invalidates facts | interaction, adversarial | needed |
-| Verified call post-state | interaction | needed |
-| Nested refinements | positive, negative | needed |
-| Indexed refinements | positive, negative | needed |
+| Member initialization and write | positive, negative | covered — construction, direct write, write through a reference, and a sibling left alone (`refinement_types.sh`, `e2e/refinement_flow.sh`, `fixtures/refinement_types.cpp`) |
+| Subobject entry validity | positive | covered — a verified parameter supplies its refined subobjects' validity (`REFINEOBL-005`) |
+| Array/element write | positive, negative | partial — constant indices only; a symbolic index needs RFC 0014 extent obligations |
+| Alias mutation invalidates facts | interaction, adversarial | partial — reference aliases to locals and members covered; pointer aliases need RFC 0014 |
+| Verified call post-state | interaction | partial |
+| Nested refinements | positive, negative | partial |
+| Indexed refinements | positive, negative | partial |
 | Refinement implication and conversion | positive, negative | needed |
 | Overload erasure collision | erasure, negative | needed |
-| ABI equivalence | erasure | needed |
-| No hidden runtime validation | erasure, adversarial | needed |
+| ABI equivalence | erasure | partial — a refined member lowers to a plain member with identical codegen (`e2e/refinement_types.sh`) |
+| No hidden runtime validation | erasure, adversarial | partial — the erased program is compiled by Clang alone and behaves identically |
 
 Status here describes test coverage, not implementation maturity.
 `docs/STATUS.md` is authoritative for the latter, and neither weakens what

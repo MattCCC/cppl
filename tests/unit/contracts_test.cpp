@@ -120,17 +120,26 @@ v::Expr number(std::int64_t value) {
     return expression;
 }
 
+// The place these tests version: one local of the body under test.
+v::Place named(std::string spelling = "y") {
+    v::Place place;
+    place.root.kind = v::PlaceRoot::Kind::Local;
+    place.root.id = 0;
+    place.spelling = std::move(spelling);
+    return place;
+}
+
 v::Expr local(std::uint32_t version) {
     v::Expr expression;
     expression.type = vUnsigned;
-    expression.node = v::LocalRef{version, "y"};
+    expression.node = v::PlaceRef{version, named()};
     return expression;
 }
 
 v::Expr versioned(std::uint32_t version, v::Expr value, v::Expr body) {
     v::Expr expression;
     expression.type = body.type;
-    expression.node = v::LocalVersion{version, "y", {std::move(value), std::move(body)}, {}};
+    expression.node = v::PlaceVersion{version, named(), {std::move(value), std::move(body)}, {}};
     return expression;
 }
 
@@ -441,11 +450,12 @@ v::Function counting(v::Expr invariant, std::uint32_t loop_id = 0) {
     v::Expr step;
     step.type = vUnsigned;
     step.node = v::Binary{v::BinaryOp::Add, {local(1), number(1)}};
-    auto iteration = control(v::LocalVersion{2, "i", {std::move(step), control(v::Iterate{loop_id, {local(2)}})}, {}});
+    auto iteration =
+        control(v::PlaceVersion{2, named("i"), {std::move(step), control(v::Iterate{loop_id, {local(2)}})}, {}});
     auto head =
         control(v::Conditional{{compare(v::BinaryOp::Less, local(1), parameter(0)), std::move(iteration), local(1)}});
-    auto loop = control(v::Loop{0, {1}, {"i"}, 1, {local(0), std::move(invariant), std::move(head)}});
-    function.returned_value = control(v::LocalVersion{0, "i", {number(0), std::move(loop)}, {}});
+    auto loop = control(v::Loop{0, {1}, {named("i")}, 1, {local(0), std::move(invariant), std::move(head)}});
+    function.returned_value = control(v::PlaceVersion{0, named("i"), {number(0), std::move(loop)}, {}});
     function.contract = v::Contract{{}, equality(parameter(1), parameter(0)), {}};
     return function;
 }
@@ -511,7 +521,7 @@ CPPL_TEST(an_iteration_outside_its_loop_is_refused) {
 CPPL_TEST(a_head_version_is_not_readable_before_its_loop) {
     auto function = counting(compare(v::BinaryOp::LessEqual, local(1), parameter(0)));
     CPPL_CHECK(function.returned_value.has_value());
-    auto& first_version = std::get<v::LocalVersion>(function.returned_value->node);
+    auto& first_version = std::get<v::PlaceVersion>(function.returned_value->node);
     first_version.operands[0] = local(1);
     const auto program = generate_all({std::move(function)}, true);
     CPPL_CHECK(program.contracts.empty());
@@ -520,7 +530,7 @@ CPPL_TEST(a_head_version_is_not_readable_before_its_loop) {
 CPPL_TEST(a_loop_rebinding_a_live_version_is_refused) {
     auto function = counting(compare(v::BinaryOp::LessEqual, local(1), parameter(0)));
     CPPL_CHECK(function.returned_value.has_value());
-    auto& first_version = std::get<v::LocalVersion>(function.returned_value->node);
+    auto& first_version = std::get<v::PlaceVersion>(function.returned_value->node);
     std::get<v::Loop>(first_version.operands[1].node).heads = {0};
     const auto program = generate_all({std::move(function)}, true);
     CPPL_CHECK(program.contracts.empty());
@@ -529,7 +539,7 @@ CPPL_TEST(a_loop_rebinding_a_live_version_is_refused) {
 CPPL_TEST(unknown_refinement_metadata_cannot_drop_a_local_obligation) {
     auto function = counting(compare(v::BinaryOp::LessEqual, local(1), parameter(0)));
     CPPL_CHECK(function.returned_value.has_value());
-    auto& first_version = std::get<v::LocalVersion>(function.returned_value->node);
+    auto& first_version = std::get<v::PlaceVersion>(function.returned_value->node);
     first_version.declared = vUnsigned;
     first_version.declared.refinements.push_back({"missing", {}});
     const auto program = generate_all({std::move(function)}, true);
@@ -588,7 +598,7 @@ CPPL_TEST(an_unknown_version_does_not_inherit_the_old_value) {
     function.contract->postcondition = equality(parameter(2), number(1));
     v::Expr unknown;
     unknown.type = vUnsigned;
-    unknown.node = v::UnknownVersion{1, vUnsigned, {local(1)}};
+    unknown.node = v::UnknownVersion{1, named(), vUnsigned, {local(1)}};
     function.returned_value = versioned(0, number(1), std::move(unknown));
     auto program = generate(std::move(function));
     CPPL_CHECK(program.contracts.front().partial);
@@ -601,7 +611,7 @@ CPPL_TEST(an_unknown_version_cannot_rebind_a_previous_version) {
     auto function = first();
     v::Expr unknown;
     unknown.type = vUnsigned;
-    unknown.node = v::UnknownVersion{0, vUnsigned, {local(0)}};
+    unknown.node = v::UnknownVersion{0, named(), vUnsigned, {local(0)}};
     function.returned_value = versioned(0, number(1), std::move(unknown));
     cppl::elaboration::Result elaborated;
     elaborated.module.functions.push_back(std::move(function));

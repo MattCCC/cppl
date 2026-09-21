@@ -2,6 +2,7 @@
 
 #include "cppl/source/location.hpp"
 #include "cppl/vir/ids.hpp"
+#include "cppl/vir/place.hpp"
 #include "cppl/vir/types.hpp"
 
 #include <cstdint>
@@ -112,42 +113,50 @@ struct Conditional {
     friend bool operator==(const Conditional&, const Conditional&) = default;
 };
 
-// The logical version of a local that a declaration or an assignment
-// establishes, and the rest of the body under it. A version is what the local
-// denotes from this point on; the runtime statement it came from is unchanged.
-// Versions are unique within a body, and a value reads only versions numbered
-// below its own.
-struct LocalVersion {
+// The logical version of a place that a declaration, an assignment, a member
+// initialization or any other write establishes, and the rest of the body under
+// it. A version is what the place denotes from this point on; the runtime
+// statement it came from is unchanged. Versions are unique within a body, and a
+// value reads only versions numbered below its own.
+//
+// Every write in a verified body establishes one of these, whatever syntax it
+// was written with, so the refinement crossing a write owes is generated from
+// `declared` at one site rather than per form (AGENTS.md refinement storage
+// invariants).
+struct PlaceVersion {
     std::uint32_t version = 0;
-    std::string name;
+    Place place;
     std::vector<Expr> operands; // value, body
 
-    // The type the declaration was written with, which is the erased type of the
+    // The type the place was declared with, which is the erased type of the
     // value together with any refinement the declaration named (SPEC.md 17.2).
     Type declared;
 
-    friend bool operator==(const LocalVersion&, const LocalVersion&) = default;
+    friend bool operator==(const PlaceVersion&, const PlaceVersion&) = default;
 };
 
-// A read of the version of a local that is current where the read stands.
-struct LocalRef {
+// A read of the version of a place that is current where the read stands.
+struct PlaceRef {
     std::uint32_t version = 0;
-    std::string name;
+    Place place;
 
-    friend bool operator==(const LocalRef&, const LocalRef&) = default;
+    friend bool operator==(const PlaceRef&, const PlaceRef&) = default;
 };
 
-// A loop (SPEC.md 24). Each local the loop writes is carried: from the head on
+// A loop (SPEC.md 24). Each place the loop writes is carried: from the head on
 // it denotes the version in `heads`, an unknown of which only the invariants
-// and the condition are known. `operands` are each carried local's value on
+// and the condition are known. `operands` are each carried place's value on
 // entry, then the `invariants` stated over the head versions, then what
 // happens from the head on. Every iteration of the loop inside that last
 // operand ends in an Iterate naming this loop, in a return, or in what follows
 // the loop.
+//
+// A carried place is a place and not a name, so a loop that writes a member
+// carries exactly that member and leaves its siblings alone.
 struct Loop {
     std::uint32_t loop = 0;
     std::vector<std::uint32_t> heads;
-    std::vector<std::string> names;
+    std::vector<Place> places;
     std::uint32_t invariants = 0;
     std::vector<Expr> operands; // entry values, invariants, head
 
@@ -168,8 +177,13 @@ struct ReturnState {
     friend bool operator==(const ReturnState&, const ReturnState&) = default;
 };
 
+// Havoc: the place may have been written through an alias, so its new version
+// denotes an unknown value and inherits no fact from the old one (SPEC.md
+// 12.10). The place is named so a diagnostic can say which storage went stale,
+// and so the same node serves every kind of place.
 struct UnknownVersion {
     std::uint32_t version = 0;
+    Place place;
     Type value_type;
     std::vector<Expr> operands; // continuation
     friend bool operator==(const UnknownVersion&, const UnknownVersion&) = default;
@@ -179,7 +193,7 @@ struct Expr {
     ExprId id;
     Type type;
     Provenance provenance;
-    std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, LocalVersion, LocalRef, Loop, Iterate,
+    std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, PlaceVersion, PlaceRef, Loop, Iterate,
                  Projection, FormalEquality, Universal, Implication, Connective, ReturnState, UnknownVersion>
         node;
 

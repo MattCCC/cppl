@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Refinement types that must be refused.
 #
-# SPEC: REFINE-003, REFINE-004, REFINE-005
+# SPEC: REFINE-008, REFINE-010, REFINEOBL-002, REFINEOBL-004, REFINEOBL-005,
+# SPEC: REFINEOBL-007
 #
 # A refinement declaration asserts nothing. Every value that enters the type owes
 # a proof of its predicate, and nothing here is accepted on the strength of the
@@ -134,34 +135,51 @@ reject unverified_refined_storage <<'CPP'
 type Positive = int where (self > 0);
 int wrong() { Positive value = 0; return value; }
 CPP
-reject unchecked_refined_member <<'CPP'
+# A record built outside a verified body establishes its members without any
+# obligation, exactly as a refined variable would, so naming the refinement at
+# that boundary is refused (SPEC.md 17.6).
+reject unchecked_refined_member_storage <<'CPP'
 type Positive = int where (self > 0);
 struct S { Positive value; };
+S global{0};
 CPP
-# Reading a refined member is not sound merely because a modeled body cannot
-# write one. A record enters a verified body as a parameter, so unverified code
-# constructs it: admitting the declaration and supplying the component predicate
-# on read let `S{-5}` prove `result > 0` and print -5. A refined member requires
-# obligations on every construction and mutation path first (SPEC.md 17.2).
-reject refined_member_read_needs_construction_proof <<'CPP'
+# Construction inside a verified body owes the member's predicate at the
+# member's own place. The declaration is legal; this value is not.
+reject refined_member_construction_is_checked <<'CPP'
 type Positive = int where (self > 0);
 struct S { Positive p; };
-verified int trust_member(S s) ensures (result > 0) { return s.p; }
-int caller() { S s{-5}; return trust_member(s); }
+verified int f() ensures (result > 0) { S s{0}; return s.p; }
+CPP
+# A write to a member crosses into the member's declared type through the same
+# write path as every other write.
+reject refined_member_write_is_checked <<'CPP'
+type Positive = int where (self > 0);
+struct S { Positive p; };
+verified int f() ensures (result > 0) { S s{1}; s.p = 0; return s.p; }
+CPP
+# A member does not borrow a sibling's predicate: proving `a` says nothing
+# about `b`.
+reject a_member_does_not_borrow_a_sibling_predicate <<'CPP'
+type Positive = int where (self > 0);
+struct S { Positive a; int b; };
+verified int f() ensures (result > 0) { S s{1, 0}; return s.b; }
+CPP
+# A reference denotes the member's storage, so writing through it crosses into
+# the member's declared type. The obligation is owed at the write, not deferred
+# to the read (SPEC.md 17.6, Annex I REFINEOBL-007).
+reject a_reference_write_cannot_bypass_a_member_predicate <<'CPP'
+type Positive = int where (self > 0);
+struct S { Positive x; };
+verified int f() ensures (result > 0) {
+    S s{3};
+    int& r = s.x;
+    r = 0;
+    return s.x;
+}
 CPP
 reject unchecked_refined_array <<'CPP'
 type Positive = int where (self > 0);
 Positive values[2] = {0, 0};
-CPP
-# A verified body now tracks each member as its own place and checks the value
-# every construction and write puts there (SPEC.md 12.10), which is necessary
-# but not sufficient: ordinary code still constructs records without generating
-# any obligation. The declaration stays refused until that boundary is checked,
-# so this must not begin to compile merely because the body-side crossing works.
-reject refined_member_needs_the_unverified_boundary_too <<'CPP'
-type Positive = int where (self > 0);
-struct S { Positive x; };
-verified int f() ensures (result > 0) { S s{3}; return s.x; }
 CPP
 reject mutable_reference_cannot_bypass_membership <<'CPP'
 type Positive = int where (self > 0);
@@ -524,6 +542,59 @@ verified unsigned loop_alias() ensures (result == 9u) {
 }
 int main() {
     return forwarding(4u) == 4u && write_alias() == 3u && read_alias() == 3u && invalidate_view() == 20u && loop_alias() == 9u ? 0 : 1;
+}
+CPP
+
+# Refined members are ordinary refined storage (SPEC.md 17.6). Construction and
+# every later write cross into the member's declared type through the same
+# machinery a refined local uses; a verified parameter supplies the validity of
+# its refined subobjects as an entry premise, exactly as a refined parameter
+# does (SPEC.md 17.2).
+accept refined_members_construct_mutate_and_enter <<'CPP'
+type Positive = int where (self > 0);
+type Percentage = int where (self >= 0 && self <= 100);
+struct S { Positive a; Percentage b; };
+
+verified int constructed() ensures (result > 0) {
+    S s{3, 50};
+    return s.a;
+}
+verified int written() ensures (result > 0) {
+    S s{1, 0};
+    s.a = 9;
+    return s.a;
+}
+// Writing one member leaves its sibling's version, and its fact, standing.
+verified int sibling_survives_a_write() ensures (result > 0) {
+    S s{1, 7};
+    s.a = 4;
+    return s.b;
+}
+// A refined member of a parameter is valid on entry, so the body may rely on
+// it without reproving it here (SPEC.md 17.2).
+verified int from_a_parameter(S s) ensures (result > 0) {
+    return s.a;
+}
+// A reference denotes the member's own storage, so a write through it is a
+// write to that place and proves the member's predicate there.
+verified int written_through_a_reference() ensures (result > 0) {
+    S s{1, 0};
+    int& r = s.a;
+    r = 8;
+    return s.a;
+}
+// Writing a sibling through a reference reaches only that sibling.
+verified int a_sibling_reference_leaves_the_member_alone() ensures (result > 0) {
+    S s{4, 0};
+    int& r = s.b;
+    r = 11;
+    return s.a;
+}
+int main() {
+    return constructed() == 3 && written() == 9 && sibling_survives_a_write() == 7 &&
+                   written_through_a_reference() == 8 && a_sibling_reference_leaves_the_member_alone() == 4
+               ? 0
+               : 1;
 }
 CPP
 
