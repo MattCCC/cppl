@@ -112,6 +112,39 @@ CPPL_TEST(valid_true_arithmetic_law_produces_no_cpp_semantic_diagnostics) {
     CPPL_CHECK_EQ(count_category(engine, diagnostics::Category::CppSemantic), 0u);
 }
 
+// structural_cases.cpp exercises every structural decomposition provider
+// (variant, optional, tuple, array, struct/product) except std::expected,
+// which needs its own feature-gated test below (tests/e2e/structural_cases.sh
+// runs it across c++17/c++20/c++23; c++20 alone is enough to prove the LSP
+// pipeline doesn't introduce bogus diagnostics of its own).
+CPPL_TEST(valid_structural_cases_produces_no_cpp_semantic_diagnostics) {
+    diagnostics::Engine engine;
+    const auto outcome = compile_fixture("structural_cases.cpp", engine);
+    CPPL_CHECK(outcome.ok);
+    CPPL_CHECK(outcome.has_cppl);
+    CPPL_CHECK_EQ(count_category(engine, diagnostics::Category::CppSemantic), 0u);
+}
+
+// std::expected is only available from C++23 onward; probe for it first
+// exactly as tests/e2e/structural_cases.sh does, rather than hardcoding
+// availability by toolchain or standard-library vendor.
+bool has_std_expected() {
+    diagnostics::Engine engine;
+    const auto outcome = compile_fixture("expected_cases.cpp", engine, {}, "-std=c++23");
+    return outcome.ok && count_category(engine, diagnostics::Category::CppSemantic) == 0u;
+}
+
+CPPL_TEST(valid_expected_cases_produces_no_cpp_semantic_diagnostics_when_available) {
+    if (!has_std_expected()) {
+        return;
+    }
+    diagnostics::Engine engine;
+    const auto outcome = compile_fixture("expected_cases.cpp", engine, {}, "-std=c++23");
+    CPPL_CHECK(outcome.ok);
+    CPPL_CHECK(outcome.has_cppl);
+    CPPL_CHECK_EQ(count_category(engine, diagnostics::Category::CppSemantic), 0u);
+}
+
 // --- ordinary C++, no C++L at all --------------------------------------
 
 CPPL_TEST(ordinary_cpp_file_is_not_recognized_as_cppl) {
