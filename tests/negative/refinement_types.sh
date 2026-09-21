@@ -136,6 +136,17 @@ reject unchecked_refined_member <<'CPP'
 type Positive = int where(self > 0);
 struct S { Positive value; };
 CPP
+# Reading a refined member is not sound merely because a modeled body cannot
+# write one. A record enters a verified body as a parameter, so unverified code
+# constructs it: admitting the declaration and supplying the component predicate
+# on read let `S{-5}` prove `result > 0` and print -5. A refined member requires
+# obligations on every construction and mutation path first (SPEC.md 17.2).
+reject refined_member_read_needs_construction_proof <<'CPP'
+type Positive = int where(self > 0);
+struct S { Positive p; };
+verified int trust_member(S s) ensures(result > 0) { return s.p; }
+int caller() { S s{-5}; return trust_member(s); }
+CPP
 reject unchecked_refined_array <<'CPP'
 type Positive = int where(self > 0);
 Positive values[2] = {0, 0};
