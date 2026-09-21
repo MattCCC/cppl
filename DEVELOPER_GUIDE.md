@@ -1407,6 +1407,53 @@ freedom from alias mutation.
 
 Purity also does not by itself prove termination.
 
+### 7.1. `pure` is not `constexpr`, `const` or termination
+
+These concepts are separate.
+
+```text
+pure
+    -> no admitted observable side effects
+
+const member function
+    -> ordinary C++ restriction on access through `this`
+
+constexpr
+    -> ordinary C++ constant-evaluation capability
+
+decreases
+    -> termination proof
+
+verified
+    -> checked contract/body
+```
+
+For example:
+
+```cpp
+pure unsigned f(unsigned x)
+{
+    return x;
+}
+```
+
+is still an ordinary runtime function.
+
+`pure` does not mean that it executes at compile time.
+
+Likewise:
+
+```cpp
+unsigned get() const;
+```
+
+is not automatically pure. It may observe mutable shared state, perform operations
+through aliases, or call impure functions unless those effects are ruled out by
+the verifier.
+
+A pure function that may recurse forever is still not automatically terminating.
+Termination requires the corresponding proof obligation.
+
 ## 8. Ghost locals
 
 `ghost` prefixes a local declaration in a verification-enabled block. Its value
@@ -2071,6 +2118,67 @@ TRUSTED
 
 A validator executes at runtime and is preserved after erasure.
 
+### 13.2. Defined C++ behavior is part of verification
+
+C++L does not redefine undefined C++ behavior into mathematical behavior.
+
+Verified code must remain valid according to the underlying C++ abstract machine.
+
+Examples that may require proof obligations include:
+
+```text
+signed overflow
+division by zero
+invalid shifts
+out-of-bounds access
+invalid pointer arithmetic
+use after lifetime end
+dereference of invalid storage
+use of an uninitialized value
+invalid downcasts
+violations of object lifetime or aliasing rules
+```
+
+For example:
+
+```cpp
+verified int divide(int x, int y)
+    expects (y != 0)
+{
+    return x / y;
+}
+```
+
+needs the precondition because division by zero is not repaired by theorem
+reasoning.
+
+Similarly:
+
+```cpp
+verified int read(int* pointer)
+    expects (pointer != nullptr)
+{
+    return *pointer;
+}
+```
+
+is not sufficient merely because nullness was excluded. The pointer must also
+refer to readable live initialized storage.
+
+A mathematical identity never licenses undefined C++ execution.
+
+The required relationship remains:
+
+```text
+verified proposition
+    +
+defined C++ execution
+    =
+valid C++L guarantee
+```
+
+The verifier must fail closed when it cannot establish required definedness.
+
 ## 14. Templates
 
 Templates retain ordinary C++ syntax.
@@ -2155,6 +2263,67 @@ unsupported verification
     does not mean
 invalid C++
 ```
+
+### 14.2. Template verification happens for real instantiations
+
+A template declaration does not give every possible specialization free proof
+facts.
+
+For example:
+
+```cpp
+template <typename T>
+verified T identity(T value)
+    ensures (result == value)
+{
+    return value;
+}
+```
+
+must only be accepted for instantiations whose operations and equality semantics
+are modeled sufficiently to verify the body and contract.
+
+Each instantiated specialization must satisfy the obligations induced by:
+
+```text
+its actual types
+its actual non-type parameters
+its selected overloads
+its refinements
+its effects
+its called functions
+```
+
+Ordinary C++ constraints and concepts participate in normal Clang template
+selection.
+
+They do not automatically become arbitrary logical axioms.
+
+For example:
+
+```cpp
+template <typename T>
+requires SomeConcept<T>
+verified T f(T value)
+{
+    ...
+}
+```
+
+means ordinary C++ has established the `SomeConcept<T>` constraint according to
+C++ rules.
+
+C++L may use formal facts associated with that concept only when those facts have
+a defined verification model.
+
+The compiler should report template verification failures with both:
+
+```text
+the template source location
+the relevant instantiation context
+```
+
+so developers can see which specialization generated the obligation.
 
 ## 15. Organizing C++L code in .h/.hpp and .cpp
 
@@ -2334,6 +2503,63 @@ If the language does not have a separate explicit mechanism for such
 verification-level dispatch, this is a declaration collision and must be
 diagnosed rather than deferred to surprising runtime behavior.
 
+### 15.3. C++L annotations do not change the native ABI by themselves
+
+Verification-only syntax erases before ordinary native compilation.
+
+For a verified function such as:
+
+```cpp
+verified int increment(int x)
+    ensures (result == x + 1)
+{
+    return x + 1;
+}
+```
+
+the runtime callable shape remains equivalent to ordinary C++:
+
+```cpp
+int increment(int x)
+{
+    return x + 1;
+}
+```
+
+Likewise, refinements lower to their base representation.
+
+Therefore C++L does not require a separate calling convention merely because a
+function has:
+
+```text
+verified
+expects
+ensures
+pure
+refinement types
+```
+
+Proof metadata needed for separate verification is not native ABI state.
+
+It must be transported through C++L compiler metadata, headers, module metadata or
+another explicit verification interface.
+
+Do not confuse:
+
+```text
+native ABI compatibility
+```
+
+with:
+
+```text
+availability of verification metadata
+```
+
+A binary may remain ABI-compatible while another translation unit lacks enough
+proof metadata to verify a call. In that case verification must fail closed
+rather than inventing the missing contract evidence.
+
 ## 16. Member contracts
 
 Use member lookup and `this`, not a second meaning for `self`.
@@ -2388,6 +2614,102 @@ Constructor initializer syntax remains ordinary C++ after the clauses.
 
 A compiler must model initialization and lifetime before accepting that
 verification.
+
+### 16.1. Virtual functions and override contracts
+
+A verified virtual function must remain substitutable through its base
+interface.
+
+Suppose the base class declares:
+
+```cpp
+class Account {
+public:
+    virtual verified unsigned withdraw(unsigned amount)
+        expects (amount <= balance())
+        ensures (result <= old(balance())) = 0;
+
+    virtual unsigned balance() const = 0;
+};
+```
+
+A caller through `Account&` knows only the base contract.
+
+Therefore an override must not require more than the base contract required.
+
+In other words, an override must not strengthen the precondition.
+
+If the base accepts:
+
+```text
+amount <= balance()
+```
+
+an override cannot require:
+
+```text
+amount < balance()
+```
+
+because a caller allowed by the base contract could then violate the override.
+
+An override must also provide at least the guarantees promised by the base.
+
+It may strengthen its postcondition, but it must not weaken the base
+postcondition.
+
+Conceptually:
+
+```text
+override expects
+    must accept every state accepted by base expects
+
+override ensures
+    must imply the guarantees of base ensures
+```
+
+The same principle applies to verified effect and purity summaries where they are
+part of the callable contract.
+
+Dynamic dispatch does not permit a derived implementation to invalidate facts
+that callers were allowed to establish from the base interface.
+
+If the verifier cannot establish override compatibility, the override is
+rejected.
+
+### 16.2. Constructors and destructors are lifetime boundaries
+
+Constructors and destructors need special treatment because object lifetime is
+changing.
+
+A constructor has no `result`.
+
+Its postcondition describes the initialized object:
+
+```cpp
+struct Counter {
+    unsigned value;
+
+    verified Counter()
+        ensures (value == 0u)
+        : value(0u)
+    {
+    }
+};
+```
+
+A constructor postcondition may only rely on members whose initialization and
+lifetime are valid on the relevant path.
+
+It cannot use `old(member)` for a member that did not have a live entry-state
+value.
+
+A destructor likewise has no returned `result`.
+
+Verification of destruction must respect ordinary C++ destruction order,
+subobject lifetime and any effects performed by destructors.
+
+C++L must never reason about an object as still live after its lifetime has ended.
 
 ## 17. Formatting and editor fixes
 
@@ -2609,6 +2931,42 @@ No. Laws do not return runtime values.
 Because a function has a runtime postcondition, while a Law establishes a
 compile-time theorem.
 
+### 18.3. Verification failures are build failures, not advisory warnings
+
+When source claims a C++L guarantee, failure to prove that guarantee must fail the
+verified compilation.
+
+Examples include:
+
+```text
+failed `ensures`
+failed Law
+unproved callee precondition
+invalid refinement crossing
+non-exhaustive proof cases
+failed memory capability
+failed termination measure
+unsupported semantics needed for the proof
+```
+
+These must not silently degrade into warnings while still reporting the code as
+verified.
+
+A build system may separately choose to compile ordinary unverified C++ where the
+project permits it, but that must not be reported as successful C++L verification.
+
+The developer should always be able to distinguish:
+
+```text
+compiled as ordinary C++
+
+compiled and verified as C++L
+
+compiled with explicit trust dependencies
+
+compiled with unsafe runtime operations
+```
+
 ## 19. Practical recipes
 
 The previous sections describe individual language features. This section shows
@@ -2778,41 +3136,1001 @@ return input
     -> runtime behavior
 ```
 
-## 20. C++L cheat sheet
+### 19.6. Crossing from unverified input into verified code
 
-| Goal / canonical form                                 | Runtime?           | Main context / usual location              |
-| ----------------------------------------------------- | ------------------ | ------------------------------------------ |
-| `verified int f(int x)`                               | Body runs          | Public contract in header; body in source  |
-| `expects (x > 0)`                                     | No                 | Function precondition / Law premise        |
-| `ensures (result == x)`                               | No                 | Runtime function postcondition             |
-| `law L(int x) proves (x == x);`                       | No                 | Shared header or private source theorem    |
-| `proof P(int x) proves (Eq<int>(x, x)) { refl; }`     | No                 | Reusable evidence                          |
-| `type Positive = int where (self > 0);`               | Base only          | Shared type declaration in header          |
-| `type Index(unsigned n) = unsigned where (self < n);` | Base only          | Indexed refinement, applied as `Index<4u>` |
-| `pure unsigned f(unsigned x)`                         | Body runs          | Checked effect-free function               |
-| `invariant (i <= n)`                                  | No                 | Loop clause in runtime implementation      |
-| `decreases (n - i)`                                   | No                 | Function/loop termination measure          |
-| `ghost unsigned original = x;`                        | No                 | Verification-only local                    |
-| `cases value { Label => { refl; } }`                  | No                 | Proof state split                          |
-| `decompose point { components(x, y) => { refl; } }`   | No                 | Proof product projections                  |
-| `induction n;`                                        | No                 | Proof with domain induction principle      |
-| `trusted law boundary(...) proves (...);`             | No                 | Explicit universal trusted assumption      |
-| `unsafe { operation(); }`                             | Operations execute | Explicit unsafe block                      |
-| Runtime validator                                     | Yes                | External/runtime value boundary            |
-
-Quick mental model:
+A common real application boundary looks like this:
 
 ```text
-Runtime function:
-    verified + expects / ensures
+external source
+    |
+    v
+ordinary runtime value
+    |
+    v
+validation
+    |
+    +---- invalid -> reject / error path
+    |
+    v
+refined value
+    |
+    v
+verified core
+```
+
+For example:
+
+```cpp
+type Percentage = unsigned where (self <= 100u);
+
+verified unsigned apply_percentage(
+    unsigned value,
+    Percentage percentage)
+{
+    return value * percentage / 100u;
+}
+```
+
+An external parser may produce:
+
+```cpp
+unsigned raw_percentage;
+```
+
+Do not simply reinterpret it as `Percentage`.
+
+First validate:
+
+```text
+raw_percentage <= 100
+```
+
+at runtime.
+
+Only the successful branch may introduce the refined value and pass it into the
+verified core.
+
+This pattern is recommended for:
+
+```text
+network input
+JSON
+database rows
+files
+command-line arguments
+FFI
+device data
+OCR
+user input
+```
+
+It keeps runtime uncertainty at the edge and lets the core of the program operate
+on values whose required properties are already established.
+
+### 19.7. Verified core with an unverified runtime shell
+
+C++L does not require an entire application to be formally verified.
+
+A practical architecture is:
+
+```text
+unverified / ordinary C++ shell
+    |
+    | parsing, OS APIs, UI, networking
+    v
+validated boundaries
+    |
+    v
+verified C++L core
+    |
+    | contracts, refinements, Laws
+    v
+ordinary native execution
+```
+
+The important rule is that every transition into the verified core must establish
+the properties that the verified interface expects.
+
+This allows incremental adoption without pretending that unverified code already
+carries proof.
+
+### 19.8. Concurrency, atomics and shared mutation
+
+C++L does not get thread safety merely from proving sequential expressions.
+
+Concurrent code introduces additional concerns such as:
+
+```text
+data races
+atomic ordering
+inter-thread happens-before relations
+shared mutation
+lifetime across threads
+lock invariants
+```
+
+Ordinary C++ concurrency semantics remain authoritative.
+
+If C++L has no formal model for a concurrency construct used by a verified proof,
+the verifier must reject that verification path or require an explicitly modeled
+boundary.
+
+It must not reason as if concurrently mutable storage were stable simply because
+the current function did not write to it.
+
+In particular:
+
+```text
+const
+    != immutable across threads
+
+non-atomic read
+    != stable shared fact
+
+pure
+    != automatically thread-safe
+```
+
+Any future concurrency model must make its synchronization and interference rules
+explicit rather than implicitly extending sequential proofs.
+
+## 20. C++L cheat sheet
+
+### Core constructs
+
+| Goal                                | Canonical C++L form                                   |           Runtime? | Meaning / usual location                                                 |
+| ----------------------------------- | ----------------------------------------------------- | -----------------: | ------------------------------------------------------------------------ |
+| Verify a runtime function           | `verified int f(...)`                                 |                Yes | Runtime C++ body with compile-time verification                          |
+| Require a caller condition          | `expects (...)`                                       |                 No | Function precondition or Law premise                                     |
+| State a runtime postcondition       | `ensures (...)`                                       |                 No | Guarantee after normal function return                                   |
+| State a theorem                     | `law L(...) proves (...);`                            |                 No | Compile-time theorem                                                     |
+| State a theorem with explicit proof | `law L(...) proves (...) { ... }`                     |                 No | Law plus authored proof body                                             |
+| Define reusable proof evidence      | `proof P(...) proves (...) { ... }`                   |                 No | Named compile-time evidence                                              |
+| Define a refined type               | `type Positive = int where (self > 0);`               |    Base value only | Verification-level restriction over a C++ type                           |
+| Define an indexed refinement        | `type Index(unsigned n) = unsigned where (self < n);` |    Base value only | Refinement parameterized by proof-level index metadata                   |
+| Mark an effect-free function        | `pure int f(...)`                                     |                Yes | Runtime function checked for purity                                      |
+| Introduce proof-only local state    | `ghost int snapshot = value;`                         |                 No | Verification-only local; erased                                          |
+| State a loop invariant              | `invariant (...)`                                     |                 No | Property preserved across loop iterations                                |
+| Prove termination                   | `decreases (...)`                                     |                 No | Well-founded measure for recursion or loops                              |
+| Split proof states                  | `cases value { ... }`                                 |                 No | Proof-only sum/state decomposition                                       |
+| Decompose product fields            | `decompose value { ... }`                             |                 No | Proof-only product decomposition                                         |
+| Prove by induction                  | `induction value { ... }`                             |                 No | Proof using base/step cases and induction hypothesis                     |
+| Admit an explicit trusted theorem   | `trusted law L(...) proves (...);`                    |                 No | Adds an explicit trust dependency                                        |
+| Mark unchecked runtime operations   | `unsafe { ... }`                                      | Operations execute | Runtime code executes; verifier does not infer correctness from `unsafe` |
+| Validate runtime input              | ordinary runtime validator                            |                Yes | Runtime check that may establish evidence for verified code              |
+
+### Function contracts
+
+Canonical order:
+
+```cpp
+verified int f(int x)
+    expects (x >= 0)
+    ensures (result >= 0)
+    decreases (measure)
+{
+    // ordinary C++ runtime body
+}
+```
+
+Meaning:
+
+```text
+expects (...)
+    caller must establish this before the call
+
+ensures (...)
+    function body must establish this on every normal return
+
+decreases (...)
+    execution must make this well-founded measure decrease
+```
+
+A verified function still runs at runtime.
+
+Contracts do not insert hidden runtime checks.
+
+### Laws
+
+Automatic proof:
+
+```cpp
+law identity(unsigned x)
+    proves (x + 0u == x);
+```
+
+Explicit proof:
+
+```cpp
+law identity(unsigned x)
+    proves (x + 0u == x)
+{
+    refl;
+}
+```
+
+A Law:
+
+```text
+is a compile-time theorem
+has no runtime body
+has no runtime result
+uses `proves`, never `ensures`
+may have an `expects` premise
+is erased before native compilation
+```
+
+Canonical Law order:
+
+```cpp
+law theorem(...)
+    expects (...)
+    proves (...);
+```
+
+### `law` versus `proof`
+
+```text
+law
+    = theorem / proposition that other verification may rely on
+
+proof
+    = explicitly named reusable evidence
+```
+
+Example:
+
+```cpp
+law reflexivity(int x)
+    proves (Eq<int>(x, x));
+
+proof reflexivity_evidence(int x)
+    proves (Eq<int>(x, x))
+{
+    refl;
+}
+```
+
+Neither produces a runtime function.
+
+A Law may contain its explicit proof directly, so a separate `proof` is needed
+only when separately named reusable evidence is useful.
+
+### Proof commands
+
+| Command                   | Purpose                                                          |
+| ------------------------- | ---------------------------------------------------------------- |
+| `refl;`                   | Close a definitionally reflexive equality                        |
+| `exact evidence;`         | Finish the current goal with evidence that already matches it    |
+| `apply theorem;`          | Apply evidence/theorem and reduce the goal to remaining premises |
+| `assume h : P;`           | Name a premise already supplied by the proof context             |
+| `rewrite h;`              | Rewrite the current goal using checked equality evidence         |
+| `cases value { ... }`     | Split proof by possible states                                   |
+| `decompose value { ... }` | Expose product components                                        |
+| `induction value { ... }` | Prove recursively using an induction hypothesis                  |
+
+Quick choice:
+
+```text
+goal is definitionally obvious
+    -> refl
+
+already have exact evidence
+    -> exact
+
+have theorem P -> Q and goal Q
+    -> apply
+
+have equality useful for transforming goal
+    -> rewrite
+
+need state split
+    -> cases
+
+need field/product projections
+    -> decompose
+
+need recursive proof
+    -> induction
+```
+
+`assume` never creates arbitrary truth. It only names evidence already supplied
+by the current proof context.
+
+### Logical quantifiers
+
+`forall` and `exists` are C++L proof/specification constructs.
+
+```cpp
+forall (unsigned x) {
+    P(x)
+}
+```
+
+means:
+
+```text
+P holds for every unsigned x
+```
+
+```cpp
+exists (unsigned x) {
+    P(x)
+}
+```
+
+means:
+
+```text
+there exists at least one unsigned x for which P holds
+```
+
+Example:
+
+```cpp
+law reflexive_for_all()
+    proves (
+        forall (unsigned x) {
+            Eq<unsigned>(x, x)
+        }
+    );
+```
+
+Quantifiers do not generate runtime loops.
+
+Their domain is determined by the binder type:
+
+```text
+unsigned
+    finite C++ machine domain
+
+@N
+    mathematical natural numbers
+
+@Z
+    mathematical integers
+```
+
+### Special specification identifiers
+
+| Identifier  | Meaning                           | Valid context            |
+| ----------- | --------------------------------- | ------------------------ |
+| `result`    | Value returned by the function    | Non-void `ensures`       |
+| `old(expr)` | Value of `expr` at function entry | Function postcondition   |
+| `self`      | Value being refined               | Refinement `where (...)` |
+
+Example:
+
+```cpp
+verified void increment(unsigned& value)
+    ensures (value == old(value) + 1u)
+{
+    ++value;
+}
+```
+
+Example refinement:
+
+```cpp
+type Percentage = unsigned where (self <= 100u);
+```
+
+Outside their C++L contexts, these names remain ordinary C++ identifiers where
+the C++ grammar permits them.
+
+### Refinements
+
+Basic refinement:
+
+```cpp
+type Positive = int where (self > 0);
+```
+
+Nested refinement:
+
+```cpp
+type NonNegative = int where (self >= 0);
+type Percentage = NonNegative where (self <= 100);
+```
+
+Indexed refinement:
+
+```cpp
+type Index(unsigned n) = unsigned where (self < n);
+```
+
+Application:
+
+```cpp
+Index<4u>
+```
+
+Important rules:
+
+```text
+refinement identity
+    verification-only
+
+runtime representation
+    underlying C++ base type
+
+base -> refinement
+    requires proof or runtime validation
+
+stronger refinement -> weaker refinement
+    requires checked implication
+
+write into refined storage
+    must re-establish its predicate
+
+possible alias mutation
+    may invalidate previously known refinement facts
+```
+
+Refinements do not create hidden wrappers, tags or runtime validation.
+
+### Runtime validation
+
+Use runtime validation when the value cannot be known until execution.
+
+Typical sources:
+
+```text
+network
+file
+database
+JSON
+command line
+device
+OCR
+FFI
+user input
+```
+
+Typical flow:
+
+```text
+ordinary runtime value
+    |
+    v
+runtime validation
+    |
+    +---- failure -> ordinary runtime error path
+    |
+    v
+refined value
+    |
+    v
+verified code
+```
+
+Runtime validation:
+
+```text
+executes at runtime
+survives erasure
+is not a compile-time theorem
+is not the same as `trusted`
+```
+
+### Ghost state
+
+```cpp
+ghost unsigned original = value;
+```
+
+`ghost` state:
+
+```text
+exists only during verification
+is erased
+may support proofs and invariants
+must never affect runtime computation
+```
+
+This is invalid:
+
+```cpp
+verified unsigned bad(unsigned value)
+{
+    ghost unsigned snapshot = value;
+    return snapshot;
+}
+```
+
+because runtime output would depend on erased state.
+
+### Cases and decomposition
+
+Sum/state decomposition:
+
+```cpp
+cases value {
+    some(payload) => {
+        ...
+    }
+
+    none => {
+        ...
+    }
+}
+```
+
+Product decomposition:
+
+```cpp
+decompose point {
+    components(x, y) => {
+        ...
+    }
+}
+```
+
+Possible state providers include, where supported:
+
+```text
+scoped enum
+std::variant
+std::optional
+std::expected
+pointer null/non_null
+```
+
+Residual states are explicit:
+
+```text
+unnamed
+valueless
+```
+
+`_` is not a proof catch-all.
+
+An omitted state is legal only when the verifier proves that state impossible
+from the existing proof context.
+
+### Induction
+
+```cpp
+induction n {
+    zero => {
+        ...
+    }
+
+    successor(pred) => {
+        assume ih : ...;
+        ...
+    }
+}
+```
+
+Remember:
+
+```text
+cases
+    possible states
+
+induction
+    possible recursive states + induction hypothesis
+
+decreases
+    runtime termination
+```
+
+These are different concepts.
+
+### Loops
+
+Canonical loop:
+
+```cpp
+while (i < n)
+    invariant (i <= n)
+    decreases (n - i)
+{
+    ++i;
+}
+```
+
+```text
+invariant (...)
+    proves loop correctness
+
+decreases (...)
+    proves termination
+```
+
+Without required termination proof, verification may establish partial
+correctness only.
+
+### Purity
+
+```cpp
+pure unsigned identity(unsigned value)
+{
+    return value;
+}
+```
+
+Canonical verified combination:
+
+```cpp
+verified pure unsigned identity(unsigned value)
+    ensures (result == value)
+{
+    return value;
+}
+```
+
+Do not confuse:
+
+```text
+pure
+    effect property
+
+const
+    ordinary C++ qualifier
+
+constexpr
+    ordinary C++ constant-evaluation facility
+
+decreases
+    termination proof
+
+verified
+    contract/body verification
+```
+
+### Pointers and references
+
+A non-null pointer proves only non-nullness.
+
+```text
+pointer != nullptr
+```
+
+does not by itself prove:
+
+```text
+valid lifetime
+readability
+writability
+initialization
+bounds
+provenance
+ownership
+```
+
+Likewise:
+
+```text
+const reference
+    != globally immutable object
+```
+
+Another alias may still mutate the same storage.
+
+A possible alias write may invalidate facts about the aliased value.
+
+### Trusted versus unsafe
+
+`trusted` and `unsafe` are not synonyms.
+
+```text
+trusted
+    explicitly admits verification trust/evidence
+
+unsafe
+    permits a runtime operation whose safety was not established
+```
+
+Example:
+
+```cpp
+trusted law external_guarantee(...)
+    proves (...);
+```
+
+Example:
+
+```cpp
+unsafe {
+    operation();
+}
+```
+
+`unsafe` does not magically produce proof evidence.
+
+`trusted` must remain visible in trust reporting.
+
+### Verification boundaries
+
+Entering verified code requires the required facts to be established.
+
+```text
+verified caller
+    proves callee `expects`
+
+unverified caller
+    gets no hidden runtime contract check
+
+external runtime input
+    should normally be validated before entering verified core
+```
+
+Recommended architecture:
+
+```text
+ordinary / unverified shell
+    |
+    | I/O, networking, parsing, OS APIs
+    v
+runtime validation
+    |
+    v
+verified C++L core
+    |
+    v
+ordinary native execution
+```
+
+### Headers and source files
+
+Recommended organization:
+
+```text
+public contract
+    -> .h / .hpp / interface
+
+runtime implementation
+    -> .cpp
+
+shared refinement
+    -> header/interface
+
+shared Law
+    -> header/interface
+
+implementation-only Law/proof
+    -> source
+
+ghost local
+    -> inside verified/proof body
+```
+
+Header:
+
+```cpp
+verified unsigned withdraw(unsigned balance, unsigned amount)
+    expects (amount <= balance)
+    ensures (result == balance - amount);
+```
+
+Source:
+
+```cpp
+unsigned withdraw(unsigned balance, unsigned amount)
+{
+    return balance - amount;
+}
+```
+
+Do not duplicate the contract on the out-of-line definition.
+
+### Templates, virtual functions and other C++ syntax
+
+These are ordinary C++, not C++L constructs:
+
+```text
+template
+requires          // C++ constraints
+virtual
+override
+final
+constexpr
+consteval
+const
+noexcept
+if
+switch
+for
+while
+sizeof
+alignof
+decltype
+```
+
+C++L may add verification semantics around them.
+
+For example:
+
+```cpp
+template <typename T>
+verified T identity(T value)
+    ensures (result == value)
+{
+    return value;
+}
+```
+
+Here:
+
+```text
+template
+    = C++
+
+verified / ensures
+    = C++L
+```
+
+Similarly:
+
+```cpp
+virtual verified unsigned withdraw(unsigned amount)
+    expects (...)
+    ensures (...) = 0;
+```
+
+Here:
+
+```text
+virtual
+    = C++
+
+verified / expects / ensures
+    = C++L
+```
+
+### C++L-specific vocabulary
+
+The main C++L language surface includes:
+
+```text
+verified
+pure
+law
+proof
+proves
+expects
+ensures
+decreases
+invariant
+type
+where
+ghost
+trusted
+unsafe
+forall
+exists
+cases
+decompose
+induction
+refl
+exact
+apply
+assume
+rewrite
+```
+
+Special contextual specification identifiers:
+
+```text
+result
+old
+self
+```
+
+Mathematical proof-only domains:
+
+```text
+@N
+@Z
+@Seq<T>
+@Set<T>
+@Map<K, V>
+```
+
+These should remain contextual wherever possible rather than unnecessarily
+becoming globally reserved C++ keywords.
+
+### Canonical formatting
+
+Clause-like syntax:
+
+```cpp
+expects (...)
+ensures (...)
+proves (...)
+invariant (...)
+decreases (...)
+where (...)
+```
+
+Expression-like syntax:
+
+```cpp
+old(value)
+```
+
+Canonical contract order:
+
+```text
+verified function:
+    expects
+    ensures
+    decreases
+
+Law:
+    expects
+    proves
+
+loop:
+    invariant
+    decreases
+```
+
+Whitespace before `(` in clauses is formatting, not semantic syntax. The parser
+may accept:
+
+```cpp
+ensures(result == x)
+```
+
+but the formatter emits:
+
+```cpp
+ensures (result == x)
+```
+
+### Runtime / proof-only summary
+
+| Construct                                         | Runtime? |
+| ------------------------------------------------- | -------: |
+| Ordinary C++ function body                        |      Yes |
+| `verified` function body                          |      Yes |
+| `pure` function body                              |      Yes |
+| `unsafe` operations                               |      Yes |
+| Runtime validation                                |      Yes |
+| `expects`                                         |       No |
+| `ensures`                                         |       No |
+| `proves`                                          |       No |
+| `law`                                             |       No |
+| `proof`                                           |       No |
+| `refl` / `exact` / `apply` / `assume` / `rewrite` |       No |
+| `forall` / `exists`                               |       No |
+| `cases` / `decompose` / `induction`               |       No |
+| `ghost`                                           |       No |
+| `invariant` / `decreases`                         |       No |
+| Refinement predicate/index metadata               |       No |
+| Refinement base value                             |      Yes |
+| `trusted law`                                     |       No |
+
+### The shortest mental model
+
+```text
+Runtime C++:
+    ordinary C++ bodies
+    verified bodies
+    pure bodies
+    unsafe operations
+    runtime validators
+
+Function contract:
+    expects -> ensures
 
 Theorem:
-    law + expects / proves
+    expects -> proves
 
-Explicit reusable evidence:
-    proof + proves
+Explicit evidence:
+    proof
 
-Refined type:
+Proof commands:
+    refl / exact / apply / assume / rewrite
+
+Logical reasoning:
+    forall / exists
+    cases / decompose / induction
+
+Types:
     type ... where (...)
 
 Loop correctness:
@@ -2824,43 +4142,19 @@ Termination:
 Proof-only state:
     ghost
 
-Case proof:
-    cases
-
-Product proof:
-    decompose
-
-Inductive proof:
-    induction
-
 Explicit trust:
-    trusted law
+    trusted
 
-Potentially unsafe runtime operation:
+Unchecked runtime operation:
     unsafe
-
-External runtime data:
-    runtime validation -> refined/verified value
 ```
 
-And the most important distinction:
+And the central rule:
 
 ```text
 Functions ensure.
 Laws prove.
 
-verified function body
-    -> runs
-
-Law
-    -> does not run
-
-proof
-    -> does not run
-
-ghost
-    -> does not run
-
-runtime validation
-    -> runs
+C++ runs.
+C++L proves properties about what runs.
 ```
