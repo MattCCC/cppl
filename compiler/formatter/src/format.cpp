@@ -7,8 +7,10 @@
 #include <algorithm>
 #include <charconv>
 #include <fstream>
+#include <iterator>
 #include <optional>
 #include <sstream>
+#include <unordered_map>
 
 #ifndef CPPL_DEFAULT_CLANG_FORMAT
 #define CPPL_DEFAULT_CLANG_FORMAT "clang-format"
@@ -49,6 +51,7 @@ struct ClauseRegion {
     source::ByteSpan span;
     std::vector<const frontend::Clause*> clauses;
     std::size_t declaration_column = 0;
+    std::size_t declaration_offset = 0; // the declaration's own first byte, e.g. 'law'/'verified'
 };
 
 // The 0-based column (in bytes, not UTF-16 - indentation is always ASCII
@@ -64,14 +67,6 @@ std::size_t line_number(std::string_view text, std::size_t offset) {
     return static_cast<std::size_t>(
                std::count(text.begin(), text.begin() + static_cast<std::ptrdiff_t>(offset), '\n')) +
            1;
-}
-
-std::size_t declaration_indent(std::string_view text, std::size_t offset) {
-    const std::size_t start = offset - line_start_column(text, offset);
-    std::size_t end = start;
-    while (end < text.size() && (text[end] == ' ' || text[end] == '\t'))
-        ++end;
-    return end - start;
 }
 
 constexpr std::size_t kIndentWidth = 4; // .clang-format: IndentWidth 4
@@ -92,19 +87,72 @@ std::string_view keyword_spelling(frontend::ClauseKind kind) {
     return "";
 }
 
+// A predicate span's already-clang-formatted text, looked up by its original
+// offset. Populated once per `format_ranges_once` call from a single batched
+// clang-format invocation (`format_expression_spans`) over every clause/
+// proof/refinement predicate in the document, so this layer relocates
+// clauses and reads back Clang's own expression formatting rather than
+// reimplementing operator spacing (AGENTS.md 14).
+using PredicateText = std::unordered_map<std::size_t, std::string>;
+
+std::string_view predicate_text(std::string_view text, source::ByteSpan span, const PredicateText& reformatted) {
+    const auto found = reformatted.find(span.offset);
+    if (found != reformatted.end()) {
+        return found->second;
+    }
+    return text.substr(span.offset, span.length); // defensive fallback: never seen by the batch call
+}
+
+// Every '//' line comment sitting on its own line strictly between
+// `begin`/`end` (the gap between one clause's ')' and the next clause
+// keyword), each returned exactly as written. Only line comments are looked
+// for: a clause's own predicate cannot itself span this gap (it ends at the
+// ')' that bounds it), and a block comment here is rare enough in written
+// contracts that, absent a test requiring it, this stays scoped to the one
+// shape GRAMMAR.md's own examples and this test suite actually show.
+std::vector<std::string_view> comments_between(std::string_view text, std::size_t begin, std::size_t end) {
+    std::vector<std::string_view> comments;
+    std::size_t cursor = begin;
+    while (cursor < end) {
+        const std::size_t slashes = text.find("//", cursor);
+        if (slashes == std::string_view::npos || slashes >= end) {
+            break;
+        }
+        std::size_t line_end = text.find('\n', slashes);
+        if (line_end == std::string_view::npos || line_end > end) {
+            line_end = end;
+        }
+        comments.push_back(text.substr(slashes, line_end - slashes));
+        cursor = line_end;
+    }
+    return comments;
+}
+
 // Every clause on its own line, indented one level past the declaration,
 // exactly as GRAMMAR.md's `verified`/`law`/loop-header examples show. The
-// predicate text itself is copied byte-for-byte from the input: this layer
-// relocates clauses, it never reflows the expressions clang-format already
-// owns.
-//
-// Exactly one space stands between the clause keyword and its '(': `expects` is
-// not a C++ control statement (`if`/`while`), it is C++L's own contract-clause
-// syntax, and this repo's `.clang-format` SpaceBeforeParens: ControlStatements
-// rule was never meant to reach it.
+// predicate text is Clang's own clang-format output for that expression
+// (`reformatted`): this layer relocates clauses, it never reimplements the
+// expression spacing clang-format already owns. A '//' comment written
+// between two clauses in the original source (e.g. explaining the next
+// clause) is preserved on its own line immediately before that clause,
+// tracked by source adjacency so it survives even when canonical clause
+// order differs from source order.
 std::string canonical_clause_block(std::string_view text, const std::vector<const frontend::Clause*>& clauses,
-                                   std::size_t declaration_column) {
+                                   std::size_t declaration_column, const PredicateText& reformatted) {
     const std::string indent(declaration_column + kIndentWidth, ' ');
+
+    // Keyed by a clause's own keyword offset: the comment lines written
+    // immediately before it in the ORIGINAL source, found between the
+    // previous clause (in source order) and this one.
+    std::unordered_map<std::size_t, std::vector<std::string_view>> leading_comments;
+    for (std::size_t i = 1; i < clauses.size(); ++i) {
+        std::vector<std::string_view> found =
+            comments_between(text, clauses[i - 1]->expression.end() + 1, clauses[i]->keyword.offset);
+        if (!found.empty()) {
+            leading_comments.emplace(clauses[i]->keyword.offset, std::move(found));
+        }
+    }
+
     std::string block;
     auto ordered = clauses;
     std::ranges::stable_sort(ordered, [](const auto* a, const auto* b) {
@@ -116,20 +164,133 @@ std::string canonical_clause_block(std::string_view text, const std::vector<cons
         return rank(a->kind) < rank(b->kind);
     });
     for (const frontend::Clause* clause : ordered) {
+        if (const auto found = leading_comments.find(clause->keyword.offset); found != leading_comments.end()) {
+            for (std::string_view comment : found->second) {
+                block += '\n';
+                block += indent;
+                block += comment;
+            }
+        }
         block += '\n';
         block += indent;
         block += keyword_spelling(clause->kind);
         block += " (";
-        block += text.substr(clause->expression.offset, clause->expression.length);
+        block += predicate_text(text, clause->expression, reformatted);
         block += ')';
     }
     return block;
 }
 
+bool is_horizontal_or_newline(char c) {
+    return c == ' ' || c == '\t' || c == '\n' || c == '\r';
+}
+
+// When `declaration_offset` is a `law`/`verified` declaration immediately
+// preceded (across only whitespace) by a `template < ... >` header, the
+// whitespace between the header's '>' and the declaration - i.e. GRAMMAR.md
+// 39's "C++ owns template syntax" boundary. clang-format's own
+// AlwaysBreakTemplateDeclarations: MultiLine style is free to join a short
+// template header onto its declaration's line (verified directly), but a
+// C++L declaration's own contract clauses already move it onto multiple
+// lines below, so the header must stay on its own line too rather than
+// crowding onto the same line as the declarator it introduces.
+std::optional<source::ByteSpan> template_header_break(std::string_view text, std::size_t declaration_offset) {
+    std::size_t begin = declaration_offset;
+    while (begin > 0 && is_horizontal_or_newline(text[begin - 1]))
+        --begin;
+    if (begin == 0 || text[begin - 1] != '>') {
+        return std::nullopt;
+    }
+    std::size_t depth = 0;
+    std::size_t scan = begin - 1;
+    std::size_t matched = text.size();
+    while (true) {
+        if (text[scan] == '>') {
+            ++depth;
+        } else if (text[scan] == '<') {
+            --depth;
+            if (depth == 0) {
+                matched = scan;
+                break;
+            }
+        }
+        if (scan == 0) {
+            break;
+        }
+        --scan;
+    }
+    if (matched >= text.size()) {
+        return std::nullopt;
+    }
+    std::size_t keyword_end = matched;
+    while (keyword_end > 0 && is_horizontal_or_newline(text[keyword_end - 1]))
+        --keyword_end;
+    constexpr std::string_view kTemplate = "template";
+    if (keyword_end < kTemplate.size() || text.substr(keyword_end - kTemplate.size(), kTemplate.size()) != kTemplate) {
+        return std::nullopt;
+    }
+    return source::ByteSpan{begin, declaration_offset - begin};
+}
+
+// Whether the '{' at `brace` opens a namespace body, mirroring the
+// recognizer's own `scope_kind_before` (recognizer.cpp): scan back to the
+// token that decides what this brace is, stopping at whatever already ends a
+// previous declaration/statement.
+bool opens_namespace_body(const std::vector<frontend::Token>& tokens, std::size_t brace) {
+    for (std::size_t cursor = brace; cursor > 0; --cursor) {
+        const frontend::Token& token = tokens[cursor - 1];
+        if (token.is_punctuator(";") || token.is_punctuator("{") || token.is_punctuator("}")) {
+            return false;
+        }
+        if (token.is_identifier("namespace")) {
+            return true;
+        }
+        if (token.is_identifier("class") || token.is_identifier("struct") || token.is_identifier("union") ||
+            token.is_identifier("enum") || token.is_punctuator(")")) {
+            return false;
+        }
+    }
+    return false;
+}
+
+// How many indent levels deep `offset` sits, independent of whatever column
+// the raw, not-yet-canonically-indented source happens to place it at: one
+// level per enclosing brace, except a namespace's own (this repo's
+// convention, matched by `namespace_scope_indentation_is_respected_for_
+// contract_clauses`: namespace scope does not indent its contents, class and
+// block scope do - the same convention clang-format itself applies with
+// NamespaceIndentation: None). A loop, member function or Law nested inside
+// a class/block cannot rely on its raw source column for this reason: this
+// implementation's own indentation is the one authority, the same way
+// clang-format is the authority for ordinary C++ block indentation.
+std::size_t layout_depth_at(const frontend::TokenStream& stream, std::size_t offset) {
+    const std::vector<frontend::Token>& tokens = stream.tokens();
+    std::size_t depth = 0;
+    std::vector<bool> counted; // per open brace still on the stack: did it add a level?
+    for (std::size_t index = 0; index < tokens.size(); ++index) {
+        if (tokens[index].span.offset >= offset) {
+            break;
+        }
+        if (tokens[index].is_punctuator("{")) {
+            const bool counts = !opens_namespace_body(tokens, index);
+            if (counts) {
+                ++depth;
+            }
+            counted.push_back(counts);
+        } else if (tokens[index].is_punctuator("}") && !counted.empty()) {
+            if (counted.back()) {
+                --depth;
+            }
+            counted.pop_back();
+        }
+    }
+    return depth;
+}
+
 // One region per law/verified-function clause block and loop invariant
 // block. `where` on a refinement type is deliberately never visited: it
 // stays inline (the request is explicit about this).
-std::vector<ClauseRegion> collect_regions(std::string_view text, const frontend::Syntax& syntax) {
+std::vector<ClauseRegion> collect_regions(const frontend::TokenStream& stream, const frontend::Syntax& syntax) {
     std::vector<ClauseRegion> regions;
 
     for (const frontend::LawDeclaration& law : syntax.laws) {
@@ -137,7 +298,8 @@ std::vector<ClauseRegion> collect_regions(std::string_view text, const frontend:
             continue;
         }
         ClauseRegion region;
-        region.declaration_column = declaration_indent(text, law.range.span.offset);
+        region.declaration_column = layout_depth_at(stream, law.range.span.offset) * kIndentWidth;
+        region.declaration_offset = law.range.span.offset;
         const source::ByteSpan first = law.clauses.front().keyword;
         const source::ByteSpan last = law.clauses.back().expression;
         region.span = source::ByteSpan{first.offset, (last.end() + 1) - first.offset};
@@ -147,17 +309,24 @@ std::vector<ClauseRegion> collect_regions(std::string_view text, const frontend:
         regions.push_back(std::move(region));
     }
 
-    for (const frontend::VerifiedFunction& verified : syntax.verified_functions) {
-        if (verified.clauses.empty()) {
-            continue;
+    // `syntax.unchecked_clauses` (a 'pure' function's clause this
+    // implementation does not check - see the field's own doc comment) uses
+    // the identical `VerifiedFunction` clause layout, so it is folded into
+    // the same scan rather than duplicating it.
+    for (const std::vector<frontend::VerifiedFunction>* group : {&syntax.verified_functions, &syntax.unchecked_clauses}) {
+        for (const frontend::VerifiedFunction& verified : *group) {
+            if (verified.clauses.empty()) {
+                continue;
+            }
+            ClauseRegion region;
+            region.declaration_column = layout_depth_at(stream, verified.keyword.offset) * kIndentWidth;
+            region.declaration_offset = verified.keyword.offset;
+            region.span = verified.clause_region;
+            for (const frontend::Clause& clause : verified.clauses) {
+                region.clauses.push_back(&clause);
+            }
+            regions.push_back(std::move(region));
         }
-        ClauseRegion region;
-        region.declaration_column = declaration_indent(text, verified.keyword.offset);
-        region.span = verified.clause_region;
-        for (const frontend::Clause& clause : verified.clauses) {
-            region.clauses.push_back(&clause);
-        }
-        regions.push_back(std::move(region));
     }
 
     for (const frontend::LoopSpecification& loop : syntax.loops) {
@@ -165,7 +334,7 @@ std::vector<ClauseRegion> collect_regions(std::string_view text, const frontend:
             continue;
         }
         ClauseRegion region;
-        region.declaration_column = declaration_indent(text, loop.keyword.offset);
+        region.declaration_column = layout_depth_at(stream, loop.keyword.offset) * kIndentWidth;
         region.span = loop.clause_region;
         for (const frontend::Clause& clause : loop.invariants) {
             region.clauses.push_back(&clause);
@@ -189,14 +358,14 @@ struct ProofRegion {
     source::SourceLocation location; // the 'proves' keyword's presumed location
 };
 
-std::vector<ProofRegion> collect_proof_regions(std::string_view text, const frontend::Syntax& syntax) {
+std::vector<ProofRegion> collect_proof_regions(const frontend::TokenStream& stream, const frontend::Syntax& syntax) {
     std::vector<ProofRegion> regions;
     for (const frontend::ProofDeclaration& proof : syntax.proofs) {
         if (proof.proves_keyword.length == 0) {
             continue;
         }
         ProofRegion region;
-        region.declaration_column = declaration_indent(text, proof.range.span.offset);
+        region.declaration_column = layout_depth_at(stream, proof.range.span.offset) * kIndentWidth;
         region.span =
             source::ByteSpan{proof.proves_keyword.offset, (proof.proposition.end() + 1) - proof.proves_keyword.offset};
         region.proposition = proof.proposition;
@@ -206,19 +375,16 @@ std::vector<ProofRegion> collect_proof_regions(std::string_view text, const fron
     return regions;
 }
 
-std::string canonical_proves_block(std::string_view text, const ProofRegion& region) {
+std::string canonical_proves_block(std::string_view text, const ProofRegion& region,
+                                   const PredicateText& reformatted) {
     const std::string indent(region.declaration_column + kIndentWidth, ' ');
     std::string block;
     block += '\n';
     block += indent;
     block += "proves (";
-    block += text.substr(region.proposition.offset, region.proposition.length);
+    block += predicate_text(text, region.proposition, reformatted);
     block += ')';
     return block;
-}
-
-bool is_horizontal_or_newline(char c) {
-    return c == ' ' || c == '\t' || c == '\n' || c == '\r';
 }
 
 // Extends `span` to swallow all adjacent whitespace. The replacement block
@@ -263,9 +429,10 @@ std::string separator_after(std::string_view text, std::size_t offset, std::size
 // same-text replacement, since a no-op edit would still show up as "this
 // region needs re-checking" to a caller diffing edit counts, and a real
 // editor would show a needless no-op change in its undo history.
-std::optional<FormatEdit> make_clause_edit(std::string_view text, const ClauseRegion& region) {
+std::optional<FormatEdit> make_clause_edit(std::string_view text, const ClauseRegion& region,
+                                           const PredicateText& reformatted) {
     const source::ByteSpan widened = widen_over_whitespace(text, region.span);
-    std::string block = canonical_clause_block(text, region.clauses, region.declaration_column);
+    std::string block = canonical_clause_block(text, region.clauses, region.declaration_column, reformatted);
     block += separator_after(text, widened.end(), region.declaration_column);
     if (text.substr(widened.offset, widened.length) == block) {
         return std::nullopt;
@@ -273,9 +440,10 @@ std::optional<FormatEdit> make_clause_edit(std::string_view text, const ClauseRe
     return FormatEdit{widened, std::move(block)};
 }
 
-std::optional<FormatEdit> make_proves_edit(std::string_view text, const ProofRegion& region) {
+std::optional<FormatEdit> make_proves_edit(std::string_view text, const ProofRegion& region,
+                                           const PredicateText& reformatted) {
     const source::ByteSpan widened = widen_over_whitespace(text, region.span);
-    std::string block = canonical_proves_block(text, region);
+    std::string block = canonical_proves_block(text, region, reformatted);
     block += separator_after(text, widened.end(), region.declaration_column);
     if (text.substr(widened.offset, widened.length) == block) {
         return std::nullopt;
@@ -285,6 +453,184 @@ std::optional<FormatEdit> make_proves_edit(std::string_view text, const ProofReg
 
 bool spans_overlap(source::ByteSpan lhs, source::ByteSpan rhs) {
     return lhs.offset < rhs.end() && rhs.offset < lhs.end();
+}
+
+// Proof-arm layout (GRAMMAR.md 5.6-5.8): `cases`/`decompose`/`induction`
+// share one canonical arm block - `label(bindings) => { ... }`, one blank
+// line between consecutive arms, nested arms indented one level deeper than
+// their enclosing arm - collected the same way clause regions are: one
+// region per statement with arms, a canonical replacement built from it, an
+// edit only when that replacement differs from source.
+struct ArmRegion {
+    const frontend::ProofStatement* statement = nullptr;
+    std::size_t declaration_column = 0; // the cases/decompose/induction keyword's own column
+};
+
+// Every OUTERMOST Cases/Decompose/Induction statement directly in
+// `statements` (a proof body's own top-level statements, never an arm's -
+// those are visited only through their enclosing statement's own edit).
+// Nested Cases/Decompose/Induction (SPEC.md 2277: "Nested cases, decompose
+// and induction are permitted") are deliberately NOT collected here as their
+// own top-level region: `canonical_arm_block` already substitutes a nested
+// statement's canonical block recursively while building its parent's
+// replacement text, so a separate top-level edit for the same (now nested)
+// byte span would overlap the parent's edit and violate the "edits are
+// non-overlapping" contract every caller of this engine relies on.
+void collect_arm_regions(const frontend::TokenStream& stream, const std::vector<frontend::ProofStatement>& statements,
+                         std::vector<ArmRegion>& regions) {
+    for (const frontend::ProofStatement& statement : statements) {
+        if (statement.arms_span.length != 0) {
+            regions.push_back(
+                ArmRegion{&statement, layout_depth_at(stream, statement.arms_span.offset) * kIndentWidth});
+        }
+    }
+}
+
+// The canonical arm header: `label`, then `(binders)` with no space before
+// '(' when there are any (`proof_arm_binders_have_no_space_before_binding_
+// parenthesis`), never invented empty parentheses when there are none
+// (`valueless_residual_arm_has_no_invented_binder_parentheses`). A template-
+// indexed label (`alternative<0>`) is already part of `arm.label`'s own span
+// (recognizer.cpp reads the '<...>' into the label itself), so it is used
+// verbatim rather than reconstructed.
+std::string canonical_arm_header(std::string_view text, const frontend::ProofArm& arm) {
+    std::string header(text.substr(arm.label.offset, arm.label.length));
+    if (!arm.binders.empty()) {
+        header += '(';
+        for (std::size_t i = 0; i < arm.binders.size(); ++i) {
+            if (i != 0)
+                header += ", ";
+            header += arm.binders[i];
+        }
+        header += ')';
+    }
+    header += " => {";
+    return header;
+}
+
+std::string canonical_arm_block(std::string_view text, const frontend::ProofStatement& statement,
+                                std::size_t declaration_column);
+
+// An arm body's statements, reindented one level past the arm header and
+// with any nested Cases/Decompose/Induction statement replaced by its own
+// canonical arm block. Primitive statements (`refl;`, `exact h;`, ...) and
+// any comment between them are copied byte-for-byte from source, only their
+// line's leading indentation changes (`proof_comments_are_preserved`,
+// `primitive_proof_commands_remain_statements_not_call_syntax`): this layer
+// lays out arms, it does not reflow proof-statement text clang-format never
+// owned in the first place (C++L proof syntax, not C++).
+std::string canonical_arm_body(std::string_view text, const frontend::ProofArm& arm, std::size_t body_column) {
+    const std::string indent(body_column, ' ');
+    std::string body;
+
+    // Nested Cases/Decompose/Induction statements, in source order, so their
+    // own already-canonical `arms_span` can be substituted into the copied
+    // body text below instead of copied verbatim.
+    std::vector<const frontend::ProofStatement*> nested;
+    for (const frontend::ProofStatement& statement : arm.statements) {
+        if (statement.arms_span.length != 0) {
+            nested.push_back(&statement);
+        }
+    }
+
+    std::size_t cursor = arm.body_span.offset + 1; // past the arm's own '{'
+    const std::size_t end = arm.body_span.end() - 1; // before the arm's own '}'
+    for (const frontend::ProofStatement* statement : nested) {
+        body += text.substr(cursor, statement->arms_span.offset - cursor);
+        body += canonical_arm_block(text, *statement, body_column);
+        cursor = statement->arms_span.end();
+    }
+    body += text.substr(cursor, end - cursor);
+
+    // Reindent every non-blank line of the (now nested-substituted) body to
+    // `body_column`: the source's own leading whitespace on each line is
+    // replaced, nothing else is reflowed. A blank line is dropped rather than
+    // preserved, so reformatting an already-canonical body (which itself has
+    // a structural blank line right after '{' and right before '}', from the
+    // previous pass's own layout) stays idempotent instead of accumulating
+    // one more blank line on every pass.
+    std::string reindented;
+    std::size_t line_start = 0;
+    while (line_start <= body.size()) {
+        std::size_t line_end = body.find('\n', line_start);
+        const bool last = line_end == std::string::npos;
+        if (last)
+            line_end = body.size();
+        std::string_view line = std::string_view(body).substr(line_start, line_end - line_start);
+        const std::size_t content = line.find_first_not_of(" \t\r");
+        if (content != std::string_view::npos) {
+            reindented += indent;
+            reindented += line.substr(content);
+            reindented += '\n';
+        }
+        if (last)
+            break;
+        line_start = line_end + 1;
+    }
+    while (!reindented.empty() && is_horizontal_or_newline(reindented.back())) {
+        reindented.pop_back();
+    }
+    return reindented;
+}
+
+// The full `{ arm label(bindings) => { ... } ... }` block for one
+// Cases/Decompose/Induction statement, arms separated by exactly one blank
+// line, nested one level deeper than `declaration_column`.
+std::string canonical_arm_block(std::string_view text, const frontend::ProofStatement& statement,
+                                std::size_t declaration_column) {
+    const std::string arm_indent(declaration_column + kIndentWidth, ' ');
+    std::string block = "{";
+    for (std::size_t i = 0; i < statement.arms.size(); ++i) {
+        const frontend::ProofArm& arm = statement.arms[i];
+        block += '\n';
+        block += arm_indent;
+        block += canonical_arm_header(text, arm);
+        const std::string arm_body = canonical_arm_body(text, arm, declaration_column + 2 * kIndentWidth);
+        if (!arm_body.empty()) {
+            block += '\n';
+            block += arm_body;
+        }
+        block += '\n';
+        block += arm_indent;
+        block += '}';
+        if (i + 1 < statement.arms.size()) {
+            block += "\n"; // one blank line between consecutive arms
+        }
+    }
+    block += '\n';
+    block += std::string(declaration_column, ' ');
+    block += '}';
+    return block;
+}
+
+std::optional<FormatEdit> make_arm_edit(std::string_view text, const ArmRegion& region) {
+    std::string block = canonical_arm_block(text, *region.statement, region.declaration_column);
+
+    // Only widened forward: the subject/keyword right before `arms_span`
+    // ('cases f ', 'induction n ') is ordinary declarator-adjacent text this
+    // layer does not own, unlike a clause's leading separator. Trailing
+    // whitespace up to whatever follows IS this block's to own, the same way
+    // `separator_after` owns a clause's trailing separator - most often
+    // another '}' immediately closing the enclosing arm/proof body, which
+    // needs its own line rather than sharing this block's closing line.
+    source::ByteSpan widened = region.statement->arms_span;
+    std::size_t end = widened.end();
+    while (end < text.size() && is_horizontal_or_newline(text[end])) {
+        ++end;
+    }
+    widened.length = end - widened.offset;
+    if (end < text.size() && text[end] == '}') {
+        block += '\n';
+        block += std::string(region.declaration_column >= kIndentWidth ? region.declaration_column - kIndentWidth : 0,
+                             ' ');
+    } else if (end < text.size() && text[end] != ';') {
+        block += ' ';
+    }
+
+    if (text.substr(widened.offset, widened.length) == block) {
+        return std::nullopt;
+    }
+    return FormatEdit{widened, std::move(block)};
 }
 
 // Decodes the handful of XML entities clang-format's own writer emits
@@ -485,6 +831,98 @@ std::vector<FormatEdit> format_ordinary_cpp_lines(std::string_view text,
     return edits;
 }
 
+// Runs clang-format once over the UNMASKED original document, restricted via
+// repeated `--offset`/`--length` pairs to exactly `spans` (clause/proof/
+// refinement predicate byte ranges), and returns its replacements as
+// `FormatEdit`s in ORIGINAL byte offsets, sorted by offset.
+//
+// Predicates are reformatted this way, rather than by hand-rolling operator
+// spacing, per AGENTS.md 14: Clang is the authority on C++ expression syntax.
+// clang-format's `-offset`/`-length` restriction (unlike `-lines`) still sees
+// the true, complete, UNMASKED document while only being permitted to touch
+// bytes inside the given ranges - verified directly: it reformats `x>=0`
+// inside `expects(x>=0)` to `x >= 0` and reports no replacement whose span
+// reaches outside the predicate, so the surrounding clause syntax (which this
+// layer owns, not clang-format) is never at risk of being rejoined or
+// reinterpreted by this call.
+std::vector<FormatEdit> format_expression_spans(std::string_view text, const std::vector<source::ByteSpan>& spans,
+                                                const std::string& clang_format, const std::string& style_config,
+                                                const std::string& stem, std::vector<diagnostics::Diagnostic>& out) {
+    if (spans.empty()) {
+        return {};
+    }
+
+    const driver::ScratchDirectory scratch;
+    if (scratch.path().empty()) {
+        report(out, diagnostics::Severity::Error, diagnostics::Category::Internal,
+               "could not create an isolated formatting directory");
+        return {};
+    }
+
+    const std::filesystem::path source_path = scratch.path() / (stem.empty() ? "buffer.cpp" : stem);
+    if (!driver::write_scratch_file(source_path, text)) {
+        report(out, diagnostics::Severity::Error, diagnostics::Category::Internal,
+               "could not write a scratch copy of '" + stem + "'");
+        return {};
+    }
+
+    const std::string style = style_config.empty() ? "-style=LLVM" : "-style=file:" + style_config;
+    const std::string tool = clang_format.empty() ? std::string{CPPL_DEFAULT_CLANG_FORMAT} : clang_format;
+
+    std::vector<std::string> arguments{style, "--output-replacements-xml"};
+    for (source::ByteSpan span : spans) {
+        arguments.push_back("--offset=" + std::to_string(span.offset));
+        arguments.push_back("--length=" + std::to_string(span.length));
+    }
+    arguments.push_back(source_path.string());
+
+    const driver::ProcessResult result =
+        driver::run_capturing_stdout(tool, arguments, scratch.path() / "expr-replacements.xml");
+    if (!result.started) {
+        report(out, diagnostics::Severity::Error, diagnostics::Category::Internal,
+               "could not run '" + tool + "': " + result.error);
+        return {};
+    }
+    if (result.exit_code != 0) {
+        report(out, diagnostics::Severity::Error, diagnostics::Category::Internal,
+               "'" + tool + "' failed (exit code " + std::to_string(result.exit_code) + ")");
+        return {};
+    }
+
+    const std::optional<std::string> xml = read_file(scratch.path() / "expr-replacements.xml");
+    if (!xml.has_value()) {
+        report(out, diagnostics::Severity::Error, diagnostics::Category::Internal,
+               "could not read clang-format's replacements for '" + stem + "'");
+        return {};
+    }
+
+    std::vector<FormatEdit> edits = parse_replacements_xml(*xml);
+    std::ranges::sort(edits,
+                      [](const FormatEdit& lhs, const FormatEdit& rhs) { return lhs.span.offset < rhs.span.offset; });
+    return edits;
+}
+
+// Applies `edits` (already restricted to fall inside `span`, as
+// `format_expression_spans` guarantees) to the ORIGINAL text of `span`,
+// returning the reformatted predicate text. `edits` must be sorted and
+// non-overlapping, which `format_expression_spans`'s own clang-format output
+// already is.
+std::string apply_expression_edits(std::string_view text, source::ByteSpan span,
+                                   const std::vector<FormatEdit>& edits) {
+    std::string result;
+    std::size_t cursor = span.offset;
+    for (const FormatEdit& edit : edits) {
+        if (edit.span.offset < span.offset || edit.span.end() > span.end()) {
+            continue; // defensive: never let an out-of-range edit corrupt this predicate
+        }
+        result.append(text.substr(cursor, edit.span.offset - cursor));
+        result += edit.replacement;
+        cursor = edit.span.end();
+    }
+    result.append(text.substr(cursor, span.end() - cursor));
+    return result;
+}
+
 } // namespace
 
 namespace {
@@ -500,16 +938,73 @@ FormatResult format_ranges_once(const FormatRequest& request, const std::vector<
     diagnostics::Engine engine;
     const frontend::Syntax syntax = frontend::recognize(stream, engine, frontend::RecognitionMode::Edit);
 
-    const std::vector<ClauseRegion> all_regions = collect_regions(request.text, syntax);
-    const std::vector<ProofRegion> all_proof_regions = collect_proof_regions(request.text, syntax);
+    const std::vector<ClauseRegion> all_regions = collect_regions(stream, syntax);
+    const std::vector<ProofRegion> all_proof_regions = collect_proof_regions(stream, syntax);
+    std::vector<ArmRegion> all_arm_regions;
+    for (const frontend::ProofDeclaration& proof : syntax.proofs) {
+        collect_arm_regions(stream, proof.statements, all_arm_regions);
+    }
 
     const bool whole_document = ranges.empty();
+    // A zero-length range is a cursor position, not an empty interval: it
+    // selects whatever region it sits inside, including right at that
+    // region's own first byte (`spans_overlap`'s half-open `<`/`<` test
+    // never holds for two spans of total length zero at the same offset, so
+    // it is checked here as inclusive point-containment instead - the same
+    // "smallest safe unit containing a position" contract `format_on_type`
+    // already documents).
     auto overlaps_request = [&](source::ByteSpan span) {
         if (whole_document) {
             return true;
         }
-        return std::ranges::any_of(ranges, [&](source::ByteSpan range) { return spans_overlap(range, span); });
+        return std::ranges::any_of(ranges, [&](source::ByteSpan range) {
+            if (range.length == 0) {
+                return range.offset >= span.offset && range.offset <= span.end();
+            }
+            return spans_overlap(range, span);
+        });
     };
+
+    const std::filesystem::path virtual_path(request.virtual_path);
+    std::string stem = virtual_path.filename().string();
+    if (stem.empty()) {
+        stem = "buffer.cpp";
+    }
+    const std::string style_config =
+        request.style_config.empty() ? std::string{CPPL_REPO_CLANG_FORMAT_CONFIG} : request.style_config;
+
+    // Every predicate this pass may relocate, reformatted through Clang in one
+    // batched call (AGENTS.md 14: never reimplement C++ expression spacing).
+    // Collected up front so `canonical_clause_block`/`canonical_proves_block`/
+    // the `where` replacement below can all read back already-canonical
+    // predicate text instead of copying source bytes verbatim.
+    std::vector<source::ByteSpan> predicate_spans;
+    predicate_spans.reserve(syntax.refinement_types.size());
+    for (const auto& refinement : syntax.refinement_types) {
+        predicate_spans.push_back(refinement.predicate);
+    }
+    for (const ClauseRegion& region : all_regions) {
+        for (const frontend::Clause* clause : region.clauses) {
+            predicate_spans.push_back(clause->expression);
+        }
+    }
+    for (const ProofRegion& region : all_proof_regions) {
+        predicate_spans.push_back(region.proposition);
+    }
+
+    PredicateText reformatted_predicates;
+    if (!predicate_spans.empty()) {
+        std::vector<diagnostics::Diagnostic> predicate_diagnostics;
+        const std::vector<FormatEdit> predicate_edits = format_expression_spans(
+            request.text, predicate_spans, request.clang_format, style_config, stem, predicate_diagnostics);
+        result.diagnostics.insert(result.diagnostics.end(), predicate_diagnostics.begin(), predicate_diagnostics.end());
+        for (source::ByteSpan span : predicate_spans) {
+            std::vector<FormatEdit> within;
+            std::ranges::copy_if(predicate_edits, std::back_inserter(within),
+                                 [&](const FormatEdit& edit) { return spans_overlap(edit.span, span); });
+            reformatted_predicates.emplace(span.offset, apply_expression_edits(request.text, span, within));
+        }
+    }
 
     std::vector<FormatEdit> edits;
     std::vector<source::ByteSpan> cppl_spans; // excluded from the ordinary-C++ line ranges below
@@ -526,16 +1021,25 @@ FormatResult format_ranges_once(const FormatRequest& request, const std::vector<
             continue;
         const source::ByteSpan span{where->span.offset, refinement.predicate.end() + 1 - where->span.offset};
         cppl_spans.push_back(span);
-        const std::string replacement = "where (" + std::string(stream.spelling(refinement.predicate)) + ")";
+        const std::string replacement =
+            "where (" + std::string(predicate_text(request.text, refinement.predicate, reformatted_predicates)) + ")";
         if (overlaps_request(span) && stream.spelling(span) != replacement)
             edits.push_back({span, replacement});
     }
 
     for (const ClauseRegion& region : all_regions) {
+        if (const std::optional<source::ByteSpan> header_break =
+                template_header_break(request.text, region.declaration_offset);
+            header_break.has_value()) {
+            cppl_spans.push_back(*header_break);
+            if (overlaps_request(*header_break) && request.text.substr(header_break->offset, header_break->length) != "\n")
+                edits.push_back({*header_break, "\n"});
+        }
         if (!overlaps_request(region.span)) {
             continue;
         }
-        if (std::optional<FormatEdit> edit = make_clause_edit(request.text, region); edit.has_value()) {
+        if (std::optional<FormatEdit> edit = make_clause_edit(request.text, region, reformatted_predicates);
+            edit.has_value()) {
             edits.push_back(std::move(*edit));
         }
         cppl_spans.push_back(widen_over_whitespace(request.text, region.span));
@@ -544,10 +1048,20 @@ FormatResult format_ranges_once(const FormatRequest& request, const std::vector<
         if (!overlaps_request(region.span)) {
             continue;
         }
-        if (std::optional<FormatEdit> edit = make_proves_edit(request.text, region); edit.has_value()) {
+        if (std::optional<FormatEdit> edit = make_proves_edit(request.text, region, reformatted_predicates);
+            edit.has_value()) {
             edits.push_back(std::move(*edit));
         }
         cppl_spans.push_back(widen_over_whitespace(request.text, region.span));
+    }
+    for (const ArmRegion& region : all_arm_regions) {
+        if (!overlaps_request(region.statement->arms_span)) {
+            continue;
+        }
+        if (std::optional<FormatEdit> edit = make_arm_edit(request.text, region); edit.has_value()) {
+            edits.push_back(std::move(*edit));
+        }
+        cppl_spans.push_back(region.statement->arms_span);
     }
 
     // The line ranges to ask clang-format to look at: the requested range(s),
@@ -575,14 +1089,6 @@ FormatResult format_ranges_once(const FormatRequest& request, const std::vector<
         }
     }
 
-    const std::filesystem::path virtual_path(request.virtual_path);
-    std::string stem = virtual_path.filename().string();
-    if (stem.empty()) {
-        stem = "buffer.cpp";
-    }
-    const std::string style_config =
-        request.style_config.empty() ? std::string{CPPL_REPO_CLANG_FORMAT_CONFIG} : request.style_config;
-
     std::vector<FormatEdit> ordinary_edits = format_ordinary_cpp_lines(
         request.text, line_ranges, cppl_spans, request.clang_format, style_config, stem, result.diagnostics);
     edits.insert(edits.end(), std::make_move_iterator(ordinary_edits.begin()),
@@ -607,21 +1113,51 @@ FormatResult format_document(const FormatRequest& request) {
     return format_ranges(request, {});
 }
 
-FormatResult format_on_type(const FormatRequest& request, std::size_t position, const std::string& trigger_character) {
-    static_cast<void>(trigger_character);
+// Whether `trigger_character` is one this engine treats as "a syntactic unit
+// was just completed," the only case worth reformatting a whole enclosing
+// C++L clause for. An ordinary letter/digit typed mid-token (an editor may
+// call `format_on_type` on every keystroke) is not such a signal: relocating
+// the entire clause on every letter would repeatedly rewrite text around the
+// cursor the developer has not finished typing, contradicting "never
+// reformats more than what was just typed" for a unit far larger than one
+// keystroke. This mirrors real LSP clients, which likewise register only a
+// curated set of trigger characters for on-type formatting, never arbitrary
+// identifier characters.
+bool completes_a_syntactic_unit(const std::string& trigger_character) {
+    return trigger_character == ")" || trigger_character == ";" || trigger_character == "}" ||
+           trigger_character == "\n" || trigger_character == "\r";
+}
 
+FormatResult format_on_type(const FormatRequest& request, std::size_t position, const std::string& trigger_character) {
     const frontend::TokenStream stream =
         frontend::lex(request.text, request.virtual_path.empty() ? "buffer.cpp" : request.virtual_path);
     diagnostics::Engine engine;
     const frontend::Syntax syntax = frontend::recognize(stream, engine, frontend::RecognitionMode::Edit);
 
-    for (const ClauseRegion& region : collect_regions(request.text, syntax)) {
+    const bool structural_trigger = completes_a_syntactic_unit(trigger_character);
+    for (const ClauseRegion& region : collect_regions(stream, syntax)) {
         if (position >= region.span.offset && position <= region.span.end()) {
+            if (!structural_trigger) {
+                // A non-structural keystroke inside a clause is not a signal
+                // to relocate it, and the enclosing-line fallback below would
+                // still reach the clause on this line regardless of how
+                // narrowly it is scoped (the two share a line), so this
+                // engine makes no edit rather than reaching outside the
+                // clause it has no reason to touch yet.
+                FormatResult result;
+                result.ok = true;
+                return result;
+            }
             return format_ranges(request, {region.span});
         }
     }
-    for (const ProofRegion& region : collect_proof_regions(request.text, syntax)) {
+    for (const ProofRegion& region : collect_proof_regions(stream, syntax)) {
         if (position >= region.span.offset && position <= region.span.end()) {
+            if (!structural_trigger) {
+                FormatResult result;
+                result.ok = true;
+                return result;
+            }
             return format_ranges(request, {region.span});
         }
     }
@@ -670,7 +1206,7 @@ std::vector<diagnostics::Diagnostic> check_style(const frontend::TokenStream& st
     std::vector<diagnostics::Diagnostic> out;
     const std::string_view text = stream.text();
 
-    for (const ClauseRegion& region : collect_regions(text, syntax)) {
+    for (const ClauseRegion& region : collect_regions(stream, syntax)) {
         const std::size_t expected = region.declaration_column + kIndentWidth;
         for (const frontend::Clause* clause : region.clauses) {
             if (!at_canonical_column(text, clause->keyword.offset, expected)) {
@@ -695,7 +1231,7 @@ std::vector<diagnostics::Diagnostic> check_style(const frontend::TokenStream& st
         }
     }
 
-    for (const ProofRegion& region : collect_proof_regions(text, syntax)) {
+    for (const ProofRegion& region : collect_proof_regions(stream, syntax)) {
         const std::size_t expected = region.declaration_column + kIndentWidth;
         // The proves keyword's own byte offset is the region's span start.
         if (!at_canonical_column(text, region.span.offset, expected)) {

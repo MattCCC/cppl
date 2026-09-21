@@ -782,6 +782,21 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
                 continue;
             }
 
+            // The syntax recognizes 'induction' (GRAMMAR.md 5.7) so the
+            // formatter can lay out its arms, but this formal core has no
+            // induction rule (SPEC.md 21) - the same rejection every other
+            // self-referential proof dependency already receives below, made
+            // explicit here rather than left to fall through to evidence
+            // lookup, where the induction subject's own identifier would
+            // otherwise be looked up as if it were a proof/premise name.
+            if (statement.kind == frontend::ProofStatementKind::Induction) {
+                report(engine, diagnostics::Category::ProofFailure, statement.location,
+                       "proof '" + declaration.name + "' uses induction over '" + statement.reference + "'",
+                       "this formal core has no induction rule, so a proof cannot depend on "
+                       "an induction principle");
+                return std::nullopt;
+            }
+
             if (statement.kind == frontend::ProofStatementKind::Assume) {
                 auto proposition =
                     convert_probe(projected.assumption_names, next_assumption, statement.proposition_location);

@@ -220,6 +220,17 @@ void Linter::check_proof_statements(const std::vector<frontend::ProofStatement>&
                 }
                 break;
 
+            case frontend::ProofStatementKind::Induction:
+                // The short form ('induction n;') legitimately has no arms -
+                // it requests automation for every case - so an empty
+                // `arms` list is not itself malformed here, unlike
+                // `cases`/`decompose`. Recurse into whichever arms were
+                // written so nested statements are still checked.
+                for (const auto& arm : stmt.arms) {
+                    check_proof_statements(arm.statements, out, mapper);
+                }
+                break;
+
             case frontend::ProofStatementKind::Reflexivity:
             case frontend::ProofStatementKind::Rewrite:
                 // These have no additional requirements

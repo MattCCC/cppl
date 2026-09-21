@@ -19,13 +19,87 @@ bool is_type_keyword(const Token& token) {
     return token.kind == TokenKind::Identifier && std::ranges::find(kTypeKeywords, token.text) != kTypeKeywords.end();
 }
 
+// Skips back over one `[[ ... ]]` attribute-specifier-seq element (two
+// adjacent ']' immediately before `index`, matched back to their two
+// adjacent '['), returning `index` unchanged if the tokens before it are not
+// exactly that shape. `[[` lexes as two ordinary '[' tokens (this lexer has
+// no digraph-style attribute token), so this matches bracket pairs, not a
+// single punctuator.
+std::size_t skip_back_over_attribute(const std::vector<Token>& tokens, std::size_t index) {
+    if (index < 2 || !tokens[index - 1].is_punctuator("]") || !tokens[index - 2].is_punctuator("]")) {
+        return index;
+    }
+    // Depth-balances every '[' against every ']' back to the pair started by
+    // the outer '[' of '[[': since the attribute's two ']' both precede
+    // `index`, a balanced scan naturally consumes both bracket pairs and
+    // stops exactly at the outer '['.
+    std::size_t depth = 0;
+    std::size_t scan = index - 1;
+    while (true) {
+        if (tokens[scan].is_punctuator("]")) {
+            ++depth;
+        } else if (tokens[scan].is_punctuator("[")) {
+            --depth;
+            if (depth == 0) {
+                break;
+            }
+        }
+        if (scan == 0) {
+            return index; // unbalanced: not an attribute after all
+        }
+        --scan;
+    }
+    return scan;
+}
+
 // A declaration can begin here: at the start of the unit, or after a token that
 // can only end a previous declaration, statement or label.
 bool at_declaration_start(const std::vector<Token>& tokens, std::size_t index) {
-    while (index > 0 && (tokens[index - 1].is_identifier("static") || tokens[index - 1].is_identifier("inline") ||
-                         tokens[index - 1].is_identifier("constexpr") || tokens[index - 1].is_identifier("consteval") ||
-                         tokens[index - 1].is_identifier("virtual") || tokens[index - 1].is_identifier("extern")))
-        --index;
+    // Ordinary specifiers and `[[...]]` attributes (GRAMMAR.md 40: "Ordinary
+    // attributes keep their C++ placement") can precede a C++L declaration
+    // in either relative order, and either may repeat, so both are skipped
+    // back over together until neither applies any more.
+    while (index > 0) {
+        if (tokens[index - 1].is_identifier("static") || tokens[index - 1].is_identifier("inline") ||
+            tokens[index - 1].is_identifier("constexpr") || tokens[index - 1].is_identifier("consteval") ||
+            tokens[index - 1].is_identifier("virtual") || tokens[index - 1].is_identifier("extern")) {
+            --index;
+            continue;
+        }
+        const std::size_t after_attribute = skip_back_over_attribute(tokens, index);
+        if (after_attribute != index) {
+            index = after_attribute;
+            continue;
+        }
+        break;
+    }
+    // A template header (GRAMMAR.md 39: "C++ owns template syntax") precedes
+    // the declaration it introduces, e.g. `template <typename T>\nverified ...`.
+    // Skip back over one balanced `template < ... >` before applying the usual
+    // "previous token ends a declaration/statement/label" rule.
+    if (index > 0 && tokens[index - 1].is_punctuator(">")) {
+        std::size_t depth = 0;
+        std::size_t scan = index - 1;
+        std::size_t matched = tokens.size(); // the '<' balancing the initial '>'
+        while (true) {
+            if (tokens[scan].is_punctuator(">")) {
+                ++depth;
+            } else if (tokens[scan].is_punctuator("<")) {
+                --depth;
+                if (depth == 0) {
+                    matched = scan;
+                    break;
+                }
+            }
+            if (scan == 0) {
+                break; // no matching '<': not a template header
+            }
+            --scan;
+        }
+        if (matched < tokens.size() && matched > 0 && tokens[matched - 1].is_identifier("template")) {
+            index = matched - 1;
+        }
+    }
     if (index == 0) {
         return true;
     }
@@ -505,6 +579,7 @@ bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std
                        "unterminated decomposition statement");
                 return false;
             }
+            statement.arms_span = {tokens[open].span.offset, tokens[end].span.end() - tokens[open].span.offset};
             cursor = open + 1;
             bool malformed = false;
             while (cursor < end) {
@@ -582,6 +657,8 @@ bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std
                 const std::size_t close = matching_brace(tokens, cursor);
                 if (close >= end || !read_proof_statements(stream, cursor, close, engine, arm.statements, nesting + 1))
                     return false;
+                arm.body_span = {tokens[cursor].span.offset, tokens[close].span.end() - tokens[cursor].span.offset};
+                arm.span = {tokens[start].span.offset, tokens[close].span.end() - tokens[start].span.offset};
                 statement.arms.push_back(std::move(arm));
                 malformed = false;
                 cursor = close + 1;
@@ -589,6 +666,104 @@ bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std
             if (malformed || cursor != end || statement.arms.empty() || statement.arms.size() > 64) {
                 report(engine, stream, tokens[cursor], diagnostics::Category::CpplSyntax,
                        "cases requires 1 to 64 arms of the form 'label(binders) => { proof statements }'");
+                return false;
+            }
+            statements.push_back(std::move(statement));
+            cursor = end + 1;
+            continue;
+        }
+
+        // induction identifier ";"                              (short form)
+        // induction identifier "{" proof-arm {proof-arm} "}"    (GRAMMAR.md 5.7)
+        //
+        // Recognized the same way `cases`/`decompose` are, syntax only: which
+        // labels a domain's induction principle actually admits (`zero`,
+        // `successor(pred)`, ...) is not the decomposition-provider label
+        // vocabulary (`cppl::decomposition::label_kind` - that is for the
+        // subject a `cases`/`decompose` state partition is defined over, an
+        // unrelated concept), so an induction arm label is read here as a
+        // plain, unqualified identifier, optionally with a binder list. This
+        // implementation's formal core has no induction rule (SPEC.md 21),
+        // so which labels/arities are actually legal is left entirely to the
+        // semantic layer, which continues to reject every induction proof
+        // outright (elaborate.cpp) - recognizing the syntax here only lets
+        // the FORMATTER lay out what was written.
+        if (token.is_identifier("induction") && cursor + 1 < body_close && tokens[cursor + 1].kind == TokenKind::Identifier) {
+            const std::size_t subject = cursor + 1;
+            ProofStatement statement;
+            statement.kind = ProofStatementKind::Induction;
+            statement.proposition = tokens[subject].span;
+            statement.reference = std::string(tokens[subject].text);
+            statement.location = stream.location_of(token);
+
+            if (subject + 1 < body_close && tokens[subject + 1].is_punctuator(";")) {
+                // Short form: automation is requested for every case: no arms
+                // to recognize.
+                statements.push_back(std::move(statement));
+                cursor = subject + 2;
+                continue;
+            }
+            if (subject + 1 >= body_close || !tokens[subject + 1].is_punctuator("{")) {
+                report(engine, stream, token, diagnostics::Category::CpplSyntax,
+                       "'induction' names a subject, then ';' or '{ arms }'");
+                return false;
+            }
+            const std::size_t open = subject + 1;
+            const std::size_t end = matching_brace(tokens, open);
+            if (end >= body_close) {
+                report(engine, stream, token, diagnostics::Category::CpplSyntax, "unterminated induction statement");
+                return false;
+            }
+            statement.arms_span = {tokens[open].span.offset, tokens[end].span.end() - tokens[open].span.offset};
+            cursor = open + 1;
+            bool malformed = false;
+            while (cursor < end) {
+                malformed = true;
+                ProofArm arm;
+                arm.location = stream.location_of(tokens[cursor]);
+                const std::size_t start = cursor;
+                if (tokens[cursor].kind != TokenKind::Identifier)
+                    break;
+                ++cursor;
+                arm.label = {tokens[start].span.offset, tokens[start].span.end() - tokens[start].span.offset};
+                arm.spelling = std::string(stream.spelling(arm.label));
+                arm.keyword_label = true; // an induction label is never a C++ expression Clang resolves
+                if (cursor < end && tokens[cursor].is_punctuator("(")) {
+                    ++cursor;
+                    if (cursor >= end || tokens[cursor].kind != TokenKind::Identifier)
+                        break;
+                    while (cursor < end && tokens[cursor].kind == TokenKind::Identifier) {
+                        arm.binders.emplace_back(tokens[cursor++].text);
+                        if (cursor >= end || !tokens[cursor].is_punctuator(","))
+                            break;
+                        ++cursor;
+                        if (cursor >= end || tokens[cursor].kind != TokenKind::Identifier) {
+                            report(engine, stream, tokens[cursor], diagnostics::Category::CpplSyntax,
+                                   "an induction binder list requires an identifier after ','");
+                            return false;
+                        }
+                    }
+                    if (cursor >= end || !tokens[cursor].is_punctuator(")"))
+                        break;
+                    ++cursor;
+                }
+                // The C++ token stream spells the proof arrow as '=' followed by '>'.
+                if (cursor + 2 >= end || !tokens[cursor].is_punctuator("=") || !tokens[cursor + 1].is_punctuator(">") ||
+                    !tokens[cursor + 2].is_punctuator("{"))
+                    break;
+                cursor += 2;
+                const std::size_t close = matching_brace(tokens, cursor);
+                if (close >= end || !read_proof_statements(stream, cursor, close, engine, arm.statements, nesting + 1))
+                    return false;
+                arm.body_span = {tokens[cursor].span.offset, tokens[close].span.end() - tokens[cursor].span.offset};
+                arm.span = {tokens[start].span.offset, tokens[close].span.end() - tokens[start].span.offset};
+                statement.arms.push_back(std::move(arm));
+                malformed = false;
+                cursor = close + 1;
+            }
+            if (malformed || cursor != end || statement.arms.empty() || statement.arms.size() > 64) {
+                report(engine, stream, tokens[cursor], diagnostics::Category::CpplSyntax,
+                       "induction requires 1 to 64 arms of the form 'label(binders) => { proof statements }'");
                 return false;
             }
             statements.push_back(std::move(statement));
@@ -856,6 +1031,91 @@ bool has_specification_clause(const std::vector<Token>& tokens, std::size_t name
     return false;
 }
 
+// The ordinary declarator - cv-qualifiers, ref-qualifiers, `noexcept`
+// (optionally with a parenthesized operand), a trailing return type, and
+// member markers such as `override`/`final` - stands between the parameter
+// list and the first C++L clause (GRAMMAR.md 42-45: "Ordinary declarator,
+// then C++L clauses, then body or semicolon"; C++L never splits it apart).
+// This walks past exactly that stretch without needing to parse its grammar:
+// it stops at the first token that begins a specification clause (a clause
+// keyword immediately followed by '(') or at the body/semicolon that ends
+// the declaration, keeping balanced parentheses (for `noexcept(expr)` and a
+// trailing function-type return) skipped over rather than misread as a
+// clause boundary.
+std::size_t skip_ordinary_declarator_suffix(const std::vector<Token>& tokens, std::size_t cursor) {
+    while (cursor < tokens.size()) {
+        const Token& token = tokens[cursor];
+        if (token.kind == TokenKind::EndOfFile || token.is_punctuator("{") || token.is_punctuator(";")) {
+            break;
+        }
+        if (is_specification_clause(token) && cursor + 1 < tokens.size() && tokens[cursor + 1].is_punctuator("(")) {
+            break;
+        }
+        if (token.is_punctuator("(")) {
+            cursor = matching_parenthesis(tokens, cursor) + 1;
+            continue;
+        }
+        ++cursor;
+    }
+    return cursor;
+}
+
+// Reads `expects`/`ensures`/`decreases` clauses starting at `cursor` into
+// `clauses`, exactly as GRAMMAR.md 6 orders them, stopping at the first token
+// that is not a recognized clause keyword. Shared between `try_verified` and
+// the Edit-mode-only formatter layout path below for a `pure` function with
+// clauses this implementation does not check (`has_specification_clause`):
+// both need the identical clause grammar, just gated by a different
+// acceptance rule afterward.
+std::optional<std::size_t> scan_function_clauses(const TokenStream& stream, std::size_t cursor,
+                                                 diagnostics::Engine& engine, std::vector<Clause>& clauses,
+                                                 bool report_decreases_unsupported) {
+    const std::vector<Token>& tokens = stream.tokens();
+    while (cursor < tokens.size()) {
+        const std::optional<ClauseKind> kind = clause_kind(tokens[cursor]);
+        if (!kind.has_value()) {
+            break;
+        }
+        if (cursor + 1 >= tokens.size() || !tokens[cursor + 1].is_punctuator("(")) {
+            report(engine, stream, tokens[cursor], diagnostics::Category::CpplSyntax,
+                   "'" + std::string(tokens[cursor].text) +
+                       "' must be followed by a parenthesized specification expression");
+            return std::nullopt;
+        }
+        const std::size_t clause_close = matching_parenthesis(tokens, cursor + 1);
+        if (clause_close >= tokens.size()) {
+            report(engine, stream, tokens[cursor + 1], diagnostics::Category::CpplSyntax,
+                   "unterminated specification expression");
+            return std::nullopt;
+        }
+
+        Clause clause;
+        clause.kind = *kind;
+        clause.keyword = tokens[cursor].span;
+        clause.location = stream.location_of(tokens[cursor]);
+        clause.expression = source::ByteSpan{tokens[cursor + 1].span.end(),
+                                             tokens[clause_close].span.offset - tokens[cursor + 1].span.end()};
+        if (stream.spelling(clause.expression).find_first_not_of(" \t\r\n") == std::string_view::npos) {
+            report(engine, stream, tokens[cursor], diagnostics::Category::CpplSyntax,
+                   "'" + std::string(tokens[cursor].text) + "' requires an expression");
+            return std::nullopt;
+        }
+        clauses.push_back(clause);
+        if (*kind == ClauseKind::Decreases && report_decreases_unsupported) {
+            report(engine, stream, tokens[cursor], diagnostics::Category::UnsupportedSemantics,
+                   "function termination is not verified by this implementation",
+                   "the requested 'decreases' obligation must not be accepted unchecked");
+        }
+        if (*kind == ClauseKind::Proves) {
+            report(engine, stream, tokens[cursor], diagnostics::Category::CpplSyntax,
+                   "a runtime function postcondition uses 'ensures', never 'proves'");
+            return std::nullopt;
+        }
+        cursor = clause_close + 1;
+    }
+    return cursor;
+}
+
 // `verified` marks a function whose contract this implementation has to
 // discharge. The clauses are delimited here; what they mean is settled once
 // Clang has resolved them, like every other specification expression.
@@ -893,7 +1153,12 @@ bool try_verified(const TokenStream& stream, std::size_t index, diagnostics::Eng
                "a verified function states a return type before its name");
         return false;
     }
-    if (tokens[type_start].is_identifier("auto")) {
+    // `auto` naming a trailing return type (`auto f(...) -> T`) still states
+    // the return type explicitly, just after the parameter list rather than
+    // before the name (GRAMMAR.md 43); only a genuinely deduced return type
+    // (no `->` at all) leaves `result`'s type unwritten and unsupported.
+    const bool trailing_return = close + 1 < tokens.size() && tokens[close + 1].is_punctuator("->");
+    if (tokens[type_start].is_identifier("auto") && !trailing_return) {
         report(engine, stream, tokens[type_start], diagnostics::Category::UnsupportedSemantics,
                "a deduced return type is not supported on a verified function",
                "the contract's 'result' is a value of the declared return type, so this "
@@ -901,50 +1166,13 @@ bool try_verified(const TokenStream& stream, std::size_t index, diagnostics::Eng
         return false;
     }
 
-    const std::size_t first_clause = close + 1;
-    std::size_t cursor = first_clause;
-    while (cursor < tokens.size()) {
-        const std::optional<ClauseKind> kind = clause_kind(tokens[cursor]);
-        if (!kind.has_value()) {
-            break;
-        }
-        if (cursor + 1 >= tokens.size() || !tokens[cursor + 1].is_punctuator("(")) {
-            report(engine, stream, tokens[cursor], diagnostics::Category::CpplSyntax,
-                   "'" + std::string(tokens[cursor].text) +
-                       "' must be followed by a parenthesized specification expression");
-            return false;
-        }
-        const std::size_t clause_close = matching_parenthesis(tokens, cursor + 1);
-        if (clause_close >= tokens.size()) {
-            report(engine, stream, tokens[cursor + 1], diagnostics::Category::CpplSyntax,
-                   "unterminated specification expression");
-            return false;
-        }
-
-        Clause clause;
-        clause.kind = *kind;
-        clause.keyword = tokens[cursor].span;
-        clause.location = stream.location_of(tokens[cursor]);
-        clause.expression = source::ByteSpan{tokens[cursor + 1].span.end(),
-                                             tokens[clause_close].span.offset - tokens[cursor + 1].span.end()};
-        if (stream.spelling(clause.expression).find_first_not_of(" \t\r\n") == std::string_view::npos) {
-            report(engine, stream, tokens[cursor], diagnostics::Category::CpplSyntax,
-                   "'" + std::string(tokens[cursor].text) + "' requires an expression");
-            return false;
-        }
-        verified.clauses.push_back(clause);
-        if (*kind == ClauseKind::Decreases) {
-            report(engine, stream, tokens[cursor], diagnostics::Category::UnsupportedSemantics,
-                   "function termination is not verified by this implementation",
-                   "the requested 'decreases' obligation must not be accepted unchecked");
-        }
-        if (*kind == ClauseKind::Proves) {
-            report(engine, stream, tokens[cursor], diagnostics::Category::CpplSyntax,
-                   "a runtime function postcondition uses 'ensures', never 'proves'");
-            return false;
-        }
-        cursor = clause_close + 1;
+    const std::size_t first_clause = skip_ordinary_declarator_suffix(tokens, close + 1);
+    const std::optional<std::size_t> scanned =
+        scan_function_clauses(stream, first_clause, engine, verified.clauses, /*report_decreases_unsupported=*/true);
+    if (!scanned.has_value()) {
+        return false;
     }
+    std::size_t cursor = *scanned;
 
     check_clause_sequence(verified.clauses, engine);
     const auto ensures_count = std::ranges::count_if(
@@ -1037,11 +1265,14 @@ enum class LoopClauses : std::uint8_t {
 // C++: `invariant (x) { ... };` declares `x` when `invariant` names a type, so a
 // lone single-identifier invariant before a block that `;` follows is left to
 // C++ (SPEC.md 3.1).
-LoopClauses try_loop_clauses(const TokenStream& stream, std::size_t index, diagnostics::Engine& engine,
-                             LoopSpecification& loop, std::size_t& next_index) {
+// `clause_start` is where loop clauses may begin: just past the condition's
+// ')' for `while (c)`/`for (...)`, or right after the keyword itself for
+// `do` (GRAMMAR.md 328: `"do" loop-clauses compound-statement "while" ...` -
+// `do` has no leading `(condition)` for the clauses to follow).
+LoopClauses try_loop_clauses(const TokenStream& stream, std::size_t index, std::size_t clause_start,
+                             diagnostics::Engine& engine, LoopSpecification& loop, std::size_t& next_index) {
     const std::vector<Token>& tokens = stream.tokens();
-    const std::size_t close = matching_parenthesis(tokens, index + 1);
-    if (close >= tokens.size() || !is_loop_clause(tokens, close + 1)) {
+    if (clause_start >= tokens.size() || !is_loop_clause(tokens, clause_start)) {
         return LoopClauses::None;
     }
 
@@ -1050,7 +1281,7 @@ LoopClauses try_loop_clauses(const TokenStream& stream, std::size_t index, diagn
         std::size_t close;
     };
     std::vector<Written> written;
-    std::size_t cursor = close + 1;
+    std::size_t cursor = clause_start;
     while (is_loop_clause(tokens, cursor)) {
         const std::size_t clause_close = matching_parenthesis(tokens, cursor + 1);
         if (clause_close >= tokens.size()) {
@@ -1149,6 +1380,8 @@ std::string describe(ProofStatementKind kind) {
             return "cases";
         case ProofStatementKind::Decompose:
             return "decompose";
+        case ProofStatementKind::Induction:
+            return "induction";
     }
     return "unknown";
 }
@@ -1198,6 +1431,17 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
     const auto at_namespace_scope = [&scopes] {
         return std::ranges::all_of(scopes, [](ScopeKind kind) { return kind == ScopeKind::Namespace; });
     };
+    // GRAMMAR.md 36/38: Laws, proofs and verified member contracts also have
+    // class scope. This implementation's semantic layer (elaboration,
+    // obligations) does not yet accept a class-scope contract - Compile mode
+    // keeps rejecting one exactly as before, unchanged by this predicate -
+    // but the formatter (Edit mode) still needs to see and canonically lay
+    // out the construct a developer wrote, the same way it lays out any
+    // other syntactically well-formed but semantically unsupported input.
+    const auto at_layout_scope = [&scopes] {
+        return std::ranges::all_of(
+            scopes, [](ScopeKind kind) { return kind == ScopeKind::Namespace || kind == ScopeKind::Class; });
+    };
 
     // The token range of each verified body, so a loop's clauses can be tied to
     // the function whose obligations they become.
@@ -1227,7 +1471,32 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
             tokens[index + 1].is_punctuator("(")) {
             LoopSpecification loop;
             std::size_t next = index + 1;
-            const LoopClauses found = try_loop_clauses(stream, index, engine, loop, next);
+            const std::size_t close = matching_parenthesis(tokens, index + 1);
+            const LoopClauses found = close >= tokens.size()
+                                          ? LoopClauses::None
+                                          : try_loop_clauses(stream, index, close + 1, engine, loop, next);
+            if (found != LoopClauses::None) {
+                const auto body = std::ranges::find_if(verified_bodies, [index](const VerifiedBody& candidate) {
+                    return candidate.open < index && index < candidate.close;
+                });
+                if (body == verified_bodies.end()) {
+                    report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
+                           "a loop invariant outside a verified function would not be checked",
+                           "mark the enclosing function 'verified' so its loop invariants become obligations");
+                } else if (found == LoopClauses::Recognized) {
+                    loop.function_index = body->function;
+                    syntax.loops.push_back(std::move(loop));
+                }
+                index = next;
+                continue;
+            }
+        }
+
+        // do loop-clauses compound-statement while (condition);  (GRAMMAR.md 328)
+        if (tokens[index].is_identifier("do") && index + 1 < tokens.size()) {
+            LoopSpecification loop;
+            std::size_t next = index + 1;
+            const LoopClauses found = try_loop_clauses(stream, index, index + 1, engine, loop, next);
             if (found != LoopClauses::None) {
                 const auto body = std::ranges::find_if(verified_bodies, [index](const VerifiedBody& candidate) {
                     return candidate.open < index && index < candidate.close;
@@ -1314,16 +1583,17 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
             std::size_t next = index + 1;
             if (try_law(stream, index, engine, law, next, body, mode)) {
                 if (!law.name.empty()) {
-                    if (at_namespace_scope()) {
+                    if (!at_namespace_scope()) {
+                        report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
+                               "law '" + law.name + "' is declared outside namespace scope",
+                               "this implementation recognizes laws at namespace scope only");
+                    }
+                    if (at_namespace_scope() || (mode == RecognitionMode::Edit && at_layout_scope())) {
                         if (!body.name.empty()) {
                             body.inline_law = syntax.laws.size();
                             syntax.proofs.push_back(std::move(body));
                         }
                         syntax.laws.push_back(std::move(law));
-                    } else {
-                        report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
-                               "law '" + law.name + "' is declared outside namespace scope",
-                               "this implementation recognizes laws at namespace scope only");
                     }
                 }
                 index = next;
@@ -1337,12 +1607,13 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
             std::size_t next = index + 1;
             if (try_proof(stream, index, engine, proof, next, mode)) {
                 if (!proof.name.empty()) {
-                    if (at_namespace_scope()) {
-                        syntax.proofs.push_back(std::move(proof));
-                    } else {
+                    if (!at_namespace_scope()) {
                         report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
                                "proof '" + proof.name + "' is declared outside namespace scope",
                                "this implementation recognizes proofs at namespace scope only");
+                    }
+                    if (at_namespace_scope() || (mode == RecognitionMode::Edit && at_layout_scope())) {
+                        syntax.proofs.push_back(std::move(proof));
                     }
                 }
                 index = next;
@@ -1358,7 +1629,8 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
                     report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
                            "'verified' is applied outside namespace scope",
                            "this implementation verifies functions at namespace scope only");
-                } else {
+                }
+                if (at_namespace_scope() || (mode == RecognitionMode::Edit && at_layout_scope())) {
                     // `verified pure` is both: the contract is discharged here,
                     // and the function is still a candidate definition for the
                     // formal core.
@@ -1394,6 +1666,31 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
                            "checked",
                            "mark the function 'verified' so its contract becomes an "
                            "obligation, or state the property as a law over it");
+                    // This clause is never an obligation (Compile mode never
+                    // accepts it, unchanged by the diagnostic above - see
+                    // `Syntax::unchecked_clauses`), but the formatter/style
+                    // checker still has to lay out whatever clause syntax was
+                    // written, in every `RecognitionMode`, the same way it
+                    // lays out any other syntactically well-formed,
+                    // semantically unsupported construct.
+                    const std::size_t open = *name + 1;
+                    const std::size_t close = matching_parenthesis(tokens, open);
+                    const std::size_t first_clause = skip_ordinary_declarator_suffix(tokens, close + 1);
+                    VerifiedFunction layout;
+                    const std::optional<std::size_t> scanned = scan_function_clauses(
+                        stream, first_clause, engine, layout.clauses, /*report_decreases_unsupported=*/false);
+                    if (scanned.has_value() && !layout.clauses.empty()) {
+                        layout.keyword = tokens[index].span;
+                        layout.keyword_location = stream.location_of(tokens[index]);
+                        layout.function_name = std::string(tokens[*name].text);
+                        layout.function_location = stream.location_of(tokens[*name]);
+                        layout.function_offset = tokens[*name].span.offset;
+                        layout.parameters =
+                            source::ByteSpan{tokens[open].span.end(), tokens[close].span.offset - tokens[open].span.end()};
+                        layout.clause_region = source::ByteSpan{
+                            tokens[first_clause].span.offset, tokens[*scanned].span.offset - tokens[first_clause].span.offset};
+                        syntax.unchecked_clauses.push_back(std::move(layout));
+                    }
                 } else if (!at_namespace_scope()) {
                     report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
                            "'pure' is applied outside namespace scope",

@@ -157,7 +157,7 @@ law refined_is_its_base(NonNegative n)
 struct Holder {
     int type;
 };
-pure int where (int x) {
+pure int where(int x) {
     return x;
 }
 using type = int;
@@ -171,6 +171,6 @@ int main() {
         return 1;
     Holder holder{7};
     type ordinary = holder.type;
-    std::printf("%d %d %d %u %u %d %u %d\n", fifty(0), from_a_branch(1), keeps(2), indexed(0u), where (ordinary) - 7u,
+    std::printf("%d %d %d %u %u %d %u %d\n", fifty(0), from_a_branch(1), keeps(2), indexed(0u), where(ordinary) - 7u,
                 assigned(4), updated(0u), widened(9));
 }

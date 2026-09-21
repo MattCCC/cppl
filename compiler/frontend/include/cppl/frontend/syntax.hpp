@@ -48,7 +48,7 @@ struct LawDeclaration {
     [[nodiscard]] const Clause* premise() const;
 };
 
-// The primitive proof statements of GRAMMAR.md 5.1 - 5.5.
+// The primitive proof statements of GRAMMAR.md 5.1 - 5.7.
 enum class ProofStatementKind : std::uint8_t {
     Reflexivity,
     Exact,
@@ -57,6 +57,13 @@ enum class ProofStatementKind : std::uint8_t {
     Rewrite,
     Cases,
     Decompose,
+    // "induction" identifier ";" | "induction" identifier "{" proof-arm... "}"
+    // (GRAMMAR.md 5.7). Recognized at the syntax level like `Cases`/
+    // `Decompose` so the formatter can lay out its arms; this implementation's
+    // formal core has no induction rule (SPEC.md 21/24.2), so elaboration
+    // rejects it exactly as it rejected the previously-unparsed spelling -
+    // structural recognition here must never be read as semantic support.
+    Induction,
 };
 
 std::string describe(ProofStatementKind kind);
@@ -85,6 +92,11 @@ struct ProofStatement {
 
     source::SourceLocation location;
     std::vector<ProofArm> arms;
+
+    // The '{' ... '}' enclosing `arms`, for Cases/Decompose/Induction only
+    // (empty span otherwise). Layout-only: the formatter is the one consumer,
+    // to relocate/canonicalize arm blocks; no semantic reader needs it.
+    source::ByteSpan arms_span;
 };
 
 // One arm of a `cases` statement (GRAMMAR.md 5.6).
@@ -105,6 +117,12 @@ struct ProofArm {
     bool keyword_label = false;
     std::vector<std::string> binders;
     std::vector<ProofStatement> statements;
+
+    // The whole arm, from its label's first byte through the closing '}' of
+    // its body, inclusive. Layout-only, like `ProofStatement::arms_span`.
+    source::ByteSpan span;
+    // The '{' ... '}' body alone, for the same reason.
+    source::ByteSpan body_span;
 };
 
 // proof name(parameters) proves (proposition) { statements }   (GRAMMAR.md 4)
@@ -220,9 +238,19 @@ struct Syntax {
     std::vector<LoopSpecification> loops;
     std::vector<RefinementType> refinement_types;
 
+    // A specification clause written on a function that is not 'verified'
+    // (GRAMMAR.md 6 permits the syntax; this implementation does not check
+    // such a contract - `has_specification_clause`'s diagnostic explains
+    // why). Never an obligation and never consumed by elaboration/obligation
+    // generation: this exists only so the formatter/style-checker can lay
+    // out clause syntax a developer actually wrote, the same way it lays out
+    // any other syntactically well-formed, semantically unsupported
+    // construct. Populated independent of `RecognitionMode`.
+    std::vector<VerifiedFunction> unchecked_clauses;
+
     [[nodiscard]] bool empty() const noexcept {
         return laws.empty() && proofs.empty() && pure_markers.empty() && verified_functions.empty() && loops.empty() &&
-               refinement_types.empty();
+               refinement_types.empty() && unchecked_clauses.empty();
     }
 };
 
