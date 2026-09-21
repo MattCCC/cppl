@@ -2088,6 +2088,36 @@ exposed to source only in the state where the C++ payload exists.
 | Representation | Model | Residual state |
 | --- | --- | --- |
 | scoped enumeration | one case per distinct enumerator value | `unnamed` |
+| `std::variant` | `alternative<i>(value)` per alternative index | `valueless` |
+| `std::optional` | `some(value)` | `none` |
+| `std::expected` | `value(payload)` | `error(reason)` |
+| pointer | `null` | `non_null`, binding nothing |
+| record, `std::pair`, `std::tuple`, `std::array`, built-in array | one `components(...)` arm | none; a product has one state |
+
+A representation is recognized by its Clang-resolved canonical identity after
+substitution, never by spelling. A standard type is identified through its
+specialized template declaration in the canonical `std` namespace, skipping
+inline namespaces, so a user type spelled like a standard one is not that type,
+and a standard type reached through an alias, a template parameter or a
+dependent name is.
+
+Alternatives are identified by index, so repeated and aliased alternative types
+are distinct states. `valueless` is a state of every variant and MUST NOT be
+omitted. A pointer's `non_null` state binds nothing: it does not state that a
+live, initialized or in-bounds object exists, and MUST NOT be read as stating
+anything about lifetime, provenance, dereferenceability, bounds, ownership,
+uniqueness or dynamic type. A standard type is modeled by its public semantics
+only; no implementation's layout is read.
+
+A product has exactly one state and so is not a case analysis. It is written
+with `decompose` (§20.5.1) and generates no discriminator. Each binding is a
+logical projection onto the existing subobject: no structured binding, copy,
+move, conversion or temporary is created. Component order, types, access and
+array extents come from Clang, and a component Clang reports as inaccessible is
+refused by name.
+
+`std::expected` requires the C++23 library. Where it is unavailable the provider
+is simply not exercised.
 
 A scoped enumeration (`enum class`, `enum struct`) with a visible definition and
 a modeled, non-Boolean underlying integer type decomposes into one case per
@@ -2113,14 +2143,12 @@ A representation no provider models is refused at the provider boundary, naming
 the resolved C++ type. It is never reinterpreted as a sum because a proof used
 arm syntax on it, and its states are never guessed.
 
-`std::variant`, `std::optional`, `std::expected`, pointers, and class, `std::pair`,
-`std::tuple` and array products have no provider, because the formal core has no
-value model for them: its terms range over machine integers only (§29,
-`FOUNDATIONS.md`). Stating that a variant holds alternative 1, that a pointer is
-null, or that a struct has a given field requires values and observers the core
-cannot yet express, so a provider for them cannot be sound today. Adding one is
-foundational work on the value model, recorded in `ROADMAP.md`, not a change to
-the case engine. Ordinary unverified C++ uses of those types are unaffected.
+The following are refused, each naming its reason rather than being decomposed
+on an assumption: an incomplete type; a union, which requires an independently
+justified active-member model; a base subobject, which requires an explicit
+accessible projection; a component of unmodeled type, including a reference
+member, whose referent another object can write; and an array extent or template
+argument list that is unresolved or exceeds the proof resource limits.
 
 Omission based on impossible-case evidence (§20.4) is not implemented; the
 compiler reports an omitted arm rather than supplying an assumption.
