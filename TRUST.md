@@ -1608,6 +1608,95 @@ Nominal identity is retained through VIR and proof-argument checks, then
 represented by the existing machine-integer core. The kernel knows no Clang enum
 declaration.
 
+**`std::variant`.**
+
+```text
+C++ states           one state per alternative index, plus the valueless state
+                     ([variant.variant]); repeated and aliased alternative types
+                     are distinct states because an index distinguishes them
+proof propositions   one discriminator `tag == i` per alternative index i, over
+                     the abstract tag observation
+exhaustiveness       the tag comparison is total; splitting on each index in
+                     turn leaves one branch, which is `valueless`
+residual state       `valueless`: never omitted, because a valueless variant is
+                     reachable and is not any alternative
+bindings             `alternative<i>(name)` aliases the i-th payload
+                     observation - no `std::get`, no `std::visit`, no `.index()`
+                     call is emitted or relied on
+not inferred         nothing about which alternative a program actually holds,
+                     about storage, or about whether valueless is reachable in a
+                     particular program
+```
+
+**`std::optional`.**
+
+```text
+C++ states           engaged and disengaged ([optional.optional])
+proof propositions   one discriminator over the abstract engagement observation
+exhaustiveness       the observation is boolean and total
+residual state       `none`
+bindings             `some(name)` aliases the payload observation; `none` binds
+                     nothing, so no disengaged payload can be named. No
+                     `has_value()` call and no dereference is emitted.
+not inferred         nothing about whether a given optional is engaged
+```
+
+**`std::expected`.**
+
+```text
+C++ states           value and error ([expected.expected])
+proof propositions   one discriminator over the abstract has-value observation
+exhaustiveness       the observation is boolean and total
+residual state       `error`, which carries its own payload binding
+bindings             `value(name)` and `error(name)` alias their respective
+                     payload observations
+not inferred         nothing about which state holds, and nothing about how any
+                     standard library lays the type out: only the public
+                     semantics of the two states are modeled
+availability         feature-gated on the C++23 library; where the header is
+                     absent the provider is simply not exercised
+```
+
+**Pointers.**
+
+```text
+C++ states           null and non-null, and nothing else
+proof propositions   one discriminator comparing the subject against nullptr
+exhaustiveness       the comparison is total
+residual state       `non_null`, which binds nothing
+bindings             none in either arm
+not inferred         nothing about lifetime, provenance, dereferenceability,
+                     bounds, initialization, ownership, uniqueness or dynamic
+                     type. A non-null pointer is not assumed to point at a live,
+                     initialized or in-bounds object, and the pointee is not
+                     projectable through this provider.
+```
+
+**Products (records, `std::pair`, `std::tuple`, `std::array`, built-in arrays).**
+
+```text
+C++ states           one; a product has no alternatives to choose between
+proof propositions   none - a product decomposition is not a case split and
+                     generates no discriminator
+exhaustiveness       vacuous: the single `components` arm covers the only state
+bindings             one logical projection per component, in declaration order
+                     for a record and in index order for an array or tuple. A
+                     binding denotes the existing subobject: no structured
+                     binding, copy, move or temporary is emitted.
+access control       a component Clang reports as inaccessible is refused by
+                     name; a private member is never projected
+not inferred         nothing about representation, padding, layout or any
+                     private implementation detail of a standard type
+```
+
+Clang must supply, for each of these, the correct canonical type identity after
+substitution, the component or alternative list with its order and types, and
+the access of each component. Standard types are recognized by semantic identity
+through the specialized template declaration and the canonical `std` namespace,
+never by spelling, so a user type named `std::optional` in another namespace is
+not recognized and a recognized type reached through an alias or a dependent
+name is.
+
 ### Provider-independent obligations
 
 The projector gives proof binders analysis-only parameters so Clang types and

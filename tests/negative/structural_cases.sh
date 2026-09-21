@@ -113,6 +113,20 @@ reject inaccessible_member "cannot access member" <<'CPP'
 class Hidden { int secret; public: int shown; };
 proof bad(Hidden h) proves(true) { decompose h { components(secret, shown) => { refl; } } }
 CPP
+# 19. Standard types are recognized by semantic identity, never by spelling: a
+# user type spelled like one is an ordinary record and has no sum arms.
+reject lookalike_optional "product decomposition requires" <<'CPP'
+namespace mine { template <typename T> struct optional { bool engaged; T payload; }; }
+proof bad(mine::optional<int> o) proves(true) {
+    cases o { some(v) => { refl; } none => { refl; } }
+}
+CPP
+reject lookalike_variant "product decomposition requires" <<'CPP'
+namespace other { namespace std { template <typename... T> struct variant { int tag; }; } }
+proof bad(other::std::variant<int, bool> v) proves(true) {
+    cases v { alternative<0>(a) => { refl; } valueless => { refl; } }
+}
+CPP
 # 15/24. A branch fact must come from the branch; none may be manufactured.
 reject forged_variant_fact 'no matching premise' <<'CPP'
 #include <variant>
