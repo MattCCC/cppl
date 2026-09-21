@@ -209,13 +209,19 @@ void Linter::check_proof_statements(const std::vector<frontend::ProofStatement>&
                 break;
 
             case frontend::ProofStatementKind::Cases:
+            case frontend::ProofStatementKind::Decompose:
+                // `decompose` is `cases` over a product's components rather
+                // than a sum's alternatives (SPEC.md, ProductDecomposition):
+                // same arm/statement shape, so the same structural checks
+                // apply (frontend::describe(stmt.kind) names whichever
+                // keyword was actually written).
                 if (stmt.arms.empty()) {
                     Position loc_pos = mapper.source_location_to_position(stmt.location);
                     Diagnostic diag;
                     diag.range = Range{loc_pos, loc_pos};
                     diag.severity = DiagnosticSeverity::Warning;
                     diag.code = std::string(diagnostic_codes::proof_malformed_statement);
-                    diag.message = "'cases' statement should have at least one case";
+                    diag.message = "'" + frontend::describe(stmt.kind) + "' statement should have at least one case";
                     out.push_back(std::move(diag));
                 }
                 // Recursively check nested statements
