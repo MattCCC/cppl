@@ -245,14 +245,14 @@ introduces no second algebraic data declaration or template system.
 
 ## 18. Decomposition labels
 
-| Representation | Labels |
-| --- | --- |
-| Scoped enum | Qualified enumerators and `unnamed(value)` |
-| `std::variant` | `alternative<I>(payload)` and `valueless` |
-| `std::optional` | `some(payload)` and `none` |
-| `std::expected` | `value(payload)` and `error(payload)` |
-| Pointer | `null` and `non_null(value)` |
-| Product | `components(first, second)` with the representation's arity |
+| Representation  | Labels                                                      |
+| --------------- | ----------------------------------------------------------- |
+| Scoped enum     | Qualified enumerators and `unnamed(value)`                  |
+| `std::variant`  | `alternative<I>(payload)` and `valueless`                   |
+| `std::optional` | `some(payload)` and `none`                                  |
+| `std::expected` | `value(payload)` and `error(payload)`                       |
+| Pointer         | `null` and `non_null(value)`                                |
+| Product         | `components(first, second)` with the representation's arity |
 
 Aliases use canonical Clang type identity. Non-null does not prove a memory
 capability. `unnamed` and `valueless` are real residual states, not wildcards.
@@ -394,7 +394,7 @@ successful C++ compilation alone never supplies evidence.
 ## 35. Declaration and definition
 
 A function entity has one logical contract. Put public contracts on header
- declarations; the matching definition inherits that contract. Repeated identical
+declarations; the matching definition inherits that contract. Repeated identical
 contracts are permitted, conflicting ones are errors. The formatter never
 copies contracts from declarations onto definitions.
 
@@ -485,17 +485,17 @@ an explicit semantics-preserving fix; the compiler accepts no legacy dialect.
 
 ## 51. Canonical examples
 
-[DEVELOPER_GUIDE.md](../DEVELOPER_GUIDE.md) supplies practical examples. Tests and
+[DEVELOPER_GUIDE.md](./DEVELOPER_GUIDE.md) supplies practical examples. Tests and
 formatter checks maintain their agreement with this grammar.
 
 ## 52. Syntax ownership
 
-| Region | Authority |
-| --- | --- |
-| Ordinary declarations, templates and runtime bodies | C++ and Clang |
-| Contracts and refinement predicates | C++L grammar and SPEC |
-| Proof declarations, statements and arms | C++L grammar and SPEC |
-| Canonical presentation | Shared C++L formatter plus clang-format |
+| Region                                              | Authority                               |
+| --------------------------------------------------- | --------------------------------------- |
+| Ordinary declarations, templates and runtime bodies | C++ and Clang                           |
+| Contracts and refinement predicates                 | C++L grammar and SPEC                   |
+| Proof declarations, statements and arms             | C++L grammar and SPEC                   |
+| Canonical presentation                              | Shared C++L formatter plus clang-format |
 
 ## 53. Superset invariant
 

@@ -362,7 +362,7 @@ law identity_returns_input(int x)
 
 A Law is a theorem, not a runtime assertion, Boolean test, unit test, or comment. If C++L cannot establish the proposition, verified compilation fails.
 
-For practical C++L usage, including contracts, Laws, proofs, refinement types, `ghost`, `cases`, induction, loop invariants, termination, trusted boundaries, headers and source files, templates, formatting, and project organization, see [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md).
+For practical C++L usage, including contracts, Laws, proofs, refinement types, `ghost`, `cases`, induction, loop invariants, termination, trusted boundaries, headers and source files, templates, formatting, and project organization, see [DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md).
 
 For the normative language definition, see [SPEC.md](SPEC.md).
 
@@ -710,7 +710,7 @@ Case analysis works the same way. `cases r { ... }` creates one proof obligation
 
 Neither `induction` nor `cases` is runtime control flow. Both are erased before runtime code generation and leave no runtime representation.
 
-For installation, compiler options, project integration, Laws, proofs, verification statuses, and examples, see [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md).
+For installation, compiler options, project integration, Laws, proofs, verification statuses, and examples, see [DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md).
 
 ## Key capabilities
 
@@ -811,7 +811,7 @@ None alone provide the intended proof-aware language model.
 
 ## Documentation
 
-- [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) - practical developer guide with examples
+- [DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) - practical developer guide with examples
 - [SPEC.md](SPEC.md) - normative C++L language semantics
 - [ARCHITECTURE.md](ARCHITECTURE.md) - compiler structure, component boundaries, and data flow
 - [DESIGN.md](DESIGN.md) - design rationale and major language/compiler decisions

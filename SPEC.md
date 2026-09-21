@@ -4000,6 +4000,6 @@ because the implementation needed the statement to be true
 
 [RFC 0015](docs/rfcs/0015-canonical-language-surface.md) reconciles historical
 surface examples. [GRAMMAR.md](docs/GRAMMAR.md) is the single concrete grammar;
-[DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) is the practical usage guide. Implementation
+[DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) is the practical usage guide. Implementation
 fragment notes constrain available verification power, never authorize an
 alternate surface spelling or unchecked acceptance.
