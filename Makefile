@@ -41,6 +41,7 @@ endif
 	format \
 	format-check \
 	tidy \
+	spec-rules-check \
 	lint \
 	asan \
 	ubsan \
@@ -140,7 +141,12 @@ test-integration: build
 		$(if $(JOBS),--parallel $(JOBS),)
 
 ## check: Run repository validation suitable for CI/pre-merge checks
-check: format-check lint test
+check: format-check lint spec-rules-check test
+
+## spec-rules-check: Validate normative rule IDs and citations in docs/SPEC.md
+spec-rules-check: configure
+	$(CMAKE) --build $(BUILD_DIR) --target cppl-spec-rules $(BUILD_JOBS)
+	$(BUILD_DIR)/bin/cppl-spec-rules check
 
 ## format: Apply formatting
 format: configure

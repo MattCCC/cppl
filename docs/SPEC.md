@@ -60,9 +60,9 @@ MAY
 
 are normative requirements.
 
-C++L is defined relative to a selected supported C++ language mode.
+[TERM-001] C++L is defined relative to a selected supported C++ language mode.
 
-The supported C++ versions and implementation-specific compatibility guarantees are defined in `COMPATIBILITY.md`.
+[TERM-002] The supported C++ versions and implementation-specific compatibility guarantees are defined in `COMPATIBILITY.md`.
 
 ---
 
@@ -86,7 +86,7 @@ valid C++L
 
 when no C++L-specific semantics are requested.
 
-C++L MUST preserve the observable runtime semantics of ordinary supported C++.
+[CXX-001] C++L MUST preserve the observable runtime semantics of ordinary supported C++.
 
 C++L adds formal specification and verification semantics.
 
@@ -96,7 +96,7 @@ It does not redefine ordinary C++ merely because the program is compiled as C++L
 
 ## 2.1 Zero-change adoption principle
 
-An existing supported C++ program MUST NOT be required to adopt C++L syntax merely to continue compiling.
+[CXX-002] An existing supported C++ program MUST NOT be required to adopt C++L syntax merely to continue compiling.
 
 Formal verification is additive.
 
@@ -118,7 +118,7 @@ Migration to verification is incremental.
 
 ## 2.2 Implementation standard is independent of source standard
 
-The language used to implement a C++L compiler is independent of the C++ language mode selected for user source.
+[CXX-003] The language used to implement a C++L compiler is independent of the C++ language mode selected for user source.
 
 For example:
 
@@ -132,7 +132,7 @@ user source
 
 is valid.
 
-A C++L implementation MUST NOT introduce runtime constructs unavailable in the selected C++ target mode merely because the compiler itself was built using a newer C++ standard.
+[CXX-004] A C++L implementation MUST NOT introduce runtime constructs unavailable in the selected C++ target mode merely because the compiler itself was built using a newer C++ standard.
 
 ---
 
@@ -164,7 +164,7 @@ forall
 exists
 ```
 
-The following identifiers have special meaning only inside their corresponding specification contexts:
+[WORD-001] The following identifiers have special meaning only inside their corresponding specification contexts:
 
 ```text
 result
@@ -182,7 +182,7 @@ and `contains` have proof-intrinsic meaning only for the mathematical domains
 defined in §19.1. Outside those formal contexts, identically spelled names remain
 ordinary C++ identifiers.
 
-The following words have special meaning only as proof statements inside a proof body (§15):
+[WORD-002] The following words have special meaning only as proof statements inside a proof body (§15):
 
 ```text
 refl
@@ -195,18 +195,18 @@ decompose
 induction
 ```
 
-C++L does not define `data` or `match`. It introduces no algebraic data types and no runtime pattern matching (§19).
+[WORD-003] C++L does not define `data` or `match`. It introduces no algebraic data types and no runtime pattern matching (§19).
 
-The mathematical-domain spellings `@N`, `@Z`, `@Seq`, `@Set` and `@Map` are C++L tokens (§19.1). No valid C++ program contains them outside literals and comments.
+[WORD-004] The mathematical-domain spellings `@N`, `@Z`, `@Seq`, `@Set` and `@Map` are C++L tokens (§19.1). No valid C++ program contains them outside literals and comments.
 
-Proof-arm labels such as `unnamed`, `alternative`, `valueless`, `some`, `none`,
+[WORD-005] Proof-arm labels such as `unnamed`, `alternative`, `valueless`, `some`, `none`,
 `value`, `error`, `null`, `non_null`, `components`, `zero` and `successor` have
 C++L meaning only in the corresponding `cases`, `decompose` or `induction` arm
 position. They are not globally reserved identifiers.
 
 Existing C++ keywords retain their existing C++ meaning.
 
-C++L MUST NOT redefine an existing C++ keyword for unrelated C++L semantics.
+[WORD-006] C++L MUST NOT redefine an existing C++ keyword for unrelated C++L semantics.
 
 In particular:
 
@@ -237,7 +237,7 @@ exists (...)
 ||
 ```
 
-Only the operands or subexpressions that the C++L grammar designates as ordinary
+[WORD-007] Only the operands or subexpressions that the C++L grammar designates as ordinary
 C++ expressions are then resolved with ordinary C++ meaning by Clang.
 
 For example:
@@ -258,7 +258,7 @@ entity named `Eq` is visible. Likewise, top-level `->` in the implication
 position defined by the specification grammar denotes implication rather than
 member access.
 
-C++L MUST NOT globally reinterpret contextual identifiers or operators outside
+[WORD-008] C++L MUST NOT globally reinterpret contextual identifiers or operators outside
 their defined grammatical contexts.
 
 ---
@@ -271,7 +271,7 @@ Therefore existing macros remain meaningful.
 
 A macro MAY expand into C++L syntax.
 
-C++L MUST NOT change ordinary preprocessor token semantics merely because a token has contextual C++L meaning after preprocessing.
+[WORD-009] C++L MUST NOT change ordinary preprocessor token semantics merely because a token has contextual C++L meaning after preprocessing.
 
 There is one exception. Each mathematical-domain spelling `@N`, `@Z`, `@Seq`, `@Set` and `@Map` is lexed as a single preprocessing token (§19.1), so a macro named `N`, `Z`, `Seq`, `Set` or `Map` does not expand inside it. `@` cannot appear in valid C++ outside literals and comments. The only programs whose meaning this could change are those that stringize such a spelling after macro expansion.
 
@@ -291,7 +291,7 @@ proof
 
 ## 4.1 Runtime domain
 
-The runtime domain contains ordinary executable C++ values and operations.
+[DOMAIN-001] The runtime domain contains ordinary executable C++ values and operations.
 
 Examples:
 
@@ -306,13 +306,13 @@ exceptions
 I/O
 ```
 
-Runtime semantics remain governed by the selected C++ language mode and target environment.
+[DOMAIN-002] Runtime semantics remain governed by the selected C++ language mode and target environment.
 
 ---
 
 ## 4.2 Specification domain
 
-The specification domain expresses properties of runtime or formal values.
+[DOMAIN-003] The specification domain expresses properties of runtime or formal values.
 
 Examples include:
 
@@ -325,13 +325,13 @@ loop invariants
 termination measures
 ```
 
-Specification expressions MUST be side-effect-free.
+[DOMAIN-004] Specification expressions MUST be side-effect-free.
 
 ---
 
 ## 4.3 Proof domain
 
-The proof domain contains evidence establishing propositions.
+[DOMAIN-005] The proof domain contains evidence establishing propositions.
 
 Proof-domain values:
 
@@ -348,7 +348,7 @@ unless this specification explicitly states otherwise.
 
 # 5. Propositions
 
-A proposition is a formal statement that may be established by proof.
+[PROP-001] A proposition is a formal statement that may be established by proof.
 
 Conceptually:
 
@@ -370,13 +370,13 @@ Proof<P>
 
 is evidence for proposition `P`.
 
-A proof value MUST NOT exist unless it is derivable according to the formal rules of the language or introduced explicitly through `trusted`.
+[PROP-002] A proof value MUST NOT exist unless it is derivable according to the formal rules of the language or introduced explicitly through `trusted`.
 
 ---
 
 # 6. Boolean propositions
 
-A side-effect-free C++ expression of type `bool` MAY be lifted into a proposition.
+[BOOL-001] A side-effect-free C++ expression of type `bool` MAY be lifted into a proposition.
 
 For example:
 
@@ -402,7 +402,7 @@ This does not turn C++ `bool` into the same type as `Prop`.
 
 It is a defined conversion from a pure Boolean expression into a proposition.
 
-When the specification grammar consumes tokens such as `&&`, `||`, `->`, `<->`
+[BOOL-002] When the specification grammar consumes tokens such as `&&`, `||`, `->`, `<->`
 or `Eq<T>(...)` as formal syntax, those tokens are not first interpreted as one
 complete ordinary C++ Boolean expression. Their C++L logical semantics apply,
 and the ordinary C++ subexpressions forming their operands remain subject to
@@ -424,7 +424,7 @@ from:
 propositional equality
 ```
 
-They MUST NOT be conflated.
+[EQ-001] They MUST NOT be conflated.
 
 ---
 
@@ -456,21 +456,21 @@ if `identity` is defined to return its argument.
 
 ### 7.1.1 Machine-integer arithmetic
 
-Definitional normalization of machine integers MUST respect the exact semantics
+[EQ-002] Definitional normalization of machine integers MUST respect the exact semantics
 of the selected C++ integer type. For an unsigned type of width `w`, addition,
 subtraction and multiplication are interpreted modulo `2^w`. For signed integer
 operations, normalization is valid only on paths where the corresponding C++
 operation has defined behavior; signed overflow MUST NOT be modeled as wrapping.
 
-Normalization MAY use algebraic canonicalization only for identities that are
+[EQ-003] Normalization MAY use algebraic canonicalization only for identities that are
 valid for every value of the modeled machine type under those semantics. It MUST
 NOT use mathematical-integer rewrites that fail for bounded machine arithmetic.
 
-Comparison normalization MAY use logically equivalent rewrites, but MUST preserve
+[EQ-004] Comparison normalization MAY use logically equivalent rewrites, but MUST preserve
 the signedness, width, promotions and defined-behavior requirements selected by
 C++.
 
-Definitional normalization is deterministic. If a verifier cannot normalize a
+[EQ-005] Definitional normalization is deterministic. If a verifier cannot normalize a
 term soundly, it MUST leave the term opaque or reject the attempted proof; it
 MUST NOT approximate it with a stronger proposition.
 
@@ -516,13 +516,13 @@ It produces a Boolean predicate that may be lifted into a proposition.
 
 It is not automatically identical to formal `Eq<T>(a, b)`.
 
-For built-in or formally modeled values the verifier MAY prove a correspondence between the two.
+[EQ-006] For built-in or formally modeled values the verifier MAY prove a correspondence between the two.
 
 ---
 
 ## 7.4 Equality operations
 
-The formal system MUST support sound equivalents of:
+[EQ-007] The formal system MUST support sound equivalents of:
 
 ```text
 reflexivity
@@ -535,13 +535,13 @@ transport
 
 where applicable.
 
-Approximate equality MUST NOT silently become formal equality.
+[EQ-008] Approximate equality MUST NOT silently become formal equality.
 
 ---
 
 ## 7.5 Arithmetic reasoning over machine integers
 
-Arithmetic proof rules MUST reason about the exact machine semantics of the
+[EQ-009] Arithmetic proof rules MUST reason about the exact machine semantics of the
 resolved C++ types. A consequence such as:
 
 ```text
@@ -552,12 +552,12 @@ requires evidence that includes every side condition needed for the C++ operatio
 to be defined and for the implication to hold at the relevant width and
 signedness.
 
-A conforming proof checker MAY use normalization, decision procedures, SMT,
+[EQ-010] A conforming proof checker MAY use normalization, decision procedures, SMT,
 Presburger arithmetic, certificate checking or other automation, but acceptance
 requires sound evidence according to the formal proof rules. Automation success alone
 is not proof.
 
-Contradictory established premises may prove any proposition according to ordinary
+[EQ-011] Contradictory established premises may prove any proposition according to ordinary
 logic, but contradiction itself must be established from valid premises. Machine
 integer overflow, conversion, comparison and promotion rules MUST NOT be silently
 replaced by unbounded-integer reasoning.
@@ -655,7 +655,7 @@ forall (T x, U y) {
 }
 ```
 
-A binder type is a verification type: an ordinary C++ type whose values have a
+[FORALL-001] A binder type is a verification type: an ordinary C++ type whose values have a
 formal model, a refinement of such a type, or a proof-only mathematical domain.
 The binder ranges over the complete value domain of that type. In particular,
 `forall (unsigned x)` ranges over the complete machine-`unsigned` value set,
@@ -706,7 +706,7 @@ Implication introduction adds its premise to the proof context and requires proo
 of its conclusion. Implication elimination requires evidence for both the
 implication and its premise.
 
-Within specification/proof grammar, the implication token takes its C++L meaning.
+[FORALL-002] Within specification/proof grammar, the implication token takes its C++L meaning.
 Ordinary C++ pointer member access `p->member` remains ordinary C++ when parsed as
 an ordinary C++ subexpression. Parentheses may be used to make that boundary
 explicit. The grammar MUST disambiguate the two without changing runtime C++
@@ -730,7 +730,7 @@ Conceptually:
 exists x : T, P(x)
 ```
 
-A binder type follows the same verification-type rules as §8.
+[EXISTS-001] A binder type follows the same verification-type rules as §8.
 
 Proof of an existential proposition requires both:
 
@@ -753,10 +753,10 @@ Existential elimination may use a checked existential only by introducing a fres
 witness and its property locally; neither may escape a scope in a way that would
 make the result depend on the hidden witness.
 
-The witness is proof-domain evidence and has no runtime identity merely because it
+[EXISTS-002] The witness is proof-domain evidence and has no runtime identity merely because it
 witnesses an existential proposition.
 
-The source proof language has no standalone `witness` statement. An existential
+[EXISTS-003] The source proof language has no standalone `witness` statement. An existential
 goal is closed either by `exact` evidence already establishing the existential or
 by proof automation that constructs a concrete witness together with
 valid existential-introduction evidence. Automation MUST expose enough
@@ -803,7 +803,7 @@ law given_zero(unsigned x)
 }
 ```
 
-A semicolon requests automatic construction and checking of evidence. An
+[LAW-001] A semicolon requests automatic construction and checking of evidence. An
 explicit body supplies proof steps through the same proof pipeline as `proof`.
 Failure of either form MUST fail compilation; neither creates an axiom. A
 `trusted law` is the separately explicit assumption form and MUST NOT have a
@@ -859,13 +859,13 @@ An ordinary Law begins unresolved.
 
 It becomes `PROVEN` only when valid proof evidence exists.
 
-An unresolved Law MUST NOT be used as if it were established.
+[LAW-002] An unresolved Law MUST NOT be used as if it were established.
 
 ---
 
 ## 10.4 Law application
 
-A named Law may be instantiated with arguments inside a proposition or proof context.
+[LAW-003] A named Law may be instantiated with arguments inside a proposition or proof context.
 
 Conceptually:
 
@@ -883,20 +883,20 @@ A Law has no ordinary runtime callable identity.
 
 Changing a Law changes the formal specification of the program.
 
-A compiler, verifier, tactic, or automated agent MUST NOT weaken a Law merely to make an implementation verify.
+[LAW-004] A compiler, verifier, tactic, or automated agent MUST NOT weaken a Law merely to make an implementation verify.
 
 ## 10.6 Scope and member Laws
 
-A Law may appear at namespace or class scope wherever permitted by the normative
+[LAW-005] A Law may appear at namespace or class scope wherever permitted by the normative
 grammar. Namespace lookup follows ordinary C++ scope rules for referenced C++
 entities.
 
-A class-scope Law may refer to the implicit object through ordinary C++ member
+[LAW-006] A class-scope Law may refer to the implicit object through ordinary C++ member
 lookup and `this` where that expression is valid. It does not create a runtime
 member function. Its proposition is quantified over every explicit parameter and
 over every implicit object state required by the Law's C++ member context.
 
-A Law declared in an unnamed namespace has translation-unit-local formal identity.
+[LAW-007] A Law declared in an unnamed namespace has translation-unit-local formal identity.
 A Law intended for use across translation units must be available through the
 verification interface seen by its users.
 
@@ -933,7 +933,7 @@ verified unsigned divide(unsigned x, unsigned y)
 }
 ```
 
-The precondition states what a verified caller must establish before the call.
+[CONTRACT-001] The precondition states what a verified caller must establish before the call.
 
 It is not automatically a runtime assertion.
 
@@ -957,7 +957,7 @@ verified int abs_value(int x)
 }
 ```
 
-The postcondition describes the required state after normal return.
+[CONTRACT-002] The postcondition describes the required state after normal return.
 
 ---
 
@@ -1023,13 +1023,13 @@ It does not imply that a runtime copy must be created.
 
 ## 11.5 Clause cardinality, ordering and layout
 
-Specification predicates and measures MUST be parenthesized. A construct has at
+[CONTRACT-003] Specification predicates and measures MUST be parenthesized. A construct has at
 most one clause of each kind. Function clauses are `expects`, `ensures`,
 `decreases`; Law clauses are `expects`, `proves`; loop clauses are `invariant`,
 `decreases`, in those orders. Conjoined predicates belong in a single `&&`
 expression. A measure list is lexicographic and MUST NOT be merged as conjunction.
 
-Whitespace between a clause word and its opening parenthesis is not semantically
+[CONTRACT-004] Whitespace between a clause word and its opening parenthesis is not semantically
 significant. A conforming parser MUST therefore accept both:
 
 ```cpp
@@ -1053,7 +1053,7 @@ whitespace normalization does not alter semantics.
 
 ### 11.5.1 Declaration contracts
 
-A function entity has one logical contract. The public declaration carries it;
+[CONTRACT-005] A function entity has one logical contract. The public declaration carries it;
 the matching definition inherits it and need not repeat `verified` or clauses.
 Matching uses Clang-resolved entity identity, not spelling. Repeated contracts
 MUST be identical under parameter renaming and semantic resolution; conflicting
@@ -1095,7 +1095,7 @@ expects (P)
 
 requires proof that `P` holds at the call site.
 
-An ordinary unverified caller is not automatically rejected merely because it cannot statically prove the precondition.
+[CONTRACT-006] An ordinary unverified caller is not automatically rejected merely because it cannot statically prove the precondition.
 
 This preserves incremental adoption.
 
@@ -1105,7 +1105,7 @@ This preserves incremental adoption.
 
 `expects` and `ensures` do not automatically generate runtime checks.
 
-Failure to prove a required contract MUST NOT silently be transformed into:
+[CONTRACT-007] Failure to prove a required contract MUST NOT silently be transformed into:
 
 ```text
 assert(...)
@@ -1117,20 +1117,20 @@ Runtime validation is a distinct mechanism.
 
 ## 11.9 Member functions and the implicit object
 
-A member-function contract uses ordinary C++ member lookup and `this`. The
+[CONTRACT-008] A member-function contract uses ordinary C++ member lookup and `this`. The
 identifier `self` is reserved for refinement predicates and is not an alternate
 name for the implicit object.
 
-For a non-static member function, preconditions observe the entry-state object.
+[CONTRACT-009] For a non-static member function, preconditions observe the entry-state object.
 Postconditions observe the normal-return post-state object unless an occurrence is
 inside `old(...)`.
 
-The cv/ref qualifiers of the member function retain their ordinary C++ meaning.
+[CONTRACT-010] The cv/ref qualifiers of the member function retain their ordinary C++ meaning.
 They do not by themselves prove purity, alias exclusivity or global immutability.
 
 ## 11.10 Constructors and destructors
 
-A constructor has no `result` binding. Its `expects` clause is evaluated before
+[CONTRACT-011] A constructor has no `result` binding. Its `expects` clause is evaluated before
 object initialization using only values that are valid in that entry state.
 Its `ensures` clause describes the fully initialized object after successful
 construction.
@@ -1140,12 +1140,12 @@ entry-state value. Constructor initializer lists, delegating construction, base
 construction and member initialization retain ordinary C++ order and lifetime
 semantics and must be modeled accordingly.
 
-A destructor may have an entry precondition. On normal completion, the object
+[CONTRACT-012] A destructor may have an entry precondition. On normal completion, the object
 lifetime has ended, so a destructor postcondition MUST NOT read dead members or
 otherwise treat the destroyed object as live. It may refer to valid external
 state and to legal `old(...)` snapshots captured from destructor entry.
 
-Construction and destruction effects, including RAII effects during unwinding,
+[CONTRACT-013] Construction and destruction effects, including RAII effects during unwinding,
 are runtime C++ behavior and MUST NOT be erased or reordered by verification.
 
 ## 11.11 Virtual functions and overriding contracts
@@ -1154,7 +1154,7 @@ Virtual dispatch remains ordinary C++. A call type-checked against a base virtua
 function is verified from the base contract; the caller does not depend on which
 override executes.
 
-Every verified override MUST be substitutable for the overridden verified
+[CONTRACT-014] Every verified override MUST be substitutable for the overridden verified
 contract. For a base precondition `P_base`, override precondition `P_over`, base
 normal postcondition `Q_base`, and override normal postcondition `Q_over`, the
 override must establish:
@@ -1170,7 +1170,7 @@ Q_over -> Q_base
 Thus an override may weaken a precondition and strengthen a postcondition, but
 must not strengthen the base precondition or weaken the base guarantee.
 
-An override MUST NOT have a broader externally observable effect set than the base
+[CONTRACT-015] An override MUST NOT have a broader externally observable effect set than the base
 contract permits. A base function relied upon as `pure` may be overridden only by
 a function that satisfies the same purity guarantee. If the base contract is
 required to be total, each override reachable through that virtual interface must
@@ -1199,7 +1199,7 @@ verified int identity(int x)
 
 ## 12.1 Verified-function obligation
 
-A function marked `verified` MUST discharge every verification obligation required by its declared verification scope.
+[VERIFIED-001] A function marked `verified` MUST discharge every verification obligation required by its declared verification scope.
 
 These may include:
 
@@ -1218,9 +1218,9 @@ loop invariants
 
 ## 12.2 Failure semantics
 
-If a required obligation for a `verified` declaration cannot be established, that declaration MUST NOT be accepted as verified.
+[VERIFIED-002] If a required obligation for a `verified` declaration cannot be established, that declaration MUST NOT be accepted as verified.
 
-The implementation MUST NOT silently downgrade:
+[VERIFIED-003] The implementation MUST NOT silently downgrade:
 
 ```text
 verification failure
@@ -1250,19 +1250,19 @@ runtime value representation
 
 ## 12.4 Trusted dependencies
 
-A verified result MAY logically depend on explicit trusted assumptions.
+[VERIFIED-004] A verified result MAY logically depend on explicit trusted assumptions.
 
 Such a result may still have a valid proof derivation from those assumptions.
 
-The dependency on those assumptions MUST remain explicit.
+[VERIFIED-005] The dependency on those assumptions MUST remain explicit.
 
-The trust policy and reporting requirements are defined in `TRUST.md`.
+[VERIFIED-006] The trust policy and reporting requirements are defined in `TRUST.md`.
 
 ---
 
 ## 12.5 Function verification semantics
 
-For a verified function entity `f`, verification begins from its complete
+[VERIFIED-007] For a verified function entity `f`, verification begins from its complete
 Clang-resolved C++ declaration, contract, refinement information and function
 body.
 
@@ -1274,7 +1274,7 @@ At function entry, the proof context contains:
 - valid C++ type, lifetime and binding facts established by the language semantics;
 - no additional facts merely because the implementation would benefit from them.
 
-Verification MUST establish for every reachable execution path covered by the
+[VERIFIED-008] Verification MUST establish for every reachable execution path covered by the
 claim:
 
 - defined behavior for every modeled runtime operation;
@@ -1286,19 +1286,19 @@ claim:
 - the refinement predicate of a refined return type on every normal return;
 - any required total-correctness property under §§22–24.
 
-For a normal return of expression `R` from a non-void function, `result` denotes
+[VERIFIED-009] For a normal return of expression `R` from a non-void function, `result` denotes
 the Clang-resolved value returned by that path. The postcondition is checked after
 capture-avoiding substitution of that logical result and after applying the
 post-state semantics of every visible storage location.
 
-For a `void` function, there is no `result`; the postcondition is checked against
+[VERIFIED-010] For a `void` function, there is no `result`; the postcondition is checked against
 the normal-return post-state.
 
-A verified body is not replaced by an assumed summary. The summary becomes usable
+[VERIFIED-011] A verified body is not replaced by an assumed summary. The summary becomes usable
 by callers only after evidence tying the body to that summary has been accepted,
 or after an explicit trusted proposition provides the required fact.
 
-All ordinary C++ syntax remains ordinary C++ syntax. Verification may reject a
+[VERIFIED-012] All ordinary C++ syntax remains ordinary C++ syntax. Verification may reject a
 program when its required semantics or proof obligations cannot be established,
 but it MUST NOT reinterpret the runtime operation as a different C++ operation.
 
@@ -1306,22 +1306,22 @@ but it MUST NOT reinterpret the runtime operation as a different C++ operation.
 
 ## 12.6 Compositional calls and summaries
 
-For a call to a verified function, the verifier MUST resolve the callee through
+[VERIFIED-013] For a call to a verified function, the verifier MUST resolve the callee through
 ordinary C++ overload resolution and template instantiation, instantiate its
 formal contract at the actual arguments and prove its complete entry obligation
 before using any callee guarantee.
 
-After the entry obligation is proven, the caller may use the callee's checked
+[VERIFIED-014] After the entry obligation is proven, the caller may use the callee's checked
 normal-return postcondition, return-type refinement, purity/termination properties
 and verified effect summary on the corresponding path. A call's own postcondition
 MUST NOT be used to prove its precondition.
 
-The logical result of a non-void call is fresh. The caller reasons from the
+[VERIFIED-015] The logical result of a non-void call is fresh. The caller reasons from the
 callee's checked summary rather than by assuming an arbitrary implementation.
 Inlining or unfolding is permitted only when the callee is eligible for the
 formal use in question, including purity and termination requirements.
 
-Verification metadata required for compositional checking includes, as
+[VERIFIED-016] Verification metadata required for compositional checking includes, as
 applicable:
 
 ```text
@@ -1334,11 +1334,11 @@ effect summary
 trust dependency closure
 ```
 
-That metadata MUST be associated with the C++ entity across translation units,
+[VERIFIED-017] That metadata MUST be associated with the C++ entity across translation units,
 headers, modules and explicit template instantiations. Native ABI symbols alone
 are not sufficient proof metadata.
 
-A call to ordinary unverified C++ remains executable C++. Such a call contributes
+[VERIFIED-018] A call to ordinary unverified C++ remains executable C++. Such a call contributes
 no unstated formal facts. Its return is an unconstrained value of the resolved C++
 type except for facts guaranteed by ordinary C++ semantics, and every storage
 location it may affect is invalidated according to §12.10. A later runtime check,
@@ -1349,29 +1349,29 @@ call itself does not.
 
 ## 12.7 Path-sensitive control flow
 
-Verification follows ordinary C++ control flow and evaluation order. Each runtime
+[VERIFIED-019] Verification follows ordinary C++ control flow and evaluation order. Each runtime
 branch creates proof contexts corresponding to the paths C++ can execute.
 
-For `if`, conditional expressions, `switch`, loop conditions and other Boolean
+[VERIFIED-020] For `if`, conditional expressions, `switch`, loop conditions and other Boolean
 runtime control flow, a true path may suppose the condition and a false path may
 suppose its logical negation when the condition has a sound formal model. These
 path facts are evidence scoped to the path on which they hold.
 
-Runtime `&&` and `||` retain C++ short-circuit evaluation. Verification MUST NOT
+[VERIFIED-021] Runtime `&&` and `||` retain C++ short-circuit evaluation. Verification MUST NOT
 reason about an operand on a runtime path on which C++ does not evaluate that
 operand. `!` reverses the path proposition. This runtime rule is distinct from
 proof-domain conjunction and disjunction in §§7.6 and 7.8.
 
-Every normal return, throw, `break`, `continue`, `goto`, switch edge and exceptional
+[VERIFIED-022] Every normal return, throw, `break`, `continue`, `goto`, switch edge and exceptional
 edge retains its ordinary C++ control-flow meaning. A verification engine may use
 an equivalent control-flow representation, but the resulting obligations MUST
 cover every runtime path relevant to the claimed property.
 
-A path may be discharged as impossible only from checked contradiction evidence.
+[VERIFIED-023] A path may be discharged as impossible only from checked contradiction evidence.
 Syntactic unreachability heuristics, proof-search timeout or failure to enumerate a path
 MUST NOT be treated as proof of impossibility.
 
-A call, write or operation may use only facts established before that operation on
+[VERIFIED-024] A call, write or operation may use only facts established before that operation on
 the same path and facts that remain valid under intervening effects and aliasing.
 
 ---
@@ -1381,24 +1381,24 @@ the same path and facts that remain valid under intervening effects and aliasing
 Ordinary local variables retain ordinary C++ storage, lifetime, initialization,
 shadowing and destruction semantics.
 
-For verification, each successful write establishes a new logical version of the
+[VERIFIED-025] For verification, each successful write establishes a new logical version of the
 written place. A read denotes the version current at that program point. Logical
 versions are proof bookkeeping only and introduce no runtime object or copy.
 
-Initializers, assignments, compound assignments, increments/decrements,
+[VERIFIED-026] Initializers, assignments, compound assignments, increments/decrements,
 constructor calls and other writes MUST be verified according to the actual C++
 operation selected by Clang. Any conversion, arithmetic definedness, lifetime,
 refinement or capability obligation created by that operation must be discharged.
 
-After a branch, reasoning is path-sensitive. Any representation of merged control
+[VERIFIED-027] After a branch, reasoning is path-sensitive. Any representation of merged control
 flow MUST preserve the exact path-dependent values and facts; merge bookkeeping
 may not manufacture equality between values established on different paths.
 
-A fact about an earlier version does not automatically constrain a later version.
+[VERIFIED-028] A fact about an earlier version does not automatically constrain a later version.
 Mutation through any alias that may designate the same place invalidates facts as
 required by §12.10.
 
-Automatic object destruction at scope exit is part of the runtime path and its
+[VERIFIED-029] Automatic object destruction at scope exit is part of the runtime path and its
 effects participate in verification. Erasure MUST NOT remove, duplicate or reorder
 ordinary local construction/destruction.
 
@@ -1410,23 +1410,23 @@ References retain ordinary C++ binding, collapsing, cv-qualification, lifetime
 and aliasing semantics. A reference denotes existing storage; it does not create
 independent storage merely for verification.
 
-A write through a reference is a write to its referent and establishes a new
+[VERIFIED-030] A write through a reference is a write to its referent and establishes a new
 logical version of that place. Any other place that may alias it is invalidated or
 updated according to the proven alias relation. A `const` reference restricts
 writes through that access path but does not prove that the underlying object is
 immutable through every alias.
 
-For a function contract, value parameters denote their entry values. Reference
+[VERIFIED-031] For a function contract, value parameters denote their entry values. Reference
 and pointer observations in `ensures` denote the normal-return post-state unless
 inside `old(...)`. Repeated actual arguments that alias the same storage refer to
 one underlying post-state, not independent copies.
 
-A verified call applies its checked effect summary before its postcondition is
+[VERIFIED-032] A verified call applies its checked effect summary before its postcondition is
 made available to the caller. Facts invalidated by that effect may be recovered
 only from the postcondition, refinement guarantees or other independently checked
 evidence.
 
-Reference binding itself MUST NOT manufacture lifetime, uniqueness, initialization
+[VERIFIED-033] Reference binding itself MUST NOT manufacture lifetime, uniqueness, initialization
 or refinement evidence beyond what ordinary C++ and the current proof context
 establish.
 
@@ -1434,15 +1434,15 @@ establish.
 
 ## 12.10 Storage, memory capabilities and effects
 
-C++L uses a single storage model for locals, members, array elements, references,
+[VERIFIED-034] C++L uses a single storage model for locals, members, array elements, references,
 pointers, temporaries and dynamically allocated objects. Refinements consume this
 model; they do not create a separate storage semantics.
 
-A **place** is a proof-level designation of C++ storage. A **region** is the live
+[VERIFIED-035] A **place** is a proof-level designation of C++ storage. A **region** is the live
 C++ object or array allocation to which a place belongs. Places and regions have
 no runtime representation of their own.
 
-For pointer-based access, the verifier tracks the C++ facts needed to justify the
+[VERIFIED-036] For pointer-based access, the verifier tracks the C++ facts needed to justify the
 operation, including as applicable:
 
 ```text
@@ -1480,51 +1480,51 @@ operation with valid lifetime, provenance, bounds, alignment and access rights.
 It does not by itself assert the previous stored values. `writable(p)` abbreviates
 one object.
 
-A successful ordinary C++ operation may establish or consume these capabilities
+[VERIFIED-037] A successful ordinary C++ operation may establish or consume these capabilities
 according to C++ semantics. Examples include address-of a live object, array
 construction, successful allocation, reference binding, object construction and
 validated library abstractions. A mere `p != nullptr` proves only non-nullness; it
 proves neither `readable` nor `writable`.
 
-A pointer read `*p` requires `readable(p)`. A pointer write through `*p` requires
+[VERIFIED-038] A pointer read `*p` requires `readable(p)`. A pointer write through `*p` requires
 the write to be permitted by `writable(p)` and all C++ lifetime/type rules; after
 a successful write, facts about the new stored value are established from the
 write itself. Array subscripting and pointer arithmetic additionally require the
 bounds/provenance obligations imposed by C++ including one-past rules.
 
-Two places MAY alias unless C++ semantics and checked evidence establish
+[VERIFIED-039] Two places MAY alias unless C++ semantics and checked evidence establish
 otherwise. Distinct complete local objects are disjoint while their lifetimes do
 not overlap. Distinct non-overlapping subobjects are disjoint only when the C++
 object model establishes that fact; unions, potentially-overlapping subobjects,
 `[[no_unique_address]]`, base subobjects and implementation-defined layout MUST
 NOT be treated as disjoint merely because they have different member names.
 
-A write invalidates facts about every place that may alias the target. A call
+[VERIFIED-040] A write invalidates facts about every place that may alias the target. A call
 invalidates facts about every mutable region in its effect set. Pointer values
 passed by value may still provide access to caller storage; by-value parameter
 passing proves only that the parameter object's own storage is distinct from the
 caller argument object. `const` on a parameter or access path is not a global
 frame condition.
 
-Every verified function has a semantic **effect summary** derived from checked
+[VERIFIED-041] Every verified function has a semantic **effect summary** derived from checked
 body semantics. It records the externally observable storage the function may
 read or write and other proof-relevant effects needed for composition. C++L adds
 no required `reads` or `modifies` source clause: the summary is verification
 metadata. A summary used across translation units MUST be transported and tied to
 the checked function entity.
 
-An unverified or foreign call with no checked effect summary is conservatively
+[VERIFIED-042] An unverified or foreign call with no checked effect summary is conservatively
 assumed capable of modifying every mutable region it can access through its
 arguments, reachable objects, globals/statics, escaped aliases, callbacks,
 virtual dispatch and other C++-permitted mechanisms. A verifier may preserve a
 fact only when it proves that the call cannot affect the place on which the fact
 depends.
 
-If the verifier cannot establish the capability, lifetime, alias or effect facts
+[VERIFIED-043] If the verifier cannot establish the capability, lifetime, alias or effect facts
 needed for a verified operation, the verification claim fails closed. It MUST NOT
 invent a capability or preserve a stale fact.
 
-A `trusted law` may explicitly admit a memory proposition such as `readable(...)`
+[VERIFIED-044] A `trusted law` may explicitly admit a memory proposition such as `readable(...)`
 or `writable(...)`; doing so creates a normal trust dependency under §27. The
 predicate remains proof-only and does not perform a runtime memory check.
 
@@ -1546,9 +1546,9 @@ pure int square(int x) {
 
 ## 13.1 Purity requirements
 
-A pure function MUST NOT perform observable side effects.
+[PURE-001] A pure function MUST NOT perform observable side effects.
 
-In particular, unless explicitly modeled as immutable formal input, a pure function MUST NOT:
+[PURE-002] In particular, unless explicitly modeled as immutable formal input, a pure function MUST NOT:
 
 ```text
 write externally observable state
@@ -1564,9 +1564,9 @@ call an impure function
 
 ## 13.2 Reading memory
 
-A pure function MAY read data reachable from its explicit inputs only when those reads are formally stable for the duration and meaning of the call.
+[PURE-003] A pure function MAY read data reachable from its explicit inputs only when those reads are formally stable for the duration and meaning of the call.
 
-A raw pointer value alone does not prove referential transparency.
+[PURE-004] A raw pointer value alone does not prove referential transparency.
 
 ---
 
@@ -1574,9 +1574,9 @@ A raw pointer value alone does not prove referential transparency.
 
 `pure` is not merely documentation.
 
-A definition marked `pure` MUST satisfy the purity rules before its purity may be relied upon by formal reasoning.
+[PURE-005] A definition marked `pure` MUST satisfy the purity rules before its purity may be relied upon by formal reasoning.
 
-An external declaration whose purity cannot be checked MUST NOT be treated as
+[PURE-006] An external declaration whose purity cannot be checked MUST NOT be treated as
 pure merely from an unchecked declaration. C++L defines no `trusted pure` or
 trusted-function-contract modifier. A function whose purity is not established by
 checked semantics is unavailable for reasoning that requires purity.
@@ -1599,7 +1599,7 @@ does not by itself mean:
 total
 ```
 
-If the function participates in proof normalization or other logic requiring totality, termination MUST also be established.
+[PURE-007] If the function participates in proof normalization or other logic requiring totality, termination MUST also be established.
 
 ---
 
@@ -1617,13 +1617,13 @@ A specification expression may combine:
 
 ## 14.1 Side effects
 
-Specification expressions MUST be side-effect-free. They MUST NOT perform runtime
+[SPECEXPR-001] Specification expressions MUST be side-effect-free. They MUST NOT perform runtime
 mutation, I/O, volatile access, observable atomic effects, allocation/deallocation
 or any other runtime side effect merely because the specification is checked.
 
 ## 14.2 Defined behavior
 
-Every ordinary C++ subexpression used in a specification MUST have defined C++
+[SPECEXPR-002] Every ordinary C++ subexpression used in a specification MUST have defined C++
 semantics under the proof context in which its value is required. Undefined
 behavior cannot establish a proposition.
 
@@ -1633,13 +1633,13 @@ C++ control flow (§12.7).
 
 ## 14.3 Calls
 
-A runtime function may be used as a mathematical function in a specification only
+[SPECEXPR-003] A runtime function may be used as a mathematical function in a specification only
 when its checked semantics are sufficient for that use. In particular, any
 unfolded or definitionally reduced call must be pure and total for the relevant
 inputs. A verified normal-return contract may be referenced propositionally
 without granting unrestricted definitional unfolding.
 
-An unverified function declaration, an unchecked `pure` claim or a function name
+[SPECEXPR-004] An unverified function declaration, an unchecked `pure` claim or a function name
 by itself supplies no formal semantics.
 
 ## 14.4 Contextual formal operators
@@ -1649,7 +1649,7 @@ Inside specification/proof grammar, `Eq`, `forall`, `exists`, `->`, `<->`, `&&`,
 formal meanings. Outside those grammatical contexts, identically spelled names
 and operators retain ordinary C++ meaning.
 
-The grammar MUST make every boundary between formal syntax and embedded ordinary
+[SPECEXPR-005] The grammar MUST make every boundary between formal syntax and embedded ordinary
 C++ expressions deterministic.
 
 ---
@@ -1717,13 +1717,13 @@ A proof body exists only to construct formal evidence.
 
 Proof-body operations have no ordinary runtime effects.
 
-The semantics of a proof are determined by the proof term it elaborates to, not by tactic implementation details.
+[PROOF-001] The semantics of a proof are determined by the proof term it elaborates to, not by tactic implementation details.
 
 ---
 
 ## 15.4 Proof automation
 
-An implementation MAY provide tactics, simplifiers, theorem search, decision procedures, or other proof automation.
+[PROOF-002] An implementation MAY provide tactics, simplifiers, theorem search, decision procedures, or other proof automation.
 
 Such automation does not change the proposition being proved.
 
@@ -1737,7 +1737,7 @@ Successful search is meaningful only if it produces valid proof evidence accordi
 
 A `law` names a theorem.
 
-A `proof` names explicit reusable evidence for a proposition.
+[PROOF-003] A `proof` names explicit reusable evidence for a proposition.
 
 Conceptually:
 
@@ -1758,7 +1758,7 @@ law reflexivity(int x)
 
 states a theorem.
 
-A named proof may construct evidence for the same proposition:
+[PROOF-004] A named proof may construct evidence for the same proposition:
 
 ```cpp
 proof reflexivity_evidence(int x)
@@ -1778,7 +1778,7 @@ law reflexivity(int x)
 }
 ```
 
-A separate `proof` declaration is therefore useful when the evidence itself
+[PROOF-005] A separate `proof` declaration is therefore useful when the evidence itself
 requires a reusable name, acts as a proof helper, or should remain distinct from
 the theorem declaration.
 
@@ -1790,14 +1790,14 @@ contains parameters and a body. Both erase before native execution.
 
 ## 15.6 Proof statement semantics
 
-A proof body is checked against a proof state consisting conceptually of:
+[PROOF-006] A proof body is checked against a proof state consisting conceptually of:
 
 ```text
 Γ    available premises and named evidence
 G    current goal proposition
 ```
 
-A proof statement MUST transform that state only through a sound proof rule and
+[PROOF-007] A proof statement MUST transform that state only through a sound proof rule and
 MUST elaborate to valid formal proof evidence.
 
 ### 15.6.1 `refl`
@@ -1838,7 +1838,7 @@ matching the current goal, `apply` is rejected.
 assume h : P;
 ```
 
-MUST NOT manufacture `P`.
+[PROOF-008] MUST NOT manufacture `P`.
 
 It is legal in either of two cases:
 
@@ -1848,11 +1848,11 @@ It is legal in either of two cases:
    statement performs implication introduction: it adds `P` to `Γ`, names that
    premise `h`, and changes the current goal to `Q`.
 
-A Law application denotes the proposition of that Law instance (§10.4), so if
+[PROOF-009] A Law application denotes the proposition of that Law instance (§10.4), so if
 that proposition is an implication, `assume` may introduce its premise by the
 second rule above.
 
-In all other cases `assume` MUST be rejected.
+[PROOF-010] In all other cases `assume` MUST be rejected.
 
 ### 15.6.5 `rewrite`
 
@@ -1860,7 +1860,7 @@ In all other cases `assume` MUST be rejected.
 rewrite h;
 ```
 
-requires `h` to be checked evidence of an equality applicable to the current
+[PROOF-011] requires `h` to be checked evidence of an equality applicable to the current
 proof state. Rewriting MUST be implemented through equality elimination,
 substitution or an equivalent valid formal equality rule. It MUST preserve binding and
 avoid capture. If no sound rewrite is available, the statement is rejected.
@@ -1887,7 +1887,7 @@ Surface proof syntax may use:
 refl;
 ```
 
-Reflexivity MUST NOT establish:
+[REFL-001] Reflexivity MUST NOT establish:
 
 ```text
 Eq<T>(a, b)
@@ -1899,7 +1899,7 @@ unless `a` and `b` are definitionally equal.
 
 # 17. Refinement types
 
-A refinement type restricts values of an underlying type with a proposition.
+[REFINE-001] A refinement type restricts values of an underlying type with a proposition.
 
 ```cpp
 type Percentage = int where (self >= 0 && self <= 100);
@@ -1911,7 +1911,7 @@ Conceptually:
 Percentage = { x : int | 0 <= x && x <= 100 }
 ```
 
-A refinement has verification-level type identity while using the runtime
+[REFINE-002] A refinement has verification-level type identity while using the runtime
 representation of its ultimate ordinary C++ base type.
 
 ## 17.1 `self`
@@ -1921,11 +1921,11 @@ type. `self` is contextual and has no special meaning outside that predicate.
 
 ## 17.2 Introduction and construction
 
-A value enters a refinement only when the complete refinement predicate is
+[REFINE-003] A value enters a refinement only when the complete refinement predicate is
 established for that value in the current proof context, or when the required
 fact is admitted explicitly through trust.
 
-A refinement obligation is created at every semantic crossing that establishes or
+[REFINE-004] A refinement obligation is created at every semantic crossing that establishes or
 changes refined storage or a refined value, including as applicable:
 
 ```text
@@ -1940,7 +1940,7 @@ construction, copy and move
 verified call post-state
 ```
 
-Runtime path facts may discharge the obligation. No hidden runtime validation is
+[REFINE-005] Runtime path facts may discharge the obligation. No hidden runtime validation is
 generated.
 
 For example:
@@ -1957,9 +1957,9 @@ verified Positive positive_or_one(int x)
 }
 ```
 
-The first return uses the branch fact; the second uses the literal value.
+[REFINE-006] The first return uses the branch fact; the second uses the literal value.
 
-A refined parameter supplies its predicate as an entry premise of the verified
+[REFINE-007] A refined parameter supplies its predicate as an entry premise of the verified
 function. This is a formal precondition of the verified claim, not an ABI check.
 An unverified external caller can physically pass a representation-equivalent
 value that violates the refinement; in that execution the verified precondition
@@ -1967,15 +1967,15 @@ was not met and no C++L guarantee that depends on it applies.
 
 ## 17.3 Elimination and flow
 
-A refined value may be used as its base value without an additional proof. Its
+[REFINE-008] A refined value may be used as its base value without an additional proof. Its
 predicate remains available while the value/version to which it applies remains
 unchanged.
 
-A refined return type creates its own membership obligation on every normal
+[REFINE-009] A refined return type creates its own membership obligation on every normal
 return; a duplicate `ensures` is unnecessary. An explicit `ensures` may add
 additional postconditions.
 
-A write to refined storage creates a new logical version and MUST establish the
+[REFINE-010] A write to refined storage creates a new logical version and MUST establish the
 refinement predicate for the new value. Mutation through a possible alias
 invalidates facts about an earlier version according to §12.10.
 
@@ -2000,7 +2000,7 @@ them independently of the refinement.
 
 ## 17.5 Nested refinements
 
-If the base of a refinement is itself refined, all inherited predicates remain
+[REFINE-011] If the base of a refinement is itself refined, all inherited predicates remain
 part of membership:
 
 ```cpp
@@ -2012,19 +2012,19 @@ A `Percentage` value must establish both predicates.
 
 ## 17.6 Refined members and elements
 
-A refined data member or element is sound only if every way of establishing or
+[REFINE-012] A refined data member or element is sound only if every way of establishing or
 changing that storage proves the refinement, including aggregate/value/default
 initialization where applicable, constructor initialization, copy/move
 construction, copy/move assignment, direct and compound mutation, and mutation
 through aliases.
 
-Reading a refined member MUST NOT manufacture its predicate if some construction
+[REFINE-013] Reading a refined member MUST NOT manufacture its predicate if some construction
 or mutation path capable of producing the stored value escaped those obligations.
 The common storage model of §12.10 applies.
 
 ## 17.7 Indexed refinements
 
-A refinement family declares typed indices with parentheses and applies them with
+[REFINE-014] A refinement family declares typed indices with parentheses and applies them with
 angle brackets:
 
 ```cpp
@@ -2033,7 +2033,7 @@ type Index(unsigned n) = unsigned where (self < n);
 Index<4u>
 ```
 
-The index binder is in scope in the predicate. Each application substitutes the
+[REFINE-015] The index binder is in scope in the predicate. Each application substitutes the
 actual index capture-avoidingly and creates a distinct verification-level
 refinement identity as required by the formal type system.
 
@@ -2043,7 +2043,7 @@ when they have no runtime role.
 
 ## 17.8 Runtime representation and erasure
 
-A refinement declaration lowers canonically to the underlying C++ representation.
+[REFINE-016] A refinement declaration lowers canonically to the underlying C++ representation.
 Conceptually:
 
 ```text
@@ -2051,18 +2051,18 @@ type R = T where (P);        ->  using R = T;
 type R(I i) = T where (P);   ->  template <I i> using R = T;
 ```
 
-Erasure MUST NOT introduce a wrapper, hidden tag, constructor, validation flag,
+[REFINE-017] Erasure MUST NOT introduce a wrapper, hidden tag, constructor, validation flag,
 runtime predicate, RTTI distinction, hidden field, changed layout or changed
 calling convention solely because a value is refined.
 
-Runtime validation, when required for dynamic external input, is ordinary C++
+[REFINE-018] Runtime validation, when required for dynamic external input, is ordinary C++
 control flow under §28 and remains runtime code.
 
 ---
 
 # 18. Dependent and indexed formal types
 
-C++L permits verification-level type meaning to depend on values through indexed
+[DEP-001] C++L permits verification-level type meaning to depend on values through indexed
 refinements and formal propositions.
 
 ```cpp
@@ -2073,7 +2073,7 @@ type Index(std::size_t n) = std::size_t where (self < n);
 
 ## 18.1 Index stability
 
-A value used in a C++L type identity must be stable for the lifetime of that type
+[DEP-002] A value used in a C++L type identity must be stable for the lifetime of that type
 identity. A C++ constant template argument, a proof-only binder in a purely formal
 type, or another value whose identity is fixed by the formal context may be an
 index. Arbitrary mutable runtime state MUST NOT silently become a stable type
@@ -2081,7 +2081,7 @@ index.
 
 ## 18.2 Dependent function meaning
 
-A formal result type or proposition may depend on function parameters when the
+[DEP-003] A formal result type or proposition may depend on function parameters when the
 index is valid in that formal context. Conceptually this is a dependent function
 relationship:
 
@@ -2089,13 +2089,13 @@ relationship:
 Pi (x : A), B(x)
 ```
 
-This notation is explanatory; ordinary source function syntax and indexed type
+[DEP-004] This notation is explanatory; ordinary source function syntax and indexed type
 applications are the source surface. Dependent meaning MUST NOT alter ordinary
 runtime calling convention merely because the formal type carries an index.
 
 ## 18.3 Proof-only indices
 
-An index that exists only for proof has no runtime storage, lifetime, address,
+[DEP-005] An index that exists only for proof has no runtime storage, lifetime, address,
 layout or ABI position. Erasure removes it unless the same source value also has
 an independent ordinary C++ runtime role.
 
@@ -2105,7 +2105,7 @@ an independent ordinary C++ runtime role.
 
 C++L reasons directly over C++ types.
 
-The types a verified program uses are the types its C++ source declares, as resolved by Clang:
+[CXXTYPE-001] The types a verified program uses are the types its C++ source declares, as resolved by Clang:
 
 ```text
 struct
@@ -2120,11 +2120,11 @@ templates
 functions
 ```
 
-C++L does not introduce general-purpose algebraic data types or runtime pattern matching.
+[CXXTYPE-002] C++L does not introduce general-purpose algebraic data types or runtime pattern matching.
 
-A program MUST NOT be required to restate a C++ type in a second, logical type language before properties of its values can be proven.
+[CXXTYPE-003] A program MUST NOT be required to restate a C++ type in a second, logical type language before properties of its values can be proven.
 
-C++L provides the proof-only mathematical domains of §19.1 and the proof constructs of §§20–21. All such constructs are erased and have no runtime representation.
+[CXXTYPE-004] C++L provides the proof-only mathematical domains of §19.1 and the proof constructs of §§20–21. All such constructs are erased and have no runtime representation.
 
 ---
 
@@ -2140,7 +2140,7 @@ The core proof-only mathematical domains are:
 @Map<K, V>   finite maps from K to V
 ```
 
-The set of `@` domain constructors is closed by this specification. Other `@Name`
+[CXXTYPE-005] The set of `@` domain constructors is closed by this specification. Other `@Name`
 spellings are not C++L mathematical domains.
 
 `T`, `K` and `V` are verification types and may themselves be ordinary modeled
@@ -2159,7 +2159,7 @@ when their mathematical divisor is nonzero. Integer literals in a context that
 requires `@N` or `@Z` denote the corresponding exact mathematical value; a
 negative value is not a valid `@N` literal.
 
-For `@Seq<T>`, the proof intrinsics `size(s)` and `at(s, i)` are defined, with
+[CXXTYPE-006] For `@Seq<T>`, the proof intrinsics `size(s)` and `at(s, i)` are defined, with
 `size(s) : @N`; `at(s, i)` requires `i < size(s)`. For `@Set<T>`,
 `contains(set, value)` is the core membership proposition. For `@Map<K,V>`,
 `contains(map, key)` states key membership and `at(map, key)` requires that
@@ -2178,23 +2178,23 @@ for a modeled integral C++ value `x`. `@Z(x)` denotes the exact mathematical val
 represented by `x`. `@N(x)` additionally requires proof that the represented
 mathematical value is nonnegative. These conversions are proof-only and erase.
 
-No implicit conversion from an unbounded mathematical result back to a machine
+[CXXTYPE-007] No implicit conversion from an unbounded mathematical result back to a machine
 integer exists. Relating such a result to a machine value requires proving that
 the machine value represents the mathematical result under the selected C++
 semantics.
 
-The tokens `@N`, `@Z`, `@Seq`, `@Set` and `@Map` are lexically distinct C++L tokens
+[CXXTYPE-008] The tokens `@N`, `@Z`, `@Seq`, `@Set` and `@Map` are lexically distinct C++L tokens
 and do not invoke macros named `N`, `Z`, `Seq`, `Set` or `Map`.
 
 ---
 
 ## 19.2 Abstract models
 
-A specification MAY relate a C++ object to an abstract mathematical value, such as a `std::vector<int>` to an `@Seq<int>`.
+[CXXTYPE-009] A specification MAY relate a C++ object to an abstract mathematical value, such as a `std::vector<int>` to an `@Seq<int>`.
 
 The function relating them is proof-only.
 
-What that function states about a C++ type MUST be established by proof or declared as an explicit trusted assumption (§27). It MUST NOT be inferred.
+[CXXTYPE-010] What that function states about a C++ type MUST be established by proof or declared as an explicit trusted assumption (§27). It MUST NOT be inferred.
 
 ---
 
@@ -2227,10 +2227,10 @@ The core case partitions are:
 | `std::expected<T,E>`  | `value(payload)`, `error(reason)`                                     |
 | pointer `T*`          | `null`, `non_null`                                                    |
 
-The standard-library cases apply when the selected C++ language/library mode
+[CASE-001] The standard-library cases apply when the selected C++ language/library mode
 provides the corresponding standard type as defined by `COMPATIBILITY.md`.
 
-A scoped enumeration ranges over the complete value set permitted by its
+[CASE-002] A scoped enumeration ranges over the complete value set permitted by its
 underlying integer type. `unnamed(value)` therefore represents every value equal
 to no named enumerator and binds the exact underlying integer value. Enumerators
 with equal values name the same logical case.
@@ -2243,13 +2243,13 @@ Pointer `non_null` binds nothing. It proves only that the pointer is not null an
 provides no lifetime, provenance, bounds, initialization, ownership, readability
 or writability fact.
 
-A type not listed above has no core sum decomposition unless another normative
+[CASE-003] A type not listed above has no core sum decomposition unless another normative
 section explicitly defines one. Using `cases` on a type without a case partition
 is ill-formed C++L proof syntax for that subject.
 
 ## 20.2 Exhaustiveness and impossible cases
 
-A `cases` statement MUST account for every semantic case. A case is accounted for
+[CASE-004] A `cases` statement MUST account for every semantic case. A case is accounted for
 when either:
 
 1. an arm is present for it; or
@@ -2260,7 +2260,7 @@ There is no wildcard arm. `_` is not a C++L proof catch-all. Adding a new semant
 state therefore makes an older proof non-exhaustive unless that state is
 independently proved impossible.
 
-Omission by impossibility requires checked contradiction evidence from the
+[CASE-005] Omission by impossibility requires checked contradiction evidence from the
 current proof context; it MUST NOT be inferred from heuristics or assumed by the
 case partition itself.
 
@@ -2270,7 +2270,7 @@ Arm binders denote existing logical values exposed by the modeled C++ state. The
 create no runtime copy, object, conversion or temporary. Binder scope is the arm
 only.
 
-Each arm receives its discriminator as an available premise. `assume` may name
+[CASE-006] Each arm receives its discriminator as an available premise. `assume` may name
 that premise only according to §15.6.4. Every arm must establish the enclosing
 goal.
 
@@ -2303,7 +2303,7 @@ decompose point {
 Bindings are logical projections of the existing subobjects. No structured
 binding, copy, move, construction or destruction is generated at runtime.
 
-For records, base subobjects, inaccessible members, unions, potentially
+[CASE-007] For records, base subobjects, inaccessible members, unions, potentially
 ambiguous layout or components without a formal value model are not silently
 invented as product components. If the required decomposition cannot be defined
 from ordinary C++ semantics, the `decompose` statement is ill-formed for that
@@ -2311,17 +2311,17 @@ subject.
 
 ## 20.5 Stability and mutation
 
-A proof-side subject denotes one logical value/version for the duration of the
+[CASE-008] A proof-side subject denotes one logical value/version for the duration of the
 structural proof step. Case or component facts apply only to that version.
 
-If the surrounding proof system permits reasoning about mutable runtime storage,
+[CASE-009] If the surrounding proof system permits reasoning about mutable runtime storage,
 subsequent mutation or a call that may mutate the subject invalidates those facts
 through the normal storage/effect rules of §12.10. Case analysis does not receive
 a separate aliasing exception.
 
 ## 20.6 Evidence and erasure
 
-Case/decomposition evidence MUST be reducible to ordinary checked logical rules:
+[CASE-010] Case/decomposition evidence MUST be reducible to ordinary checked logical rules:
 discriminator reasoning, conjunction/disjunction/implication, equality,
 substitution and the formal state partition defined above. The correspondence
 between each C++ representation and its logical partition is a trust-sensitive
@@ -2366,11 +2366,11 @@ zero
 successor(pred)
 ```
 
-The successor arm receives `pred : @N` and the induction premise `P(pred)`.
+[INDUCT-001] The successor arm receives `pred : @N` and the induction premise `P(pred)`.
 
 ## 21.2 Unsigned machine integers
 
-For an unsigned machine integer type `T` with maximum `max(T)`, the principle is:
+[INDUCT-002] For an unsigned machine integer type `T` with maximum `max(T)`, the principle is:
 
 ```text
 P(0)
@@ -2379,7 +2379,7 @@ forall n : T, n < max(T) -> P(n) -> P(n + 1)
 forall n : T, P(n)
 ```
 
-The source cases are `zero` and `successor(pred)`. The successor arm receives both
+[INDUCT-003] The source cases are `zero` and `successor(pred)`. The successor arm receives both
 the range premise `pred < max(T)` and induction hypothesis `P(pred)`, so the
 successor step never relies on wraparound.
 
@@ -2395,7 +2395,7 @@ acquire an induction principle merely from their C++ type. A pointer may be null
 cyclic, dangling or shared, so pointer shape alone cannot justify structural
 induction.
 
-The core language defines no generic user-declared induction-principle syntax.
+[INDUCT-004] The core language defines no generic user-declared induction-principle syntax.
 Therefore `induction` is well-formed only for domains for which this specification
 (or another normative C++L standard section) defines the principle. Other
 subjects are rejected rather than supplied an assumed well-founded relation.
@@ -2406,14 +2406,14 @@ Arm binders name structural values; induction hypotheses and range conditions ar
 premises supplied by the induction principle and may be named using `assume`.
 A proof cannot obtain an induction hypothesis by recursively invoking itself.
 
-Every case must prove the enclosing goal. Automation must produce evidence for
+[INDUCT-005] Every case must prove the enclosing goal. Automation must produce evidence for
 every case. `induction` and all induction evidence erase completely.
 
 ---
 
 # 22. Termination
 
-Proof-producing computation and any runtime computation relied upon as total in
+[TERMINATION-001] Proof-producing computation and any runtime computation relied upon as total in
 formal reasoning MUST terminate. Divergence MUST NOT manufacture proof evidence.
 
 ## 22.1 Runtime divergence
@@ -2423,16 +2423,16 @@ correctness claim and does not prohibit divergence.
 
 ## 22.2 Proof-relevant computation
 
-Any computation unfolded during definitional equality, proof normalization or
+[TERMINATION-002] Any computation unfolded during definitional equality, proof normalization or
 other proof-relevant evaluation must be total for the evaluated inputs. A pure
 function is not automatically total.
 
-A verified runtime function used only through a normal-return contract may remain
+[TERMINATION-003] A verified runtime function used only through a normal-return contract may remain
 partial unless total correctness is requested or required by its proof role.
 
 ## 22.3 `decreases`
 
-A function or loop may request a termination proof with one clause:
+[TERMINATION-004] A function or loop may request a termination proof with one clause:
 
 ```cpp
 decreases (measure)
@@ -2444,17 +2444,17 @@ or one lexicographic list:
 decreases (outer, inner)
 ```
 
-Each measure is a specification expression over a well-founded ordered domain.
+[TERMINATION-005] Each measure is a specification expression over a well-founded ordered domain.
 For every recursive call or continuing loop iteration, the resulting measure
 tuple must be strictly smaller lexicographically than at the source point, and
 all expressions used in the comparison must be defined.
 
-Writing `decreases` makes termination part of the verification claim. Failure to
+[TERMINATION-006] Writing `decreases` makes termination part of the verification claim. Failure to
 prove descent is a verification failure; the clause MUST NOT be ignored.
 
 ## 22.4 Recursion and mutual recursion
 
-For direct recursion, every recursive call must satisfy the declared descent.
+[TERMINATION-007] For direct recursion, every recursive call must satisfy the declared descent.
 For mutually recursive functions in one recursion strongly connected component,
 the verifier must establish a common well-founded ranking sufficient for every
 recursive edge. This may be represented by compatible declared measure tuples or
@@ -2475,7 +2475,7 @@ overload of `<` is assumed well-founded.
 
 # 23. Partial and total correctness
 
-C++L distinguishes partial correctness from total correctness.
+[CORRECT-001] C++L distinguishes partial correctness from total correctness.
 
 A verified postcondition ordinarily means:
 
@@ -2485,12 +2485,12 @@ and returns normally,
 then its postconditions hold
 ```
 
-This is partial correctness. It does not by itself prove termination.
+[CORRECT-002] This is partial correctness. It does not by itself prove termination.
 
-A function has total correctness only when termination of every execution path
+[CORRECT-003] A function has total correctness only when termination of every execution path
 covered by the verification claim is also established.
 
-C++L introduces no separate `total` keyword. Termination becomes
+[CORRECT-004] C++L introduces no separate `total` keyword. Termination becomes
 a required obligation in either of these ways:
 
 1. the program explicitly writes `decreases (...)` on a recursive function or
@@ -2511,12 +2511,12 @@ contract when every loop and called dependency required for termination has been
 proved terminating. Conversely, any loop or call whose termination is not
 established makes the containing contract partial with respect to termination.
 
-A partial-correctness function body MUST NOT be admitted as a total formal
+[CORRECT-005] A partial-correctness function body MUST NOT be admitted as a total formal
 definition for unfolding in proof. A verified caller MAY still use its normal-
 return contract, but the caller is itself partial if its own termination depends
 on that partial call.
 
-Reports MUST distinguish partial-correctness contracts from total-correctness
+[CORRECT-006] Reports MUST distinguish partial-correctness contracts from total-correctness
 contracts.
 
 ---
@@ -2544,7 +2544,7 @@ for (init; condition; step)
 }
 ```
 
-For a range-based `for`, the clauses follow the range-for header. For `do`/`while`,
+[LOOP-001] For a range-based `for`, the clauses follow the range-for header. For `do`/`while`,
 they follow `do` and precede the body:
 
 ```cpp
@@ -2561,7 +2561,7 @@ as having the constant condition `true` for verification.
 
 ## 24.1 Invariant obligations
 
-An invariant is not assumed merely because it is written. Verification must prove:
+[LOOP-002] An invariant is not assumed merely because it is written. Verification must prove:
 
 ```text
 entry:
@@ -2582,10 +2582,10 @@ established on its own path; it does not automatically acquire the negated loop
 condition. `return` and `throw` leave the loop according to ordinary C++ control
 flow.
 
-For a `do` loop, entry means immediately before the first body execution. The body
+[LOOP-003] For a `do` loop, entry means immediately before the first body execution. The body
 therefore must satisfy the declared invariant even on the first iteration.
 
-For a range-based `for`, verification follows the semantic C++ expansion of range
+[LOOP-004] For a range-based `for`, verification follows the semantic C++ expansion of range
 initialization, begin/end acquisition, iterator comparison, element binding,
 increment and destruction while preserving the source-level invariant meaning.
 The invariant holds at each iteration head after the range machinery required to
@@ -2593,7 +2593,7 @@ reach that head has executed and before the user body.
 
 ## 24.2 Loop-carried state
 
-Every place that may be modified by the loop condition, body, step, called
+[LOOP-005] Every place that may be modified by the loop condition, body, step, called
 functions or aliases is loop-carried state. At a generic loop head, facts about a
 carried value are available only when established by the invariant, stable
 external facts or other sound loop reasoning. The verifier MUST NOT reuse a
@@ -2603,12 +2603,12 @@ Writes, aliases and call effects inside loops follow §12.10.
 
 ## 24.3 Loop termination
 
-A loop with `decreases (M)` requests totality for that loop. The verifier must
+[LOOP-006] A loop with `decreases (M)` requests totality for that loop. The verifier must
 prove that `M` is in a well-founded domain and strictly decreases on every path
 that continues to another iteration, including `continue` paths and the
 traditional `for` step.
 
-A loop with no established termination proof may still satisfy partial
+[LOOP-007] A loop with no established termination proof may still satisfy partial
 correctness. If total correctness of the containing function is required, every
 reachable loop on the relevant paths must have termination established.
 
@@ -2636,7 +2636,7 @@ Ghost state may record symbolic information useful for proof. The declaration fo
 
 ## 25.1 Runtime erasure
 
-Ghost locals MUST be erased before runtime execution. They MUST NOT be converted
+[GHOST-001] Ghost locals MUST be erased before runtime execution. They MUST NOT be converted
 into runtime data or used to affect runtime behavior. Because the entire ghost
 declaration erases, its initializer and any proof-side destruction semantics MUST
 be free of observable runtime effects. A ghost declaration that would require an
@@ -2647,7 +2647,7 @@ destructor effect, or any other runtime side effect if executed MUST be rejected
 
 ## 25.2 No runtime influence
 
-Ghost state MUST NOT:
+[GHOST-002] Ghost state MUST NOT:
 
 ```text
 control runtime branching
@@ -2681,13 +2681,13 @@ unsafe {
 }
 ```
 
-An ordinary function declaration may carry contextual `unsafe` after ordinary C++ prefix specifiers and before the return type, for example:
+[UNSAFE-001] An ordinary function declaration may carry contextual `unsafe` after ordinary C++ prefix specifiers and before the return type, for example:
 
 ```cpp
 unsafe unsigned read_device();
 ```
 
-An `unsafe` declaration states that calls cross an unsafe runtime boundary. There
+[UNSAFE-002] An `unsafe` declaration states that calls cross an unsafe runtime boundary. There
 is no unsafe expression form. `unsafe` MUST NOT be combined with `verified` or
 `pure` to waive their obligations.
 
@@ -2711,9 +2711,9 @@ assumed correct
 
 ## 26.2 Unsafe cannot manufacture proofs
 
-Unsafe runtime code MUST NOT directly create valid proof evidence.
+[UNSAFE-003] Unsafe runtime code MUST NOT directly create valid proof evidence.
 
-An unsafe result may enter verified reasoning only through an explicit mechanism such as:
+[UNSAFE-004] An unsafe result may enter verified reasoning only through an explicit mechanism such as:
 
 ```text
 runtime validation
@@ -2725,7 +2725,7 @@ independently established proof
 
 ## 26.3 Unsafe dependencies
 
-If a verified proposition depends on a fact produced only by unsafe code and no checked or trusted evidence establishes that fact, the proposition remains unresolved.
+[UNSAFE-005] If a verified proposition depends on a fact produced only by unsafe code and no checked or trusted evidence establishes that fact, the proposition remains unresolved.
 
 ---
 
@@ -2748,7 +2748,7 @@ trusted law external_assumption(T x)
     proves (Q(x));
 ```
 
-The proposition is accepted as an assumption relative to its declared premise.
+[TRUSTED-001] The proposition is accepted as an assumption relative to its declared premise.
 Its status is `TRUSTED`, not `PROVEN`.
 
 `trusted` is not a generic block, expression, cast, function modifier, purity
@@ -2756,25 +2756,25 @@ modifier or escape hatch. Other spellings have no C++L meaning.
 
 ## 27.1 Trust dependency
 
-Any proof derived from a trusted Law is valid only relative to that assumption.
+[TRUSTED-002] Any proof derived from a trusted Law is valid only relative to that assumption.
 The complete transitive trust dependency closure MUST remain attached to the
 resulting evidence and reportable by tooling even though the trusted declaration
 erases from runtime code.
 
-A trusted Law may state ordinary formal propositions, refinement relations and
+[TRUSTED-003] A trusted Law may state ordinary formal propositions, refinement relations and
 built-in specification propositions such as `readable(...)` or `writable(...)`.
 Such a Law admits the proposition; it does not perform runtime validation or
 change memory.
 
 ## 27.2 No implicit trust
 
-Unsupported semantics, unknown facts, proof-search failure, timeout, unsafe code,
+[TRUSTED-004] Unsupported semantics, unknown facts, proof-search failure, timeout, unsafe code,
 unverified code and proof failure MUST NOT be silently converted into trust.
 Only an explicit `trusted law` introduces a trusted premise.
 
 ## 27.3 Trusted Law restrictions
 
-A `trusted law` MUST end with a semicolon and MUST NOT have a proof body. Its
+[TRUSTED-005] A `trusted law` MUST end with a semicolon and MUST NOT have a proof body. Its
 proposition must be well-formed and side-effect-free even though it is not proved.
 Its parameters and `expects` premise follow ordinary Law semantics; trust does not
 change quantification or scope.
@@ -2797,7 +2797,7 @@ from:
 runtime validation
 ```
 
-Runtime validation is performed using ordinary C++ execution. C++L does not
+[RUNTIMECHECK-001] Runtime validation is performed using ordinary C++ execution. C++L does not
 require a special `validate<T>()` language construct or standard runtime validator.
 C++L ships no required runtime support library and injects no verification runtime
 into the executable.
@@ -2815,7 +2815,7 @@ verified void accept_percentage_input(int raw)
 }
 ```
 
-The runtime `if` performs the actual validation. The refinement introduction is
+[RUNTIMECHECK-002] The runtime `if` performs the actual validation. The refinement introduction is
 checked because it occurs in a verified body. On the successful branch, C++L
 may use the path facts:
 
@@ -2826,7 +2826,7 @@ raw <= 100
 
 to establish that `raw` satisfies the refinement predicate for `Percentage`.
 
-No hidden runtime check is generated by the refinement declaration, and
+[RUNTIMECHECK-003] No hidden runtime check is generated by the refinement declaration, and
 refinement introduction is not an implicit conversion unless the current proof
 context already establishes the predicate.
 
@@ -2837,7 +2837,7 @@ context already establishes the predicate.
 On a successful ordinary C++ runtime-validation path, a property established by
 that path MAY be used as evidence about the concrete runtime value.
 
-The evidence applies only where the corresponding path fact remains valid.
+[RUNTIMECHECK-004] The evidence applies only where the corresponding path fact remains valid.
 
 For example:
 
@@ -2847,10 +2847,10 @@ if (raw > 0) {
 }
 ```
 
-The refinement crossing is valid only on the branch where `raw > 0` has been
+[RUNTIMECHECK-005] The refinement crossing is valid only on the branch where `raw > 0` has been
 established.
 
-A checked helper function MAY also establish a path fact through its verified
+[RUNTIMECHECK-006] A checked helper function MAY also establish a path fact through its verified
 contract:
 
 ```cpp
@@ -2876,7 +2876,7 @@ introduction. No special validation API is required.
 
 ## 28.2 Failed validation
 
-A failed validation path MUST NOT construct or expose a refined value whose
+[RUNTIMECHECK-007] A failed validation path MUST NOT construct or expose a refined value whose
 predicate has not been established.
 
 Failure handling remains ordinary C++ runtime behavior.
@@ -2885,7 +2885,7 @@ Failure handling remains ordinary C++ runtime behavior.
 
 ## 28.3 Runtime-check status
 
-A property established by executing a runtime check has status conceptually equivalent to:
+[RUNTIMECHECK-008] A property established by executing a runtime check has status conceptually equivalent to:
 
 ```text
 RUNTIME-CHECKED
@@ -2900,7 +2900,7 @@ It is not a universal compile-time theorem.
 Ordinary C++ runtime checks written by the programmer remain ordinary runtime
 behavior after C++L erasure.
 
-Only the verification interpretation of a successful validation path is erased.
+[RUNTIMECHECK-009] Only the verification interpretation of a successful validation path is erased.
 C++L itself MUST NOT add a runtime check that the programmer did not request
 through ordinary executable C++.
 
@@ -2924,13 +2924,13 @@ are not silently replaced with mathematical integers.
 
 ## 29.1 Mathematical and machine numbers are distinct
 
-A proof about mathematical integers MUST NOT silently be applied to bounded machine integers when overflow or other machine behavior can differ.
+[ARITH-001] A proof about mathematical integers MUST NOT silently be applied to bounded machine integers when overflow or other machine behavior can differ.
 
 ---
 
 ## 29.2 Overflow
 
-Verification involving arithmetic MUST respect the selected C++ semantics.
+[ARITH-002] Verification involving arithmetic MUST respect the selected C++ semantics.
 
 For example, proof must distinguish cases such as:
 
@@ -2941,7 +2941,7 @@ signed arithmetic with undefined overflow
 checked arithmetic
 ```
 
-C++ defines `+`, `-` and `*` on two unsigned operands of one type, after the
+[ARITH-003] C++ defines `+`, `-` and `*` on two unsigned operands of one type, after the
 usual arithmetic conversions, as the result reduced modulo `2^w`. That is
 exactly the core's wrapping arithmetic (section 7.1.1), so those operators MAY
 be modeled by it. Operands narrower than `int` are promoted to `int` first, and
@@ -2954,7 +2954,7 @@ a verified body using them MUST be rejected.
 
 ## 29.3 Division and remainder
 
-Operations such as division MUST satisfy all C++ conditions required for defined behavior.
+[ARITH-004] Operations such as division MUST satisfy all C++ conditions required for defined behavior.
 
 For example:
 
@@ -2968,7 +2968,7 @@ cannot occur on a verified reachable path.
 
 ## 29.4 Shifts
 
-Shift amounts and operand conditions MUST satisfy the selected C++ defined-behavior rules.
+[ARITH-005] Shift amounts and operand conditions MUST satisfy the selected C++ defined-behavior rules.
 
 ---
 
@@ -2976,7 +2976,7 @@ Shift amounts and operand conditions MUST satisfy the selected C++ defined-behav
 
 C++ floating-point values are not mathematical real numbers.
 
-Verification over floating-point types MUST account for relevant runtime semantics, including where applicable:
+[FLOAT-001] Verification over floating-point types MUST account for relevant runtime semantics, including where applicable:
 
 ```text
 rounding
@@ -2988,7 +2988,7 @@ exceptional values
 target behavior
 ```
 
-A verifier MUST NOT silently reason about:
+[FLOAT-002] A verifier MUST NOT silently reason about:
 
 ```cpp
 double
@@ -3006,9 +3006,9 @@ unless an explicit abstraction justifies that correspondence.
 
 # 31. Undefined behavior
 
-A fully verified execution path MUST NOT rely on undefined behavior.
+[UB-001] A fully verified execution path MUST NOT rely on undefined behavior.
 
-Verification MUST establish the preconditions required for every modeled potentially undefined operation on reachable verified paths.
+[UB-002] Verification MUST establish the preconditions required for every modeled potentially undefined operation on reachable verified paths.
 
 Examples include:
 
@@ -3030,9 +3030,9 @@ data races
 
 ## 31.1 Ordinary unverified C++
 
-This rule does not cause all ordinary existing C++ containing potential undefined behavior to stop compiling.
+[UB-003] This rule does not cause all ordinary existing C++ containing potential undefined behavior to stop compiling.
 
-The rule applies to the guarantees claimed for verified code.
+[UB-004] The rule applies to the guarantees claimed for verified code.
 
 Ordinary unverified C++ retains ordinary C++ semantics.
 
@@ -3040,16 +3040,16 @@ Ordinary unverified C++ retains ordinary C++ semantics.
 
 # 32. Object lifetime, pointers and the C++ object model
 
-C++L does not replace the C++ object model. Verification of memory operations must
+[MEM-001] C++L does not replace the C++ object model. Verification of memory operations must
 respect object lifetime, storage duration, effective/dynamic type where relevant,
 alignment, provenance, bounds, aliasing, initialization, cv/access rules,
 construction, destruction and moves.
 
-The detailed proof-level storage and capability rules are in §12.10.
+[MEM-002] The detailed proof-level storage and capability rules are in §12.10.
 
 ## 32.1 Pointers are not integer addresses
 
-A pointer is not generally equivalent to an integer address. Converting or
+[MEM-003] A pointer is not generally equivalent to an integer address. Converting or
 comparing pointer representations MUST preserve the guarantees and limitations of
 the selected C++ semantics. Numeric address equality alone does not establish
 provenance, lifetime or dereferenceability.
@@ -3063,27 +3063,27 @@ including one-past semantics.
 
 ## 32.3 References
 
-A reference carries ordinary C++ lifetime, binding and aliasing semantics. It is
+[MEM-004] A reference carries ordinary C++ lifetime, binding and aliasing semantics. It is
 not merely an integer or an automatically valid non-null pointer. A reference does
 not establish uniqueness, global immutability or a refinement fact not otherwise
 proved.
 
 ## 32.4 Moves
 
-A move is not assumed to be a copy. The moved-to and moved-from states follow the
+[MEM-005] A move is not assumed to be a copy. The moved-to and moved-from states follow the
 actual C++ type's semantics. Facts about the pre-move object may be retained only
 when justified by the type's checked contract/model.
 
 ## 32.5 Construction and destruction
 
-Construction begins object lifetime only according to C++ rules. Destruction ends
+[MEM-006] Construction begins object lifetime only according to C++ rules. Destruction ends
 lifetime in ordinary C++ order. RAII side effects, base/member destruction,
 temporary destruction and unwinding are observable runtime semantics where C++
 makes them observable; proof erasure MUST NOT change them.
 
 ## 32.6 Potentially overlapping storage
 
-Verification MUST account for unions, base subobjects, bit-fields,
+[MEM-007] Verification MUST account for unions, base subobjects, bit-fields,
 `[[no_unique_address]]`, placement construction and other C++ cases in which
 source-level member distinction does not imply non-overlapping storage. Disjoint
 places may be assumed only from C++ semantics or checked evidence.
@@ -3098,13 +3098,13 @@ C++L preserves ordinary C++ exception semantics.
 the normal postcondition unless another specification mechanism explicitly says
 so; this specification defines no separate exceptional-postcondition clause.
 
-Verified reasoning MUST nevertheless model the effects of throwing expressions,
+[EXCEPT-001] Verified reasoning MUST nevertheless model the effects of throwing expressions,
 stack unwinding and destructors whenever they can affect a claimed property. A
 proof that a call cannot throw requires checked evidence from ordinary C++
 `noexcept` semantics and/or verified body semantics; exception freedom is never
 silently assumed.
 
-A `noexcept` function retains the ordinary C++ consequence that an escaping
+[EXCEPT-002] A `noexcept` function retains the ordinary C++ consequence that an escaping
 exception causes termination. Verification MUST NOT reinterpret that behavior.
 
 Total correctness and exception behavior are distinct: termination may include
@@ -3115,10 +3115,10 @@ only to normal return.
 
 # 34. Concurrency
 
-C++L preserves the C++ concurrency and memory model. Ordinary threads, atomics,
+[CONCUR-001] C++L preserves the C++ concurrency and memory model. Ordinary threads, atomics,
 locks and synchronization primitives keep their C++ runtime semantics.
 
-A verification claim involving shared mutable state must account for all
+[CONCUR-002] A verification claim involving shared mutable state must account for all
 interleavings permitted by the selected C++ model, including happens-before,
 memory ordering, synchronization and data-race rules. Sequential reasoning MUST
 NOT be applied to a value that another thread may change unless synchronization
@@ -3128,7 +3128,7 @@ or another proof establishes the required stability.
 thread safety. A non-atomic read does not become stable merely because the same
 thread has not written the object.
 
-C++L introduces no separate runtime concurrency system. A verified concurrent
+[CONCUR-003] C++L introduces no separate runtime concurrency system. A verified concurrent
 program succeeds only when the verifier can establish the required C++ memory-
 model properties from the program's ordinary concurrency operations and checked
 formal facts. Otherwise the verification claim fails closed.
@@ -3137,7 +3137,7 @@ formal facts. Otherwise the verification claim fails closed.
 
 # 35. Foreign and unverified code
 
-C++L interoperates with ordinary C, C++, Objective-C++, assembly, platform APIs
+[FFI-001] C++L interoperates with ordinary C, C++, Objective-C++, assembly, platform APIs
 and other foreign systems through ordinary runtime ABI mechanisms.
 
 Foreign code is not automatically verified. A verified caller may obtain formal
@@ -3149,9 +3149,9 @@ facts about a foreign interaction only from:
 - facts already guaranteed by ordinary C++ semantics independently of the
   foreign implementation.
 
-An `unsafe` boundary permits execution but supplies no formal facts by itself.
+[FFI-002] An `unsafe` boundary permits execution but supplies no formal facts by itself.
 
-Runtime foreign code MUST NOT manufacture proof objects. External proof artifacts
+[FFI-003] Runtime foreign code MUST NOT manufacture proof objects. External proof artifacts
 may be consumed only when they are translated into the normal C++L evidence model
 and independently checked according to the same proof rules.
 
@@ -3163,9 +3163,9 @@ remains reportable and does not generate runtime checks.
 
 # 36. Erasure
 
-C++L separates runtime C++ from verification-only language constructs.
+[ERASE-001] C++L separates runtime C++ from verification-only language constructs.
 
-Verification-only constructs are erased before ordinary runtime execution.
+[ERASE-002] Verification-only constructs are erased before ordinary runtime execution.
 
 These include, where applicable:
 
@@ -3197,31 +3197,31 @@ proof evidence
 trusted verification metadata
 ```
 
-The contextual specification meanings of `result`, `old` and `self` exist only
+[ERASE-003] The contextual specification meanings of `result`, `old` and `self` exist only
 during verification and introduce no runtime state of their own.
 
 `verified` and `pure` are verification modifiers. Their markers erase while the
 ordinary C++ function body remains. `unsafe` is a verification marker; the marker
 erases while the ordinary C++ runtime operations inside the unsafe boundary remain.
 
-A refinement declaration may require canonical lowering to its underlying C++
+[ERASE-004] A refinement declaration may require canonical lowering to its underlying C++
 representation rather than simple token deletion.
 
 ---
 
 ## 36.1 Erasure must preserve runtime behavior
 
-For every accepted C++L program `p`, erasure MUST preserve observable runtime
+[ERASE-005] For every accepted C++L program `p`, erasure MUST preserve observable runtime
 semantics:
 
 ```text
 Sem_runtime(p) = Sem_runtime(erase(p))
 ```
 
-C++L verification may affect whether a program is accepted. It MUST NOT otherwise
+[ERASE-006] C++L verification may affect whether a program is accepted. It MUST NOT otherwise
 change what an accepted program does at runtime.
 
-Verification-only constructs MUST NOT introduce hidden runtime assertions, proof
+[ERASE-007] Verification-only constructs MUST NOT introduce hidden runtime assertions, proof
 interpreters, proof tables, theorem dispatch, proof-only branches or loops,
 refinement tags, validation flags, hidden verification fields, verification-only
 constructors, observable verification-only temporaries or changed calling conventions.
@@ -3230,9 +3230,9 @@ constructors, observable verification-only temporaries or changed calling conven
 
 ## 36.2 No automatic runtime assertion substitution
 
-A specification clause MUST NOT become a runtime assertion merely because its proof failed.
+[ERASE-008] A specification clause MUST NOT become a runtime assertion merely because its proof failed.
 
-Verification failure and runtime checking are separate mechanisms.
+[ERASE-009] Verification failure and runtime checking are separate mechanisms.
 
 ---
 
@@ -3253,14 +3253,14 @@ lowers conceptually to an ordinary C++ representation equivalent to:
 using Percentage = int;
 ```
 
-Refinement erasure MUST NOT introduce a wrapper, hidden tag, validation flag,
+[ERASE-010] Refinement erasure MUST NOT introduce a wrapper, hidden tag, validation flag,
 additional field, automatic runtime check or different calling convention.
 
 ---
 
 ## 36.4 Ghost erasure
 
-Ghost declarations, values and operations have no runtime identity. A ghost
+[ERASE-011] Ghost declarations, values and operations have no runtime identity. A ghost
 declaration erases completely, including its verification-only initialization and
 destruction semantics. Runtime computation MUST NOT depend on erased ghost state.
 
@@ -3268,28 +3268,28 @@ destruction semantics. Runtime computation MUST NOT depend on erased ghost state
 
 ## 36.5 Runtime validation is not erased
 
-Runtime validation written as ordinary C++ remains ordinary runtime behavior. The
+[ERASE-012] Runtime validation written as ordinary C++ remains ordinary runtime behavior. The
 proof facts derived from a validation branch erase; the branch itself does not.
 
 ---
 
 ## 36.6 No C++L runtime requirement
 
-C++L ships no required runtime support library for verification and injects no
+[ERASE-013] C++L ships no required runtime support library for verification and injects no
 verification runtime into the executable.
 
-A conforming C++L program MUST NOT require a theorem VM, proof interpreter, proof
+[ERASE-014] A conforming C++L program MUST NOT require a theorem VM, proof interpreter, proof
 garbage collector, proof runtime, refinement runtime, contract runtime or hidden
 validator runtime merely because C++L verification was used.
 
-Runtime execution remains ordinary native C++ execution unless the program itself
+[ERASE-015] Runtime execution remains ordinary native C++ execution unless the program itself
 explicitly depends on another runtime library or ordinary runtime support code.
 
 ---
 
 # 37. ABI semantics
 
-Verification-only C++L constructs MUST NOT by themselves change an existing C++
+[ABI-001] Verification-only C++L constructs MUST NOT by themselves change an existing C++
 function's native ABI.
 
 This includes:
@@ -3319,22 +3319,22 @@ trusted verification metadata
 unsafe verification metadata
 ```
 
-Proof-only values are absent from runtime calling conventions.
+[ABI-002] Proof-only values are absent from runtime calling conventions.
 
 Refinement types use the runtime representation and ABI of their underlying C++
 base type unless this specification explicitly defines otherwise.
 
-Consequently, two declarations that differ only by refinement identity MUST NOT
+[ABI-003] Consequently, two declarations that differ only by refinement identity MUST NOT
 silently become distinct native overloads when their erased C++ signatures are
 the same.
 
-Proof metadata needed for verification across translation units is not native ABI
+[ABI-004] Proof metadata needed for verification across translation units is not native ABI
 state. A conforming implementation MUST transport or reconstruct that metadata by
 a mechanism that preserves its semantic identity and trust dependencies; it MUST
 NOT repair missing metadata by changing the native calling convention or by
 manufacturing evidence.
 
-Native ABI compatibility and verification metadata availability are separate
+[ABI-005] Native ABI compatibility and verification metadata availability are separate
 properties. If required verification metadata is unavailable, verification MUST
 fail closed.
 
@@ -3344,7 +3344,7 @@ fail closed.
 
 C++L distinguishes different semantic assurance states.
 
-They MUST NOT be collapsed into one generic `verified` result.
+[STATUS-001] They MUST NOT be collapsed into one generic `verified` result.
 
 ---
 
@@ -3352,7 +3352,7 @@ They MUST NOT be collapsed into one generic `verified` result.
 
 `PROVEN` means valid proof evidence exists for the proposition under its explicit premises.
 
-A proven proposition may still have an explicit dependency on trusted premises.
+[STATUS-002] A proven proposition may still have an explicit dependency on trusted premises.
 
 That dependency is not erased by the word `PROVEN`.
 
@@ -3392,7 +3392,7 @@ Ordinary C++ may remain unverified and still compile.
 
 # 39. No implicit status promotion
 
-The following conversions are forbidden unless justified by the formal rules:
+[STATUSPROMO-001] The following conversions are forbidden unless justified by the formal rules:
 
 ```text
 UNRESOLVED → PROVEN
@@ -3401,7 +3401,7 @@ UNSAFE     → PROVEN
 TRUSTED    → PROVEN
 ```
 
-A trusted premise may participate in the derivation of a proven theorem, but the premise itself remains trusted.
+[STATUSPROMO-002] A trusted premise may participate in the derivation of a proven theorem, but the premise itself remains trusted.
 
 ---
 
@@ -3421,13 +3421,13 @@ ordinary existing C++
 
 is valid.
 
-The formal guarantee stops or changes at the boundary unless an explicit specification bridges it.
+[BOUNDARY-001] The formal guarantee stops or changes at the boundary unless an explicit specification bridges it.
 
 ---
 
 # 41. Calls from verified code
 
-When verified code calls another function, one of the following must provide the facts required by the caller's proof:
+[CALL-001] When verified code calls another function, one of the following must provide the facts required by the caller's proof:
 
 ```text
 verified contract
@@ -3437,7 +3437,7 @@ runtime-validated result
 explicitly irrelevant behavior
 ```
 
-An unknown implementation MUST NOT silently contribute arbitrary formal facts.
+[CALL-002] An unknown implementation MUST NOT silently contribute arbitrary formal facts.
 
 ---
 
@@ -3446,12 +3446,12 @@ An unknown implementation MUST NOT silently contribute arbitrary formal facts.
 C++ templates retain ordinary C++ parsing, lookup, substitution, constraints,
 overload resolution, instantiation and specialization semantics.
 
-A C++L contract, refinement, Law or proof associated with a template is itself
+[TEMPLATE-001] A C++L contract, refinement, Law or proof associated with a template is itself
 parameterized by the template's semantic parameters. Proof obligations are
 checked for the actual specialization unless they were already established by a
 valid generic proof.
 
-A C++ constraint such as `requires` controls C++ template viability; it is not by
+[TEMPLATE-002] A C++ constraint such as `requires` controls C++ template viability; it is not by
 itself a C++L theorem. Conversely, C++L proof evidence does not alter C++ overload
 resolution unless ordinary C++ source semantics independently do so.
 
@@ -3461,17 +3461,17 @@ termination/effect summaries and trust dependencies. Header definitions, modules
 explicit-instantiation metadata or another semantically equivalent transport may
 provide it.
 
-Evidence for one specialization MUST NOT be reused for another unless a checked
+[TEMPLATE-003] Evidence for one specialization MUST NOT be reused for another unless a checked
 generic derivation justifies that reuse.
 
 ---
 
 # 43. Namespaces, classes and formal scope
 
-C++L declarations participate in lexical scope while referenced C++ entities use
+[SCOPE-001] C++L declarations participate in lexical scope while referenced C++ entities use
 ordinary C++ name lookup unless a formal binder explicitly shadows a name.
 
-Laws and proofs may appear at namespace scope. Class-scope Laws follow §10.6.
+[SCOPE-002] Laws and proofs may appear at namespace scope. Class-scope Laws follow §10.6.
 Proof binders, quantifier binders, case binders and induction binders have lexical
 proof scope and MUST NOT escape it.
 
@@ -3480,18 +3480,18 @@ qualified names, overload resolution and template specialization are resolved
 through the corresponding C++ entity model before C++L attaches verification
 metadata.
 
-An unnamed namespace gives Laws/proofs translation-unit-local identity just as it
+[SCOPE-003] An unnamed namespace gives Laws/proofs translation-unit-local identity just as it
 does for ordinary C++ entities.
 
 ---
 
 # 44. Declarations, headers and translation units
 
-C++L uses ordinary supported C++ source/header organization. Public verification
+[TU-001] C++L uses ordinary supported C++ source/header organization. Public verification
 interfaces normally place contracts, shared refinements and reusable Laws/proofs
 where callers can see them.
 
-A public verified declaration may carry the contract while its matching
+[TU-002] A public verified declaration may carry the contract while its matching
 out-of-line definition carries only the ordinary C++ function body:
 
 ```cpp
@@ -3507,12 +3507,12 @@ unsigned withdraw(unsigned balance, unsigned amount)
 }
 ```
 
-The declaration and definition are one Clang-resolved function entity. The
+[TU-003] The declaration and definition are one Clang-resolved function entity. The
 contract belongs to that entity. Repeated contracts, when present, must be
 semantically identical after parameter renaming and normal resolution;
 conflicting contracts are ill-formed.
 
-A declaration alone does not prove its implementation. A caller may rely on its
+[TU-004] A declaration alone does not prove its implementation. A caller may rely on its
 verified summary only when checked implementation evidence or an explicit trusted
 proposition establishes the required summary.
 
@@ -3525,21 +3525,21 @@ of native ABI symbols.
 
 # 45. Modules
 
-When the selected C++ mode supports modules, ordinary module parsing, ownership,
+[MODULE-001] When the selected C++ mode supports modules, ordinary module parsing, ownership,
 visibility and import semantics remain C++ semantics.
 
-C++L verification metadata associated with exported declarations must be
+[MODULE-002] C++L verification metadata associated with exported declarations must be
 available to importing verification contexts with the same meaning it has in the
 defining module. Import does not weaken contracts, erase trust dependencies or
 create proof evidence that was absent from the exported verification interface.
 
-C++L introduces no separate module syntax solely for proof metadata.
+[MODULE-003] C++L introduces no separate module syntax solely for proof metadata.
 
 ---
 
 # 46. File extensions
 
-C++L does not require existing projects to rename C++ source files.
+[FILEEXT-001] C++L does not require existing projects to rename C++ source files.
 
 Supported ordinary extensions may include:
 
@@ -3552,13 +3552,13 @@ Supported ordinary extensions may include:
 .hh
 ```
 
-An implementation MAY additionally support a dedicated extension such as:
+[FILEEXT-002] An implementation MAY additionally support a dedicated extension such as:
 
 ```text
 .cppl
 ```
 
-A dedicated extension MUST NOT be required merely to compile ordinary supported C++ as C++L.
+[FILEEXT-003] A dedicated extension MUST NOT be required merely to compile ordinary supported C++ as C++L.
 
 ---
 
@@ -3624,11 +3624,11 @@ Runtime assertions and formal proof are separate mechanisms.
 
 # 50. Counterexamples
 
-A valid counterexample may establish that a universal proposition is false.
+[CEX-001] A valid counterexample may establish that a universal proposition is false.
 
 Failure to find a counterexample does not establish that the proposition is true.
 
-C++L MUST NOT equate:
+[CEX-002] C++L MUST NOT equate:
 
 ```text
 no counterexample found
@@ -3644,7 +3644,7 @@ PROVEN
 
 # 51. Impossible states
 
-C++L encourages C++ types that encode mutually exclusive states directly.
+[IMPOSSIBLE-001] C++L encourages C++ types that encode mutually exclusive states directly.
 
 For example:
 
@@ -3656,21 +3656,21 @@ holds one alternative at a time. After an exception during assignment it may hol
 
 Such a type may make states structurally impossible that would otherwise require Boolean invariants.
 
-Proofs may rely on that exclusivity through case analysis (§20), which must also account for every other state C++ permits.
+[IMPOSSIBLE-002] Proofs may rely on that exclusivity through case analysis (§20), which must also account for every other state C++ permits.
 
 ---
 
 # 52. Complete-conformance and fail-closed rule
 
-This specification defines the target language independently of implementation
+[FAILCLOSED-001] This specification defines the target language independently of implementation
 progress.
 
-A complete conforming implementation MUST implement every required construct and
+[FAILCLOSED-002] A complete conforming implementation MUST implement every required construct and
 semantic rule defined by this specification and the normative grammar. It may use
 any sound internal architecture, solver or proof automation consistent with those
 semantics.
 
-A particular build or tool may be incomplete during development, but such
+[FAILCLOSED-003] A particular build or tool may be incomplete during development, but such
 incompleteness is status, not language meaning. Missing support MUST NOT:
 
 ```text
@@ -3683,7 +3683,7 @@ change erasure or ABI rules
 reinterpret a required feature as optional
 ```
 
-For a program outside the semantics expressly modeled by the language, or for a
+[FAILCLOSED-004] For a program outside the semantics expressly modeled by the language, or for a
 proof obligation that cannot be established, verification fails closed. Failure
 to implement a feature required by the language is incomplete conformance with
 this specification.
@@ -3692,9 +3692,9 @@ this specification.
 
 # 53. Proof failure
 
-When proof is mandatory for a declaration, proof failure is a compile-time verification failure.
+[PROOFFAIL-001] When proof is mandatory for a declaration, proof failure is a compile-time verification failure.
 
-It MUST NOT automatically become:
+[PROOFFAIL-002] It MUST NOT automatically become:
 
 ```text
 warning-only success
@@ -3704,13 +3704,13 @@ unsafe block
 ignored obligation
 ```
 
-The programmer must explicitly choose a different semantic boundary if that is genuinely intended.
+[PROOFFAIL-003] The programmer must explicitly choose a different semantic boundary if that is genuinely intended.
 
 ---
 
 # 54. Specification failure
 
-A malformed or semantically invalid specification is a language error.
+[SPECFAIL-001] A malformed or semantically invalid specification is a language error.
 
 Examples include:
 
@@ -3729,7 +3729,7 @@ ghost value escaping into runtime
 
 Proof evidence has no runtime observational identity.
 
-Runtime code MUST NOT:
+[IRRELEVANCE-001] Runtime code MUST NOT:
 
 ```text
 compare proof values
@@ -3747,7 +3747,7 @@ It does not otherwise become runtime state.
 
 # 56. Trusted and unsafe are orthogonal
 
-These concepts MUST remain distinct.
+[ORTHOTRUST-001] These concepts MUST remain distinct.
 
 ```text
 unsafe
@@ -3759,13 +3759,13 @@ trusted
 
 Unsafe code does not automatically create trusted facts.
 
-Trusted facts do not imply the underlying runtime implementation is verified.
+[ORTHOTRUST-002] Trusted facts do not imply the underlying runtime implementation is verified.
 
 ---
 
 # 57. Verification and runtime checking are orthogonal
 
-These concepts MUST also remain distinct.
+[ORTHOCHECK-001] These concepts MUST also remain distinct.
 
 ```text
 PROVEN
@@ -3775,7 +3775,7 @@ RUNTIME-CHECKED
     property established dynamically for a concrete execution/value
 ```
 
-A runtime check may provide a fact after the successful branch.
+[ORTHOCHECK-002] A runtime check may provide a fact after the successful branch.
 
 It does not retroactively become a universal static theorem.
 
@@ -3783,7 +3783,7 @@ It does not retroactively become a universal static theorem.
 
 # 58. Formal soundness requirement
 
-No language construct may permit arbitrary propositions to be established without either:
+[SOUND-001] No language construct may permit arbitrary propositions to be established without either:
 
 ```text
 valid proof
@@ -3807,7 +3807,7 @@ compiler crash
 unverified foreign code
 ```
 
-MUST NOT manufacture formal proof evidence.
+[SOUND-002] MUST NOT manufacture formal proof evidence.
 
 ---
 
@@ -3824,13 +3824,13 @@ P proven
 
 These are different semantic states.
 
-The language MUST preserve that distinction.
+[LANGVERIFY-001] The language MUST preserve that distinction.
 
 ---
 
 # 60. Source compatibility principle
 
-The presence of C++L in a toolchain MUST NOT require ordinary supported C++ code to contain:
+[SRCCOMPAT-001] The presence of C++L in a toolchain MUST NOT require ordinary supported C++ code to contain:
 
 ```text
 law
@@ -3851,7 +3851,7 @@ Verification features are opt-in and additive.
 
 # 61. Conformance requirements
 
-A complete conforming C++L implementation MUST:
+[CONFORM-001] A complete conforming C++L implementation MUST:
 
 1. preserve valid supported C++ source compatibility when no C++L semantics are requested;
 2. preserve ordinary C++ runtime semantics and the selected C++ object/memory model;
@@ -4070,7 +4070,7 @@ runtime
 
 # 65. Fundamental rule
 
-For every proposition claimed as `PROVEN`, the language semantics require:
+[FUNDAMENTAL-001] For every proposition claimed as `PROVEN`, the language semantics require:
 
 ```text
 explicit proposition
@@ -4096,7 +4096,7 @@ because the implementation needed the statement to be true
 
 # Normative Annex A — Verification contexts and semantic judgments
 
-This annex is normative. It operationalizes the source-language rules above without
+[JUDGMENT-001] This annex is normative. It operationalizes the source-language rules above without
 prescribing a compiler architecture, proof-kernel implementation, solver, intermediate
 representation, cache, or trusted-computing-base structure. A conforming implementation may
 use any internal mechanism that produces the same accepted and rejected C++L programs and
@@ -4104,7 +4104,7 @@ the same proof meaning.
 
 ## A.1 Program points and proof contexts
 
-Verification is evaluated relative to a program point and a proof context. The proof context
+[JUDGMENT-002] Verification is evaluated relative to a program point and a proof context. The proof context
 contains only facts justified by source declarations, checked contracts, valid proof
 evidence, path conditions, refinement membership, structural proof premises, or explicit
 trusted Laws. It MUST NOT contain facts merely because they would make the current goal
@@ -4119,7 +4119,7 @@ easier to prove.
 P  proposition required at that point
 ```
 
-- The notation in this annex is explanatory metanotation. It does not add source syntax.
+- [JUDGMENT-003] The notation in this annex is explanatory metanotation. It does not add source syntax.
 - A fact enters Γ only through a language rule that explicitly justifies it.
 - A runtime write changes Σ by creating new logical values and invalidating facts that may
   have depended on overwritten or aliased storage.
@@ -4136,7 +4136,7 @@ P  proposition required at that point
 
 ## A.2 Proof obligations
 
-A proof obligation is a proposition that must be established before the enclosing verified
+[JUDGMENT-004] A proof obligation is a proposition that must be established before the enclosing verified
 declaration, proof, Law, refinement crossing, or termination claim can be accepted. The
 language distinguishes generation of an obligation from discharge of that obligation.
 
@@ -4157,11 +4157,11 @@ language distinguishes generation of an obligation from discharge of that obliga
 
 ## A.3 Value versions
 
-C++L reasons about values at program points rather than treating mutable C++ storage as one
+[JUDGMENT-005] C++L reasons about values at program points rather than treating mutable C++ storage as one
 timeless mathematical variable. Each write that may change a modeled place produces a new
 logical version of that place.
 
-- A read observes the version current at the read according to ordinary C++ sequencing and
+- [JUDGMENT-006] A read observes the version current at the read according to ordinary C++ sequencing and
   control flow.
 - A fact about an older version does not automatically constrain a newer version.
 - When two places may alias, a write through either place invalidates facts about the other
@@ -4176,7 +4176,7 @@ logical version of that place.
 
 ## A.4 Normal and exceptional continuations
 
-Every runtime expression or statement may have the continuations permitted by ordinary C++.
+[JUDGMENT-007] Every runtime expression or statement may have the continuations permitted by ordinary C++.
 Verification facts are attached to continuations, not merely to source lines.
 
 - Normal continuation means execution reaches the next ordinary C++ program point.
@@ -4192,14 +4192,14 @@ Verification facts are attached to continuations, not merely to source lines.
 
 # Normative Annex B — Runtime expression verification semantics
 
-The selected C++ standard owns runtime expression meaning, overload resolution, conversions,
+[EXPR-001] The selected C++ standard owns runtime expression meaning, overload resolution, conversions,
 sequencing, value categories, lifetime rules, and undefined behavior. C++L adds proof
 obligations and facts; it does not replace those runtime rules. This annex states the
 verification delta for the principal C++ expression families.
 
 ## B.1 General expression rule
 
-- Before an expression may contribute a mathematical fact, its C++ type, selected overloads,
+- [EXPR-002] Before an expression may contribute a mathematical fact, its C++ type, selected overloads,
   conversions, and runtime meaning MUST be established according to ordinary C++.
 - Every evaluated subexpression MUST have defined behavior on the verified path.
 - Evaluation order and sequencing MUST follow the selected C++ standard. The verifier MUST
@@ -4217,10 +4217,10 @@ verification delta for the principal C++ expression families.
 
 ## B.2 Primary expressions and literals
 
-This subsection governs literals, names, parenthesized expressions, `this`, and qualified
+[EXPR-003] This subsection governs literals, names, parenthesized expressions, `this`, and qualified
 names.
 
-- Integer literals denote the exact C++ value after type selection and literal conversion. A
+- [EXPR-004] Integer literals denote the exact C++ value after type selection and literal conversion. A
   literal outside the representable range is handled exactly as C++ handles it and is not
   silently promoted to a mathematical integer.
 - Boolean literals denote the two C++ `bool` values and may be lifted into propositions in
@@ -4238,9 +4238,9 @@ names.
 
 ## B.3 Lvalue-to-rvalue conversion
 
-This subsection governs ordinary reads of scalar or modeled object storage.
+[EXPR-005] This subsection governs ordinary reads of scalar or modeled object storage.
 
-- A read requires the object to be within lifetime and initialized according to C++.
+- [EXPR-006] A read requires the object to be within lifetime and initialized according to C++.
 - A read through a pointer or reference additionally requires all access and provenance
   conditions applicable to that access path.
 - Reading a place yields the logical value of its current version.
@@ -4253,7 +4253,7 @@ This subsection governs ordinary reads of scalar or modeled object storage.
 
 This subsection governs `+x`, `-x`, `!x`, and `~x`.
 
-- Usual promotions and conversions are C++ semantics and MUST be reflected in the formal
+- [EXPR-007] Usual promotions and conversions are C++ semantics and MUST be reflected in the formal
   type of the result.
 - Signed negation of the minimum representable signed value requires proof that the C++
   operation is defined.
@@ -4281,7 +4281,7 @@ This subsection governs `&e` and `*p`.
 
 This subsection governs prefix/postfix `++` and `--`.
 
-- The read, arithmetic, and write components MUST all be verified.
+- [EXPR-008] The read, arithmetic, and write components MUST all be verified.
 - Signed overflow, pointer stepping outside the C++ permitted range, invalid iterator
   movement, or other undefined behavior MUST be excluded.
 - Postfix result-value semantics follow C++; the stored place receives a new logical version
@@ -4293,7 +4293,7 @@ This subsection governs prefix/postfix `++` and `--`.
 
 This subsection governs `+`, `-`, `*`, `/`, and `%`.
 
-- Integral promotions and usual arithmetic conversions are applied before proof
+- [EXPR-009] Integral promotions and usual arithmetic conversions are applied before proof
   interpretation.
 - Unsigned arithmetic follows the selected C++ modulo semantics.
 - Signed arithmetic is accepted only when required no-overflow and definedness conditions
@@ -4307,9 +4307,9 @@ This subsection governs `+`, `-`, `*`, `/`, and `%`.
 
 ## B.8 Shift expressions
 
-This subsection governs `<<` and `>>` used as arithmetic/bitwise shifts.
+[EXPR-010] This subsection governs `<<` and `>>` used as arithmetic/bitwise shifts.
 
-- Operand promotions are applied before verification.
+- [EXPR-011] Operand promotions are applied before verification.
 - Shift-count range requirements MUST be proven.
 - Every additional signed-left-shift definedness condition required by the selected C++ mode
   MUST be proven.
@@ -4318,9 +4318,9 @@ This subsection governs `<<` and `>>` used as arithmetic/bitwise shifts.
 
 ## B.9 Relational and equality expressions
 
-This subsection governs `<`, `<=`, `>`, `>=`, `==`, and `!=`.
+[EXPR-012] This subsection governs `<`, `<=`, `>`, `>=`, `==`, and `!=`.
 
-- The chosen C++ operator and conversions remain authoritative.
+- [EXPR-013] The chosen C++ operator and conversions remain authoritative.
 - Built-in integer comparisons may be lifted into propositions with exact machine semantics.
 - Pointer comparison facts MUST respect the comparison semantics permitted by C++; unrelated
   pointers are not silently ordered as integers.
@@ -4331,9 +4331,9 @@ This subsection governs `<`, `<=`, `>`, `>=`, `==`, and `!=`.
 
 ## B.10 Logical AND and OR in runtime conditions
 
-This subsection governs `&&` and `||` where C++ evaluates a condition.
+[EXPR-014] This subsection governs `&&` and `||` where C++ evaluates a condition.
 
-- Short-circuit evaluation is preserved exactly.
+- [EXPR-015] Short-circuit evaluation is preserved exactly.
 - For `A && B`, `B` is verified only on the path where `A` is true.
 - For `A || B`, `B` is verified only on the path where `A` is false.
 - The true path of `A && B` receives both `A` and `B`; the false continuation is a union of
@@ -4344,7 +4344,7 @@ This subsection governs `&&` and `||` where C++ evaluates a condition.
 
 ## B.11 Logical AND and OR in proposition context
 
-This subsection governs `&&` and `||` when the grammar expects a proposition.
+[EXPR-016] This subsection governs `&&` and `||` when the grammar expects a proposition.
 
 - `P && Q` is logical conjunction and requires evidence for both propositions.
 - `P || Q` is logical disjunction and requires evidence selecting at least one disjunct or
@@ -4359,7 +4359,7 @@ This subsection governs `&&` and `||` when the grammar expects a proposition.
 
 This subsection governs `c ? a : b`.
 
-- The condition follows C++ contextual conversion to bool.
+- [EXPR-017] The condition follows C++ contextual conversion to bool.
 - Only the selected arm is evaluated at runtime, and the verifier MUST preserve that control
   dependence.
 - The true arm is verified under the true condition and the false arm under its negation.
@@ -4381,9 +4381,9 @@ This subsection governs `lhs = rhs`.
 
 ## B.14 Compound assignment
 
-This subsection governs `+=`, `-=`, `*=`, `/=`, `%=` and bit/shift compound assignments.
+[EXPR-018] This subsection governs `+=`, `-=`, `*=`, `/=`, `%=` and bit/shift compound assignments.
 
-- The operation has the C++ semantics of the selected compound assignment, including its
+- [EXPR-019] The operation has the C++ semantics of the selected compound assignment, including its
   single evaluation of the left operand.
 - All arithmetic and defined-behavior obligations of the underlying operation apply.
 - The final write is a new storage version and must re-establish refinements.
@@ -4393,7 +4393,7 @@ This subsection governs `+=`, `-=`, `*=`, `/=`, `%=` and bit/shift compound assi
 
 This subsection governs `a, b`.
 
-- The left operand is evaluated and sequenced before the right operand according to C++.
+- [EXPR-020] The left operand is evaluated and sequenced before the right operand according to C++.
 - Effects of the left operand update the proof state before the right operand is verified.
 - The result is the C++ result of the right operand.
 - Specification expressions may use a comma only when the selected meaning is
@@ -4404,7 +4404,7 @@ This subsection governs `a, b`.
 
 This subsection governs `obj.member` and `ptr->member`.
 
-- Member lookup, access control, base adjustment, value category and overload resolution are
+- [EXPR-021] Member lookup, access control, base adjustment, value category and overload resolution are
   ordinary C++.
 - `ptr->member` requires the pointer/object validity needed for the implied dereference.
 - Reading or writing a data member reads or writes the corresponding subobject place.
@@ -4427,7 +4427,7 @@ This subsection governs `a[i]` and overloaded `operator[]`.
 
 ## B.18 Function calls
 
-This subsection governs direct, indirect, member, virtual, callable-object and operator
+[EXPR-022] This subsection governs direct, indirect, member, virtual, callable-object and operator
 calls.
 
 - C++ determines the callable, argument conversions, object argument, evaluation rules and
@@ -4443,10 +4443,10 @@ calls.
 
 ## B.19 Cast expressions
 
-This subsection governs `static_cast`, `dynamic_cast`, `const_cast`, `reinterpret_cast`,
+[EXPR-023] This subsection governs `static_cast`, `dynamic_cast`, `const_cast`, `reinterpret_cast`,
 C-style cast and functional cast.
 
-- The exact C++ cast selected by the source syntax is authoritative.
+- [EXPR-024] The exact C++ cast selected by the source syntax is authoritative.
 - A cast does not manufacture a refinement, lifetime, provenance, capability, purity, or
   trust fact.
 - A `dynamic_cast` result may establish null/non-null or successful reference-cast path
@@ -4460,7 +4460,7 @@ C-style cast and functional cast.
 
 ## B.20 `sizeof`, `alignof`, `decltype`, `noexcept`, and `typeid`
 
-This subsection governs C++ compile-time/type-inspection expressions.
+[EXPR-025] This subsection governs C++ compile-time/type-inspection expressions.
 
 - Their C++ unevaluated/evaluated operand rules are preserved exactly.
 - No runtime read or side effect is invented for an unevaluated operand.
@@ -4474,7 +4474,7 @@ This subsection governs C++ compile-time/type-inspection expressions.
 
 ## B.21 Object creation
 
-This subsection governs `new`, placement construction, and allocation expressions.
+[EXPR-026] This subsection governs `new`, placement construction, and allocation expressions.
 
 - Allocation and construction are distinct semantic phases as in C++.
 - Successful construction establishes the new object lifetime and initialized subobject
@@ -4487,10 +4487,10 @@ This subsection governs `new`, placement construction, and allocation expression
 
 ## B.22 Object destruction and `delete`
 
-This subsection governs `delete`, `delete[]`, explicit destructor calls and lifetime-ending
+[EXPR-027] This subsection governs `delete`, `delete[]`, explicit destructor calls and lifetime-ending
 operations.
 
-- The object must satisfy every C++ precondition for the destruction/deallocation form.
+- [EXPR-028] The object must satisfy every C++ precondition for the destruction/deallocation form.
 - Ending an object lifetime invalidates facts and capabilities that require that lifetime.
 - Destruction effects and exceptions, where permitted, are runtime effects and must be
   reflected in the proof state.
@@ -4499,7 +4499,7 @@ operations.
 
 ## B.23 Lambda expressions
 
-This subsection governs ordinary C++ lambdas and closure objects.
+[EXPR-029] This subsection governs ordinary C++ lambdas and closure objects.
 
 - Capture semantics, closure layout, object lifetime, mutability and overload selection
   remain ordinary C++.
@@ -4523,7 +4523,7 @@ This subsection governs ordinary C++ constraints.
 
 ## B.25 Coroutine expressions
 
-This subsection governs `co_await`, `co_yield`, and coroutine transformation points.
+[EXPR-030] This subsection governs `co_await`, `co_yield`, and coroutine transformation points.
 
 - Coroutine runtime semantics are the ordinary C++ coroutine semantics, including promise
   object creation, suspension, resumption, destruction and exception routing.
@@ -4535,7 +4535,7 @@ This subsection governs `co_await`, `co_yield`, and coroutine transformation poi
 
 # Normative Annex C — Statement and control-flow verification semantics
 
-Runtime control flow remains C++. C++L associates proof contexts with reachable program
+[STMT-001] Runtime control flow remains C++. C++L associates proof contexts with reachable program
 paths and requires every path relevant to a verification claim to satisfy its obligations.
 No proof-only statement becomes runtime control flow.
 
@@ -4562,7 +4562,7 @@ No proof-only statement becomes runtime control flow.
 
 ## C.3 `if` and `if constexpr`
 
-- For runtime `if`, the then path receives the condition proposition and the else path
+- [STMT-002] For runtime `if`, the then path receives the condition proposition and the else path
   receives its negation, subject to exact short-circuit decomposition.
 - A missing `else` has an ordinary fallthrough path under the negated condition.
 - `if constexpr` follows C++ compile-time branch discard rules. A discarded branch
@@ -4573,7 +4573,7 @@ No proof-only statement becomes runtime control flow.
 
 ## C.4 `switch`
 
-- The controlling expression and integral/enum conversions follow C++.
+- [STMT-003] The controlling expression and integral/enum conversions follow C++.
 - Each runtime case path receives the fact that the controlling value matches the selected
   case label, together with fallthrough semantics from preceding labels where applicable.
 - `default` represents every controlling value not equal to another selected case label; it
@@ -4585,7 +4585,7 @@ No proof-only statement becomes runtime control flow.
 
 ## C.5 `while` loops
 
-- The invariant is required before the first condition evaluation, preserved on every
+- [STMT-004] The invariant is required before the first condition evaluation, preserved on every
   continuing back-edge, and available at the loop head.
 - The body is verified under the invariant and true condition.
 - Normal loop exit is verified under the invariant and false condition.
@@ -4607,7 +4607,7 @@ No proof-only statement becomes runtime control flow.
 
 ## C.7 range-based `for` loops
 
-- The loop is verified according to its C++ desugared semantic operations while preserving
+- [STMT-005] The loop is verified according to its C++ desugared semantic operations while preserving
   the source-level object lifetimes and evaluation rules.
 - Creation of the range object, begin/end values, iterator comparison, dereference,
   loop-variable initialization and increment all require defined behavior.
@@ -4617,7 +4617,7 @@ No proof-only statement becomes runtime control flow.
 
 ## C.8 `do`/`while` loops
 
-- The body executes once before the first condition test.
+- [STMT-006] The body executes once before the first condition test.
 - An invariant attached to the loop must hold at the point defined by the grammar before
   body reasoning and must be preserved for each continuing iteration.
 - The condition is verified after the body on normal continuation and `continue`.
@@ -4626,7 +4626,7 @@ No proof-only statement becomes runtime control flow.
 
 ## C.9 `break` and `continue`
 
-- Each statement targets the C++ enclosing loop or switch selected by ordinary control-flow
+- [STMT-007] Each statement targets the C++ enclosing loop or switch selected by ordinary control-flow
   rules.
 - `continue` must satisfy any invariant/termination obligations required before the next
   loop head.
@@ -4636,7 +4636,7 @@ No proof-only statement becomes runtime control flow.
 
 ## C.10 `return`
 
-- The return expression is evaluated before the function normal-return postcondition is
+- [STMT-008] The return expression is evaluated before the function normal-return postcondition is
   checked.
 - The returned value must satisfy any refined return type.
 - The instantiated `ensures` proposition must hold in the resulting normal post-state.
@@ -4656,7 +4656,7 @@ No proof-only statement becomes runtime control flow.
 
 ## C.12 exceptions and handlers
 
-- A `throw` follows ordinary C++ exception construction and unwinding semantics.
+- [STMT-009] A `throw` follows ordinary C++ exception construction and unwinding semantics.
 - Catch selection, object binding, rethrow and handler ordering are C++ semantics.
 - Facts after a `try`/`catch` join must hold for every normal continuation from the try body
   and every handler that reaches the join.
@@ -4692,7 +4692,7 @@ No proof-only statement becomes runtime control flow.
 
 ## D.2 Overload identity and refinement erasure
 
-- Overload resolution uses the ordinary C++ signatures after the runtime representation of
+- [DECL-001] Overload resolution uses the ordinary C++ signatures after the runtime representation of
   refinements is considered.
 - Two overloads that differ only by verification-level refinement identity and erase to the
   same C++ parameter types cannot silently become distinct runtime overloads.
@@ -4742,13 +4742,13 @@ No proof-only statement becomes runtime control flow.
 
 # Normative Annex E — Storage, lifetime, aliasing and effects
 
-This annex refines §§12.9–12.10 and §32. It describes language-level verification
+[STORAGE-001] This annex refines §§12.9–12.10 and §32. It describes language-level verification
 obligations only. It does not prescribe an alias-analysis algorithm, memory IR, pointer
 representation, solver, or TCB implementation.
 
 ## E.1 Place identity
 
-- A place corresponds to a specific C++ storage location or subobject as resolved from the
+- [STORAGE-002] A place corresponds to a specific C++ storage location or subobject as resolved from the
   source semantics.
 - Places are proof-level designations and do not become addresses or runtime metadata.
 - A complete object, base subobject, non-static data member, array element, materialized
@@ -4758,7 +4758,7 @@ representation, solver, or TCB implementation.
 
 ## E.2 Lifetime start
 
-- An object may be read as that object only after its lifetime has begun under C++.
+- [STORAGE-003] An object may be read as that object only after its lifetime has begun under C++.
 - Construction, implicit-lifetime rules, allocation and placement operations establish
   lifetime facts only when their C++ preconditions are met.
 - Starting a lifetime in reused storage invalidates facts about any previous object whose
@@ -4778,7 +4778,7 @@ representation, solver, or TCB implementation.
 
 ## E.4 Initialization
 
-- A read requiring an initialized value must establish that initialization according to C++.
+- [STORAGE-004] A read requiring an initialized value must establish that initialization according to C++.
 - Default initialization may leave some scalar storage indeterminate; C++L must not assign
   such storage an arbitrary mathematical value and then reason from it.
 - Value initialization, aggregate initialization, constructors and assignments establish
@@ -4810,7 +4810,7 @@ representation, solver, or TCB implementation.
 
 ## E.7 Arrays and extents
 
-- A built-in array has the extent defined by its C++ type.
+- [STORAGE-005] A built-in array has the extent defined by its C++ type.
 - An array element place is valid only for an index within the object extent.
 - Array-to-pointer conversion preserves the provenance needed for permitted element access
   but does not erase the bounds obligation.
@@ -4828,7 +4828,7 @@ representation, solver, or TCB implementation.
 
 ## E.9 Unions
 
-- The active-member rules of C++ are authoritative.
+- [STORAGE-006] The active-member rules of C++ are authoritative.
 - Reading an inactive union member requires whatever C++ rule, common-initial-sequence rule
   or lifetime transition makes that access defined.
 - Changing the active member invalidates facts about the prior member object.
@@ -4861,7 +4861,7 @@ representation, solver, or TCB implementation.
 
 ## E.13 Copy operations
 
-- A copy constructor/assignment is an ordinary function operation with C++ semantics, not
+- [STORAGE-007] A copy constructor/assignment is an ordinary function operation with C++ semantics, not
   semantic identity.
 - A copied object receives facts justified by the checked operation and its post-state, not
   every fact about the source automatically.
@@ -4870,7 +4870,7 @@ representation, solver, or TCB implementation.
 
 ## E.14 Move operations
 
-- A move may mutate the source and create a destination with type-specific postconditions.
+- [STORAGE-008] A move may mutate the source and create a destination with type-specific postconditions.
 - Moved-from state is whatever the selected type/C++ contract guarantees; it is not assumed
   equal to the pre-move state or empty unless proven.
 - Facts invalidated by the move cannot remain available on the source.
@@ -4884,7 +4884,7 @@ representation, solver, or TCB implementation.
 
 ## E.16 Function effects
 
-- Every verified function has a sound semantic effect summary derived from its checked
+- [STORAGE-009] Every verified function has a sound semantic effect summary derived from its checked
   behavior.
 - The summary includes writes and other externally observable operations relevant to
   preservation of proof facts.
@@ -4969,7 +4969,7 @@ representation, solver, or TCB implementation.
 
 ## F.2 Function normal return
 
-- Every normal return must establish the declared `ensures` proposition and refined return
+- [CLASS-001] Every normal return must establish the declared `ensures` proposition and refined return
   membership.
 - For void functions there is no `result` binding.
 - Reference/member/global observations in `ensures` denote the normal post-state unless
@@ -4980,7 +4980,7 @@ representation, solver, or TCB implementation.
 
 ## F.3 Exceptional exit
 
-- An escaping exception is not a normal return and therefore does not owe the ordinary
+- [CLASS-002] An escaping exception is not a normal return and therefore does not owe the ordinary
   `ensures` clause.
 - The verified body still owes defined behavior, lifetime correctness, refinement
   preservation for live refined storage, and any exception-related C++ obligations along the
@@ -4999,7 +4999,7 @@ representation, solver, or TCB implementation.
 
 ## F.5 Member functions
 
-- The implicit object participates in preconditions, postconditions, effects and aliasing
+- [CLASS-003] The implicit object participates in preconditions, postconditions, effects and aliasing
   like an explicit object argument.
 - Unqualified member names in a contract refer to the entity selected by ordinary C++ member
   lookup.
@@ -5010,7 +5010,7 @@ representation, solver, or TCB implementation.
 
 ## F.6 Constructors
 
-- A constructor has no return-value `result`.
+- [CLASS-004] A constructor has no return-value `result`.
 - Its postcondition is interpreted after successful initialization of the complete object
   for the constructor whose contract is being checked.
 - `old(member)` is invalid for a member whose object lifetime/value did not exist in the
@@ -5024,7 +5024,7 @@ representation, solver, or TCB implementation.
 
 ## F.7 Destructors
 
-- A destructor verifies runtime operations performed while the relevant subobjects are
+- [CLASS-005] A destructor verifies runtime operations performed while the relevant subobjects are
   alive.
 - A destructor postcondition cannot assert ordinary value properties of subobjects after
   their lifetimes have ended.
@@ -5050,7 +5050,7 @@ representation, solver, or TCB implementation.
 
 ## F.10 Virtual overriding contracts
 
-- A call verified through a base static type may rely only on the base virtual contract
+- [CLASS-006] A call verified through a base static type may rely only on the base virtual contract
   unless a stronger dynamic-type fact is established.
 - An override MUST NOT strengthen the effective precondition required from callers of the
   base contract.
@@ -5072,7 +5072,7 @@ representation, solver, or TCB implementation.
 
 ## F.12 Function pointers and references
 
-- A function pointer/reference carries runtime target identity according to C++.
+- [CLASS-007] A function pointer/reference carries runtime target identity according to C++.
 - A verified indirect call requires a semantic contract valid for every target the
   pointer/reference may denote on that path.
 - A type-compatible pointer does not by itself prove the target satisfies a particular C++L
@@ -5157,19 +5157,19 @@ representation, solver, or TCB implementation.
 
 ## G.10 Fold expressions
 
-- A fold uses C++ operator grouping and empty-pack identity rules.
+- [TEMPLATE-004] A fold uses C++ operator grouping and empty-pack identity rules.
 - Effects and evaluation semantics of the selected operators remain C++ semantics.
 - A mathematical associativity rewrite is permitted only when justified for the instantiated
   operation.
 
 # Normative Annex H — Proof-language source semantics
 
-This annex specifies source-level proof behavior while leaving the formal calculus and
+[PROOFSRC-001] This annex specifies source-level proof behavior while leaving the formal calculus and
 proof-object encoding to `FOUNDATIONS.md`. The source semantics below are mandatory.
 
 ## H.1 Goals and premises
 
-- A proof body has exactly one current goal at each linear proof point unless a structural
+- [PROOFSRC-002] A proof body has exactly one current goal at each linear proof point unless a structural
   statement creates multiple subgoals/arms.
 - Premises are propositions already justified by the enclosing Law/proof contract,
   implication introduction, structural case, induction principle, or previously established
@@ -5218,7 +5218,7 @@ proof-object encoding to `FOUNDATIONS.md`. The source semantics below are mandat
 
 ## H.7 Conjunction
 
-- A conjunction goal requires evidence for both conjuncts.
+- [PROOFSRC-003] A conjunction goal requires evidence for both conjuncts.
 - Evidence for a conjunction permits projection of either conjunct in proof reasoning.
 - The source language need not expose a dedicated split command; automation or theorem
   application may construct/project conjunction evidence, but the resulting evidence must
@@ -5226,7 +5226,7 @@ proof-object encoding to `FOUNDATIONS.md`. The source semantics below are mandat
 
 ## H.8 Disjunction
 
-- A disjunction goal requires evidence selecting a disjunct or an equivalent derivation.
+- [PROOFSRC-004] A disjunction goal requires evidence selecting a disjunct or an equivalent derivation.
 - Evidence for `P || Q` does not establish `P` alone or `Q` alone without a valid
   elimination/case derivation.
 - Excluded middle is not implicit unless derived from a defined decidability principle for
@@ -5261,7 +5261,7 @@ proof-object encoding to `FOUNDATIONS.md`. The source semantics below are mandat
 
 ## H.12 Law application
 
-- A proven Law can be instantiated at arguments satisfying its parameter types.
+- [PROOFSRC-005] A proven Law can be instantiated at arguments satisfying its parameter types.
 - If the Law has an `expects` premise, that instantiated premise must be established before
   the conclusion becomes available.
 - An unresolved Law cannot be applied.
@@ -5269,7 +5269,7 @@ proof-object encoding to `FOUNDATIONS.md`. The source semantics below are mandat
 
 ## H.13 Named proof application
 
-- A named `proof` is reusable evidence and may be referenced by `exact`/`apply` according to
+- [PROOFSRC-006] A named `proof` is reusable evidence and may be referenced by `exact`/`apply` according to
   its proposition and parameters.
 - Proof declarations do not produce runtime functions or callable symbols.
 
@@ -5295,13 +5295,13 @@ proof-object encoding to `FOUNDATIONS.md`. The source semantics below are mandat
 
 ## H.17 Proof termination
 
-- Proof elaboration and proof-relevant computation must be well-founded.
+- [PROOFSRC-007] Proof elaboration and proof-relevant computation must be well-founded.
 - Circular proof dependencies without a valid inductive/well-founded rule are rejected.
 - Divergence cannot be interpreted as evidence.
 
 ## H.18 Proof erasure
 
-- Every proof statement, proof binder, proof-local evidence value and proof-control branch
+- [PROOFSRC-008] Every proof statement, proof binder, proof-local evidence value and proof-control branch
   erases completely.
 - Erasure must not remove any ordinary C++ evaluation because proof bodies cannot contain
   runtime statements whose effects would need preserving.
@@ -5310,7 +5310,7 @@ proof-object encoding to `FOUNDATIONS.md`. The source semantics below are mandat
 
 ## I.1 Refinement identity
 
-- A refinement declaration creates a distinct verification-level type identity even when its
+- [REFINEOBL-001] A refinement declaration creates a distinct verification-level type identity even when its
   runtime representation equals the base type.
 - Aliases of that refinement preserve its verification identity.
 - Two independently declared refinements with textually equal predicates remain distinct
@@ -5319,14 +5319,14 @@ proof-object encoding to `FOUNDATIONS.md`. The source semantics below are mandat
 
 ## I.2 Base-to-refinement crossing
 
-- A base value may enter a refinement only when the complete predicate instantiated at that
+- [REFINEOBL-002] A base value may enter a refinement only when the complete predicate instantiated at that
   value is established in the current context, or when the crossing is justified by explicit
   trusted evidence.
 - The compiler MUST NOT insert a hidden runtime predicate check.
 
 ## I.3 Refinement-to-base crossing
 
-- A refinement value may be used as its base representation without additional runtime
+- [REFINEOBL-003] A refinement value may be used as its base representation without additional runtime
   conversion.
 - Its membership predicate remains available as proof evidence while the logical value
   version remains valid.
@@ -5339,7 +5339,7 @@ proof-object encoding to `FOUNDATIONS.md`. The source semantics below are mandat
 
 ## I.5 Nested refinements
 
-- A refinement whose base is another refinement carries the conjunction of all inherited
+- [REFINEOBL-004] A refinement whose base is another refinement carries the conjunction of all inherited
   predicates after substitution.
 - No inherited predicate may be dropped during aliasing, indexing or erasure analysis.
 
@@ -5352,19 +5352,19 @@ proof-object encoding to `FOUNDATIONS.md`. The source semantics below are mandat
 
 ## I.7 Refined parameters
 
-- A refined by-value parameter contributes its membership predicate at entry.
+- [REFINEOBL-005] A refined by-value parameter contributes its membership predicate at entry.
 - A refined reference parameter requires the referent value to satisfy membership at entry
   and after any normal return if the function may mutate the referent.
 - Potential alias writes must not leave stale refinement evidence.
 
 ## I.8 Refined return types
 
-- Every normal return must prove membership of the returned value.
+- [REFINEOBL-006] Every normal return must prove membership of the returned value.
 - An `ensures` clause is additional to, not a replacement for, refined-return membership.
 
 ## I.9 Refined members
 
-- Every constructor path must establish the member predicate when the member becomes
+- [REFINEOBL-007] Every constructor path must establish the member predicate when the member becomes
   initialized.
 - Copy/move construction and assignment must establish it for the destination member.
 - Direct/indirect writes through references, pointers, proxies, algorithms or foreign calls
@@ -5373,7 +5373,7 @@ proof-object encoding to `FOUNDATIONS.md`. The source semantics below are mandat
 
 ## I.10 Refined array/container elements
 
-- Every element construction/write must establish the element refinement.
+- [REFINEOBL-008] Every element construction/write must establish the element refinement.
 - Operations that may move/reallocate elements must preserve membership for every resulting
   live element.
 - A container model may summarize these obligations only when the summary itself is
@@ -5407,7 +5407,7 @@ proof-object encoding to `FOUNDATIONS.md`. The source semantics below are mandat
 
 # Normative Annex J — Core standard-library semantic models
 
-C++L does not replace the C++ standard library. When a complete conforming implementation
+[STDMODEL-001] C++L does not replace the C++ standard library. When a complete conforming implementation
 verifies code using the standard abstractions below, its formal model MUST agree with the
 selected standard-library semantics. Exact vendor/library availability belongs in
 `COMPATIBILITY.md`; implementation progress belongs in `STATUS.md`.
@@ -5424,7 +5424,7 @@ selected standard-library semantics. Exact vendor/library availability belongs i
 
 ## J.2 `std::span<T,Extent>`
 
-- A span is a non-owning view; its validity depends on the lifetime and extent of the
+- [STDMODEL-002] A span is a non-owning view; its validity depends on the lifetime and extent of the
   referenced storage.
 - Constructing a span establishes only the extent/provenance guaranteed by the constructor
   preconditions.
@@ -5434,7 +5434,7 @@ selected standard-library semantics. Exact vendor/library availability belongs i
 
 ## J.3 `std::optional<T>`
 
-- The semantic states are `none` and `some(value)`.
+- [STDMODEL-003] The semantic states are `none` and `some(value)`.
 - Accessing the contained value requires the engaged state under the selected member
   operation semantics.
 - Reset/emplace/assignment create lifetime transitions for the contained object and
@@ -5442,7 +5442,7 @@ selected standard-library semantics. Exact vendor/library availability belongs i
 
 ## J.4 `std::variant<Ts...>`
 
-- The semantic states are one active alternative per index plus `valueless`.
+- [STDMODEL-004] The semantic states are one active alternative per index plus `valueless`.
 - Alternative indices distinguish repeated types.
 - Accessing an alternative requires the matching active state or the operation must be
   reasoned about through its documented exceptional behavior.
@@ -5451,7 +5451,7 @@ selected standard-library semantics. Exact vendor/library availability belongs i
 
 ## J.5 `std::expected<T,E>`
 
-- The semantic states are `value(payload)` and `error(reason)`.
+- [STDMODEL-005] The semantic states are `value(payload)` and `error(reason)`.
 - Value/error access requires the matching state or follows the documented
   exception/undefined behavior of the selected operation.
 - State-changing assignment/emplacement invalidates facts about the prior alternative.
@@ -5464,7 +5464,7 @@ selected standard-library semantics. Exact vendor/library availability belongs i
 
 ## J.7 `std::vector<T>`
 
-- The abstract logical content is a finite sequence whose length equals the runtime size.
+- [STDMODEL-006] The abstract logical content is a finite sequence whose length equals the runtime size.
 - Element access requires the selected operation bounds rule and live element lifetime.
 - Operations that reallocate invalidate pointers/references/iterators according to the C++
   standard; verification facts using them must be invalidated accordingly.
@@ -5473,7 +5473,7 @@ selected standard-library semantics. Exact vendor/library availability belongs i
 
 ## J.8 `std::basic_string`
 
-- The abstract content is a finite sequence of character values consistent with the selected
+- [STDMODEL-007] The abstract content is a finite sequence of character values consistent with the selected
   specialization.
 - Mutation/reallocation invalidates iterators/pointers/references according to the standard.
 - Null-termination properties may be used only where the selected member function guarantees
@@ -5512,7 +5512,7 @@ selected standard-library semantics. Exact vendor/library availability belongs i
 
 ## J.13 associative containers
 
-- The abstract model is a finite collection keyed/ordered according to the container
+- [STDMODEL-008] The abstract model is a finite collection keyed/ordered according to the container
   semantics.
 - Lookup results and iterator validity follow the selected operation guarantees.
 - Comparator/hash/equality callables contribute their own purity/effect/definedness
@@ -5529,7 +5529,7 @@ selected standard-library semantics. Exact vendor/library availability belongs i
 
 ## J.15 `std::function` and type-erased callables
 
-- A runtime wrapper may target different callable objects over time.
+- [STDMODEL-009] A runtime wrapper may target different callable objects over time.
 - A verified call through the wrapper requires a contract valid for every possible stored
   target consistent with the current facts.
 - Type erasure does not erase proof obligations about callback effects.
@@ -5545,7 +5545,7 @@ selected standard-library semantics. Exact vendor/library availability belongs i
 
 ## K.1 Exception object construction
 
-- A thrown expression is evaluated and the exception object is initialized according to C++.
+- [EXCEPTCONCUR-001] A thrown expression is evaluated and the exception object is initialized according to C++.
 - Any undefined behavior or refinement crossing during construction must be verified before
   the exceptional continuation exists.
 
@@ -5563,7 +5563,7 @@ selected standard-library semantics. Exact vendor/library availability belongs i
 
 ## K.4 `noexcept`
 
-- The C++ exception specification controls runtime termination behavior and type properties.
+- [EXCEPTCONCUR-002] The C++ exception specification controls runtime termination behavior and type properties.
 - A verified proof of normal-return postconditions does not by itself prove no exception
   escapes.
 - If a semantic use requires exception freedom, that fact must be established separately
@@ -5606,7 +5606,7 @@ selected standard-library semantics. Exact vendor/library availability belongs i
 
 ## L.1 Public contracts
 
-- A caller may reason from a public verified contract without seeing the runtime body only
+- [TUBOUND-001] A caller may reason from a public verified contract without seeing the runtime body only
   when checked evidence for the implementation corresponding to that contract is available
   to the verification environment.
 - A declaration alone states an obligation/summary; it does not prove the body satisfies it.
@@ -5668,7 +5668,7 @@ selected standard-library semantics. Exact vendor/library availability belongs i
 
 # Normative Annex M — Erasure and runtime-equivalence matrix
 
-This annex makes the erasure contract explicit for agents and implementations. Every
+[ERASEMATRIX-001] This annex makes the erasure contract explicit for agents and implementations. Every
 accepted C++L program must erase to ordinary C++ whose observable runtime semantics are
 those of the retained runtime source.
 
@@ -5700,7 +5700,7 @@ those of the retained runtime source.
 
 ## M.1 Forbidden hidden runtime artifacts
 
-- No proof interpreter, theorem VM, proof heap, proof garbage collector, proof dispatch
+- [ERASEMATRIX-002] No proof interpreter, theorem VM, proof heap, proof garbage collector, proof dispatch
   table or proof stack may be required merely because verification was used.
 - No hidden contract assertion, refinement check, validation flag or proof-status flag may
   be injected unless the programmer wrote equivalent ordinary runtime behavior through an
@@ -5714,7 +5714,7 @@ those of the retained runtime source.
 
 ## M.2 Deterministic lowering
 
-- For a fixed selected C++ mode and C++L source, the verification-only lowering of accepted
+- [ERASEMATRIX-003] For a fixed selected C++ mode and C++L source, the verification-only lowering of accepted
   syntax must be semantically deterministic.
 - Refinement declarations lower to their base C++ representation in a way that preserves
   ordinary name/type usability without inventing runtime wrappers.
@@ -5733,7 +5733,7 @@ expected from a complete implementation.
 
 ### N.1 `scalar initialization`
 
-A complete implementation MUST support verification of legal uses of scalar initialization
+[COVERAGE-001] A complete implementation MUST support verification of legal uses of scalar initialization
 in a verification-enabled runtime region whenever the selected C++ mode supports the
 construct. The required semantic dimensions include
 initialization/lifetime/value/refinement.
@@ -5760,7 +5760,7 @@ initialization/lifetime/value/refinement.
 
 ### N.2 `aggregate initialization`
 
-A complete implementation MUST support verification of legal uses of aggregate
+[COVERAGE-002] A complete implementation MUST support verification of legal uses of aggregate
 initialization in a verification-enabled runtime region whenever the selected C++ mode
 supports the construct. The required semantic dimensions include member
 order/lifetime/refinements.
@@ -5787,7 +5787,7 @@ order/lifetime/refinements.
 
 ### N.3 `list initialization`
 
-A complete implementation MUST support verification of legal uses of list initialization in
+[COVERAGE-003] A complete implementation MUST support verification of legal uses of list initialization in
 a verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include overload/narrowing/elements.
 
@@ -5813,7 +5813,7 @@ The required semantic dimensions include overload/narrowing/elements.
 
 ### N.4 `default initialization`
 
-A complete implementation MUST support verification of legal uses of default initialization
+[COVERAGE-004] A complete implementation MUST support verification of legal uses of default initialization
 in a verification-enabled runtime region whenever the selected C++ mode supports the
 construct. The required semantic dimensions include indeterminate-state rules.
 
@@ -5839,7 +5839,7 @@ construct. The required semantic dimensions include indeterminate-state rules.
 
 ### N.5 `value initialization`
 
-A complete implementation MUST support verification of legal uses of value initialization in
+[COVERAGE-005] A complete implementation MUST support verification of legal uses of value initialization in
 a verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include zero/value construction.
 
@@ -5865,7 +5865,7 @@ The required semantic dimensions include zero/value construction.
 
 ### N.6 `direct initialization`
 
-A complete implementation MUST support verification of legal uses of direct initialization
+[COVERAGE-006] A complete implementation MUST support verification of legal uses of direct initialization
 in a verification-enabled runtime region whenever the selected C++ mode supports the
 construct. The required semantic dimensions include selected constructor/conversion.
 
@@ -5891,7 +5891,7 @@ construct. The required semantic dimensions include selected constructor/convers
 
 ### N.7 `copy initialization`
 
-A complete implementation MUST support verification of legal uses of copy initialization in
+[COVERAGE-007] A complete implementation MUST support verification of legal uses of copy initialization in
 a verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include selected conversion/construction.
 
@@ -5917,7 +5917,7 @@ The required semantic dimensions include selected conversion/construction.
 
 ### N.8 `reference binding`
 
-A complete implementation MUST support verification of legal uses of reference binding in a
+[COVERAGE-008] A complete implementation MUST support verification of legal uses of reference binding in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include lifetime/aliasing/conversions.
 
@@ -5943,7 +5943,7 @@ The required semantic dimensions include lifetime/aliasing/conversions.
 
 ### N.9 `structured bindings`
 
-A complete implementation MUST support verification of legal uses of structured bindings in
+[COVERAGE-009] A complete implementation MUST support verification of legal uses of structured bindings in
 a verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include underlying binding category/lifetimes.
 
@@ -5969,7 +5969,7 @@ The required semantic dimensions include underlying binding category/lifetimes.
 
 ### N.10 `destructuring via tuple protocol`
 
-A complete implementation MUST support verification of legal uses of destructuring via tuple
+[COVERAGE-010] A complete implementation MUST support verification of legal uses of destructuring via tuple
 protocol in a verification-enabled runtime region whenever the selected C++ mode supports
 the construct. The required semantic dimensions include get/tuple_size/tuple_element
 semantics.
@@ -5997,7 +5997,7 @@ semantics.
 
 ### N.11 `integer arithmetic`
 
-A complete implementation MUST support verification of legal uses of integer arithmetic in a
+[COVERAGE-011] A complete implementation MUST support verification of legal uses of integer arithmetic in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include promotions/overflow/definedness.
 
@@ -6023,7 +6023,7 @@ The required semantic dimensions include promotions/overflow/definedness.
 
 ### N.12 `floating arithmetic`
 
-A complete implementation MUST support verification of legal uses of floating arithmetic in
+[COVERAGE-012] A complete implementation MUST support verification of legal uses of floating arithmetic in
 a verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include rounding/NaN/infinity/target semantics.
 
@@ -6049,7 +6049,7 @@ The required semantic dimensions include rounding/NaN/infinity/target semantics.
 
 ### N.13 `pointer arithmetic`
 
-A complete implementation MUST support verification of legal uses of pointer arithmetic in a
+[COVERAGE-013] A complete implementation MUST support verification of legal uses of pointer arithmetic in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include provenance/array bounds/one-past.
 
@@ -6075,7 +6075,7 @@ The required semantic dimensions include provenance/array bounds/one-past.
 
 ### N.14 `enum conversions`
 
-A complete implementation MUST support verification of legal uses of enum conversions in a
+[COVERAGE-014] A complete implementation MUST support verification of legal uses of enum conversions in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include underlying values/conversion rules.
 
@@ -6101,7 +6101,7 @@ The required semantic dimensions include underlying values/conversion rules.
 
 ### N.15 `bit operations`
 
-A complete implementation MUST support verification of legal uses of bit operations in a
+[COVERAGE-015] A complete implementation MUST support verification of legal uses of bit operations in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include promotions/width/shift validity.
 
@@ -6127,7 +6127,7 @@ The required semantic dimensions include promotions/width/shift validity.
 
 ### N.16 `comparisons`
 
-A complete implementation MUST support verification of legal uses of comparisons in a
+[COVERAGE-016] A complete implementation MUST support verification of legal uses of comparisons in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include selected operator/value semantics.
 
@@ -6153,7 +6153,7 @@ The required semantic dimensions include selected operator/value semantics.
 
 ### N.17 `three-way comparison`
 
-A complete implementation MUST support verification of legal uses of three-way comparison in
+[COVERAGE-017] A complete implementation MUST support verification of legal uses of three-way comparison in
 a verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include selected category/operator semantics.
 
@@ -6179,7 +6179,7 @@ The required semantic dimensions include selected category/operator semantics.
 
 ### N.18 `conditional expression`
 
-A complete implementation MUST support verification of legal uses of conditional expression
+[COVERAGE-018] A complete implementation MUST support verification of legal uses of conditional expression
 in a verification-enabled runtime region whenever the selected C++ mode supports the
 construct. The required semantic dimensions include branch-sensitive evaluation/type.
 
@@ -6205,7 +6205,7 @@ construct. The required semantic dimensions include branch-sensitive evaluation/
 
 ### N.19 `comma expression`
 
-A complete implementation MUST support verification of legal uses of comma expression in a
+[COVERAGE-019] A complete implementation MUST support verification of legal uses of comma expression in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include sequencing/effects.
 
@@ -6231,7 +6231,7 @@ The required semantic dimensions include sequencing/effects.
 
 ### N.20 `assignments`
 
-A complete implementation MUST support verification of legal uses of assignments in a
+[COVERAGE-020] A complete implementation MUST support verification of legal uses of assignments in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include write/version/refinement.
 
@@ -6257,7 +6257,7 @@ The required semantic dimensions include write/version/refinement.
 
 ### N.21 `member access`
 
-A complete implementation MUST support verification of legal uses of member access in a
+[COVERAGE-021] A complete implementation MUST support verification of legal uses of member access in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include subobject/access/lifetime.
 
@@ -6283,7 +6283,7 @@ The required semantic dimensions include subobject/access/lifetime.
 
 ### N.22 `subscript`
 
-A complete implementation MUST support verification of legal uses of subscript in a
+[COVERAGE-022] A complete implementation MUST support verification of legal uses of subscript in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include bounds/provenance/overload.
 
@@ -6309,7 +6309,7 @@ The required semantic dimensions include bounds/provenance/overload.
 
 ### N.23 `function call`
 
-A complete implementation MUST support verification of legal uses of function call in a
+[COVERAGE-023] A complete implementation MUST support verification of legal uses of function call in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include pre/post/effects/exceptions.
 
@@ -6335,7 +6335,7 @@ The required semantic dimensions include pre/post/effects/exceptions.
 
 ### N.24 `virtual call`
 
-A complete implementation MUST support verification of legal uses of virtual call in a
+[COVERAGE-024] A complete implementation MUST support verification of legal uses of virtual call in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include dynamic targets/base contract.
 
@@ -6361,7 +6361,7 @@ The required semantic dimensions include dynamic targets/base contract.
 
 ### N.25 `indirect call`
 
-A complete implementation MUST support verification of legal uses of indirect call in a
+[COVERAGE-025] A complete implementation MUST support verification of legal uses of indirect call in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include target-set contract.
 
@@ -6387,7 +6387,7 @@ The required semantic dimensions include target-set contract.
 
 ### N.26 `operator overload`
 
-A complete implementation MUST support verification of legal uses of operator overload in a
+[COVERAGE-026] A complete implementation MUST support verification of legal uses of operator overload in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include function-call semantics.
 
@@ -6413,7 +6413,7 @@ The required semantic dimensions include function-call semantics.
 
 ### N.27 `user conversion`
 
-A complete implementation MUST support verification of legal uses of user conversion in a
+[COVERAGE-027] A complete implementation MUST support verification of legal uses of user conversion in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include selected conversion function/constructor.
 
@@ -6439,7 +6439,7 @@ The required semantic dimensions include selected conversion function/constructo
 
 ### N.28 `casts`
 
-A complete implementation MUST support verification of legal uses of casts in a
+[COVERAGE-028] A complete implementation MUST support verification of legal uses of casts in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include exact C++ cast semantics.
 
@@ -6465,7 +6465,7 @@ The required semantic dimensions include exact C++ cast semantics.
 
 ### N.29 `RTTI`
 
-A complete implementation MUST support verification of legal uses of RTTI in a
+[COVERAGE-029] A complete implementation MUST support verification of legal uses of RTTI in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include dynamic type/lifetime.
 
@@ -6491,7 +6491,7 @@ The required semantic dimensions include dynamic type/lifetime.
 
 ### N.30 `type traits`
 
-A complete implementation MUST support verification of legal uses of type traits in a
+[COVERAGE-030] A complete implementation MUST support verification of legal uses of type traits in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include compile-time C++ facts.
 
@@ -6517,7 +6517,7 @@ The required semantic dimensions include compile-time C++ facts.
 
 ### N.31 `if`
 
-A complete implementation MUST support verification of legal uses of if in a
+[COVERAGE-031] A complete implementation MUST support verification of legal uses of if in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include path split/join.
 
@@ -6543,7 +6543,7 @@ The required semantic dimensions include path split/join.
 
 ### N.32 `switch`
 
-A complete implementation MUST support verification of legal uses of switch in a
+[COVERAGE-032] A complete implementation MUST support verification of legal uses of switch in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include case/fallthrough/control value.
 
@@ -6569,7 +6569,7 @@ The required semantic dimensions include case/fallthrough/control value.
 
 ### N.33 `while`
 
-A complete implementation MUST support verification of legal uses of while in a
+[COVERAGE-033] A complete implementation MUST support verification of legal uses of while in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include invariant/back-edge/exit.
 
@@ -6595,7 +6595,7 @@ The required semantic dimensions include invariant/back-edge/exit.
 
 ### N.34 `for`
 
-A complete implementation MUST support verification of legal uses of for in a
+[COVERAGE-034] A complete implementation MUST support verification of legal uses of for in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include init/condition/step/invariant.
 
@@ -6621,7 +6621,7 @@ The required semantic dimensions include init/condition/step/invariant.
 
 ### N.35 `range-for`
 
-A complete implementation MUST support verification of legal uses of range-for in a
+[COVERAGE-035] A complete implementation MUST support verification of legal uses of range-for in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include range/iterators/lifetimes.
 
@@ -6647,7 +6647,7 @@ The required semantic dimensions include range/iterators/lifetimes.
 
 ### N.36 `do-while`
 
-A complete implementation MUST support verification of legal uses of do-while in a
+[COVERAGE-036] A complete implementation MUST support verification of legal uses of do-while in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include post-test invariant/exit.
 
@@ -6673,7 +6673,7 @@ The required semantic dimensions include post-test invariant/exit.
 
 ### N.37 `break`
 
-A complete implementation MUST support verification of legal uses of break in a
+[COVERAGE-037] A complete implementation MUST support verification of legal uses of break in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include targeted exit facts.
 
@@ -6699,7 +6699,7 @@ The required semantic dimensions include targeted exit facts.
 
 ### N.38 `continue`
 
-A complete implementation MUST support verification of legal uses of continue in a
+[COVERAGE-038] A complete implementation MUST support verification of legal uses of continue in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include back-edge obligations.
 
@@ -6725,7 +6725,7 @@ The required semantic dimensions include back-edge obligations.
 
 ### N.39 `return`
 
-A complete implementation MUST support verification of legal uses of return in a
+[COVERAGE-039] A complete implementation MUST support verification of legal uses of return in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include postcondition/refined return/destruction.
 
@@ -6751,7 +6751,7 @@ The required semantic dimensions include postcondition/refined return/destructio
 
 ### N.40 `goto`
 
-A complete implementation MUST support verification of legal uses of goto in a
+[COVERAGE-040] A complete implementation MUST support verification of legal uses of goto in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include join/fixed-point/lifetime legality.
 
@@ -6777,7 +6777,7 @@ The required semantic dimensions include join/fixed-point/lifetime legality.
 
 ### N.41 `try/catch`
 
-A complete implementation MUST support verification of legal uses of try/catch in a
+[COVERAGE-041] A complete implementation MUST support verification of legal uses of try/catch in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include exception path joins.
 
@@ -6803,7 +6803,7 @@ The required semantic dimensions include exception path joins.
 
 ### N.42 `throw`
 
-A complete implementation MUST support verification of legal uses of throw in a
+[COVERAGE-042] A complete implementation MUST support verification of legal uses of throw in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include exception object/unwinding.
 
@@ -6829,7 +6829,7 @@ The required semantic dimensions include exception object/unwinding.
 
 ### N.43 `noexcept`
 
-A complete implementation MUST support verification of legal uses of noexcept in a
+[COVERAGE-043] A complete implementation MUST support verification of legal uses of noexcept in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include termination/exception-spec semantics.
 
@@ -6855,7 +6855,7 @@ The required semantic dimensions include termination/exception-spec semantics.
 
 ### N.44 `RAII`
 
-A complete implementation MUST support verification of legal uses of RAII in a
+[COVERAGE-044] A complete implementation MUST support verification of legal uses of RAII in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include scope destruction/effects.
 
@@ -6881,7 +6881,7 @@ The required semantic dimensions include scope destruction/effects.
 
 ### N.45 `new/delete`
 
-A complete implementation MUST support verification of legal uses of new/delete in a
+[COVERAGE-045] A complete implementation MUST support verification of legal uses of new/delete in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include allocation/lifetime/deallocation.
 
@@ -6907,7 +6907,7 @@ The required semantic dimensions include allocation/lifetime/deallocation.
 
 ### N.46 `placement new`
 
-A complete implementation MUST support verification of legal uses of placement new in a
+[COVERAGE-046] A complete implementation MUST support verification of legal uses of placement new in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include storage reuse/lifetime.
 
@@ -6933,7 +6933,7 @@ The required semantic dimensions include storage reuse/lifetime.
 
 ### N.47 `launder/lifetime utilities`
 
-A complete implementation MUST support verification of legal uses of launder/lifetime
+[COVERAGE-047] A complete implementation MUST support verification of legal uses of launder/lifetime
 utilities in a verification-enabled runtime region whenever the selected C++ mode supports
 the construct. The required semantic dimensions include object model correspondence.
 
@@ -6959,7 +6959,7 @@ the construct. The required semantic dimensions include object model corresponde
 
 ### N.48 `volatile`
 
-A complete implementation MUST support verification of legal uses of volatile in a
+[COVERAGE-048] A complete implementation MUST support verification of legal uses of volatile in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include observable unstable access.
 
@@ -6985,7 +6985,7 @@ The required semantic dimensions include observable unstable access.
 
 ### N.49 `atomics`
 
-A complete implementation MUST support verification of legal uses of atomics in a
+[COVERAGE-049] A complete implementation MUST support verification of legal uses of atomics in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include memory-order semantics.
 
@@ -7011,7 +7011,7 @@ The required semantic dimensions include memory-order semantics.
 
 ### N.50 `mutex/locks`
 
-A complete implementation MUST support verification of legal uses of mutex/locks in a
+[COVERAGE-050] A complete implementation MUST support verification of legal uses of mutex/locks in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include synchronization/interference.
 
@@ -7037,7 +7037,7 @@ The required semantic dimensions include synchronization/interference.
 
 ### N.51 `classes`
 
-A complete implementation MUST support verification of legal uses of classes in a
+[COVERAGE-051] A complete implementation MUST support verification of legal uses of classes in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include members/bases/invariants through refinements.
 
@@ -7063,7 +7063,7 @@ The required semantic dimensions include members/bases/invariants through refine
 
 ### N.52 `unions`
 
-A complete implementation MUST support verification of legal uses of unions in a
+[COVERAGE-052] A complete implementation MUST support verification of legal uses of unions in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include active member/lifetimes.
 
@@ -7089,7 +7089,7 @@ The required semantic dimensions include active member/lifetimes.
 
 ### N.53 `inheritance`
 
-A complete implementation MUST support verification of legal uses of inheritance in a
+[COVERAGE-053] A complete implementation MUST support verification of legal uses of inheritance in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include base subobjects/conversions.
 
@@ -7115,7 +7115,7 @@ The required semantic dimensions include base subobjects/conversions.
 
 ### N.54 `virtual inheritance`
 
-A complete implementation MUST support verification of legal uses of virtual inheritance in
+[COVERAGE-054] A complete implementation MUST support verification of legal uses of virtual inheritance in
 a verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include shared base identity.
 
@@ -7141,7 +7141,7 @@ The required semantic dimensions include shared base identity.
 
 ### N.55 `constructors`
 
-A complete implementation MUST support verification of legal uses of constructors in a
+[COVERAGE-055] A complete implementation MUST support verification of legal uses of constructors in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include ordered initialization/poststate.
 
@@ -7167,7 +7167,7 @@ The required semantic dimensions include ordered initialization/poststate.
 
 ### N.56 `destructors`
 
-A complete implementation MUST support verification of legal uses of destructors in a
+[COVERAGE-056] A complete implementation MUST support verification of legal uses of destructors in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include ordered lifetime end/effects.
 
@@ -7193,7 +7193,7 @@ The required semantic dimensions include ordered lifetime end/effects.
 
 ### N.57 `copy special members`
 
-A complete implementation MUST support verification of legal uses of copy special members in
+[COVERAGE-057] A complete implementation MUST support verification of legal uses of copy special members in
 a verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include actual generated/user semantics.
 
@@ -7219,7 +7219,7 @@ The required semantic dimensions include actual generated/user semantics.
 
 ### N.58 `move special members`
 
-A complete implementation MUST support verification of legal uses of move special members in
+[COVERAGE-058] A complete implementation MUST support verification of legal uses of move special members in
 a verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include source/destination poststates.
 
@@ -7245,7 +7245,7 @@ The required semantic dimensions include source/destination poststates.
 
 ### N.59 `defaulted/deleted functions`
 
-A complete implementation MUST support verification of legal uses of defaulted/deleted
+[COVERAGE-059] A complete implementation MUST support verification of legal uses of defaulted/deleted
 functions in a verification-enabled runtime region whenever the selected C++ mode supports
 the construct. The required semantic dimensions include C++ generation/deletion.
 
@@ -7271,7 +7271,7 @@ the construct. The required semantic dimensions include C++ generation/deletion.
 
 ### N.60 `friendship`
 
-A complete implementation MUST support verification of legal uses of friendship in a
+[COVERAGE-060] A complete implementation MUST support verification of legal uses of friendship in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include access only.
 
@@ -7297,7 +7297,7 @@ The required semantic dimensions include access only.
 
 ### N.61 `templates`
 
-A complete implementation MUST support verification of legal uses of templates in a
+[COVERAGE-061] A complete implementation MUST support verification of legal uses of templates in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include instantiation/substitution/metadata.
 
@@ -7323,7 +7323,7 @@ The required semantic dimensions include instantiation/substitution/metadata.
 
 ### N.62 `partial specialization`
 
-A complete implementation MUST support verification of legal uses of partial specialization
+[COVERAGE-062] A complete implementation MUST support verification of legal uses of partial specialization
 in a verification-enabled runtime region whenever the selected C++ mode supports the
 construct. The required semantic dimensions include selected specialization semantics.
 
@@ -7349,7 +7349,7 @@ construct. The required semantic dimensions include selected specialization sema
 
 ### N.63 `explicit specialization`
 
-A complete implementation MUST support verification of legal uses of explicit specialization
+[COVERAGE-063] A complete implementation MUST support verification of legal uses of explicit specialization
 in a verification-enabled runtime region whenever the selected C++ mode supports the
 construct. The required semantic dimensions include entity-specific contract/model.
 
@@ -7375,7 +7375,7 @@ construct. The required semantic dimensions include entity-specific contract/mod
 
 ### N.64 `explicit instantiation`
 
-A complete implementation MUST support verification of legal uses of explicit instantiation
+[COVERAGE-064] A complete implementation MUST support verification of legal uses of explicit instantiation
 in a verification-enabled runtime region whenever the selected C++ mode supports the
 construct. The required semantic dimensions include metadata preservation.
 
@@ -7401,7 +7401,7 @@ construct. The required semantic dimensions include metadata preservation.
 
 ### N.65 `concepts`
 
-A complete implementation MUST support verification of legal uses of concepts in a
+[COVERAGE-065] A complete implementation MUST support verification of legal uses of concepts in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include C++ constraints vs proofs.
 
@@ -7427,7 +7427,7 @@ The required semantic dimensions include C++ constraints vs proofs.
 
 ### N.66 `requires expressions`
 
-A complete implementation MUST support verification of legal uses of requires expressions in
+[COVERAGE-066] A complete implementation MUST support verification of legal uses of requires expressions in
 a verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include compile-time structural facts.
 
@@ -7453,7 +7453,7 @@ The required semantic dimensions include compile-time structural facts.
 
 ### N.67 `constexpr`
 
-A complete implementation MUST support verification of legal uses of constexpr in a
+[COVERAGE-067] A complete implementation MUST support verification of legal uses of constexpr in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include constant evaluation vs proof.
 
@@ -7479,7 +7479,7 @@ The required semantic dimensions include constant evaluation vs proof.
 
 ### N.68 `consteval`
 
-A complete implementation MUST support verification of legal uses of consteval in a
+[COVERAGE-068] A complete implementation MUST support verification of legal uses of consteval in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include immediate execution vs proof.
 
@@ -7505,7 +7505,7 @@ The required semantic dimensions include immediate execution vs proof.
 
 ### N.69 `constinit`
 
-A complete implementation MUST support verification of legal uses of constinit in a
+[COVERAGE-069] A complete implementation MUST support verification of legal uses of constinit in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include initialization timing only.
 
@@ -7531,7 +7531,7 @@ The required semantic dimensions include initialization timing only.
 
 ### N.70 `fold expressions`
 
-A complete implementation MUST support verification of legal uses of fold expressions in a
+[COVERAGE-070] A complete implementation MUST support verification of legal uses of fold expressions in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include C++ grouping/operator semantics.
 
@@ -7557,7 +7557,7 @@ The required semantic dimensions include C++ grouping/operator semantics.
 
 ### N.71 `lambdas`
 
-A complete implementation MUST support verification of legal uses of lambdas in a
+[COVERAGE-071] A complete implementation MUST support verification of legal uses of lambdas in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include capture/closure/call effects.
 
@@ -7583,7 +7583,7 @@ The required semantic dimensions include capture/closure/call effects.
 
 ### N.72 `generic lambdas`
 
-A complete implementation MUST support verification of legal uses of generic lambdas in a
+[COVERAGE-072] A complete implementation MUST support verification of legal uses of generic lambdas in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include templated call operator semantics.
 
@@ -7609,7 +7609,7 @@ The required semantic dimensions include templated call operator semantics.
 
 ### N.73 `coroutines`
 
-A complete implementation MUST support verification of legal uses of coroutines in a
+[COVERAGE-073] A complete implementation MUST support verification of legal uses of coroutines in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include frame/suspension/resumption.
 
@@ -7635,7 +7635,7 @@ The required semantic dimensions include frame/suspension/resumption.
 
 ### N.74 `modules`
 
-A complete implementation MUST support verification of legal uses of modules in a
+[COVERAGE-074] A complete implementation MUST support verification of legal uses of modules in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include interface metadata/linkage.
 
@@ -7661,7 +7661,7 @@ The required semantic dimensions include interface metadata/linkage.
 
 ### N.75 `headers`
 
-A complete implementation MUST support verification of legal uses of headers in a
+[COVERAGE-075] A complete implementation MUST support verification of legal uses of headers in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include redeclaration/ODR metadata.
 
@@ -7687,7 +7687,7 @@ The required semantic dimensions include redeclaration/ODR metadata.
 
 ### N.76 `inline entities`
 
-A complete implementation MUST support verification of legal uses of inline entities in a
+[COVERAGE-076] A complete implementation MUST support verification of legal uses of inline entities in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include ODR-equivalent contracts.
 
@@ -7713,7 +7713,7 @@ The required semantic dimensions include ODR-equivalent contracts.
 
 ### N.77 `namespaces`
 
-A complete implementation MUST support verification of legal uses of namespaces in a
+[COVERAGE-077] A complete implementation MUST support verification of legal uses of namespaces in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include lookup/formal scope.
 
@@ -7739,7 +7739,7 @@ The required semantic dimensions include lookup/formal scope.
 
 ### N.78 `linkage`
 
-A complete implementation MUST support verification of legal uses of linkage in a
+[COVERAGE-078] A complete implementation MUST support verification of legal uses of linkage in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include entity identity/cross-TU evidence.
 
@@ -7765,7 +7765,7 @@ The required semantic dimensions include entity identity/cross-TU evidence.
 
 ### N.79 `dynamic libraries`
 
-A complete implementation MUST support verification of legal uses of dynamic libraries in a
+[COVERAGE-079] A complete implementation MUST support verification of legal uses of dynamic libraries in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include interface/implementation correspondence.
 
@@ -7791,7 +7791,7 @@ The required semantic dimensions include interface/implementation correspondence
 
 ### N.80 `foreign calls`
 
-A complete implementation MUST support verification of legal uses of foreign calls in a
+[COVERAGE-080] A complete implementation MUST support verification of legal uses of foreign calls in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include boundary/effects/validation.
 
@@ -7817,7 +7817,7 @@ The required semantic dimensions include boundary/effects/validation.
 
 ### N.81 `std::array`
 
-A complete implementation MUST support verification of legal uses of std::array in a
+[COVERAGE-081] A complete implementation MUST support verification of legal uses of std::array in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include fixed extent/elements.
 
@@ -7843,7 +7843,7 @@ The required semantic dimensions include fixed extent/elements.
 
 ### N.82 `std::span`
 
-A complete implementation MUST support verification of legal uses of std::span in a
+[COVERAGE-082] A complete implementation MUST support verification of legal uses of std::span in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include non-owning extent/lifetime.
 
@@ -7869,7 +7869,7 @@ The required semantic dimensions include non-owning extent/lifetime.
 
 ### N.83 `std::optional`
 
-A complete implementation MUST support verification of legal uses of std::optional in a
+[COVERAGE-083] A complete implementation MUST support verification of legal uses of std::optional in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include engaged/disengaged state.
 
@@ -7895,7 +7895,7 @@ The required semantic dimensions include engaged/disengaged state.
 
 ### N.84 `std::variant`
 
-A complete implementation MUST support verification of legal uses of std::variant in a
+[COVERAGE-084] A complete implementation MUST support verification of legal uses of std::variant in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include indexed alternative/valueless.
 
@@ -7921,7 +7921,7 @@ The required semantic dimensions include indexed alternative/valueless.
 
 ### N.85 `std::expected`
 
-A complete implementation MUST support verification of legal uses of std::expected in a
+[COVERAGE-085] A complete implementation MUST support verification of legal uses of std::expected in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include value/error state.
 
@@ -7947,7 +7947,7 @@ The required semantic dimensions include value/error state.
 
 ### N.86 `std::pair`
 
-A complete implementation MUST support verification of legal uses of std::pair in a
+[COVERAGE-086] A complete implementation MUST support verification of legal uses of std::pair in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include product elements.
 
@@ -7973,7 +7973,7 @@ The required semantic dimensions include product elements.
 
 ### N.87 `std::tuple`
 
-A complete implementation MUST support verification of legal uses of std::tuple in a
+[COVERAGE-087] A complete implementation MUST support verification of legal uses of std::tuple in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include product elements.
 
@@ -7999,7 +7999,7 @@ The required semantic dimensions include product elements.
 
 ### N.88 `std::vector`
 
-A complete implementation MUST support verification of legal uses of std::vector in a
+[COVERAGE-088] A complete implementation MUST support verification of legal uses of std::vector in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include sequence/reallocation/invalidation.
 
@@ -8025,7 +8025,7 @@ The required semantic dimensions include sequence/reallocation/invalidation.
 
 ### N.89 `std::string`
 
-A complete implementation MUST support verification of legal uses of std::string in a
+[COVERAGE-089] A complete implementation MUST support verification of legal uses of std::string in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include sequence/reallocation/terminator.
 
@@ -8051,7 +8051,7 @@ The required semantic dimensions include sequence/reallocation/terminator.
 
 ### N.90 `std::string_view`
 
-A complete implementation MUST support verification of legal uses of std::string_view in a
+[COVERAGE-090] A complete implementation MUST support verification of legal uses of std::string_view in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include non-owning range/lifetime.
 
@@ -8077,7 +8077,7 @@ The required semantic dimensions include non-owning range/lifetime.
 
 ### N.91 `unique_ptr`
 
-A complete implementation MUST support verification of legal uses of unique_ptr in a
+[COVERAGE-091] A complete implementation MUST support verification of legal uses of unique_ptr in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include unique ownership/move/deletion.
 
@@ -8103,7 +8103,7 @@ The required semantic dimensions include unique ownership/move/deletion.
 
 ### N.92 `shared_ptr`
 
-A complete implementation MUST support verification of legal uses of shared_ptr in a
+[COVERAGE-092] A complete implementation MUST support verification of legal uses of shared_ptr in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include shared ownership/aliasing/control block.
 
@@ -8129,7 +8129,7 @@ The required semantic dimensions include shared ownership/aliasing/control block
 
 ### N.93 `weak_ptr`
 
-A complete implementation MUST support verification of legal uses of weak_ptr in a
+[COVERAGE-093] A complete implementation MUST support verification of legal uses of weak_ptr in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include non-owning/lock.
 
@@ -8155,7 +8155,7 @@ The required semantic dimensions include non-owning/lock.
 
 ### N.94 `iterators`
 
-A complete implementation MUST support verification of legal uses of iterators in a
+[COVERAGE-094] A complete implementation MUST support verification of legal uses of iterators in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include validity/category/range.
 
@@ -8181,7 +8181,7 @@ The required semantic dimensions include validity/category/range.
 
 ### N.95 `ranges`
 
-A complete implementation MUST support verification of legal uses of ranges in a
+[COVERAGE-095] A complete implementation MUST support verification of legal uses of ranges in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include views/lazy lifetimes.
 
@@ -8207,7 +8207,7 @@ The required semantic dimensions include views/lazy lifetimes.
 
 ### N.96 `algorithms`
 
-A complete implementation MUST support verification of legal uses of algorithms in a
+[COVERAGE-096] A complete implementation MUST support verification of legal uses of algorithms in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include iterator/callable preconditions/effects.
 
@@ -8233,7 +8233,7 @@ The required semantic dimensions include iterator/callable preconditions/effects
 
 ### N.97 `associative containers`
 
-A complete implementation MUST support verification of legal uses of associative containers
+[COVERAGE-097] A complete implementation MUST support verification of legal uses of associative containers
 in a verification-enabled runtime region whenever the selected C++ mode supports the
 construct. The required semantic dimensions include key/comparator/iterator semantics.
 
@@ -8259,7 +8259,7 @@ construct. The required semantic dimensions include key/comparator/iterator sema
 
 ### N.98 `unordered containers`
 
-A complete implementation MUST support verification of legal uses of unordered containers in
+[COVERAGE-098] A complete implementation MUST support verification of legal uses of unordered containers in
 a verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include hash/equality/rehash invalidation.
 
@@ -8285,7 +8285,7 @@ The required semantic dimensions include hash/equality/rehash invalidation.
 
 ### N.99 `function wrappers`
 
-A complete implementation MUST support verification of legal uses of function wrappers in a
+[COVERAGE-099] A complete implementation MUST support verification of legal uses of function wrappers in a
 verification-enabled runtime region whenever the selected C++ mode supports the construct.
 The required semantic dimensions include type-erased target/effects.
 
@@ -8311,7 +8311,7 @@ The required semantic dimensions include type-erased target/effects.
 
 ### N.100 `synchronization library`
 
-A complete implementation MUST support verification of legal uses of synchronization library
+[COVERAGE-100] A complete implementation MUST support verification of legal uses of synchronization library
 in a verification-enabled runtime region whenever the selected C++ mode supports the
 construct. The required semantic dimensions include locks/condition variables/atomics.
 
@@ -8347,7 +8347,7 @@ verified bool nonzero_ratio(unsigned x, unsigned y)
 }
 ```
 
-The division is evaluated only on the path `y != 0u`. Verification must not require the
+[BOUNDARYEX-001] The division is evaluated only on the path `y != 0u`. Verification must not require the
 division to be defined on the short-circuited false path. The postcondition itself is a
 runtime Boolean relation and its formal interpretation must preserve the same selected
 operation semantics rather than evaluating an undefined division unconditionally.
@@ -8368,7 +8368,7 @@ verified bool consume_if_percentage(int raw)
 }
 ```
 
-The successful runtime branch supplies exactly the facts needed for the refinement crossing.
+[BOUNDARYEX-002] The successful runtime branch supplies exactly the facts needed for the refinement crossing.
 No hidden validator is inserted. The false branch creates no `Percentage`.
 
 ## O.3 Alias invalidates value fact
@@ -8398,7 +8398,7 @@ verified unsigned observe(const unsigned& x, unsigned& alias)
 }
 ```
 
-The `const` access path through `x` does not prove that `external(alias)` cannot mutate the
+[BOUNDARYEX-003] The `const` access path through `x` does not prove that `external(alias)` cannot mutate the
 same underlying object. Facts about `x` must be invalidated when aliasing is possible.
 
 ## O.5 Non-null is insufficient
@@ -8411,7 +8411,7 @@ verified int read(int* p)
 }
 ```
 
-The precondition proves only non-nullness. Dereference additionally requires live,
+[BOUNDARYEX-004] The precondition proves only non-nullness. Dereference additionally requires live,
 initialized, in-bounds, provenance-valid readable storage. A complete implementation must
 require those facts rather than treating non-nullness as a memory capability.
 
@@ -8426,7 +8426,7 @@ Counter bad() {
 }
 ```
 
-Where C++L verification is claimed for this construction boundary, `0` cannot establish
+[BOUNDARYEX-005] Where C++L verification is claimed for this construction boundary, `0` cannot establish
 `Positive`. A verifier must not allow the invalid value to enter refined storage and hope to
 catch it on a later read.
 
@@ -8446,7 +8446,7 @@ struct Derived : Base {
 };
 ```
 
-A caller through `Base&` is permitted to call with `x == 1`. The override cannot require `x
+[BOUNDARYEX-006] A caller through `Base&` is permitted to call with `x == 1`. The override cannot require `x
 
 > 10` because that would strengthen the precondition and invalidate base-interface
 > reasoning.
@@ -8465,7 +8465,7 @@ struct Derived : Base {
 };
 ```
 
-The derived postcondition implies the base postcondition and is therefore substitutable,
+[BOUNDARYEX-007] The derived postcondition implies the base postcondition and is therefore substitutable,
 assuming effects/purity/termination requirements are also compatible.
 
 ## O.9 Loop partial correctness
@@ -8484,7 +8484,7 @@ verified unsigned count(unsigned n)
 }
 ```
 
-The invariant establishes the postcondition if the loop exits. Without a required
+[BOUNDARYEX-008] The invariant establishes the postcondition if the loop exits. Without a required
 termination argument, this alone is a partial-correctness proof.
 
 ## O.10 Loop total correctness with decreases
@@ -8504,7 +8504,7 @@ verified unsigned count(unsigned n)
 }
 ```
 
-The measure requests termination. The verifier must prove it is well-founded and strictly
+[BOUNDARYEX-009] The measure requests termination. The verifier must prove it is well-founded and strictly
 decreases on every continuing iteration.
 
 ## O.11 `old` survives mutation
@@ -8534,7 +8534,7 @@ verified bool use_device()
 }
 ```
 
-The unsafe call executes, but no range proposition is produced. The returned Boolean is
+[BOUNDARYEX-010] The unsafe call executes, but no range proposition is produced. The returned Boolean is
 ordinary runtime behavior; any proof that `x <= 100` always holds still requires validation
 or trust.
 
@@ -8545,7 +8545,7 @@ trusted law device_range(unsigned x)
     proves (x <= 100u);
 ```
 
-This is an explicit universal assumption and therefore extremely strong. Any proof using it
+[BOUNDARYEX-011] This is an explicit universal assumption and therefore extremely strong. Any proof using it
 carries a trust dependency. It is not equivalent to runtime validation of one device
 reading.
 
@@ -8563,7 +8563,7 @@ proof inspect(std::variant<int, bool> v)
 }
 ```
 
-The valueless state is part of the complete semantic partition and cannot be omitted unless
+[BOUNDARYEX-012] The valueless state is part of the complete semantic partition and cannot be omitted unless
 the current context proves it impossible.
 
 ## O.15 Enum unnamed state
@@ -8582,12 +8582,12 @@ proof inspect(Mode m)
 }
 ```
 
-The enumeration can carry underlying values that do not equal a named enumerator.
+[BOUNDARYEX-013] The enumeration can carry underlying values that do not equal a named enumerator.
 `unnamed(v)` is therefore a real residual state, not a wildcard.
 
 # Normative Annex P — Agent implementation acceptance contract
 
-This annex exists so an implementation agent cannot treat examples, missing repository code,
+[ACCEPTANCE-001] This annex exists so an implementation agent cannot treat examples, missing repository code,
 or a smaller present compiler as permission to narrow the target language. It is normative
 language conformance guidance, not project status.
 
@@ -8667,13 +8667,13 @@ language conformance guidance, not project status.
 
 # Normative Annex R — Detailed contract composition semantics
 
-This annex removes ambiguity about how contracts compose with calls, storage, aliases,
+[CONTRACTCOMP-001] This annex removes ambiguity about how contracts compose with calls, storage, aliases,
 members, exceptions, dynamic dispatch and translation-unit boundaries. It defines
 source-language meaning only.
 
 ## R.1 Contract instantiation
 
-- A function contract is interpreted after ordinary C++ parameter types, cv/ref
+- [CONTRACTCOMP-002] A function contract is interpreted after ordinary C++ parameter types, cv/ref
   qualifiers, template substitution, overload selection and default arguments have been
   resolved for the selected entity.
 - At a call, every formal parameter occurrence in the contract is substituted with the
@@ -8713,7 +8713,7 @@ source-language meaning only.
 
 ## R.4 Preconditions at calls
 
-- A verified caller must prove the instantiated precondition before using the callee as
+- [CONTRACTCOMP-003] A verified caller must prove the instantiated precondition before using the callee as
   a verified call.
 - A callee precondition is not a runtime branch and is not inserted as an assertion.
 - If the call is in a conditional expression or short-circuited operand, the
@@ -8723,7 +8723,7 @@ source-language meaning only.
 
 ## R.5 Postconditions at calls
 
-- A callee postcondition becomes available only on the normal-return continuation.
+- [CONTRACTCOMP-004] A callee postcondition becomes available only on the normal-return continuation.
 - The caller must first apply the callee effect summary to the logical storage state and
   invalidate facts that the call may destroy.
 - The postcondition is then interpreted over the resulting post-call state and the fresh
@@ -8743,7 +8743,7 @@ source-language meaning only.
 
 ## R.7 Call result identity
 
-- Each runtime call evaluation creates a distinct logical result occurrence even when
+- [CONTRACTCOMP-005] Each runtime call evaluation creates a distinct logical result occurrence even when
   two calls invoke the same pure function with textually equal arguments.
 - If purity and deterministic semantics prove those result values equal, that equality
   may be derived; it is not a consequence of textual call duplication alone for impure
@@ -8751,7 +8751,7 @@ source-language meaning only.
 
 ## R.8 Calls used in specifications
 
-- A function may be used as a mathematical/specification function only when its formal
+- [CONTRACTCOMP-006] A function may be used as a mathematical/specification function only when its formal
   meaning is sufficiently pure, total for the specification use, and semantically
   defined for the arguments.
 - A merely `verified` runtime function with effects is not automatically a specification
@@ -8761,7 +8761,7 @@ source-language meaning only.
 
 ## R.9 Exceptional calls
 
-- If a call may throw, the normal postcondition is unavailable on the exceptional
+- [CONTRACTCOMP-007] If a call may throw, the normal postcondition is unavailable on the exceptional
   continuation.
 - Effect/lifetime changes that occurred before the throw remain part of the exceptional
   state according to C++.
@@ -8770,7 +8770,7 @@ source-language meaning only.
 
 ## R.10 Contract inheritance across declarations
 
-- The contract belongs to the resolved C++ function entity and therefore survives
+- [CONTRACTCOMP-008] The contract belongs to the resolved C++ function entity and therefore survives
   header/source separation.
 - A definition without repeated C++L syntax inherits the entity contract.
 - A repeated contract must be semantically equivalent; textual identity is sufficient
@@ -8780,7 +8780,7 @@ source-language meaning only.
 
 ## R.11 Virtual base contract
 
-- A call through a base virtual interface is verified against the base contract.
+- [CONTRACTCOMP-009] A call through a base virtual interface is verified against the base contract.
 - Every override must be substitutable for callers satisfying that contract.
 - An override may accept a weaker precondition or provide a stronger postcondition, but
   must not demand more or guarantee less than the base interface.
@@ -8789,7 +8789,7 @@ source-language meaning only.
 
 ## R.12 Pure contract interaction
 
-- A `pure` declaration additionally asserts the checked effect/observational
+- [CONTRACTCOMP-010] A `pure` declaration additionally asserts the checked effect/observational
   restrictions of §13.
 - Purity does not remove ordinary preconditions or postconditions.
 - A pure function used in a specification still requires termination and exception
@@ -8807,7 +8807,7 @@ source-language meaning only.
 
 ## R.14 Destructor contracts
 
-- A destructor may have verification obligations over the state that is still alive at
+- [CONTRACTCOMP-011] A destructor may have verification obligations over the state that is still alive at
   each program point.
 - A normal completion property cannot observe destroyed subobjects as live values after
   their lifetime end.
@@ -8847,7 +8847,7 @@ source-language meaning only.
 
 ## R.19 Reference return
 
-- A function returning a reference returns an alias, not an independent copied logical
+- [CONTRACTCOMP-012] A function returning a reference returns an alias, not an independent copied logical
   value.
 - The returned reference must refer to storage whose lifetime satisfies C++ after the
   call.
@@ -8856,19 +8856,19 @@ source-language meaning only.
 
 ## R.20 Pointer return
 
-- A pointer result carries only the pointer/provenance/capability facts established by
+- [CONTRACTCOMP-013] A pointer result carries only the pointer/provenance/capability facts established by
   the contract or formal body semantics.
 - Non-nullness alone does not imply readable/writable pointee storage.
 
 # Normative Annex S — Complete C++ declaration coverage
 
-C++L is a C++ superset. The declarations below retain ordinary C++ runtime and language
+[DECLCOVER-001] C++L is a C++ superset. The declarations below retain ordinary C++ runtime and language
 meaning. This annex states the additional verification obligations that apply when they
 participate in verified reasoning.
 
 ## S.1 namespace definition
 
-Runtime/source domain: scope/lookup only. No runtime entity is created by the namespace
+[DECLCOVER-002] Runtime/source domain: scope/lookup only. No runtime entity is created by the namespace
 itself. Laws/proofs in the namespace use that lexical scope.
 
 - Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
@@ -8883,7 +8883,7 @@ itself. Laws/proofs in the namespace use that lexical scope.
 
 ## S.2 namespace alias
 
-Runtime/source domain: name resolution. The alias changes lookup spelling only and does
+[DECLCOVER-003] Runtime/source domain: name resolution. The alias changes lookup spelling only and does
 not duplicate verification metadata.
 
 - Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
@@ -8898,7 +8898,7 @@ not duplicate verification metadata.
 
 ## S.3 using-declaration
 
-Runtime/source domain: name introduction. The introduced declaration retains the
+[DECLCOVER-004] Runtime/source domain: name introduction. The introduced declaration retains the
 original entity contract/refinement/formal metadata.
 
 - Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
@@ -8913,7 +8913,7 @@ original entity contract/refinement/formal metadata.
 
 ## S.4 using-directive
 
-Runtime/source domain: lookup. It changes lookup candidates exactly as C++ specifies and
+[DECLCOVER-005] Runtime/source domain: lookup. It changes lookup candidates exactly as C++ specifies and
 does not create proof evidence.
 
 - Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
@@ -8928,7 +8928,7 @@ does not create proof evidence.
 
 ## S.5 type alias / typedef
 
-Runtime/source domain: type naming. Aliases of refinements preserve refinement identity
+[DECLCOVER-006] Runtime/source domain: type naming. Aliases of refinements preserve refinement identity
 and predicates; aliases of ordinary C++ types add no formal invariant.
 
 - Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
@@ -8943,7 +8943,7 @@ and predicates; aliases of ordinary C++ types add no formal invariant.
 
 ## S.6 enumeration
 
-Runtime/source domain: runtime integral/enum value set. Proof-side cases must include
+[DECLCOVER-007] Runtime/source domain: runtime integral/enum value set. Proof-side cases must include
 every distinct named value plus the unnamed residual where the C++ value set exceeds
 named enumerators.
 
@@ -8959,7 +8959,7 @@ named enumerators.
 
 ## S.7 scoped enumeration
 
-Runtime/source domain: runtime enum value set. No implicit integral conversion is
+[DECLCOVER-008] Runtime/source domain: runtime enum value set. No implicit integral conversion is
 invented; explicit conversions follow C++ and proof reasoning uses the true underlying
 value set.
 
@@ -8975,7 +8975,7 @@ value set.
 
 ## S.8 class/struct
 
-Runtime/source domain: runtime object type. Members, bases, special members, lifetime
+[DECLCOVER-009] Runtime/source domain: runtime object type. Members, bases, special members, lifetime
 and layout remain C++; refinements on members are storage invariants at every write.
 
 - Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
@@ -8990,7 +8990,7 @@ and layout remain C++; refinements on members are storage invariants at every wr
 
 ## S.9 union
 
-Runtime/source domain: overlapping runtime storage. Only the active member/lifetime
+[DECLCOVER-010] Runtime/source domain: overlapping runtime storage. Only the active member/lifetime
 permitted by C++ may be treated as a live value; no all-members product model is
 allowed.
 
@@ -9006,7 +9006,7 @@ allowed.
 
 ## S.10 bit-field
 
-Runtime/source domain: subobject-like stored value. Reads/writes follow C++ bit-field
+[DECLCOVER-011] Runtime/source domain: subobject-like stored value. Reads/writes follow C++ bit-field
 rules; addressability and overlap assumptions must not exceed C++.
 
 - Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
@@ -9021,7 +9021,7 @@ rules; addressability and overlap assumptions must not exceed C++.
 
 ## S.11 static data member
 
-Runtime/source domain: shared storage. Effects/initialization/concurrency are tracked as
+[DECLCOVER-012] Runtime/source domain: shared storage. Effects/initialization/concurrency are tracked as
 global/static state.
 
 - Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
@@ -9036,7 +9036,7 @@ global/static state.
 
 ## S.12 thread_local variable
 
-Runtime/source domain: per-thread storage. Facts are thread-instance-specific;
+[DECLCOVER-013] Runtime/source domain: per-thread storage. Facts are thread-instance-specific;
 initialization/destruction follow C++.
 
 - Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
@@ -9051,7 +9051,7 @@ initialization/destruction follow C++.
 
 ## S.13 inline variable
 
-Runtime/source domain: ODR entity. Verification metadata must be equivalent across ODR
+[DECLCOVER-014] Runtime/source domain: ODR entity. Verification metadata must be equivalent across ODR
 declarations; runtime identity is ordinary C++.
 
 - Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
@@ -9066,7 +9066,7 @@ declarations; runtime identity is ordinary C++.
 
 ## S.14 function declaration
 
-Runtime/source domain: callable entity. Contracts/verification modifiers attach to the
+[DECLCOVER-015] Runtime/source domain: callable entity. Contracts/verification modifiers attach to the
 resolved entity and compose across declarations.
 
 - Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
@@ -9081,7 +9081,7 @@ resolved entity and compose across declarations.
 
 ## S.15 function definition
 
-Runtime/source domain: runtime body. The body must establish the entity contract and all
+[DECLCOVER-016] Runtime/source domain: runtime body. The body must establish the entity contract and all
 safety/refinement/effect obligations.
 
 - Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
@@ -9096,7 +9096,7 @@ safety/refinement/effect obligations.
 
 ## S.16 deleted function
 
-Runtime/source domain: unavailable callable. C++ deletion rules govern viability; no
+[DECLCOVER-017] Runtime/source domain: unavailable callable. C++ deletion rules govern viability; no
 contract makes a deleted call legal.
 
 - Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
@@ -9111,7 +9111,7 @@ contract makes a deleted call legal.
 
 ## S.17 defaulted function
 
-Runtime/source domain: compiler-generated runtime semantics. Verification must model the
+[DECLCOVER-018] Runtime/source domain: compiler-generated runtime semantics. Verification must model the
 actual generated operations and their effects/definedness.
 
 - Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
@@ -9126,7 +9126,7 @@ actual generated operations and their effects/definedness.
 
 ## S.18 friend declaration
 
-Runtime/source domain: access relationship. Friendship changes C++ access but creates no
+[DECLCOVER-019] Runtime/source domain: access relationship. Friendship changes C++ access but creates no
 proposition by itself.
 
 - Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
@@ -9141,7 +9141,7 @@ proposition by itself.
 
 ## S.19 static_assert
 
-Runtime/source domain: compile-time C++ assertion. A successful static_assert is a C++
+[DECLCOVER-020] Runtime/source domain: compile-time C++ assertion. A successful static_assert is a C++
 compilation fact; it can inform formal reasoning only through a defined correspondence,
 not as arbitrary proof evidence.
 
@@ -9157,7 +9157,7 @@ not as arbitrary proof evidence.
 
 ## S.20 attribute
 
-Runtime/source domain: C++/implementation annotation. C++L preserves runtime/semantic
+[DECLCOVER-021] Runtime/source domain: C++/implementation annotation. C++L preserves runtime/semantic
 meaning of supported attributes and must not infer extra proof facts from unknown
 attributes.
 
@@ -9173,7 +9173,7 @@ attributes.
 
 ## S.21 alignas
 
-Runtime/source domain: object layout/alignment requirement. Alignment
+[DECLCOVER-022] Runtime/source domain: object layout/alignment requirement. Alignment
 obligations/capabilities must agree with the resulting C++ object layout.
 
 - Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
@@ -9188,7 +9188,7 @@ obligations/capabilities must agree with the resulting C++ object layout.
 
 ## S.22 linkage specification
 
-Runtime/source domain: ABI/linkage. `extern "C"` and other linkage forms retain their
+[DECLCOVER-023] Runtime/source domain: ABI/linkage. `extern "C"` and other linkage forms retain their
 C++ ABI meaning; C++L metadata stays outside native ABI.
 
 - Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
@@ -9203,7 +9203,7 @@ C++ ABI meaning; C++L metadata stays outside native ABI.
 
 ## S.23 deduction guide
 
-Runtime/source domain: template deduction rule. The instantiated entity/model is the one
+[DECLCOVER-024] Runtime/source domain: template deduction rule. The instantiated entity/model is the one
 selected by ordinary C++ deduction.
 
 - Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
@@ -9218,7 +9218,7 @@ selected by ordinary C++ deduction.
 
 ## S.24 concept definition
 
-Runtime/source domain: compile-time predicate on template arguments. Concept truth is
+[DECLCOVER-025] Runtime/source domain: compile-time predicate on template arguments. Concept truth is
 not automatically a runtime theorem beyond the exact compile-time property it defines.
 
 - Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
@@ -9233,7 +9233,7 @@ not automatically a runtime theorem beyond the exact compile-time property it de
 
 ## S.25 template declaration
 
-Runtime/source domain: family of C++ entities. Verification is instantiated/specialized
+[DECLCOVER-026] Runtime/source domain: family of C++ entities. Verification is instantiated/specialized
 consistently with C++ template semantics.
 
 - Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
@@ -9248,7 +9248,7 @@ consistently with C++ template semantics.
 
 ## S.26 explicit specialization
 
-Runtime/source domain: specialized C++ entity. May have distinct checked
+[DECLCOVER-027] Runtime/source domain: specialized C++ entity. May have distinct checked
 behavior/contract only where declaration compatibility rules permit it.
 
 - Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
@@ -9263,7 +9263,7 @@ behavior/contract only where declaration compatibility rules permit it.
 
 ## S.27 partial specialization
 
-Runtime/source domain: specialization selection. Formal metadata must correspond to the
+[DECLCOVER-028] Runtime/source domain: specialization selection. Formal metadata must correspond to the
 specialization actually selected.
 
 - Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
@@ -9278,7 +9278,7 @@ specialization actually selected.
 
 ## S.28 explicit instantiation
 
-Runtime/source domain: instantiation placement. Verification evidence/metadata must
+[DECLCOVER-029] Runtime/source domain: instantiation placement. Verification evidence/metadata must
 remain available to callers independently of where code generation occurs.
 
 - Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
@@ -9293,7 +9293,7 @@ remain available to callers independently of where code generation occurs.
 
 ## S.29 module declaration/import/export
 
-Runtime/source domain: module interface semantics. Exported/imported verification
+[DECLCOVER-030] Runtime/source domain: module interface semantics. Exported/imported verification
 metadata must correspond to the exported C++ entities; native module semantics remain
 C++.
 
@@ -9316,7 +9316,7 @@ It is not permission to ignore a C++ rule omitted from the examples.
 
 ## T.1 signed integer overflow
 
-- The verifier MUST prove result is representable before the operation is relied upon.
+- [DEFINEDBEHAVIOR-001] The verifier MUST prove result is representable before the operation is relied upon.
 - The obligation is path-sensitive and is owed only on runtime paths that evaluate the
   operation, preserving ordinary C++ short-circuiting and control flow.
 - A proof that ignores the operation result does not remove the defined-behavior
@@ -9329,7 +9329,7 @@ It is not permission to ignore a C++ rule omitted from the examples.
 
 ## T.2 division/remainder by zero
 
-- The verifier MUST prove divisor is nonzero.
+- [DEFINEDBEHAVIOR-002] The verifier MUST prove divisor is nonzero.
 - The obligation is path-sensitive and is owed only on runtime paths that evaluate the
   operation, preserving ordinary C++ short-circuiting and control flow.
 - A proof that ignores the operation result does not remove the defined-behavior
@@ -9342,7 +9342,7 @@ It is not permission to ignore a C++ rule omitted from the examples.
 
 ## T.3 signed minimum divided by -1 where undefined
 
-- The verifier MUST prove the exceptional operand pair cannot occur.
+- [DEFINEDBEHAVIOR-003] The verifier MUST prove the exceptional operand pair cannot occur.
 - The obligation is path-sensitive and is owed only on runtime paths that evaluate the
   operation, preserving ordinary C++ short-circuiting and control flow.
 - A proof that ignores the operation result does not remove the defined-behavior
@@ -9355,7 +9355,7 @@ It is not permission to ignore a C++ rule omitted from the examples.
 
 ## T.4 invalid shift count
 
-- The verifier MUST prove nonnegative/in-range count after promotions.
+- [DEFINEDBEHAVIOR-004] The verifier MUST prove nonnegative/in-range count after promotions.
 - The obligation is path-sensitive and is owed only on runtime paths that evaluate the
   operation, preserving ordinary C++ short-circuiting and control flow.
 - A proof that ignores the operation result does not remove the defined-behavior
@@ -9368,7 +9368,7 @@ It is not permission to ignore a C++ rule omitted from the examples.
 
 ## T.5 invalid signed left shift
 
-- The verifier MUST prove every C++ definedness condition for the selected operands.
+- [DEFINEDBEHAVIOR-005] The verifier MUST prove every C++ definedness condition for the selected operands.
 - The obligation is path-sensitive and is owed only on runtime paths that evaluate the
   operation, preserving ordinary C++ short-circuiting and control flow.
 - A proof that ignores the operation result does not remove the defined-behavior
@@ -9381,7 +9381,7 @@ It is not permission to ignore a C++ rule omitted from the examples.
 
 ## T.6 out-of-bounds array access
 
-- The verifier MUST prove index/access remains within the permitted object/array range.
+- [DEFINEDBEHAVIOR-006] The verifier MUST prove index/access remains within the permitted object/array range.
 - The obligation is path-sensitive and is owed only on runtime paths that evaluate the
   operation, preserving ordinary C++ short-circuiting and control flow.
 - A proof that ignores the operation result does not remove the defined-behavior
@@ -9394,7 +9394,7 @@ It is not permission to ignore a C++ rule omitted from the examples.
 
 ## T.7 invalid pointer arithmetic
 
-- The verifier MUST prove provenance and permitted array range including one-past rules.
+- [DEFINEDBEHAVIOR-007] The verifier MUST prove provenance and permitted array range including one-past rules.
 - The obligation is path-sensitive and is owed only on runtime paths that evaluate the
   operation, preserving ordinary C++ short-circuiting and control flow.
 - A proof that ignores the operation result does not remove the defined-behavior
@@ -9407,7 +9407,7 @@ It is not permission to ignore a C++ rule omitted from the examples.
 
 ## T.8 null dereference
 
-- The verifier MUST prove non-nullness plus all other dereference capabilities.
+- [DEFINEDBEHAVIOR-008] The verifier MUST prove non-nullness plus all other dereference capabilities.
 - The obligation is path-sensitive and is owed only on runtime paths that evaluate the
   operation, preserving ordinary C++ short-circuiting and control flow.
 - A proof that ignores the operation result does not remove the defined-behavior
@@ -9420,7 +9420,7 @@ It is not permission to ignore a C++ rule omitted from the examples.
 
 ## T.9 dangling pointer/reference use
 
-- The verifier MUST prove target lifetime is active.
+- [DEFINEDBEHAVIOR-009] The verifier MUST prove target lifetime is active.
 - The obligation is path-sensitive and is owed only on runtime paths that evaluate the
   operation, preserving ordinary C++ short-circuiting and control flow.
 - A proof that ignores the operation result does not remove the defined-behavior
@@ -9433,7 +9433,7 @@ It is not permission to ignore a C++ rule omitted from the examples.
 
 ## T.10 uninitialized/indeterminate read
 
-- The verifier MUST prove the read is permitted and value initialized as required by
+- [DEFINEDBEHAVIOR-010] The verifier MUST prove the read is permitted and value initialized as required by
   C++.
 - The obligation is path-sensitive and is owed only on runtime paths that evaluate the
   operation, preserving ordinary C++ short-circuiting and control flow.
@@ -9447,7 +9447,7 @@ It is not permission to ignore a C++ rule omitted from the examples.
 
 ## T.11 misaligned access
 
-- The verifier MUST prove alignment required by the accessed type/operation.
+- [DEFINEDBEHAVIOR-011] The verifier MUST prove alignment required by the accessed type/operation.
 - The obligation is path-sensitive and is owed only on runtime paths that evaluate the
   operation, preserving ordinary C++ short-circuiting and control flow.
 - A proof that ignores the operation result does not remove the defined-behavior
@@ -9460,7 +9460,7 @@ It is not permission to ignore a C++ rule omitted from the examples.
 
 ## T.12 strict-aliasing/type-access violation
 
-- The verifier MUST prove the glvalue access is permitted by the C++ object model.
+- [DEFINEDBEHAVIOR-012] The verifier MUST prove the glvalue access is permitted by the C++ object model.
 - The obligation is path-sensitive and is owed only on runtime paths that evaluate the
   operation, preserving ordinary C++ short-circuiting and control flow.
 - A proof that ignores the operation result does not remove the defined-behavior
@@ -9473,7 +9473,7 @@ It is not permission to ignore a C++ rule omitted from the examples.
 
 ## T.13 inactive union member access
 
-- The verifier MUST prove a C++ rule permits the access or establish the active-member
+- [DEFINEDBEHAVIOR-013] The verifier MUST prove a C++ rule permits the access or establish the active-member
   transition.
 - The obligation is path-sensitive and is owed only on runtime paths that evaluate the
   operation, preserving ordinary C++ short-circuiting and control flow.
@@ -9487,7 +9487,7 @@ It is not permission to ignore a C++ rule omitted from the examples.
 
 ## T.14 use after lifetime end
 
-- The verifier MUST prove the object lifetime still exists at the operation.
+- [DEFINEDBEHAVIOR-014] The verifier MUST prove the object lifetime still exists at the operation.
 - The obligation is path-sensitive and is owed only on runtime paths that evaluate the
   operation, preserving ordinary C++ short-circuiting and control flow.
 - A proof that ignores the operation result does not remove the defined-behavior
@@ -9500,7 +9500,7 @@ It is not permission to ignore a C++ rule omitted from the examples.
 
 ## T.15 double delete / invalid delete
 
-- The verifier MUST prove matching allocation/deallocation ownership conditions.
+- [DEFINEDBEHAVIOR-015] The verifier MUST prove matching allocation/deallocation ownership conditions.
 - The obligation is path-sensitive and is owed only on runtime paths that evaluate the
   operation, preserving ordinary C++ short-circuiting and control flow.
 - A proof that ignores the operation result does not remove the defined-behavior
@@ -9513,7 +9513,7 @@ It is not permission to ignore a C++ rule omitted from the examples.
 
 ## T.16 delete through invalid base/type
 
-- The verifier MUST prove C++ destruction/deallocation requirements including virtual
+- [DEFINEDBEHAVIOR-016] The verifier MUST prove C++ destruction/deallocation requirements including virtual
   destructor where needed.
 - The obligation is path-sensitive and is owed only on runtime paths that evaluate the
   operation, preserving ordinary C++ short-circuiting and control flow.
@@ -9527,7 +9527,7 @@ It is not permission to ignore a C++ rule omitted from the examples.
 
 ## T.17 invalid downcast
 
-- The verifier MUST prove dynamic/static cast requirements.
+- [DEFINEDBEHAVIOR-017] The verifier MUST prove dynamic/static cast requirements.
 - The obligation is path-sensitive and is owed only on runtime paths that evaluate the
   operation, preserving ordinary C++ short-circuiting and control flow.
 - A proof that ignores the operation result does not remove the defined-behavior
@@ -9540,7 +9540,7 @@ It is not permission to ignore a C++ rule omitted from the examples.
 
 ## T.18 bad `std::get`/state access where specified as exception or UB
 
-- The verifier MUST verify the exact selected standard operation behavior.
+- [DEFINEDBEHAVIOR-018] The verifier MUST verify the exact selected standard operation behavior.
 - The obligation is path-sensitive and is owed only on runtime paths that evaluate the
   operation, preserving ordinary C++ short-circuiting and control flow.
 - A proof that ignores the operation result does not remove the defined-behavior
@@ -9553,7 +9553,7 @@ It is not permission to ignore a C++ rule omitted from the examples.
 
 ## T.19 iterator invalidation
 
-- The verifier MUST prove iterator remains valid after intervening container operations.
+- [DEFINEDBEHAVIOR-019] The verifier MUST prove iterator remains valid after intervening container operations.
 - The obligation is path-sensitive and is owed only on runtime paths that evaluate the
   operation, preserving ordinary C++ short-circuiting and control flow.
 - A proof that ignores the operation result does not remove the defined-behavior
@@ -9566,7 +9566,7 @@ It is not permission to ignore a C++ rule omitted from the examples.
 
 ## T.20 dereferencing end iterator
 
-- The verifier MUST prove iterator is dereferenceable.
+- [DEFINEDBEHAVIOR-020] The verifier MUST prove iterator is dereferenceable.
 - The obligation is path-sensitive and is owed only on runtime paths that evaluate the
   operation, preserving ordinary C++ short-circuiting and control flow.
 - A proof that ignores the operation result does not remove the defined-behavior
@@ -9579,7 +9579,7 @@ It is not permission to ignore a C++ rule omitted from the examples.
 
 ## T.21 data race
 
-- The verifier MUST prove synchronization/atomic semantics prevent conflicting
+- [DEFINEDBEHAVIOR-021] The verifier MUST prove synchronization/atomic semantics prevent conflicting
   unsynchronized access.
 - The obligation is path-sensitive and is owed only on runtime paths that evaluate the
   operation, preserving ordinary C++ short-circuiting and control flow.
@@ -9593,7 +9593,7 @@ It is not permission to ignore a C++ rule omitted from the examples.
 
 ## T.22 destroying locked/live synchronization object incorrectly
 
-- The verifier MUST prove library/C++ preconditions.
+- [DEFINEDBEHAVIOR-022] The verifier MUST prove library/C++ preconditions.
 - The obligation is path-sensitive and is owed only on runtime paths that evaluate the
   operation, preserving ordinary C++ short-circuiting and control flow.
 - A proof that ignores the operation result does not remove the defined-behavior
@@ -9606,7 +9606,7 @@ It is not permission to ignore a C++ rule omitted from the examples.
 
 ## T.23 calling through invalid function pointer/member pointer
 
-- The verifier MUST prove callable target validity.
+- [DEFINEDBEHAVIOR-023] The verifier MUST prove callable target validity.
 - The obligation is path-sensitive and is owed only on runtime paths that evaluate the
   operation, preserving ordinary C++ short-circuiting and control flow.
 - A proof that ignores the operation result does not remove the defined-behavior
@@ -9619,7 +9619,7 @@ It is not permission to ignore a C++ rule omitted from the examples.
 
 ## T.24 invalid object representation assumptions
 
-- The verifier MUST do not infer value equality from bytes except where C++ permits.
+- [DEFINEDBEHAVIOR-024] The verifier MUST do not infer value equality from bytes except where C++ permits.
 - The obligation is path-sensitive and is owed only on runtime paths that evaluate the
   operation, preserving ordinary C++ short-circuiting and control flow.
 - A proof that ignores the operation result does not remove the defined-behavior
@@ -9632,7 +9632,7 @@ It is not permission to ignore a C++ rule omitted from the examples.
 
 ## T.25 lifetime-invalid `this`/member access
 
-- The verifier MUST prove implicit object/subobject lifetime is valid.
+- [DEFINEDBEHAVIOR-025] The verifier MUST prove implicit object/subobject lifetime is valid.
 - The obligation is path-sensitive and is owed only on runtime paths that evaluate the
   operation, preserving ordinary C++ short-circuiting and control flow.
 - A proof that ignores the operation result does not remove the defined-behavior
@@ -9645,7 +9645,7 @@ It is not permission to ignore a C++ rule omitted from the examples.
 
 ## T.26 throwing through contexts that mandate termination
 
-- The verifier MUST model ordinary terminate behavior and do not treat it as normal
+- [DEFINEDBEHAVIOR-026] The verifier MUST model ordinary terminate behavior and do not treat it as normal
   return.
 - The obligation is path-sensitive and is owed only on runtime paths that evaluate the
   operation, preserving ordinary C++ short-circuiting and control flow.
@@ -9659,7 +9659,7 @@ It is not permission to ignore a C++ rule omitted from the examples.
 
 ## T.27 violating library preconditions
 
-- The verifier MUST prove the semantic preconditions stated by the selected
+- [DEFINEDBEHAVIOR-027] The verifier MUST prove the semantic preconditions stated by the selected
   standard/library model.
 - The obligation is path-sensitive and is owed only on runtime paths that evaluate the
   operation, preserving ordinary C++ short-circuiting and control flow.
@@ -9681,7 +9681,7 @@ and a checked correspondence to formal values/propositions.
 
 Admitted when their formal type/value is defined.
 
-- No observable runtime side effect is permitted merely to evaluate the specification.
+- [ADMISSIBLE-001] No observable runtime side effect is permitted merely to evaluate the specification.
 - Undefined C++ behavior cannot be used to define a proposition.
 - The expression must have one unambiguous formal type/meaning after C++ name/type
   resolution and C++L contextual interpretation.
@@ -9695,7 +9695,7 @@ Admitted when their formal type/value is defined.
 Admitted when the referenced logical value is in scope and reading it as a specification
 value is well-defined.
 
-- No observable runtime side effect is permitted merely to evaluate the specification.
+- [ADMISSIBLE-002] No observable runtime side effect is permitted merely to evaluate the specification.
 - Undefined C++ behavior cannot be used to define a proposition.
 - The expression must have one unambiguous formal type/meaning after C++ name/type
   resolution and C++L contextual interpretation.
@@ -9708,7 +9708,7 @@ value is well-defined.
 
 Admitted when object/member lifetime and stable formal value are established.
 
-- No observable runtime side effect is permitted merely to evaluate the specification.
+- [ADMISSIBLE-003] No observable runtime side effect is permitted merely to evaluate the specification.
 - Undefined C++ behavior cannot be used to define a proposition.
 - The expression must have one unambiguous formal type/meaning after C++ name/type
   resolution and C++L contextual interpretation.
@@ -9722,7 +9722,7 @@ Admitted when object/member lifetime and stable formal value are established.
 Admitted only when the formal meaning accounts for mutability and the relevant state
 version.
 
-- No observable runtime side effect is permitted merely to evaluate the specification.
+- [ADMISSIBLE-004] No observable runtime side effect is permitted merely to evaluate the specification.
 - Undefined C++ behavior cannot be used to define a proposition.
 - The expression must have one unambiguous formal type/meaning after C++ name/type
   resolution and C++L contextual interpretation.
@@ -9736,7 +9736,7 @@ version.
 Admitted with exact machine or mathematical-domain semantics and all definedness
 obligations.
 
-- No observable runtime side effect is permitted merely to evaluate the specification.
+- [ADMISSIBLE-005] No observable runtime side effect is permitted merely to evaluate the specification.
 - Undefined C++ behavior cannot be used to define a proposition.
 - The expression must have one unambiguous formal type/meaning after C++ name/type
   resolution and C++L contextual interpretation.
@@ -9749,7 +9749,7 @@ obligations.
 
 Admitted when the selected c++/formal comparison is modeled exactly.
 
-- No observable runtime side effect is permitted merely to evaluate the specification.
+- [ADMISSIBLE-006] No observable runtime side effect is permitted merely to evaluate the specification.
 - Undefined C++ behavior cannot be used to define a proposition.
 - The expression must have one unambiguous formal type/meaning after C++ name/type
   resolution and C++L contextual interpretation.
@@ -9762,7 +9762,7 @@ Admitted when the selected c++/formal comparison is modeled exactly.
 
 Interpreted as proposition constructors in proposition context.
 
-- No observable runtime side effect is permitted merely to evaluate the specification.
+- [ADMISSIBLE-007] No observable runtime side effect is permitted merely to evaluate the specification.
 - Undefined C++ behavior cannot be used to define a proposition.
 - The expression must have one unambiguous formal type/meaning after C++ name/type
   resolution and C++L contextual interpretation.
@@ -9775,7 +9775,7 @@ Interpreted as proposition constructors in proposition context.
 
 Formal proposition operators only in specification grammar.
 
-- No observable runtime side effect is permitted merely to evaluate the specification.
+- [ADMISSIBLE-008] No observable runtime side effect is permitted merely to evaluate the specification.
 - Undefined C++ behavior cannot be used to define a proposition.
 - The expression must have one unambiguous formal type/meaning after C++ name/type
   resolution and C++L contextual interpretation.
@@ -9788,7 +9788,7 @@ Formal proposition operators only in specification grammar.
 
 Formal proposition distinct from runtime operator==.
 
-- No observable runtime side effect is permitted merely to evaluate the specification.
+- [ADMISSIBLE-009] No observable runtime side effect is permitted merely to evaluate the specification.
 - Undefined C++ behavior cannot be used to define a proposition.
 - The expression must have one unambiguous formal type/meaning after C++ name/type
   resolution and C++L contextual interpretation.
@@ -9801,7 +9801,7 @@ Formal proposition distinct from runtime operator==.
 
 Proof-only binders with no runtime iteration.
 
-- No observable runtime side effect is permitted merely to evaluate the specification.
+- [ADMISSIBLE-010] No observable runtime side effect is permitted merely to evaluate the specification.
 - Undefined C++ behavior cannot be used to define a proposition.
 - The expression must have one unambiguous formal type/meaning after C++ name/type
   resolution and C++L contextual interpretation.
@@ -9814,7 +9814,7 @@ Proof-only binders with no runtime iteration.
 
 Admitted when formal function semantics are established.
 
-- No observable runtime side effect is permitted merely to evaluate the specification.
+- [ADMISSIBLE-011] No observable runtime side effect is permitted merely to evaluate the specification.
 - Undefined C++ behavior cannot be used to define a proposition.
 - The expression must have one unambiguous formal type/meaning after C++ name/type
   resolution and C++L contextual interpretation.
@@ -9827,7 +9827,7 @@ Admitted when formal function semantics are established.
 
 Only in non-void normal-return postcondition.
 
-- No observable runtime side effect is permitted merely to evaluate the specification.
+- [ADMISSIBLE-012] No observable runtime side effect is permitted merely to evaluate the specification.
 - Undefined C++ behavior cannot be used to define a proposition.
 - The expression must have one unambiguous formal type/meaning after C++ name/type
   resolution and C++L contextual interpretation.
@@ -9838,9 +9838,9 @@ Only in non-void normal-return postcondition.
 
 ## U.13 `old(e)`
 
-Only in function postcondition and interpreted in entry state.
+[ADMISSIBLE-013] Only in function postcondition and interpreted in entry state.
 
-- No observable runtime side effect is permitted merely to evaluate the specification.
+- [ADMISSIBLE-014] No observable runtime side effect is permitted merely to evaluate the specification.
 - Undefined C++ behavior cannot be used to define a proposition.
 - The expression must have one unambiguous formal type/meaning after C++ name/type
   resolution and C++L contextual interpretation.
@@ -9853,7 +9853,7 @@ Only in function postcondition and interpreted in entry state.
 
 Only in refinement predicate.
 
-- No observable runtime side effect is permitted merely to evaluate the specification.
+- [ADMISSIBLE-015] No observable runtime side effect is permitted merely to evaluate the specification.
 - Undefined C++ behavior cannot be used to define a proposition.
 - The expression must have one unambiguous formal type/meaning after C++ name/type
   resolution and C++L contextual interpretation.
@@ -9864,9 +9864,9 @@ Only in refinement predicate.
 
 ## U.15 memory predicates
 
-Only as built-in formal propositions over modeled pointer/storage values.
+[ADMISSIBLE-016] Only as built-in formal propositions over modeled pointer/storage values.
 
-- No observable runtime side effect is permitted merely to evaluate the specification.
+- [ADMISSIBLE-017] No observable runtime side effect is permitted merely to evaluate the specification.
 - Undefined C++ behavior cannot be used to define a proposition.
 - The expression must have one unambiguous formal type/meaning after C++ name/type
   resolution and C++L contextual interpretation.
@@ -9879,7 +9879,7 @@ Only as built-in formal propositions over modeled pointer/storage values.
 
 Only for the domain signatures defined by the specification.
 
-- No observable runtime side effect is permitted merely to evaluate the specification.
+- [ADMISSIBLE-018] No observable runtime side effect is permitted merely to evaluate the specification.
 - Undefined C++ behavior cannot be used to define a proposition.
 - The expression must have one unambiguous formal type/meaning after C++ name/type
   resolution and C++L contextual interpretation.
@@ -9892,10 +9892,10 @@ Only for the domain signatures defined by the specification.
 
 ## V.1 `verified` + `pure`
 
-The body executes at runtime, all verified obligations hold, and the checked effect set
+[INTERACT-001] The body executes at runtime, all verified obligations hold, and the checked effect set
 must satisfy purity. Canonical source ordering is `verified pure`.
 
-- No interaction listed here authorizes hidden runtime proof machinery.
+- [INTERACT-002] No interaction listed here authorizes hidden runtime proof machinery.
 - Where both participating features generate obligations, both sets of obligations apply
   unless a specific rule states that one subsumes the other.
 - Ordinary C++ legality remains a prerequisite for any runtime construct involved.
@@ -9907,7 +9907,7 @@ must satisfy purity. Canonical source ordering is `verified pure`.
 Both C++ constant-evaluation rules and C++L verification rules apply independently;
 constant evaluability is not proof and verification is not constant evaluation.
 
-- No interaction listed here authorizes hidden runtime proof machinery.
+- [INTERACT-003] No interaction listed here authorizes hidden runtime proof machinery.
 - Where both participating features generate obligations, both sets of obligations apply
   unless a specific rule states that one subsumes the other.
 - Ordinary C++ legality remains a prerequisite for any runtime construct involved.
@@ -9919,7 +9919,7 @@ constant evaluability is not proof and verification is not constant evaluation.
 Immediate invocation remains C++; the function must also satisfy its C++L obligations.
 Formal use requires purity/termination as otherwise required.
 
-- No interaction listed here authorizes hidden runtime proof machinery.
+- [INTERACT-004] No interaction listed here authorizes hidden runtime proof machinery.
 - Where both participating features generate obligations, both sets of obligations apply
   unless a specific rule states that one subsumes the other.
 - Ordinary C++ legality remains a prerequisite for any runtime construct involved.
@@ -9928,10 +9928,10 @@ Formal use requires purity/termination as otherwise required.
 
 ## V.4 `verified` + `virtual`
 
-The body/override is verified and must satisfy substitutability relative to overridden
+[INTERACT-005] The body/override is verified and must satisfy substitutability relative to overridden
 contracts.
 
-- No interaction listed here authorizes hidden runtime proof machinery.
+- [INTERACT-006] No interaction listed here authorizes hidden runtime proof machinery.
 - Where both participating features generate obligations, both sets of obligations apply
   unless a specific rule states that one subsumes the other.
 - Ordinary C++ legality remains a prerequisite for any runtime construct involved.
@@ -9940,10 +9940,10 @@ contracts.
 
 ## V.5 `verified` + `noexcept`
 
-The body is verified while C++ noexcept semantics remain intact; normal postconditions
+[INTERACT-007] The body is verified while C++ noexcept semantics remain intact; normal postconditions
 do not describe termination caused by an escaping exception.
 
-- No interaction listed here authorizes hidden runtime proof machinery.
+- [INTERACT-008] No interaction listed here authorizes hidden runtime proof machinery.
 - Where both participating features generate obligations, both sets of obligations apply
   unless a specific rule states that one subsumes the other.
 - Ordinary C++ legality remains a prerequisite for any runtime construct involved.
@@ -9955,7 +9955,7 @@ do not describe termination caused by an escaping exception.
 Both restrictions apply; `const` alone is not purity and purity alone is not a
 cv-qualification rule.
 
-- No interaction listed here authorizes hidden runtime proof machinery.
+- [INTERACT-009] No interaction listed here authorizes hidden runtime proof machinery.
 - Where both participating features generate obligations, both sets of obligations apply
   unless a specific rule states that one subsumes the other.
 - Ordinary C++ legality remains a prerequisite for any runtime construct involved.
@@ -9964,10 +9964,10 @@ cv-qualification rule.
 
 ## V.7 refinement + reference
 
-The reference aliases refined storage; every write through any alias must re-establish
+[INTERACT-010] The reference aliases refined storage; every write through any alias must re-establish
 membership and invalidate stale value facts.
 
-- No interaction listed here authorizes hidden runtime proof machinery.
+- [INTERACT-011] No interaction listed here authorizes hidden runtime proof machinery.
 - Where both participating features generate obligations, both sets of obligations apply
   unless a specific rule states that one subsumes the other.
 - Ordinary C++ legality remains a prerequisite for any runtime construct involved.
@@ -9979,7 +9979,7 @@ membership and invalidate stale value facts.
 Pointer value/refinement and pointee storage/refinement are distinct; non-nullness does
 not imply pointee membership or access capability.
 
-- No interaction listed here authorizes hidden runtime proof machinery.
+- [INTERACT-012] No interaction listed here authorizes hidden runtime proof machinery.
 - Where both participating features generate obligations, both sets of obligations apply
   unless a specific rule states that one subsumes the other.
 - Ordinary C++ legality remains a prerequisite for any runtime construct involved.
@@ -9991,7 +9991,7 @@ not imply pointee membership or access capability.
 Construction and every member write must establish membership, including writes through
 aliases and generated special members.
 
-- No interaction listed here authorizes hidden runtime proof machinery.
+- [INTERACT-013] No interaction listed here authorizes hidden runtime proof machinery.
 - Where both participating features generate obligations, both sets of obligations apply
   unless a specific rule states that one subsumes the other.
 - Ordinary C++ legality remains a prerequisite for any runtime construct involved.
@@ -10003,7 +10003,7 @@ aliases and generated special members.
 Substitution yields the concrete predicate; proof-only indices affect verification
 identity but not runtime ABI unless independently represented by C++.
 
-- No interaction listed here authorizes hidden runtime proof machinery.
+- [INTERACT-014] No interaction listed here authorizes hidden runtime proof machinery.
 - Where both participating features generate obligations, both sets of obligations apply
   unless a specific rule states that one subsumes the other.
 - Ordinary C++ legality remains a prerequisite for any runtime construct involved.
@@ -10015,7 +10015,7 @@ identity but not runtime ABI unless independently represented by C++.
 Ghost state may symbolically refer to runtime values but runtime code may not depend on
 erased ghost state.
 
-- No interaction listed here authorizes hidden runtime proof machinery.
+- [INTERACT-015] No interaction listed here authorizes hidden runtime proof machinery.
 - Where both participating features generate obligations, both sets of obligations apply
   unless a specific rule states that one subsumes the other.
 - Ordinary C++ legality remains a prerequisite for any runtime construct involved.
@@ -10024,10 +10024,10 @@ erased ghost state.
 
 ## V.12 ghost + destructor
 
-A ghost object requiring observable runtime destruction is invalid; erasure cannot
+[INTERACT-016] A ghost object requiring observable runtime destruction is invalid; erasure cannot
 remove required runtime effects.
 
-- No interaction listed here authorizes hidden runtime proof machinery.
+- [INTERACT-017] No interaction listed here authorizes hidden runtime proof machinery.
 - Where both participating features generate obligations, both sets of obligations apply
   unless a specific rule states that one subsumes the other.
 - Ordinary C++ legality remains a prerequisite for any runtime construct involved.
@@ -10036,10 +10036,10 @@ remove required runtime effects.
 
 ## V.13 unsafe + verified region
 
-Unsafe operations may execute inside a verified function but contribute no unchecked
+[INTERACT-018] Unsafe operations may execute inside a verified function but contribute no unchecked
 facts and conservatively affect storage; surrounding obligations remain.
 
-- No interaction listed here authorizes hidden runtime proof machinery.
+- [INTERACT-019] No interaction listed here authorizes hidden runtime proof machinery.
 - Where both participating features generate obligations, both sets of obligations apply
   unless a specific rule states that one subsumes the other.
 - Ordinary C++ legality remains a prerequisite for any runtime construct involved.
@@ -10048,10 +10048,10 @@ facts and conservatively affect storage; surrounding obligations remain.
 
 ## V.14 trusted Law + verified proof
 
-The theorem may be used as a premise, but every derived result records the trust
+[INTERACT-020] The theorem may be used as a premise, but every derived result records the trust
 dependency.
 
-- No interaction listed here authorizes hidden runtime proof machinery.
+- [INTERACT-021] No interaction listed here authorizes hidden runtime proof machinery.
 - Where both participating features generate obligations, both sets of obligations apply
   unless a specific rule states that one subsumes the other.
 - Ordinary C++ legality remains a prerequisite for any runtime construct involved.
@@ -10063,7 +10063,7 @@ dependency.
 Successful ordinary C++ branch facts can discharge the refinement crossing; the branch
 remains runtime code.
 
-- No interaction listed here authorizes hidden runtime proof machinery.
+- [INTERACT-022] No interaction listed here authorizes hidden runtime proof machinery.
 - Where both participating features generate obligations, both sets of obligations apply
   unless a specific rule states that one subsumes the other.
 - Ordinary C++ legality remains a prerequisite for any runtime construct involved.
@@ -10072,10 +10072,10 @@ remains runtime code.
 
 ## V.16 runtime validation + trusted
 
-These remain distinct: a runtime check establishes a fact for one execution/value, while
+[INTERACT-023] These remain distinct: a runtime check establishes a fact for one execution/value, while
 a trusted Law assumes a proposition without internal proof.
 
-- No interaction listed here authorizes hidden runtime proof machinery.
+- [INTERACT-024] No interaction listed here authorizes hidden runtime proof machinery.
 - Where both participating features generate obligations, both sets of obligations apply
   unless a specific rule states that one subsumes the other.
 - Ordinary C++ legality remains a prerequisite for any runtime construct involved.
@@ -10087,7 +10087,7 @@ a trusted Law assumes a proposition without internal proof.
 Case facts belong to one logical version and are invalidated when the subject may be
 mutated before reuse.
 
-- No interaction listed here authorizes hidden runtime proof machinery.
+- [INTERACT-025] No interaction listed here authorizes hidden runtime proof machinery.
 - Where both participating features generate obligations, both sets of obligations apply
   unless a specific rule states that one subsumes the other.
 - Ordinary C++ legality remains a prerequisite for any runtime construct involved.
@@ -10096,9 +10096,9 @@ mutated before reuse.
 
 ## V.18 induction + machine integer
 
-The induction principle must include range conditions preventing wraparound in the step.
+[INTERACT-026] The induction principle must include range conditions preventing wraparound in the step.
 
-- No interaction listed here authorizes hidden runtime proof machinery.
+- [INTERACT-027] No interaction listed here authorizes hidden runtime proof machinery.
 - Where both participating features generate obligations, both sets of obligations apply
   unless a specific rule states that one subsumes the other.
 - Ordinary C++ legality remains a prerequisite for any runtime construct involved.
@@ -10107,10 +10107,10 @@ The induction principle must include range conditions preventing wraparound in t
 
 ## V.19 decreases + loop
 
-The measure requests/proves termination and is erased; the runtime loop remains
+[INTERACT-028] The measure requests/proves termination and is erased; the runtime loop remains
 unchanged.
 
-- No interaction listed here authorizes hidden runtime proof machinery.
+- [INTERACT-029] No interaction listed here authorizes hidden runtime proof machinery.
 - Where both participating features generate obligations, both sets of obligations apply
   unless a specific rule states that one subsumes the other.
 - Ordinary C++ legality remains a prerequisite for any runtime construct involved.
@@ -10119,10 +10119,10 @@ unchanged.
 
 ## V.20 decreases + recursion
 
-Each recursive edge in the applicable recursive component must strictly decrease the
+[INTERACT-030] Each recursive edge in the applicable recursive component must strictly decrease the
 well-founded measure, including mutual recursion.
 
-- No interaction listed here authorizes hidden runtime proof machinery.
+- [INTERACT-031] No interaction listed here authorizes hidden runtime proof machinery.
 - Where both participating features generate obligations, both sets of obligations apply
   unless a specific rule states that one subsumes the other.
 - Ordinary C++ legality remains a prerequisite for any runtime construct involved.
@@ -10134,7 +10134,7 @@ well-founded measure, including mutual recursion.
 `old(e)` is fixed at entry even if aliases later mutate the referenced storage;
 current-state occurrences remain version-sensitive.
 
-- No interaction listed here authorizes hidden runtime proof machinery.
+- [INTERACT-032] No interaction listed here authorizes hidden runtime proof machinery.
 - Where both participating features generate obligations, both sets of obligations apply
   unless a specific rule states that one subsumes the other.
 - Ordinary C++ legality remains a prerequisite for any runtime construct involved.
@@ -10143,9 +10143,9 @@ current-state occurrences remain version-sensitive.
 
 ## V.22 postcondition + exceptional exit
 
-The normal postcondition is unavailable on a propagated exceptional path.
+[INTERACT-033] The normal postcondition is unavailable on a propagated exceptional path.
 
-- No interaction listed here authorizes hidden runtime proof machinery.
+- [INTERACT-034] No interaction listed here authorizes hidden runtime proof machinery.
 - Where both participating features generate obligations, both sets of obligations apply
   unless a specific rule states that one subsumes the other.
 - Ordinary C++ legality remains a prerequisite for any runtime construct involved.
@@ -10157,7 +10157,7 @@ The normal postcondition is unavailable on a propagated exceptional path.
 Purity alone does not imply exception freedom. Use in total formal evaluation
 additionally requires appropriate total/exception semantics.
 
-- No interaction listed here authorizes hidden runtime proof machinery.
+- [INTERACT-035] No interaction listed here authorizes hidden runtime proof machinery.
 - Where both participating features generate obligations, both sets of obligations apply
   unless a specific rule states that one subsumes the other.
 - Ordinary C++ legality remains a prerequisite for any runtime construct involved.
@@ -10166,10 +10166,10 @@ additionally requires appropriate total/exception semantics.
 
 ## V.24 virtual + effects
 
-An override cannot broaden effects beyond what callers through the base contract are
+[INTERACT-036] An override cannot broaden effects beyond what callers through the base contract are
 permitted to assume.
 
-- No interaction listed here authorizes hidden runtime proof machinery.
+- [INTERACT-037] No interaction listed here authorizes hidden runtime proof machinery.
 - Where both participating features generate obligations, both sets of obligations apply
   unless a specific rule states that one subsumes the other.
 - Ordinary C++ legality remains a prerequisite for any runtime construct involved.
@@ -10178,10 +10178,10 @@ permitted to assume.
 
 ## V.25 template + Law
 
-The theorem meaning after instantiation uses the actual substituted C++ types/values and
+[INTERACT-038] The theorem meaning after instantiation uses the actual substituted C++ types/values and
 cannot reuse evidence from a semantically different specialization.
 
-- No interaction listed here authorizes hidden runtime proof machinery.
+- [INTERACT-039] No interaction listed here authorizes hidden runtime proof machinery.
 - Where both participating features generate obligations, both sets of obligations apply
   unless a specific rule states that one subsumes the other.
 - Ordinary C++ legality remains a prerequisite for any runtime construct involved.
@@ -10193,7 +10193,7 @@ cannot reuse evidence from a semantically different specialization.
 Imported/exported semantic metadata must identify the same C++ entity and preserve
 proof/trust meaning across the module boundary.
 
-- No interaction listed here authorizes hidden runtime proof machinery.
+- [INTERACT-040] No interaction listed here authorizes hidden runtime proof machinery.
 - Where both participating features generate obligations, both sets of obligations apply
   unless a specific rule states that one subsumes the other.
 - Ordinary C++ legality remains a prerequisite for any runtime construct involved.
@@ -10202,7 +10202,7 @@ proof/trust meaning across the module boundary.
 
 # Normative Annex W — Positive and negative conformance corpus requirements
 
-This annex defines semantic classes of examples that a complete implementation must
+[CORPUS-001] This annex defines semantic classes of examples that a complete implementation must
 distinguish. It does not prescribe repository fixture layout or test framework.
 
 ## W.1 ordinary C++ preservation
@@ -10210,7 +10210,7 @@ distinguish. It does not prescribe repository fixture layout or test framework.
 Valid supported C++ with no C++L semantics continues to compile/run with unchanged
 observable behavior.
 
-- The result is determined by language semantics, not by current compiler coverage.
+- [CORPUS-002] The result is determined by language semantics, not by current compiler coverage.
 - A complete implementation must diagnose the invalid class rather than accepting it
   under a weaker interpretation.
 - A valid class must not require a hidden runtime proof engine.
@@ -10219,7 +10219,7 @@ observable behavior.
 
 All safety and contract obligations are established; compilation succeeds.
 
-- The result is determined by language semantics, not by current compiler coverage.
+- [CORPUS-003] The result is determined by language semantics, not by current compiler coverage.
 - A complete implementation must diagnose the invalid class rather than accepting it
   under a weaker interpretation.
 - A valid class must not require a hidden runtime proof engine.
@@ -10229,7 +10229,7 @@ All safety and contract obligations are established; compilation succeeds.
 Body fails to establish a declared postcondition on at least one normal path;
 verification fails.
 
-- The result is determined by language semantics, not by current compiler coverage.
+- [CORPUS-004] The result is determined by language semantics, not by current compiler coverage.
 - A complete implementation must diagnose the invalid class rather than accepting it
   under a weaker interpretation.
 - A valid class must not require a hidden runtime proof engine.
@@ -10239,16 +10239,16 @@ verification fails.
 Caller cannot establish callee precondition on a reachable call path; verification
 fails.
 
-- The result is determined by language semantics, not by current compiler coverage.
+- [CORPUS-005] The result is determined by language semantics, not by current compiler coverage.
 - A complete implementation must diagnose the invalid class rather than accepting it
   under a weaker interpretation.
 - A valid class must not require a hidden runtime proof engine.
 
 ## W.5 valid path refinement
 
-Runtime branch proves refinement predicate before crossing; succeeds.
+[CORPUS-006] Runtime branch proves refinement predicate before crossing; succeeds.
 
-- The result is determined by language semantics, not by current compiler coverage.
+- [CORPUS-007] The result is determined by language semantics, not by current compiler coverage.
 - A complete implementation must diagnose the invalid class rather than accepting it
   under a weaker interpretation.
 - A valid class must not require a hidden runtime proof engine.
@@ -10257,16 +10257,16 @@ Runtime branch proves refinement predicate before crossing; succeeds.
 
 Base value enters refinement without evidence; fails.
 
-- The result is determined by language semantics, not by current compiler coverage.
+- [CORPUS-008] The result is determined by language semantics, not by current compiler coverage.
 - A complete implementation must diagnose the invalid class rather than accepting it
   under a weaker interpretation.
 - A valid class must not require a hidden runtime proof engine.
 
 ## W.7 alias invalidation
 
-A may-alias write prevents reuse of stale facts; invalid stale-proof example fails.
+[CORPUS-009] A may-alias write prevents reuse of stale facts; invalid stale-proof example fails.
 
-- The result is determined by language semantics, not by current compiler coverage.
+- [CORPUS-010] The result is determined by language semantics, not by current compiler coverage.
 - A complete implementation must diagnose the invalid class rather than accepting it
   under a weaker interpretation.
 - A valid class must not require a hidden runtime proof engine.
@@ -10275,7 +10275,7 @@ A may-alias write prevents reuse of stale facts; invalid stale-proof example fai
 
 Entry-state relation remains provable after mutation; succeeds without runtime copy.
 
-- The result is determined by language semantics, not by current compiler coverage.
+- [CORPUS-011] The result is determined by language semantics, not by current compiler coverage.
 - A complete implementation must diagnose the invalid class rather than accepting it
   under a weaker interpretation.
 - A valid class must not require a hidden runtime proof engine.
@@ -10284,7 +10284,7 @@ Entry-state relation remains provable after mutation; succeeds without runtime c
 
 Runtime result/control/effect depends on ghost state; fails.
 
-- The result is determined by language semantics, not by current compiler coverage.
+- [CORPUS-012] The result is determined by language semantics, not by current compiler coverage.
 - A complete implementation must diagnose the invalid class rather than accepting it
   under a weaker interpretation.
 - A valid class must not require a hidden runtime proof engine.
@@ -10293,7 +10293,7 @@ Runtime result/control/effect depends on ghost state; fails.
 
 Semicolon Law produces valid evidence; succeeds.
 
-- The result is determined by language semantics, not by current compiler coverage.
+- [CORPUS-013] The result is determined by language semantics, not by current compiler coverage.
 - A complete implementation must diagnose the invalid class rather than accepting it
   under a weaker interpretation.
 - A valid class must not require a hidden runtime proof engine.
@@ -10302,7 +10302,7 @@ Semicolon Law produces valid evidence; succeeds.
 
 Automation cannot establish theorem and no proof body supplies evidence; fails.
 
-- The result is determined by language semantics, not by current compiler coverage.
+- [CORPUS-014] The result is determined by language semantics, not by current compiler coverage.
 - A complete implementation must diagnose the invalid class rather than accepting it
   under a weaker interpretation.
 - A valid class must not require a hidden runtime proof engine.
@@ -10311,7 +10311,7 @@ Automation cannot establish theorem and no proof body supplies evidence; fails.
 
 Assumption is admitted and dependency is reported semantically as TRUSTED.
 
-- The result is determined by language semantics, not by current compiler coverage.
+- [CORPUS-015] The result is determined by language semantics, not by current compiler coverage.
 - A complete implementation must diagnose the invalid class rather than accepting it
   under a weaker interpretation.
 - A valid class must not require a hidden runtime proof engine.
@@ -10320,34 +10320,34 @@ Assumption is admitted and dependency is reported semantically as TRUSTED.
 
 Proof names proposition not present as premise; fails.
 
-- The result is determined by language semantics, not by current compiler coverage.
+- [CORPUS-016] The result is determined by language semantics, not by current compiler coverage.
 - A complete implementation must diagnose the invalid class rather than accepting it
   under a weaker interpretation.
 - A valid class must not require a hidden runtime proof engine.
 
 ## W.14 valid exhaustive cases
 
-Every semantic state has an arm or is proven impossible; succeeds.
+[CORPUS-017] Every semantic state has an arm or is proven impossible; succeeds.
 
-- The result is determined by language semantics, not by current compiler coverage.
+- [CORPUS-018] The result is determined by language semantics, not by current compiler coverage.
 - A complete implementation must diagnose the invalid class rather than accepting it
   under a weaker interpretation.
 - A valid class must not require a hidden runtime proof engine.
 
 ## W.15 invalid stale cases
 
-A semantic state is omitted without contradiction evidence; fails.
+[CORPUS-019] A semantic state is omitted without contradiction evidence; fails.
 
-- The result is determined by language semantics, not by current compiler coverage.
+- [CORPUS-020] The result is determined by language semantics, not by current compiler coverage.
 - A complete implementation must diagnose the invalid class rather than accepting it
   under a weaker interpretation.
 - A valid class must not require a hidden runtime proof engine.
 
 ## W.16 valid induction
 
-Every induction case is proven using only supplied premises/hypotheses; succeeds.
+[CORPUS-021] Every induction case is proven using only supplied premises/hypotheses; succeeds.
 
-- The result is determined by language semantics, not by current compiler coverage.
+- [CORPUS-022] The result is determined by language semantics, not by current compiler coverage.
 - A complete implementation must diagnose the invalid class rather than accepting it
   under a weaker interpretation.
 - A valid class must not require a hidden runtime proof engine.
@@ -10356,7 +10356,7 @@ Every induction case is proven using only supplied premises/hypotheses; succeeds
 
 Recursive proof dependency lacks a valid induction/well-founded rule; fails.
 
-- The result is determined by language semantics, not by current compiler coverage.
+- [CORPUS-023] The result is determined by language semantics, not by current compiler coverage.
 - A complete implementation must diagnose the invalid class rather than accepting it
   under a weaker interpretation.
 - A valid class must not require a hidden runtime proof engine.
@@ -10366,7 +10366,7 @@ Recursive proof dependency lacks a valid induction/well-founded rule; fails.
 Invariant proves postcondition on exit without termination claim; may succeed as partial
 correctness.
 
-- The result is determined by language semantics, not by current compiler coverage.
+- [CORPUS-024] The result is determined by language semantics, not by current compiler coverage.
 - A complete implementation must diagnose the invalid class rather than accepting it
   under a weaker interpretation.
 - A valid class must not require a hidden runtime proof engine.
@@ -10376,7 +10376,7 @@ correctness.
 Measure is not well-founded or fails strict descent on a continuing edge; requested
 total correctness fails.
 
-- The result is determined by language semantics, not by current compiler coverage.
+- [CORPUS-025] The result is determined by language semantics, not by current compiler coverage.
 - A complete implementation must diagnose the invalid class rather than accepting it
   under a weaker interpretation.
 - A valid class must not require a hidden runtime proof engine.
@@ -10386,7 +10386,7 @@ total correctness fails.
 Explicit ordinary C++ check establishes a concrete path fact; succeeds and check remains
 at runtime.
 
-- The result is determined by language semantics, not by current compiler coverage.
+- [CORPUS-026] The result is determined by language semantics, not by current compiler coverage.
 - A complete implementation must diagnose the invalid class rather than accepting it
   under a weaker interpretation.
 - A valid class must not require a hidden runtime proof engine.
@@ -10395,7 +10395,7 @@ at runtime.
 
 Failed proof never compiles by silently inserting assert/throw/check.
 
-- The result is determined by language semantics, not by current compiler coverage.
+- [CORPUS-027] The result is determined by language semantics, not by current compiler coverage.
 - A complete implementation must diagnose the invalid class rather than accepting it
   under a weaker interpretation.
 - A valid class must not require a hidden runtime proof engine.
@@ -10405,7 +10405,7 @@ Failed proof never compiles by silently inserting assert/throw/check.
 Non-null pointer without lifetime/bounds/init/access evidence cannot justify
 dereference.
 
-- The result is determined by language semantics, not by current compiler coverage.
+- [CORPUS-028] The result is determined by language semantics, not by current compiler coverage.
 - A complete implementation must diagnose the invalid class rather than accepting it
   under a weaker interpretation.
 - A valid class must not require a hidden runtime proof engine.
@@ -10414,7 +10414,7 @@ dereference.
 
 All dereference capability/lifetime/bounds facts are established; operation may verify.
 
-- The result is determined by language semantics, not by current compiler coverage.
+- [CORPUS-029] The result is determined by language semantics, not by current compiler coverage.
 - A complete implementation must diagnose the invalid class rather than accepting it
   under a weaker interpretation.
 - A valid class must not require a hidden runtime proof engine.
@@ -10424,7 +10424,7 @@ All dereference capability/lifetime/bounds facts are established; operation may 
 Override strengthens precondition or weakens postcondition/effects; declaration fails
 C++L compatibility.
 
-- The result is determined by language semantics, not by current compiler coverage.
+- [CORPUS-030] The result is determined by language semantics, not by current compiler coverage.
 - A complete implementation must diagnose the invalid class rather than accepting it
   under a weaker interpretation.
 - A valid class must not require a hidden runtime proof engine.
@@ -10433,7 +10433,7 @@ C++L compatibility.
 
 Override is substitutable; succeeds.
 
-- The result is determined by language semantics, not by current compiler coverage.
+- [CORPUS-031] The result is determined by language semantics, not by current compiler coverage.
 - A complete implementation must diagnose the invalid class rather than accepting it
   under a weaker interpretation.
 - A valid class must not require a hidden runtime proof engine.
@@ -10443,7 +10443,7 @@ Override is substitutable; succeeds.
 Contract visible but proof/evidence identity unavailable; verified composition fails
 closed.
 
-- The result is determined by language semantics, not by current compiler coverage.
+- [CORPUS-032] The result is determined by language semantics, not by current compiler coverage.
 - A complete implementation must diagnose the invalid class rather than accepting it
   under a weaker interpretation.
 - A valid class must not require a hidden runtime proof engine.
@@ -10452,7 +10452,7 @@ closed.
 
 Accepted proof annotations erase without changing runtime behavior/ABI.
 
-- The result is determined by language semantics, not by current compiler coverage.
+- [CORPUS-033] The result is determined by language semantics, not by current compiler coverage.
 - A complete implementation must diagnose the invalid class rather than accepting it
   under a weaker interpretation.
 - A valid class must not require a hidden runtime proof engine.
@@ -10473,7 +10473,7 @@ assume that a dimension omitted from a nearby example is therefore irrelevant.
 Primary semantic focus: exact C++ literal typing, suffixes, representability and
 machine value.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-001] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -10524,7 +10524,7 @@ machine value.
 
 Primary semantic focus: selected floating type, rounding and target semantics.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-002] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -10575,7 +10575,7 @@ Primary semantic focus: selected floating type, rounding and target semantics.
 
 Primary semantic focus: encoding/type/value rules of the selected C++ mode.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-003] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -10627,7 +10627,7 @@ Primary semantic focus: encoding/type/value rules of the selected C++ mode.
 Primary semantic focus: array object, storage duration, encoding and concatenation
 rules.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-004] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -10678,7 +10678,7 @@ rules.
 
 Primary semantic focus: C++ bool value and proposition lifting where permitted.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-005] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -10729,7 +10729,7 @@ Primary semantic focus: C++ bool value and proposition lifting where permitted.
 
 Primary semantic focus: null pointer value and conversion rules.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-006] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -10781,7 +10781,7 @@ Primary semantic focus: null pointer value and conversion rules.
 Primary semantic focus: ordinary lookup, entity identity and current logical value
 version.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-007] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -10832,7 +10832,7 @@ version.
 
 Primary semantic focus: C++ qualification and access.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-008] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -10883,7 +10883,7 @@ Primary semantic focus: C++ qualification and access.
 
 Primary semantic focus: implicit object identity, cv/ref category and lifetime.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-009] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -10934,7 +10934,7 @@ Primary semantic focus: implicit object identity, cv/ref category and lifetime.
 
 Primary semantic focus: C++ parsing/value-category preservation.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-010] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -10985,7 +10985,7 @@ Primary semantic focus: C++ parsing/value-category preservation.
 
 Primary semantic focus: initialized live readable value.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-011] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -11036,7 +11036,7 @@ Primary semantic focus: initialized live readable value.
 
 Primary semantic focus: array provenance and extent relationship.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-012] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -11087,7 +11087,7 @@ Primary semantic focus: array provenance and extent relationship.
 
 Primary semantic focus: callable target identity.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-013] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -11138,7 +11138,7 @@ Primary semantic focus: callable target identity.
 
 Primary semantic focus: exact promoted type and value semantics.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-014] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -11189,7 +11189,7 @@ Primary semantic focus: exact promoted type and value semantics.
 
 Primary semantic focus: exact common type selection.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-015] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -11240,7 +11240,7 @@ Primary semantic focus: exact common type selection.
 
 Primary semantic focus: cv/access semantics without invented immutability.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-016] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -11291,7 +11291,7 @@ Primary semantic focus: cv/access semantics without invented immutability.
 
 Primary semantic focus: temporary lifetime and value category.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-017] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -11342,7 +11342,7 @@ Primary semantic focus: temporary lifetime and value category.
 
 Primary semantic focus: promotions and numeric semantics.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-018] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -11393,7 +11393,7 @@ Primary semantic focus: promotions and numeric semantics.
 
 Primary semantic focus: promotions and signed-overflow definedness.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-019] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -11444,7 +11444,7 @@ Primary semantic focus: promotions and signed-overflow definedness.
 
 Primary semantic focus: runtime truth conversion or proposition negation by context.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-020] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -11495,7 +11495,7 @@ Primary semantic focus: runtime truth conversion or proposition negation by cont
 
 Primary semantic focus: machine-width bit semantics.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-021] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -11546,7 +11546,7 @@ Primary semantic focus: machine-width bit semantics.
 
 Primary semantic focus: object/function pointer formation and provenance.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-022] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -11597,7 +11597,7 @@ Primary semantic focus: object/function pointer formation and provenance.
 
 Primary semantic focus: lifetime/provenance/bounds/alignment/readability.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-023] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -11648,7 +11648,7 @@ Primary semantic focus: lifetime/provenance/bounds/alignment/readability.
 
 Primary semantic focus: read-arithmetic-write and new version.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-024] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -11699,7 +11699,7 @@ Primary semantic focus: read-arithmetic-write and new version.
 
 Primary semantic focus: old expression value plus new stored version.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-025] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -11750,7 +11750,7 @@ Primary semantic focus: old expression value plus new stored version.
 
 Primary semantic focus: read-arithmetic-write and new version.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-026] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -11801,7 +11801,7 @@ Primary semantic focus: read-arithmetic-write and new version.
 
 Primary semantic focus: old expression value plus new stored version.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-027] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -11852,7 +11852,7 @@ Primary semantic focus: old expression value plus new stored version.
 
 Primary semantic focus: numeric/pointer overload-selected semantics.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-028] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -11903,7 +11903,7 @@ Primary semantic focus: numeric/pointer overload-selected semantics.
 
 Primary semantic focus: numeric/pointer difference semantics.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-029] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -11954,7 +11954,7 @@ Primary semantic focus: numeric/pointer difference semantics.
 
 Primary semantic focus: numeric semantics and overflow definedness.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-030] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -12005,7 +12005,7 @@ Primary semantic focus: numeric semantics and overflow definedness.
 
 Primary semantic focus: numeric semantics, zero and signed corner cases.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-031] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -12056,7 +12056,7 @@ Primary semantic focus: numeric semantics, zero and signed corner cases.
 
 Primary semantic focus: numeric semantics, zero and signed corner cases.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-032] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -12107,7 +12107,7 @@ Primary semantic focus: numeric semantics, zero and signed corner cases.
 
 Primary semantic focus: promotion/count/value definedness.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-033] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -12158,7 +12158,7 @@ Primary semantic focus: promotion/count/value definedness.
 
 Primary semantic focus: promotion/count and selected signedness semantics.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-034] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -12209,7 +12209,7 @@ Primary semantic focus: promotion/count and selected signedness semantics.
 
 Primary semantic focus: machine bit semantics or selected overload.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-035] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -12260,7 +12260,7 @@ Primary semantic focus: machine bit semantics or selected overload.
 
 Primary semantic focus: machine bit semantics or selected overload.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-036] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -12311,7 +12311,7 @@ Primary semantic focus: machine bit semantics or selected overload.
 
 Primary semantic focus: machine bit semantics or selected overload.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-037] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -12362,7 +12362,7 @@ Primary semantic focus: machine bit semantics or selected overload.
 
 Primary semantic focus: selected comparison and pointer/object restrictions.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-038] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -12413,7 +12413,7 @@ Primary semantic focus: selected comparison and pointer/object restrictions.
 
 Primary semantic focus: selected comparison and formal lifting.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-039] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -12464,7 +12464,7 @@ Primary semantic focus: selected comparison and formal lifting.
 
 Primary semantic focus: selected comparison and formal lifting.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-040] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -12515,7 +12515,7 @@ Primary semantic focus: selected comparison and formal lifting.
 
 Primary semantic focus: selected comparison and formal lifting.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-041] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -12566,7 +12566,7 @@ Primary semantic focus: selected comparison and formal lifting.
 
 Primary semantic focus: C++ Boolean equality distinct from formal Eq.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-042] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -12618,7 +12618,7 @@ Primary semantic focus: C++ Boolean equality distinct from formal Eq.
 Primary semantic focus: C++ Boolean inequality distinct from proof negation unless
 lifted.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-043] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -12669,7 +12669,7 @@ lifted.
 
 Primary semantic focus: comparison-category semantics and selected overload.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-044] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -12720,7 +12720,7 @@ Primary semantic focus: comparison-category semantics and selected overload.
 
 Primary semantic focus: short-circuit true/false path partition.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-045] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -12771,7 +12771,7 @@ Primary semantic focus: short-circuit true/false path partition.
 
 Primary semantic focus: short-circuit true/false path partition.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-046] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -12822,7 +12822,7 @@ Primary semantic focus: short-circuit true/false path partition.
 
 Primary semantic focus: proof conjunction with both operands defined.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-047] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -12873,7 +12873,7 @@ Primary semantic focus: proof conjunction with both operands defined.
 
 Primary semantic focus: proof disjunction with valid selected evidence.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-048] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -12924,7 +12924,7 @@ Primary semantic focus: proof disjunction with valid selected evidence.
 
 Primary semantic focus: branch-sensitive arm evaluation and result type.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-049] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -12975,7 +12975,7 @@ Primary semantic focus: branch-sensitive arm evaluation and result type.
 
 Primary semantic focus: rhs evaluation, target write/version/refinement.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-050] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -13026,7 +13026,7 @@ Primary semantic focus: rhs evaluation, target write/version/refinement.
 
 Primary semantic focus: single lhs evaluation, operation definedness, write.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-051] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -13077,7 +13077,7 @@ Primary semantic focus: single lhs evaluation, operation definedness, write.
 
 Primary semantic focus: left-to-right sequencing and right result.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-052] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -13128,7 +13128,7 @@ Primary semantic focus: left-to-right sequencing and right result.
 
 Primary semantic focus: subobject lookup/access/lifetime.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-053] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -13179,7 +13179,7 @@ Primary semantic focus: subobject lookup/access/lifetime.
 
 Primary semantic focus: pointer dereference plus member subobject semantics.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-054] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -13230,7 +13230,7 @@ Primary semantic focus: pointer dereference plus member subobject semantics.
 
 Primary semantic focus: pointer arithmetic/dereference/bounds.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-055] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -13281,7 +13281,7 @@ Primary semantic focus: pointer arithmetic/dereference/bounds.
 
 Primary semantic focus: ordinary call contract/effects.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-056] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -13332,7 +13332,7 @@ Primary semantic focus: ordinary call contract/effects.
 
 Primary semantic focus: callee selection/pre/post/effects/exceptions.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-057] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -13383,7 +13383,7 @@ Primary semantic focus: callee selection/pre/post/effects/exceptions.
 
 Primary semantic focus: implicit object plus call semantics.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-058] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -13434,7 +13434,7 @@ Primary semantic focus: implicit object plus call semantics.
 
 Primary semantic focus: dynamic target set plus base-interface contract.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-059] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -13485,7 +13485,7 @@ Primary semantic focus: dynamic target set plus base-interface contract.
 
 Primary semantic focus: target validity and contract for all possible targets.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-060] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -13536,7 +13536,7 @@ Primary semantic focus: target validity and contract for all possible targets.
 
 Primary semantic focus: operator() contract/effects/captured state.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-061] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -13587,7 +13587,7 @@ Primary semantic focus: operator() contract/effects/captured state.
 
 Primary semantic focus: initialization order/lifetime/poststate.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-062] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -13638,7 +13638,7 @@ Primary semantic focus: initialization order/lifetime/poststate.
 
 Primary semantic focus: selected conversion and effects.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-063] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -13689,7 +13689,7 @@ Primary semantic focus: selected conversion and effects.
 
 Primary semantic focus: exact selected C++ conversion and no invented evidence.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-064] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -13740,7 +13740,7 @@ Primary semantic focus: exact selected C++ conversion and no invented evidence.
 
 Primary semantic focus: RTTI/lifetime and success/failure state.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-065] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -13791,7 +13791,7 @@ Primary semantic focus: RTTI/lifetime and success/failure state.
 
 Primary semantic focus: cv conversion without permission invention.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-066] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -13842,7 +13842,7 @@ Primary semantic focus: cv conversion without permission invention.
 
 Primary semantic focus: representation conversion without capability invention.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-067] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -13893,7 +13893,7 @@ Primary semantic focus: representation conversion without capability invention.
 
 Primary semantic focus: actual selected sequence of C++ casts.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-068] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -13944,7 +13944,7 @@ Primary semantic focus: actual selected sequence of C++ casts.
 
 Primary semantic focus: direct/list initialization selected by C++.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-069] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -13995,7 +13995,7 @@ Primary semantic focus: direct/list initialization selected by C++.
 
 Primary semantic focus: C++ unevaluated operand and ABI size semantics.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-070] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -14046,7 +14046,7 @@ Primary semantic focus: C++ unevaluated operand and ABI size semantics.
 
 Primary semantic focus: C++ alignment semantics.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-071] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -14097,7 +14097,7 @@ Primary semantic focus: C++ alignment semantics.
 
 Primary semantic focus: C++ type-forming/value-category semantics.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-072] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -14148,7 +14148,7 @@ Primary semantic focus: C++ type-forming/value-category semantics.
 
 Primary semantic focus: C++ compile-time throwability query.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-073] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -14199,7 +14199,7 @@ Primary semantic focus: C++ compile-time throwability query.
 
 Primary semantic focus: RTTI evaluation and polymorphic lifetime semantics.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-074] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -14251,7 +14251,7 @@ Primary semantic focus: RTTI evaluation and polymorphic lifetime semantics.
 Primary semantic focus: allocation, construction, exceptions, returned pointer
 facts.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-075] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -14302,7 +14302,7 @@ facts.
 
 Primary semantic focus: destruction/deallocation ownership and lifetime end.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-076] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -14353,7 +14353,7 @@ Primary semantic focus: destruction/deallocation ownership and lifetime end.
 
 Primary semantic focus: storage reuse and new object lifetime.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-077] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -14404,7 +14404,7 @@ Primary semantic focus: storage reuse and new object lifetime.
 
 Primary semantic focus: capture/closure/lifetime/call semantics.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-078] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -14455,7 +14455,7 @@ Primary semantic focus: capture/closure/lifetime/call semantics.
 
 Primary semantic focus: C++ fold grouping and selected operator semantics.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-079] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -14506,7 +14506,7 @@ Primary semantic focus: C++ fold grouping and selected operator semantics.
 
 Primary semantic focus: C++ compile-time satisfaction only.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-080] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -14557,7 +14557,7 @@ Primary semantic focus: C++ compile-time satisfaction only.
 
 Primary semantic focus: instantiated operation per pack element.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-081] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -14608,7 +14608,7 @@ Primary semantic focus: instantiated operation per pack element.
 
 Primary semantic focus: awaiter protocol, suspension and state invalidation.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-082] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -14659,7 +14659,7 @@ Primary semantic focus: awaiter protocol, suspension and state invalidation.
 
 Primary semantic focus: promise protocol, suspension and frame lifetime.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-083] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -14710,7 +14710,7 @@ Primary semantic focus: promise protocol, suspension and frame lifetime.
 
 Primary semantic focus: promise return semantics and coroutine completion.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-084] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -14762,7 +14762,7 @@ Primary semantic focus: promise return semantics and coroutine completion.
 Primary semantic focus: all evaluated effects and definedness despite discarded
 result.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-085] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -14813,7 +14813,7 @@ result.
 
 Primary semantic focus: no runtime effect and no proof fact.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-086] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -14864,7 +14864,7 @@ Primary semantic focus: no runtime effect and no proof fact.
 
 Primary semantic focus: lexical scope, sequencing and destruction at exit.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-087] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -14915,7 +14915,7 @@ Primary semantic focus: lexical scope, sequencing and destruction at exit.
 
 Primary semantic focus: initialization/lifetime/refinement.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-088] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -14966,7 +14966,7 @@ Primary semantic focus: initialization/lifetime/refinement.
 
 Primary semantic focus: path split and sound join.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-089] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -15017,7 +15017,7 @@ Primary semantic focus: path split and sound join.
 
 Primary semantic focus: C++ discarded-branch semantics.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-090] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -15068,7 +15068,7 @@ Primary semantic focus: C++ discarded-branch semantics.
 
 Primary semantic focus: case matching/fallthrough/default state.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-091] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -15119,7 +15119,7 @@ Primary semantic focus: case matching/fallthrough/default state.
 
 Primary semantic focus: invariant/head/body/exit/back-edge.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-092] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -15170,7 +15170,7 @@ Primary semantic focus: invariant/head/body/exit/back-edge.
 
 Primary semantic focus: init/head/body/step/back-edge.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-093] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -15221,7 +15221,7 @@ Primary semantic focus: init/head/body/step/back-edge.
 
 Primary semantic focus: range object/iterators/lifetime/body.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-094] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -15272,7 +15272,7 @@ Primary semantic focus: range object/iterators/lifetime/body.
 
 Primary semantic focus: body-before-test invariant semantics.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-095] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -15323,7 +15323,7 @@ Primary semantic focus: body-before-test invariant semantics.
 
 Primary semantic focus: targeted exit and path facts.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-096] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -15374,7 +15374,7 @@ Primary semantic focus: targeted exit and path facts.
 
 Primary semantic focus: continuing edge and invariant/termination obligations.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-097] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -15425,7 +15425,7 @@ Primary semantic focus: continuing edge and invariant/termination obligations.
 
 Primary semantic focus: return conversion/refinement/postcondition/destruction.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-098] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -15476,7 +15476,7 @@ Primary semantic focus: return conversion/refinement/postcondition/destruction.
 
 Primary semantic focus: target join/fixed-point and C++ legality.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-099] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -15527,7 +15527,7 @@ Primary semantic focus: target join/fixed-point and C++ legality.
 
 Primary semantic focus: join of all predecessors.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-100] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -15578,7 +15578,7 @@ Primary semantic focus: join of all predecessors.
 
 Primary semantic focus: normal and exceptional path partition.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-101] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -15629,7 +15629,7 @@ Primary semantic focus: normal and exceptional path partition.
 
 Primary semantic focus: exception match/binding and join.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-102] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -15680,7 +15680,7 @@ Primary semantic focus: exception match/binding and join.
 
 Primary semantic focus: exception object/unwinding.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-103] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -15731,7 +15731,7 @@ Primary semantic focus: exception object/unwinding.
 
 Primary semantic focus: unmodeled runtime boundary unless formally specified.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-104] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -15782,7 +15782,7 @@ Primary semantic focus: unmodeled runtime boundary unless formally specified.
 
 Primary semantic focus: storage duration, initialization and versions.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-105] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -15833,7 +15833,7 @@ Primary semantic focus: storage duration, initialization and versions.
 
 Primary semantic focus: guarded initialization/shared effects.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-106] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -15884,7 +15884,7 @@ Primary semantic focus: guarded initialization/shared effects.
 
 Primary semantic focus: per-thread lifetime and effects.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-107] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -15935,7 +15935,7 @@ Primary semantic focus: per-thread lifetime and effects.
 
 Primary semantic focus: initialization order/storage/effects.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-108] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -15986,7 +15986,7 @@ Primary semantic focus: initialization order/storage/effects.
 
 Primary semantic focus: binding/lifetime/aliasing.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-109] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -16037,7 +16037,7 @@ Primary semantic focus: binding/lifetime/aliasing.
 
 Primary semantic focus: pointer value without automatic capability.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-110] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -16088,7 +16088,7 @@ Primary semantic focus: pointer value without automatic capability.
 
 Primary semantic focus: element lifetimes and extent.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-111] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -16139,7 +16139,7 @@ Primary semantic focus: element lifetimes and extent.
 
 Primary semantic focus: underlying binding mode and lifetime.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-112] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -16190,7 +16190,7 @@ Primary semantic focus: underlying binding mode and lifetime.
 
 Primary semantic focus: lookup/scope only.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-113] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -16241,7 +16241,7 @@ Primary semantic focus: lookup/scope only.
 
 Primary semantic focus: lookup aliasing only.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-114] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -16292,7 +16292,7 @@ Primary semantic focus: lookup aliasing only.
 
 Primary semantic focus: entity introduction preserving metadata.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-115] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -16343,7 +16343,7 @@ Primary semantic focus: entity introduction preserving metadata.
 
 Primary semantic focus: lookup only.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-116] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -16394,7 +16394,7 @@ Primary semantic focus: lookup only.
 
 Primary semantic focus: type alias preserving refinement identity when applicable.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-117] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -16445,7 +16445,7 @@ Primary semantic focus: type alias preserving refinement identity when applicabl
 
 Primary semantic focus: type alias preserving refinement identity when applicable.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-118] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -16496,7 +16496,7 @@ Primary semantic focus: type alias preserving refinement identity when applicabl
 
 Primary semantic focus: complete underlying value set.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-119] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -16547,7 +16547,7 @@ Primary semantic focus: complete underlying value set.
 
 Primary semantic focus: object/member/base runtime semantics.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-120] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -16598,7 +16598,7 @@ Primary semantic focus: object/member/base runtime semantics.
 
 Primary semantic focus: overlapping active-member semantics.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-121] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -16649,7 +16649,7 @@ Primary semantic focus: overlapping active-member semantics.
 
 Primary semantic focus: bit-field access/addressability rules.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-122] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -16700,7 +16700,7 @@ Primary semantic focus: bit-field access/addressability rules.
 
 Primary semantic focus: entity contract attachment.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-123] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -16751,7 +16751,7 @@ Primary semantic focus: entity contract attachment.
 
 Primary semantic focus: body establishes semantic summary.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-124] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -16802,7 +16802,7 @@ Primary semantic focus: body establishes semantic summary.
 
 Primary semantic focus: actual generated C++ operations.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-125] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -16853,7 +16853,7 @@ Primary semantic focus: actual generated C++ operations.
 
 Primary semantic focus: unavailable callable.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-126] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -16904,7 +16904,7 @@ Primary semantic focus: unavailable callable.
 
 Primary semantic focus: access only.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-127] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -16955,7 +16955,7 @@ Primary semantic focus: access only.
 
 Primary semantic focus: C++ compile-time assertion distinct from proof evidence.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-128] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -17006,7 +17006,7 @@ Primary semantic focus: C++ compile-time assertion distinct from proof evidence.
 
 Primary semantic focus: preserve known C++ meaning; no invented proof meaning.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-129] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -17057,7 +17057,7 @@ Primary semantic focus: preserve known C++ meaning; no invented proof meaning.
 
 Primary semantic focus: runtime/object layout alignment rule.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-130] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -17108,7 +17108,7 @@ Primary semantic focus: runtime/object layout alignment rule.
 
 Primary semantic focus: native linkage/ABI plus separate metadata.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-131] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -17159,7 +17159,7 @@ Primary semantic focus: native linkage/ABI plus separate metadata.
 
 Primary semantic focus: generic C++ entity and proof substitution.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-132] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -17210,7 +17210,7 @@ Primary semantic focus: generic C++ entity and proof substitution.
 
 Primary semantic focus: selected specialized entity semantics.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-133] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -17261,7 +17261,7 @@ Primary semantic focus: selected specialized entity semantics.
 
 Primary semantic focus: code-generation placement plus metadata availability.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-134] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -17312,7 +17312,7 @@ Primary semantic focus: code-generation placement plus metadata availability.
 
 Primary semantic focus: compile-time constraint distinct from runtime theorem.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-135] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -17363,7 +17363,7 @@ Primary semantic focus: compile-time constraint distinct from runtime theorem.
 
 Primary semantic focus: C++ template argument deduction only.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-136] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -17414,7 +17414,7 @@ Primary semantic focus: C++ template argument deduction only.
 
 Primary semantic focus: C++ module ownership and semantic interface metadata.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-137] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -17465,7 +17465,7 @@ Primary semantic focus: C++ module ownership and semantic interface metadata.
 
 Primary semantic focus: imported runtime/formal entity identity.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-138] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -17516,7 +17516,7 @@ Primary semantic focus: imported runtime/formal entity identity.
 
 Primary semantic focus: exported runtime/formal entity identity.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-139] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -17567,7 +17567,7 @@ Primary semantic focus: exported runtime/formal entity identity.
 
 Primary semantic focus: ordered base/member construction and no result.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-140] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -17618,7 +17618,7 @@ Primary semantic focus: ordered base/member construction and no result.
 
 Primary semantic focus: ordered lifetime end and effects.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-141] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -17669,7 +17669,7 @@ Primary semantic focus: ordered lifetime end and effects.
 
 Primary semantic focus: source read/destination construction semantics.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-142] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -17720,7 +17720,7 @@ Primary semantic focus: source read/destination construction semantics.
 
 Primary semantic focus: source mutation/destination construction semantics.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-143] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -17771,7 +17771,7 @@ Primary semantic focus: source mutation/destination construction semantics.
 
 Primary semantic focus: read/write/alias/self-assignment semantics.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-144] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -17822,7 +17822,7 @@ Primary semantic focus: read/write/alias/self-assignment semantics.
 
 Primary semantic focus: source/destination mutation and self-move semantics.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-145] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -17873,7 +17873,7 @@ Primary semantic focus: source/destination mutation and self-move semantics.
 
 Primary semantic focus: dispatch/substitutability/effects.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-146] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -17924,7 +17924,7 @@ Primary semantic focus: dispatch/substitutability/effects.
 
 Primary semantic focus: abstract interface contract and no body assumption.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-147] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -17975,7 +17975,7 @@ Primary semantic focus: abstract interface contract and no body assumption.
 
 Primary semantic focus: C++ object adjustment/access.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-148] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -18026,7 +18026,7 @@ Primary semantic focus: C++ object adjustment/access.
 
 Primary semantic focus: dynamic/static conditions and lifetime.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-149] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -18077,7 +18077,7 @@ Primary semantic focus: dynamic/static conditions and lifetime.
 
 Primary semantic focus: subobject identity and pointer adjustment.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-150] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -18128,7 +18128,7 @@ Primary semantic focus: subobject identity and pointer adjustment.
 
 Primary semantic focus: shared virtual base identity/lifetime.
 
-- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+- [CONSTRUCT-151] C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
   by parsing, name lookup, overload resolution, template substitution and implicit
   conversion.
 - The verifier MUST preserve every C++ sequencing and evaluation-order constraint
@@ -18179,7 +18179,7 @@ Primary semantic focus: shared virtual base identity/lifetime.
 
 ## Y.1 `std::vector`
 
-Model family: contiguous dynamic sequence. Required semantic focus: size/capacity,
+[STDOBL-001] Model family: contiguous dynamic sequence. Required semantic focus: size/capacity,
 element lifetime, reallocation invalidation, allocator/callable effects.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -18207,7 +18207,7 @@ element lifetime, reallocation invalidation, allocator/callable effects.
 
 ## Y.2 `std::deque`
 
-Model family: segmented dynamic sequence. Required semantic focus: element/iterator
+[STDOBL-002] Model family: segmented dynamic sequence. Required semantic focus: element/iterator
 invalidation exactly per standard operations.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -18235,7 +18235,7 @@ invalidation exactly per standard operations.
 
 ## Y.3 `std::list`
 
-Model family: linked sequence. Required semantic focus: node lifetime, splice/erase
+[STDOBL-003] Model family: linked sequence. Required semantic focus: node lifetime, splice/erase
 iterator validity, allocator effects.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -18263,7 +18263,7 @@ iterator validity, allocator effects.
 
 ## Y.4 `std::forward_list`
 
-Model family: singly linked sequence. Required semantic focus: node lifetime and
+[STDOBL-004] Model family: singly linked sequence. Required semantic focus: node lifetime and
 before-begin semantics.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -18291,7 +18291,7 @@ before-begin semantics.
 
 ## Y.5 `std::map`
 
-Model family: ordered associative map. Required semantic focus: key ordering
+[STDOBL-005] Model family: ordered associative map. Required semantic focus: key ordering
 comparator calls, iterator/node stability.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -18319,7 +18319,7 @@ comparator calls, iterator/node stability.
 
 ## Y.6 `std::multimap`
 
-Model family: ordered multi-map. Required semantic focus: duplicate-key semantics
+[STDOBL-006] Model family: ordered multi-map. Required semantic focus: duplicate-key semantics
 and iterator/node stability.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -18347,7 +18347,7 @@ and iterator/node stability.
 
 ## Y.7 `std::set`
 
-Model family: ordered associative set. Required semantic focus: key immutability
+[STDOBL-007] Model family: ordered associative set. Required semantic focus: key immutability
 through iterators and comparator semantics.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -18375,7 +18375,7 @@ through iterators and comparator semantics.
 
 ## Y.8 `std::multiset`
 
-Model family: ordered multi-set. Required semantic focus: duplicate-key semantics.
+[STDOBL-008] Model family: ordered multi-set. Required semantic focus: duplicate-key semantics.
 
 - The formal model MUST agree with the selected C++ standard/library observable
   semantics and preconditions; it may abstract representation details not observable
@@ -18402,7 +18402,7 @@ Model family: ordered multi-set. Required semantic focus: duplicate-key semantic
 
 ## Y.9 `std::unordered_map`
 
-Model family: hashed associative map. Required semantic focus: hash/equality calls,
+[STDOBL-009] Model family: hashed associative map. Required semantic focus: hash/equality calls,
 rehash invalidation, bucket-independent abstract mapping.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -18430,7 +18430,7 @@ rehash invalidation, bucket-independent abstract mapping.
 
 ## Y.10 `std::unordered_set`
 
-Model family: hashed set. Required semantic focus: hash/equality calls and rehash
+[STDOBL-010] Model family: hashed set. Required semantic focus: hash/equality calls and rehash
 invalidation.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -18458,7 +18458,7 @@ invalidation.
 
 ## Y.11 `std::stack`
 
-Model family: container adaptor. Required semantic focus: top/push/pop semantics
+[STDOBL-011] Model family: container adaptor. Required semantic focus: top/push/pop semantics
 delegated to underlying container.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -18486,7 +18486,7 @@ delegated to underlying container.
 
 ## Y.12 `std::queue`
 
-Model family: container adaptor. Required semantic focus: front/back/push/pop
+[STDOBL-012] Model family: container adaptor. Required semantic focus: front/back/push/pop
 semantics delegated to underlying container.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -18514,7 +18514,7 @@ semantics delegated to underlying container.
 
 ## Y.13 `std::priority_queue`
 
-Model family: heap adaptor. Required semantic focus: comparator semantics and top
+[STDOBL-013] Model family: heap adaptor. Required semantic focus: comparator semantics and top
 element relation.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -18542,7 +18542,7 @@ element relation.
 
 ## Y.14 `std::array`
 
-Model family: fixed array. Required semantic focus: fixed extent and aggregate
+[STDOBL-014] Model family: fixed array. Required semantic focus: fixed extent and aggregate
 element lifetime.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -18570,7 +18570,7 @@ element lifetime.
 
 ## Y.15 `std::span`
 
-Model family: non-owning contiguous view. Required semantic focus:
+[STDOBL-015] Model family: non-owning contiguous view. Required semantic focus:
 extent/lifetime/provenance.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -18598,7 +18598,7 @@ extent/lifetime/provenance.
 
 ## Y.16 `std::mdspan`
 
-Model family: non-owning multidimensional view. Required semantic focus:
+[STDOBL-016] Model family: non-owning multidimensional view. Required semantic focus:
 mapping/extents/accessor semantics and backing lifetime.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -18626,7 +18626,7 @@ mapping/extents/accessor semantics and backing lifetime.
 
 ## Y.17 `std::string`
 
-Model family: owning character sequence. Required semantic focus:
+[STDOBL-017] Model family: owning character sequence. Required semantic focus:
 size/content/reallocation/invalidation.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -18654,7 +18654,7 @@ size/content/reallocation/invalidation.
 
 ## Y.18 `std::string_view`
 
-Model family: non-owning character view. Required semantic focus: backing lifetime
+[STDOBL-018] Model family: non-owning character view. Required semantic focus: backing lifetime
 and extent.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -18682,7 +18682,7 @@ and extent.
 
 ## Y.19 `std::optional`
 
-Model family: optional object. Required semantic focus: engaged state and payload
+[STDOBL-019] Model family: optional object. Required semantic focus: engaged state and payload
 lifetime.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -18710,7 +18710,7 @@ lifetime.
 
 ## Y.20 `std::variant`
 
-Model family: sum object. Required semantic focus: indexed active alternative and
+[STDOBL-020] Model family: sum object. Required semantic focus: indexed active alternative and
 valueless state.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -18738,7 +18738,7 @@ valueless state.
 
 ## Y.21 `std::expected`
 
-Model family: value-or-error object. Required semantic focus: value/error state and
+[STDOBL-021] Model family: value-or-error object. Required semantic focus: value/error state and
 payload lifetime.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -18766,7 +18766,7 @@ payload lifetime.
 
 ## Y.22 `std::pair`
 
-Model family: two-component product. Required semantic focus: first/second lifetimes
+[STDOBL-022] Model family: two-component product. Required semantic focus: first/second lifetimes
 and references.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -18794,7 +18794,7 @@ and references.
 
 ## Y.23 `std::tuple`
 
-Model family: heterogeneous product. Required semantic focus: indexed components and
+[STDOBL-023] Model family: heterogeneous product. Required semantic focus: indexed components and
 reference elements.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -18822,7 +18822,7 @@ reference elements.
 
 ## Y.24 `std::unique_ptr`
 
-Model family: unique owning pointer. Required semantic focus:
+[STDOBL-024] Model family: unique owning pointer. Required semantic focus:
 move/reset/release/deleter and pointee lifetime.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -18850,7 +18850,7 @@ move/reset/release/deleter and pointee lifetime.
 
 ## Y.25 `std::shared_ptr`
 
-Model family: shared owning pointer. Required semantic focus: control block
+[STDOBL-025] Model family: shared owning pointer. Required semantic focus: control block
 ownership, aliasing pointer and deleter.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -18878,7 +18878,7 @@ ownership, aliasing pointer and deleter.
 
 ## Y.26 `std::weak_ptr`
 
-Model family: non-owning shared observer. Required semantic focus: expiration and
+[STDOBL-026] Model family: non-owning shared observer. Required semantic focus: expiration and
 lock.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -18906,7 +18906,7 @@ lock.
 
 ## Y.27 `std::function`
 
-Model family: type-erased callable. Required semantic focus: possible target
+[STDOBL-027] Model family: type-erased callable. Required semantic focus: possible target
 contract/effects and empty state.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -18934,7 +18934,7 @@ contract/effects and empty state.
 
 ## Y.28 `std::move_only_function`
 
-Model family: move-only type-erased callable. Required semantic focus: possible
+[STDOBL-028] Model family: move-only type-erased callable. Required semantic focus: possible
 target contract/effects and moved-from state.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -18962,7 +18962,7 @@ target contract/effects and moved-from state.
 
 ## Y.29 `std::reference_wrapper`
 
-Model family: reference-like wrapper. Required semantic focus: alias semantics and
+[STDOBL-029] Model family: reference-like wrapper. Required semantic focus: alias semantics and
 no lifetime extension.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -18990,7 +18990,7 @@ no lifetime extension.
 
 ## Y.30 `std::atomic`
 
-Model family: atomic object. Required semantic focus: memory order/modification
+[STDOBL-030] Model family: atomic object. Required semantic focus: memory order/modification
 order and value semantics.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -19018,7 +19018,7 @@ order and value semantics.
 
 ## Y.31 `std::mutex`
 
-Model family: mutual exclusion primitive. Required semantic focus: lock ownership
+[STDOBL-031] Model family: mutual exclusion primitive. Required semantic focus: lock ownership
 and synchronization.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -19046,7 +19046,7 @@ and synchronization.
 
 ## Y.32 `std::shared_mutex`
 
-Model family: shared/exclusive synchronization. Required semantic focus:
+[STDOBL-032] Model family: shared/exclusive synchronization. Required semantic focus:
 mode-specific ownership.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -19074,7 +19074,7 @@ mode-specific ownership.
 
 ## Y.33 `std::condition_variable`
 
-Model family: condition synchronization. Required semantic focus: wait unlock/relock
+[STDOBL-033] Model family: condition synchronization. Required semantic focus: wait unlock/relock
 and spurious wakeups.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -19102,7 +19102,7 @@ and spurious wakeups.
 
 ## Y.34 `std::thread`
 
-Model family: thread lifetime. Required semantic focus: joinability, concurrent
+[STDOBL-034] Model family: thread lifetime. Required semantic focus: joinability, concurrent
 execution, join/detach.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -19130,7 +19130,7 @@ execution, join/detach.
 
 ## Y.35 `std::jthread`
 
-Model family: joining thread. Required semantic focus: stop token and destruction
+[STDOBL-035] Model family: joining thread. Required semantic focus: stop token and destruction
 join semantics.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -19158,7 +19158,7 @@ join semantics.
 
 ## Y.36 `std::future`
 
-Model family: asynchronous result. Required semantic focus: shared state
+[STDOBL-036] Model family: asynchronous result. Required semantic focus: shared state
 readiness/get lifetime.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -19186,7 +19186,7 @@ readiness/get lifetime.
 
 ## Y.37 `std::promise`
 
-Model family: asynchronous producer. Required semantic focus: shared state mutation
+[STDOBL-037] Model family: asynchronous producer. Required semantic focus: shared state mutation
 and single satisfaction.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -19214,7 +19214,7 @@ and single satisfaction.
 
 ## Y.38 `std::filesystem::path`
 
-Model family: runtime value abstraction. Required semantic focus: no theorem about
+[STDOBL-038] Model family: runtime value abstraction. Required semantic focus: no theorem about
 filesystem existence without runtime interaction.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -19242,7 +19242,7 @@ filesystem existence without runtime interaction.
 
 ## Y.39 `std::chrono durations/time_points`
 
-Model family: typed arithmetic. Required semantic focus: representation/period
+[STDOBL-039] Model family: typed arithmetic. Required semantic focus: representation/period
 conversions and clock-specific runtime observations.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -19270,7 +19270,7 @@ conversions and clock-specific runtime observations.
 
 ## Y.40 `std::allocator`
 
-Model family: allocation policy. Required semantic focus:
+[STDOBL-040] Model family: allocation policy. Required semantic focus:
 allocation/deallocation/object lifetime separation.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -19298,7 +19298,7 @@ allocation/deallocation/object lifetime separation.
 
 ## Y.41 `std::pmr abstractions`
 
-Model family: resource-backed allocation. Required semantic focus: resource
+[STDOBL-041] Model family: resource-backed allocation. Required semantic focus: resource
 lifetime/effects and allocation semantics.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -19326,7 +19326,7 @@ lifetime/effects and allocation semantics.
 
 ## Y.42 `std::ranges views`
 
-Model family: lazy non-owning/adaptor semantics. Required semantic focus: backing
+[STDOBL-042] Model family: lazy non-owning/adaptor semantics. Required semantic focus: backing
 lifetimes, iterator validity and deferred calls.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -19354,7 +19354,7 @@ lifetimes, iterator validity and deferred calls.
 
 ## Y.43 `std::ranges algorithms`
 
-Model family: algorithm calls. Required semantic focus: iterator/sentinel/callable
+[STDOBL-043] Model family: algorithm calls. Required semantic focus: iterator/sentinel/callable
 preconditions and effects.
 
 - The formal model MUST agree with the selected C++ standard/library observable
@@ -19387,7 +19387,7 @@ preconditions and effects.
 `x = x` and user-defined self-assignment must use actual C++ semantics; do not
 assume no effect for overloaded assignment.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-001] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19400,7 +19400,7 @@ assume no effect for overloaded assignment.
 
 C++ type-specific semantics apply; no generic unchanged-value assumption.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-002] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19414,7 +19414,7 @@ C++ type-specific semantics apply; no generic unchanged-value assumption.
 two formal refs may bind one place; one post-state version must represent that
 place.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-003] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19427,7 +19427,7 @@ place.
 
 lifetime extension follows exact C++ context, not a generic reference rule.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-004] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19440,7 +19440,7 @@ lifetime extension follows exact C++ context, not a generic reference rule.
 
 returning a reference to a temporary cannot gain lifetime from a contract.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-005] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19453,7 +19453,7 @@ returning a reference to a temporary cannot gain lifetime from a contract.
 
 non-owning view lifetime must be tied to backing storage.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-006] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19466,7 +19466,7 @@ non-owning view lifetime must be tied to backing storage.
 
 all invalidated pointers/refs/iterators lose corresponding facts.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-007] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19480,7 +19480,7 @@ all invalidated pointers/refs/iterators lose corresponding facts.
 facts may be preserved only when the specific operation/capacity relation proves no
 invalidation.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-008] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19493,7 +19493,7 @@ invalidation.
 
 formal model must not rely on vendor SSO layout.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-009] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19507,7 +19507,7 @@ formal model must not rely on vendor SSO layout.
 ownership and stored pointer may refer to different subobjects; do not conflate
 them.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-010] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19521,7 +19521,7 @@ them.
 concurrent expiration requires synchronization semantics; a prior non-expired
 observation may not remain true.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-011] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19534,7 +19534,7 @@ observation may not remain true.
 
 alternative identity is index, not type.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-012] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19547,7 +19547,7 @@ alternative identity is index, not type.
 
 must remain a semantic state whenever C++ permits it.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-013] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19560,7 +19560,7 @@ must remain a semantic state whenever C++ permits it.
 
 aliases denote one logical value/case, not independent states.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-014] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19573,7 +19573,7 @@ aliases denote one logical value/case, not independent states.
 
 underlying domain exceeds declared names and must remain representable.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-015] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19586,7 +19586,7 @@ underlying domain exceeds declared names and must remain representable.
 
 only C++-permitted reads are admitted; no general simultaneous-member reasoning.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-016] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19599,7 +19599,7 @@ only C++-permitted reads are admitted; no general simultaneous-member reasoning.
 
 distinct names do not prove disjoint addresses/storage.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-017] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19613,7 +19613,7 @@ distinct names do not prove disjoint addresses/storage.
 base/subobject disjointness cannot be inferred from conceptual object distinctness
 alone.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-018] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19626,7 +19626,7 @@ alone.
 
 valid for limited arithmetic/comparison, not dereference.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-019] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19639,7 +19639,7 @@ valid for limited arithmetic/comparison, not dereference.
 
 non-null bits do not imply live pointee capability.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-020] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19652,7 +19652,7 @@ non-null bits do not imply live pointee capability.
 
 new lifetime/version; stale object facts invalid.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-021] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19665,7 +19665,7 @@ new lifetime/version; stale object facts invalid.
 
 mutation may be UB; const_cast itself is not permission.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-022] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19678,7 +19678,7 @@ mutation may be UB; const_cast itself is not permission.
 
 cast value does not prove alignment/provenance/type accessibility.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-023] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19692,7 +19692,7 @@ cast value does not prove alignment/provenance/type accessibility.
 byte equality/value equality correspondence only where C++ object-representation
 semantics justify it.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-024] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19705,7 +19705,7 @@ semantics justify it.
 
 floating equality/order must preserve NaN behavior.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-025] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19718,7 +19718,7 @@ floating equality/order must preserve NaN behavior.
 
 floating proof must distinguish +0/-0 where observable.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-026] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19731,7 +19731,7 @@ floating proof must distinguish +0/-0 where observable.
 
 not allowed unless selected floating semantics justify it.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-027] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19744,7 +19744,7 @@ not allowed unless selected floating semantics justify it.
 
 modular equality differs from mathematical integer order reasoning.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-028] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19757,7 +19757,7 @@ modular equality differs from mathematical integer order reasoning.
 
 must be excluded before using result; cannot be treated as wrap.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-029] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19770,7 +19770,7 @@ must be excluded before using result; cannot be treated as wrap.
 
 unexecuted right operand contributes no runtime UB obligation on that path.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-030] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19783,7 +19783,7 @@ unexecuted right operand contributes no runtime UB obligation on that path.
 
 both formal operands must themselves be valid specification expressions.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-031] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19796,7 +19796,7 @@ both formal operands must themselves be valid specification expressions.
 
 partial mutation/state transitions must reflect actual C++ guarantee.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-032] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19809,7 +19809,7 @@ partial mutation/state transitions must reflect actual C++ guarantee.
 
 effects/lifetime changes belong to exceptional path.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-033] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19822,7 +19822,7 @@ effects/lifetime changes belong to exceptional path.
 
 ordinary terminate semantics, not normal postcondition.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-034] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19836,7 +19836,7 @@ ordinary terminate semantics, not normal postcondition.
 call may mutate state through reentrant paths unless contract/effect model excludes
 it.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-035] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19849,7 +19849,7 @@ it.
 
 C++ restricted dynamic dispatch semantics apply.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-036] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19862,7 +19862,7 @@ C++ restricted dynamic dispatch semantics apply.
 
 ordinary C++ legality/UB applies; contract cannot make invalid call valid.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-037] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19875,7 +19875,7 @@ ordinary C++ legality/UB applies; contract cannot make invalid call valid.
 
 evaluated caller-side according to C++, affects pre-call state.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-038] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19888,7 +19888,7 @@ evaluated caller-side according to C++, affects pre-call state.
 
 proof cannot depend on one order unless sequencing established.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-039] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19901,7 +19901,7 @@ proof cannot depend on one order unless sequencing established.
 
 use exact C++ sequencing rules for selected language mode.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-040] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19914,7 +19914,7 @@ use exact C++ sequencing rules for selected language mode.
 
 initialization order follows C++ declaration order rules.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-041] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19927,7 +19927,7 @@ initialization order follows C++ declaration order rules.
 
 does not override C++ base/member initialization order.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-042] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19940,7 +19940,7 @@ does not override C++ base/member initialization order.
 
 cross-TU runtime initialization facts require actual C++ ordering guarantees.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-043] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19953,7 +19953,7 @@ cross-TU runtime initialization facts require actual C++ ordering guarantees.
 
 facts are instance-specific.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-044] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19966,7 +19966,7 @@ facts are instance-specific.
 
 values need not remain stable.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-045] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19979,7 +19979,7 @@ values need not remain stable.
 
 atomicity without acquire/release synchronization.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-046] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -19992,7 +19992,7 @@ atomicity without acquire/release synchronization.
 
 facts may transfer only according to valid happens-before reasoning.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-047] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20005,7 +20005,7 @@ facts may transfer only according to valid happens-before reasoning.
 
 verification must prove race freedom on claimed paths.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-048] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20018,7 +20018,7 @@ verification must prove race freedom on claimed paths.
 
 shared state may change before resumption.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-049] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20031,7 +20031,7 @@ shared state may change before resumption.
 
 references into destroyed frame become invalid.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-050] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20044,7 +20044,7 @@ references into destroyed frame become invalid.
 
 lazy view may outlive backing object; verify lifetime.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-051] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20057,7 +20057,7 @@ lazy view may outlive backing object; verify lifetime.
 
 end state is not readable element.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-052] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20071,7 +20071,7 @@ end state is not readable element.
 iterator invalidation and bucket representation must not leak into abstract map
 meaning.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-053] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20085,7 +20085,7 @@ meaning.
 container/algorithm formal model must include callback effects; comparator is not
 assumed pure.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-054] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20099,7 +20099,7 @@ assumed pure.
 formal model cannot assume hash/equality laws unless required/proven by interface
 assumptions.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-055] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20112,7 +20112,7 @@ assumptions.
 
 allocation/deallocation effects and resource lifetime remain relevant.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-056] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20125,7 +20125,7 @@ allocation/deallocation effects and resource lifetime remain relevant.
 
 destruction effects may be arbitrary runtime behavior under its contract.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-057] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20138,7 +20138,7 @@ destruction effects may be arbitrary runtime behavior under its contract.
 
 mutable members/reachable objects can still change.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-058] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20151,7 +20151,7 @@ mutable members/reachable objects can still change.
 
 copied object may alias same external referent rather than own a copied value.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-059] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20164,7 +20164,7 @@ copied object may alias same external referent rather than own a copied value.
 
 non-owning atomic access still depends on referenced object lifetime/alignment.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-060] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20177,7 +20177,7 @@ non-owning atomic access still depends on referenced object lifetime/alignment.
 
 cannot invent pointer/reference where C++ forbids taking address.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-061] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20190,7 +20190,7 @@ cannot invent pointer/reference where C++ forbids taking address.
 
 operations requiring completeness remain invalid until C++ permits them.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-062] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20201,9 +20201,9 @@ operations requiring completeness remain invalid until C++ permits them.
 
 ## Z.63 ODR mismatch
 
-C++L does not repair an invalid C++ program by picking one definition.
+[EDGECASE-063] C++L does not repair an invalid C++ program by picking one definition.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-064] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20216,7 +20216,7 @@ C++L does not repair an invalid C++ program by picking one definition.
 
 imported/redeclared metadata must refer to same semantic entity and agree.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-065] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20229,7 +20229,7 @@ imported/redeclared metadata must refer to same semantic entity and agree.
 
 erased same signature cannot be distinct native overloads.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-066] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20242,7 +20242,7 @@ erased same signature cannot be distinct native overloads.
 
 alias preserves refinement identity, not just base spelling.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-067] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20255,7 +20255,7 @@ alias preserves refinement identity, not just base spelling.
 
 membership applies only while that member is active/live.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-068] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20269,7 +20269,7 @@ membership applies only while that member is active/live.
 every still-live refined place must satisfy its declared predicate after move
 effects.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-069] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20283,7 +20283,7 @@ effects.
 entry snapshot requires dereference validity in entry state; later deallocation does
 not change captured logical value.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-070] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20296,7 +20296,7 @@ not change captured logical value.
 
 invalid because member had no entry-state value.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-071] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20309,7 +20309,7 @@ invalid because member had no entry-state value.
 
 invalid special identifier use.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-072] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20322,7 +20322,7 @@ invalid special identifier use.
 
 ordinary identifier unless context says otherwise.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-073] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20335,7 +20335,7 @@ ordinary identifier unless context says otherwise.
 
 rejected; never an axiom command.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-074] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20348,7 +20348,7 @@ rejected; never an axiom command.
 
 rejected; declaration alone is not evidence.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-075] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20361,7 +20361,7 @@ rejected; declaration alone is not evidence.
 
 derivation may be proven relative to trust but dependency remains.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-076] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20375,7 +20375,7 @@ derivation may be proven relative to trust but dependency remains.
 unsafe result needs validation/trust/independent proof before contributing
 proposition.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-077] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20388,7 +20388,7 @@ proposition.
 
 does not become Proof<P> merely because execution would continue when P is true.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-078] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20401,7 +20401,7 @@ does not become Proof<P> merely because execution would continue when P is true.
 
 must not produce refined value.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-079] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20414,7 +20414,7 @@ must not produce refined value.
 
 requires contradiction evidence, never heuristic reachability.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-080] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20427,7 +20427,7 @@ requires contradiction evidence, never heuristic reachability.
 
 non_null binds no address/capability.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-081] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20440,7 +20440,7 @@ non_null binds no address/capability.
 
 successor principle includes range premise preventing wrap.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-082] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20453,7 +20453,7 @@ successor principle includes range premise preventing wrap.
 
 must be structurally/well-founded justified.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-083] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20466,7 +20466,7 @@ must be structurally/well-founded justified.
 
 one lexicographic measure list, not conjunction.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-084] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20479,7 +20479,7 @@ one lexicographic measure list, not conjunction.
 
 exit path does not receive negated loop condition automatically.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-085] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20492,7 +20492,7 @@ exit path does not receive negated loop condition automatically.
 
 must re-establish invariant and descent obligations.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-086] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20506,7 +20506,7 @@ must re-establish invariant and descent obligations.
 verification accounts for range/begin/end/iterator operations even though source is
 compact.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-087] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20520,7 +20520,7 @@ compact.
 first body execution semantics differ from pre-test loop and must be modeled
 accordingly.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-088] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20533,7 +20533,7 @@ accordingly.
 
 only facts true on every predecessor survive.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-089] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20546,7 +20546,7 @@ only facts true on every predecessor survive.
 
 later case body may have effects/facts from earlier case path.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-090] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20559,7 +20559,7 @@ later case body may have effects/facts from earlier case path.
 
 runtime path absent, but C++ template/discarded-statement rules remain.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-091] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20573,7 +20573,7 @@ runtime path absent, but C++ template/discarded-statement rules remain.
 compile-time execution does not make its result a theorem without formal
 correspondence.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-092] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20586,7 +20586,7 @@ correspondence.
 
 still runtime when not constant-evaluated.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-093] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20599,7 +20599,7 @@ still runtime when not constant-evaluated.
 
 concept satisfaction is not a runtime Law.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-094] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20612,7 +20612,7 @@ concept satisfaction is not a runtime Law.
 
 successful call does not prove undocumented semantic facts.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-095] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20625,7 +20625,7 @@ successful call does not prove undocumented semantic facts.
 
 deserialized bytes do not acquire refinement from target alias alone.
 
-- The selected C++ runtime semantics remain authoritative.
+- [EDGECASE-096] The selected C++ runtime semantics remain authoritative.
 - Any fact used by verified reasoning must be justified by checked semantics, valid
   proof evidence, concrete runtime validation on that path, or explicit trust.
 - No hidden runtime proof/validation mechanism is implied.
@@ -20638,7 +20638,7 @@ deserialized bytes do not acquire refinement from target alias alone.
 
 ## Canonical surface conformance
 
-`GRAMMAR.md` defines the concrete grammar corresponding to this specification.
+[EDGECASE-097] `GRAMMAR.md` defines the concrete grammar corresponding to this specification.
 `DEVELOPER_GUIDE.md` is explanatory usage material and MUST remain consistent with
 this specification. `FOUNDATIONS.md` formalizes the proof model; `TRUST.md`
 defines the trusted-computing-base and correspondence obligations.

@@ -1,0 +1,114 @@
+# Machine-readable manifest for the refinement-types feature.
+#
+# Rule IDs are anchors in docs/SPEC.md, the canonical specification. Extract the
+# normative text with:
+#
+#     cppl-spec-rules extract --feature refinement-types
+
+feature: refinement-types
+
+summary: >
+  Types refined by a predicate over their base value. A value enters a
+  refinement only with evidence for the complete predicate; it leaves freely as
+  its base value; and it erases to the ultimate C++ base representation.
+
+normative_sources:
+  spec:
+    - "§17 Refinement types"
+    - "§18 Dependent and indexed formal types"
+    - "Annex I Refinement and dependent-type obligations"
+    - "Annex V Cross-feature interaction rules"
+  grammar:
+    - "§14 Refinement declaration"
+    - "§15 self"
+    - "§16 Indexed refinements"
+  foundations:
+    - "Refinement typing"
+  trust:
+    - "§10 Erasure trust"
+
+rule_families:
+  - REFINE
+  - REFINEOBL
+  - DEP
+
+depends_on:
+  - logical-values
+  - path-facts
+  - storage-versioning
+  - alias-analysis
+  - call-effects
+
+implementation:
+  frontend:
+    - compiler/frontend/src/recognizer.cpp
+    - compiler/frontend/src/projection.cpp
+    - compiler/frontend/include/cppl/frontend/syntax.hpp
+  elaboration:
+    - compiler/elaboration/src/elaborate.cpp
+  obligations:
+    - compiler/obligations/src/generate.cpp
+    - compiler/obligations/src/contracts.cpp
+  analysis:
+    - compiler/analysis/src/analyze.cpp
+  automation:
+    - compiler/automation/src/evidence.cpp
+  erasure:
+    - compiler/erasure/src/erase.cpp
+  diagnostics:
+    - compiler/diagnostics/src/diagnostic.cpp
+
+crossings:
+  - local initialization
+  - parameter entry into verified reasoning
+  - function argument binding
+  - return
+  - assignment and compound update
+  - member initialization and member write
+  - array/element write
+  - construction, copy and move
+  - verified call post-state
+
+interactions:
+  - aliasing
+  - calls
+  - members
+  - elements
+  - templates
+  - virtual dispatch
+  - exceptions
+  - erasure
+  - abi
+  - overload erasure
+
+tests:
+  negative:
+    - tests/negative/refinement_types.sh
+    - tests/negative/verified_storage.sh
+  fixtures:
+    - tests/fixtures/verified_storage.cpp
+
+required_test_categories:
+  - local initialization
+  - parameter crossing
+  - return crossing
+  - assignment
+  - member write
+  - element write
+  - alias mutation
+  - verified call effect
+  - nested refinements
+  - indexed refinements
+  - refinement implication
+  - overload erasure collision
+  - abi equivalence
+
+completion_requires:
+  - every rule in the listed families is implemented
+  - every crossing generates a membership obligation
+  - positive tests verify
+  - negative tests are rejected, for the stated reason
+  - alias-mutation tests invalidate stale facts
+  - erasure tests show no runtime trace
+  - abi tests show unchanged layout and calling convention
+  - no path inserts hidden runtime validation

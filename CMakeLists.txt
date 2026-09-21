@@ -297,6 +297,7 @@ add_subdirectory(clang)
 add_subdirectory(compiler)
 add_subdirectory(tools/cppl-lsp)
 add_subdirectory(tools/cppl-format)
+add_subdirectory(tools/cppl-spec-rules)
 add_subdirectory(src/lsp)
 
 # CpplFormatting depends on the cppl-format target above, so it is included

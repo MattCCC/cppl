@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Refinement types that must be refused (SPEC.md 17).
+# Refinement types that must be refused.
+#
+# SPEC: REFINE-003, REFINE-004, REFINE-005
 #
 # A refinement declaration asserts nothing. Every value that enters the type owes
 # a proof of its predicate, and nothing here is accepted on the strength of the

@@ -907,7 +907,56 @@ Fix the generator or source of truth.
 
 ---
 
-# 30. Documentation ownership
+# 30. Finding the rules that apply
+
+`docs/SPEC.md` is the single canonical specification. It is not split, and
+nothing summarizes away its authority.
+
+Do not read it end to end to implement a feature. Normative statements carry
+stable `[FAMILY-NNN]` anchors, and `docs/agent/` indexes them:
+
+```text
+docs/agent/FEATURE_INDEX.md           feature -> rules and documents
+docs/agent/IMPLEMENTATION_MAP.md      rules -> components and required behavior
+docs/agent/INVARIANTS.md              what holds for every feature
+docs/agent/TEST_MATRIX.md             rules -> required tests
+docs/agent/VERIFICATION_CHECKLIST.md  the completion contract
+docs/agent/features/*.yaml            machine-readable manifests
+```
+
+Before implementing a feature:
+
+```text
+1. locate the feature in docs/agent/FEATURE_INDEX.md
+2. extract its rules:
+       cppl-spec-rules extract --feature <name>
+3. read docs/agent/INVARIANTS.md
+4. read the feature's entry in docs/agent/IMPLEMENTATION_MAP.md
+5. inspect existing implementation and tests
+6. implement the complete rule set, not the motivating example
+7. add positive, negative, interaction, adversarial and erasure tests
+8. satisfy docs/agent/VERIFICATION_CHECKLIST.md
+9. update docs/STATUS.md only after the implementation passes
+```
+
+Cite rule IDs, not section numbers. Section and line numbers move; rule IDs do
+not.
+
+```cpp
+// SPEC: REFINE-010
+TEST(RefinementWrite, RejectsUnprovenReplacement) { ... }
+```
+
+A feature is not complete because its syntax parses. Recognizing `decreases` is
+not termination checking. The completion contract in
+`docs/agent/VERIFICATION_CHECKLIST.md` defines DONE.
+
+`docs/STATUS.md` records what is implemented. It MUST NOT be used to weaken a
+requirement in `docs/SPEC.md`.
+
+---
+
+# 31. Documentation ownership
 
 Use each document for one purpose:
 
@@ -954,6 +1003,9 @@ SECURITY.md
 ACKNOWLEDGEMENTS.md
     intellectual and project credit
 
+docs/agent/
+    agent execution layer: indexes docs/SPEC.md, never overrides it
+
 docs/rfcs/
     substantial language changes
 ```
@@ -964,9 +1016,9 @@ Reference the authoritative document.
 
 ---
 
-# 31. Mandatory documentation updates
+# 32. Mandatory documentation updates
 
-Update `docs/docs/SPEC.md` when changing:
+Update `docs/SPEC.md` when changing:
 
 - language meaning
 - proof rules
@@ -1001,9 +1053,20 @@ Update `docs/ARCHITECTURE.md` when changing:
 
 Update `STATUS.md` when implementation maturity changes.
 
+Update `docs/agent/` when adding a feature or a normative rule:
+
+- assign IDs to new normative statements: `cppl-spec-rules assign`
+- add or update the feature in `docs/agent/FEATURE_INDEX.md`
+- add or update `docs/agent/features/<name>.yaml`
+- add its components to `docs/agent/IMPLEMENTATION_MAP.md`
+- add its required cases to `docs/agent/TEST_MATRIX.md`
+
+`cppl-spec-rules check` must pass: no duplicate IDs, no citations to rules that
+do not exist.
+
 ---
 
-# 32. RFC requirement
+# 33. RFC requirement
 
 Use an RFC for substantial changes involving:
 
@@ -1025,7 +1088,7 @@ Do not introduce foundational semantics in incidental implementation patches.
 
 ---
 
-# 33. Status promotion rules
+# 34. Status promotion rules
 
 Do not mark a feature `IMPLEMENTED` because:
 
@@ -1051,7 +1114,7 @@ tests pass != proof of soundness
 
 ---
 
-# 34. Diagnostics invariant
+# 35. Diagnostics invariant
 
 Verification failures should explain:
 
@@ -1077,7 +1140,7 @@ Diagnostics must preserve proof/trust provenance.
 
 ---
 
-# 35. Implementation style
+# 36. Implementation style
 
 Prefer:
 
@@ -1108,7 +1171,7 @@ Avoid:
 
 ---
 
-# 36. Required review checklist
+# 37. Required review checklist
 
 Before completing a significant change, verify:
 
@@ -1138,7 +1201,7 @@ If any answer is uncertain, investigate before merging.
 
 ---
 
-# 37. Core adversarial invariants
+# 38. Core adversarial invariants
 
 The repository should eventually maintain permanent tests proving that:
 
@@ -1172,7 +1235,7 @@ These invariants matter more than superficial feature count.
 
 ---
 
-# 38. Proof decomposition invariants
+# 39. Proof decomposition invariants
 
 Proof decomposition is representation-independent. These invariants exist
 because each of them, if broken, reintroduces a class of bug the generic design
@@ -1333,7 +1396,7 @@ generic on purpose: refinement types consume it and must never define it.
 
 ---
 
-# 39. Final invariant
+# 40. Final invariant
 
 For every Law reported as `PROVEN`, the project must be able to answer:
 
