@@ -1,0 +1,13 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Launch cppl-vscode Extension",
+      "type": "extensionHost",
+      "request": "launch",
+      "runtimeExecutable": "${execPath}",
+      "args": ["--extensionDevelopmentPath=${workspaceFolder}/vscode/cppl-vscode"],
+      "outFiles": ["${workspaceFolder}/vscode/cppl-vscode/src/**/*.js"]
+    }
+  ]
+}

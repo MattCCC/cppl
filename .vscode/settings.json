@@ -11,5 +11,15 @@
   "[c]": {
     "editor.defaultFormatter": "ms-vscode.cpptools",
     "editor.formatOnSave": true
+  },
+
+  // tests/fixtures is the cppl-lsp proving ground (tools/cppl-lsp/README.md):
+  // its .cpp files are C++L, not ordinary C++, so they are routed to the
+  // `cppl` language (cppl-vscode / cppl-lsp) instead of the C/C++ extension.
+  // Everything else in the repository keeps ordinary C++ tooling. `*.cppl`
+  // is the future native extension, associated everywhere in advance.
+  "files.associations": {
+    "**/tests/fixtures/**/*.cpp": "cppl",
+    "*.cppl": "cppl"
   }
 }
