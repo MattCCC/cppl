@@ -3416,6 +3416,16 @@ the value the binding denotes, including under quantified propositions. Evidence
 names resolve in arm scope; nested proof references participate in the existing
 acyclic dependency traversal.
 
+**Binder type resolution** is a fixpoint, because a binder's type is only known
+once its subject is decomposed, and a nested arm's subject is itself a binder.
+Each pass reprojects and reparses, and the loop stops at the first pass that
+resolves nothing new, so the cost is proportional to decomposition **nesting
+depth**, not to a fixed pass count or to the number of arms. A translation unit
+with no decomposition parses once. The bound exists to fail closed on a
+pathological nesting depth, not as an expected cost. Parsing a translation
+unit's own standard-library headers dominates in practice, so no descriptor
+cache sits in this path; adding one would optimize what is not the bottleneck.
+
 **Obligation lowering** asks the provider again rather than trusting the arms,
 lowers each discriminator with the ordinary expression lowering, and builds a
 chain of conditional eliminations over them in partition order. Each case's

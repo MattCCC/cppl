@@ -168,6 +168,32 @@ proof product_of_optional(std::pair<std::optional<int>, bool> p) proves(Eq<bool>
     }
 }
 
+// 8/29. Binder types resolve to a fixpoint, so nesting depth is what costs, not
+// a fixed pass count. Four levels stay well inside the limit.
+proof deeply_nested(std::optional<std::optional<std::optional<std::optional<int>>>> o)
+    proves(Eq<bool>(true, true))
+{
+    cases o {
+        some(a) => {
+            cases a {
+                some(b) => {
+                    cases b {
+                        some(c) => {
+                            cases c {
+                                some(d) => { refl; }
+                                none => { refl; }
+                            }
+                        }
+                        none => { refl; }
+                    }
+                }
+                none => { refl; }
+            }
+        }
+        none => { refl; }
+    }
+}
+
 // 25. Decomposition composes with the rest of the proof system.
 proof under_quantifier(std::optional<unsigned> o) proves(forall(unsigned x) { x == x }) {
     cases o {
