@@ -1,6 +1,6 @@
 ---
 name: cppl-doc-consistency
-description: Audit C++L documentation for semantic consistency. Use when SPEC.md, TRUST.md, DESIGN.md, ARCHITECTURE.md, COMPATIBILITY.md, STATUS.md, ROADMAP.md, examples, or RFCs may disagree with one another or with implementation status.
+description: Audit C++L documentation for semantic consistency. Use when SPEC.md, TRUST.md, DESIGN.md, ARCHITECTURE.md, COMPATIBILITY.md, STATUS.md, ROADMAP.md, examples, or RFCs may disagree with one another or with implementation status. All under docs/ dir
 ---
 
 # C++L Documentation Consistency
@@ -10,14 +10,15 @@ Each document has one authority domain.
 ## Authority map
 
 ```text
-SPEC.md           language semantics
-TRUST.md          trust boundaries
-FOUNDATIONS.md    mathematical basis
-DESIGN.md         rationale
-ARCHITECTURE.md   implementation structure
-COMPATIBILITY.md  C++/ABI compatibility
-STATUS.md         current implementation maturity
-ROADMAP.md        planned sequence
+docs/SPEC.md           language semantics
+docs/TRUST.md          trust boundaries
+docs/FOUNDATIONS.md    mathematical basis
+docs/DESIGN.md         rationale
+docs/ARCHITECTURE.md   implementation structure
+docs/COMPATIBILITY.md  C++/ABI compatibility
+docs/STATUS.md         current implementation maturity
+docs/GRAMMAR.md        grammar
+docs/ROADMAP.md        planned sequence
 SECURITY.md       vulnerability policy
 ```
 
