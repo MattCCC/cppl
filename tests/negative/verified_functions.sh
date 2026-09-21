@@ -64,7 +64,7 @@ reject second_expects_unestablished 'call.site precondition' \
     'verified unsigned g(unsigned x, unsigned y) expects(x == 1u) expects(y == 2u) ensures(result == 3u) { return x + y; } verified unsigned f(unsigned x) expects(x == 1u) ensures(result == 3u) { return g(x, x); }'
 # Clang's own error, reported rather than crashing on its recovery expressions.
 reject malformed_law_proposition 'error \[cpp-semantic\]' \
-    'law l(unsigned x) ensures(exists(unsigned y) y == x);'
+    'law l(unsigned x) proves (exists(unsigned y) y == x);'
 reject malformed_contract 'error \[cpp-semantic\]' \
     'verified unsigned f(unsigned x) ensures(foo(unsigned y) y == x) { return x; }'
 reject declaration_only 'not defined here' \
@@ -84,7 +84,7 @@ reject unused_result_effect 'not declared pure' \
 reject unused_result_overflow 'signed overflow' \
     'verified int f(int x) ensures(x == x) { return x + 1; }'
 reject refl_cannot_rewrite 'does not establish law' \
-    'law l(unsigned x) expects(x == 0u) ensures(x + 1u == 1u); proof p(unsigned x) proves(l(x)) { refl; }'
+    'law l(unsigned x) expects(x == 0u) proves (x + 1u == 1u); proof p(unsigned x) proves(l(x)) { refl; }'
 reject bool_promotion "conversion from 'bool' to 'int' is not modeled" \
     'verified unsigned f(bool b) ensures(result == 0u) { if (b == true) return 0u; return 0u; }'
 reject bool_widening "conversion from 'bool' to 'unsigned int' is not modeled" \

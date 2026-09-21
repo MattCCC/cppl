@@ -366,8 +366,8 @@ Example:
 
 ```cpp
 pure int divide(int a, int b)
-    expects b != 0
-    ensures result * b == a;
+    expects (b != 0)
+    ensures (result * b == a);
 ```
 
 corresponds conceptually to:
@@ -457,8 +457,7 @@ A refinement type augments a base type with a predicate.
 For example:
 
 ```cpp
-type Percentage =
-    int where self >= 0 && self <= 100;
+type Percentage = int where self >= 0 && self <= 100;
 ```
 
 corresponds mathematically to:

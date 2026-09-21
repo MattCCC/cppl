@@ -1,5 +1,9 @@
 # Refinement and indexed refinement types
 
+> Surface syntax and formatting in this historical RFC are superseded by
+> [RFC 0015](0015-canonical-language-surface.md) and the
+> [normative grammar](../GRAMMAR.md). Semantic rationale remains applicable.
+
 Status: implemented. Semantics are SPEC.md 17, 17.5, 18 and GRAMMAR.md 14, 15, 16.
 
 A refinement type is a verification-level type over an ordinary C++ base type:

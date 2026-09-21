@@ -32,7 +32,7 @@ cppl -std=c++23
 
 The meaning of:
 
-```cpp
+```text
 law ...
 proof ...
 pure ...
@@ -130,10 +130,10 @@ C++L may add proof relationships involving template parameters.
 
 Example:
 
-```cpp
+```text
 template<class T, size_t N>
 law array_size(...)
-    proves ...;
+    proves (...);
 ```
 
 C++L should reuse Clang's template instantiation semantics.

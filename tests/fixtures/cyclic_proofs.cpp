@@ -8,19 +8,19 @@ pure int identity(int x) {
 }
 
 law identity_returns_input(int x)
-    ensures(identity(x) == x);
+    proves (identity(x) == x);
 
 law identity_returns_input_again(int x)
-    ensures(identity(x) == x);
+    proves (identity(x) == x);
 
 proof first(int x)
-    proves(identity_returns_input(x))
+    proves (identity_returns_input(x))
 {
     apply second;
 }
 
 proof second(int x)
-    proves(identity_returns_input_again(x))
+    proves (identity_returns_input_again(x))
 {
     apply first;
 }

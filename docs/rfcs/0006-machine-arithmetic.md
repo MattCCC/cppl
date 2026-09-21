@@ -1,5 +1,9 @@
 # Machine arithmetic: normalization and linear arithmetic
 
+> Surface syntax and formatting in this historical RFC are superseded by
+> [RFC 0015](0015-canonical-language-surface.md) and the
+> [normative grammar](../GRAMMAR.md). Semantic rationale remains applicable.
+
 Status: implemented by this slice; normative rules are SPEC.md 7.1, 7.5, 12.5
 and 29.
 

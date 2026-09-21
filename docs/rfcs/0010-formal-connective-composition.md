@@ -1,5 +1,9 @@
 # Formal connective composition
 
+> Surface syntax and formatting in this historical RFC are superseded by
+> [RFC 0015](0015-canonical-language-surface.md) and the
+> [normative grammar](../GRAMMAR.md). Semantic rationale remains applicable.
+
 Status: implemented. Semantics are SPEC.md 7.6-7.7 and GRAMMAR.md 30, 33.
 
 Formal equalities and quantified propositions may compose through conjunction.

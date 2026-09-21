@@ -22,10 +22,10 @@ reject false_universal <<'CPP'
 proof wrong(unsigned x) proves(forall (unsigned y) { Eq<unsigned>(y, x) }) { refl; }
 CPP
 reject false_implication <<'CPP'
-law wrong(unsigned x) ensures(Eq<unsigned>(x, 0u) -> Eq<unsigned>(x, 1u));
+law wrong(unsigned x) proves (Eq<unsigned>(x, 0u) -> Eq<unsigned>(x, 1u));
 CPP
 reject false_under_a_binder <<'CPP'
-law wrong(unsigned x) ensures(forall (unsigned y) { Eq<unsigned>(y, 0u) -> Eq<unsigned>(y, 1u) });
+law wrong(unsigned x) proves (forall (unsigned y) { Eq<unsigned>(y, 0u) -> Eq<unsigned>(y, 1u) });
 CPP
 
 # A binder shadows the parameter, so a premise about the parameter says nothing
@@ -33,7 +33,7 @@ CPP
 reject shadowed_premise <<'CPP'
 law wrong(unsigned x)
     expects(Eq<unsigned>(x, 0u))
-    ensures(forall (unsigned x) { Eq<unsigned>(x, 0u) });
+    proves (forall (unsigned x) { Eq<unsigned>(x, 0u) });
 proof wrong_holds(unsigned x) proves(wrong(x)) {
     assume h : Eq<unsigned>(x, 0u);
     rewrite h;
@@ -43,7 +43,7 @@ CPP
 
 # A binder a proposition writes for itself has no name a statement can use.
 reject binder_named_in_a_statement <<'CPP'
-law l(unsigned x) ensures(forall (unsigned y) { Eq<unsigned>(y, y) });
+law l(unsigned x) proves (forall (unsigned y) { Eq<unsigned>(y, y) });
 proof l_holds(unsigned x) proves(l(x)) {
     assume h : Eq<unsigned>(y, y);
     exact h;
@@ -65,40 +65,40 @@ CPP
 
 # Binder types the formal core does not model.
 reject unmodeled_binder <<'CPP'
-law wrong(unsigned x) ensures(forall (double y) { Eq<unsigned>(x, x) });
+law wrong(unsigned x) proves (forall (double y) { Eq<unsigned>(x, x) });
 CPP
 reject unmodeled_binder_class <<'CPP'
 struct S {};
-law wrong(unsigned x) ensures(forall (S y) { Eq<unsigned>(x, x) });
+law wrong(unsigned x) proves (forall (S y) { Eq<unsigned>(x, x) });
 CPP
 reject reference_binder <<'CPP'
-law wrong(unsigned x) ensures(forall (unsigned& y) { Eq<unsigned>(y, y) });
+law wrong(unsigned x) proves (forall (unsigned& y) { Eq<unsigned>(y, y) });
 CPP
 
 # Malformed quantifier and implication syntax. None of it is guessed at.
 reject no_binders <<'CPP'
-law wrong(unsigned x) ensures(forall () { Eq<unsigned>(x, x) });
+law wrong(unsigned x) proves (forall () { Eq<unsigned>(x, x) });
 CPP
 reject no_block <<'CPP'
-law wrong(unsigned x) ensures(forall (unsigned y) Eq<unsigned>(y, y));
+law wrong(unsigned x) proves (forall (unsigned y) Eq<unsigned>(y, y));
 CPP
 reject empty_block <<'CPP'
-law wrong(unsigned x) ensures(forall (unsigned y) { });
+law wrong(unsigned x) proves (forall (unsigned y) { });
 CPP
 reject missing_conclusion <<'CPP'
-law wrong(unsigned x) ensures(Eq<unsigned>(x, 0u) ->);
+law wrong(unsigned x) proves (Eq<unsigned>(x, 0u) ->);
 CPP
 reject missing_premise <<'CPP'
-law wrong(unsigned x) ensures(-> Eq<unsigned>(x, 0u));
+law wrong(unsigned x) proves (-> Eq<unsigned>(x, 0u));
 CPP
 reject nested_in_an_argument <<'CPP'
 pure unsigned g(unsigned x) { return x; }
-law wrong(unsigned x) ensures(g(forall (unsigned y) { Eq<unsigned>(y, y) }) == x);
+law wrong(unsigned x) proves (g(forall (unsigned y) { Eq<unsigned>(y, y) }) == x);
 CPP
 
 # Stated but not implemented, and refused rather than approximated.
 reject existential <<'CPP'
-law wrong(unsigned x) ensures(exists (unsigned y) { Eq<unsigned>(y, x) });
+law wrong(unsigned x) proves (exists (unsigned y) { Eq<unsigned>(y, x) });
 CPP
 reject invariant <<'CPP'
 verified unsigned wrong(unsigned x) ensures(result == x) {
@@ -109,7 +109,7 @@ CPP
 
 # Nesting beyond what the projection carries is refused, not truncated.
 {
-    printf 'law wrong(unsigned x) ensures('
+    printf 'law wrong(unsigned x) proves ('
     for _ in $(seq 1 200); do printf 'Eq<unsigned>(x, x) -> '; done
     printf 'Eq<unsigned>(x, x));\n'
 } > "$run/deep.in"
@@ -128,20 +128,20 @@ grep -q 'undeclared identifier' "$run/binder_named_in_a_statement.log"
 
 # Both conjuncts require evidence. A true side cannot hide a false one.
 reject false_left_conjunct <<'CPP'
-law wrong(unsigned x) ensures(x != x && x == x);
+law wrong(unsigned x) proves (x != x && x == x);
 CPP
 reject false_right_conjunct <<'CPP'
-law wrong(unsigned x) ensures(x == x && x != x);
+law wrong(unsigned x) proves (x == x && x != x);
 CPP
 reject false_nested_conjunct <<'CPP'
-law wrong(unsigned x) ensures(x == x && (x == x && x != x));
+law wrong(unsigned x) proves (x == x && (x == x && x != x));
 CPP
 reject unrelated_conjunct <<'CPP'
-law wrong(unsigned x, unsigned y) expects(x == 0u && y == 1u) ensures(x == 1u);
+law wrong(unsigned x, unsigned y) expects(x == 0u && y == 1u) proves (x == 1u);
 CPP
 reject conjunction_capture <<'CPP'
 law wrong(unsigned x) expects(x == 0u && x != 1u)
-    ensures(forall (unsigned x) { x == 0u && x != 1u });
+    proves (forall (unsigned x) { x == 0u && x != 1u });
 CPP
 reject wrong_conjunction_evidence <<'CPP'
 proof pair(unsigned x) proves(x == x && x + 1u == x + 1u) { refl; }
@@ -152,7 +152,7 @@ proof single(unsigned x) proves(x == x) { refl; }
 proof wrong(unsigned x) proves(x == x && x == x) { exact single(x); }
 CPP
 reject wrong_written_conjunction <<'CPP'
-law valid(unsigned x) ensures(x == x && x == x);
+law valid(unsigned x) proves (x == x && x == x);
 proof wrong(unsigned x) proves(valid(x)) { exact missing; }
 CPP
 reject conjunction_cycle <<'CPP'
@@ -160,10 +160,10 @@ proof wrong(unsigned x) proves(x != x && x != x) { exact wrong(x); }
 CPP
 reject conjunction_wrong_type <<'CPP'
 struct S {};
-law wrong(S x) ensures(x && x);
+law wrong(S x) proves (x && x);
 CPP
 reject malformed_conjunction <<'CPP'
-law wrong(unsigned x) ensures(x == x &&);
+law wrong(unsigned x) proves (x == x &&);
 CPP
 reject false_conjunctive_contract <<'CPP'
 verified unsigned wrong(unsigned x) ensures(result == x && result != x) { return x; }
@@ -176,7 +176,7 @@ CPP
 # Value uses of a connective are refused explicitly.
 reject conjunction_as_value <<'CPP'
 pure bool wrong(bool x, bool y) { return x && y; }
-law use(bool x, bool y) ensures(wrong(x, y));
+law use(bool x, bool y) proves (wrong(x, y));
 CPP
 # A condition is not a value position: `&&` there is elaborated into the routes
 # it selects between, so a conjunction is refused as a value and modeled as a

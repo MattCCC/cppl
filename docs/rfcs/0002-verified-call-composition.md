@@ -1,5 +1,9 @@
 # RFC 0002: Compositional verified calls
 
+> Surface syntax and formatting in this historical RFC are superseded by
+> [RFC 0015](0015-canonical-language-surface.md) and the
+> [normative grammar](../GRAMMAR.md). Semantic rationale remains applicable.
+
 ## Status
 
 Implemented initial fragment. Extends RFC 0001 before control-flow verification.

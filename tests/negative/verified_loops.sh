@@ -54,13 +54,13 @@ reject nested_invariant 'is not preserved|does not hold on entry' \
 # core could unfold, so nontermination cannot reach a Law or a specification.
 spin='verified unsigned spin(unsigned x) ensures(result == 1u) { unsigned y = 0u; while (y == y) { ++y; } return y; }'
 reject spin_in_law 'not available to the formal core' \
-    "$spin law bad(unsigned x) ensures(spin(x) == 1u);"
+    "$spin law bad(unsigned x) proves (spin(x) == 1u);"
 reject spin_in_contract 'not available to the formal core|cannot be stated' \
     "$spin verified unsigned g(unsigned x) ensures(result == spin(x)) { return 1u; }"
 reject spin_in_pure 'single return expression|not declared pure' \
-    "$spin pure unsigned h(unsigned x) { return spin(x); } law bad(unsigned x) ensures(h(x) == 1u);"
+    "$spin pure unsigned h(unsigned x) { return spin(x); } law bad(unsigned x) proves (h(x) == 1u);"
 reject loop_in_pure 'single return expression' \
-    'pure unsigned h(unsigned n) { unsigned i = 0u; while (i < n) { ++i; } return i; } law bad(unsigned n) ensures(h(n) == n);'
+    'pure unsigned h(unsigned n) { unsigned i = 0u; while (i < n) { ++i; } return i; } law bad(unsigned n) proves (h(n) == n);'
 # Syntax and constructs outside the modeled subset fail closed.
 reject invariant_outside_verified 'would not be checked' \
     'unsigned f(unsigned n) { unsigned i = 0u; while (i < n) invariant(i <= n) { ++i; } return i; }'

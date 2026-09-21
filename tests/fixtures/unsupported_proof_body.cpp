@@ -9,9 +9,9 @@ pure int identity(int x) {
 }
 
 law identity_returns_input(int x)
-    ensures(identity(x) == x);
+    proves (identity(x) == x);
 
-proof identity_returns_input_holds(int x) proves(identity_returns_input(x)) {
+proof identity_returns_input_holds(int x) proves (identity_returns_input(x)) {
     let y = identity(x);
 }
 

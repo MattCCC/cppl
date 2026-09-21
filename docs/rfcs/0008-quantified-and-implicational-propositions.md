@@ -1,5 +1,9 @@
 # Quantified and implicational propositions
 
+> Surface syntax and formatting in this historical RFC are superseded by
+> [RFC 0015](0015-canonical-language-surface.md) and the
+> [normative grammar](../GRAMMAR.md). Semantic rationale remains applicable.
+
 Status: implemented by this slice; normative rules are SPEC.md 8, 8.1-8.3, 9.1
 and GRAMMAR.md 28, 29, 33.
 
@@ -10,10 +14,10 @@ implication between two propositions:
 
 ```cpp
 law identity_everywhere(unsigned x)
-    ensures(forall (unsigned y) { Eq<unsigned>(identity(y), y) });
+    proves (forall (unsigned y) { Eq<unsigned>(identity(y), y) });
 
 law zero_increments(unsigned x)
-    ensures(Eq<unsigned>(x, 0u) -> Eq<unsigned>(add_one(x), 1u));
+    proves (Eq<unsigned>(x, 0u) -> Eq<unsigned>(add_one(x), 1u));
 ```
 
 The first holds for every value of `y`, not only for the arguments a caller

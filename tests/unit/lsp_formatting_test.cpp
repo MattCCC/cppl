@@ -69,13 +69,13 @@ std::string apply_text_edits(const std::string& text, std::vector<lsp::TextEdit>
 } // namespace
 
 CPPL_TEST(lsp_document_formatting_matches_the_shared_engine_byte_for_byte) {
-    const std::string text = "law bounded(unsigned x) expects(x < 10u) ensures(x + 1u <= 10u);\n"
-                             "verified int f(int x) expects(x >= 0) ensures(result >= 0) {\n"
+    const std::string text = "law bounded(unsigned x) expects (x < 10u) proves (x + 1u <= 10u);\n"
+                             "verified int f(int x) expects (x >= 0) ensures (result >= 0) {\n"
                              "    unsigned i = 0u;\n"
-                             "    while (i < 3u) invariant(i <= 3u) { ++i; }\n"
+                             "    while (i < 3u) invariant (i <= 3u) { ++i; }\n"
                              "    return x;\n"
                              "}\n"
-                             "type NonNegative = int where(self >= 0);\n";
+                             "type NonNegative = int where (self >= 0);\n";
 
     formatter::FormatRequest request;
     request.text = text;
@@ -100,7 +100,7 @@ CPPL_TEST(lsp_document_formatting_matches_the_shared_engine_byte_for_byte) {
 }
 
 CPPL_TEST(lsp_range_formatting_matches_the_shared_engine_over_the_same_range) {
-    const std::string text = "verified int f(int x) ensures(result >= 0) {\n"
+    const std::string text = "verified int f(int x) ensures (result >= 0) {\n"
                              "    int   y   =   x;\n"
                              "    return y;\n"
                              "}\n";

@@ -24,7 +24,7 @@ struct Nested {
 
 // 3. std::variant. Every alternative is an index; `valueless` is never omitted.
 proof variant_alternatives(Repeated v)
-    proves(Eq<bool>(true, true))
+    proves (Eq<bool>(true, true))
 {
     cases v {
         alternative<0>(first) => {
@@ -44,7 +44,7 @@ proof variant_alternatives(Repeated v)
 
 // An alias denotes the same type, so it decomposes identically.
 proof variant_through_alias(AliasOfAliased v)
-    proves(Eq<bool>(true, true))
+    proves (Eq<bool>(true, true))
 {
     cases v {
         alternative<0>(number) => {
@@ -61,7 +61,7 @@ proof variant_through_alias(AliasOfAliased v)
 
 // cv-qualification and reference binding do not change the state space.
 proof variant_qualified(const Aliased& v)
-    proves(Eq<bool>(true, true))
+    proves (Eq<bool>(true, true))
 {
     cases v {
         alternative<0>(number) => {
@@ -81,7 +81,7 @@ proof variant_qualified(const Aliased& v)
 template <typename T> using Sum = std::variant<T, bool>;
 
 proof variant_dependent(Sum<unsigned> v)
-    proves(Eq<bool>(true, true))
+    proves (Eq<bool>(true, true))
 {
     cases v {
         alternative<0>(number) => {
@@ -97,7 +97,7 @@ proof variant_dependent(Sum<unsigned> v)
 }
 
 proof product_qualified(const Point& p)
-    proves(Eq<bool>(true, true))
+    proves (Eq<bool>(true, true))
 {
     decompose p {
         components(x, y) => {
@@ -108,7 +108,7 @@ proof product_qualified(const Point& p)
 
 // 4. std::optional. The payload is bound only in `some`.
 proof optional_states(std::optional<unsigned> o)
-    proves(Eq<bool>(true, true))
+    proves (Eq<bool>(true, true))
 {
     cases o {
         some(payload) => {
@@ -121,7 +121,7 @@ proof optional_states(std::optional<unsigned> o)
 }
 
 proof optional_template(Wrapped<bool> o)
-    proves(Eq<bool>(true, true))
+    proves (Eq<bool>(true, true))
 {
     cases o {
         some(payload) => {
@@ -135,7 +135,7 @@ proof optional_template(Wrapped<bool> o)
 
 // 6. Pointers carry exactly two states and nothing about lifetime or ownership.
 proof pointer_states(const int* p)
-    proves(Eq<bool>(true, true))
+    proves (Eq<bool>(true, true))
 {
     cases p {
         null => {
@@ -149,7 +149,7 @@ proof pointer_states(const int* p)
 
 // 7. Products: records, pair, tuple, std::array and built-in arrays.
 proof record_fields(Point p)
-    proves(Eq<bool>(true, true))
+    proves (Eq<bool>(true, true))
 {
     decompose p {
         components(x, y) => {
@@ -159,7 +159,7 @@ proof record_fields(Point p)
 }
 
 proof pair_fields(std::pair<int, bool> p)
-    proves(Eq<bool>(true, true))
+    proves (Eq<bool>(true, true))
 {
     decompose p {
         components(first, second) => {
@@ -169,7 +169,7 @@ proof pair_fields(std::pair<int, bool> p)
 }
 
 proof tuple_fields(std::tuple<int, bool, unsigned> t)
-    proves(Eq<bool>(true, true))
+    proves (Eq<bool>(true, true))
 {
     decompose t {
         components(a, b, c) => {
@@ -179,7 +179,7 @@ proof tuple_fields(std::tuple<int, bool, unsigned> t)
 }
 
 proof std_array_fields(std::array<int, 3> a)
-    proves(Eq<bool>(true, true))
+    proves (Eq<bool>(true, true))
 {
     decompose a {
         components(zero, one, two) => {
@@ -189,7 +189,7 @@ proof std_array_fields(std::array<int, 3> a)
 }
 
 proof builtin_array_fields(int (&a)[2])
-    proves(Eq<bool>(true, true))
+    proves (Eq<bool>(true, true))
 {
     decompose a {
         components(zero, one) => {
@@ -200,7 +200,7 @@ proof builtin_array_fields(int (&a)[2])
 
 // 8. Nesting composes generically: a product inside a product.
 proof nested_product(Nested n)
-    proves(Eq<bool>(true, true))
+    proves (Eq<bool>(true, true))
 {
     decompose n {
         components(origin, flagged) => {
@@ -215,7 +215,7 @@ proof nested_product(Nested n)
 
 // 33. Cross-provider composition in both directions.
 proof variant_of_optional(std::variant<std::optional<int>, bool> v)
-    proves(Eq<bool>(true, true))
+    proves (Eq<bool>(true, true))
 {
     cases v {
         alternative<0>(inner) => {
@@ -238,7 +238,7 @@ proof variant_of_optional(std::variant<std::optional<int>, bool> v)
 }
 
 proof optional_of_variant(std::optional<Aliased> o)
-    proves(Eq<bool>(true, true))
+    proves (Eq<bool>(true, true))
 {
     cases o {
         some(inner) => {
@@ -261,7 +261,7 @@ proof optional_of_variant(std::optional<Aliased> o)
 }
 
 proof optional_of_product(std::optional<Point> o)
-    proves(Eq<bool>(true, true))
+    proves (Eq<bool>(true, true))
 {
     cases o {
         some(inner) => {
@@ -278,7 +278,7 @@ proof optional_of_product(std::optional<Point> o)
 }
 
 proof product_of_optional(std::pair<std::optional<int>, bool> p)
-    proves(Eq<bool>(true, true))
+    proves (Eq<bool>(true, true))
 {
     decompose p {
         components(maybe, flag) => {
@@ -312,7 +312,7 @@ struct Holder {
 };
 
 proof pinned_components(Holder h)
-    proves(Eq<bool>(true, true))
+    proves (Eq<bool>(true, true))
 {
     decompose h {
         components(pinned, flagged) => {
@@ -328,7 +328,7 @@ proof pinned_components(Holder h)
 // 8/29. Binder types resolve to a fixpoint, so nesting depth is what costs, not
 // a fixed pass count. Four levels stay well inside the limit.
 proof deeply_nested(std::optional<std::optional<std::optional<std::optional<int>>>> o)
-    proves(Eq<bool>(true, true))
+    proves (Eq<bool>(true, true))
 {
     cases o {
         some(a) => {
@@ -363,7 +363,7 @@ proof deeply_nested(std::optional<std::optional<std::optional<std::optional<int>
 
 // 25. Decomposition composes with the rest of the proof system.
 proof under_quantifier(std::optional<unsigned> o)
-    proves(forall(unsigned x) { x == x })
+    proves (forall(unsigned x) { x == x })
 {
     cases o {
         some(payload) => {
@@ -376,24 +376,24 @@ proof under_quantifier(std::optional<unsigned> o)
 }
 
 law settled(unsigned x)
-    ensures(x == x);
+    proves (x == x);
 
 // A law is discharged at its own parameters by a proof whose body splits cases.
 proof settled_holds(unsigned x)
-    proves(settled(x))
+    proves (settled(x))
 {
     exact helper(x);
 }
 
 proof helper(unsigned x)
-    proves(x == x)
+    proves (x == x)
 {
     refl;
 }
 
 // A case split inside a proof that itself depends on a law-backed step.
 proof splits_then_applies(std::optional<unsigned> o, unsigned x)
-    proves(settled(x))
+    proves (settled(x))
 {
     cases o {
         some(payload) => {

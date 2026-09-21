@@ -84,7 +84,7 @@ reject sibling_summary 'return path.*does not satisfy' \
 reject failed_callee_path 'callee.*not proven' \
     'verified unsigned g(unsigned x) ensures(result <= 10u) { if (x <= 10u) return x; return 11u; } verified unsigned f(unsigned x) ensures(result <= 10u) { return g(x); }'
 reject pure_branch 'single return|not available' \
-    'pure unsigned g(unsigned x) { if (x <= 10u) return x; return 10u; } law l(unsigned x) ensures(g(x) <= 10u);'
+    'pure unsigned g(unsigned x) { if (x <= 10u) return x; return 10u; } law l(unsigned x) proves (g(x) <= 10u);'
 reject recursive_branch 'recursive|not available' \
     'verified unsigned f(unsigned x) ensures(result <= 10u) { if (x <= 10u) return x; return f(x); }'
 # A guard holds only inside its arm. Each case below is rejected at the one

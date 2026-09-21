@@ -39,6 +39,15 @@ struct FormatResult {
     std::vector<diagnostics::Diagnostic> diagnostics;
 };
 
+struct SyntaxFix {
+    std::string title;
+    std::vector<FormatEdit> edits;
+};
+
+// Explicit migration actions; compilation never applies these edits silently.
+// Uses the same frontend recovery tree as formatting, with original byte spans.
+[[nodiscard]] std::vector<SyntaxFix> syntax_fixes(const FormatRequest& request);
+
 // The one range-scoped formatting core. `ranges` are byte spans in
 // `request.text` to format; an empty vector means the whole document.
 // `format_document`/`format_on_type` below are both thin wrappers around

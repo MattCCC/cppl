@@ -8,10 +8,10 @@ pure unsigned add_one(unsigned x) {
 }
 
 law add_one_changes_nothing(unsigned x)
-    ensures(add_one(x) == x);
+    proves (add_one(x) == x);
 
 proof add_one_changes_nothing_holds(unsigned x)
-    proves(add_one_changes_nothing(x))
+    proves (add_one_changes_nothing(x))
 {
     refl;
 }

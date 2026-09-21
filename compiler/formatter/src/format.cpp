@@ -66,10 +66,22 @@ std::size_t line_number(std::string_view text, std::size_t offset) {
            1;
 }
 
+std::size_t declaration_indent(std::string_view text, std::size_t offset) {
+    const std::size_t start = offset - line_start_column(text, offset);
+    std::size_t end = start;
+    while (end < text.size() && (text[end] == ' ' || text[end] == '\t'))
+        ++end;
+    return end - start;
+}
+
 constexpr std::size_t kIndentWidth = 4; // .clang-format: IndentWidth 4
 
 std::string_view keyword_spelling(frontend::ClauseKind kind) {
     switch (kind) {
+        case frontend::ClauseKind::Decreases:
+            return "decreases";
+        case frontend::ClauseKind::Proves:
+            return "proves";
         case frontend::ClauseKind::Ensures:
             return "ensures";
         case frontend::ClauseKind::Expects:
@@ -86,7 +98,7 @@ std::string_view keyword_spelling(frontend::ClauseKind kind) {
 // relocates clauses, it never reflows the expressions clang-format already
 // owns.
 //
-// No whitespace stands between the clause keyword and its '(': `expects` is
+// Exactly one space stands between the clause keyword and its '(': `expects` is
 // not a C++ control statement (`if`/`while`), it is C++L's own contract-clause
 // syntax, and this repo's `.clang-format` SpaceBeforeParens: ControlStatements
 // rule was never meant to reach it.
@@ -94,11 +106,20 @@ std::string canonical_clause_block(std::string_view text, const std::vector<cons
                                    std::size_t declaration_column) {
     const std::string indent(declaration_column + kIndentWidth, ' ');
     std::string block;
-    for (const frontend::Clause* clause : clauses) {
+    auto ordered = clauses;
+    std::ranges::stable_sort(ordered, [](const auto* a, const auto* b) {
+        const auto rank = [](frontend::ClauseKind kind) {
+            if (kind == frontend::ClauseKind::Expects || kind == frontend::ClauseKind::Invariant)
+                return 0;
+            return kind == frontend::ClauseKind::Decreases ? 2 : 1;
+        };
+        return rank(a->kind) < rank(b->kind);
+    });
+    for (const frontend::Clause* clause : ordered) {
         block += '\n';
         block += indent;
         block += keyword_spelling(clause->kind);
-        block += '(';
+        block += " (";
         block += text.substr(clause->expression.offset, clause->expression.length);
         block += ')';
     }
@@ -116,7 +137,7 @@ std::vector<ClauseRegion> collect_regions(std::string_view text, const frontend:
             continue;
         }
         ClauseRegion region;
-        region.declaration_column = line_start_column(text, law.range.span.offset);
+        region.declaration_column = declaration_indent(text, law.range.span.offset);
         const source::ByteSpan first = law.clauses.front().keyword;
         const source::ByteSpan last = law.clauses.back().expression;
         region.span = source::ByteSpan{first.offset, (last.end() + 1) - first.offset};
@@ -131,7 +152,7 @@ std::vector<ClauseRegion> collect_regions(std::string_view text, const frontend:
             continue;
         }
         ClauseRegion region;
-        region.declaration_column = line_start_column(text, verified.keyword.offset);
+        region.declaration_column = declaration_indent(text, verified.keyword.offset);
         region.span = verified.clause_region;
         for (const frontend::Clause& clause : verified.clauses) {
             region.clauses.push_back(&clause);
@@ -140,15 +161,17 @@ std::vector<ClauseRegion> collect_regions(std::string_view text, const frontend:
     }
 
     for (const frontend::LoopSpecification& loop : syntax.loops) {
-        if (loop.invariants.empty()) {
+        if (loop.invariants.empty() && !loop.decreases) {
             continue;
         }
         ClauseRegion region;
-        region.declaration_column = line_start_column(text, loop.keyword.offset);
+        region.declaration_column = declaration_indent(text, loop.keyword.offset);
         region.span = loop.clause_region;
         for (const frontend::Clause& clause : loop.invariants) {
             region.clauses.push_back(&clause);
         }
+        if (loop.decreases)
+            region.clauses.push_back(&*loop.decreases);
         regions.push_back(std::move(region));
     }
 
@@ -173,7 +196,7 @@ std::vector<ProofRegion> collect_proof_regions(std::string_view text, const fron
             continue;
         }
         ProofRegion region;
-        region.declaration_column = line_start_column(text, proof.range.span.offset);
+        region.declaration_column = declaration_indent(text, proof.range.span.offset);
         region.span =
             source::ByteSpan{proof.proves_keyword.offset, (proof.proposition.end() + 1) - proof.proves_keyword.offset};
         region.proposition = proof.proposition;
@@ -188,7 +211,7 @@ std::string canonical_proves_block(std::string_view text, const ProofRegion& reg
     std::string block;
     block += '\n';
     block += indent;
-    block += "proves(";
+    block += "proves (";
     block += text.substr(region.proposition.offset, region.proposition.length);
     block += ')';
     return block;
@@ -475,7 +498,7 @@ FormatResult format_ranges_once(const FormatRequest& request, const std::vector<
     const frontend::TokenStream stream =
         frontend::lex(request.text, request.virtual_path.empty() ? "buffer.cpp" : request.virtual_path);
     diagnostics::Engine engine;
-    const frontend::Syntax syntax = frontend::recognize(stream, engine);
+    const frontend::Syntax syntax = frontend::recognize(stream, engine, frontend::RecognitionMode::Edit);
 
     const std::vector<ClauseRegion> all_regions = collect_regions(request.text, syntax);
     const std::vector<ProofRegion> all_proof_regions = collect_proof_regions(request.text, syntax);
@@ -490,6 +513,23 @@ FormatResult format_ranges_once(const FormatRequest& request, const std::vector<
 
     std::vector<FormatEdit> edits;
     std::vector<source::ByteSpan> cppl_spans; // excluded from the ordinary-C++ line ranges below
+
+    // `where` is part of the refinement declaration, not a continuation
+    // clause. Mask its predicate from clang-format just as other clauses are
+    // masked; C++ function-call spacing must not change specification spacing.
+    for (const auto& refinement : syntax.refinement_types) {
+        const auto where = std::ranges::find_if(stream.tokens(), [&](const auto& token) {
+            return token.is_identifier("where") && token.span.offset >= refinement.base.end() &&
+                   token.span.end() < refinement.predicate.offset;
+        });
+        if (where == stream.tokens().end())
+            continue;
+        const source::ByteSpan span{where->span.offset, refinement.predicate.end() + 1 - where->span.offset};
+        cppl_spans.push_back(span);
+        const std::string replacement = "where (" + std::string(stream.spelling(refinement.predicate)) + ")";
+        if (overlaps_request(span) && stream.spelling(span) != replacement)
+            edits.push_back({span, replacement});
+    }
 
     for (const ClauseRegion& region : all_regions) {
         if (!overlaps_request(region.span)) {
@@ -551,7 +591,9 @@ FormatResult format_ranges_once(const FormatRequest& request, const std::vector<
     std::ranges::sort(edits,
                       [](const FormatEdit& lhs, const FormatEdit& rhs) { return lhs.span.offset < rhs.span.offset; });
 
-    result.ok = true;
+    result.ok = std::ranges::none_of(result.diagnostics, [](const auto& diagnostic) {
+        return diagnostic.severity == diagnostics::Severity::Error;
+    });
     result.edits = std::move(edits);
     return result;
 }
@@ -572,7 +614,7 @@ FormatResult format_on_type(const FormatRequest& request, std::size_t position, 
     const frontend::TokenStream stream =
         frontend::lex(request.text, request.virtual_path.empty() ? "buffer.cpp" : request.virtual_path);
     diagnostics::Engine engine;
-    const frontend::Syntax syntax = frontend::recognize(stream, engine);
+    const frontend::Syntax syntax = frontend::recognize(stream, engine, frontend::RecognitionMode::Edit);
 
     for (const ClauseRegion& region : collect_regions(request.text, syntax)) {
         if (position >= region.span.offset && position <= region.span.end()) {
@@ -612,11 +654,11 @@ bool at_canonical_column(std::string_view text, std::size_t keyword_offset, std:
     return text.substr(line_start, expected_column).find_first_not_of(' ') == std::string_view::npos;
 }
 
-// No whitespace between a C++L clause keyword and its '(': `expects` and
+// Exactly one space between a C++L clause keyword and its '(': `expects` and
 // friends are not C++ control statements, so this repo's own
 // SpaceBeforeParens: ControlStatements rule was never meant to apply to them.
 bool has_canonical_spacing(std::string_view text, source::ByteSpan keyword) {
-    return keyword.end() < text.size() && text[keyword.end()] == '(';
+    return keyword.end() < text.size() && text.substr(keyword.end(), 2) == " (";
 }
 
 } // namespace
@@ -647,7 +689,7 @@ std::vector<diagnostics::Diagnostic> check_style(const frontend::TokenStream& st
                 diagnostic.severity = diagnostics::Severity::Warning;
                 diagnostic.category = diagnostics::Category::Style;
                 diagnostic.message =
-                    "'" + std::string(keyword_spelling(clause->kind)) + "' should not have whitespace before '('";
+                    "'" + std::string(keyword_spelling(clause->kind)) + "' requires one space before '('";
                 diagnostic.location = clause->location;
                 out.push_back(std::move(diagnostic));
             }
@@ -670,13 +712,40 @@ std::vector<diagnostics::Diagnostic> check_style(const frontend::TokenStream& st
             diagnostics::Diagnostic diagnostic;
             diagnostic.severity = diagnostics::Severity::Warning;
             diagnostic.category = diagnostics::Category::Style;
-            diagnostic.message = "'proves' should not have whitespace before '('";
+            diagnostic.message = "'proves' requires one space before '('";
             diagnostic.location = region.location;
             out.push_back(std::move(diagnostic));
         }
     }
 
     return out;
+}
+
+std::vector<SyntaxFix> syntax_fixes(const FormatRequest& request) {
+    const auto stream = frontend::lex(request.text, request.virtual_path);
+    diagnostics::Engine engine;
+    const auto syntax = frontend::recognize(stream, engine, frontend::RecognitionMode::Edit);
+    std::vector<SyntaxFix> fixes;
+    for (const auto& law : syntax.laws) {
+        const bool has_result = std::ranges::any_of(stream.tokens(), [&](const auto& token) {
+            return token.span.offset >= law.range.span.offset && token.span.end() <= law.range.span.end() &&
+                   token.is_identifier("result");
+        });
+        if (has_result)
+            continue;
+        for (const auto& clause : law.clauses) {
+            if (clause.kind == frontend::ClauseKind::Ensures)
+                fixes.push_back({"Replace Law 'ensures' with 'proves'", {{clause.keyword, "proves"}}});
+        }
+    }
+    for (const auto& proof : syntax.proofs) {
+        for (const auto& token : stream.tokens()) {
+            if (token.span.offset >= proof.range.span.offset && token.span.end() <= proof.range.span.end() &&
+                token.is_identifier("case"))
+                fixes.push_back({"Use proof-only 'cases'", {{token.span, "cases"}}});
+        }
+    }
+    return fixes;
 }
 
 } // namespace cppl::formatter

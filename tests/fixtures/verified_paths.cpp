@@ -1,5 +1,5 @@
 verified unsigned clamp(unsigned x)
-    ensures(result <= 10u)
+    ensures (result <= 10u)
 {
     if (x <= 10u)
         return x;
@@ -7,20 +7,20 @@ verified unsigned clamp(unsigned x)
 }
 
 verified unsigned clamp_call(unsigned x)
-    ensures(result <= 10u)
+    ensures (result <= 10u)
 {
     return clamp(x);
 }
 
 verified unsigned bounded(unsigned x)
-    expects(x <= 10u)
-    ensures(result <= 10u)
+    expects (x <= 10u)
+    ensures (result <= 10u)
 {
     return x;
 }
 
 verified unsigned guarded_call(unsigned x)
-    ensures(result <= 10u)
+    ensures (result <= 10u)
 {
     if (x <= 10u) {
         return bounded(x);
@@ -30,7 +30,7 @@ verified unsigned guarded_call(unsigned x)
 }
 
 verified unsigned nested(unsigned x, unsigned y)
-    ensures(result <= 10u)
+    ensures (result <= 10u)
 {
     if (x <= 10u) {
         if (y <= 10u)
@@ -44,7 +44,7 @@ verified unsigned nested(unsigned x, unsigned y)
 }
 
 verified unsigned equal_branch(unsigned x)
-    ensures(result == 0u)
+    ensures (result == 0u)
 {
     if (x == 0u)
         return x;
@@ -53,7 +53,7 @@ verified unsigned equal_branch(unsigned x)
 }
 
 verified unsigned unequal_branch(unsigned x)
-    ensures(result != 0u)
+    ensures (result != 0u)
 {
     if (x != 0u)
         return x;
@@ -61,7 +61,7 @@ verified unsigned unequal_branch(unsigned x)
 }
 
 verified unsigned less_branch(unsigned x)
-    ensures(result < 10u)
+    ensures (result < 10u)
 {
     if (x < 10u)
         return x;
@@ -69,7 +69,7 @@ verified unsigned less_branch(unsigned x)
 }
 
 verified unsigned greater_branch(unsigned x)
-    ensures(result > 10u)
+    ensures (result > 10u)
 {
     if (x > 10u)
         return x;
@@ -77,7 +77,7 @@ verified unsigned greater_branch(unsigned x)
 }
 
 verified unsigned at_least(unsigned x)
-    ensures(result >= 10u)
+    ensures (result >= 10u)
 {
     if (x >= 10u)
         return x;
@@ -85,8 +85,8 @@ verified unsigned at_least(unsigned x)
 }
 
 verified unsigned negative_path(unsigned x)
-    expects(!(x <= 10u))
-    ensures(result == x)
+    expects (!(x <= 10u))
+    ensures (result == x)
 {
     if (!(x <= 10u))
         return x;
@@ -94,13 +94,13 @@ verified unsigned negative_path(unsigned x)
 }
 
 verified unsigned identity(unsigned x)
-    ensures(result == x)
+    ensures (result == x)
 {
     return x;
 }
 
 verified unsigned call_in_guard(unsigned x)
-    ensures(result <= 10u)
+    ensures (result <= 10u)
 {
     if (identity(x) <= 10u)
         return bounded(x);
@@ -108,7 +108,7 @@ verified unsigned call_in_guard(unsigned x)
 }
 
 verified int signed_clamp(int x)
-    ensures(result <= 10)
+    ensures (result <= 10)
 {
     if (x <= 10)
         return x;
@@ -116,14 +116,14 @@ verified int signed_clamp(int x)
 }
 
 verified unsigned above(unsigned x)
-    expects(!(x <= 10u))
-    ensures(result == x)
+    expects (!(x <= 10u))
+    ensures (result == x)
 {
     return x;
 }
 
 verified unsigned false_guard_evidence(unsigned x)
-    ensures(result == x)
+    ensures (result == x)
 {
     if (x <= 10u)
         return x;
@@ -131,14 +131,14 @@ verified unsigned false_guard_evidence(unsigned x)
 }
 
 verified unsigned bounded_identity(unsigned x)
-    expects(x <= 10u)
-    ensures(result == x)
+    expects (x <= 10u)
+    ensures (result == x)
 {
     return x;
 }
 
 verified unsigned guard_call_precondition(unsigned x)
-    ensures(result <= 10u)
+    ensures (result <= 10u)
 {
     if (x <= 10u) {
         if (bounded_identity(x) <= 10u)
@@ -149,7 +149,7 @@ verified unsigned guard_call_precondition(unsigned x)
 }
 
 verified unsigned sequential(unsigned x, unsigned y)
-    ensures(result <= 10u)
+    ensures (result <= 10u)
 {
     if (x <= 10u) {
         if (y <= 10u)
@@ -161,7 +161,7 @@ verified unsigned sequential(unsigned x, unsigned y)
 }
 
 verified unsigned empty_arm(unsigned x)
-    ensures(result == x)
+    ensures (result == x)
 {
     if (x <= 10u) {
     } else {
@@ -171,7 +171,7 @@ verified unsigned empty_arm(unsigned x)
 }
 
 verified unsigned boolean_guard(bool b, unsigned x)
-    ensures(result <= 10u)
+    ensures (result <= 10u)
 {
     if (!b)
         return 0u;

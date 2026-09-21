@@ -7,7 +7,7 @@ using StateAlias = State;
 // Case facts are independently checked and can rewrite expressions through the
 // existing equality eliminator. The residual binder has the underlying type.
 proof choose_one(One s)
-    proves(Eq<bool>(s == One::one, static_cast<unsigned>(s) == 1u))
+    proves (Eq<bool>(s == One::one, static_cast<unsigned>(s) == 1u))
 {
     cases s {
         One::alias => {
@@ -24,7 +24,7 @@ proof choose_one(One s)
 }
 
 proof nested(StateAlias s, One t)
-    proves(Eq<State>(s, s))
+    proves (Eq<State>(s, s))
 {
     cases s {
         State::running => {
@@ -57,14 +57,14 @@ proof nested(StateAlias s, One t)
 }
 
 proof reused(One s)
-    proves(Eq<bool>(s == One::one, static_cast<unsigned>(s) == 1u))
+    proves (Eq<bool>(s == One::one, static_cast<unsigned>(s) == 1u))
 {
     exact choose_one(s);
 }
 
 enum class Empty : unsigned {};
 proof no_enumerators(Empty s)
-    proves(s == s)
+    proves (s == s)
 {
     cases s {
         unnamed(value) => {
@@ -74,7 +74,7 @@ proof no_enumerators(Empty s)
 }
 
 proof under_a_quantifier(One s)
-    proves(forall(unsigned x) { x == x })
+    proves (forall(unsigned x) { x == x })
 {
     cases s {
         One::one => {
@@ -89,9 +89,9 @@ proof under_a_quantifier(One s)
 }
 
 law stable(State s)
-    ensures(s == s);
+    proves (s == s);
 proof stable_holds(State s)
-    proves(stable(s))
+    proves (stable(s))
 {
     cases s {
         State::idle => {
@@ -109,7 +109,7 @@ proof stable_holds(State s)
     }
 }
 proof later(State s)
-    proves(s == s)
+    proves (s == s)
 {
     refl;
 }

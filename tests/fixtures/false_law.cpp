@@ -6,7 +6,7 @@ pure unsigned int add_one(unsigned int x) {
 }
 
 law add_one_changes_nothing(unsigned int x)
-    ensures(add_one(x) == x);
+    proves (add_one(x) == x);
 
 int main() {
     return 0;

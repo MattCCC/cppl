@@ -132,5 +132,5 @@ reject call_effect 'not declared pure' \
 reject out_of_scope 'undeclared identifier|not a parameter or local' \
     'verified unsigned f(unsigned x) ensures(result == x) { if (x == 0u) { unsigned y = x; } return y; }'
 reject pure_local 'single return expression' \
-    'pure unsigned g(unsigned x) { unsigned y = x; return y; } law l(unsigned x) ensures(g(x) == x);'
+    'pure unsigned g(unsigned x) { unsigned y = x; return y; } law l(unsigned x) proves (g(x) == x);'
 echo 'stale versions, moved calls, and unsupported declarations fail closed'

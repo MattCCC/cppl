@@ -43,7 +43,7 @@ CPPL_TEST(line_markers_give_tokens_their_user_visible_position) {
 }
 
 CPPL_TEST(text_inside_literals_is_not_code) {
-    const std::string text = "const char* message = \"law f(int x) ensures(y);\";\n";
+    const std::string text = "const char* message = \"law f(int x) proves (y);\";\n";
 
     const TokenStream stream = cppl::frontend::lex(text, "main.cpp");
 
@@ -58,7 +58,7 @@ CPPL_TEST(text_inside_literals_is_not_code) {
 }
 
 CPPL_TEST(raw_strings_are_consumed_whole) {
-    const std::string text = "auto raw = R\"sql(law x() ensures(1);)sql\";\nint after;\n";
+    const std::string text = "auto raw = R\"sql(law x() proves (1);)sql\";\nint after;\n";
 
     const TokenStream stream = cppl::frontend::lex(text, "main.cpp");
 
@@ -67,8 +67,8 @@ CPPL_TEST(raw_strings_are_consumed_whole) {
 }
 
 CPPL_TEST(comments_are_skipped) {
-    const std::string text = "// law commented(int x) ensures(x == x);\n"
-                             "/* law blocked(int x) ensures(x == x); */\n"
+    const std::string text = "// law commented(int x) proves (x == x);\n"
+                             "/* law blocked(int x) proves (x == x); */\n"
                              "int value;\n";
 
     const TokenStream stream = cppl::frontend::lex(text, "main.cpp");

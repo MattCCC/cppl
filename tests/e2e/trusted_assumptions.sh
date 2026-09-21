@@ -58,7 +58,7 @@ reports() {
 # --- An assumption is recorded, not proved -----------------------------------
 
 accept an_assumption_is_accepted <<'CPP'
-trusted law external_guarantee(unsigned x) ensures(x + 0u == x);
+trusted law external_guarantee(unsigned x) proves (x + 0u == x);
 CPP
 
 reports an_assumption_is_accepted 'Laws trusted: +1'
@@ -75,13 +75,13 @@ reports an_assumption_is_accepted 'an_assumption_is_accepted\.cpp:1'
 
 # The same proposition without `trusted` owes a proof like any other law.
 refuse an_ordinary_law_still_owes_a_proof 'does not establish|not proven|unresolved' <<'CPP'
-law unprovable(unsigned x) ensures(x + 1u == x);
+law unprovable(unsigned x) proves (x + 1u == x);
 CPP
 
 # An author may assume something false. That is the point of an escape hatch:
 # C++L records the choice instead of silently refusing or silently proving it.
 accept an_assumption_may_be_false <<'CPP'
-trusted law wrong(unsigned x) ensures(x + 1u == x);
+trusted law wrong(unsigned x) proves (x + 1u == x);
 CPP
 
 reports an_assumption_may_be_false 'Laws trusted: +1'
@@ -90,7 +90,7 @@ reports an_assumption_may_be_false 'Laws proven: +0'
 # --- Assuming and proving the same law is a contradiction --------------------
 
 refuse an_assumption_with_a_written_proof 'nothing to discharge' <<'CPP'
-trusted law assumed(unsigned x) ensures(x + 0u == x);
+trusted law assumed(unsigned x) proves (x + 0u == x);
 proof assumed_proof(unsigned x) proves(assumed(x)) { refl; }
 CPP
 
@@ -104,7 +104,7 @@ reports trusted_is_an_ordinary_identifier 'Laws trusted: +0'
 
 # A unit with no assumption reports none, because that is true of it.
 accept a_unit_with_no_assumption <<'CPP'
-law provable(unsigned x) ensures(x + 0u == x);
+law provable(unsigned x) proves (x + 0u == x);
 CPP
 
 reports a_unit_with_no_assumption 'Laws trusted: +0'
@@ -113,7 +113,7 @@ reports a_unit_with_no_assumption 'Trusted external axioms: +0'
 # --- A trusted law must be a unit-level declaration --------------------------
 
 refuse an_assumption_inside_a_function 'namespace scope' <<'CPP'
-void f() { trusted law local(unsigned x) ensures(x + 0u == x); }
+void f() { trusted law local(unsigned x) proves (x + 0u == x); }
 CPP
 
 echo 'trusted assumptions: recorded, never proven'

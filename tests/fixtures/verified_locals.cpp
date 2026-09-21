@@ -1,18 +1,18 @@
 verified unsigned identity(unsigned x)
-    ensures(result == x)
+    ensures (result == x)
 {
     return x;
 }
 
 verified unsigned bounded(unsigned x)
-    expects(x <= 10u)
-    ensures(result == x)
+    expects (x <= 10u)
+    ensures (result == x)
 {
     return x;
 }
 
 verified unsigned chained(unsigned x)
-    ensures(result == (x + 1u) + 1u)
+    ensures (result == (x + 1u) + 1u)
 {
     unsigned y = x + 1u;
     unsigned z = y + 1u;
@@ -20,7 +20,7 @@ verified unsigned chained(unsigned x)
 }
 
 verified unsigned latest(unsigned x)
-    ensures(result == 7u)
+    ensures (result == 7u)
 {
     unsigned y = x;
     y = 7u;
@@ -28,7 +28,7 @@ verified unsigned latest(unsigned x)
 }
 
 verified unsigned preserved(unsigned x)
-    ensures(result == x)
+    ensures (result == x)
 {
     unsigned y = x;
     unsigned kept = y;
@@ -37,14 +37,14 @@ verified unsigned preserved(unsigned x)
 }
 
 verified unsigned declared_together(unsigned x)
-    ensures(result == x)
+    ensures (result == x)
 {
     unsigned y = x, z = y;
     return z;
 }
 
 verified unsigned deduced(unsigned x)
-    ensures(result == x)
+    ensures (result == x)
 {
     auto y = x;
     const unsigned z = y;
@@ -53,7 +53,7 @@ verified unsigned deduced(unsigned x)
 }
 
 verified unsigned braced(unsigned x)
-    ensures(result == x)
+    ensures (result == x)
 {
     unsigned y{x};
     unsigned z(y);
@@ -61,7 +61,7 @@ verified unsigned braced(unsigned x)
 }
 
 verified unsigned choose_then_adjust(unsigned x, bool b)
-    ensures(result == x)
+    ensures (result == x)
 {
     unsigned y = x;
 
@@ -74,7 +74,7 @@ verified unsigned choose_then_adjust(unsigned x, bool b)
 }
 
 verified unsigned merged(bool b)
-    ensures(result <= 2u)
+    ensures (result <= 2u)
 {
     unsigned x = 1u;
     if (b)
@@ -83,7 +83,7 @@ verified unsigned merged(bool b)
 }
 
 verified unsigned both_arms(bool b, unsigned x)
-    ensures(result <= 10u)
+    ensures (result <= 10u)
 {
     unsigned y = x;
     if (b) {
@@ -95,7 +95,7 @@ verified unsigned both_arms(bool b, unsigned x)
 }
 
 verified unsigned nested_assignments(bool b, bool c, unsigned x)
-    ensures(result <= 10u)
+    ensures (result <= 10u)
 {
     unsigned y = x;
     if (b) {
@@ -110,7 +110,7 @@ verified unsigned nested_assignments(bool b, bool c, unsigned x)
 }
 
 verified unsigned shadowed(unsigned x)
-    ensures(result == x)
+    ensures (result == x)
 {
     unsigned y = x;
     {
@@ -121,7 +121,7 @@ verified unsigned shadowed(unsigned x)
 }
 
 verified unsigned call_in_initializer(unsigned x)
-    ensures(result == x)
+    ensures (result == x)
 {
     unsigned y = identity(x);
     unsigned z = y;
@@ -129,7 +129,7 @@ verified unsigned call_in_initializer(unsigned x)
 }
 
 verified unsigned call_in_assignment(unsigned x)
-    ensures(result == x)
+    ensures (result == x)
 {
     unsigned y = 0u;
     y = identity(x);
@@ -137,7 +137,7 @@ verified unsigned call_in_assignment(unsigned x)
 }
 
 verified unsigned guarded_call(unsigned x)
-    ensures(result <= 10u)
+    ensures (result <= 10u)
 {
     if (x <= 10u) {
         unsigned y = bounded(x);
@@ -147,7 +147,7 @@ verified unsigned guarded_call(unsigned x)
 }
 
 verified unsigned local_guard(unsigned x)
-    ensures(result <= 10u)
+    ensures (result <= 10u)
 {
     unsigned y = x;
     if (y <= 10u)
@@ -156,7 +156,7 @@ verified unsigned local_guard(unsigned x)
 }
 
 verified unsigned flag_guard(unsigned x)
-    ensures(result <= 10u)
+    ensures (result <= 10u)
 {
     bool small = x <= 10u;
     if (small)
@@ -165,7 +165,7 @@ verified unsigned flag_guard(unsigned x)
 }
 
 verified unsigned clamp(unsigned x)
-    ensures(result <= 10u)
+    ensures (result <= 10u)
 {
     if (x <= 10u)
         return x;
@@ -174,7 +174,7 @@ verified unsigned clamp(unsigned x)
 
 // The false arm needs clamp's postcondition, reached through the local.
 verified unsigned clamped_guard(unsigned x)
-    ensures(result <= 10u)
+    ensures (result <= 10u)
 {
     unsigned y = clamp(x);
     if (y == 10u)
@@ -183,7 +183,7 @@ verified unsigned clamped_guard(unsigned x)
 }
 
 verified unsigned constant_arm(bool b)
-    ensures(result == 1u)
+    ensures (result == 1u)
 {
     const unsigned one = 1u;
     if (b)
@@ -192,7 +192,7 @@ verified unsigned constant_arm(bool b)
 }
 
 verified unsigned declared_in_arm(unsigned x, bool b)
-    ensures(result == x)
+    ensures (result == x)
 {
     unsigned y = x;
     if (b)
@@ -202,7 +202,7 @@ verified unsigned declared_in_arm(unsigned x, bool b)
 
 // Each update is the assignment it abbreviates, at the local's own type.
 verified unsigned updated(unsigned x)
-    ensures(result == 2u * x + 1u)
+    ensures (result == 2u * x + 1u)
 {
     unsigned y = x;
     y += x;
@@ -213,7 +213,7 @@ verified unsigned updated(unsigned x)
 }
 
 verified unsigned long scaled(unsigned long x)
-    ensures(result == 6ul * x - 1ul)
+    ensures (result == 6ul * x - 1ul)
 {
     unsigned long y = x;
     y *= 3ul;

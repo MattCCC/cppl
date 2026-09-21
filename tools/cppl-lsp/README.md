@@ -423,7 +423,7 @@ its `(`:
 
 ```cpp
 verified int fifty(int x)
-    ensures(result == 50)
+    ensures (result == 50)
 {
     return 50;
 }
@@ -432,7 +432,7 @@ verified int fifty(int x)
 Refinement `where` clauses stay inline and are never relocated:
 
 ```cpp
-type Percentage = int where(self >= 0 && self <= 100);
+type Percentage = int where (self >= 0 && self <= 100);
 ```
 
 `textDocument/rangeFormatting` and `textDocument/onTypeFormatting` are scoped:

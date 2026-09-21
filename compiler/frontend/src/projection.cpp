@@ -50,48 +50,10 @@ std::string spelled_tokens(const TokenStream& stream, const source::ByteSpan& sp
     return text;
 }
 
-// An index parameter list, with a bare name given the base type. GRAMMAR.md 16
-// declares indices with ordinary parameter syntax; `type Index(n) = T where(...)`
-// names one whose type is the type it refines.
+// Index declarations use ordinary typed C++ parameter syntax. Never infer a
+// parameter type from the refined base or create an alternate syntax.
 std::string spelled_indices(const TokenStream& stream, const RefinementType& refinement) {
-    const std::string base = spelled_tokens(stream, refinement.base);
-    std::string result;
-    std::string parameter;
-    std::size_t token_count = 0;
-    std::size_t previous_end = 0;
-    const auto flush = [&] {
-        if (parameter.empty()) {
-            return;
-        }
-        if (!result.empty()) {
-            result += ", ";
-        }
-        // A single token is a bare name, so its type is the one being refined.
-        result += token_count == 1 ? base + " " + parameter : parameter;
-        parameter.clear();
-        token_count = 0;
-    };
-    for (const Token& token : stream.tokens()) {
-        if (token.span.offset < refinement.indices.offset || token.span.end() > refinement.indices.end()) {
-            continue;
-        }
-        if (token.kind == TokenKind::EndOfFile) {
-            break;
-        }
-        if (token.is_punctuator(",")) {
-            flush();
-            previous_end = token.span.end();
-            continue;
-        }
-        if (!parameter.empty() && token.span.offset != previous_end) {
-            parameter += ' ';
-        }
-        parameter += token.text;
-        previous_end = token.span.end();
-        ++token_count;
-    }
-    flush();
-    return result;
+    return spelled_tokens(stream, refinement.indices);
 }
 
 } // namespace

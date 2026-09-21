@@ -74,6 +74,23 @@ void Server::text_document_did_close(const TextDocumentIdentifier& id) {
     documents_.close(id);
 }
 
+std::vector<CodeAction> Server::text_document_code_actions(const TextDocumentIdentifier& id) {
+    const Document* doc = documents_.get(id.uri);
+    if (!doc)
+        return {};
+    formatter::FormatRequest request;
+    request.text = doc->text();
+    request.virtual_path = id.uri;
+    std::vector<CodeAction> actions;
+    for (const auto& fix : formatter::syntax_fixes(request))
+        actions.push_back({fix.title, "quickfix", to_text_edits(request.text, fix.edits)});
+    const auto formatted = formatter::format_document(request);
+    if (formatted.ok && !formatted.edits.empty())
+        actions.push_back({"Format canonical C++L syntax", "source.fixAll.cppl",
+                           to_text_edits(request.text, formatted.edits)});
+    return actions;
+}
+
 std::optional<std::vector<TextEdit>> Server::text_document_formatting(const TextDocumentIdentifier& id) {
     const Document* doc = documents_.get(id.uri);
     if (doc == nullptr) {

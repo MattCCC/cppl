@@ -344,7 +344,7 @@ pure int identity(int x) {
 }
 
 law identity_returns_input(int x)
-    ensures(identity(x) == x);
+    proves (identity(x) == x);
 ```
 
 A Law is a formal statement of required behavior. A Law is not:
@@ -366,7 +366,7 @@ pure int identity(int x) {
 }
 
 law identity_returns_input(int x)
-    ensures(identity(x) == x);
+    proves (identity(x) == x);
 
 proof identity_returns_input_holds(int x)
     proves(identity_returns_input(x))
@@ -383,7 +383,7 @@ pure unsigned identity(unsigned x) {
 }
 
 law identity_returns_input(unsigned x)
-    ensures(identity(x) == x);
+    proves (identity(x) == x);
 
 proof identity_general(unsigned x)
     proves(identity_returns_input(x))
@@ -392,7 +392,7 @@ proof identity_general(unsigned x)
 }
 
 law identity_of_41()
-    ensures(identity(41u) == 41u);
+    proves (identity(41u) == 41u);
 
 proof identity_at_41()
     proves(identity_of_41())
@@ -410,7 +410,7 @@ pure unsigned add_one(unsigned x) {
 
 law increment_is_stable(unsigned x)
     expects(add_one(x) == x)
-    ensures(add_one(x) == x);
+    proves (add_one(x) == x);
 
 proof increment_is_stable_holds(unsigned x)
     proves(increment_is_stable(x))
@@ -433,7 +433,7 @@ pure unsigned add_one(unsigned x) {
 
 law guarded_increment(unsigned x)
     expects(identity(x) == x)
-    ensures(add_one(x) == add_one(x));
+    proves (add_one(x) == add_one(x));
 
 proof guarded_increment_holds(unsigned x)
     proves(guarded_increment(x))
@@ -442,7 +442,7 @@ proof guarded_increment_holds(unsigned x)
 }
 
 law increment_is_itself(unsigned x)
-    ensures(add_one(x) == add_one(x));
+    proves (add_one(x) == add_one(x));
 
 proof increment_is_itself_holds(unsigned x)
     proves(increment_is_itself(x))
@@ -461,7 +461,7 @@ pure unsigned identity(unsigned x) {
 
 law identity_at_zero(unsigned x)
     expects(x == 0u)
-    ensures(identity(x) == 0u);
+    proves (identity(x) == 0u);
 
 proof identity_at_zero_holds(unsigned x)
     proves(identity_at_zero(x))
@@ -629,7 +629,7 @@ Laws are meant to state domain requirements over user-defined types:
 
 ```cpp cppl-planned
 law no_duplicate_authority(const Interpretation& x)
-    ensures(financialAuthorityCount(x) <= 1);
+    proves (financialAuthorityCount(x) <= 1);
 ```
 
 This example proves a property of an ordinary C++ `unsigned` by induction:
@@ -642,7 +642,7 @@ pure unsigned add(unsigned a, unsigned b)
 }
 
 law add_zero(unsigned x)
-    ensures(add(x, 0u) == x);
+    proves (add(x, 0u) == x);
 
 proof add_zero_holds(unsigned x)
     proves(add_zero(x))

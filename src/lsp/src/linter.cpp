@@ -31,28 +31,28 @@ std::vector<Diagnostic> Linter::lint(const frontend::TokenStream& tokens, const 
 void Linter::lint_laws(const std::vector<frontend::LawDeclaration>& laws, std::vector<Diagnostic>& out,
                        const PositionMapper& mapper) const {
     for (const auto& law : laws) {
-        // Check for exactly one ensures clause
-        std::size_t ensures_count = 0;
+        // Check for exactly one proves clause
+        std::size_t proves_count = 0;
         for (const auto& clause : law.clauses) {
-            if (clause.kind == frontend::ClauseKind::Ensures) {
-                ++ensures_count;
+            if (clause.kind == frontend::ClauseKind::Proves) {
+                ++proves_count;
             }
         }
 
-        if (ensures_count == 0) {
+        if (proves_count == 0) {
             Diagnostic diag;
             diag.range = mapper.source_range_to_range(law.range);
             diag.severity = DiagnosticSeverity::Error;
-            diag.code = std::string(diagnostic_codes::law_missing_ensures_clause);
-            diag.message = "law '" + law.name + "' must have exactly one 'ensures' clause";
+            diag.code = std::string(diagnostic_codes::law_missing_proves_clause);
+            diag.message = "law '" + law.name + "' must have exactly one 'proves' clause";
             out.push_back(std::move(diag));
-        } else if (ensures_count > 1) {
+        } else if (proves_count > 1) {
             Diagnostic diag;
             diag.range = mapper.source_range_to_range(law.range);
             diag.severity = DiagnosticSeverity::Error;
-            diag.code = std::string(diagnostic_codes::law_multiple_ensures);
-            diag.message = "law '" + law.name + "' has " + std::to_string(ensures_count) +
-                           " 'ensures' clauses; only one is allowed";
+            diag.code = std::string(diagnostic_codes::law_multiple_proves);
+            diag.message = "law '" + law.name + "' has " + std::to_string(proves_count) +
+                           " 'proves' clauses; only one is allowed";
             out.push_back(std::move(diag));
         }
 

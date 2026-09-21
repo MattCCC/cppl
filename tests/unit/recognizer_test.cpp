@@ -24,7 +24,7 @@ void recognize(const std::string& text, Recognized& out) {
 
 CPPL_TEST(a_law_declaration_is_recognized) {
     Recognized result;
-    recognize("law identity_returns_input(int x)\n    ensures(identity(x) == x);\n", result);
+    recognize("law identity_returns_input(int x)\n    proves (identity(x) == x);\n", result);
 
     CPPL_CHECK(!result.engine.has_errors());
     CPPL_CHECK_EQ(result.syntax.laws.size(), std::size_t{1});
@@ -83,7 +83,7 @@ CPPL_TEST(a_law_without_a_proposition_is_rejected) {
 
 CPPL_TEST(a_law_with_two_propositions_is_rejected) {
     Recognized result;
-    recognize("law twice(int x)\n    ensures(x == x)\n    ensures(x == x);\n", result);
+    recognize("law twice(int x)\n    proves (x == x)\n    ensures(x == x);\n", result);
 
     CPPL_CHECK(result.engine.has_errors());
     CPPL_CHECK(result.syntax.laws.empty());
@@ -91,7 +91,7 @@ CPPL_TEST(a_law_with_two_propositions_is_rejected) {
 
 CPPL_TEST(a_trusted_law_is_recognized_as_an_explicit_assumption) {
     Recognized result;
-    recognize("trusted law assumed(int x)\n    ensures(x == x);\n", result);
+    recognize("trusted law assumed(int x)\n    proves (x == x);\n", result);
 
     CPPL_CHECK(!result.engine.has_errors());
     CPPL_CHECK(result.syntax.laws.size() == 1);
@@ -101,7 +101,7 @@ CPPL_TEST(a_trusted_law_is_recognized_as_an_explicit_assumption) {
 
 CPPL_TEST(an_ordinary_law_is_not_trusted) {
     Recognized result;
-    recognize("law ordinary(int x)\n    ensures(x == x);\n", result);
+    recognize("law ordinary(int x)\n    proves (x == x);\n", result);
 
     CPPL_CHECK(!result.engine.has_errors());
     CPPL_CHECK(result.syntax.laws.size() == 1);
@@ -112,7 +112,7 @@ CPPL_TEST(an_ordinary_law_is_not_trusted) {
 // reaches Clang as ordinary C++ and the declaration fails to parse.
 CPPL_TEST(a_trusted_law_span_covers_its_keyword) {
     Recognized result;
-    const std::string text = "trusted law assumed(int x)\n    ensures(x == x);\n";
+    const std::string text = "trusted law assumed(int x)\n    proves (x == x);\n";
     recognize(text, result);
 
     CPPL_CHECK(result.syntax.laws.size() == 1);
@@ -309,7 +309,7 @@ CPPL_TEST(a_contract_clause_on_a_pure_function_is_refused_rather_than_erased) {
 
 CPPL_TEST(a_law_inside_a_class_is_refused_rather_than_half_handled) {
     Recognized result;
-    recognize("struct Account {\n    law nonnegative(int b)\n        ensures(b == b);\n};\n", result);
+    recognize("struct Account {\n    law nonnegative(int b)\n        proves (b == b);\n};\n", result);
 
     CPPL_CHECK(result.engine.has_errors());
     CPPL_CHECK(result.syntax.laws.empty());
@@ -317,7 +317,7 @@ CPPL_TEST(a_law_inside_a_class_is_refused_rather_than_half_handled) {
 
 CPPL_TEST(a_law_inside_a_namespace_is_recognized) {
     Recognized result;
-    recognize("namespace payments {\nlaw closes(int x)\n    ensures(x == x);\n}\n", result);
+    recognize("namespace payments {\nlaw closes(int x)\n    proves (x == x);\n}\n", result);
 
     CPPL_CHECK(!result.engine.has_errors());
     CPPL_CHECK_EQ(result.syntax.laws.size(), std::size_t{1});
@@ -326,12 +326,12 @@ CPPL_TEST(a_law_inside_a_namespace_is_recognized) {
 CPPL_TEST(loop_invariants_are_recognized_inside_a_verified_body) {
     Recognized result;
     recognize("verified unsigned f(unsigned n) ensures(result == n) { unsigned i = 0u;\n"
-              "  for (; i < n; ++i) invariant(i <= n) { } while (i < n) invariant(i <= n) invariant(n >= i) { ++i; }\n"
+              "  for (; i < n; ++i) invariant(i <= n) { } while (i < n) invariant ((i <= n) && (n >= i)) { ++i; }\n"
               "  return i; }\n",
               result);
     CPPL_CHECK(!result.engine.has_errors());
     CPPL_CHECK_EQ(result.syntax.loops.size(), std::size_t{2});
-    CPPL_CHECK_EQ(result.syntax.loops[1].invariants.size(), std::size_t{2});
+    CPPL_CHECK_EQ(result.syntax.loops[1].invariants.size(), std::size_t{1});
     CPPL_CHECK_EQ(result.syntax.loops[0].function_index, std::size_t{0});
 }
 

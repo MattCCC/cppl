@@ -1,5 +1,9 @@
 # RFC 0014: Storage, memory validity and effects
 
+> Surface syntax and formatting in this historical RFC are superseded by
+> [RFC 0015](0015-canonical-language-surface.md) and the
+> [normative grammar](../GRAMMAR.md). Semantic rationale remains applicable.
+
 ## Status
 
 Accepted, implementation in progress. Supersedes this RFC's first revision,
@@ -46,7 +50,7 @@ that crosses from a pointer *value* to a pointee *place*.
 
 ```cpp
 verified int read(int* p)
-    expects(p != nullptr)
+    expects (p != nullptr)
 {
     return *p;   // unsound to admit on this basis alone
 }
@@ -467,21 +471,20 @@ Capabilities appear as ordinary contract clauses, using contextual identifiers
 
 ```cpp
 verified int read(int* p)
-    expects(readable(*p))
+    expects (readable(*p))
 {
     return *p;
 }
 
 verified void store(int* p, int x)
-    expects(writable(*p))
-    ensures(*p == x)
+    expects (writable(*p))
+    ensures (*p == x)
 {
     *p = x;
 }
 
 verified int at(int* a, std::size_t n, std::size_t i)
-    expects(readable(a, n))
-    expects(i < n)
+    expects ((readable(a, n)) && (i < n))
 {
     return a[i];
 }

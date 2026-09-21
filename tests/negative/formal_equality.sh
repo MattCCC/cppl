@@ -56,9 +56,9 @@ proof second() proves(Eq<int>(x, x)) { refl; }
 CPP
 reject same_presumed_location <<'CPP'
 #line 10 "same.cpp"
-law overloaded(unsigned x) ensures(Eq<unsigned>(x, x));
+law overloaded(unsigned x) proves (Eq<unsigned>(x, x));
 #line 10 "same.cpp"
-law overloaded(int x) ensures(Eq<int>(x, 0));
+law overloaded(int x) proves (Eq<int>(x, 0));
 CPP
 reject unproven_helper <<'CPP'
 unsigned helper(unsigned x) { return x; }

@@ -8,4 +8,4 @@ pure int scale(int amount) {
 }
 
 law scale_preserves_amount(int amount)
-    ensures(scale(amount) == amount);
+    proves (scale(amount) == amount);

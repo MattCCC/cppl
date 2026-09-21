@@ -2712,7 +2712,13 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
         if (probe != request.selection.proposition_probes.end()) {
             extract_formal(function, cursor, parameter_cursors, probe->shape);
         } else {
-            extract_body(function, cursor, parameter_cursors,
+            // Clang owns declaration/definition identity, including overloads
+            // and parameter renaming. The public declaration supplies contract
+            // metadata; the resolved definition supplies the executable body.
+            const CXCursor definition = clang_getCursorDefinition(cursor);
+            const CXCursor body_cursor = clang_Cursor_isNull(definition) ? cursor : definition;
+            const auto body_parameters = parameters_of(body_cursor);
+            extract_body(function, body_cursor, body_parameters,
                          request.selection.specification_prefix.empty()
                              ? std::string()
                              : request.selection.specification_prefix + "invariant_",

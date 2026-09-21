@@ -22,6 +22,10 @@ bool is_type_keyword(const Token& token) {
 // A declaration can begin here: at the start of the unit, or after a token that
 // can only end a previous declaration, statement or label.
 bool at_declaration_start(const std::vector<Token>& tokens, std::size_t index) {
+    while (index > 0 && (tokens[index - 1].is_identifier("static") || tokens[index - 1].is_identifier("inline") ||
+                        tokens[index - 1].is_identifier("constexpr") || tokens[index - 1].is_identifier("consteval") ||
+                        tokens[index - 1].is_identifier("virtual") || tokens[index - 1].is_identifier("extern")))
+        --index;
     if (index == 0) {
         return true;
     }
@@ -82,6 +86,12 @@ std::size_t matching_brace(const std::vector<Token>& tokens, std::size_t open) {
 }
 
 std::optional<ClauseKind> clause_kind(const Token& token) {
+    if (token.is_identifier("decreases")) {
+        return ClauseKind::Decreases;
+    }
+    if (token.is_identifier("proves")) {
+        return ClauseKind::Proves;
+    }
     if (token.is_identifier("ensures")) {
         return ClauseKind::Ensures;
     }
@@ -108,12 +118,37 @@ void report(diagnostics::Engine& engine, const TokenStream& stream, const Token&
     engine.report(std::move(diagnostic));
 }
 
+void check_clause_sequence(const std::vector<Clause>& clauses, diagnostics::Engine& engine) {
+    std::vector<ClauseKind> seen;
+    bool conclusion = false;
+    for (const auto& clause : clauses) {
+        std::string message;
+        if (std::ranges::find(seen, clause.kind) != seen.end())
+            message = "use one '" + describe(clause.kind) + "' clause; combine conjoined predicates with '&&'";
+        else if (clause.kind == ClauseKind::Expects && conclusion)
+            message = "'expects' must precede the conclusion clause";
+        if (!message.empty()) {
+            diagnostics::Diagnostic diagnostic;
+            diagnostic.severity = diagnostics::Severity::Error;
+            diagnostic.category = diagnostics::Category::CpplSyntax;
+            diagnostic.location = clause.location;
+            diagnostic.message = std::move(message);
+            engine.report(std::move(diagnostic));
+        }
+        seen.push_back(clause.kind);
+        conclusion = conclusion || clause.kind == ClauseKind::Ensures || clause.kind == ClauseKind::Proves;
+    }
+}
+
 // `law` introduces a Law only when a contract clause follows the parameter
 // list. Up to that point the token sequence is still ordinary C++ (a function
 // returning a type named `law`, for instance), so nothing is reinterpreted
 // until the clause makes the ordinary C++ reading impossible (SPEC.md 3.1).
+bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std::size_t body_close,
+                           diagnostics::Engine& engine, std::vector<ProofStatement>& statements, unsigned nesting = 0);
+
 bool try_law(const TokenStream& stream, std::size_t index, diagnostics::Engine& engine, LawDeclaration& law,
-             std::size_t& next_index) {
+             std::size_t& next_index, ProofDeclaration& body, RecognitionMode mode) {
     const std::vector<Token>& tokens = stream.tokens();
 
     if (index + 2 >= tokens.size()) {
@@ -173,12 +208,25 @@ bool try_law(const TokenStream& stream, std::size_t index, diagnostics::Engine& 
             malformed = true;
         }
         law.clauses.push_back(clause);
+        if (*kind == ClauseKind::Decreases) {
+            report(engine, stream, tokens[cursor], diagnostics::Category::CpplSyntax,
+                   "a Law has only 'expects' and 'proves' clauses");
+            malformed = true;
+        }
+        if (*kind == ClauseKind::Ensures) {
+            report(engine, stream, tokens[cursor], diagnostics::Category::CpplSyntax,
+                   "a Law conclusion uses 'proves', never 'ensures'",
+                   "replace 'ensures' with 'proves'; a Law has no runtime result");
+            malformed = true;
+        }
         cursor = clause_close + 1;
     }
 
-    if (cursor >= tokens.size() || !tokens[cursor].is_punctuator(";")) {
-        report(engine, stream, tokens[index], diagnostics::Category::CpplSyntax, "a law declaration ends with ';'",
-               "a law states a proposition and has no body");
+    check_clause_sequence(law.clauses, engine);
+    const bool has_body = cursor < tokens.size() && tokens[cursor].is_punctuator("{");
+    if (cursor >= tokens.size() || (!tokens[cursor].is_punctuator(";") && !has_body)) {
+        report(engine, stream, tokens[index], diagnostics::Category::CpplSyntax,
+               "a law declaration ends with ';' or an explicit proof body");
         next_index = cursor;
         return true;
     }
@@ -187,20 +235,46 @@ bool try_law(const TokenStream& stream, std::size_t index, diagnostics::Engine& 
     law.end_line = tokens[cursor].line;
     next_index = cursor + 1;
 
+    if (has_body) {
+        const std::size_t end = matching_brace(tokens, cursor);
+        if (end >= tokens.size()) {
+            report(engine, stream, tokens[cursor], diagnostics::Category::CpplSyntax, "unterminated Law proof body");
+            law.name.clear();
+            return true;
+        }
+        body.name = law.name;
+        body.range = law.range;
+        body.range.span = {tokens[cursor].span.offset, tokens[end].span.end() - tokens[cursor].span.offset};
+        body.keyword_location = law.keyword_location;
+        body.parameters = law.parameters;
+        body.end_line = tokens[end].line;
+        if (const auto* conclusion = law.proposition()) {
+            body.proposition = conclusion->expression;
+            body.proposition_location = conclusion->location;
+        }
+        law.range.span.length = tokens[cursor].span.offset - law.range.span.offset;
+        if (!read_proof_statements(stream, cursor, end, engine, body.statements) || body.statements.empty()) {
+            report(engine, stream, tokens[cursor], diagnostics::Category::ProofFailure,
+                   "a Law proof body must supply evidence closing its goal");
+            malformed = true;
+        }
+        next_index = end + 1;
+    }
+
     const auto ensures_count =
-        std::ranges::count_if(law.clauses, [](const Clause& clause) { return clause.kind == ClauseKind::Ensures; });
+        std::ranges::count_if(law.clauses, [](const Clause& clause) { return clause.kind == ClauseKind::Proves; });
     if (ensures_count == 0) {
         report(engine, stream, tokens[index], diagnostics::Category::CpplSyntax,
-               "law '" + law.name + "' states no proposition", "a law requires exactly one ensures clause");
+               "law '" + law.name + "' states no proposition", "a law requires exactly one proves clause");
         malformed = true;
     } else if (ensures_count > 1) {
         report(engine, stream, tokens[index], diagnostics::Category::CpplSyntax,
-               "law '" + law.name + "' has " + std::to_string(ensures_count) + " ensures clauses",
-               "a law has exactly one ensures clause");
+               "law '" + law.name + "' has " + std::to_string(ensures_count) + " proves clauses",
+               "a law has exactly one proves clause");
         malformed = true;
     }
 
-    if (malformed) {
+    if (malformed && mode == RecognitionMode::Compile) {
         law.clauses.clear();
         law.name.clear();
     }
@@ -385,7 +459,7 @@ bool read_proof_arguments(const TokenStream& stream, std::size_t open, std::size
 // here: the proposition a proof discharges is resolved by Clang from the
 // projected text, never by this recognizer.
 bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std::size_t body_close,
-                           diagnostics::Engine& engine, std::vector<ProofStatement>& statements, unsigned nesting = 0) {
+                           diagnostics::Engine& engine, std::vector<ProofStatement>& statements, unsigned nesting) {
     const std::vector<Token>& tokens = stream.tokens();
     if (nesting > 32) {
         report(engine, stream, tokens[body_open], diagnostics::Category::CpplSyntax,
@@ -627,7 +701,7 @@ bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std
 // parameter list. Until then the token sequence is still ordinary C++ - a
 // function returning a type named `proof`, for instance (SPEC.md 3.1).
 bool try_proof(const TokenStream& stream, std::size_t index, diagnostics::Engine& engine, ProofDeclaration& proof,
-               std::size_t& next_index) {
+               std::size_t& next_index, RecognitionMode mode) {
     const std::vector<Token>& tokens = stream.tokens();
 
     if (index + 2 >= tokens.size()) {
@@ -701,7 +775,7 @@ bool try_proof(const TokenStream& stream, std::size_t index, diagnostics::Engine
         malformed = true;
     }
 
-    if (malformed) {
+    if (malformed && mode == RecognitionMode::Compile) {
         proof.name.clear();
         proof.statements.clear();
     }
@@ -859,9 +933,20 @@ bool try_verified(const TokenStream& stream, std::size_t index, diagnostics::Eng
             return false;
         }
         verified.clauses.push_back(clause);
+        if (*kind == ClauseKind::Decreases) {
+            report(engine, stream, tokens[cursor], diagnostics::Category::UnsupportedSemantics,
+                   "function termination is not verified by this implementation",
+                   "the requested 'decreases' obligation must not be accepted unchecked");
+        }
+        if (*kind == ClauseKind::Proves) {
+            report(engine, stream, tokens[cursor], diagnostics::Category::CpplSyntax,
+                   "a runtime function postcondition uses 'ensures', never 'proves'");
+            return false;
+        }
         cursor = clause_close + 1;
     }
 
+    check_clause_sequence(verified.clauses, engine);
     const auto ensures_count = std::ranges::count_if(
         verified.clauses, [](const Clause& clause) { return clause.kind == ClauseKind::Ensures; });
     if (ensures_count > 1) {
@@ -871,14 +956,15 @@ bool try_verified(const TokenStream& stream, std::size_t index, diagnostics::Eng
                "a verified function has exactly one ensures clause");
         return false;
     }
-    if (cursor >= tokens.size() || !tokens[cursor].is_punctuator("{")) {
+    const bool declaration_only = cursor < tokens.size() && tokens[cursor].is_punctuator(";");
+    if (cursor >= tokens.size() || (!tokens[cursor].is_punctuator("{") && !declaration_only)) {
         report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
                "verified function '" + std::string(tokens[*name].text) + "' is declared but not defined here",
                "its obligation comes from the body, so this implementation verifies a "
                "function where it is defined");
         return false;
     }
-    const std::size_t body_close = matching_brace(tokens, cursor);
+    const std::size_t body_close = declaration_only ? cursor : matching_brace(tokens, cursor);
     if (body_close >= tokens.size()) {
         return false;
     }
@@ -900,7 +986,7 @@ bool try_verified(const TokenStream& stream, std::size_t index, diagnostics::Eng
 
     // The body is walked as usual, so anything inside it is recognized exactly
     // as it would be in an ordinary function.
-    next_index = cursor;
+    next_index = declaration_only ? cursor + 1 : cursor;
     return true;
 }
 
@@ -991,11 +1077,14 @@ LoopClauses try_loop_clauses(const TokenStream& stream, std::size_t index, diagn
     for (const Written& clause : written) {
         const Token& keyword = tokens[clause.keyword];
         if (keyword.is_identifier("decreases")) {
+            loop.decreases = Clause{ClauseKind::Decreases, keyword.span,
+                                   {tokens[clause.keyword + 1].span.end(),
+                                    tokens[clause.close].span.offset - tokens[clause.keyword + 1].span.end()},
+                                   stream.location_of(keyword)};
             report(engine, stream, keyword, diagnostics::Category::UnsupportedSemantics,
                    "loop termination is not verified by this implementation",
                    "a verified loop establishes partial correctness only; 'decreases' is refused rather than "
                    "left unchecked");
-            outcome = LoopClauses::Refused;
             continue;
         }
         Clause invariant;
@@ -1014,6 +1103,7 @@ LoopClauses try_loop_clauses(const TokenStream& stream, std::size_t index, diagn
         loop.expression_locations.push_back(stream.location_of(tokens[clause.keyword + 2]));
     }
 
+    check_clause_sequence(loop.invariants, engine);
     loop.keyword = tokens[index].span;
     loop.keyword_location = stream.location_of(tokens[index]);
     loop.clause_region = source::ByteSpan{tokens[written.front().keyword].span.offset,
@@ -1028,6 +1118,10 @@ LoopClauses try_loop_clauses(const TokenStream& stream, std::size_t index, diagn
 
 std::string describe(ClauseKind kind) {
     switch (kind) {
+        case ClauseKind::Decreases:
+            return "decreases";
+        case ClauseKind::Proves:
+            return "proves";
         case ClauseKind::Ensures:
             return "ensures";
         case ClauseKind::Expects:
@@ -1060,7 +1154,7 @@ std::string describe(ProofStatementKind kind) {
 
 const Clause* LawDeclaration::proposition() const {
     for (const Clause& clause : clauses) {
-        if (clause.kind == ClauseKind::Ensures) {
+        if (clause.kind == ClauseKind::Proves) {
             return &clause;
         }
     }
@@ -1095,7 +1189,7 @@ std::vector<const Clause*> VerifiedFunction::preconditions() const {
     return found;
 }
 
-Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine) {
+Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, RecognitionMode mode) {
     const std::vector<Token>& tokens = stream.tokens();
     Syntax syntax;
 
@@ -1182,8 +1276,14 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine) {
         if (tokens[index].is_identifier("trusted") && index + 1 < tokens.size() &&
             tokens[index + 1].is_identifier("law")) {
             LawDeclaration law;
+            ProofDeclaration body;
             std::size_t next = index + 2;
-            if (try_law(stream, index + 1, engine, law, next)) {
+            if (try_law(stream, index + 1, engine, law, next, body, mode)) {
+                if (!body.name.empty()) {
+                    report(engine, stream, tokens[index], diagnostics::Category::CpplSyntax,
+                           "a trusted Law ends with ';': an assumption cannot also have a proof body");
+                    law.name.clear();
+                }
                 if (!law.name.empty()) {
                     if (at_namespace_scope()) {
                         law.trusted = true;
@@ -1209,10 +1309,15 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine) {
 
         if (tokens[index].is_identifier("law")) {
             LawDeclaration law;
+            ProofDeclaration body;
             std::size_t next = index + 1;
-            if (try_law(stream, index, engine, law, next)) {
+            if (try_law(stream, index, engine, law, next, body, mode)) {
                 if (!law.name.empty()) {
                     if (at_namespace_scope()) {
+                        if (!body.name.empty()) {
+                            body.inline_law = syntax.laws.size();
+                            syntax.proofs.push_back(std::move(body));
+                        }
                         syntax.laws.push_back(std::move(law));
                     } else {
                         report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
@@ -1229,7 +1334,7 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine) {
         if (tokens[index].is_identifier("proof")) {
             ProofDeclaration proof;
             std::size_t next = index + 1;
-            if (try_proof(stream, index, engine, proof, next)) {
+            if (try_proof(stream, index, engine, proof, next, mode)) {
                 if (!proof.name.empty()) {
                     if (at_namespace_scope()) {
                         syntax.proofs.push_back(std::move(proof));

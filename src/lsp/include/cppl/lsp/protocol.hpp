@@ -80,6 +80,12 @@ struct TextEdit {
     std::string newText;
 };
 
+struct CodeAction {
+    std::string title;
+    std::string kind;
+    std::vector<TextEdit> edits;
+};
+
 struct FormattingOptions {
     std::uint32_t tabSize = 4;
     bool insertSpaces = true;

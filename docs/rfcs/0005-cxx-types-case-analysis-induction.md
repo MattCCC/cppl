@@ -1,5 +1,9 @@
 # Reasoning over C++ types: proof case analysis and induction
 
+> Surface syntax and formatting in this historical RFC are superseded by
+> [RFC 0015](0015-canonical-language-surface.md) and the
+> [normative grammar](../GRAMMAR.md). Semantic rationale remains applicable.
+
 Status: accepted design decision. Its case-analysis half is implemented, over
 generic decomposition providers; its induction and proof-only-domain halves are
 not. Normative rules are SPEC.md 19–21 and GRAMMAR.md 5.6–5.8, 18 and 20. It
@@ -41,11 +45,11 @@ must remain a superset of.
 
 `cases` creates one proof obligation for every case of a value:
 
-```cpp
+```text
 using PaymentResult = std::variant<Receipt, Error>;
 
 proof settle(PaymentResult result)
-    proves(...)
+    proves (...)
 {
     cases result {
         Receipt(receipt) => {
@@ -65,9 +69,9 @@ proof settle(PaymentResult result)
 
 `induction` applies the induction principle for a value's domain:
 
-```cpp
+```text
 proof add_zero(unsigned x)
-    proves(add(x, 0u) == x)
+    proves (add(x, 0u) == x)
 {
     induction x {
         zero => {
@@ -105,7 +109,7 @@ The premises an arm receives are already in its proof context. They are the case
 fact, and for induction also the range condition and one induction hypothesis
 per recursive component. The existing `assume` statement names them:
 
-```cpp
+```text
 induction tree {
     empty => {
         ...
@@ -197,7 +201,7 @@ sequence:
 
 ```cpp
 verified void grow_capacity(std::vector<int>& v, std::size_t n)
-    ensures(model(v) == old(model(v)));
+    ensures (model(v) == old(model(v)));
 ```
 
 Here `model` is illustrative. It stands for a proof-only function that returns

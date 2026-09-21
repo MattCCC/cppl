@@ -3,45 +3,45 @@
 // proven by linear arithmetic that accounts for wrapping.
 
 verified unsigned reassociated(unsigned x, unsigned y, unsigned z)
-    ensures(result == (x + y) + z)
+    ensures (result == (x + y) + z)
 {
     return x + (y + z);
 }
 
 verified unsigned distributed(unsigned x, unsigned y, unsigned z)
-    ensures(result == x * y + x * z)
+    ensures (result == x * y + x * z)
 {
     return x * (y + z);
 }
 
 verified unsigned square_of_successor(unsigned x)
-    ensures(result == x * x + 2u * x + 1u)
+    ensures (result == x * x + 2u * x + 1u)
 {
     return (x + 1u) * (x + 1u);
 }
 
 verified unsigned cancelled(unsigned x, unsigned y)
-    ensures(result == x)
+    ensures (result == x)
 {
     return (x + y) - y;
 }
 
 verified unsigned plus_two(unsigned x)
-    ensures(result == x + 2u)
+    ensures (result == x + 2u)
 {
     unsigned y = x + 1u;
     return y + 1u;
 }
 
 verified unsigned wraps_to_zero()
-    ensures(result == 0u)
+    ensures (result == 0u)
 {
     return 4294967295u + 1u;
 }
 
 verified unsigned countdown(unsigned n)
-    expects(n >= 3u)
-    ensures(result == n - 3u)
+    expects (n >= 3u)
+    ensures (result == n - 3u)
 {
     unsigned m = n;
     m = m - 1u;
@@ -52,7 +52,7 @@ verified unsigned countdown(unsigned n)
 
 // Order consequences of guards.
 verified unsigned weakened(unsigned x)
-    ensures(result <= 10u)
+    ensures (result <= 10u)
 {
     if (x < 10u)
         return x;
@@ -60,7 +60,7 @@ verified unsigned weakened(unsigned x)
 }
 
 verified unsigned transitive(unsigned x)
-    ensures(result < 20u)
+    ensures (result < 20u)
 {
     if (x < 5u)
         return x;
@@ -70,7 +70,7 @@ verified unsigned transitive(unsigned x)
 // A difference is at most its minuend once the subtrahend is known not to
 // exceed it; otherwise it would wrap.
 verified unsigned bounded_difference(unsigned x, unsigned y)
-    ensures(result <= x)
+    ensures (result <= x)
 {
     if (y <= x)
         return x - y;
@@ -79,8 +79,8 @@ verified unsigned bounded_difference(unsigned x, unsigned y)
 
 // A successor is larger once the value is known not to be the maximum.
 verified unsigned successor_below(unsigned i, unsigned n)
-    expects(i < n)
-    ensures(result <= n)
+    expects (i < n)
+    ensures (result <= n)
 {
     return i + 1u;
 }
@@ -88,7 +88,7 @@ verified unsigned successor_below(unsigned i, unsigned n)
 // The inner path is unreachable: its guards contradict each other, and the
 // contradiction is what proves it.
 verified unsigned unreachable_path(unsigned x)
-    ensures(result <= 10u)
+    ensures (result <= 10u)
 {
     if (x <= 10u) {
         if (x > 10u)
@@ -99,7 +99,7 @@ verified unsigned unreachable_path(unsigned x)
 }
 
 verified int signed_transitive(int x)
-    ensures(result < 20)
+    ensures (result < 20)
 {
     if (x <= 10)
         return x;
@@ -109,31 +109,31 @@ verified int signed_transitive(int x)
 // Contracts compose through arithmetic: each call's precondition follows from
 // the caller's precondition and the earlier call's postcondition.
 verified unsigned predecessor(unsigned x)
-    expects(x > 0u)
-    ensures(result == x - 1u)
+    expects (x > 0u)
+    ensures (result == x - 1u)
 {
     return x - 1u;
 }
 
 verified unsigned minus_two(unsigned x)
-    expects(x >= 2u)
-    ensures(result == x - 2u)
+    expects (x >= 2u)
+    ensures (result == x - 2u)
 {
     return predecessor(predecessor(x));
 }
 
 law subtraction_undoes_addition(unsigned x, unsigned y)
-    ensures((x - y) + y == x);
+    proves ((x - y) + y == x);
 
 law successor_stays_below(unsigned i, unsigned n)
-    expects(i < n)
-    ensures(i + 1u <= n);
+    expects (i < n)
+    proves (i + 1u <= n);
 
 law product_commutes(unsigned x, unsigned y)
-    ensures(x * y == y * x);
+    proves (x * y == y * x);
 
 proof product_commutes_holds(unsigned x, unsigned y)
-    proves(product_commutes(x, y))
+    proves (product_commutes(x, y))
 {
     refl;
 }

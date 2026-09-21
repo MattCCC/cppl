@@ -341,12 +341,28 @@ class ExpressionElaborator {
         }
 
         if (const auto* loop = std::get_if<clangbridge::Loop>(&expr.node)) {
-            vir::Loop converted{loop->loop, loop->heads, loop->names, loop->invariants, {}};
-            for (const auto& operand : loop->operands) {
-                auto value = convert(operand);
+            vir::Loop converted{loop->loop, loop->heads, loop->names, 0, {}};
+            // One surface invariant can state a conjunction. Each conjunct is
+            // still an independent entry/preservation obligation of the one
+            // loop rule; no new fact is introduced and disjunction is not split.
+            const auto append_invariant = [&](auto&& self, vir::Expr value) -> void {
+                if (auto* conjunction = std::get_if<vir::Binary>(&value.node);
+                    conjunction && conjunction->op == vir::BinaryOp::And && conjunction->operands.size() == 2) {
+                    for (auto& operand : conjunction->operands)
+                        self(self, std::move(operand));
+                } else {
+                    ++converted.invariants;
+                    converted.operands.push_back(std::move(value));
+                }
+            };
+            for (std::size_t index = 0; index < loop->operands.size(); ++index) {
+                auto value = convert(loop->operands[index]);
                 if (!value)
                     return std::nullopt;
-                converted.operands.push_back(std::move(*value));
+                if (index >= loop->heads.size() && index < loop->heads.size() + loop->invariants)
+                    append_invariant(append_invariant, std::move(*value));
+                else
+                    converted.operands.push_back(std::move(*value));
             }
             result.node = std::move(converted);
             return result;
@@ -909,12 +925,6 @@ void elaborate_contract(const Request& request, const frontend::VerifiedFunction
     }
 
     const frontend::Clause* postcondition = declaration.postcondition();
-    if (postcondition == nullptr && !converted.result.is_refined()) {
-        report(engine, diagnostics::Category::Elaboration, declaration.function_location,
-               "verified function '" + function.qualified_name + "' states no contract",
-               "write an ensures clause or a refined return type");
-        return;
-    }
     const auto postcondition_location =
         postcondition != nullptr ? postcondition->location : declaration.function_location;
     std::optional<vir::Expr> ensured =
@@ -1079,6 +1089,30 @@ void elaborate_proofs(const Request& request, const std::map<std::string, vir::L
         }
 
         std::optional<vir::LawId> law;
+        if (declaration.inline_law) {
+            const auto projected_law = std::ranges::find_if(
+                request.projection.specification_functions, [&](const auto& candidate) {
+                    return candidate.law_index == *declaration.inline_law;
+                });
+            const auto* resolved = projected_law == request.projection.specification_functions.end()
+                                       ? nullptr
+                                       : request.unit.find_at_offset(projected_law->analysis_offset);
+            const auto admitted = resolved ? admitted_laws.find(resolved->usr) : admitted_laws.end();
+            if (admitted == admitted_laws.end()) {
+                report(engine, diagnostics::Category::Elaboration, declaration.range.begin,
+                       "the Law of this explicit proof body was not given formal meaning");
+                continue;
+            }
+            vir::Call claim{vir::SymbolId{resolved->usr}, resolved->qualified_name, {}};
+            for (std::size_t index = 0; index < parameters->size(); ++index) {
+                vir::Expr argument;
+                argument.id = vir::ExprId{next_expression_id++};
+                argument.type = (*parameters)[index].type;
+                argument.node = vir::ParameterRef{static_cast<std::uint32_t>(index), (*parameters)[index].name};
+                claim.arguments.push_back(std::move(argument));
+            }
+            proposition->node = std::move(claim);
+        }
         if (const auto* claim = std::get_if<vir::Call>(&proposition->node)) {
             const auto admitted = admitted_laws.find(claim->callee.usr);
             if (admitted != admitted_laws.end()) {

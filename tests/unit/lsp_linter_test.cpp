@@ -51,22 +51,22 @@ law incomplete(int x) expects(x > 0);
 
 CPPL_TEST(law_with_valid_ensures_passes) {
     std::string text = R"(
-law valid(int x) ensures(x == x);
+law valid(int x) proves (x == x);
 )";
 
     auto diags = lint_text(text);
-    CPPL_CHECK(!has_diagnostic_with_code(diags, "cppl.law.missing-ensures"));
+    CPPL_CHECK(!has_diagnostic_with_code(diags, "cppl.law.missing-proves"));
 }
 
 CPPL_TEST(law_with_expects_and_ensures_passes) {
     std::string text = R"(
 law valid_with_premise(int x) 
     expects(x > 0)
-    ensures(x > 0);
+    proves (x > 0);
 )";
 
     auto diags = lint_text(text);
-    CPPL_CHECK(!has_diagnostic_with_code(diags, "cppl.law.missing-ensures"));
+    CPPL_CHECK(!has_diagnostic_with_code(diags, "cppl.law.missing-proves"));
 }
 
 CPPL_TEST(verified_function_without_ensures_requires_semantic_type_resolution) {

@@ -34,14 +34,14 @@ reject false_conjunction <<'CPP'
 proof wrong(unsigned x) proves(Eq<unsigned>(x, x) && Eq<unsigned>(0u, 1u)) { refl; }
 CPP
 reject one_way_equivalence <<'CPP'
-law wrong(unsigned x) ensures(Eq<unsigned>(x, 0u) <-> Eq<unsigned>(x, x));
+law wrong(unsigned x) proves (Eq<unsigned>(x, 0u) <-> Eq<unsigned>(x, x));
 CPP
 reject reverse_one_way <<'CPP'
-law wrong(unsigned x) ensures(Eq<unsigned>(x, x) <-> Eq<unsigned>(x, 0u));
+law wrong(unsigned x) proves (Eq<unsigned>(x, x) <-> Eq<unsigned>(x, 0u));
 CPP
 reject captured_conjunct <<'CPP'
 law wrong(unsigned x) expects(Eq<unsigned>(x, 0u))
-    ensures(Eq<unsigned>(x, 0u) && (forall (unsigned x) { Eq<unsigned>(x, 0u) }));
+    proves (Eq<unsigned>(x, 0u) && (forall (unsigned x) { Eq<unsigned>(x, 0u) }));
 CPP
 reject wrong_evidence <<'CPP'
 proof first(unsigned x) proves(Eq<unsigned>(x, x)) { refl; }
@@ -51,14 +51,14 @@ reject wrong_type <<'CPP'
 proof wrong(unsigned x) proves(Eq<unsigned>(x, x) && 7u) { refl; }
 CPP
 reject missing_side <<'CPP'
-law wrong(unsigned x) ensures(Eq<unsigned>(x, x) <->);
+law wrong(unsigned x) proves (Eq<unsigned>(x, x) <->);
 CPP
 reject formal_as_value <<'CPP'
 pure bool take(bool x) { return x; }
-law wrong(unsigned x) ensures(take(Eq<unsigned>(x, x) && Eq<unsigned>(x, x)));
+law wrong(unsigned x) proves (take(Eq<unsigned>(x, x) && Eq<unsigned>(x, x)));
 CPP
 reject written_failure <<'CPP'
-law valid(unsigned x) ensures(Eq<unsigned>(x, x) <-> Eq<unsigned>(x, x));
+law valid(unsigned x) proves (Eq<unsigned>(x, x) <-> Eq<unsigned>(x, x));
 proof wrong(unsigned x) proves(valid(x)) { exact missing; }
 CPP
 
@@ -66,13 +66,13 @@ CPP
 # `(x == 0u -> x == x) <-> x == 0u`, which is false at every other value. The
 # tighter reading `x == 0u -> (x == x <-> x == 0u)` would hold.
 reject equivalence_is_looser <<'CPP'
-law wrong(unsigned x) ensures(x == 0u -> x == x <-> x == 0u);
+law wrong(unsigned x) proves (x == 0u -> x == x <-> x == 0u);
 CPP
 
 # A boundary, not a soundness claim: no written spelling projects one side out
 # of a conjunctive premise. Automation does it, and the kernel checks it.
 reject written_conjunction_side <<'CPP'
-law valid(unsigned x) expects(Eq<unsigned>(x, 0u) && Eq<unsigned>(x + 1u, 1u)) ensures(Eq<unsigned>(x, 0u));
+law valid(unsigned x) expects(Eq<unsigned>(x, 0u) && Eq<unsigned>(x + 1u, 1u)) proves (Eq<unsigned>(x, 0u));
 proof wrong(unsigned x) proves(valid(x)) {
     assume h : Eq<unsigned>(x, 0u) && Eq<unsigned>(x + 1u, 1u);
     exact h;
@@ -81,7 +81,7 @@ CPP
 
 # A short chain must not expand exponentially before a resource refusal.
 {
-    printf 'law large(unsigned x) ensures(Eq<unsigned>(x, x)'
+    printf 'law large(unsigned x) proves (Eq<unsigned>(x, x)'
     for _ in $(seq 1 25); do printf ' <-> Eq<unsigned>(x, x)'; done
     printf ');\n'
 } > "$run/large.in"

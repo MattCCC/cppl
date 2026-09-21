@@ -5,80 +5,80 @@ pure unsigned input(unsigned x) {
 }
 
 verified unsigned identity(unsigned x)
-    ensures(result == x)
+    ensures (result == x)
 {
     return x;
 }
 
 verified unsigned inc(unsigned x)
-    ensures(result == x + 1u)
+    ensures (result == x + 1u)
 {
     return x + 1u;
 }
 
 verified unsigned zero_if_zero(unsigned x)
-    expects(x == 0u)
-    ensures(result == 0u)
+    expects (x == 0u)
+    ensures (result == 0u)
 {
     return x;
 }
 
 verified unsigned one_if_zero(unsigned x)
-    expects(x == 0u)
-    ensures(result == 1u)
+    expects (x == 0u)
+    ensures (result == 1u)
 {
     return x + 1u;
 }
 
 verified unsigned first(unsigned x, unsigned y)
-    ensures(result == x)
+    ensures (result == x)
 {
     return x;
 }
 
 verified unsigned second(unsigned x, unsigned y)
-    ensures(result == y)
+    ensures (result == y)
 {
     return y;
 }
 
 verified unsigned equal_inputs(unsigned x, unsigned y)
-    expects(x == y)
-    ensures(result == y + 1u)
+    expects (x == y)
+    ensures (result == y + 1u)
 {
     return x + 1u;
 }
 
 verified unsigned from_pure(unsigned x)
-    ensures(result == x)
+    ensures (result == x)
 {
     return input(x);
 }
 
 verified unsigned constant(void)
-    ensures(result == 7u)
+    ensures (result == 7u)
 {
     return 7u;
 }
 
 namespace nested {
 verified pure int identity(int x)
-    ensures(result == x)
+    ensures (result == x)
 {
     return x;
 }
 verified unsigned identity(unsigned x)
-    ensures(result == x)
+    ensures (result == x)
 {
     return x;
 }
 } // namespace nested
 
 law signed_identity(int x)
-    ensures(nested::identity(x) == x);
+    proves (nested::identity(x) == x);
 law constant_equality(unsigned x)
-    expects(0u == x)
-    ensures(0u == 0u + 0u);
+    expects (0u == x)
+    proves (0u == 0u + 0u);
 
 int main() {
     unsigned result = identity(41u);

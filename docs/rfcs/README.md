@@ -81,7 +81,7 @@ What problem does this solve?
 
 ## Proposed syntax
 
-```cpp
+```text
 ...
 ```
 ````

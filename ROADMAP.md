@@ -224,7 +224,7 @@ Example:
 
 ```cpp
 law identity<T>(T x)
-    proves id(x) == x;
+    proves (id(x) == x);
 ```
 
 Exit criterion:
@@ -243,8 +243,7 @@ Initial target:
 Vector<T, n>
 Fin<n>
 
-type Percentage =
-    int where self >= 0 && self <= 100;
+type Percentage = int where self >= 0 && self <= 100;
 ```
 
 Required:
@@ -297,7 +296,7 @@ Example:
 
 ```cpp
 proof add_zero(unsigned x)
-    proves(add(x, 0u) == x)
+    proves (add(x, 0u) == x)
 {
     induction x;
 }

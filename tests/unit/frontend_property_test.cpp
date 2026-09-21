@@ -48,16 +48,16 @@ void exercise(const std::string& input) {
 }
 
 const std::vector<std::string> seeds{
-    "law l(unsigned x) expects(x == 1u) ensures(x == 1u);",
+    "law l(unsigned x) expects(x == 1u) proves (x == 1u);",
     "proof p(unsigned x) proves(l(x)) { assume h : x == 1u; rewrite h; refl; }",
     "proof q() proves(l(1u)) { apply p(1u); exact p(1u); }",
     "verified unsigned f(unsigned x) ensures(result == x) { unsigned y = x; return y; }",
-    "verified pure unsigned f() ensures(result == 0u) {return 0u;}law l() ensures(f() == 0u);",
-    "namespace N { pure unsigned f(unsigned x) {return x;} law l() ensures(f(0u) == 0u); }",
+    "verified pure unsigned f() ensures(result == 0u) {return 0u;}law l() proves (f() == 0u);",
+    "namespace N { pure unsigned f(unsigned x) {return x;} law l() proves (f(0u) == 0u); }",
     "struct law {}; law f(); int proof = 1; int verified = 2; int pure = 3;",
-    "const char* s = R\"tag(law false() ensures(0 == 1); proof p() { })tag\";",
-    "// law false() ensures(0 == 1);\n/* proof p() proves(q()) {refl;} */",
-    "# 19 \"header.hpp\"\n  law l()\n ensures(0u == 0u);",
+    "const char* s = R\"tag(law false() proves (0 == 1); proof p() { })tag\";",
+    "// law false() proves (0 == 1);\n/* proof p() proves(q()) {refl;} */",
+    "# 19 \"header.hpp\"\n  law l()\n proves (0u == 0u);",
     "#line 4294967295 \"same.cpp\"\r\nlaw l() ensures(0u == 0u);\r\n",
 };
 } // namespace
@@ -98,7 +98,7 @@ CPPL_TEST(long_tokens_and_deep_or_incomplete_source_do_not_crash) {
     const std::string name(32768, 'x');
     exercise("law " + name + "() ensures(0u == 0u);");
     exercise("proof " + name + "() proves(l()) { refl; }");
-    exercise("law l() ensures(" + std::string(2048, '(') + "0u == 0u" + std::string(2048, ')') + ");");
+    exercise("law l() proves (" + std::string(2048, '(') + "0u == 0u" + std::string(2048, ')') + ");");
     exercise("proof p() proves(l()) { exact q(" + std::string(2048, '('));
     std::string repeated;
     for (unsigned i = 0; i < 300; ++i)

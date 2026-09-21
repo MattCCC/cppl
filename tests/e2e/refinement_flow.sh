@@ -468,7 +468,7 @@ CPP
 
 # An indexed refinement's application is not resolved by the bridge yet.
 refuse indexed_refinement 'requires template arguments|unresolved' <<'CPP'
-type Index(n) = unsigned where(self < n);
+type Index(unsigned n) = unsigned where(self < n);
 verified unsigned f(Index(10) i) ensures(result < 10u) { return i; }
 CPP
 

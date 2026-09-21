@@ -21,11 +21,11 @@ fi
 
 # A deliberately misformatted copy must be rejected...
 cat > "$run/misformatted.cpp" <<'EOF'
-law bounded(unsigned x) expects(x < 10u) ensures(x + 1u <= 10u);
-verified int f(int x) ensures(result >= 0) {
+law bounded(unsigned x) expects (x < 10u) proves (x + 1u <= 10u);
+verified int f(int x) ensures (result >= 0) {
     return x;
 }
-type NonNegative = int where(self >= 0);
+type NonNegative = int where (self >= 0);
 EOF
 
 if "$CPPL_FORMAT" --check "$run/misformatted.cpp"; then
@@ -41,7 +41,7 @@ if ! "$CPPL_FORMAT" --check "$run/misformatted.cpp"; then
 fi
 
 # The refinement's inline `where` clause must survive untouched.
-if ! grep -Fq 'type NonNegative = int where(self >= 0);' "$run/misformatted.cpp"; then
+if ! grep -Fq 'type NonNegative = int where (self >= 0);' "$run/misformatted.cpp"; then
     echo "expected the refinement 'where' clause to remain inline" >&2
     exit 1
 fi

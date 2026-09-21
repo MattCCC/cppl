@@ -19,26 +19,26 @@ reject() {
 }
 
 cat > "$run/namespaces.cpp" <<'CPP'
-namespace A { law same() ensures(0u == 0u); } namespace B { law same() ensures(0u == 1u); }
+namespace A { law same() proves (0u == 0u); } namespace B { law same() proves (0u == 1u); }
 int main() { return 0; }
 CPP
 reject namespaces
 
 cat > "$run/overloads.cpp" <<'CPP'
-law same(unsigned x) ensures(x == x); law same(int x) ensures(0u == 1u);
+law same(unsigned x) proves (x == x); law same(int x) proves (0u == 1u);
 int main() { return 0; }
 CPP
 reject overloads
 
 cat > "$run/ordinary.cpp" <<'CPP'
-bool same(unsigned) { return 0u == 0u; } law same(int x) ensures(0u == 1u);
+bool same(unsigned) { return 0u == 0u; } law same(int x) proves (0u == 1u);
 int main() { return 0; }
 CPP
 reject ordinary
 
 cat > "$run/macros.cpp" <<'CPP'
-#define FIRST namespace A { law same() ensures(0u == 0u); }
-#define SECOND namespace B { law same() ensures(0u == 1u); }
+#define FIRST namespace A { law same() proves (0u == 0u); }
+#define SECOND namespace B { law same() proves (0u == 1u); }
 FIRST SECOND
 int main() { return 0; }
 CPP
@@ -55,8 +55,8 @@ reject remapped
 
 # Valid declarations with the same displayed positions stay distinct too.
 cat > "$run/valid.cpp" <<'CPP'
-namespace A { law same() ensures(0u == 0u); } namespace B { law same() ensures(1u == 1u); }
-law same(unsigned x) ensures(x == x); law same(int x) ensures(x == x);
+namespace A { law same() proves (0u == 0u); } namespace B { law same() proves (1u == 1u); }
+law same(unsigned x) proves (x == x); law same(int x) proves (x == x);
 #line 20 "same.cpp"
 verified unsigned a() ensures(result == 7u) { return 7u; }
 #line 20 "same.cpp"
@@ -65,7 +65,7 @@ verified unsigned b() ensures(result == 9u) { return 9u; }
 pure unsigned c() { return 11u; }
 #line 30 "same.cpp"
 pure unsigned d() { return 13u; }
-law distinct() ensures(c() + d() == 24u);
+law distinct() proves (c() + d() == 24u);
 int main() { return a() == 7u && b() == 9u && c() == 11u && d() == 13u ? 0 : 1; }
 CPP
 for standard in c++17 c++20 c++23; do

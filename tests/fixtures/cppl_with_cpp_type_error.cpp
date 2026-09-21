@@ -12,7 +12,7 @@ pure int identity(int x) {
 }
 
 law identity_returns_input(int x)
-    ensures(identity(x) == x);
+    proves (identity(x) == x);
 
 int main() {
     int x = "not an int"; // genuine C++ type error, unrelated to the law above

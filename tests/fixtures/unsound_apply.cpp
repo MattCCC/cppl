@@ -13,19 +13,19 @@ pure unsigned add_one(unsigned x) {
 }
 
 law keep_returns_input(unsigned x)
-    ensures(keep(x) == x);
+    proves (keep(x) == x);
 
 proof keep_returns_input_holds(unsigned x)
-    proves(keep_returns_input(x))
+    proves (keep_returns_input(x))
 {
     refl;
 }
 
 law add_one_changes_nothing(unsigned x)
-    ensures(add_one(x) == x);
+    proves (add_one(x) == x);
 
 proof add_one_changes_nothing_by_apply(unsigned x)
-    proves(add_one_changes_nothing(x))
+    proves (add_one_changes_nothing(x))
 {
     apply keep_returns_input_holds;
 }

@@ -3,11 +3,11 @@
 // invariants and that the condition failed. Partial correctness only.
 
 verified unsigned count_up(unsigned n)
-    ensures(result == n)
+    ensures (result == n)
 {
     unsigned i = 0u;
     while (i < n)
-        invariant(i <= n)
+        invariant (i <= n)
     {
         i = i + 1u;
     }
@@ -15,12 +15,11 @@ verified unsigned count_up(unsigned n)
 }
 
 verified unsigned count_for(unsigned n)
-    ensures(result == n)
+    ensures (result == n)
 {
     unsigned last = 0u;
     for (unsigned i = 0u; i < n; ++i)
-        invariant(i <= n)
-        invariant(last == i)
+        invariant ((i <= n) && (last == i))
     {
         last += 1u;
     }
@@ -29,13 +28,13 @@ verified unsigned count_for(unsigned n)
 
 // Two locals move together; the invariant relates them.
 verified unsigned double_count(unsigned n)
-    expects(n <= 1000u)
-    ensures(result == 2u * n)
+    expects (n <= 1000u)
+    ensures (result == 2u * n)
 {
     unsigned i = 0u;
     unsigned total = 0u;
     while (i != n)
-        invariant(total == 2u * i)
+        invariant (total == 2u * i)
     {
         i++;
         total += 2u;
@@ -45,12 +44,12 @@ verified unsigned double_count(unsigned n)
 
 // A local the loop never writes keeps its value past the loop.
 verified unsigned untouched(unsigned n, unsigned k)
-    ensures(result == k)
+    ensures (result == k)
 {
     unsigned kept = k;
     unsigned i = 0u;
     while (i < n)
-        invariant(i <= n)
+        invariant (i <= n)
     {
         ++i;
     }
@@ -59,11 +58,11 @@ verified unsigned untouched(unsigned n, unsigned k)
 
 // Counting down to zero from a precondition.
 verified unsigned drain(unsigned n)
-    ensures(result == 0u)
+    ensures (result == 0u)
 {
     unsigned left = n;
     while (left > 0u)
-        invariant(left <= n)
+        invariant (left <= n)
     {
         left -= 1u;
     }
@@ -72,11 +71,11 @@ verified unsigned drain(unsigned n)
 
 // A return inside the loop, and a break out of it.
 verified unsigned find_limit(unsigned n, unsigned limit)
-    ensures(result <= limit)
+    ensures (result <= limit)
 {
     unsigned i = 0u;
     while (i < n)
-        invariant(i <= n)
+        invariant (i <= n)
     {
         if (i == limit)
             return i;
@@ -91,12 +90,11 @@ verified unsigned find_limit(unsigned n, unsigned limit)
 
 // `continue` ends the iteration early; the invariant must still hold there.
 verified unsigned skip_some(unsigned n)
-    ensures(result <= n)
+    ensures (result <= n)
 {
     unsigned seen = 0u;
     for (unsigned i = 0u; i < n; ++i)
-        invariant(seen <= i)
-        invariant(i <= n)
+        invariant ((seen <= i) && (i <= n))
     {
         if (i == 3u)
             continue;
@@ -107,16 +105,14 @@ verified unsigned skip_some(unsigned n)
 
 // Nested loops, each with its own invariant.
 verified unsigned grid(unsigned rows, unsigned columns)
-    ensures(result == rows * columns)
+    ensures (result == rows * columns)
 {
     unsigned total = 0u;
     for (unsigned r = 0u; r < rows; ++r)
-        invariant(r <= rows)
-        invariant(total == r * columns)
+        invariant ((r <= rows) && (total == r * columns))
     {
         for (unsigned c = 0u; c < columns; ++c)
-            invariant(c <= columns)
-            invariant(total == r * columns + c)
+            invariant ((c <= columns) && (total == r * columns + c))
         {
             ++total;
         }
@@ -125,7 +121,7 @@ verified unsigned grid(unsigned rows, unsigned columns)
 }
 
 verified unsigned clamp(unsigned x)
-    ensures(result <= 10u)
+    ensures (result <= 10u)
 {
     if (x <= 10u)
         return x;
@@ -135,18 +131,18 @@ verified unsigned clamp(unsigned x)
 // Verified calls inside a loop: each call's precondition is proven where the
 // loop makes it, under the invariant and the condition.
 verified unsigned bounded_step(unsigned x)
-    expects(x < 10u)
-    ensures(result == x + 1u)
+    expects (x < 10u)
+    ensures (result == x + 1u)
 {
     return x + 1u;
 }
 
 verified unsigned walk_to_ten()
-    ensures(result == 10u)
+    ensures (result == 10u)
 {
     unsigned i = 0u;
     while (i < 10u)
-        invariant(i <= 10u)
+        invariant (i <= 10u)
     {
         i = bounded_step(i);
     }
@@ -156,7 +152,7 @@ verified unsigned walk_to_ten()
 // A loop function called from another verified function: the caller's
 // contract is partial as well.
 verified unsigned count_twice(unsigned n)
-    ensures(result == n)
+    ensures (result == n)
 {
     unsigned once = count_up(n);
     return clamp(0u) * 0u + once;
@@ -165,13 +161,12 @@ verified unsigned count_twice(unsigned n)
 // Several preconditions conjoin: the body supposes each of them, and a caller
 // proves each of them where it makes the call.
 verified unsigned count_from(unsigned start, unsigned n)
-    expects(start == 0u)
-    expects(n == 3u)
-    ensures(result == 3u)
+    expects ((start == 0u) && (n == 3u))
+    ensures (result == 3u)
 {
     unsigned i = start;
     while (i < n)
-        invariant(i <= n)
+        invariant (i <= n)
     {
         i = i + 1u;
     }
@@ -179,7 +174,7 @@ verified unsigned count_from(unsigned start, unsigned n)
 }
 
 verified unsigned count_three()
-    ensures(result == 3u)
+    ensures (result == 3u)
 {
     return count_from(0u, 3u);
 }

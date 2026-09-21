@@ -29,8 +29,8 @@ inline constexpr std::string_view proof_invalid_statement = "cppl.proof.invalid-
 inline constexpr std::string_view proof_malformed_statement = "cppl.proof.malformed-statement";
 
 // Law errors
-inline constexpr std::string_view law_multiple_ensures = "cppl.law.multiple-ensures";
-inline constexpr std::string_view law_missing_ensures_clause = "cppl.law.missing-ensures";
+inline constexpr std::string_view law_multiple_proves = "cppl.law.multiple-proves";
+inline constexpr std::string_view law_missing_proves_clause = "cppl.law.missing-proves";
 inline constexpr std::string_view law_invalid_clause_order = "cppl.law.invalid-clause-order";
 
 // Refinement errors

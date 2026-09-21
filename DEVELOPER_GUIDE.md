@@ -1,1807 +1,1175 @@
-# C++L Developer Guide
+# Writing C++L
 
-C++L is **C++ with Laws**.
+C++L adds checked contracts, Laws, proofs and refinements to ordinary C++.
+**Functions ensure. Laws prove.** Runtime bodies remain C++; specifications and
+proofs are checked before erasure and native compilation.
 
-It is a source-compatible superset of C++ that lets developers express formal intent and prove that implementations satisfy it.
+[SPEC.md](SPEC.md) defines meaning and [the grammar](docs/GRAMMAR.md) defines
+syntax. This guide uses their canonical spelling. [STATUS.md](STATUS.md) records
+verification coverage; a compiler that cannot check a construct must reject it,
+not accept its proposition as an assumption. Verification limitations do not
+create alternate syntax.
 
-The basic workflow is:
+## 1. What runs and what erases
 
-```text
-write normal C++
-    ↓
-add a Law
-    ↓
-prove the implementation satisfies it
-    ↓
-C++L checks the proof
-    ↓
-proof-only information is erased
-    ↓
-ordinary C++ is compiled with Clang/LLVM
-```
+| Construct | Runtime behavior | Erasure |
+| --- | --- | --- |
+| Ordinary C++ body | Executes normally | Preserved |
+| `verified`, `pure` | Body executes | Modifiers/metadata removed |
+| `expects`, `ensures`, `proves` | None | Removed |
+| `law`, `proof` | None | Entire declaration removed |
+| `cases`, `decompose`, `induction` | None | Removed with proof |
+| `ghost` local | None | Removed |
+| Refinement predicate/indices | None | Removed |
+| Refinement base value | Ordinary C++ value | Base representation preserved |
+| `invariant`, `decreases` | None | Clauses removed; loop/body retained |
+| `trusted law` | None | Assumption retained in verification report, erased from executable |
+| `unsafe` | Body/operation executes | Marker removed, runtime operations retained |
+| Explicit runtime validation | Executes | Preserved |
 
-You do not need to rewrite an existing C++ project to start using C++L.
+A contract is not a hidden runtime assertion. A failed proof is a compilation
+error. Tests, solver output and AI suggestions cannot replace kernel-checked
+evidence. `TRUSTED`, `UNSAFE`, `RUNTIME-CHECKED` and `PROVEN` are distinct statuses.
 
-Verification is additive.
+## 2. Verified functions
 
----
+Put a contract after the complete C++ declarator. Each clause has parentheses,
+one space before `(`, and its own continuation line. The order is `expects`,
+`ensures`, `decreases`, with at most one of each.
 
-# 1. Start with normal C++
-
-Ordinary supported C++ remains valid C++L.
-
+<!-- cppl-example: verify -->
 ```cpp
-#include <algorithm>
-
-int clamp(int value, int low, int high) {
-    return std::min(std::max(value, low), high);
-}
-```
-
-You should be able to compile ordinary C++ through:
-
-```bash
-cppl clamp.cpp
-```
-
-without adding Laws, proofs, refined types, or other C++L constructs.
-
-C++L does not require every function to be formally verified.
-
----
-
-# 2. Add formal intent with a Law
-
-A `law` describes something that must be true.
-
-Conceptually:
-
-```cpp
-law clamp_bounds(int value, int low, int high)
-    ...
-```
-
-A Law is stronger than a unit test.
-
-A test checks selected inputs.
-
-A Law expresses a proposition that must hold for all values covered by its assumptions.
-
-For example:
-
-```text
-for every value, low, and high:
-
-if low <= high
-
-then clamp(value, low, high)
-must return a value between low and high
-```
-
-Conceptually:
-
-```cpp
-law clamp_bounds(int value, int low, int high)
-    expects low <= high
-    ensures result >= low && result <= high;
-```
-
-The exact surface syntax is defined by `SPEC.md`.
-
----
-
-# 3. Laws are not tests
-
-This:
-
-```cpp
-assert(clamp(5, 0, 10) == 5);
-assert(clamp(-4, 0, 10) == 0);
-assert(clamp(20, 0, 10) == 10);
-```
-
-checks three examples.
-
-A Law can express the general property:
-
-```text
-∀ value low high,
-    low <= high
-    →
-    low <= clamp(value, low, high) <= high
-```
-
-That is the difference between:
-
-```text
-examples
-```
-
-and:
-
-```text
-formal intent
-```
-
-Tests still matter.
-
-They are not proofs.
-
----
-
-# 4. `law`
-
-Use `law` to declare a proposition that an implementation is expected to satisfy.
-
-Example:
-
-```cpp
-law absolute_nonnegative(int x)
-    ensures abs(x) >= 0;
-```
-
-A Law may describe:
-
-- return-value constraints
-- arithmetic invariants
-- state transitions
-- ownership invariants
-- parser invariants
-- conservation rules
-- impossible states
-- relationships between inputs and outputs
-
-Example:
-
-```cpp
-law withdrawal_preserves_balance(
-    int old_balance,
-    int amount
-)
-    expects amount >= 0
-    expects amount <= old_balance
-    ensures result == old_balance - amount;
-```
-
-A Law is part of the specification.
-
-Do not weaken it merely because the current implementation cannot prove it.
-
----
-
-# 5. Preconditions and postconditions
-
-C++L can express facts that must hold before and after an operation.
-
-Conceptually:
-
-```cpp
-int divide(int numerator, int denominator)
-    expects denominator != 0
-    ensures result == numerator / denominator;
-```
-
-`expects` describes what must be true before execution.
-
-`ensures` describes what must be true after successful execution.
-
-This is conceptually related to:
-
-```text
-{ P } program { Q }
-```
-
-from Hoare logic.
-
-Where:
-
-```text
-P = precondition
-Q = postcondition
-```
-
-Do not use ordinary C++ `requires` as a C++L contract keyword.
-
-`requires` already has C++ meaning.
-
----
-
-# 6. `proof`
-
-A `proof` provides machine-checkable evidence that a proposition is true.
-
-Conceptually:
-
-```cpp
-proof clamp_bounds_proof(...)
+verified int identity(int x)
+    ensures (result == x)
 {
-    ...
-}
-```
-
-A proof is not:
-
-- a comment
-- a test
-- an assertion
-- an AI explanation
-- a solver success flag
-
-The proof must ultimately be accepted by the C++L proof kernel.
-
-Conceptually:
-
-```text
-Law
-    ↓
-proof evidence
-    ↓
-kernel
-    ├── valid   → PROVEN
-    └── invalid → rejected
-```
-
----
-
-# 7. Simple equality proof
-
-Proofs are about ordinary C++ functions and types. Suppose we have:
-
-```cpp
-pure unsigned identity(unsigned x) {
     return x;
 }
 ```
 
-We can state:
+`expects` states the caller's precondition; `ensures` states the normal-return
+postcondition. An expects-only function still has to satisfy its body safety
+obligations. Here unsigned arithmetic avoids signed overflow:
 
+<!-- cppl-example: verify -->
 ```cpp
-law identity_returns_input(unsigned x)
-    ensures(identity(x) == x);
+verified unsigned next(unsigned x)
+    expects (x < 100u)
+{
+    return x + 1u;
+}
+
+verified unsigned withdraw(unsigned balance, unsigned amount)
+    expects (amount <= balance)
+    ensures (result == balance - amount)
+{
+    return balance - amount;
+}
 ```
 
-The proof is immediate because the expression reduces definitionally:
+A contract applies to every normal return, including early returns:
+
+<!-- cppl-example: verify -->
+```cpp
+verified unsigned bounded(unsigned x)
+    ensures (result <= 10u)
+{
+    if (x > 10u) {
+        return 10u;
+    }
+    return x;
+}
+```
+
+A private helper can carry its contract on the definition:
+
+<!-- cppl-example: verify -->
+```cpp
+static verified int normalize(int x)
+    expects (x >= 0)
+    ensures (result >= 0)
+{
+    return x;
+}
+```
+
+Ordinary C++ prefix specifiers come first, followed by `verified pure`, then the
+return type. `inline verified pure`, `constexpr verified pure`,
+`consteval verified pure`, and `virtual verified` follow that rule wherever
+C++ permits the corresponding declaration. Attributes, trailing return types,
+`const`, `noexcept`, reference qualifiers, `override` and `final` retain their
+C++ placement. `ghost`, `trusted` and `unsafe` are separate constructs, not
+interchangeable flags on a verified function.
+
+## 3. `result`, `old` and normal post-state
+
+`result` denotes the returned value only in a non-void function postcondition.
+A Law has no result. A void function describes state changes instead:
+
+<!-- cppl-example: verify -->
+```cpp
+verified void clear(unsigned& value)
+    ensures (value == 0u)
+{
+    value = 0u;
+}
+```
+
+`old(expression)` denotes the value at function entry. It is a specification
+snapshot, not a runtime copy:
 
 ```cpp
-proof identity_returns_input_holds(unsigned x)
-    proves(identity_returns_input(x))
+verified void increment(unsigned& value)
+    expects (value < 100u)
+    ensures (value == old(value) + 1u)
 {
+    ++value;
+}
+```
+
+Snapshot syntax is legal only in function postconditions. The expression must
+be well-defined in the entry state; it cannot use `result` or another `old`.
+Normal parameter/member observations in the postcondition describe the normal
+post-state. Preconditions refer to entry state. An exceptional exit is not a
+normal return and does not acquire an invented exception guarantee.
+
+| Identifier | Special meaning and scope | Outside that scope |
+| --- | --- | --- |
+| `result` | Returned value in non-void `ensures` | Ordinary C++ name |
+| `old(expression)` | Entry value in function `ensures` | Ordinary C++ call/name |
+| `self` | Candidate value in refinement `where` | Ordinary C++ name |
+
+Members use C++ `this` and ordinary member lookup; `self` is not a second spelling
+for the implicit object. Ordinary C++ remains valid:
+
+<!-- cppl-example: verify -->
+```cpp
+int result = 0;
+int self = 1;
+int old(int value) {
+    return value;
+}
+```
+
+## 4. Laws
+
+A Law is a compile-time theorem. Parameters are universally quantified, an
+optional `expects` is its premise, and `proves` is its conclusion.
+
+<!-- cppl-example: verify -->
+```cpp
+law addition_identity(unsigned x)
+    proves (x + 0u == x);
+
+law subtraction_cancels(unsigned balance, unsigned amount)
+    expects (amount <= balance)
+    proves ((balance - amount) + amount == balance);
+```
+
+The semicolon requests automatic proof. If automation cannot produce evidence
+accepted by the kernel, compilation fails. A declaration does not create an
+axiom. Write a proof body when explicit evidence is useful:
+
+<!-- cppl-example: verify -->
+```cpp
+law equality_is_reflexive(int x)
+    proves (Eq<int>(x, x))
+{
+    refl;
+}
+
+law equality_reused(int x)
+    proves (Eq<int>(x, x))
+{
+    apply equality_is_reflexive(x);
+}
+```
+
+A Law can express a property without calling a runtime implementation. A Law
+mentioning a function needs that function's declaration and a checked formal
+model. Do not write a function name into a theorem as if spelling alone supplied
+its semantics.
+
+Common mistake (rejected syntax):
+
+```cpp
+law wrong(int x)
+    ensures (x == x);
+```
+
+Use `proves`, not `ensures`. Merely changing the word cannot repair a Law that
+also refers to an undefined return-value `result`.
+
+## 5. Explicit proofs and logical expressions
+
+A named `proof` constructs reusable evidence without a runtime function:
+
+<!-- cppl-example: verify -->
+```cpp
+proof same(int x)
+    proves (Eq<int>(x, x))
+{
+    refl;
+}
+
+proof use_same(int x)
+    proves (Eq<int>(x, x))
+{
+    exact same(x);
+}
+```
+
+| Statement | Meaning |
+| --- | --- |
+| `refl;` | Close a definitionally reflexive equality |
+| `exact same(x);` | Close the goal with existing evidence |
+| `apply same(x);` | Apply evidence; discharge its premises |
+| `assume h : x == 0u;` | Name a matching context-supplied premise |
+| `rewrite h;` | Rewrite the goal left-to-right using checked equality |
+
+Commands are statements, not calls such as `exact(same);`. An evidence reference
+may itself have arguments. `assume` never asserts an arbitrary proposition:
+
+<!-- cppl-example: verify -->
+```cpp
+law given_zero(unsigned x)
+    expects (x == 0u)
+    proves (x + 0u == 0u)
+{
+    assume h : x == 0u;
+    rewrite h;
     refl;
 }
 ```
 
-Conceptually:
+`h` is available because the Law supplies the premise. Without that premise,
+this `assume` is rejected. Scope and matching are checked, including nested arms.
 
-```text
-identity(x)
-    ↓ normalize
-x
+Use ordinary Boolean predicates for modeled C++ conditions, and `Eq<T>(a, b)`
+for formal equality. Definitional equality comes from specified computation;
+propositional equality requires evidence. `&&`, `||`, `->`, and `<->` compose
+formal propositions in specification contexts.
+
+<!-- cppl-example: verify -->
+```cpp
+law every_value_equals_itself()
+    proves (forall (unsigned x) { Eq<unsigned>(x, x) });
 ```
 
-Therefore:
-
-```text
-identity(x) = x
-```
-
-No new data type is needed. C++L reasons about `unsigned` as C++ defines it.
-
----
-
-# 8. `pure`
-
-`pure` describes computation without observable side effects.
-
-Conceptually:
+An existential proposition uses the same binder/block shape:
 
 ```cpp
-pure int square(int x) {
-    return x * x;
+law a_zero_exists()
+    proves (exists (unsigned x) { x == 0u });
+```
+
+A proof of existence needs witness evidence; absence of a counterexample is
+insufficient. Quantifiers produce no runtime loops. C++ pointer member access
+inside a formal proposition is parenthesized so `->` is not confused with formal
+implication.
+
+The mathematical domain names are `@N`, `@Z`, `@Seq<T>`, `@Set<T>` and
+`@Map<K, V>`. They are proof-only and do not rename C++ machine integers:
+
+```cpp
+law mathematical_identity(@Z x)
+    proves (Eq<@Z>(x, x));
+
+law sequence_identity(@Seq<int> xs)
+    proves (Eq<@Seq<int>>(xs, xs));
+
+law set_identity(@Set<int> xs)
+    proves (Eq<@Set<int>>(xs, xs));
+
+law map_identity(@Map<int, int> xs)
+    proves (Eq<@Map<int, int>>(xs, xs));
+```
+
+There is no implicit conversion from an unbounded mathematical result to a
+machine result. Signed overflow and invalid memory operations remain proof
+obligations, even when an idealized mathematical identity would hold.
+
+## 6. Refinement types
+
+A refinement restricts an existing C++ type. `self` is the value being refined:
+
+<!-- cppl-example: verify -->
+```cpp
+type NonNegative = int where (self >= 0);
+type Percentage = NonNegative where (self <= 100);
+
+verified Percentage half()
+    ensures (result == 50)
+{
+    Percentage value = 50;
+    return value;
+}
+
+verified Percentage unchanged(Percentage value)
+    ensures (result == value)
+{
+    return value;
 }
 ```
 
-A pure function should not unexpectedly:
+`Percentage` has verification-level identity and the runtime representation of
+`int`. Erasure produces the equivalent of `using Percentage = int;`, not a
+wrapper, tag, allocation or hidden check. Nested refinements require every
+predicate inherited from the base.
 
-- mutate external state
-- perform I/O
-- modify globals
-- depend on hidden mutable state
+Every introduction needs evidence: local initialization, call argument, return,
+assignment, member/element write and verified call effect. Branch facts can
+establish the predicate:
 
-Purity is useful because mathematical reasoning becomes much simpler when:
-
-```text
-same input
-→
-same result
-```
-
-But `pure` must have precise semantics.
-
-It is not merely documentation.
-
----
-
-# 9. `verified`
-
-`verified` identifies code or interfaces whose required proof obligations have been discharged according to C++L's verification rules.
-
-Conceptually:
-
+<!-- cppl-example: verify -->
 ```cpp
-verified int bounded_add(int a, int b)
-    ...
-```
+type Positive = int where (self > 0);
 
-Do not confuse:
-
-```text
-compiled
-```
-
-with:
-
-```text
-verified
-```
-
-or:
-
-```text
-tested
-```
-
-with:
-
-```text
-verified
-```
-
-Verification status must remain explicit.
-
----
-
-# 10. Verification statuses
-
-C++L distinguishes different assurance levels.
-
-Typical statuses include:
-
-```text
-PROVEN
-TRUSTED
-RUNTIME-CHECKED
-UNSAFE
-UNVERIFIED
-UNRESOLVED
-```
-
-These are intentionally different.
-
-For example:
-
-```text
-PROVEN
-```
-
-means the proposition has machine-checkable proof evidence accepted according to the current formal system.
-
-```text
-TRUSTED
-```
-
-means some assumption is being accepted rather than proven.
-
-```text
-RUNTIME-CHECKED
-```
-
-means a property is established by validating a concrete runtime value.
-
-```text
-UNVERIFIED
-```
-
-means ordinary code may still compile, but C++L is not claiming the property has been proven.
-
----
-
-# 11. Existing C++ can remain unverified
-
-Suppose you already have:
-
-```cpp
-int legacy_calculate(int x) {
-    return some_old_library(x);
-}
-```
-
-You should not have to rewrite it immediately.
-
-C++L can treat it as ordinary C++:
-
-```text
-compiles
-but
-not formally verified
-```
-
-Then you can gradually move important parts into verified regions.
-
-This allows migration like:
-
-```text
-Day 1
-100% ordinary C++
-
-Later
-90% ordinary C++
-10% verified
-
-Later
-50% ordinary C++
-50% verified
-```
-
-There is no requirement to convert an entire project at once.
-
----
-
-# 12. Refined types
-
-A refinement type restricts which values belong to a type.
-
-Example:
-
-```cpp
-type Percentage =
-    int where self >= 0 && self <= 100;
-```
-
-Conceptually this means:
-
-```text
-Percentage =
-{ x : int | 0 <= x <= 100 }
-```
-
-A function using it:
-
-```cpp
-Percentage discount();
-```
-
-can rely on:
-
-```text
-0 <= result <= 100
-```
-
-provided construction of `Percentage` is properly verified or runtime-validated.
-
-The syntax the compiler accepts today parenthesizes the predicate, and an indexed
-refinement names its indices:
-
-```cpp
-type Percentage = int where(self >= 0 && self <= 100);
-type Index(unsigned n) = unsigned where(self < n);
-```
-
-At runtime a `Percentage` *is* an `int`. The declaration lowers to `using
-Percentage = int;` and nothing else: no wrapper, no check, no layout change. What
-the refinement adds is compile time only:
-
-```cpp
-verified int clamped(int x) ensures(result >= 0) {
-    if (x >= 0) {
-        Percentage p = x;   // the branch proves 0 <= x; 0 <= x <= 100 is owed here
-        return p;
+verified Positive positive_or_one(int x)
+{
+    if (x > 0) {
+        Positive value = x;
+        return value;
     }
-    return 0;
+    return 1;
 }
 ```
 
-Every value that enters the type owes its predicate where it enters, and the fact
-that a branch established it is enough. Going the other way is free: a
-`Percentage` is usable wherever an `int` is, and a refined parameter's predicate is
-already known inside the body, so there is no need to repeat it as an `expects`
-clause.
+A refined return supplies its membership obligation without a duplicate
+`ensures`. A stronger refinement may be used where a weaker one is required only
+when implication is proven. An arbitrary base value does not acquire a refinement
+by conversion or spelling.
 
-A refinement of a refinement keeps both predicates, so a value entering the inner
-one owes all of them.
-
-Every flow into the type owes the predicate, not only a declaration. An assignment
-carries the local's declared type, so this is caught:
+Rejected introduction:
 
 ```cpp
-Percentage p = 0;
-p = x;              // owes 0 <= x <= 100 here, exactly as the declaration did
-```
+type Positive = int where (self > 0);
 
-and so is passing `x` where a verified function takes a `Percentage`.
-
-Crossing between two refinements of one base type is the implication between their
-predicates. Going from the stricter to the looser costs nothing, because the value
-already carries what the looser one asks:
-
-```cpp
-type NonNegative = int where(self >= 0);
-type Percentage = NonNegative where(self <= 100);
-
-verified int widened(Percentage p) ensures(result >= 0) {
-    NonNegative n = p;   // p >= 0 is part of what Percentage already gives
-    return n;
+verified Positive unproved(int x)
+{
+    Positive value = x;
+    return value;
 }
 ```
 
-The other direction owes the part that does not follow - here `p <= 100`. No runtime
-check is inserted either way; there is nothing to check, since both types are `int`.
+The verifier needs `x > 0`; no such fact is available.
 
-One consequence of that erasure is worth knowing: two overloads distinguished only
-by which refinement they name are the same C++ function, and the compiler says so at
-the declaration.
-
----
-
-# 13. Runtime validation
-
-Some values cannot be known until execution.
-
-For example:
+Writes create a new logical value version. Possible alias mutation invalidates
+facts about the old version. A const reference does not make the aliased object
+globally immutable:
 
 ```cpp
-int raw = read_from_network();
+type Positive = int where (self > 0);
+
+verified void set_one(Positive& value)
+    ensures (value == 1)
+{
+    value = 1;
+}
 ```
 
-You cannot prove at compile time which value the network will send.
-
-Instead:
-
-```text
-network value
-    ↓
-runtime validation
-    ↓
-Percentage
-```
-
-Conceptually:
+A later `value = 0` would fail the refinement crossing. Calls can restore a fact
+only through a checked postcondition. Repeated actual aliases share a post-state.
+A refined member likewise uses the common storage rules:
 
 ```cpp
-auto percentage = validate<Percentage>(raw);
+type Positive = int where (self > 0);
+
+struct Counter {
+    Positive value;
+};
+
+verified int initial_count()
+    ensures (result == 1)
+{
+    Counter counter{1};
+    return counter.value;
+}
 ```
 
-If `raw` is `50`, validation succeeds.
+Indexed refinements declare typed indices with parentheses and apply them with
+angle brackets:
 
-If `raw` is `150`, validation fails.
+<!-- cppl-example: verify -->
+```cpp
+type Index(unsigned n) = unsigned where (self < n);
 
-The resulting value may then safely enter verified code.
-
-This is:
-
-```text
-RUNTIME-CHECKED
+verified Index<4u> first_index()
+{
+    return 0u;
+}
 ```
 
-not compile-time theorem proving.
+The index is in scope in the predicate; `self` is the base value. Index metadata
+has no runtime representation. A dependent application such as `Index<N>` follows
+ordinary C++ template substitution; the refined base declaration must be visible
+at instantiation. There is one declaration/application spelling, not a second
+C++ template system.
 
----
+A trusted proposition about a value does not silently validate external input.
+Only an explicit trusted boundary or a retained runtime validator can supply the
+corresponding entry evidence. Such trust remains in the report.
 
-# 14. Impossible states
+## 7. Pure functions
 
-C++L should encourage modeling invalid states so they cannot be constructed.
+`pure` requests checked referential transparency. Its body remains ordinary C++:
 
-For example, instead of:
+<!-- cppl-example: verify -->
+```cpp
+pure unsigned same_value(unsigned value) {
+    return value;
+}
+
+verified pure unsigned checked_value(unsigned value)
+    ensures (result == value)
+{
+    return value;
+}
+```
+
+The canonical combination is `verified pure`. A pure member uses explicit input
+and stable object state:
 
 ```cpp
-struct Payment {
-    bool succeeded;
-    bool failed;
+struct Number {
+    unsigned value;
+
+    pure unsigned get() const {
+        return value;
+    }
 };
 ```
 
-which permits:
-
-```text
-succeeded = true
-failed = true
-```
-
-prefer a C++ type like:
+Purity forbids observable mutation, I/O and calls whose effects are not admitted.
+For example, this is rejected when relied upon as pure:
 
 ```cpp
-using PaymentResult = std::variant<Receipt, Error>;
-```
+unsigned global_count = 0u;
 
-Now contradictory states are structurally impossible.
-
-`cases` is representation-independent: what states a value has comes from a
-decomposition provider for its resolved C++ type, and everything else — arm
-matching, binders, exhaustiveness, evidence, erasure — is shared. A scoped
-enumeration's states include an explicit residual arm (SPEC.md 20.5):
-
-```cpp
-enum class Flag : unsigned { set = 1u };
-proof flag_identity(Flag flag) proves(flag == flag) {
-    cases flag {
-        Flag::set => { assume selected : flag == Flag::set; rewrite selected; refl; }
-        unnamed(value) => { assume other : value != 1u; refl; }
-    }
+pure unsigned bump() {
+    return ++global_count;
 }
 ```
 
-`value` has type `unsigned`, and `other` names evidence supplied by the residual
-path. A failed written arm is an error even when automation could prove the
-enclosing proposition.
+`const` is an ordinary C++ qualifier; it is not by itself proof of purity or
+freedom from alias mutation. Purity also does not by itself prove termination.
 
-Tagged sums decompose the same way. A variant names its alternatives by index,
-so repeated and aliased alternative types stay distinct, and `valueless` is a
-real state that may never be omitted:
+## 8. Ghost locals
 
-```cpp
-proof settled(std::variant<unsigned, bool> v) proves(Eq<bool>(true, true)) {
-    cases v {
-        alternative<0>(number) => { refl; }
-        alternative<1>(flag) => { refl; }
-        valueless => { refl; }
-    }
-}
-```
+`ghost` prefixes a local declaration in a verification-enabled block. Its value
+exists only for verification. There are no ghost runtime parameters, members or
+globals in this grammar.
 
-An optional is `some(value)` / `none`, an expected is `value(payload)` /
-`error(reason)`, and a pointer is `null` / `non_null`. A pointer's `non_null`
-arm binds nothing: a non-null pointer does not establish that a live,
-initialized object exists, so nothing about lifetime, provenance or
-dereferenceability is stated.
-
-A product — a record, `std::pair`, `std::tuple`, `std::array` or a built-in
-array — has exactly one state, so it is not a case split. It uses its own
-keyword, and each binder is a logical projection onto the existing subobject
-rather than a copy or a structured binding:
+A snapshot can support an invariant:
 
 ```cpp
-struct Point { int x; int y; };
-proof coordinates(Point p) proves(Eq<bool>(true, true)) {
-    decompose p { components(x, y) => { refl; } }
-}
-```
-
-Nesting composes across providers in both directions: decomposing an arm binder
-selects a provider exactly as the outer subject did, with no pairwise handler.
-
-Standard types are recognized by semantic identity, never by spelling. A type of
-your own named `optional` is an ordinary record, and a standard type reached
-through an alias, a template parameter or a dependent name is still recognized.
-
-`cases` and `decompose` are proof statements: they appear in proof bodies, which
-contain no assignment or call, so no case fact can go stale. Decomposition over
-values that can change, and omission of impossible arms, are both still refused;
-ROADMAP.md sequences that work.
-
-### Adding a representation
-
-Implement one provider under `compiler/decomposition/` and register it, then add
-its semantic tests. A provider answers three questions for a resolved type:
-which cases exist, what condition holds in each, and which case a written label
-denotes. It supplies no evidence, no lowering, no diagnostics and no parsing —
-those already exist once, for every representation. If the representation
-reserves a label for a state with no C++ expression, add it to
-`decomposition/labels.hpp` beside the provider.
-
-Concretely, adding a representation is three things and no more:
-
-1. **A provider.** Implement `Provider`: `recognizes` a resolved `vir::Type`,
-   `decompose` a subject into a `SumDecomposition`, a `ProductDecomposition` or
-   `Unsupported{representation, reason}`, and `resolve_label` for written
-   labels. Never supply the residual discriminator — the engine derives it by
-   negating the others, so a provider cannot widen the residual state.
-2. **Correspondence.** Whatever Clang must resolve for the states to be right:
-   the canonical type identity after substitution, the component or alternative
-   list with its order and types, and access. Recognize standard types through
-   the specialized template declaration in the canonical `std` namespace, never
-   by spelling.
-3. **Tests, plus a TRUST.md 41.6 block.** The block states what the provider's
-   states are, how exhaustiveness is derived, and — most importantly — what is
-   **not** inferred. That block is the correspondence obligation; write it
-   honestly, since a provider that omits a state leaves it absorbed into the
-   residual branch rather than reported.
-
-Reuse before adding: a representation with a discriminator and per-state
-payloads is a tagged sum and should extend that shared shape, and one with a
-fixed component list is a product. Do not add a case engine, a parser, an
-exhaustiveness rule, an evidence form or a kernel rule for a representation —
-if a representation seems to need one, the design is wrong.
-
-Executable code keeps branching with ordinary C++, such as `std::visit`. A proof can split the value into its cases:
-
-```cpp
-using PaymentResult = std::variant<Receipt, Error>;
-
-proof settle_is_total(PaymentResult result)
-    proves(...)
+verified unsigned keep(unsigned x)
+    ensures (result == x)
 {
-    cases result {
-        alternative<0>(receipt) => {
-            ...
+    ghost unsigned original = x;
+    unsigned i = 0u;
+    while (i < 3u)
+        invariant (i <= 3u && x == original)
+        decreases (3u - i)
+    {
+        ++i;
+    }
+    return x;
+}
+```
+
+Ghost values may also support proof steps:
+
+```cpp
+proof ghost_bookkeeping(unsigned x)
+    proves (Eq<unsigned>(x, x))
+{
+    ghost unsigned snapshot = x;
+    refl;
+}
+```
+
+Their initializers must be specification-safe. Ghost bookkeeping cannot perform
+observable mutation or require runtime copies/destruction. Runtime values may be
+observed symbolically; proof-only values cannot flow back into runtime behavior.
+
+Rejected ghost leak:
+
+```cpp
+verified unsigned leaked(unsigned x)
+    ensures (result == x)
+{
+    ghost unsigned snapshot = x;
+    return snapshot;
+}
+```
+
+The return is runtime behavior and would depend on erased state. The same rule
+forbids ghost-dependent branches, addresses, I/O, object layout and FFI arguments.
+
+## 9. Cases and product decomposition
+
+`cases` is proof-only state splitting. It produces no runtime `switch`, `if` or
+`std::visit`. Every representation uses the same `Label(bindings) => { }` arms.
+Bindings are aliases or logical projections of the subject, never copied values.
+
+Scoped enums include every distinct named value and the unnamed residual:
+
+<!-- cppl-example: verify -->
+```cpp
+enum class Mode { idle, active };
+
+proof mode_identity(Mode mode)
+    proves (Eq<bool>(true, true))
+{
+    cases mode {
+        Mode::idle => {
+            refl;
         }
 
-        alternative<1>(error) => {
-            ...
+        Mode::active => {
+            refl;
+        }
+
+        unnamed(value) => {
+            refl;
+        }
+    }
+}
+```
+
+A scoped enum's underlying integer domain contains values beyond its enumerators.
+`unnamed` names that real residual state. It is not a wildcard. Adding a distinct
+enumerator must break a proof that omitted its named arm; a catch-all would hide
+that stale proof. `_` is not a C++L proof catch-all.
+
+Variant alternatives use indices, including when two alternatives share a type:
+
+<!-- cppl-example: verify -->
+```cpp
+#include <variant>
+
+proof variant_identity(std::variant<int, bool> value)
+    proves (Eq<bool>(true, true))
+{
+    cases value {
+        alternative<0>(number) => {
+            refl;
+        }
+
+        alternative<1>(flag) => {
+            refl;
         }
 
         valueless => {
-            ...
+            refl;
         }
     }
 }
 ```
 
-Each arm is a separate proof obligation. The binders `receipt` and `error` name the value each alternative holds. Alternatives are named by index rather than by type, so a variant with two alternatives of the same type still has two distinct cases. `cases` generates no runtime code.
+Optional payloads and nested decomposition use the same grammar:
 
-Cases follow C++ semantics, not just the declared names. A `std::variant` can become valueless when an exception interrupts an assignment, so `valueless` is a case too. It needs an arm unless the proof context shows it cannot occur. Likewise, an `enum class` value can match no enumerator, which is the `unnamed(value)` case.
-
-There is no catch-all `_` arm. A proof never silently covers a state it did not consider, and adding an enumerator later makes every proof that ignores it fail. See `SPEC.md` §20.
-
----
-
-# 15. Induction
-
-Some Laws describe infinitely many values.
-
-You do not prove them by testing infinitely many examples.
-
-You prove them symbolically.
-
-You do not need to define natural numbers to do this. Induction works on the C++ types you already have.
-
-For an `unsigned` value:
-
-```text
-1. prove the property for 0u
-2. assume the property for n, where n is below the type's maximum
-3. prove the property for n + 1u
-4. conclude the property for every unsigned value
-```
-
-The step never wraps past the maximum, so the principle matches runtime `unsigned` arithmetic.
-
-Given:
-
+<!-- cppl-example: verify -->
 ```cpp
-pure unsigned add(unsigned a, unsigned b)
-    decreases(a)
+#include <optional>
+
+proof nested_optional(std::optional<std::optional<bool>> value)
+    proves (Eq<bool>(true, true))
 {
-    return a == 0u ? b : add(a - 1u, b) + 1u;
+    cases value {
+        some(inner) => {
+            cases inner {
+                some(flag) => {
+                    refl;
+                }
+
+                none => {
+                    refl;
+                }
+            }
+        }
+
+        none => {
+            refl;
+        }
+    }
 }
 ```
 
-the proof is:
+C++23 `std::expected` has value and error alternatives:
 
 ```cpp
-proof add_zero(unsigned x)
-    proves(add(x, 0u) == x)
+#include <expected>
+
+proof expected_identity(std::expected<unsigned, int> value)
+    proves (Eq<bool>(true, true))
 {
-    induction x;
+    cases value {
+        value(payload) => {
+            refl;
+        }
+
+        error(reason) => {
+            refl;
+        }
+    }
 }
 ```
 
-The short form leaves each case to proof automation, whose evidence the kernel still checks.
+Pointer decomposition states only nullness:
 
-Cases can also be written out. Every arm uses the same `label(binders) => { ... }` form as `cases`:
+<!-- cppl-example: verify -->
+```cpp
+proof pointer_states(int* pointer)
+    proves (Eq<bool>(true, true))
+{
+    cases pointer {
+        null => {
+            refl;
+        }
+
+        non_null(address) => {
+            refl;
+        }
+    }
+}
+```
+
+It proves no lifetime, bounds, provenance, initialization, ownership or
+writability. Product decomposition uses the separate product operation and the
+same arm body/binder grammar:
+
+<!-- cppl-example: verify -->
+```cpp
+struct Point {
+    int x;
+    int y;
+};
+
+proof coordinates(Point point)
+    proves (Eq<bool>(true, true))
+{
+    decompose point {
+        components(x, y) => {
+            refl;
+        }
+    }
+}
+```
+
+Providers expose the complete state space. The verifier, not the provider, may
+prove an omitted state impossible under the context. For example:
 
 ```cpp
-proof add_zero(unsigned x)
-    proves(add(x, 0u) == x)
+law known_null(int* pointer)
+    expects (pointer == nullptr)
+    proves (Eq<bool>(true, true))
 {
-    induction x {
+    assume is_null : pointer == nullptr;
+    cases pointer {
+        null => {
+            refl;
+        }
+    }
+}
+```
+
+Omitting `non_null` requires checked evidence of contradiction between the entry
+premise and that state's discriminator. There is no heuristic omission. If the
+verifier cannot establish that contradiction, the omitted arm is an error.
+
+## 10. Induction
+
+`cases` splits possible states. `induction` additionally supplies an induction
+hypothesis for each recursive predecessor. `decreases` proves runtime termination;
+it is not an induction hypothesis.
+
+Unsigned machine induction uses `zero` and `successor(pred)`. The successor case
+includes the range premise preventing wraparound:
+
+```cpp
+#include <climits>
+
+proof unsigned_identity(unsigned n)
+    proves (Eq<unsigned>(n, n))
+{
+    induction n {
         zero => {
             refl;
         }
 
         successor(pred) => {
             assume below : pred < UINT_MAX;
-            assume ih    : add(pred, 0u) == pred;
-            ...
+            assume ih : Eq<unsigned>(pred, pred);
+            rewrite ih;
+            refl;
         }
     }
 }
 ```
 
-The binder `pred` names the predecessor. The induction hypothesis is not a binder: the principle already supplies it, and `assume` gives it a name. If the stated proposition does not match what the principle supplies, the proof is rejected. The same holds for structures with several recursive parts:
+`pred` binds the predecessor value; `assume ih : P;` names the hypothesis supplied
+by the principle. It cannot choose a stronger hypothesis. Recursive structures
+need a defined well-founded principle, not just a pointer to a node. Cyclic or
+dangling pointers do not supply induction.
+
+The short form asks automation to solve every case:
 
 ```cpp
-induction tree {
-    empty => {
-        ...
-    }
-
-    node(value, left, right) => {
-        assume left_ih  : P(left);
-        assume right_ih : P(right);
-        ...
-    }
-}
-```
-
-A pointer alone does not support induction, because a `Node*` may be cyclic, dangling, or shared. Induction over a linked structure such as this tree needs an explicit well-founded premise, such as a proven finite, acyclic shape. Without one it is rejected.
-
-`induction` is verifier machinery, not runtime branching. It generates no runtime code.
-
----
-
-# 16. Termination
-
-Proof-producing computation must terminate.
-
-Otherwise a language could accidentally permit something like:
-
-```cpp
-proof impossible() {
-    return impossible();
-}
-```
-
-and pretend that divergence produced evidence.
-
-C++L therefore tracks termination where logical consistency requires it.
-
-Recursive functions may need to demonstrate structural descent:
-
-```cpp
-pure unsigned gcd(unsigned a, unsigned b)
-    decreases(b)
+proof unsigned_identity_automatic(unsigned n)
+    proves (Eq<unsigned>(n, n))
 {
-    return b == 0u ? a : gcd(b, a % b);
+    induction n;
 }
 ```
 
-or another well-founded measure.
+Nested proof commands remain scoped to their arms; induction evidence and case
+facts cannot escape their binders. Both forms erase entirely.
 
----
+## 11. Invariants and termination
 
-# 17. Definitional equality
+An invariant holds before the first iteration and is preserved on every
+continuing iteration, including `continue`. Normal loop exit combines it with
+the failed condition; `break` retains only the facts on its own path.
 
-Some expressions are equal because computation reduces them to the same normal form.
-
-Example, with `add` from §15:
-
-```text
-add(0u, x)
-```
-
-reduces to:
-
-```text
-x
-```
-
-Therefore the equality may require no separate theorem.
-
-By contrast, `add(x, 0u) == x` does not reduce this way, because `add` recurses on its first argument. It needs induction (§15).
-
-This is **definitional equality**.
-
----
-
-# 18. Propositional equality
-
-Other equalities require explicit evidence.
-
-Conceptually:
-
-```text
-Proof<Eq<A, B>>
-```
-
-may be constructed using operations such as:
-
-```text
-reflexivity
-symmetry
-transitivity
-rewrite
-congruence
-transport
-```
-
-Definitional equality and propositional equality are not interchangeable.
-
----
-
-# 19. `ghost`
-
-Ghost data exists only for verification.
-
-Conceptually:
-
+<!-- cppl-example: verify -->
 ```cpp
-ghost int original_balance = balance;
-```
-
-It may help prove something like:
-
-```text
-new_balance == original_balance - amount
-```
-
-but must disappear before runtime code generation.
-
-Ghost information must not affect observable program behavior.
-
----
-
-# 20. Proof erasure
-
-Proofs and ghost state should normally have zero runtime cost.
-
-Conceptually:
-
-```cpp
-proof something(...) {
-    ...
-}
-
-ghost int x = ...;
-```
-
-becomes no runtime machine code after verification where the information is purely logical.
-
-The pipeline is:
-
-```text
-C++L
-    ↓
-verify
-    ↓
-erase proof-only information
-    ↓
-ordinary C++
-    ↓
-Clang / LLVM
-```
-
----
-
-# 21. No theorem runtime
-
-C++L does not require a theorem VM or proof runtime.
-
-You still get an ordinary native executable.
-
-There is no required:
-
-- garbage-collected proof heap
-- runtime theorem evaluator
-- theorem VM
-- special execution engine
-
-Proofs exist primarily during compilation.
-
----
-
-# 22. `unsafe`
-
-Some operations cannot currently be verified safely.
-
-They may need an explicit unsafe boundary.
-
-Conceptually:
-
-```cpp
-unsafe {
-    call_platform_assembly();
+verified unsigned count(unsigned n)
+    ensures (result == n)
+{
+    unsigned i = 0u;
+    while (i < n)
+        invariant (i <= n)
+    {
+        ++i;
+    }
+    return i;
 }
 ```
 
-Unsafe code is not automatically wrong.
-
-It means:
-
-> C++L is not providing its strongest proof guarantee across this operation.
-
-Unsafe boundaries must remain visible.
-
-They must never silently become `PROVEN`.
-
----
-
-# 23. `trusted`
-
-Sometimes correctness depends on an assumption outside C++L.
-
-Example:
-
-```text
-the operating system API obeys this contract
-```
-
-or:
-
-```text
-this foreign library behaves according to this specification
-```
-
-Such assumptions may be marked trusted.
-
-Conceptually:
+This establishes partial correctness. Adding `decreases (n - i)` requests
+termination as well: the measure belongs to a well-founded domain and strictly
+decreases on every continuing iteration. An unsigned bound is finite; arbitrary
+signed subtraction requires its definedness and lower bound to be proven.
 
 ```cpp
-trusted law operating_system_write_contract(...);
+verified unsigned terminating_count(unsigned n)
+    ensures (result == n)
+{
+    unsigned i = 0u;
+    while (i < n)
+        invariant (i <= n)
+        decreases (n - i)
+    {
+        ++i;
+    }
+    return i;
+}
 ```
 
-Trusted assumptions are not proofs.
+For loops put the same clauses after the header:
 
-If:
-
-```text
-Law A
-depends on
-Trusted assumption B
+<!-- cppl-example: verify -->
+```cpp
+verified unsigned count_for(unsigned n)
+    ensures (result == n)
+{
+    unsigned i = 0u;
+    for (; i < n; ++i)
+        invariant (i <= n)
+    {
+    }
+    return i;
+}
 ```
 
-then the trust report must preserve that dependency.
-
----
-
-# 24. FFI and existing libraries
-
-C++L is intended to work with ordinary native libraries.
-
-For example:
+A range-for uses that same location. A `do` loop places clauses after `do`, before
+its body, keeping the trailing `while` in its ordinary C++ position:
 
 ```cpp
-#include <openssl/...>
-#include <sqlite/...>
-#include "legacy_company_library.hpp"
+verified unsigned one_iteration()
+    ensures (result == 1u)
+{
+    unsigned i = 0u;
+    do
+        invariant (i <= 1u)
+    {
+        ++i;
+    } while (i < 1u);
+    return i;
+}
+
+verified unsigned visit_three()
+    ensures (result == 0u)
+{
+    unsigned values[3] = {0u, 0u, 0u};
+    for (unsigned value : values)
+        invariant (values[0] == 0u)
+    {
+        static_cast<void>(value);
+    }
+    return 0u;
+}
 ```
 
-The code should still compile.
+Recursive termination uses the same measure syntax:
 
-The important distinction is:
-
-```text
-can call
+```cpp
+verified unsigned descend(unsigned n)
+    ensures (result == 0u)
+    decreases (n)
+{
+    return n == 0u ? 0u : descend(n - 1u);
+}
 ```
 
-versus:
+`decreases (outer, inner)` is one lexicographic measure list, not two clauses.
+Proof-producing computation must terminate even without a written measure.
+Runtime verification is partial correctness unless termination is requested or
+required by its specification role. A requested termination proof may not be
+silently dropped.
 
-```text
-formally verified
+An invariant `i < n` fails on entry when `n == 0u`. A continuing iteration that
+does not change `n - i` fails strict descent. These are proof failures, not
+formatting problems; a linter must not weaken the predicates.
+
+## 12. Trusted and unsafe boundaries
+
+`trusted` explicitly admits a proposition without proving it. Its sole
+production declaration form is `trusted law`, with a semicolon:
+
+```cpp
+trusted law supplied_zero(unsigned sample)
+    proves (sample == 0u);
 ```
 
-A foreign library may be:
+This example is a deliberately strong external assumption, not a valid theorem
+about every unsigned value. The trust report names the assumption and source
+location. Evidence depending on it must retain that dependency. The kernel still
+checks any derived evidence relative to the explicit assumptions. Trust is not
+ordinary convenience syntax and is never what `assume` means.
 
-```text
-UNVERIFIED
-TRUSTED
-RUNTIME-CHECKED
+An external boundary should state exactly the relation the external component
+promises, for example a supplied measurement range:
+
+```cpp
+trusted law calibrated_measurement(unsigned reading)
+    proves (reading <= 100u);
 ```
 
-depending on how the boundary is modeled.
+Do not use that declaration to silently treat arbitrary input as a checked
+measurement. Trust admission and runtime validation remain explicit boundaries.
 
-You should not need to rewrite every dependency in C++L.
+`unsafe` permits an operation whose safety the verifier has not established. It
+does not assert that the operation is correct:
 
----
+```cpp
+unsafe unsigned read_device();
 
-# 25. Existing `.h` and `.hpp` files
+unsigned poll_device() {
+    unsigned value = 0u;
+    unsafe {
+        value = read_device();
+    }
+    return value;
+}
+```
 
-Normal C++ headers remain part of the project.
+These are the unsafe function-declaration and block forms; there is no unsafe
+expression form. Runtime operations still execute. Unsafe code cannot produce
+proof evidence or refinement facts. An unmodeled result remains unverified
+unless a separately justified validation or trust boundary admits it.
 
-You can continue using:
+## 13. References, pointers and memory validity
+
+References and pointers retain C++ binding, aliasing and lifetime semantics.
+Verification tracks places, capabilities and logical value versions through
+shared read/write rules. A cast, reference binding or pointer test cannot
+manufacture proof.
+
+A non-null pointer does **not** establish `readable`, `writable`, initialized
+storage, bounds, provenance or lifetime. These are capability concepts in the
+storage model, not ordinary Boolean functions that this guide invents.
+There is no user-defined `bool readable(int*)` shortcut that grants a capability.
+
+Rejected use of non-nullness as dereference evidence:
+
+```cpp
+verified int read_pointer(int* pointer)
+    expects (pointer != nullptr)
+    ensures (result == 0)
+{
+    return *pointer;
+}
+```
+
+The contract lacks evidence of a valid readable initialized pointee; even that
+would not establish the claimed zero. Pointer/refined-pointee operations must
+use the common capability and refinement-crossing machinery, with any external
+capability assumption explicitly recorded as trusted. Const references do not
+protect facts from mutation through another alias.
+
+## 14. Templates
+
+Templates retain ordinary C++ syntax. Place definitions and required verification
+metadata where instantiation can see them, normally in a header:
+
+```cpp
+template <typename T>
+verified T identity(T value)
+    ensures (result == value)
+{
+    return value;
+}
+```
+
+The specialization must have a modeled equality and body semantics. A template
+constraint is not an implicit theorem about arbitrary `T`. An indexed refinement
+can be used with a template parameter:
+
+```cpp
+type Index(unsigned n) = unsigned where (self < n);
+
+template <unsigned N>
+verified unsigned widen_index(Index<N> value)
+    ensures (result < N)
+{
+    return value;
+}
+```
+
+Clang resolves substitution and type identity. The refinement declaration,
+contract, effect metadata and any referenced Laws/evidence must remain available
+at the instantiation site. An explicit-instantiation strategy must preserve the
+same information.
+
+## 15. Organizing C++L code in .h/.hpp and .cpp
+
+**Public contract → header. Runtime implementation → source file.** Callers need
+the contract, not access to the function body. Use existing C++ extensions; a
+special header suffix is unnecessary.
+
+`include/account.hpp`:
+
+```cpp
+#pragma once
+
+verified unsigned withdraw(unsigned old_balance, unsigned amount)
+    expects (amount <= old_balance)
+    ensures (result == old_balance - amount);
+```
+
+`src/account.cpp`:
 
 ```cpp
 #include "account.hpp"
-#include "payment.h"
+
+unsigned withdraw(unsigned old_balance, unsigned amount) {
+    return old_balance - amount;
+}
 ```
 
-C++L does not require a special header format.
+The definition inherits the verified declaration through Clang's resolved
+function entity. Do not duplicate the contract. A changed parameter name does
+not create another entity. Conflicting contracts on redeclarations are errors;
+identical repetition is legal when source organization requires it. The formatter
+never copies a declaration contract onto a definition.
 
-Headers may also contain C++L declarations where supported.
-
-For example:
+Use a direct contracted definition for private/static helpers. Shared refinements
+and Laws belong beside the APIs that use them; implementation-only Laws belong
+in the source, commonly in an unnamed namespace:
 
 ```cpp
-law valid_balance(const Account& account)
-    ensures account.balance() >= 0;
+namespace {
+law local_identity(unsigned x)
+    proves (x + 0u == x);
+}
 ```
 
-Do not duplicate declarations unnecessarily between ordinary C++ and C++L files.
+This is a translation-unit-local theorem, not a block-local Law declaration.
+Laws and proofs produce no runtime symbols. Class-scope Laws follow ordinary
+member lookup and quantify the implicit object; they do not create runtime
+methods.
 
----
-
-# 26. File extensions
-
-Existing source files should continue to work:
+A realistic layout is:
 
 ```text
-.cpp
-.cc
-.cxx
-.h
-.hpp
+include/
+    money.hpp       shared refinements and arithmetic Laws
+    account.hpp     public contracts and boundary declarations
+src/
+    account.cpp     runtime definitions and private proof helpers
 ```
 
-A dedicated extension such as:
+A separate `proofs/` directory is optional. Shared theorem evidence can live with
+its interface; do not split formal metadata away from callers that need it.
 
-```text
-.cppl
+| Construct | Normally in header/interface? |
+| --- | --- |
+| Public verified contract | Yes |
+| Runtime function body | Usually no |
+| Template definition and contract | Yes, unless explicit instantiation is arranged |
+| Shared refinement | Yes |
+| Shared Law and reusable evidence | Yes |
+| Implementation-only Law/proof | No |
+| Trusted external assumption | At the boundary's interface |
+| Ghost local | No; inside its verification-enabled block |
+
+Across translation units, preserve contracts, refinement identity/predicates,
+Law propositions/evidence, purity/effect metadata and trust dependencies. Native
+erasure does not encode these in ABI symbols. A visible contract lets a caller
+state obligations; checked implementation evidence or an explicit trust boundary
+is still needed before the summary can be used as proof. A compiler lacking
+separate-evidence transport must reject that verification step.
+
+Ordinary C++ modules retain their C++ meaning. No additional C++L module-metadata
+syntax is introduced here; this guide's supported interface organization uses
+headers and included verification metadata.
+
+## 16. Member contracts
+
+Use member lookup and `this`, not a second meaning for `self`. Put a public member
+contract on its class declaration:
+
+```cpp
+class Account {
+public:
+    unsigned balance_;
+
+    verified unsigned withdraw(unsigned amount)
+        expects (amount <= balance_)
+        ensures (result == old(balance_) - amount && balance_ == result);
+
+    verified pure unsigned balance() const
+        ensures (result == balance_);
+};
+
+unsigned Account::withdraw(unsigned amount) {
+    balance_ -= amount;
+    return balance_;
+}
+
+unsigned Account::balance() const {
+    return balance_;
+}
 ```
 
-may be used for C++L-heavy source if desired.
+The out-of-line definitions inherit their declarations. A constructor has no
+return-value `result`; its postcondition describes the initialized object.
+Snapshots cannot read members that were not initialized in the entry state:
 
-It should not be required merely to adopt C++L.
+```cpp
+struct Zero {
+    unsigned value;
 
----
+    verified Zero()
+        ensures (value == 0u)
+        : value(0u) {}
+};
+```
 
-# 27. Compiler usage
+Constructor initializer syntax remains ordinary C++ after the clauses; a compiler
+must model initialization and lifetime before accepting that verification.
 
-The intended minimal migration is:
+## 17. Formatting and editor fixes
 
-Before:
+Run the shared formatter:
 
-```bash
-clang++ main.cpp -O2
+```sh
+build/dev/bin/cppl-format -i include/account.hpp src/account.cpp
+build/dev/bin/cppl-format --check include/account.hpp src/account.cpp
+```
+
+The CLI, LSP document formatting and CI share one engine. Range formatting expands
+to a complete affected clause/block according to the established range policy;
+on-type formatting is conservative. Ordinary C++ layout comes from clang-format.
+The repository style uses four spaces, a 120-column limit, attached ordinary
+C++ braces and a separate opening brace after a contract block.
+
+Canonical rules are one parenthesized clause of each kind, grammar order,
+continuation lines, one space before `(`, `verified pure`, expanded proof arms,
+and inline refinement `where`. `old(x)` retains function-like spacing.
+
+What cppl-lsp fixes automatically through formatting:
+
+Before (noncanonical layout):
+
+```cpp
+verified int f(int x) ensures(result == x) expects(x > 0) {
+    return x;
+}
 ```
 
 After:
 
-```bash
-cppl main.cpp -O2
-```
-
-C++L should preserve ordinary compiler options where practical and forward native compilation to Clang/LLVM.
-
-Existing build systems should require minimal changes.
-
-For CMake:
-
-```bash
-cmake -DCMAKE_CXX_COMPILER=cppl ..
-```
-
-should be the target experience.
-
----
-
-# 28. Incremental verification
-
-A realistic existing project may look like:
-
-```text
-application
-├── payment.cpp        VERIFIED
-├── settlement.cpp     VERIFIED
-├── parser.cpp         PARTIAL
-├── rendering.cpp      UNVERIFIED
-├── legacy.cpp         UNVERIFIED
-└── third_party/
-      └── ...          external
-```
-
-This is valid.
-
-C++L should let developers expand the verified region gradually.
-
----
-
-# 29. Example: account withdrawal
-
-Start with normal C++:
-
 ```cpp
-struct Account {
-    int balance;
-};
-
-bool withdraw(Account& account, int amount) {
-    if (amount < 0 || amount > account.balance) {
-        return false;
-    }
-
-    account.balance -= amount;
-    return true;
+verified int f(int x)
+    expects (x > 0)
+    ensures (result == x)
+{
+    return x;
 }
 ```
 
-Now express the desired behavior.
-
-Conceptually:
-
-```cpp
-law valid_withdrawal(
-    Account before,
-    Account after,
-    int amount
-)
-    expects amount >= 0
-    expects amount <= before.balance
-    ensures after.balance == before.balance - amount;
-```
-
-The Law expresses what the implementation must preserve.
-
-The implementation remains recognizably ordinary C++.
-
-That is intentional.
-
----
-
-# 30. Example: financial conservation
-
-C++L is useful for application-level invariants.
-
-Suppose:
-
-```cpp
-struct Basket {
-    Money items;
-    Money discounts;
-    Money fees;
-    Money total;
-};
-```
-
-A Law could express:
-
-```text
-total
-=
-items
--
-discounts
-+
-fees
-```
-
-Conceptually:
-
-```cpp
-law basket_closes(const Basket& basket)
-    ensures basket.total
-        == basket.items
-         - basket.discounts
-         + basket.fees;
-```
-
-Now an implementation cannot merely produce a plausible total.
-
-It must satisfy the stated financial relation.
-
----
-
-# 31. Example: parser invariant
-
-Suppose a parser must never emit two competing authoritative totals.
-
-A Law can describe:
-
-```text
-there exists exactly one authoritative settlement total
-```
-
-rather than relying on:
-
-```text
-tests
-comments
-engineering convention
-```
-
-The implementation can change significantly while the Law remains stable.
-
-That is one of the main benefits of C++L.
-
----
-
-# 32. Example: safe indexing
-
-Ordinary C++:
-
-```cpp
-int read(const std::vector<int>& xs, std::size_t index) {
-    return xs[index];
-}
-```
-
-A C++L contract could require:
-
-```cpp
-int read(const std::vector<int>& xs, std::size_t index)
-    expects index < xs.size();
-```
-
-Now the indexing operation is justified only under the required bound.
-
-Alternatively, a refined index type could encode that relationship more strongly.
-
----
-
-# 33. Example: non-zero divisor
-
-Normal function:
-
-```cpp
-int divide(int x, int y) {
-    return x / y;
-}
-```
-
-Verification must account for:
-
-```text
-y != 0
-```
-
-A contract can express this:
-
-```cpp
-int divide(int x, int y)
-    expects y != 0;
-```
-
-C++L should never simply assume division is safe.
-
-Undefined behavior and machine semantics matter.
-
----
-
-# 34. Mathematical integers vs machine integers
-
-C++L distinguishes mathematical reasoning from actual C++ integer behavior.
-
-For example:
-
-```cpp
-int x = INT_MAX;
-int y = x + 1;
-```
-
-must not automatically be reasoned about as:
-
-```text
-2147483647 + 1 = 2147483648
-```
-
-because runtime C++ semantics matter.
-
-Proofs involving machine arithmetic must use the correct machine model.
-
----
-
-# 35. Unsupported does not mean uncompilable
-
-A C++ feature may be valid but not yet formally modeled.
-
-For example:
-
-```cpp
-asm("...");
-```
-
-C++L may classify it as:
-
-```text
-UNSAFE
-```
-
-or:
-
-```text
-UNVERIFIED
-```
-
-while still allowing ordinary compilation.
-
-This distinction enables gradual adoption.
-
----
-
-# 36. What developers should normally do
-
-For application code:
-
-```text
-1. write normal clear C++
-2. identify critical invariant
-3. express it as a Law
-4. run verification
-5. inspect generated obligations
-6. provide proof or improve implementation
-7. keep unsafe/trusted boundaries explicit
-8. expand the verified region gradually
-```
-
-Do not begin by trying to formally prove every line of a large codebase.
-
-Start with the invariants whose failure would actually matter.
-
----
-
-# 37. What not to do
-
-Do not use C++L as:
-
-```text
-a fancy assert system
-```
-
-Do not weaken Laws to make builds green.
-
-Do not turn failed proofs into runtime assertions automatically.
-
-Do not hide trusted assumptions.
-
-Do not treat solver success as proof unless the trust model explicitly permits it.
-
-Do not duplicate ordinary C++ semantics that Clang already provides.
-
-Do not rewrite working C++ merely to make it look more "formal."
-
----
-
-# 38. Good first Laws
-
-Good first targets include:
-
-- bounds
-- conservation equations
-- non-negativity
-- state-machine invariants
-- uniqueness
-- ownership conditions
-- impossible states
-- ordering
-- range restrictions
-- parser closure
-- serialization round trips
-- monotonicity
-- idempotence
-- deterministic transformations
-
-Example:
-
-```text
-sorting preserves element count
-```
-
-Example:
-
-```text
-withdrawal never increases balance
-```
-
-Example:
-
-```text
-serialized then deserialized value equals original value
-```
-
-Example:
-
-```text
-settlement contains exactly one authoritative total
-```
-
----
-
-# 39. Think in properties
-
-Instead of asking:
-
-```text
-What tests should I add?
-```
-
-also ask:
-
-```text
-What must always be true?
-```
-
-That question often reveals the Law.
-
-For example:
-
-```text
-Test:
-input 5 gives output 25
-```
-
-becomes:
-
-```text
-Law:
-for every valid x,
-square(x) >= 0
-```
-
-The second statement captures intent more directly.
-
----
-
-# 40. AI-generated code
-
-C++L is designed to work well with AI-generated implementations.
-
-The intended workflow is:
-
-```text
-human specifies Law
-        ↓
-AI proposes implementation
-        ↓
-AI may propose proof
-        ↓
-C++L independently checks both
-```
-
-The AI is not trusted.
-
-Its implementation and proof must satisfy exactly the same checker as human-written code.
-
-This makes Laws useful as a stable boundary between human intent and generated implementation.
-
----
-
-# 41. AI should not change Laws silently
-
-When an implementation fails verification, an AI agent must not "fix" the failure by weakening the specification.
-
-Bad:
-
-```text
-Law says:
-result > 0
-
-implementation returns 0
-
-AI changes Law to:
-result >= 0
-```
-
-unless the intended requirement itself is genuinely being changed.
-
-The correct question is first:
-
-```text
-Is the implementation wrong?
-```
-
----
-
-# 42. Trust reports
-
-For critical code, C++L should be able to explain why a result is believed.
-
-Conceptually:
-
-```text
-Law:
-  settlement_closes
-
-Status:
-  PROVEN
-
-Proof dependencies:
-  item_sum                PROVEN
-  discount_application    PROVEN
-  provider_contract       TRUSTED
-
-Runtime checks:
-  0
-
-Unsafe dependencies:
-  0
-```
-
-This is stronger than simply displaying:
-
-```text
-✓ verified
-```
-
-because it exposes the actual trust chain.
-
----
-
-# 43. Verification is not magic
-
-C++L cannot automatically prove every arbitrary C++ program.
-
-Difficult code may require:
-
-- stronger invariants
-- helper lemmas
-- loop invariants
-- refined types
-- induction
-- explicit ownership reasoning
-- solver assistance
-- trusted external specifications
-
-The goal is not to pretend verification is free.
-
-The goal is to make formal intent and proof practical inside the C++ ecosystem.
-
----
-
-# 44. Prefer strong models over clever proofs
-
-When proof becomes difficult, first ask whether the data model is weak.
-
-Instead of proving repeatedly that:
-
-```text
-state != impossible_combination
-```
-
-consider representing the state so that impossible combinations cannot be constructed.
-
-Good type design often removes proof obligations entirely.
-
----
-
-# 45. Keep the runtime ordinary
-
-After verification and erasure, runtime code should remain ordinary native C++.
-
-C++L is not intended to replace:
-
-- Clang
-- LLVM
-- libc++
-- the system linker
-- native calling conventions
-- existing C++ deployment
-
-The verification layer exists primarily at compile time.
-
----
-
-# 46. Developer mental model
-
-The simplest mental model is:
-
-```text
-C++
-+
-formal specification
-+
-machine-checkable proof
-=
-C++L
-```
-
-Or:
-
-```text
-ordinary code says:
-what to do
-
-Law says:
-what must always be true
-
-proof says:
-why the implementation satisfies it
-
-kernel says:
-whether that reasoning is valid
-```
-
----
-
-## Extending storage and refinement flow
-
-Use the Clang-resolved binding and `source::ParameterPassing` to identify the
-storage a parameter denotes. `LocalVersion` means an exact value was written;
-`UnknownVersion` means a possible mutation invalidated the previous observation.
-`CallEffect` and `ReturnState` connect the call's new versions to the verified
-postcondition. Do not add a second refinement or alias engine for a syntax node.
-
-A new write path must reach the shared membership predicate, advance versions,
-participate in loop write discovery and carry its source location. Test direct
-and aliased writes, stale preconditions, failed callees, repeated arguments,
-refinement restoration, and runtime erasure. Run `e2e_verified_storage`,
-`negative_verified_storage`, `unit_contracts_test`, and `lsp_fixtures_test` before
-the full repository gate. Semantic requirements are SPEC.md 12.9 and 17.
-
-# 47. Where to read next
-
-Use:
-
-```text
-README.md
-```
-
-for the project overview.
-
-Use:
-
-```text
-GUIDE.md
-```
-
-for practical development.
-
-Use:
-
-```text
-SPEC.md
-```
-
-for normative language semantics.
-
-Use:
-
-```text
-FOUNDATIONS.md
-```
-
-for the mathematical basis.
-
-Use:
-
-```text
-DESIGN.md
-```
-
-for design rationale.
-
-Use:
-
-```text
-ARCHITECTURE.md
-```
-
-for compiler architecture.
-
-Use:
-
-```text
-TRUST.md
-```
-
-for the Trusted Computing Base and trust boundaries.
-
-Use:
-
-```text
-COMPATIBILITY.md
-```
-
-for C++ compatibility.
-
-Use:
-
-```text
-STATUS.md
-```
-
-to determine what is implemented today.
-
----
-
-# 48. Final rule
-
-When writing C++L, think:
-
-```text
-What must always be true?
-```
-
-Express that as a Law.
-
-Then let the implementation prove it.
-
-```text
-Law
-    ↓
-implementation
-    ↓
-proof
-    ↓
-kernel
-    ↓
-native C++
-```
-
-That is C++L.
+Migration diagnostics must preserve meaning:
+
+| Input issue | Deterministic correction | Safety condition |
+| --- | --- | --- |
+| Missing clause parentheses | Wrap the delimited expression | Boundary is unambiguous |
+| Wrong order/header-line clauses | Reorder and format complete clauses | Preserve predicate text and comments |
+| Repeated `expects`/`ensures`/`invariant` | One ordered `&&` predicate | Predicates have conjunction semantics |
+| Law `ensures` | Replace keyword with `proves` | No invalid Law `result` use |
+| `pure verified` | `verified pure` | Both are contextual modifiers |
+| Compact proof arms | Expanded `Label(bindings) => { }` | Same labels, bindings and steps |
+| Obsolete proof `case` | `cases` | Inside a proof, never a C++ switch |
+| Untyped refinement index | Write its declared index type | Intended type is established; otherwise ask for an edit |
+
+A migration note is not compiler acceptance of a legacy dialect. If a correction
+could alter meaning, the diagnostic asks for a source edit rather than guessing.
+No fix may weaken a Law, remove an arm or turn a failed proof into trust.
+
+## 18. Reading diagnostics
+
+A useful diagnostic identifies the source location, goal, available premises,
+failed obligation and trust provenance. Distinguish these common causes:
+
+| Diagnostic | Action |
+| --- | --- |
+| Law needs `proves` | Correct its conclusion keyword |
+| Clause requires parentheses/order | Apply the syntax/layout fix |
+| Refinement introduction failed | Establish the predicate on this value version |
+| Non-exhaustive cases | Add the missing state or prove it impossible |
+| `assume` does not match a premise | Use only evidence actually supplied by the context |
+| Ghost value affects runtime | Keep the runtime computation independent of erased state |
+| Capability obligation failed | Supply valid memory evidence, not just non-nullness |
+| Termination measure does not decrease | Correct the algorithm or its justified measure |
+| Unsupported semantics | Keep verification fail-closed; no implicit assumption |
+
+Use `cppl` with ordinary Clang compile options. For example,
+`build/dev/bin/cppl -std=c++20 -fsyntax-only source.cpp` runs verification without
+linking a native executable. Consult [TRUST.md](TRUST.md) for trust-report meaning
+and [tools/cppl-lsp/README.md](tools/cppl-lsp/README.md) for editor setup.
+
+## 19. C++L cheat sheet
+
+| Goal / canonical form | Runtime? | Main context / usual location |
+| --- | --- | --- |
+| `verified int f(int x)` | Body runs | Public contract in header; body in source |
+| `expects (x > 0)` | No | Function precondition / Law premise |
+| `ensures (result == x)` | No | Runtime function postcondition |
+| `law L(int x) proves (x == x);` | No | Shared header or private source theorem |
+| `proof P(int x) proves (Eq<int>(x, x)) { refl; }` | No | Reusable evidence; format as expanded block |
+| `type Positive = int where (self > 0);` | Base only | Shared type declaration in header |
+| `type Index(unsigned n) = unsigned where (self < n);` | Base only | Indexed refinement, applied as `Index<4u>` |
+| `pure unsigned f(unsigned x)` | Body runs | Checked effect-free function |
+| `invariant (i <= n)` | No | Loop clause in runtime implementation |
+| `decreases (n - i)` | No | Function/loop termination measure |
+| `ghost unsigned original = x;` | No | Verification-only local |
+| `cases value { Label => { refl; } }` | No | Proof state split; expanded arms |
+| `decompose point { components(x, y) => { refl; } }` | No | Proof product projections |
+| `induction n;` | No | Proof with domain induction principle |
+| `trusted law boundary(unsigned x) proves (x == 0u);` | No | Explicit assumption at a boundary |
+| `unsafe { operation(); }` | Operations execute | Explicit unsafe block |
+
+The compact forms in this reference table describe tokens; the formatter expands
+clauses and proof bodies to the canonical layout used throughout the guide.

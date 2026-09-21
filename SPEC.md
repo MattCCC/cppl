@@ -336,7 +336,7 @@ x >= 0
 inside:
 
 ```cpp
-ensures(x >= 0)
+ensures (x >= 0)
 ```
 
 means:
@@ -635,7 +635,7 @@ For example:
 
 ```cpp
 law nonnegative_square(int x)
-    ensures(square(x) >= 0);
+    proves (square(x) >= 0);
 ```
 
 denotes conceptually:
@@ -692,7 +692,7 @@ A specification expression may state implication with `->`, which is looser than
 every ordinary C++ operator and right associative (GRAMMAR.md 29, 33):
 
 ```cpp
-ensures(x == 0u -> identity(x) == 0u)
+ensures (x == 0u -> identity(x) == 0u)
 ```
 
 denotes conceptually:
@@ -776,19 +776,27 @@ an implementation heuristic
 
 ## 10.1 Law syntax
 
-The basic form is:
+Functions ensure. Laws prove. A Law has at most one `expects (P)` premise and
+exactly one `proves (Q)` conclusion, in that order. A Law has no `result`.
 
 ```cpp
-law name(parameters...)
-    expects(precondition)
-    ensures(postcondition);
+law identity(unsigned x)
+    proves (x + 0u == x);
+
+law given_zero(unsigned x)
+    expects (x == 0u)
+    proves (x == 0u)
+{
+    assume h : x == 0u;
+    exact h;
+}
 ```
 
-A Law MUST contain at least one proposition to establish.
-
-Multiple `expects` clauses are conjoined.
-
-Multiple `ensures` clauses are conjoined.
+A semicolon requests automatic construction and checking of evidence. An
+explicit body supplies proof steps through the same proof pipeline as `proof`.
+Failure of either form MUST fail compilation; neither creates an axiom. A
+`trusted law` is the separately explicit assumption form and MUST NOT have a
+proof body. The concrete grammar is [GRAMMAR.md](docs/GRAMMAR.md#3-law-declaration).
 
 ---
 
@@ -798,8 +806,8 @@ For:
 
 ```cpp
 law L(T x)
-    expects(P(x))
-    ensures(Q(x));
+    expects (P(x))
+    proves (Q(x));
 ```
 
 the meaning is conceptually:
@@ -813,7 +821,7 @@ With no `expects` clause:
 
 ```cpp
 law L(T x)
-    ensures(Q(x));
+    proves (Q(x));
 ```
 
 means:
@@ -829,9 +837,9 @@ means:
 
 Declaring:
 
-```cpp
+```text
 law L(...)
-    ensures(...);
+    proves (...);
 ```
 
 does **not** make `L` true.
@@ -886,14 +894,14 @@ ensures
 A precondition is written:
 
 ```cpp
-expects(condition)
+expects (condition)
 ```
 
 Example:
 
 ```cpp
 int divide(int x, int y)
-    expects(y != 0)
+    expects (y != 0)
 {
     return x / y;
 }
@@ -910,14 +918,14 @@ It is not automatically a runtime assertion.
 A postcondition is written:
 
 ```cpp
-ensures(condition)
+ensures (condition)
 ```
 
 Example:
 
-```cpp
+```text
 int abs_value(int x)
-    ensures(result >= 0)
+    ensures (result >= 0)
 {
     ...
 }
@@ -941,13 +949,13 @@ Example:
 
 ```cpp
 int identity(int x)
-    ensures(result == x)
+    ensures (result == x)
 {
     return x;
 }
 ```
 
-`result` is not globally reserved.
+`result` is not globally reserved. Its return-value meaning is invalid in a Law, a void postcondition, a precondition or a refinement predicate; ordinary C++ names retain their ordinary meaning outside the special context.
 
 It has special meaning only within a relevant postcondition.
 
@@ -967,13 +975,15 @@ Example:
 
 ```cpp
 void withdraw(Account& account, int amount)
-    expects(amount >= 0)
-    expects(amount <= account.balance)
-    ensures(account.balance == old(account.balance) - amount)
+    expects (amount >= 0)
+    expects (amount <= account.balance)
+    ensures (account.balance == old(account.balance) - amount)
 {
     account.balance -= amount;
 }
 ```
+
+`old(expression)` is legal as a snapshot only in a function postcondition. Its expression is resolved in the function entry state, must be well-defined there, and cannot use `result` or nested `old`. Elsewhere `old` is an ordinary C++ name.
 
 `old(expression)` is a formal snapshot.
 
@@ -981,22 +991,36 @@ It does not imply that a runtime copy must be created.
 
 ---
 
-## 11.5 Multiple clauses
+## 11.5 Clause cardinality, ordering and layout
 
-Multiple preconditions are conjoined:
+Specification predicates and measures MUST be parenthesized. A construct has
+at most one clause of each kind. Function clauses are `expects`, `ensures`,
+`decreases`; Law clauses are `expects`, `proves`; loop clauses are `invariant`,
+`decreases`, in those orders. Conjoined predicates belong in a single `&&`
+expression. A measure list is lexicographic and MUST NOT be merged as conjunction.
 
-```cpp
-expects(A)
-expects(B)
-```
+Canonical presentation puts one space before each clause's opening parenthesis
+and puts clauses on continuation lines. Refinement `where (P)` stays attached
+to the declaration. Ordinary C++ prefix specifiers precede `verified pure`.
+The shared formatter owns presentation; spelling/cardinality/order are defined
+by the [normative grammar](docs/GRAMMAR.md).
 
-means:
+### 11.5.1 Declaration contracts
 
-```text
-A ∧ B
-```
+A function entity has one logical contract. The public declaration carries it;
+the matching definition inherits it and need not repeat `verified` or clauses.
+Matching uses Clang-resolved entity identity, not spelling. Repeated contracts
+MUST be identical under parameter renaming and semantic resolution; conflicting
+contracts are errors. A visible declaration lets callers state entry obligations
+and the promised post-state without body access. Use of a verified summary still
+requires checked evidence for its implementation, or an explicit recorded trust
+boundary; a declaration alone MUST NOT manufacture proof evidence.
 
-Multiple postconditions are also conjoined.
+Templates retain their contract and refinement metadata at instantiation sites.
+Across translation units the same semantic metadata and evidence dependencies
+must accompany the public interface; erased native symbols alone carry no proof.
+A verified function with only an entry precondition still incurs all body safety
+obligations. Omission of `ensures` does not waive those obligations.
 
 ---
 
@@ -1020,7 +1044,7 @@ These are separate properties.
 Inside verified reasoning, a call to a function with:
 
 ```cpp
-expects(P)
+expects (P)
 ```
 
 requires proof that `P` holds at the call site.
@@ -1037,7 +1061,7 @@ This preserves incremental adoption.
 
 Failure to prove a required contract MUST NOT silently be transformed into:
 
-```cpp
+```text
 assert(...)
 ```
 
@@ -1055,7 +1079,7 @@ Example:
 
 ```cpp
 verified int identity(int x)
-    ensures(result == x)
+    ensures (result == x)
 {
     return x;
 }
@@ -1132,8 +1156,8 @@ For a supported definition of the form:
 
 ```cpp
 verified T f(parameters)
-    expects(P)
-    ensures(Q)
+    expects (P)
+    ensures (Q)
 {
     return expression;
 }
@@ -1617,9 +1641,9 @@ A `proof` declaration provides evidence for a proposition.
 
 Basic form:
 
-```cpp
+```text
 proof name(parameters...)
-    proves(proposition)
+    proves (proposition)
 {
     proof_body
 }
@@ -1629,7 +1653,7 @@ Example:
 
 ```cpp
 proof identity_reflexive(int x)
-    proves(Eq<int>(x, x))
+    proves (Eq<int>(x, x))
 {
     refl;
 }
@@ -1645,7 +1669,7 @@ Conceptually:
 
 ```cpp
 proof P(T x)
-    proves(Q(x))
+    proves (Q(x))
 ```
 
 means construction of:
@@ -1661,7 +1685,7 @@ means construction of:
 The clause:
 
 ```cpp
-proves(P)
+proves (P)
 ```
 
 declares the proposition that the proof body must establish.
@@ -1721,8 +1745,7 @@ A refinement type restricts values of an underlying type with a proposition.
 Basic form:
 
 ```cpp
-type Percentage =
-    int where(self >= 0 && self <= 100);
+type Percentage = int where (self >= 0 && self <= 100);
 ```
 
 Conceptually:
@@ -1947,7 +1970,7 @@ For example:
 
 ```cpp
 type Index(std::size_t n) =
-    std::size_t where(self < n);
+    std::size_t where (self < n);
 ```
 
 `Index(n)` is a family of types indexed by `n`.
@@ -2072,11 +2095,11 @@ What that function states about a C++ type MUST be established by proof or decla
 
 Example:
 
-```cpp
+```text
 enum class State { idle, running, failed };
 
 proof foo(State s)
-    proves(...)
+    proves (...)
 {
     cases s {
         State::idle => {
@@ -2141,15 +2164,15 @@ There is no wildcard arm. A catch-all label such as `_` MUST be rejected. A proo
 
 For example, a Law can rule out the residual case of a variant:
 
-```cpp
+```text
 using PaymentResult = std::variant<Receipt, Error>;
 
 law settles(PaymentResult r)
-    expects(!r.valueless_by_exception())
-    ensures(...);
+    expects (!r.valueless_by_exception())
+    proves (...);
 
 proof settles_holds(PaymentResult r)
-    proves(settles(r))
+    proves (settles(r))
 {
     assume intact : !r.valueless_by_exception();
 
@@ -2400,9 +2423,9 @@ See RFC 0013 and `TRUST.md` 41.2 for correspondence responsibilities.
 
 Example:
 
-```cpp
+```text
 proof add_zero(unsigned x)
-    proves(add(x, 0u) == x)
+    proves (add(x, 0u) == x)
 {
     induction x {
         zero => {
@@ -2422,7 +2445,7 @@ Each arm establishes one case of the principle. Arm binders name the case's stru
 
 A step case receives its premises in its proof context: any range condition, and one induction hypothesis per recursive component. `assume` names them, and the kernel MUST reject an `assume` whose proposition does not exactly match a supplied premise. Given a well-founded tree principle (§21.3):
 
-```cpp
+```text
 induction tree {
     empty => {
         ...
@@ -2442,7 +2465,7 @@ The short form:
 
 ```cpp
 proof add_zero(unsigned x)
-    proves(add(x, 0u) == x)
+    proves (add(x, 0u) == x)
 {
     induction x;
 }
@@ -2560,14 +2583,14 @@ MUST have termination established.
 A termination measure may be expressed using:
 
 ```cpp
-decreases(expression)
+decreases (expression)
 ```
 
 Example:
 
 ```cpp
 pure unsigned gcd(unsigned a, unsigned b)
-    decreases(b)
+    decreases (b)
 {
     return b == 0u ? a : gcd(b, a % b);
 }
@@ -2620,9 +2643,9 @@ Imperative loops may carry formal invariants.
 
 Example:
 
-```cpp
+```text
 while (condition)
-    invariant(P)
+    invariant (P)
 {
     ...
 }
@@ -2651,7 +2674,7 @@ preservation of the invariant by every iteration
 When termination is part of the required property, a loop MAY use:
 
 ```cpp
-decreases(measure)
+decreases (measure)
 ```
 
 The measure MUST strictly decrease on each continuing iteration under a well-founded ordering.
@@ -2660,9 +2683,9 @@ The measure MUST strictly decrease on each continuing iteration under a well-fou
 
 ## 24.3 Verified loops
 
-A verified body MAY contain `while (c) invariant(I1) ... invariant(In) { body }`
-and `for (init; c; step) invariant(I1) ... { body }`, with zero or more
-invariant clauses and a block body. The invariants are specification
+A verified body MAY contain `while (c) invariant (I) { body }`
+and `for (init; c; step) invariant (I) { body }`, with at most one
+invariant clause and a block body. The invariants are specification
 expressions resolved by Clang in the scope of the loop head, and conjoin.
 
 Every local that the loop's condition, step or body writes is **carried**. At
@@ -2712,13 +2735,13 @@ Example:
 ghost auto initial_balance = account.balance;
 ```
 
-Ghost state may record symbolic information useful for proof.
+Ghost state may record symbolic information useful for proof. The declaration form is a `ghost`-prefixed local simple declaration in a verification-enabled block. Ghost parameters, members and globals are not part of this grammar.
 
 ---
 
 ## 25.1 Runtime erasure
 
-Ghost state MUST be erased before runtime execution unless explicitly converted into ordinary runtime data.
+Ghost locals MUST be erased before runtime execution. They MUST NOT be converted into runtime data or used to affect runtime behavior.
 
 ---
 
@@ -2758,7 +2781,7 @@ unsafe {
 }
 ```
 
-A declaration MAY also be explicitly unsafe where defined by the grammar.
+An ordinary function declaration may also carry contextual `unsafe` after its ordinary prefix specifiers. There is no unsafe expression form; unsafe does not combine with `verified` or `pure` to waive obligations.
 
 ---
 
@@ -2812,9 +2835,9 @@ Unsafe code retains ordinary C++ runtime semantics.
 
 Example:
 
-```cpp
+```text
 trusted law operating_system_contract(...)
-    ensures(...);
+    proves (...);
 ```
 
 A trusted proposition is accepted as a premise without requiring proof inside C++L.
@@ -3475,9 +3498,9 @@ A Law describes required behavior, not a specific algorithm.
 
 For example:
 
-```cpp
+```text
 law sorted_output_preserves_count(...)
-    ensures(...);
+    proves (...);
 ```
 
 may remain valid across different implementations.
@@ -3810,7 +3833,7 @@ No proof claim is implied.
 
 ```cpp
 verified int identity(int x)
-    ensures(result == x)
+    ensures (result == x)
 {
     return x;
 }
@@ -3831,7 +3854,7 @@ for normal return.
 
 ```cpp
 verified int divide(int x, int y)
-    expects(y != 0)
+    expects (y != 0)
 {
     return x / y;
 }
@@ -3851,7 +3874,7 @@ unless another control-flow branch handles it before the division.
 
 ```cpp
 law identity_returns_input(int x)
-    ensures(identity(x) == x);
+    proves (identity(x) == x);
 ```
 
 The Law is a proposition.
@@ -3864,7 +3887,7 @@ Its declaration alone does not prove it.
 
 ```cpp
 proof integer_reflexivity(int x)
-    proves(Eq<int>(x, x))
+    proves (Eq<int>(x, x))
 {
     refl;
 }
@@ -3875,8 +3898,7 @@ proof integer_reflexivity(int x)
 ## 63.6 Refinement
 
 ```cpp
-type Percentage =
-    int where(self >= 0 && self <= 100);
+type Percentage = int where (self >= 0 && self <= 100);
 ```
 
 An arbitrary `int` cannot silently become `Percentage`.
@@ -3897,9 +3919,9 @@ It does not become runtime state.
 
 ## 63.8 Trusted external contract
 
-```cpp
+```text
 trusted law external_api_contract(...)
-    ensures(...);
+    proves (...);
 ```
 
 The contract is explicit trust, not proof.
@@ -3975,3 +3997,11 @@ because the implementation needed the statement to be true
 ```
 
 **C++L is C++ with Laws: existing C++ continues to execute as C++, while formal intent may be stated and mechanically established without turning proof machinery into runtime behavior.**
+
+## Canonical surface conformance
+
+[RFC 0015](docs/rfcs/0015-canonical-language-surface.md) reconciles historical
+surface examples. [GRAMMAR.md](docs/GRAMMAR.md) is the single concrete grammar;
+[DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md) is the practical usage guide. Implementation
+fragment notes constrain available verification power, never authorize an
+alternate surface spelling or unchecked acceptance.

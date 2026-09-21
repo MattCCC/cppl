@@ -240,7 +240,7 @@ CPPL_TEST(malformed_law_produces_cppl_syntax_diagnostic) {
     diagnostics::Engine engine;
     driver::BufferCompileRequest request;
     request.virtual_path = "malformed.cpp";
-    request.text = "law incomplete(int x) ensures(;\n"; // unbalanced: malformed proposition
+    request.text = "law incomplete(int x) proves (;\n"; // unbalanced: malformed proposition
     request.clang = CPPL_TEST_DEFAULT_CLANG;
     request.clang_arguments = {"-std=c++20"};
 

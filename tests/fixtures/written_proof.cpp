@@ -12,31 +12,31 @@ pure int twice_identity(int x) {
 }
 
 law identity_returns_input(int x)
-    ensures(identity(x) == x);
+    proves (identity(x) == x);
 
 proof identity_returns_input_holds(int x)
-    proves(identity_returns_input(x))
+    proves (identity_returns_input(x))
 {
     refl;
 }
 
 law identity_is_its_own_inverse(int x)
-    ensures(twice_identity(x) == x);
+    proves (twice_identity(x) == x);
 
 // The goal is not the one `identity_returns_input_holds` states, but the two
 // are definitionally equal, so its evidence applies to this goal as well.
 proof identity_is_its_own_inverse_holds(int x)
-    proves(identity_is_its_own_inverse(x))
+    proves (identity_is_its_own_inverse(x))
 {
     apply identity_returns_input_holds;
 }
 
 law identity_returns_input_again(int x)
-    ensures(identity(x) == x);
+    proves (identity(x) == x);
 
 // The same proposition, so the evidence is the goal's own.
 proof identity_returns_input_again_holds(int x)
-    proves(identity_returns_input_again(x))
+    proves (identity_returns_input_again(x))
 {
     exact identity_returns_input_holds;
 }

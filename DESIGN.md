@@ -27,7 +27,7 @@ Those are defined elsewhere.
 | Document                             | Responsibility                                              |
 | ------------------------------------ | ----------------------------------------------------------- |
 | [SPEC.md](SPEC.md)                   | Normative language semantics                                |
-| [GRAMMAR.md](GRAMMAR.md)             | Normative concrete syntax and grammar                       |
+| [GRAMMAR.md](docs/GRAMMAR.md)             | Normative concrete syntax and grammar                       |
 | [COMPATIBILITY.md](COMPATIBILITY.md) | C++ source, ABI, standard, and toolchain compatibility      |
 | [TRUST.md](TRUST.md)                 | Trusted Computing Base, assumptions, and trust boundaries   |
 | [ARCHITECTURE.md](ARCHITECTURE.md)   | Compiler structure, components, dependencies, and data flow |

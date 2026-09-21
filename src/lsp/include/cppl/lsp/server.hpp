@@ -49,6 +49,7 @@ class Server {
     // canonical, matching how LSP distinguishes "no edits" from "no such
     // document" through a null vs. empty result.
     [[nodiscard]] std::optional<std::vector<TextEdit>> text_document_formatting(const TextDocumentIdentifier& id);
+    [[nodiscard]] std::vector<CodeAction> text_document_code_actions(const TextDocumentIdentifier& id);
     [[nodiscard]] std::optional<std::vector<TextEdit>> text_document_range_formatting(const TextDocumentIdentifier& id,
                                                                                       const Range& range);
     [[nodiscard]] std::optional<std::vector<TextEdit>> text_document_on_type_formatting(

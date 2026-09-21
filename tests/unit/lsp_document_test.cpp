@@ -10,7 +10,7 @@ using namespace cppl::lsp;
 
 CPPL_TEST(document_creation_and_parsing) {
     std::string text = R"(
-law test(int x) ensures(x == x);
+law test(int x) proves (x == x);
 )";
 
     Document doc("file:///test.cpp", text, 1);
@@ -96,7 +96,7 @@ CPPL_TEST(document_manager_change) {
 
 CPPL_TEST(document_parses_valid_cppl) {
     std::string text = R"(
-law reflexivity(int x) ensures(x == x);
+law reflexivity(int x) proves (x == x);
 
 proof prove_reflexivity(int x) proves(x == x) {
     refl;

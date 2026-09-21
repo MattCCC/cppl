@@ -1,5 +1,9 @@
 # Generic proof decomposition
 
+> Surface syntax and formatting in this historical RFC are superseded by
+> [RFC 0015](0015-canonical-language-surface.md) and the
+> [normative grammar](../GRAMMAR.md). Semantic rationale remains applicable.
+
 Status: implemented. Supersedes the scoped-enum-only framing of this RFC's first
 revision. The normative boundary is SPEC.md 20.5.
 

@@ -5,6 +5,7 @@
 #include "cppl/source/location.hpp"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -15,6 +16,8 @@ enum class ClauseKind : std::uint8_t {
     Ensures,
     Expects,
     Invariant,
+    Proves,
+    Decreases,
 };
 
 std::string describe(ClauseKind kind);
@@ -26,7 +29,7 @@ struct Clause {
     source::SourceLocation location;
 };
 
-// law name(parameters) ensures(proposition);   (SPEC.md 10.1, GRAMMAR.md 3)
+// law name(parameters) proves (proposition);   (SPEC.md 10.1, GRAMMAR.md 3)
 struct LawDeclaration {
     std::string name;
     source::SourceRange range; // the whole declaration, including its ';'
@@ -106,6 +109,9 @@ struct ProofArm {
 
 // proof name(parameters) proves(proposition) { statements }   (GRAMMAR.md 4)
 struct ProofDeclaration {
+    // An inline Law body uses the same proof pipeline and owns only its body
+    // span. The Law owns the preceding header; erasure covers both spans.
+    std::optional<std::size_t> inline_law;
     std::string name;
     source::SourceRange range; // the whole declaration, including its body
     source::SourceLocation keyword_location;
@@ -159,6 +165,7 @@ struct LoopSpecification {
     source::ByteSpan keyword;       // the 'while' or 'for' token itself
     source::SourceLocation keyword_location;
     std::vector<Clause> invariants;
+    std::optional<Clause> decreases;
     std::vector<source::SourceLocation> expression_locations; // one per invariant
     source::ByteSpan clause_region;
 
@@ -225,6 +232,9 @@ struct Syntax {
 // complete grammatical context makes the ordinary C++ reading impossible
 // (SPEC.md 3, 3.1). Ordinary declarations such as `int law = 1;` are left
 // untouched.
-[[nodiscard]] Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine);
+enum class RecognitionMode : std::uint8_t { Compile, Edit };
+
+[[nodiscard]] Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine,
+                               RecognitionMode mode = RecognitionMode::Compile);
 
 } // namespace cppl::frontend
