@@ -1163,7 +1163,82 @@ These invariants matter more than superficial feature count.
 
 ---
 
-# 38. Final invariant
+# 38. Proof decomposition invariants
+
+Proof decomposition is representation-independent. These invariants exist
+because each of them, if broken, reintroduces a class of bug the generic design
+was chosen to eliminate.
+
+```text
+one engine, many providers
+
+    There is exactly one case engine and exactly one product-decomposition
+    path. Never add a per-representation case engine, parser, arm grammar,
+    exhaustiveness rule or diagnostic path. A provider answers only: which
+    states exist, what condition holds in each, which case a label denotes.
+
+no per-representation kernel rule
+
+    No VariantRule, OptionalRule, ExpectedRule, PointerRule, TupleRule or any
+    successor. A representation whose states are decidable conditions on
+    modeled values needs no rule: conditional elimination already covers it.
+    A representation that seems to need one is a design error to escalate,
+    not a rule to add.
+
+the provider never supplies the residual discriminator
+
+    The engine derives it by negating the others. A provider that could state
+    the residual condition could widen it and silently absorb a state.
+
+no wildcard, no implicit catch-all
+
+    There is no `_` arm and no internal equivalent. Every state has an arm or
+    is discharged by the ordinary proof system. A newly added enumerator,
+    alternative or component must break a previously exhaustive proof.
+
+a binding is never a new object
+
+    Bindings are aliases or logical projections onto the existing object. No
+    copy, move, conversion, temporary, structured binding or default
+    construction may be introduced for a proof binder. Section 11 applies.
+
+a provider states states, nothing more
+
+    A pointer provider states null and non-null and never lifetime,
+    provenance, dereferenceability, bounds, initialization, ownership,
+    uniqueness or dynamic type. A standard-library provider models public
+    semantics and never a library's layout. Section 12 applies.
+
+semantic identity, never spelling
+
+    Recognize a type through its Clang-resolved canonical identity after
+    substitution. A user type spelled like a standard one is not that type,
+    and a standard type reached through an alias or dependent name is.
+
+zero runtime behavior
+
+    Decomposition is proof-only. Erasure tests belong to every provider, not
+    only to the first one. Section 16 applies.
+
+facts do not outlive what they describe
+
+    Case facts are flow-sensitive. Today they cannot go stale because proof
+    bodies contain no mutation. If decomposition is ever admitted over values
+    that can change, its facts must participate in the same mutation and alias
+    invalidation framework as every other proof fact. A provider must never be
+    given an invalidation mechanism of its own.
+
+TRUST.md states what is not inferred
+
+    Every provider carries a TRUST.md 41.6 correspondence block naming its
+    states, how exhaustiveness is derived, and what it does not infer. Report
+    kernel-rule, axiom, assumption and TCB deltas accurately; do not claim
+    zero TCB delta when the value model itself expanded.
+```
+
+---
+
+# 39. Final invariant
 
 For every Law reported as `PROVEN`, the project must be able to answer:
 

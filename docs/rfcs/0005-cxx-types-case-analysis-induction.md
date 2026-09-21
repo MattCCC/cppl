@@ -1,9 +1,15 @@
 # Reasoning over C++ types: proof case analysis and induction
 
-Status: accepted design decision, not implemented; normative rules are SPEC.md
-19–21 and GRAMMAR.md 5.6–5.8, 18 and 20. It supersedes the earlier `data`
-declarations and `match` expressions, which were specified but never
-implemented.
+Status: accepted design decision. Its case-analysis half is implemented, over
+generic decomposition providers; its induction and proof-only-domain halves are
+not. Normative rules are SPEC.md 19–21 and GRAMMAR.md 5.6–5.8, 18 and 20. It
+supersedes the earlier `data` declarations and `match` expressions, which were
+specified but never implemented.
+
+RFC 0013 supersedes this RFC wherever the two differ on decomposition. In
+particular, the residual-label table below records this RFC's original design;
+the labels RFC 0013 specifies are the implemented ones, and nothing here implies
+that a representation is given its own case-analysis implementation.
 
 ## Decision
 
@@ -135,13 +141,26 @@ type-specific residual cases:
 ```text
 enumeration      its enumerators
                  + unnamed(value), when its value set exceeds them
-std::variant     each alternative(value)
+std::variant     alternative<i>(value), one per alternative index
                  + valueless
-std::optional    engaged(value)
-                 + empty
+std::optional    some(value)
+                 + none
+std::expected    value(payload)
+                 + error(reason)
 pointer          null
-                 + nonnull(p)
+                 + non_null
 ```
+
+The implemented labels are `some`/`none` rather than `engaged`/`empty`, and
+alternatives are named by index so that repeated and aliased alternative types
+remain distinct states. `non_null` binds nothing: binding a pointee would assert
+that a live, initialized object exists, which a non-null pointer does not
+establish. RFC 0013 and SPEC.md 20.5 are normative for all of this.
+
+A product representation - a record, `std::pair`, `std::tuple`, `std::array` or
+a built-in array - has one state and so is not case analysis at all. It is
+written `decompose subject { components(...) => { ... } }`, a separate statement
+with its own keyword.
 
 There is no wildcard arm. Every case has an arm or is proven impossible from the
 proof context. A wildcard would silently absorb an enumerator added later. With

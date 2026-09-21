@@ -262,31 +262,24 @@ Exit criterion:
 # Phase 7 - Induction and recursive proofs
 
 Case analysis is implemented as a representation-independent engine over
-decomposition providers (RFC 0013). Scoped enumerations were its first vertical
-slice and are now its first provider.
+decomposition providers (RFC 0013), and the formal value model that the
+providers needed — abstract nominal values with checked component projection —
+is implemented with it. Scoped enumerations, `std::variant`, `std::optional`,
+`std::expected`, pointers and every product form (records, `std::pair`,
+`std::tuple`, `std::array`, built-in arrays) each decompose, and nesting
+composes across them generically. `STATUS.md` records the details.
 
-Adding the remaining providers is blocked on the **formal value model**, not on
-the case engine. The core's terms range over machine integers only, so there is
-no way to state that a variant holds alternative 1, that a pointer is null, or
-that a struct has a given field. Each provider therefore needs its value model
-first, in this order:
+What decomposition still does not do:
 
-1. product values and component projection - unlocks structs, `std::pair`,
-   `std::tuple` and fixed-size arrays through one reusable provider;
-2. pointer values distinct from integers (`AGENTS.md` 12) - unlocks the
-   null / non-null provider, which must infer nothing about lifetime,
-   provenance, dereferenceability, ownership, bounds, initialization, dynamic
-   type or aliasing;
-3. discriminated values - unlocks `std::variant` (alternatives by index, plus
-   `valueless`), `std::optional` (`none` / `some`) and `std::expected`
-   (`value` / `error`) as library correspondence over that model.
+1. **`cases` over values that can change.** Proof bodies contain no mutation, so
+   a case fact cannot go stale today. Admitting decomposition where the subject
+   can be assigned requires case facts to participate in the same mutation and
+   alias invalidation framework as every other proof fact; a provider must never
+   be given an invalidation mechanism of its own (`SPEC.md` 20.5.2).
+2. **Omitted impossible cases.** An arm that cannot occur must still be
+   discharged by the ordinary proof system rather than guessed by a provider.
 
-Each step is an RFC against `FOUNDATIONS.md` and `SPEC.md`. Once a model exists,
-the representation becomes one provider and its semantic tests; the case
-language, proof engine, lowering path and editor support are already shared.
-
-Omitted impossible cases remain ahead. This does not deliver induction or
-recursive proof admission.
+Neither delivers induction or recursive proof admission.
 
 Implement, over ordinary C++ types:
 

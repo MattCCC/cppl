@@ -259,6 +259,30 @@ The scoped-enumeration provider maps values to their exact fixed underlying
 machine integer domain, so exhaustiveness never relies on assuming that every
 enum value has a name.
 
+Every other implemented representation is one of two shapes over the abstract
+value model below, which is why none of them needs a rule of its own.
+
+A **tagged sum** is a value whose signature is one discriminating observation
+followed by one payload observation per state. Its discriminators are equalities
+or Boolean tests on that first observation, which is total, so the split is
+exhaustive by the same argument as above. `std::variant` discriminates on an
+alternative index, leaving `valueless` as the residual branch in which no index
+matches; `std::optional` and `std::expected` discriminate on a Boolean
+observation, leaving `none` and `error`. A pointer is the degenerate case: a
+Boolean discriminator, `null`, and a residual `non_null` that binds nothing,
+since no observation of a pointer's pointee is admitted.
+
+A **product** is a value whose signature is its component list. It has one
+state, so it contributes no discriminator and no split at all: `decompose` binds
+each component to `pi_k(v)` and continues with the same goal. Records,
+`std::pair`, `std::tuple`, `std::array` and built-in arrays differ only in how
+Clang reports that list.
+
+Because a binding is an observation of an existing value rather than a new
+value, decomposition composes without any pairwise rule: `pi_k(v)` is itself a
+term whose type may carry its own signature, and decomposing it is the same
+construction applied again.
+
 The core also admits abstract nominal value sorts with finite typed observation
 signatures. For `v : V(i; T0, ..., Tn)`, observation `pi_k(v)` has type `Tk`.
 This is a total uninterpreted function, with no computation rule beyond

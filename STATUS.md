@@ -203,15 +203,27 @@ by every representation and produce evidence for existing kernel rules. What
 states a value has comes from a decomposition provider for its resolved C++
 type.
 
-One provider is `IMPLEMENTED`: scoped enumerations, with one case per distinct
-enumerator value and the residual case `unnamed`. Representations with no
-provider are refused at the provider boundary by name.
+Six representation families are `IMPLEMENTED`:
 
-`std::variant`, `std::optional`, `std::expected`, pointers and product
-representations have **no provider**, and cannot have a sound one until the
-formal core has a value model for them: its terms range over machine integers
-only. That is foundational work, sequenced in `ROADMAP.md`, not a change to the
-case engine. See `SPEC.md` 20.5 for the boundary and resource limits.
+| Representation | States |
+| --- | --- |
+| scoped enumerations | one case per distinct enumerator value, residual `unnamed` |
+| `std::variant` | `alternative<i>` per index, residual `valueless` |
+| `std::optional` | `some(value)`, residual `none` |
+| `std::expected` | `value(payload)`, residual `error(reason)` |
+| pointers | `null`, residual `non_null` |
+| products | one `components(...)` arm: records, `std::pair`, `std::tuple`, `std::array`, built-in arrays |
+
+Tagged sums share one mechanism and products share another, so these are two
+provider implementations rather than six. Nesting composes generically in both
+directions. `std::expected` is gated on the C++23 library. Representations with
+no provider are still refused at the provider boundary by name, and arm syntax
+does not make a class a sum. See `SPEC.md` 20.5 for the boundary and resource
+limits, and `TRUST.md` 41.6 for what each provider does and does not state.
+
+`cases` and `decompose` appear only in proof bodies, which contain no mutation,
+so no case fact can go stale; they are not yet available over values that can
+change. That extension is sequenced in `ROADMAP.md`.
 
 This slice does **not** implement induction, loop termination, ghost state,
 `unsafe`, `trusted`, proof `let`, solvers, proof caching, or any verification of
@@ -607,11 +619,13 @@ RFC 0005).
 | Exhaustiveness from a provider's partition  | `IMPLEMENTED` |
 | Scoped-enumeration provider                 | `IMPLEMENTED` |
 | Enum residual `unnamed(value)`              | `IMPLEMENTED` |
-| `std::variant` provider                     | `SPECIFIED`   |
-| `std::optional` / `std::expected` providers | `SPECIFIED`   |
-| Pointer null / non-null provider            | `SPECIFIED`   |
-| Product decomposition providers             | `SPECIFIED`   |
-| Formal value model for the above            | `NOT STARTED` |
+| `std::variant` provider                     | `IMPLEMENTED` |
+| `std::optional` / `std::expected` providers | `IMPLEMENTED` |
+| Pointer null / non-null provider            | `IMPLEMENTED` |
+| Product decomposition providers             | `IMPLEMENTED` |
+| Formal value model for the above            | `IMPLEMENTED` |
+| Cross-provider nested decomposition         | `IMPLEMENTED` |
+| `cases` over values that can change         | `SPECIFIED`   |
 | Impossible cases                            | `SPECIFIED`   |
 | `induction` with explicit arms / short form | `SPECIFIED`   |
 | Machine-integer induction principles        | `SPECIFIED`   |

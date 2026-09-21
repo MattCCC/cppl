@@ -103,24 +103,58 @@ claims such as every `E` being `E::a` for `enum class E { a };`, so the residual
 case `unnamed` is explicit. Aliased enumerators name one case. Distinct values
 produce distinct cases. New distinct enumerators require new arms.
 
-## Boundaries
+## Tagged sums, as providers
 
-`std::variant`, `std::optional`, `std::expected`, pointers and product
-representations have **no provider**, and this is a limit of the formal core
-rather than of the case engine. The core's terms range over machine integers
-only. Stating that a variant holds alternative 1, that a pointer is null, or
-that a struct has a given field needs values and observers the core cannot
-express, so no sound provider for them can be written today. `AGENTS.md` 11 and
-12 forbid inventing one by treating a pointer or a class as an integer.
+`std::variant`, `std::optional` and `std::expected` share one shape: a
+discriminating observation and one payload observation per state. They are
+therefore one mechanism, not three. A variant's states are its alternative
+**indices** plus `valueless`, so repeated and aliased alternative types stay
+distinct and `valueless` is never omitted. An optional's are `some` and `none`,
+with the payload bound only in `some`. An expected's are `value` and `error`,
+each with its own payload. Only the public semantics of these types are modeled;
+no standard library's layout is read, and no `std::get`, `std::visit`,
+`.index()`, `has_value()` or dereference is emitted or relied on.
 
-Supporting them is foundational work on the value model - an RFC against
-FOUNDATIONS.md and SPEC.md - after which each becomes one provider. Until then
-they are refused at the provider boundary, by name, and their states are never
-guessed. ROADMAP.md records the sequence.
+## Pointers, as a provider
+
+A pointer decomposes into `null` and `non_null` and into nothing else. The
+provider states no lifetime, provenance, dereferenceability, bounds,
+initialization, ownership, uniqueness or dynamic type. `non_null` binds nothing:
+a non-null pointer is not an assertion that a live, initialized object exists.
+
+## Products, as a provider
+
+Records, `std::pair`, `std::tuple`, `std::array` and built-in arrays all project
+onto their components in order. A product has one state, so `decompose` is not a
+case split and generates no discriminator; it is spelled with its own keyword for
+that reason. Each binding is a logical projection onto the existing subobject, so
+no structured binding, copy, move or temporary is created. Component order,
+types, access and array extents come from Clang. A component Clang reports as
+inaccessible is refused by name rather than projected.
+
+## Composition
+
+Nesting is generic. An arm binder is an ordinary proof expression, so
+decomposing it selects a provider the same way the outer subject did. No pairwise
+handler exists for `variant<optional<T>, E>` or `optional<pair<A, B>>`, and none
+is needed.
 
 Induction stays separate from finite case decomposition. A provider may later
 expose states useful to induction, but supporting `cases` does not make a
 representation inductive.
+
+## Remaining boundaries
+
+A representation with no provider is refused at the provider boundary, by name,
+and its states are never guessed. Arm syntax does not make a class a sum.
+
+`cases` and `decompose` are proof statements and appear only in proof bodies,
+which contain no assignment, call, construction or destruction. No case fact can
+go stale, and none can escape: a subject another object can write has reference
+type, and a reference type has no formal meaning, so no law or contract states a
+proposition about it. Mutation and aliasing are excluded structurally rather
+than by analysis. Admitting `cases` over values that can change is future work
+and is governed by SPEC.md 20.5.2.
 
 ## Validation
 
@@ -130,10 +164,18 @@ kernel-evidence corruption once, through one provider. Provider tests cover only
 representation-specific state modeling. Source tests cover C++17/20/23, aliases,
 negative enumerators, empty enums, nested arms, direct and Law proofs, forward
 dependencies, residual binders under quantifiers, erased runtime equivalence,
-and a newly added enumerator. Rejection tests cover false goals, missing
-residual and named arms, wrong types, labels and evidence, wildcards, binder
-escape and capture, self and mutual dependencies, malformed arms, written
-failure without fallback, and representations with no provider. Unit tests
+and a newly added enumerator. Every provider is exercised end to end, including
+repeated and aliased variant alternatives, cv-qualified and reference subjects,
+template-dependent payloads, all five product forms, and cross-provider nesting
+in both directions; `std::expected` is gated on the C++23 library. Rejection
+tests cover false goals, missing residual and named arms, an omitted
+`valueless`, an out-of-range and a duplicated alternative, a payload bound in a
+stateless arm, a pointee bound through `non_null`, an inaccessible member, a
+product written as a sum and a sum written as a product, a type spelled like a
+standard one, wrong types, labels and evidence, wildcards, binder escape and
+capture, self and mutual dependencies, malformed arms, written failure without
+fallback, and representations with no provider. Adding an alternative or a
+product field invalidates a previously exhaustive proof. Unit tests
 corrupt VIR partitions and generated kernel evidence; the kernel remains the
 final authority. No test result is treated as proof of soundness.
 

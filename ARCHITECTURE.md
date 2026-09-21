@@ -3398,8 +3398,12 @@ analysis-only parameters. The runtime projection blanks the enclosing proof as
 before.
 
 The **Clang bridge** describes a type's resolved representation: its USR, its
-qualified name, and, for an enumeration, its enumerator constants. Provider
-selection uses that identity, never a spelling.
+qualified name, its representation kind, and whatever the kind's states depend
+on — enumerator constants for an enumeration, and the ordered component list
+with each component's declaration and accessibility for a product or a tagged
+sum. A standard type's kind comes from the specialized template declaration in
+the canonical `std` namespace, skipping inline namespaces. Provider selection
+uses that identity, never a spelling.
 
 **VIR** retains the representation on the type and carries a `CasesStep` whose
 arms record which case each claims - never the representation's own notion of a
@@ -3421,9 +3425,17 @@ goal, shifted capture-safely under the existing rule's binder. Arm facts are
 real kernel hypotheses and can be named by `assume`.
 
 The kernel needs no case rule and no per-representation rule. A representation
-no provider models is refused at the provider boundary by name (`SPEC.md` 20.5);
-adding `std::variant`, `std::optional`, `std::expected`, pointer or product
-providers requires a formal value model for them first, not more arm labels.
+no provider models is refused at the provider boundary by name (`SPEC.md` 20.5).
+
+Two provider implementations cover every representation family. A **tagged sum**
+provider serves `std::variant`, `std::optional` and `std::expected`: one
+discriminating observation, one payload observation per state, and a residual
+state the engine derives. A **product** provider serves records, `std::pair`,
+`std::tuple`, `std::array` and built-in arrays: one state, no discriminator, and
+one logical projection per component. Pointers are the degenerate tagged sum.
+A new representation that fits either shape reuses it; adding a third shape, an
+arm label for an unmodeled state, or a per-representation rule anywhere in this
+pipeline is a design error, not an extension point.
 
 ### Abstract value boundary
 

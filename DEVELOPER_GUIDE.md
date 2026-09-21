@@ -614,12 +614,10 @@ using PaymentResult = std::variant<Receipt, Error>;
 
 Now contradictory states are structurally impossible.
 
-The variant example below describes the specified direction. `cases` itself is
-representation-independent: what states a value has comes from a decomposition
-provider for its resolved C++ type, and everything else — arm matching, binders,
-exhaustiveness, evidence, erasure — is shared. One provider exists today, for
-scoped enumerations (SPEC.md 20.5), whose states include an explicit residual
-arm:
+`cases` is representation-independent: what states a value has comes from a
+decomposition provider for its resolved C++ type, and everything else — arm
+matching, binders, exhaustiveness, evidence, erasure — is shared. A scoped
+enumeration's states include an explicit residual arm (SPEC.md 20.5):
 
 ```cpp
 enum class Flag : unsigned { set = 1u };
@@ -635,12 +633,49 @@ proof flag_identity(Flag flag) proves(flag == flag) {
 path. A failed written arm is an error even when automation could prove the
 enclosing proposition.
 
-Variants, optionals, expected, pointers and products have no provider yet, and
-`cases` on them is refused by name. The reason is the formal value model, not
-the case engine: the core's terms range over machine integers, so there is
-nothing to discriminate a variant's alternative or a pointer's nullness on.
-ROADMAP.md sequences that work. Omission of impossible arms is also still
-refused.
+Tagged sums decompose the same way. A variant names its alternatives by index,
+so repeated and aliased alternative types stay distinct, and `valueless` is a
+real state that may never be omitted:
+
+```cpp
+proof settled(std::variant<unsigned, bool> v) proves(Eq<bool>(true, true)) {
+    cases v {
+        alternative<0>(number) => { refl; }
+        alternative<1>(flag) => { refl; }
+        valueless => { refl; }
+    }
+}
+```
+
+An optional is `some(value)` / `none`, an expected is `value(payload)` /
+`error(reason)`, and a pointer is `null` / `non_null`. A pointer's `non_null`
+arm binds nothing: a non-null pointer does not establish that a live,
+initialized object exists, so nothing about lifetime, provenance or
+dereferenceability is stated.
+
+A product — a record, `std::pair`, `std::tuple`, `std::array` or a built-in
+array — has exactly one state, so it is not a case split. It uses its own
+keyword, and each binder is a logical projection onto the existing subobject
+rather than a copy or a structured binding:
+
+```cpp
+struct Point { int x; int y; };
+proof coordinates(Point p) proves(Eq<bool>(true, true)) {
+    decompose p { components(x, y) => { refl; } }
+}
+```
+
+Nesting composes across providers in both directions: decomposing an arm binder
+selects a provider exactly as the outer subject did, with no pairwise handler.
+
+Standard types are recognized by semantic identity, never by spelling. A type of
+your own named `optional` is an ordinary record, and a standard type reached
+through an alias, a template parameter or a dependent name is still recognized.
+
+`cases` and `decompose` are proof statements: they appear in proof bodies, which
+contain no assignment or call, so no case fact can go stale. Decomposition over
+values that can change, and omission of impossible arms, are both still refused;
+ROADMAP.md sequences that work.
 
 ### Adding a representation
 
@@ -652,18 +687,44 @@ those already exist once, for every representation. If the representation
 reserves a label for a state with no C++ expression, add it to
 `decomposition/labels.hpp` beside the provider.
 
+Concretely, adding a representation is three things and no more:
+
+1. **A provider.** Implement `Provider`: `recognizes` a resolved `vir::Type`,
+   `decompose` a subject into a `SumDecomposition`, a `ProductDecomposition` or
+   `Unsupported{representation, reason}`, and `resolve_label` for written
+   labels. Never supply the residual discriminator — the engine derives it by
+   negating the others, so a provider cannot widen the residual state.
+2. **Correspondence.** Whatever Clang must resolve for the states to be right:
+   the canonical type identity after substitution, the component or alternative
+   list with its order and types, and access. Recognize standard types through
+   the specialized template declaration in the canonical `std` namespace, never
+   by spelling.
+3. **Tests, plus a TRUST.md 41.6 block.** The block states what the provider's
+   states are, how exhaustiveness is derived, and — most importantly — what is
+   **not** inferred. That block is the correspondence obligation; write it
+   honestly, since a provider that omits a state leaves it absorbed into the
+   residual branch rather than reported.
+
+Reuse before adding: a representation with a discriminator and per-state
+payloads is a tagged sum and should extend that shared shape, and one with a
+fixed component list is a product. Do not add a case engine, a parser, an
+exhaustiveness rule, an evidence form or a kernel rule for a representation —
+if a representation seems to need one, the design is wrong.
+
 Executable code keeps branching with ordinary C++, such as `std::visit`. A proof can split the value into its cases:
 
 ```cpp
+using PaymentResult = std::variant<Receipt, Error>;
+
 proof settle_is_total(PaymentResult result)
     proves(...)
 {
     cases result {
-        Receipt(receipt) => {
+        alternative<0>(receipt) => {
             ...
         }
 
-        Error(error) => {
+        alternative<1>(error) => {
             ...
         }
 
@@ -674,7 +735,7 @@ proof settle_is_total(PaymentResult result)
 }
 ```
 
-Each arm is a separate proof obligation. The binders `receipt` and `error` name the value each alternative holds. `cases` generates no runtime code.
+Each arm is a separate proof obligation. The binders `receipt` and `error` name the value each alternative holds. Alternatives are named by index rather than by type, so a variant with two alternatives of the same type still has two distinct cases. `cases` generates no runtime code.
 
 Cases follow C++ semantics, not just the declared names. A `std::variant` can become valueless when an exception interrupts an assignment, so `valueless` is a case too. It needs an arm unless the proof context shows it cannot occur. Likewise, an `enum class` value can match no enumerator, which is the `unnamed(value)` case.
 
