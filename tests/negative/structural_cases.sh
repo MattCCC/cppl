@@ -113,6 +113,27 @@ reject inaccessible_member "cannot access member" <<'CPP'
 class Hidden { int secret; public: int shown; };
 proof bad(Hidden h) proves(true) { decompose h { components(secret, shown) => { refl; } } }
 CPP
+# 7. Representations whose states need an independent justification are refused
+# by name rather than decomposed on a guess.
+reject union_member "a union requires an independently justified active-member model" <<'CPP'
+union U { int a; bool b; };
+proof bad(U v) proves(true) { decompose v { components(a, b) => { refl; } } }
+CPP
+reject base_subobject "base subobject decomposition requires an explicit accessible projection" <<'CPP'
+struct Base { int x; };
+struct Derived : Base { int y; };
+proof bad(Derived v) proves(true) { decompose v { components(x, y) => { refl; } } }
+CPP
+# 7/11. A reference member's referent can be written elsewhere, so it is not a
+# component this framework can project.
+reject reference_member "has an unmodeled type 'int &'" <<'CPP'
+struct WithRef { int& r; bool b; };
+proof bad(WithRef w) proves(true) { decompose w { components(r, b) => { refl; } } }
+CPP
+reject incomplete_type "proof decomposition unavailable for incomplete type" <<'CPP'
+struct Opaque;
+proof bad(Opaque& o) proves(true) { decompose o { components(x) => { refl; } } }
+CPP
 # 19. Standard types are recognized by semantic identity, never by spelling: a
 # user type spelled like one is an ordinary record and has no sum arms.
 reject lookalike_optional "product decomposition requires" <<'CPP'

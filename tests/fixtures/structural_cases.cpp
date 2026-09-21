@@ -51,6 +51,23 @@ proof variant_qualified(const Aliased& v) proves(Eq<bool>(true, true)) {
     }
 }
 
+// 18/21. A dependent form resolves by canonical identity after substitution,
+// and cv-qualification does not change the state space.
+template <typename T>
+using Sum = std::variant<T, bool>;
+
+proof variant_dependent(Sum<unsigned> v) proves(Eq<bool>(true, true)) {
+    cases v {
+        alternative<0>(number) => { refl; }
+        alternative<1>(flag) => { refl; }
+        valueless => { refl; }
+    }
+}
+
+proof product_qualified(const Point& p) proves(Eq<bool>(true, true)) {
+    decompose p { components(x, y) => { refl; } }
+}
+
 // 4. std::optional. The payload is bound only in `some`.
 proof optional_states(std::optional<unsigned> o) proves(Eq<bool>(true, true)) {
     cases o {
