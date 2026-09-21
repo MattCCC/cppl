@@ -170,6 +170,7 @@ cppl_add_script_test(negative_quantified_propositions negative/quantified_propos
 cppl_add_script_test(e2e_verified_storage e2e/verified_storage.sh)
 cppl_add_script_test(negative_verified_storage negative/verified_storage.sh)
 cppl_add_script_test(e2e_refinement_types e2e/refinement_types.sh)
+cppl_add_script_test(e2e_refinement_flow e2e/refinement_flow.sh)
 cppl_add_script_test(negative_refinement_types negative/refinement_types.sh)
 cppl_add_script_test(e2e_enum_cases e2e/enum_cases.sh)
 cppl_add_script_test(negative_proof_cases negative/proof_cases.sh)

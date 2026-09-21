@@ -617,7 +617,15 @@ predicate: a record is constructed by unverified code, so supplying the
 predicate on read would let `S{-5}` prove `self > 0` (`SPEC.md` 17.2, `TRUST.md`).
 A permanent regression test pins this. General casts, lambdas, methods,
 alias-return lifetimes, `old` over mutable state, and dependent object flows
-remain unimplemented. Nested effectful expressions without represented C++ sequencing
+remain unimplemented.
+
+Two reasoning gaps are refused rather than approximated, and `e2e_refinement_flow`
+pins both. A conditional expression bound to a local lowers to one opaque
+`select` term instead of splitting the path, so neither arm's facts reach the
+obligation; the same expression in tail position does split and does verify.
+`&&` states a proposition in a contract clause but is not modeled as an
+if-condition, so a branch establishing a two-sided predicate must be written as
+nested `if`s. Both fail closed and neither is a soundness boundary. Nested effectful expressions without represented C++ sequencing
 are rejected. These are implementation gaps, not completed capability.
 
 Pointer dereference is blocked rather than merely unimplemented. Every form
