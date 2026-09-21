@@ -1,5 +1,6 @@
 #include "pipeline.hpp"
 
+#include "cppl/analysis/analyze.hpp"
 #include "cppl/automation/evidence.hpp"
 #include "cppl/clang/bridge.hpp"
 #include "cppl/driver/scratch.hpp"
@@ -137,8 +138,14 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
     frontend::ProjectionOptions projection_options;
     projection_options.unit_key =
         source::hash_bytes(std::filesystem::absolute(request.original_path).string()).to_short_hex(12);
-    const frontend::Projection projection = frontend::project(stream, syntax, projection_options);
-    for (const auto& diagnostic : projection.diagnostics)
+
+    // A first projection, only to report its own diagnostics and to get a
+    // stable analysis/runtime path pair on disk before analysis::analyze
+    // iterates on the projection to resolve proof binding types
+    // (compiler/analysis/include/cppl/analysis/analyze.hpp). The projection
+    // it eventually settles on, not this one, is what elaboration uses.
+    const frontend::Projection initial_projection = frontend::project(stream, syntax, projection_options);
+    for (const auto& diagnostic : initial_projection.diagnostics)
         engine.report(diagnostic);
     if (engine.has_errors()) {
         outcome.tokens = std::make_unique<frontend::TokenStream>(stream);
@@ -149,8 +156,8 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
 
     const std::filesystem::path analysis_path = request.scratch / (request.stem + ".analysis.cpp");
     const std::filesystem::path runtime_path = request.scratch / (request.stem + ".runtime.cpp");
-    if (!write_scratch_file(analysis_path, projection.analysis) ||
-        !write_scratch_file(runtime_path, projection.runtime)) {
+    if (!write_scratch_file(analysis_path, initial_projection.analysis) ||
+        !write_scratch_file(runtime_path, initial_projection.runtime)) {
         report(engine, diagnostics::Category::Internal,
                "could not write the projection of '" + request.original_path + "'");
         outcome.tokens = std::make_unique<frontend::TokenStream>(stream);
@@ -165,35 +172,30 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
     parse_request.arguments.emplace_back("-x");
     parse_request.arguments.emplace_back("c++-cpp-output");
     parse_request.arguments.emplace_back("-w");
-    parse_request.selection.specification_prefix = projection_options.generated_prefix;
-    for (const auto& proposition : projection.proposition_probes) {
-        parse_request.selection.proposition_probes.push_back({proposition.name, proposition.shape});
-    }
-    // A refinement type resolves to its base type like any other alias, so the
-    // bridge is told which names carry a predicate (SPEC.md 17).
-    for (const auto& refinement : projection.refinement_probes) {
-        if (refinement.shape.kind != source::ProjectionKind::Expression) {
-            parse_request.selection.proposition_probes.push_back({refinement.probe, refinement.shape});
-        }
-        parse_request.selection.refinements.push_back({refinement.name, refinement.probe, refinement.index_count});
-    }
-    for (const auto& declaration : projection.declaration_offsets) {
-        parse_request.selection.offsets.push_back(declaration.analysis);
-    }
-    for (const auto& law : projection.specification_functions) {
-        parse_request.selection.offsets.push_back(law.analysis_offset);
-    }
 
-    const std::expected<clangbridge::TranslationUnit, std::string> unit = clangbridge::parse(parse_request);
+    const std::expected<analysis::Result, std::string> analyzed =
+        analysis::analyze(stream, syntax, projection_options, parse_request);
     outcome.tokens = std::make_unique<frontend::TokenStream>(stream);
     outcome.syntax = std::make_unique<frontend::Syntax>(syntax);
-    if (!unit.has_value()) {
-        report(engine, diagnostics::Category::Internal, unit.error());
+    if (!analyzed.has_value()) {
+        report(engine, diagnostics::Category::Internal, analyzed.error());
         outcome.failed = true;
         return outcome;
     }
 
-    for (const clangbridge::Diagnostic& diagnostic : unit->diagnostics) {
+    // analyze() may have iterated the projection to resolve proof binding
+    // types; the resolved analysis text is what Clang actually parsed, so it
+    // replaces what was written above before anything downstream reads the
+    // scratch files (driver.cpp's prior behaviour, preserved exactly).
+    const frontend::Projection& projection = analyzed->projection;
+    if (!write_scratch_file(analysis_path, projection.analysis)) {
+        report(engine, diagnostics::Category::Internal, "could not write resolved analysis projection");
+        outcome.failed = true;
+        return outcome;
+    }
+
+    const clangbridge::TranslationUnit& unit = analyzed->unit;
+    for (const clangbridge::Diagnostic& diagnostic : unit.diagnostics) {
         if (diagnostic.severity != clangbridge::Severity::Error &&
             diagnostic.severity != clangbridge::Severity::Fatal) {
             continue;
@@ -205,13 +207,13 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
         converted.location = diagnostic.location;
         engine.report(std::move(converted));
     }
-    if (unit->has_errors) {
+    if (unit.has_errors) {
         outcome.failed = true;
         return outcome;
     }
 
     const elaboration::Result elaborated =
-        elaboration::elaborate(elaboration::Request{syntax, projection, *unit}, engine);
+        elaboration::elaborate(elaboration::Request{syntax, projection, unit}, engine);
 
     const obligations::Program program = obligations::generate(elaborated.module, elaborated, engine);
     if (!engine.has_errors() && program.proofs.size() != syntax.proofs.size()) {
