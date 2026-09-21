@@ -98,10 +98,13 @@ CPP
 reject as_a_value <<'CPP'
 verified bool wrong(unsigned x) ensures(result == x) { return x == x || x == x; }
 CPP
-reject as_a_condition <<'CPP'
-verified unsigned wrong(unsigned x) ensures(result == x) {
+# A condition is not a value position: `||` there is elaborated into the routes
+# it selects between. The true route is the union of the two sides, so it
+# establishes neither of them on its own.
+reject as_a_condition_establishes_neither_side <<'CPP'
+verified unsigned wrong(unsigned x) ensures(result == 0u) {
     if (x == 0u || x != 1u) return x;
-    return x;
+    return 0u;
 }
 CPP
 reject in_an_invariant <<'CPP'
@@ -118,6 +121,6 @@ CPP
 grep -q 'kernel-rejection' "$run/excluded_middle.log"
 grep -q 'kernel-rejection' "$run/side_from_a_premise.log"
 grep -q 'kernel-rejection' "$run/one_case_fails.log"
-grep -q 'not modeled as a value' "$run/as_a_condition.log"
+grep -q 'not modeled as a value' "$run/in_an_invariant.log"
 grep -q 'nested or malformed formal syntax' "$run/in_an_argument.log"
 grep -q 'no proof or assumed premise' "$run/written_failure.log"

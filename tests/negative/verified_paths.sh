@@ -58,8 +58,11 @@ reject conversion 'conversion.*not modeled' \
     'verified unsigned f(unsigned x) ensures(result <= 10u) { if (x <= 10) return x; return 10u; }'
 reject float_comparison 'not modeled' \
     'verified unsigned f(float x) ensures(result <= 10u) { if (x <= 10.0f) return 0u; return 10u; }'
-reject short_circuit 'not modeled' \
-    'verified unsigned f(unsigned x) ensures(result <= 10u) { if (x <= 10u && x != 0u) return x; return 10u; }'
+# `&&` in a condition is elaborated into the routes it selects between, so the
+# route where it fails is the union of `x > 10` and `x <= 10 && x == 0`, not a
+# single route supposing both sides false. Returning `x` there is not justified.
+reject short_circuit_false_route 'return path.*does not satisfy' \
+    'verified unsigned f(unsigned x) ensures(result <= 10u) { if (x <= 10u && x != 0u) return 0u; return x; }'
 reject switch_statement 'only if/else' \
     'verified unsigned f(unsigned x) ensures(result <= 10u) { switch (x) { case 0: return 0u; default: return 10u; } }'
 reject if_initializer 'only if/else' \

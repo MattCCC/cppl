@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <clang-c/Index.h>
 #include <cstdint>
+#include <functional>
 #include <limits>
 #include <ranges>
 #include <utility>
@@ -13,6 +14,9 @@ namespace {
 
 constexpr unsigned kMaxExpressionDepth = 128;
 constexpr std::size_t kMaxReturnPaths = 128;
+// A condition's operators nest, and each `&&`/`||` places its second operand on
+// a further route, so elaboration is bounded as expression depth is.
+constexpr unsigned kMaxConditionDepth = 64;
 
 class ScopedString {
   public:
@@ -1630,25 +1634,89 @@ struct BodyLowering {
         return after;
     }
 
-    std::optional<Expr> lower_branch(CXCursor statement, const std::vector<CXCursor>& parts, const Continuation& next,
-                                     const Locals& locals, unsigned depth) {
-        Expr condition = build_expression(parts[0], parameters, locals, 0);
-        std::optional<Expr> when_true = lower_statement(parts[1], next, locals, depth + 1);
-        if (!when_true) {
-            return std::nullopt;
+    // A branch of the body: what the program does when the condition holds, and
+    // what it does when it does not. Each is built on demand because condition
+    // elaboration places it on more than one route, and every route needs its
+    // own subtree rather than a shared one.
+    using Branch = std::function<std::optional<Expr>()>;
+
+    // Elaborate an `if` condition into the routes it selects between.
+    //
+    // `&&` and `||` state a proposition, and a proposition is not a value: the
+    // core computes no Boolean from one (SPEC.md 12.7). They are not lowered as
+    // values here either. They are elaborated into the branch structure C++
+    // already gives them, which is what makes short-circuit evaluation exact
+    // rather than approximated:
+    //
+    //     if (A && B) T else F   ==>   if (A) { if (B) T else F } else F
+    //     if (A || B) T else F   ==>   if (A) T else { if (B) T else F }
+    //     if (!A)     T else F   ==>   if (A) F else T
+    //
+    // `B` appears only under the route on which C++ evaluates it, so no route
+    // can state a fact about an operand that did not execute on it. The false
+    // route of `A && B` is the union of `!A` and `A && !B`; it is represented as
+    // those two routes, never as a single route supposing both operands false.
+    // Nesting recurses, so each operand is itself elaborated the same way.
+    std::optional<Expr> lower_condition(CXCursor condition, const Branch& when_true, const Branch& when_false,
+                                        const Locals& locals, unsigned depth) {
+        if (depth > kMaxConditionDepth) {
+            return reject("this condition nests more deeply than " + std::to_string(kMaxConditionDepth) + " operators");
         }
-        std::optional<Expr> when_false = parts.size() == 3 ? lower_statement(parts[2], next, locals, depth + 1)
-                                                           : lower_statements(next, locals, depth + 1);
-        if (!when_false) {
-            return std::nullopt;
+        const enum CXCursorKind kind = clang_getCursorKind(condition);
+        if (kind == CXCursor_ParenExpr) {
+            const auto inner = children_of(condition);
+            if (inner.size() == 1)
+                return lower_condition(inner[0], when_true, when_false, locals, depth + 1);
         }
-        if (return_paths(*when_true) + return_paths(*when_false) > kMaxReturnPaths) {
+        if (kind == CXCursor_UnaryOperator && clang_getCursorUnaryOperatorKind(condition) == CXUnaryOperator_LNot) {
+            const auto operands = children_of(condition);
+            if (operands.size() == 1)
+                return lower_condition(operands[0], when_false, when_true, locals, depth + 1);
+        }
+        if (kind == CXCursor_BinaryOperator) {
+            const enum CXBinaryOperatorKind op = clang_getCursorBinaryOperatorKind(condition);
+            const auto operands = children_of(condition);
+            if ((op == CXBinaryOperator_LAnd || op == CXBinaryOperator_LOr) && operands.size() == 2) {
+                const bool conjunction = op == CXBinaryOperator_LAnd;
+                // The second operand is evaluated only on the route the first
+                // operand's outcome leads to, which is where it is placed.
+                const Branch rest = [&]() -> std::optional<Expr> {
+                    return lower_condition(operands[1], when_true, when_false, locals, depth + 1);
+                };
+                return lower_condition(operands[0], conjunction ? rest : when_true, conjunction ? when_false : rest,
+                                       locals, depth + 1);
+            }
+        }
+        Expr value = build_expression(condition, parameters, locals, 0);
+        std::optional<Expr> taken = when_true();
+        if (!taken)
+            return std::nullopt;
+        std::optional<Expr> untaken = when_false();
+        if (!untaken)
+            return std::nullopt;
+        if (return_paths(*taken) + return_paths(*untaken) > kMaxReturnPaths) {
             return reject("more than " + std::to_string(kMaxReturnPaths) + " return paths are not modeled");
         }
         Expr result;
-        result.type = when_true->type;
-        result.location = presumed_location(clang_getCursorLocation(statement));
-        result.node = Conditional{{std::move(condition), std::move(*when_true), std::move(*when_false)}};
+        result.type = taken->type;
+        result.location = value.location;
+        result.node = Conditional{{std::move(value), std::move(*taken), std::move(*untaken)}};
+        return result;
+    }
+
+    std::optional<Expr> lower_branch(CXCursor statement, const std::vector<CXCursor>& parts, const Continuation& next,
+                                     const Locals& locals, unsigned depth) {
+        const Branch when_true = [&]() -> std::optional<Expr> {
+            return lower_statement(parts[1], next, locals, depth + 1);
+        };
+        const Branch when_false = [&]() -> std::optional<Expr> {
+            return parts.size() == 3 ? lower_statement(parts[2], next, locals, depth + 1)
+                                     : lower_statements(next, locals, depth + 1);
+        };
+        std::optional<Expr> result = lower_condition(parts[0], when_true, when_false, locals, depth);
+        if (!result)
+            return std::nullopt;
+        result->location = presumed_location(clang_getCursorLocation(statement));
         return result;
     }
 

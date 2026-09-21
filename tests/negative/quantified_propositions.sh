@@ -178,8 +178,11 @@ reject conjunction_as_value <<'CPP'
 pure bool wrong(bool x, bool y) { return x && y; }
 law use(bool x, bool y) ensures(wrong(x, y));
 CPP
-reject conjunction_as_condition <<'CPP'
-verified unsigned wrong(unsigned x) ensures(result == x) {
+# A condition is not a value position: `&&` there is elaborated into the routes
+# it selects between, so a conjunction is refused as a value and modeled as a
+# condition. What it must not do is prove more than the routes state.
+reject conjunction_as_condition_proves_no_more <<'CPP'
+verified unsigned wrong(unsigned x) ensures(result == 0u) {
     if (x == 0u && x != 1u) return x;
     return x;
 }
