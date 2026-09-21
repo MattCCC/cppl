@@ -366,6 +366,22 @@ checks the generated propositions; it does not independently check Clang memory
 correspondence. No new trusted user mechanism, kernel rule, logical assumption,
 or axiom is introduced.
 
+Boolean condition elaboration and path/value-provenance resolution are part of
+this same correspondence responsibility, and expand no trust boundary beyond it.
+`&&`, `||` and `!` in a verified condition are elaborated into the routes they
+select between (SPEC.md 12.7), and a route's split follows what a bound value
+denotes, resolving reads of locals transitively (SPEC.md 12.8). Both are
+structural: they place existing subexpressions of the body on the routes where
+C++ evaluates them, and state no proposition of their own. The bridge is trusted
+to reproduce C++ short-circuit order, and the obligation builder to keep a
+route's conditions in step with the `select` nesting the proof is composed over;
+where it cannot, the body is refused. A defect can place an operand on a route
+that does not evaluate it, which is a correspondence defect of the same kind as
+any other in this layer, and is covered by positive and negative source tests
+that pin both the proven crossings and the routes that must establish nothing.
+No new kernel rule, logical assumption, axiom, or trusted user mechanism is
+introduced.
+
 A resolved local reference identifies one tracked storage. Reference parameters
 are conservatively allowed to alias other reference parameters of the same
 modeled type, including const references. A write versions its target and

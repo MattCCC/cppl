@@ -1263,6 +1263,34 @@ TRUST.md states what is not inferred
 
 ---
 
+# Path and value-provenance invariants
+
+- A path-sensitive value must preserve its branch provenance through local
+  bindings and through later logical-value resolution. Binding a conditional to
+  a local must not collapse it into one opaque term when a later obligation
+  needs the facts of the arm a route takes.
+- A read of a logical version must not discard proof-relevant provenance. A read
+  denotes the value its version was given, resolved transitively.
+- Transitive logical-version resolution must be generic, never a fixed number of
+  hops. It must respect version boundaries, so a version established after a
+  mutation is never confused with the one before it, and it must terminate: a
+  version's value reads only versions established before it.
+- Condition elaboration must model C++ short-circuit semantics exactly. `&&`,
+  `||` and `!` in a verified condition are elaborated into the routes they
+  select between, recursively, never rewritten as Boolean values or flattened.
+- No Boolean condition handler may introduce a fact from an operand that is not
+  guaranteed to have executed on that route. The route where `A && B` fails is
+  the union of `!A` and `A && !B`; it must never be represented as one route
+  supposing both operands false. The route where `A || B` holds is likewise a
+  union and establishes neither side on its own.
+- Route splitting and proof composition derive branch structure separately and
+  must agree. A route's conditions correspond to the `select` nesting of the
+  body's lowered value, because that nesting is what the proof is composed over.
+- Added proof power must never add a fact. Every new route split requires
+  adversarial cases showing that a failing arm still rejects.
+
+---
+
 # 39. Final invariant
 
 For every Law reported as `PROVEN`, the project must be able to answer:

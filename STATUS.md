@@ -117,8 +117,10 @@ logical equivalence `<->` lowers to both implications, using those same rules.
 Disjunction is `PROTOTYPE` on two further kernel rules (core/kernel 0.5.0), again
 with no assumptions or axioms: `||` is introduced from one side and used by a
 case analysis over both, automation shapes both and the kernel checks them, and
-nothing grants `P || not P`. Value/guard/invariant uses of `&&` and `||` remain
-unsupported (SPEC.md 7.6-7.8).
+nothing grants `P || not P`. In a verified `if` condition, `&&`, `||` and `!`
+are elaborated into the routes they select between (SPEC.md 12.7). Value and
+invariant uses of `&&` and `||` remain unsupported, because a proposition is not
+a value (SPEC.md 7.6-7.8).
 Everything else is reported as unsupported and produces no obligation. See
 `ARCHITECTURE.md` 97 for the implemented structure and `TRUST.md` 41 for what
 must be trusted today.
@@ -626,13 +628,30 @@ crossing may be discharged arm by arm. This adds proof power and no fact: a
 single failing arm still rejects the binding, and a guarded arm supposes only
 what its condition states.
 
-Two reasoning gaps remain refused rather than approximated, and
-`e2e_refinement_flow` pins both. A conditional whose arm reads an earlier
-conditional local is not resolved transitively. `&&` states a proposition in a
-contract clause but is not modeled as an if-condition, so a branch establishing
-a two-sided predicate must be written as nested `if`s. Both fail closed and
-neither is a soundness boundary. Nested effectful expressions without represented C++ sequencing
-are rejected. These are implementation gaps, not completed capability.
+Which conditional a route splits on follows what the bound value denotes, not
+how it is written. A read denotes the value its version was given, so resolution
+follows reads transitively to any depth: a conditional reached through any
+number of intervening locals splits as a directly written one does, and a
+conditional whose arm reads an earlier conditional local resolves through it.
+Resolution is bounded without a fixed hop limit, because a version's value reads
+only versions established before it, and it does not cross a version boundary.
+
+`&&`, `||` and `!` are modeled in a verified condition. They are not lowered as
+values — a proposition is not a value, and outside a condition they stay refused
+— but elaborated into the routes they select between, recursively, so nesting
+works to any depth. This models C++ short-circuit evaluation exactly rather than
+approximating it: an operand appears only on the routes where C++ evaluates it.
+The route where `A && B` fails is the union of `!A` and `A && !B`, never one
+route supposing both sides false, and the route where `A || B` holds is likewise
+a union that establishes neither side alone. `e2e_refinement_flow` pins the
+proven crossings together with the guards showing the added power creates no
+fact; `negative_verified_paths` pins the false-route behavior.
+
+Nested effectful expressions without represented C++ sequencing are rejected.
+Route splitting and proof composition derive branch structure separately and
+must agree, so a body whose splits cannot be kept in step with the `select`
+nesting of its lowered value is refused rather than proven. These are
+implementation gaps, not completed capability.
 
 Pointer dereference is blocked rather than merely unimplemented. Every form
 (`*p`, `*p = e`, `p->m`, `p[i]`) is refused because dereference validity needs

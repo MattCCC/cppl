@@ -1246,6 +1246,26 @@ itself under section 7.5, never skipped as unreachable. A contract is available
 to callers only after every path and required call precondition is proven and
 their evidence is linked to the complete body.
 
+A condition is not a value position. `&&`, `||` and `!` state propositions, and
+a proposition is not a value: the core computes no boolean from one. In a
+verified condition they are therefore elaborated into the routes they select
+between, rather than lowered as values:
+
+```text
+if (A && B) T else F   ==>   if (A) { if (B) T else F } else F
+if (A || B) T else F   ==>   if (A) T else { if (B) T else F }
+if (!A)     T else F   ==>   if (A) F else T
+```
+
+Elaboration recurses, so the connectives nest to any depth. This models C++
+short-circuit evaluation exactly rather than approximating it: an operand
+appears only on the routes where C++ evaluates it, so no route can suppose a
+fact about an operand that did not execute on it. In particular the route where
+`A && B` fails is the union of `!A` and `A && !B`, represented as those routes,
+and MUST NOT be represented as one route supposing both operands false.
+Symmetrically, the route where `A || B` holds is a union and establishes neither
+side on its own. Outside a condition, `&&` and `||` remain refused as values.
+
 Contracts, Laws, and conditions support built-in integer `==`, `!=`, `<`, `<=`,
 `>`, `>=`, and logical negation of these predicates. Operands MUST have the same
 Clang-resolved modeled integer type. Identical path predicates can close goals;
@@ -1315,6 +1335,30 @@ else no version of the local is current, MUST be rejected.
 What follows a branch is verified once per arm, under the versions that arm
 established, so a local's value after a branch is path-sensitive by
 construction. This requires no merge operation and no additional kernel rule.
+
+A local bound to a conditional expression is path-sensitive in the same way. A
+conditional states one `select` term, of which neither arm's facts are known, so
+the route splits on its condition exactly as it does for a conditional in tail
+position: the local denotes the arm the route takes, and owes any refinement
+predicate under what that route supposes (§17.2).
+
+Which conditional a route splits on is decided by what the bound value
+**denotes**, not by how it is written. A read denotes the value its version was
+given, so resolution follows reads transitively, to any depth, and a conditional
+reached through intervening locals splits exactly as a directly written one
+does. Resolution is bounded without a fixed hop limit: a version's value reads
+only versions established before it, so following reads strictly decreases the
+version and terminates. Resolution never crosses a version boundary — it takes
+the version current at the read, so a version established by a later write is
+never confused with the one before it — and a read whose version the route does
+not establish, such as a loop head version or a parameter, resolves to itself
+and stays opaque.
+
+A route's conditions correspond to the `select` nesting of the body's lowered
+value, because that nesting is what the proof is composed over: each `select` is
+discharged by conditional elimination (§12.7), and a leaf is proven under
+exactly the conditions standing above it there. Splitting MUST keep the two in
+step. Where it cannot, the body is refused rather than proven.
 
 A call in an initializer or an assigned value is evaluated where the body
 evaluates it. Its precondition MUST be proven using only the path conditions

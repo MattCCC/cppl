@@ -121,6 +121,106 @@ accept condition_informs_its_arm <<'CPP'
 verified int f(int y) ensures(result > 0) { int x = y > 0 ? y : 1; return x; }
 CPP
 
+# A conditional's value survives any number of intervening locals: a read
+# replays the value its version was given, so the route splits on the condition
+# that established it however far back that was.
+accept conditional_through_a_local_hop <<'CPP'
+verified int f(bool b) ensures(result > 0) { int x = b ? 1 : 2; int y = x; return y; }
+CPP
+accept conditional_through_several_local_hops <<'CPP'
+verified int f(bool b) ensures(result > 0) { int x = b ? 1 : 2; int y = x; int z = y; return z; }
+CPP
+accept refined_crossing_after_local_hops <<'CPP'
+type Positive = int where(self > 0);
+verified int f(bool b) ensures(result > 0) { int x = b ? 1 : 2; int y = x; Positive p = y; return p; }
+CPP
+
+# A conditional whose arm reads an earlier conditional local. Resolution is
+# transitive, so the second binding sees the first conditional and splits on it
+# too, rather than one opaque term.
+accept chained_conditional_locals <<'CPP'
+verified int f(bool a, bool b) ensures(result > 0) { int x = a ? 1 : 2; int y = b ? x : 3; return y; }
+CPP
+accept three_chained_conditional_locals <<'CPP'
+verified int f(bool a, bool b, bool c) ensures(result > 0) {
+    int x = a ? 1 : 2; int y = b ? x : 3; int z = c ? y : 4; return z;
+}
+CPP
+accept refined_crossing_through_chained_conditionals <<'CPP'
+type Positive = int where(self > 0);
+verified int f(bool a, bool b) ensures(result > 0) { int x = a ? 1 : 2; Positive y = b ? x : 3; return y; }
+CPP
+
+# --- Boolean conditions -------------------------------------------------------
+#
+# `&&` and `||` state a proposition, and a proposition is not a value. In a
+# condition they are elaborated into the routes they select between, which is
+# what makes short-circuit evaluation exact: an operand appears only on the
+# route where C++ evaluates it.
+
+# The true route of `A && B` establishes both sides, so a two-sided predicate
+# is discharged without writing nested ifs.
+accept conjunction_as_an_if_condition <<'CPP'
+type Percentage = int where(self >= 0 && self <= 100);
+verified int f(int x) ensures(result >= 0) {
+    if (x >= 0 && x <= 100) { Percentage p = x; return p; }
+    return 0;
+}
+CPP
+
+# The false route of `A || B` establishes both negations.
+accept disjunction_false_route_establishes_both <<'CPP'
+type Positive = int where(self > 0);
+verified int f(int x) ensures(result > 0) {
+    if (x > 5 || x <= 0) { return 1; }
+    Positive p = x;
+    return p;
+}
+CPP
+
+# The true route of `A || B` is the union of its sides, so it is provable when
+# each side alone suffices.
+accept disjunction_true_route_is_a_union <<'CPP'
+type Positive = int where(self > 0);
+verified int f(int x) ensures(result > 0) {
+    if (x > 5 || x > 10) { Positive p = x; return p; }
+    return 1;
+}
+CPP
+
+# `!` exchanges the routes its operand selects between.
+accept negation_swaps_the_routes <<'CPP'
+type Positive = int where(self > 0);
+verified int f(int x) ensures(result > 0) {
+    if (!(x > 0)) { return 1; }
+    Positive p = x;
+    return p;
+}
+CPP
+
+# Elaboration recurses, so the connectives nest.
+accept de_morgan_over_a_disjunction <<'CPP'
+type Percentage = int where(self >= 0 && self <= 100);
+verified int f(int x) ensures(result >= 0) {
+    if (!(x < 0 || x > 100)) { Percentage p = x; return p; }
+    return 0;
+}
+CPP
+accept conjunction_of_a_disjunction <<'CPP'
+type Positive = int where(self > 0);
+verified int f(int x, bool b, bool c) ensures(result > 0) {
+    if (x > 0 && (b || c)) { Positive p = x; return p; }
+    return 1;
+}
+CPP
+accept nested_connectives <<'CPP'
+type Positive = int where(self > 0);
+verified int f(int x, bool b, bool c, bool d) ensures(result > 0) {
+    if (((x > 0 && b) || (x > 5 && c)) && !d) { Positive p = x; return p; }
+    return 1;
+}
+CPP
+
 # --- Crossings that must be refused ------------------------------------------
 
 # An ordinary function's declaration is not proof of its refined return.
@@ -167,27 +267,73 @@ refuse conditional_does_not_overreach 'does not satisfy its contract' <<'CPP'
 verified int f(int y) ensures(result > 5) { int x = y > 0 ? y : 1; return x; }
 CPP
 
+# Resolving a conditional through locals adds proof power, never a fact: a
+# failing arm still rejects however many hops away it was written.
+refuse chained_conditional_arm_fails 'does not satisfy its contract' <<'CPP'
+verified int f(bool a, bool b) ensures(result > 0) { int x = a ? 1 : 0; int y = b ? x : 3; return y; }
+CPP
+refuse chained_conditional_arm_fails_refinement 'not shown to satisfy refinement type' <<'CPP'
+type Positive = int where(self > 0);
+verified int f(bool a, bool b) ensures(result > 0) { int x = a ? 1 : 0; Positive y = b ? x : 3; return y; }
+CPP
+refuse refined_crossing_after_hops_fails 'not shown to satisfy refinement type' <<'CPP'
+type Positive = int where(self > 0);
+verified int f(bool b) ensures(result > 0) { int x = b ? 1 : 0; int y = x; Positive p = y; return p; }
+CPP
+
+# Each side of `&&` is established only on the route that evaluates it, so one
+# side alone does not discharge a two-sided predicate.
+refuse conjunction_needs_both_sides 'not shown to satisfy refinement type' <<'CPP'
+type Percentage = int where(self >= 0 && self <= 100);
+verified int f(int x) ensures(result >= 0) {
+    if (x >= 0) { Percentage p = x; return p; }
+    return 0;
+}
+CPP
+
+# The route where `A && B` fails is the union of `!A` and `A && !B`. It is not
+# one route supposing both sides false, so it establishes neither.
+refuse conjunction_false_route_supposes_neither_side 'does not satisfy its contract' <<'CPP'
+verified int f(int x) ensures(result > 0) {
+    if (x >= 0 && x <= 100) { return 1; }
+    return x;
+}
+CPP
+
+# The true route of `A || B` is a union, so neither side holds on all of it.
+refuse disjunction_true_route_establishes_neither_side 'not shown to satisfy refinement type' <<'CPP'
+type Positive = int where(self > 0);
+verified int f(int x) ensures(result > 0) {
+    if (x > 0 || x < 10) { Positive p = x; return p; }
+    return 1;
+}
+CPP
+
+# A negated condition states exactly its operand's failure, never more.
+refuse negation_does_not_overreach 'not shown to satisfy refinement type' <<'CPP'
+type Big = int where(self > 5);
+verified int f(int x) ensures(result > 5) {
+    if (!(x > 0)) { return 6; }
+    Big p = x;
+    return p;
+}
+CPP
+
+# A nested condition is not flattened: changing one side's bound must change
+# what the route establishes.
+refuse nested_connectives_need_the_stated_bound 'not shown to satisfy refinement type' <<'CPP'
+type Positive = int where(self > 0);
+verified int f(int x, bool b, bool c, bool d) ensures(result > 0) {
+    if (((x > 0 && b) || (x >= 0 && c)) && !d) { Positive p = x; return p; }
+    return 1;
+}
+CPP
+
 # --- Gaps: refused today, and the reason must stay visible -------------------
 #
 # These are reasoning or modeling gaps, not soundness boundaries. Each is
 # refused, which is the fail-closed direction. If one begins to verify, that is
 # a deliberate improvement and this suite must be updated to `accept`.
-
-# A conditional whose arm reads an earlier conditional local is not resolved
-# transitively, so the second binding still sees an opaque term. Direct and
-# nested conditional bindings do split and do verify (see above).
-refuse chained_conditional_locals 'does not satisfy its contract' <<'CPP'
-verified int f(bool a, bool b) ensures(result > 0) { int x = a ? 1 : 2; int y = b ? x : 3; return y; }
-CPP
-
-# '&&' is modeled in a contract clause but not as an if-condition, so a branch
-# that would establish a two-sided predicate must be written as nested ifs.
-refuse conjunction_as_an_if_condition "'&&' states a proposition" <<'CPP'
-verified int f(int x) ensures(result >= 0) {
-    if (x >= 0 && x <= 100) { return 1; }
-    return 0;
-}
-CPP
 
 # Casts are refused rather than silently preserving or dropping a refinement.
 refuse cast_is_not_modeled 'only a scoped enum cast' <<'CPP'
