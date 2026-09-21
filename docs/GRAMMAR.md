@@ -618,6 +618,10 @@ The underlying `function-declarator` and `function-body-or-semicolon` are ordina
 
 The specification clauses occur after the ordinary declarator and before the function body or terminating semicolon.
 
+In the implemented verification fragment a definition requires an `ensures`
+clause or a Clang-resolved refined return type (SPEC.md 17.3.1). The latter supplies
+its own postcondition; this decision belongs to semantic elaboration, not grammar.
+
 ```ebnf
 function-specification-clause
     ::= expects-clause

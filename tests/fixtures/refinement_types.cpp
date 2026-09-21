@@ -41,6 +41,10 @@ verified NonNegative zero(int x) ensures(result == 0) {
     return 0;
 }
 
+verified Percentage implicit_percentage() {
+    return 50;
+}
+
 // A refinement of a refinement states both predicates: the value must satisfy
 // the one written here and the one it inherits.
 verified int composed(int x) ensures(result == 2) {
@@ -112,6 +116,7 @@ pure int where(int x) {
 using type = int;
 
 int main() {
+    if (implicit_percentage() != 50) return 1;
     if (refined_loop() != 9u) return 1;
     Holder holder{7};
     type ordinary = holder.type;

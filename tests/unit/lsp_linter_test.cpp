@@ -69,11 +69,9 @@ law valid_with_premise(int x)
     CPPL_CHECK(!has_diagnostic_with_code(diags, "cppl.law.missing-ensures"));
 }
 
-CPPL_TEST(verified_function_missing_ensures) {
-    // As with law_missing_ensures_clause: recognize() itself rejects a
-    // verified function with no ensures clause and never adds it to
-    // Syntax::verified_functions, so the Linter's own check is unreachable
-    // for this input; the recognizer's diagnostic is what surfaces.
+CPPL_TEST(verified_function_without_ensures_requires_semantic_type_resolution) {
+    // The structural linter cannot distinguish a refined return from its base.
+    // The shared compiler pipeline diagnoses a missing contract after Clang.
     std::string text = R"(
 verified int bad(int x) expects(x > 0) {
     return x;
@@ -81,7 +79,7 @@ verified int bad(int x) expects(x > 0) {
 )";
 
     auto diags = lint_text(text);
-    CPPL_CHECK(has_diagnostic_with_code(diags, "cppl.syntax.unexpected-construct"));
+    CPPL_CHECK(diags.empty());
 }
 
 CPPL_TEST(verified_function_with_ensures_passes) {

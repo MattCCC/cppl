@@ -7,8 +7,10 @@
 
 namespace cppl::analysis {
 namespace {
-void select(clangbridge::ParseRequest& request, const frontend::Projection& projection) {
+void select(clangbridge::ParseRequest& request, const frontend::Projection& projection,
+            const frontend::Syntax& syntax) {
     request.selection.offsets.clear();
+    request.selection.verified_offsets.clear();
     request.selection.proposition_probes.clear();
     request.selection.refinements.clear();
     for (const auto& probe : projection.proposition_probes)
@@ -21,6 +23,10 @@ void select(clangbridge::ParseRequest& request, const frontend::Projection& proj
     }
     for (const auto& declaration : projection.declaration_offsets)
         request.selection.offsets.push_back(declaration.analysis);
+    for (const auto& function : syntax.verified_functions) {
+        if (const auto offset = projection.declaration_offset(function.function_offset))
+            request.selection.verified_offsets.push_back(*offset);
+    }
     for (const auto& law : projection.specification_functions)
         request.selection.offsets.push_back(law.analysis_offset);
 }
@@ -43,7 +49,7 @@ std::expected<Result, std::string> analyze(const frontend::TokenStream& stream, 
         result.projection = frontend::project(stream, syntax, options);
         request.content = result.projection.analysis;
         request.recover_bindings = !result.projection.binding_probes.empty();
-        select(request, result.projection);
+        select(request, result.projection, syntax);
         auto parsed = clangbridge::parse(request);
         if (!parsed)
             return std::unexpected(parsed.error());

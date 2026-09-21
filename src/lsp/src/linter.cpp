@@ -92,18 +92,8 @@ void Linter::lint_proofs(const std::vector<frontend::ProofDeclaration>& proofs, 
 void Linter::lint_verified_functions(const std::vector<frontend::VerifiedFunction>& functions,
                                      std::vector<Diagnostic>& out, const PositionMapper& mapper) const {
     for (const auto& func : functions) {
-        // Check for at least one ensures clause
-        const auto* postcond = func.postcondition();
-        if (!postcond) {
-            Position keyword_pos = mapper.source_location_to_position(func.keyword_location);
-            Diagnostic diag;
-            diag.range = Range{keyword_pos, keyword_pos};
-            diag.severity = DiagnosticSeverity::Error;
-            diag.code = std::string(diagnostic_codes::contract_missing_ensures);
-            diag.message = "verified function '" + func.function_name + "' must have an 'ensures' clause";
-            out.push_back(std::move(diag));
-        }
-
+        // A refined return supplies a postcondition without an ensures clause.
+        // Only shared semantic analysis can decide that from the resolved type.
         // Check clause validity
         check_clause_validity(func.clauses, "verified function '" + func.function_name + "'", out, mapper);
     }

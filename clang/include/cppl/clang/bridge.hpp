@@ -19,6 +19,7 @@ namespace cppl::clangbridge {
 struct Selection {
     std::string specification_prefix;
     std::vector<std::size_t> offsets;
+    std::vector<std::size_t> verified_offsets;
     struct PropositionProbe {
         std::string name;
         source::ProjectionShape shape;

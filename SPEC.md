@@ -1617,6 +1617,15 @@ predicate is supposed inside the body, and the author does not restate it as an
 every path that returns. Using a refined value as its base value requires nothing
 further.
 
+A verified definition with a refined result MAY omit `ensures`; its effective
+postcondition is then the result's full refinement predicate. Explicit `ensures`
+clauses conjoin with that predicate. A definition with neither a refined result
+nor an explicit postcondition is rejected. An ordinary or merely `pure` function
+return declaration cannot establish refinement evidence and is rejected unless
+the same Clang-resolved callable has a verified definition in the translation
+unit. Declaration-only verified contracts and trusted/unsafe refinement-return
+boundaries remain unavailable; their spellings do not establish evidence.
+
 A function containing a loop, or calling a function verified by loop conditions,
 MUST enforce the same refinement crossings as a function without loops. Every
 local initialization and write is checked, including a value never subsequently
@@ -1638,6 +1647,11 @@ Not yet modeled, and refused rather than approximated: refined returns of an
 unverified function, refined members, references and pointers, and refinements in
 templated contexts. A refinement over a base type outside the modeled fragment is
 refused where it is declared.
+
+Explicit refined storage outside a modeled verified body, including fields and
+namespace-scope arrays, is rejected because its construction and mutation have
+no generated obligations. This is a verification limitation, not a change to the
+ordinary C++ representation or layout of the alias.
 
 ---
 

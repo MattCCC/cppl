@@ -371,9 +371,6 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
                              projection.runtime.substr(verified.clause_region.offset, verified.clause_region.length)});
 
         const Clause* postcondition = verified.postcondition();
-        if (postcondition == nullptr) {
-            continue;
-        }
 
         const std::string suffix = std::to_string(index) + (options.unit_key.empty() ? "" : "_" + options.unit_key);
         std::string_view parameters = stream.spelling(verified.parameters);
@@ -396,8 +393,15 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         projected.function_index = index;
         projected.postcondition_name = options.generated_prefix + "ensures_" + suffix;
 
-        std::string replacement = emit(projected.postcondition_name, result_parameter, postcondition->expression,
-                                       postcondition->location, verified.body_end_line);
+        // Absence of an explicit ensures is legal only when elaboration resolves
+        // a refined result. Membership supplies the actual postcondition there.
+        std::string replacement =
+            postcondition != nullptr
+                ? emit(projected.postcondition_name, result_parameter, postcondition->expression,
+                       postcondition->location, verified.body_end_line)
+                : "\n" + line_directive(verified.function_location.line, verified.function_location.file) +
+                      "[[maybe_unused]] static bool " + projected.postcondition_name + "(" + result_parameter +
+                      ") { return true; }\n";
         for (const Clause* precondition : verified.preconditions()) {
             std::string name = options.generated_prefix + "expects_" + suffix;
             if (!projected.precondition_names.empty()) {

@@ -107,6 +107,50 @@ verified Small wrong(unsigned x) ensures(result == 20u) {
     return 20u;
 }
 CPP
+reject ordinary_refined_return <<'CPP'
+type Positive = int where(self > 0);
+Positive manufacture();
+CPP
+reject ordinary_refined_return_definition <<'CPP'
+type Positive = int where(self > 0);
+Positive manufacture() { return 0; }
+CPP
+reject pure_does_not_prove_refined_return <<'CPP'
+type Positive = int where(self > 0);
+pure Positive manufacture() { return 0; }
+CPP
+reject ordinary_refined_reference_return <<'CPP'
+type Positive = int where(self > 0);
+Positive& manufacture();
+CPP
+reject ordinary_refined_reference_alias_return <<'CPP'
+type Positive = int where(self > 0);
+using Reference = Positive&;
+Reference manufacture();
+CPP
+reject unverified_refined_storage <<'CPP'
+type Positive = int where(self > 0);
+int wrong() { Positive value = 0; return value; }
+CPP
+reject unchecked_refined_member <<'CPP'
+type Positive = int where(self > 0);
+struct S { Positive value; };
+CPP
+reject unchecked_refined_array <<'CPP'
+type Positive = int where(self > 0);
+Positive values[2] = {0, 0};
+CPP
+reject implicit_refined_postcondition <<'CPP'
+type Positive = int where(self > 0);
+verified Positive wrong() { return 0; }
+CPP
+reject implicit_refined_postcondition_on_every_path <<'CPP'
+type Positive = int where(self > 0);
+verified Positive wrong(bool b) {
+    if (b) return 1;
+    return 0;
+}
+CPP
 
 # A branch that does not establish the predicate does not discharge it.
 reject wrong_branch_fact <<'CPP'
@@ -251,6 +295,10 @@ int f() {
 CPP
 
 grep -q 'not shown to satisfy refinement type' "$run/unproven_introduction.log"
+grep -q 'ordinary function.*return cannot establish refinement' "$run/ordinary_refined_return.log"
+grep -q 'ordinary function.*return cannot establish refinement' "$run/ordinary_refined_return_definition.log"
+grep -q 'ordinary function.*return cannot establish refinement' "$run/pure_does_not_prove_refined_return.log"
+grep -q 'ordinary function.*return cannot establish refinement' "$run/ordinary_refined_reference_return.log"
 grep -q 'not shown to satisfy refinement type' "$run/index_out_of_range.log"
 grep -q 'not shown to satisfy refinement type' "$run/unproven_assignment.log"
 grep -q 'not shown to satisfy refinement type' "$run/unproven_update.log"
@@ -338,6 +386,17 @@ verified int identity(Bounded value) ensures(result > 0 && result <= 100) {
     return value;
 }
 int main() { return identity(1) == 1 ? 0 : 1; }
+CPP
+accept refined_return_is_a_postcondition <<'CPP'
+type Positive = int where(self > 0);
+verified Positive one() { return 1; }
+verified Positive choose(bool b) {
+    if (b) return 1;
+    return 2;
+}
+verified Positive from_path(int x) expects(x > 0) { return x; }
+verified int caller() ensures(result > 0) { return one(); }
+int main() { return caller() == 1 && choose(false) == 2 && from_path(3) == 3 ? 0 : 1; }
 CPP
 
 echo "refinement membership is proven or refused; contextual words keep their C++ meaning"

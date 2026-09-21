@@ -872,8 +872,16 @@ void elaborate_contract(const Request& request, const frontend::VerifiedFunction
     }
 
     const frontend::Clause* postcondition = declaration.postcondition();
+    if (postcondition == nullptr && !converted.result.is_refined()) {
+        report(engine, diagnostics::Category::Elaboration, declaration.function_location,
+               "verified function '" + function.qualified_name + "' states no contract",
+               "write an ensures clause or a refined return type");
+        return;
+    }
+    const auto postcondition_location =
+        postcondition != nullptr ? postcondition->location : declaration.function_location;
     std::optional<vir::Expr> ensured =
-        convert_projected(request, projected.postcondition_name, postcondition->location, next_expression_id,
+        convert_projected(request, projected.postcondition_name, postcondition_location, next_expression_id,
                           "the postcondition of verified function '" + function.qualified_name + "'", engine);
     if (!ensured.has_value()) {
         return;
@@ -881,7 +889,7 @@ void elaborate_contract(const Request& request, const frontend::VerifiedFunction
 
     vir::Contract contract;
     contract.postcondition = std::move(*ensured);
-    contract.range.begin = postcondition->location;
+    contract.range.begin = postcondition_location;
 
     const std::vector<const frontend::Clause*> preconditions = declaration.preconditions();
     if (preconditions.size() != projected.precondition_names.size()) {

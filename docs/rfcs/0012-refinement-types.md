@@ -84,6 +84,12 @@ inside the body, so the author never restates it as an `expects` clause; a refin
 result is stated with the postcondition and proven on every path that returns; and
 using a refined value as its base value requires nothing.
 
+A refined return is itself a postcondition: `verified R f(...) { ... }` owes
+every predicate of `R` on every return path, without a duplicate `ensures`.
+Ordinary and merely `pure` refined-return declarations are rejected unless the
+same callable has a verified definition. The structural LSP linter defers this
+decision to shared Clang/elaboration analysis instead of guessing from spelling.
+
 A refinement of a refinement states every predicate that applies, so a value
 entering `Percentage = NonNegative where (self <= 100)` owes both. An indexed
 refinement states its predicate at the values its indices were applied at, which

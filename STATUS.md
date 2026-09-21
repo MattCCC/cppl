@@ -610,6 +610,11 @@ their callers, including unused refined locals. Corrupt or unresolved refinement
 metadata fails closed. This closes a verification gap without promoting the
 overall refinement feature beyond `PROTOTYPE`.
 
+A verified refined return can now supply the postcondition without a repeated
+`ensures`. Ordinary refined-return declarations and unverified refined storage
+are diagnosed explicitly. Mutable object construction remains outside the body
+model; this boundary audit does not implement refined fields or aggregates.
+
 ---
 
 # Case analysis and induction status

@@ -1614,6 +1614,8 @@ std::size_t physical_offset(CXCursor cursor) {
 struct Collector {
     const Selection* selection = nullptr;
     std::vector<CXCursor> selected;
+    std::vector<CXCursor> functions;
+    std::vector<CXCursor> unverified_storage;
 };
 
 bool is_selected(CXCursor cursor, const Selection& selection) {
@@ -1630,15 +1632,62 @@ CXChildVisitResult collect(CXCursor cursor, CXCursor, CXClientData data) {
     auto& collector = *static_cast<Collector*>(data);
     const CXCursorKind kind = clang_getCursorKind(cursor);
 
-    if (kind == CXCursor_Namespace || kind == CXCursor_UnexposedDecl || kind == CXCursor_LinkageSpec) {
+    if (kind == CXCursor_Namespace || kind == CXCursor_UnexposedDecl || kind == CXCursor_LinkageSpec ||
+        kind == CXCursor_StructDecl || kind == CXCursor_ClassDecl || kind == CXCursor_ClassTemplate ||
+        kind == CXCursor_UnionDecl) {
         return CXChildVisit_Recurse;
     }
 
     if (kind == CXCursor_FunctionDecl && is_selected(cursor, *collector.selection)) {
         collector.selected.push_back(cursor);
     }
+    if (kind == CXCursor_FunctionDecl || kind == CXCursor_CXXMethod || kind == CXCursor_FunctionTemplate ||
+        kind == CXCursor_Constructor || kind == CXCursor_Destructor) {
+        collector.functions.push_back(cursor);
+        const auto name = take(clang_getCursorSpelling(cursor));
+        const bool generated = !collector.selection->specification_prefix.empty() &&
+                               name.starts_with(collector.selection->specification_prefix);
+        const bool verified = std::ranges::find(collector.selection->verified_offsets, physical_offset(cursor)) !=
+                              collector.selection->verified_offsets.end();
+        return generated || verified ? CXChildVisit_Continue : CXChildVisit_Recurse;
+    }
+    if (kind == CXCursor_VarDecl || kind == CXCursor_FieldDecl)
+        collector.unverified_storage.push_back(cursor);
 
-    return CXChildVisit_Continue;
+    return collector.selection->refinements.empty() ? CXChildVisit_Continue : CXChildVisit_Recurse;
+}
+
+// Detect an explicit refinement use at an unverified storage/callable boundary.
+// These are Clang declaration-reference edges, including ordinary aliases and
+// type constructors; no pointer/pointee or container-wide fact is inferred.
+std::optional<std::string> refinement_use(CXCursor declaration, const Selection& selection, unsigned depth = 0) {
+    if (depth > kMaxExpressionDepth)
+        return "unresolved alias chain";
+    const auto entry =
+        std::ranges::find(selection.refinements, physical_offset(declaration), &Selection::Refinement::alias_offset);
+    if (entry != selection.refinements.end())
+        return entry->name;
+    const auto initializer = clang_Cursor_getVarDeclInitializer(declaration);
+    for (const auto child : children_of(declaration)) {
+        const auto kind = clang_getCursorKind(child);
+        if ((!clang_Cursor_isNull(initializer) && clang_equalCursors(initializer, child)) ||
+            kind == CXCursor_ParmDecl || clang_isStatement(kind))
+            break;
+        if (kind == CXCursor_TypeRef || kind == CXCursor_TemplateRef) {
+            const auto referenced = clang_getCursorReferenced(child);
+            const auto referenced_kind = clang_getCursorKind(referenced);
+            if (referenced_kind == CXCursor_TypeAliasDecl || referenced_kind == CXCursor_TypedefDecl ||
+                referenced_kind == CXCursor_TypeAliasTemplateDecl) {
+                if (auto use = refinement_use(referenced, selection, depth + 1))
+                    return use;
+            }
+        }
+        if (kind == CXCursor_TypeAliasDecl) {
+            if (auto use = refinement_use(child, selection, depth + 1))
+                return use;
+        }
+    }
+    return std::nullopt;
 }
 
 Severity convert_severity(CXDiagnosticSeverity severity) {
@@ -1879,6 +1928,46 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
     Collector collector;
     collector.selection = &request.selection;
     clang_visitChildren(clang_getTranslationUnitCursor(unit), collect, &collector);
+
+    // An erased return alias is not evidence. Check even ordinary declarations
+    // that were not selected for body elaboration. A verified redeclaration may
+    // establish the same callable only through Clang's declaration identity.
+    for (const auto cursor : collector.functions) {
+        if (request.selection.refinements.empty())
+            break;
+        const auto name = take(clang_getCursorSpelling(cursor));
+        if (!request.selection.specification_prefix.empty() && name.starts_with(request.selection.specification_prefix))
+            continue;
+        const auto refined = refinement_use(cursor, request.selection);
+        if (!refined)
+            continue;
+        const auto canonical = clang_getCanonicalCursor(cursor);
+        const bool verified = std::ranges::any_of(collector.selected, [&](CXCursor candidate) {
+            return clang_equalCursors(canonical, clang_getCanonicalCursor(candidate)) &&
+                   std::ranges::find(request.selection.verified_offsets, physical_offset(candidate)) !=
+                       request.selection.verified_offsets.end();
+        });
+        if (!verified) {
+            result.has_errors = true;
+            result.diagnostics.push_back(
+                {Severity::Error,
+                 "ordinary function '" + qualified_name_of(cursor) + "' return cannot establish refinement '" +
+                     *refined + "'; verify its definition (explicit trusted refinement boundaries are not implemented)",
+                 presumed_location(clang_getCursorLocation(cursor))});
+        }
+    }
+    for (const auto declaration : collector.unverified_storage) {
+        if (request.selection.refinements.empty())
+            break;
+        if (const auto refined = refinement_use(declaration, request.selection)) {
+            result.has_errors = true;
+            result.diagnostics.push_back(
+                {Severity::Error,
+                 "storage '" + take(clang_getCursorSpelling(declaration)) + "' uses refinement '" + *refined +
+                     "' outside a modeled verified body; its construction and mutations require proof",
+                 presumed_location(clang_getCursorLocation(declaration))});
+        }
+    }
 
     for (const CXCursor& cursor : collector.selected) {
         Function function;

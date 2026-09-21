@@ -862,17 +862,9 @@ bool try_verified(const TokenStream& stream, std::size_t index, diagnostics::Eng
         cursor = clause_close + 1;
     }
 
-    if (verified.clauses.empty()) {
-        report(engine, stream, tokens[index], diagnostics::Category::CpplSyntax,
-               "verified function '" + std::string(tokens[*name].text) + "' states no contract",
-               "a verified function requires an ensures clause; there is nothing else for "
-               "'verified' to mean");
-        return false;
-    }
-
     const auto ensures_count = std::ranges::count_if(
         verified.clauses, [](const Clause& clause) { return clause.kind == ClauseKind::Ensures; });
-    if (ensures_count != 1) {
+    if (ensures_count > 1) {
         report(engine, stream, tokens[index], diagnostics::Category::CpplSyntax,
                "verified function '" + std::string(tokens[*name].text) + "' has " + std::to_string(ensures_count) +
                    " ensures clauses",

@@ -358,6 +358,14 @@ are not semantic identity. Ordinary aliases preserve predicates; unresolved
 indexed alias applications are rejected. This is frontend correspondence, not a
 new logical rule or an additional trusted user boundary.
 
+An ordinary refined-return declaration is not a trusted contract. The bridge
+checks declarations outside the selected proof bodies as well as definitions:
+only a verified definition of the same Clang callable can establish that return
+boundary. Merely `pure` declarations, refined ordinary storage, and refined
+fields outside the modeled object-flow subset cannot manufacture evidence.
+Omitting `ensures` on a verified refined return supplies only an empty explicit
+postcondition; obligation generation still requires the full refinement.
+
 The erasure pass MUST NOT silently:
 
 - remove required runtime validation
