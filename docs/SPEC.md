@@ -26,7 +26,7 @@ Those concerns belong in `ARCHITECTURE.md`, `DESIGN.md`, `FOUNDATIONS.md`,
 `TRUST.md`, `COMPATIBILITY.md` and `STATUS.md` as appropriate.
 
 A complete implementation MUST implement every non-optional language construct
-and semantic obligation defined here and in the normative grammar. A missing
+and semantic obligation defined here, in the normative annexes, and in the normative grammar. A missing
 implementation feature is an implementation defect or incomplete conformance; it
 MUST NOT be reinterpreted as permission to change the language semantics.
 
@@ -554,7 +554,7 @@ signedness.
 
 A conforming proof checker MAY use normalization, decision procedures, SMT,
 Presburger arithmetic, certificate checking or other automation, but acceptance
-requires sound evidence according to the formal proof rules. Solver success alone
+requires sound evidence according to the formal proof rules. Automation success alone
 is not proof.
 
 Contradictory established premises may prove any proposition according to ordinary
@@ -590,8 +590,8 @@ storage and erases completely.
 ## 7.7 Logical equivalence
 
 `P <-> Q` denotes `(P -> Q) && (Q -> P)` as specified in GRAMMAR.md 30.
-Both directions require explicit kernel-checked evidence. It adds no kernel
-rule or assumption. Equivalence is looser than implication and conjunction;
+Both directions require explicit valid formal proof evidence. It introduces no
+additional logical assumption. Equivalence is looser than implication and conjunction;
 repeated equivalence associates to the left. It composes with explicit equality,
 quantifiers, implications and conjunctions wherever a proposition is accepted.
 
@@ -759,7 +759,7 @@ witnesses an existential proposition.
 The source proof language has no standalone `witness` statement. An existential
 goal is closed either by `exact` evidence already establishing the existential or
 by proof automation that constructs a concrete witness together with
-kernel-checkable existential-introduction evidence. Automation MUST expose enough
+valid existential-introduction evidence. Automation MUST expose enough
 proof evidence for independent checking; failure to find a witness proves
 nothing.
 
@@ -779,7 +779,7 @@ It is not:
 a test
 a runtime assertion
 documentation
-a solver hint
+a proof-search hint
 an implementation heuristic
 ```
 
@@ -1368,7 +1368,7 @@ an equivalent control-flow representation, but the resulting obligations MUST
 cover every runtime path relevant to the claimed property.
 
 A path may be discharged as impossible only from checked contradiction evidence.
-Syntactic unreachability heuristics, solver timeout or failure to enumerate a path
+Syntactic unreachability heuristics, proof-search timeout or failure to enumerate a path
 MUST NOT be treated as proof of impossibility.
 
 A call, write or operation may use only facts established before that operation on
@@ -1798,7 +1798,7 @@ G    current goal proposition
 ```
 
 A proof statement MUST transform that state only through a sound proof rule and
-MUST elaborate to kernel-checkable evidence.
+MUST elaborate to valid formal proof evidence.
 
 ### 15.6.1 `refl`
 
@@ -1862,7 +1862,7 @@ rewrite h;
 
 requires `h` to be checked evidence of an equality applicable to the current
 proof state. Rewriting MUST be implemented through equality elimination,
-substitution or an equivalent kernel-checked rule. It MUST preserve binding and
+substitution or an equivalent valid formal equality rule. It MUST preserve binding and
 avoid capture. If no sound rewrite is available, the statement is rejected.
 
 ### 15.6.6 Structural proof statements
@@ -2768,7 +2768,7 @@ change memory.
 
 ## 27.2 No implicit trust
 
-Unsupported semantics, unknown facts, solver failure, timeout, unsafe code,
+Unsupported semantics, unknown facts, proof-search failure, timeout, unsafe code,
 unverified code and proof failure MUST NOT be silently converted into trust.
 Only an explicit `trusted law` introduces a trusted premise.
 
@@ -3801,7 +3801,7 @@ In particular:
 divergence
 undefined behavior
 unsafe memory
-solver failure
+proof-search failure
 runtime assertion
 compiler crash
 unverified foreign code
@@ -3856,7 +3856,7 @@ A complete conforming C++L implementation MUST:
 1. preserve valid supported C++ source compatibility when no C++L semantics are requested;
 2. preserve ordinary C++ runtime semantics and the selected C++ object/memory model;
 3. implement the contextual C++L grammar without globally reserving contextual words;
-4. implement Laws, `proof`, `proves`, proof statements and kernel-checkable evidence;
+4. implement Laws, `proof`, `proves`, proof statements and valid formal proof evidence;
 5. implement universal and existential propositions with sound introduction and elimination;
 6. implement definitional/propositional equality, logical connectives and substitution soundly;
 7. implement `verified` contracts, path-sensitive reasoning, normal-return post-state and call composition;
@@ -4091,6 +4091,16550 @@ because the implementation needed the statement to be true
 ```
 
 **C++L is C++ with Laws: existing C++ continues to execute as C++, while formal intent may be stated and mechanically established without turning proof machinery into runtime behavior.**
+
+---
+
+# Normative Annex A — Verification contexts and semantic judgments
+
+This annex is normative. It operationalizes the source-language rules above without
+prescribing a compiler architecture, proof-kernel implementation, solver, intermediate
+representation, cache, or trusted-computing-base structure. A conforming implementation may
+use any internal mechanism that produces the same accepted and rejected C++L programs and
+the same proof meaning.
+
+## A.1 Program points and proof contexts
+
+Verification is evaluated relative to a program point and a proof context. The proof context
+contains only facts justified by source declarations, checked contracts, valid proof
+evidence, path conditions, refinement membership, structural proof premises, or explicit
+trusted Laws. It MUST NOT contain facts merely because they would make the current goal
+easier to prove.
+
+```text
+Γ ; Σ ; Π ⊢ P
+
+Γ  logical premises and named proof evidence
+Σ  logical storage/value state at the current program point
+Π  path conditions and control-flow premises
+P  proposition required at that point
+```
+
+- The notation in this annex is explanatory metanotation. It does not add source syntax.
+- A fact enters Γ only through a language rule that explicitly justifies it.
+- A runtime write changes Σ by creating new logical values and invalidating facts that may
+  have depended on overwritten or aliased storage.
+- A branch changes Π for the branch body. Facts from one branch do not silently flow into
+  another branch.
+- A proof arm may extend Γ with the premises defined for that arm. Those premises disappear
+  when the arm scope ends.
+- A trusted Law enters Γ as an explicit trusted dependency. Its dependency provenance
+  remains attached to any derived proof.
+- An unsafe operation does not add propositions to Γ. It may invalidate storage facts
+  through its possible runtime effects.
+- A runtime validation branch may add the proposition established by the branch condition to
+  Π for that branch only.
+
+## A.2 Proof obligations
+
+A proof obligation is a proposition that must be established before the enclosing verified
+declaration, proof, Law, refinement crossing, or termination claim can be accepted. The
+language distinguishes generation of an obligation from discharge of that obligation.
+
+- Generating an obligation does not assume it.
+- Failing to discharge an obligation is a verification failure.
+- Timeout, resource exhaustion, missing automation, or inability to find a proof does not
+  change the proposition and does not authorize a weaker obligation.
+- Every source construct that can invoke undefined behavior in the selected C++ semantics
+  contributes its required defined-behavior obligations on every verified path that
+  evaluates the construct.
+- Every source construct that moves a value into a refinement contributes the
+  refinement-membership obligation at that exact crossing.
+- Every call with an `expects` clause contributes the instantiated precondition before the
+  call is allowed to contribute its postcondition.
+- Every declared postcondition contributes one obligation per normal return path.
+- Every declared termination measure contributes well-foundedness and strict-decrease
+  obligations at every recursive or continuing edge to which it applies.
+
+## A.3 Value versions
+
+C++L reasons about values at program points rather than treating mutable C++ storage as one
+timeless mathematical variable. Each write that may change a modeled place produces a new
+logical version of that place.
+
+- A read observes the version current at the read according to ordinary C++ sequencing and
+  control flow.
+- A fact about an older version does not automatically constrain a newer version.
+- When two places may alias, a write through either place invalidates facts about the other
+  unless disjointness is proven.
+- A branch may produce distinct versions on its distinct paths. Subsequent verification
+  reasons path-sensitively or through a sound merge relation; it MUST NOT pick one branch
+  version arbitrarily.
+- A loop head introduces logical versions for loop-carried state. Only the invariant,
+  condition, stable outer facts, and other justified premises constrain those versions.
+- `old(e)` evaluates `e` in the entry-state version environment of the function, not in the
+  current mutable state.
+
+## A.4 Normal and exceptional continuations
+
+Every runtime expression or statement may have the continuations permitted by ordinary C++.
+Verification facts are attached to continuations, not merely to source lines.
+
+- Normal continuation means execution reaches the next ordinary C++ program point.
+- Normal return means a function returns a value or completes a void return without
+  propagating an exception.
+- Exceptional continuation means control leaves through C++ exception propagation.
+- A `noexcept` specification retains ordinary C++ meaning. It does not by itself prove that
+  no throw expression or throwing call is evaluated; C++ termination semantics still apply.
+- `ensures` constrains normal return unless an additional exception specification mechanism
+  is defined by this specification.
+- Facts established only after a statement on its normal continuation are not available on
+  an exceptional continuation that bypasses that statement.
+
+# Normative Annex B — Runtime expression verification semantics
+
+The selected C++ standard owns runtime expression meaning, overload resolution, conversions,
+sequencing, value categories, lifetime rules, and undefined behavior. C++L adds proof
+obligations and facts; it does not replace those runtime rules. This annex states the
+verification delta for the principal C++ expression families.
+
+## B.1 General expression rule
+
+- Before an expression may contribute a mathematical fact, its C++ type, selected overloads,
+  conversions, and runtime meaning MUST be established according to ordinary C++.
+- Every evaluated subexpression MUST have defined behavior on the verified path.
+- Evaluation order and sequencing MUST follow the selected C++ standard. The verifier MUST
+  NOT reorder effects merely because a mathematical expression is commutative.
+- A pure specification expression may use only operations whose formal meaning is defined
+  and side-effect-free.
+- A runtime expression may have side effects; those effects update logical storage state in
+  the same order in which C++ permits them to become sequenced.
+- When C++ leaves evaluation order unspecified, a proof may rely only on properties true for
+  every permitted ordering unless the program establishes a stronger order by ordinary C++
+  constructs.
+- When C++ behavior is undefined for at least one execution compatible with the current
+  verified path, the verifier MUST prove that such an execution cannot occur before
+  accepting the path.
+
+## B.2 Primary expressions and literals
+
+This subsection governs literals, names, parenthesized expressions, `this`, and qualified
+names.
+
+- Integer literals denote the exact C++ value after type selection and literal conversion. A
+  literal outside the representable range is handled exactly as C++ handles it and is not
+  silently promoted to a mathematical integer.
+- Boolean literals denote the two C++ `bool` values and may be lifted into propositions in
+  specification context.
+- `nullptr` denotes the null pointer value of `std::nullptr_t`; conversions to pointer types
+  remain ordinary C++ conversions.
+- A name denotes the entity selected by ordinary C++ lookup. C++L MUST NOT substitute a
+  same-spelled Law, proof, refinement, or proof binder unless the grammar places the
+  occurrence in the corresponding C++L namespace/context.
+- `this` retains ordinary C++ meaning. Member contracts reason about the implicit object
+  through `this` and ordinary member names; `self` is reserved for refinement predicates
+  only.
+- Parentheses change parsing and sequencing only as C++ specifies. They do not create proof
+  evidence.
+
+## B.3 Lvalue-to-rvalue conversion
+
+This subsection governs ordinary reads of scalar or modeled object storage.
+
+- A read requires the object to be within lifetime and initialized according to C++.
+- A read through a pointer or reference additionally requires all access and provenance
+  conditions applicable to that access path.
+- Reading a place yields the logical value of its current version.
+- Reading `volatile` storage is an observable operation and is not a pure specification
+  operation.
+- An atomic read follows §34 and does not establish stability against concurrent
+  modification beyond the guarantees of the selected memory order.
+
+## B.4 Unary arithmetic and logical operators
+
+This subsection governs `+x`, `-x`, `!x`, and `~x`.
+
+- Usual promotions and conversions are C++ semantics and MUST be reflected in the formal
+  type of the result.
+- Signed negation of the minimum representable signed value requires proof that the C++
+  operation is defined.
+- Logical negation in a runtime condition follows C++ truth conversion and
+  short-circuit/control-flow semantics where applicable.
+- Logical negation in proposition context negates the lifted proposition; it is not a
+  runtime Boolean computation unless the surrounding context requires one.
+- Bitwise complement is a machine operation and MUST NOT be given mathematical-integer
+  semantics.
+
+## B.5 Address-of and dereference
+
+This subsection governs `&e` and `*p`.
+
+- Address-of creates the pointer value C++ creates and may establish provenance/capability
+  facts only to the extent justified by the referred object and its lifetime.
+- Dereference requires non-nullness when required by C++, valid provenance, lifetime,
+  alignment, sufficient bounds, and the read/write capability needed by the enclosing use.
+- The fact `p != nullptr` is never sufficient by itself to justify dereference.
+- Dereference does not create ownership or uniqueness evidence.
+- Facts about the pointee are versioned storage facts and are invalidated by any operation
+  that may mutate an aliasing place.
+
+## B.6 Increment and decrement
+
+This subsection governs prefix/postfix `++` and `--`.
+
+- The read, arithmetic, and write components MUST all be verified.
+- Signed overflow, pointer stepping outside the C++ permitted range, invalid iterator
+  movement, or other undefined behavior MUST be excluded.
+- Postfix result-value semantics follow C++; the stored place receives a new logical version
+  even when the old value is the expression result.
+- A refinement on the written storage MUST hold for the new version before the statement is
+  accepted.
+
+## B.7 Additive and multiplicative arithmetic
+
+This subsection governs `+`, `-`, `*`, `/`, and `%`.
+
+- Integral promotions and usual arithmetic conversions are applied before proof
+  interpretation.
+- Unsigned arithmetic follows the selected C++ modulo semantics.
+- Signed arithmetic is accepted only when required no-overflow and definedness conditions
+  are established.
+- Division and remainder require nonzero divisor and every additional signed corner-case
+  condition required by C++.
+- Pointer arithmetic is not integer arithmetic and requires provenance plus array-object
+  bounds according to C++.
+- Floating-point arithmetic follows §30 and MUST NOT be rewritten using real-number
+  identities that are invalid for the selected floating-point model.
+
+## B.8 Shift expressions
+
+This subsection governs `<<` and `>>` used as arithmetic/bitwise shifts.
+
+- Operand promotions are applied before verification.
+- Shift-count range requirements MUST be proven.
+- Every additional signed-left-shift definedness condition required by the selected C++ mode
+  MUST be proven.
+- Stream insertion/extraction overloads are ordinary function calls, not bit-shift proof
+  operations.
+
+## B.9 Relational and equality expressions
+
+This subsection governs `<`, `<=`, `>`, `>=`, `==`, and `!=`.
+
+- The chosen C++ operator and conversions remain authoritative.
+- Built-in integer comparisons may be lifted into propositions with exact machine semantics.
+- Pointer comparison facts MUST respect the comparison semantics permitted by C++; unrelated
+  pointers are not silently ordered as integers.
+- User-defined comparisons contribute only the facts guaranteed by a checked contract, a
+  sound formal model, or explicit trust.
+- C++ `operator==` is not automatically formal `Eq<T>`; correspondence must be established
+  for the modeled type.
+
+## B.10 Logical AND and OR in runtime conditions
+
+This subsection governs `&&` and `||` where C++ evaluates a condition.
+
+- Short-circuit evaluation is preserved exactly.
+- For `A && B`, `B` is verified only on the path where `A` is true.
+- For `A || B`, `B` is verified only on the path where `A` is false.
+- The true path of `A && B` receives both `A` and `B`; the false continuation is a union of
+  the `!A` path and the `A && !B` path and MUST NOT be represented as if both operands were
+  false.
+- The false path of `A || B` receives both `!A` and `!B`; the true continuation is a union
+  and does not by itself establish either disjunct.
+
+## B.11 Logical AND and OR in proposition context
+
+This subsection governs `&&` and `||` when the grammar expects a proposition.
+
+- `P && Q` is logical conjunction and requires evidence for both propositions.
+- `P || Q` is logical disjunction and requires evidence selecting at least one disjunct or
+  equivalent derivation.
+- The operands must themselves be well-defined specification expressions. Runtime
+  short-circuiting cannot be used to hide an undefined or effectful specification operand.
+- When the desired property is explicitly about C++ short-circuit execution, it must be
+  stated through path-sensitive runtime reasoning rather than by treating logical
+  conjunction as execution.
+
+## B.12 Conditional expressions
+
+This subsection governs `c ? a : b`.
+
+- The condition follows C++ contextual conversion to bool.
+- Only the selected arm is evaluated at runtime, and the verifier MUST preserve that control
+  dependence.
+- The true arm is verified under the true condition and the false arm under its negation.
+- The result type and value category are those selected by C++.
+- A fact about the result must hold for whichever arm can reach the observation point.
+
+## B.13 Assignment
+
+This subsection governs `lhs = rhs`.
+
+- `lhs` must designate writable storage under ordinary C++ and the C++L storage rules.
+- `rhs` is evaluated with C++ sequencing before the write occurs.
+- The write creates a new logical version of the target and invalidates facts about aliases
+  as required by §12.10.
+- If the target storage has a refinement, the converted assigned value must satisfy every
+  applicable predicate before the new version is admitted.
+- Assignment operator overloads are function calls and use call/effect semantics rather than
+  the built-in scalar assignment rule.
+
+## B.14 Compound assignment
+
+This subsection governs `+=`, `-=`, `*=`, `/=`, `%=` and bit/shift compound assignments.
+
+- The operation has the C++ semantics of the selected compound assignment, including its
+  single evaluation of the left operand.
+- All arithmetic and defined-behavior obligations of the underlying operation apply.
+- The final write is a new storage version and must re-establish refinements.
+- An overloaded compound assignment is verified as a call.
+
+## B.15 Comma operator
+
+This subsection governs `a, b`.
+
+- The left operand is evaluated and sequenced before the right operand according to C++.
+- Effects of the left operand update the proof state before the right operand is verified.
+- The result is the C++ result of the right operand.
+- Specification expressions may use a comma only when the selected meaning is
+  side-effect-free and formally defined; ordinary effectful comma expressions are not
+  specification expressions.
+
+## B.16 Member access
+
+This subsection governs `obj.member` and `ptr->member`.
+
+- Member lookup, access control, base adjustment, value category and overload resolution are
+  ordinary C++.
+- `ptr->member` requires the pointer/object validity needed for the implied dereference.
+- Reading or writing a data member reads or writes the corresponding subobject place.
+- Potentially overlapping members are governed by §32.6 and MUST NOT be assumed disjoint
+  from spelling alone.
+- A member function call is a function call with an implicit object argument and
+  participates in member/virtual contract rules.
+
+## B.17 Subscript expressions
+
+This subsection governs `a[i]` and overloaded `operator[]`.
+
+- Built-in subscripting has the C++ pointer-arithmetic/dereference meaning and therefore
+  requires valid provenance, bounds and access capability.
+- Array bounds are obligations on every path that evaluates the subscript.
+- Overloaded subscripting is a call and relies on the selected function contract/effect
+  summary.
+- A refinement on an array element or returned proxy must be enforced at the corresponding
+  value/storage crossing.
+
+## B.18 Function calls
+
+This subsection governs direct, indirect, member, virtual, callable-object and operator
+calls.
+
+- C++ determines the callable, argument conversions, object argument, evaluation rules and
+  potential exception behavior.
+- A checked `expects` clause must be established before a verified summary may be used.
+- A checked normal-return `ensures` clause becomes available only after normal return.
+- The callee effect summary invalidates affected storage facts before the postcondition is
+  applied to the post-state.
+- If the target is not uniquely known, reasoning must be valid for every possible target
+  consistent with C++ dispatch and the available contracts.
+- A call with no usable checked semantic summary cannot contribute arbitrary facts and has
+  conservative effects under §12.10.
+
+## B.19 Cast expressions
+
+This subsection governs `static_cast`, `dynamic_cast`, `const_cast`, `reinterpret_cast`,
+C-style cast and functional cast.
+
+- The exact C++ cast selected by the source syntax is authoritative.
+- A cast does not manufacture a refinement, lifetime, provenance, capability, purity, or
+  trust fact.
+- A `dynamic_cast` result may establish null/non-null or successful reference-cast path
+  information according to C++ RTTI semantics.
+- `const_cast` does not prove that mutation is valid; ordinary C++ undefined-behavior rules
+  for originally-const objects still apply.
+- `reinterpret_cast` does not by itself justify dereference or object representation
+  assumptions.
+- C-style and functional casts are verified according to the C++ conversions they actually
+  select.
+
+## B.20 `sizeof`, `alignof`, `decltype`, `noexcept`, and `typeid`
+
+This subsection governs C++ compile-time/type-inspection expressions.
+
+- Their C++ unevaluated/evaluated operand rules are preserved exactly.
+- No runtime read or side effect is invented for an unevaluated operand.
+- `sizeof` and `alignof` facts may be used only for types/objects whose values are defined
+  by the selected ABI/C++ mode; proof-only types have no runtime size or alignment.
+- `decltype` is a C++ type-forming operation and does not create a proposition.
+- `noexcept(expr)` reports the C++ compile-time exception specification property; it is not
+  a proof that arbitrary dynamic behavior is safe.
+- `typeid` follows C++ polymorphic and lifetime rules and may evaluate its operand where C++
+  requires it.
+
+## B.21 Object creation
+
+This subsection governs `new`, placement construction, and allocation expressions.
+
+- Allocation and construction are distinct semantic phases as in C++.
+- Successful construction establishes the new object lifetime and initialized subobject
+  facts justified by the constructor semantics.
+- Allocation failure and constructor exceptions follow the selected C++ rules.
+- A returned pointer receives only the provenance, extent, lifetime and capability facts
+  actually justified by the allocation/construction path.
+- Placement construction ends/starts lifetimes exactly as C++ specifies and invalidates
+  stale facts about prior objects occupying the storage.
+
+## B.22 Object destruction and `delete`
+
+This subsection governs `delete`, `delete[]`, explicit destructor calls and lifetime-ending
+operations.
+
+- The object must satisfy every C++ precondition for the destruction/deallocation form.
+- Ending an object lifetime invalidates facts and capabilities that require that lifetime.
+- Destruction effects and exceptions, where permitted, are runtime effects and must be
+  reflected in the proof state.
+- Proof-only erasure MUST NOT remove a runtime destructor invocation that ordinary C++ would
+  perform.
+
+## B.23 Lambda expressions
+
+This subsection governs ordinary C++ lambdas and closure objects.
+
+- Capture semantics, closure layout, object lifetime, mutability and overload selection
+  remain ordinary C++.
+- A lambda used in verified reasoning needs the same semantic information as any other
+  callable: contracts/effects for calls and defined behavior for captured state.
+- Reference captures participate in alias invalidation and lifetime rules.
+- A lambda is not pure merely because its body has no explicit assignment; captured/global
+  effects must be considered.
+
+## B.24 `requires` expressions and concepts
+
+This subsection governs ordinary C++ constraints.
+
+- `requires` remains C++ syntax and is never a C++L runtime contract keyword.
+- Satisfaction of a C++ concept establishes only the compile-time C++ constraint facts
+  defined by that concept.
+- A concept requirement does not automatically become a Law about runtime values.
+- A verified template may rely on formal properties only when those properties are
+  separately represented by C++L evidence/contracts or are definitionally implied by modeled
+  C++ semantics.
+
+## B.25 Coroutine expressions
+
+This subsection governs `co_await`, `co_yield`, and coroutine transformation points.
+
+- Coroutine runtime semantics are the ordinary C++ coroutine semantics, including promise
+  object creation, suspension, resumption, destruction and exception routing.
+- Verification must account for suspension boundaries as points at which external code may
+  run and shared state may change unless stronger facts are established.
+- A fact about referenced mutable state does not automatically survive suspension.
+- Coroutine frame storage obeys ordinary lifetime and alias rules.
+- Proof-only constructs cannot alter suspension behavior or coroutine frame ABI.
+
+# Normative Annex C — Statement and control-flow verification semantics
+
+Runtime control flow remains C++. C++L associates proof contexts with reachable program
+paths and requires every path relevant to a verification claim to satisfy its obligations.
+No proof-only statement becomes runtime control flow.
+
+## C.1 Compound and expression statements
+
+- Statements are verified in C++ sequencing order.
+- The normal post-state of one statement is the input state of the next statement on the
+  same path.
+- An expression statement that may mutate storage updates versions/effects even if its
+  result is discarded.
+- An expression whose value is discarded still owes all defined-behavior obligations.
+
+## C.2 Declaration statements
+
+- Initialization is verified according to the exact C++ initialization form selected by the
+  declaration.
+- The declared object lifetime begins when C++ says it begins, not when the verifier first
+  reads it.
+- A refined declared type requires its predicate at the end of successful initialization.
+- An uninitialized object does not receive an arbitrary logical value that may be read;
+  every read must obey C++ initialization rules.
+- Automatic destruction at scope exit remains runtime behavior and contributes
+  effects/exception paths as C++ specifies.
+
+## C.3 `if` and `if constexpr`
+
+- For runtime `if`, the then path receives the condition proposition and the else path
+  receives its negation, subject to exact short-circuit decomposition.
+- A missing `else` has an ordinary fallthrough path under the negated condition.
+- `if constexpr` follows C++ compile-time branch discard rules. A discarded branch
+  contributes no runtime path, but parsing/semantic requirements remain those imposed by C++
+  for discarded statements.
+- Facts local to one arm do not escape except through properties established for all
+  continuations that reach the join.
+
+## C.4 `switch`
+
+- The controlling expression and integral/enum conversions follow C++.
+- Each runtime case path receives the fact that the controlling value matches the selected
+  case label, together with fallthrough semantics from preceding labels where applicable.
+- `default` represents every controlling value not equal to another selected case label; it
+  is runtime C++ and unrelated to proof-side wildcard behavior.
+- Fallthrough preserves effects/facts from statements actually executed before entering the
+  next labeled region.
+- A proof about exhaustive enum states MUST account for the full enum value set; a runtime
+  switch without `default` does not itself prove named enumerators are exhaustive.
+
+## C.5 `while` loops
+
+- The invariant is required before the first condition evaluation, preserved on every
+  continuing back-edge, and available at the loop head.
+- The body is verified under the invariant and true condition.
+- Normal loop exit is verified under the invariant and false condition.
+- `continue` flows to the next condition evaluation after proving the invariant for the
+  carried state.
+- `break` exits under only the facts valid on the break path; it does not automatically
+  receive the false condition.
+- A `decreases` clause requests termination proof for every continuing back-edge.
+
+## C.6 classic `for` loops
+
+- Initialization executes once before invariant entry proof.
+- The condition is checked at each head; omitted condition is the C++ always-true form.
+- The body executes under invariant plus true condition.
+- The iteration expression executes on normal body completion and `continue`, before the
+  next invariant/head state is established.
+- Termination measures are compared across complete continuing iterations including the
+  iteration expression.
+
+## C.7 range-based `for` loops
+
+- The loop is verified according to its C++ desugared semantic operations while preserving
+  the source-level object lifetimes and evaluation rules.
+- Creation of the range object, begin/end values, iterator comparison, dereference,
+  loop-variable initialization and increment all require defined behavior.
+- The invariant applies at the logical iteration head after the range machinery necessary
+  for that head has been established.
+- A refinement on the loop variable is checked on each iteration initialization.
+
+## C.8 `do`/`while` loops
+
+- The body executes once before the first condition test.
+- An invariant attached to the loop must hold at the point defined by the grammar before
+  body reasoning and must be preserved for each continuing iteration.
+- The condition is verified after the body on normal continuation and `continue`.
+- Normal exit receives the invariant and false condition; a `break` follows its own path
+  facts.
+
+## C.9 `break` and `continue`
+
+- Each statement targets the C++ enclosing loop or switch selected by ordinary control-flow
+  rules.
+- `continue` must satisfy any invariant/termination obligations required before the next
+  loop head.
+- `break` bypasses subsequent body statements and does not acquire facts that those
+  statements would have established.
+- Proof-only case arms do not create runtime break/continue targets.
+
+## C.10 `return`
+
+- The return expression is evaluated before the function normal-return postcondition is
+  checked.
+- The returned value must satisfy any refined return type.
+- The instantiated `ensures` proposition must hold in the resulting normal post-state.
+- Automatic object destruction triggered by leaving scopes is part of the runtime path and
+  must be accounted for before the final normal return state if those destructors have
+  modeled effects.
+
+## C.11 `goto` and labels
+
+- Ordinary C++ legality and initialization-crossing restrictions remain authoritative.
+- Verification must compute a sound fixed point for facts at a label reachable from multiple
+  predecessors.
+- A fact may be used after the label only if it holds for every predecessor path reaching
+  that label.
+- A `goto` must not bypass a required refinement construction, lifetime transition, or proof
+  obligation in a way ordinary C++ would not permit.
+
+## C.12 exceptions and handlers
+
+- A `throw` follows ordinary C++ exception construction and unwinding semantics.
+- Catch selection, object binding, rethrow and handler ordering are C++ semantics.
+- Facts after a `try`/`catch` join must hold for every normal continuation from the try body
+  and every handler that reaches the join.
+- Destructors executed during unwinding contribute runtime effects and lifetime transitions.
+- A function postcondition does not constrain propagated exceptional exits unless this
+  specification explicitly defines an exceptional contract form.
+
+## C.13 `asm` and implementation-defined intrinsics
+
+- Inline assembly and intrinsics with semantics not fully modeled cannot contribute proof
+  facts merely from their spelling.
+- They may appear in ordinary unverified C++.
+- Inside verified code they require either a sound formal model, an explicit unsafe boundary
+  with conservative effects, or a trusted Law describing only the facts intentionally
+  assumed.
+- Clobbers and memory effects must not be understated when preserving surrounding facts.
+
+# Normative Annex D — Declarations, entities, linkage and redeclaration
+
+## D.1 One semantic contract per function entity
+
+- C++ entity identity is determined by ordinary C++ declaration matching and linkage rules.
+- A C++L contract is attached to that resolved function entity, not to a text spelling or
+  source file.
+- A later declaration or definition of the same entity inherits the established C++L
+  contract and verification modifiers.
+- If a redeclaration repeats C++L clauses, the repeated semantic contract must be equivalent
+  after parameter renaming, type substitution and ordinary C++ semantic resolution.
+- A conflicting redeclaration is ill-formed C++L.
+- A definition may omit repeated contract syntax when a prior visible declaration carries
+  it.
+- A source formatter is not part of this semantic rule and need not duplicate contracts.
+
+## D.2 Overload identity and refinement erasure
+
+- Overload resolution uses the ordinary C++ signatures after the runtime representation of
+  refinements is considered.
+- Two overloads that differ only by verification-level refinement identity and erase to the
+  same C++ parameter types cannot silently become distinct runtime overloads.
+- Such declarations must either denote the same C++ entity with compatible verification
+  meaning or be diagnosed as a conflict.
+- C++L MUST NOT encode refinement identity into mangled names unless an explicit future
+  ABI-changing feature says otherwise.
+
+## D.3 Variables and storage duration
+
+- Automatic, static, thread-local and dynamic storage durations retain ordinary C++ runtime
+  meaning.
+- Verified reasoning about static or thread-local mutable state must include its
+  initialization, lifetime, concurrency and effect behavior.
+- A global variable is not an implicit mathematical constant merely because a specification
+  reads it.
+- Constant initialization and `constexpr` may justify stronger facts only to the extent the
+  selected C++ semantics guarantee them.
+- A refinement on non-automatic storage must hold after every construction or mutation path
+  that can establish a value in that storage.
+
+## D.4 Namespaces and formal declarations
+
+- Laws and proofs participate in lexical namespace/class scope as defined by the grammar.
+- Ordinary C++ namespace lookup applies to referenced C++ entities.
+- Formal proof binders have lexical proof scope and must not alter runtime name lookup.
+- An unnamed namespace gives a Law/proof the corresponding translation-unit-local source
+  visibility; erasure still produces no runtime symbol for that Law/proof.
+
+## D.5 Friend declarations
+
+- Friendship retains ordinary C++ access semantics.
+- A friend declaration does not by itself grant any proof fact beyond the member access it
+  permits.
+- A friend function with a verified contract follows the same entity/redeclaration rules as
+  any other function.
+
+## D.6 Inline entities and the ODR
+
+- Ordinary C++ one-definition and inline rules remain authoritative for runtime entities.
+- Verification metadata associated with ODR-equivalent declarations must also be
+  semantically equivalent.
+- Different translation units must not attach contradictory Laws/contracts/refinements to
+  what C++ treats as one entity.
+- If a program violates a C++ ODR rule, C++L does not assign a stronger formal meaning to
+  that invalid program.
+
+# Normative Annex E — Storage, lifetime, aliasing and effects
+
+This annex refines §§12.9–12.10 and §32. It describes language-level verification
+obligations only. It does not prescribe an alias-analysis algorithm, memory IR, pointer
+representation, solver, or TCB implementation.
+
+## E.1 Place identity
+
+- A place corresponds to a specific C++ storage location or subobject as resolved from the
+  source semantics.
+- Places are proof-level designations and do not become addresses or runtime metadata.
+- A complete object, base subobject, non-static data member, array element, materialized
+  temporary, coroutine-frame object and dynamically allocated object may each induce places
+  when the selected C++ semantics make the storage identity meaningful.
+- A place ceases to denote a live object when the corresponding object lifetime ends.
+
+## E.2 Lifetime start
+
+- An object may be read as that object only after its lifetime has begun under C++.
+- Construction, implicit-lifetime rules, allocation and placement operations establish
+  lifetime facts only when their C++ preconditions are met.
+- Starting a lifetime in reused storage invalidates facts about any previous object whose
+  lifetime ended there.
+- A new object does not inherit refinement facts from stale bytes occupying the same
+  storage.
+
+## E.3 Lifetime end
+
+- Destruction, deallocation, scope exit, union active-member change and other C++
+  lifetime-ending events invalidate capabilities and value facts requiring the ended
+  lifetime.
+- A pointer value may physically remain after lifetime end but does not retain dereference
+  capability merely from non-nullness or unchanged bits.
+- References whose referents have ended lifetime cannot be used to justify valid
+  reads/writes.
+
+## E.4 Initialization
+
+- A read requiring an initialized value must establish that initialization according to C++.
+- Default initialization may leave some scalar storage indeterminate; C++L must not assign
+  such storage an arbitrary mathematical value and then reason from it.
+- Value initialization, aggregate initialization, constructors and assignments establish
+  only the member/subobject values they actually initialize.
+- Padding bytes are not logical object values and must not be assigned semantic equality
+  properties beyond C++ object-representation rules.
+
+## E.5 References
+
+- Reference binding follows C++ lifetime, conversion and temporary-materialization rules.
+- A reference is an alias to its referent, not an independently versioned runtime object for
+  value reasoning.
+- Writing through a reference is writing the referent place and invalidates aliases
+  accordingly.
+- A `const T&` restricts that access path but does not prove the underlying object cannot
+  change through another path.
+- Reference collapsing and forwarding references follow C++ template rules and do not create
+  special C++L ownership semantics.
+
+## E.6 Raw pointers
+
+- Pointer values retain C++ provenance and pointer-arithmetic semantics.
+- Null/non-null is separate from liveness, bounds, initialization, alignment and permission.
+- A one-past pointer may be valid for comparison/arithmetic where C++ permits it but is not
+  readable/writable as an element.
+- Pointer subtraction/comparison requires the C++ relational domain applicable to the
+  operands.
+- Integer-to-pointer and pointer-to-integer conversions do not create dereference evidence.
+
+## E.7 Arrays and extents
+
+- A built-in array has the extent defined by its C++ type.
+- An array element place is valid only for an index within the object extent.
+- Array-to-pointer conversion preserves the provenance needed for permitted element access
+  but does not erase the bounds obligation.
+- Multidimensional arrays apply these rules at each nested extent.
+
+## E.8 Subobjects
+
+- Data members and base subobjects retain ordinary C++ lifetime and layout semantics.
+- Distinct member names do not prove disjoint physical storage in unions or
+  potentially-overlapping cases.
+- A refinement on a subobject applies to every value established in that subobject
+  regardless of the syntactic access path used to write it.
+- Facts about a complete object and facts about its subobjects must remain consistent under
+  writes and lifetime transitions.
+
+## E.9 Unions
+
+- The active-member rules of C++ are authoritative.
+- Reading an inactive union member requires whatever C++ rule, common-initial-sequence rule
+  or lifetime transition makes that access defined.
+- Changing the active member invalidates facts about the prior member object.
+- A union must not be modeled as if all member values coexist simultaneously.
+
+## E.10 Potentially-overlapping subobjects
+
+- `[[no_unique_address]]`, base subobjects, empty-base optimization and related C++ layout
+  permissions prevent a blanket disjointness assumption.
+- Proof of disjointness must come from semantics that guarantee non-overlap for the specific
+  places, not from distinct source names alone.
+
+## E.11 Dynamic allocation
+
+- Allocation creates raw storage according to the selected allocation function and
+  alignment.
+- Object lifetime and initialization are established separately by construction semantics.
+- Deallocation requires the matching C++ allocation/deallocation rules and invalidates every
+  capability into the deallocated region.
+- Aliased pointers into freed storage retain no liveness evidence.
+
+## E.12 Placement construction and reuse
+
+- Placement construction may start a new object lifetime in existing storage only when C++
+  permits it.
+- Facts about the old object do not transfer to the new object merely because the address is
+  identical.
+- `std::launder` and related object-model operations are interpreted according to C++; they
+  do not bypass refinement or lifetime obligations.
+
+## E.13 Copy operations
+
+- A copy constructor/assignment is an ordinary function operation with C++ semantics, not
+  semantic identity.
+- A copied object receives facts justified by the checked operation and its post-state, not
+  every fact about the source automatically.
+- For trivially copyable/object-representation operations, only properties guaranteed by C++
+  and the modeled type may be transferred.
+
+## E.14 Move operations
+
+- A move may mutate the source and create a destination with type-specific postconditions.
+- Moved-from state is whatever the selected type/C++ contract guarantees; it is not assumed
+  equal to the pre-move state or empty unless proven.
+- Facts invalidated by the move cannot remain available on the source.
+
+## E.15 Temporary objects
+
+- Temporary materialization and lifetime extension follow C++.
+- Facts about a temporary remain valid only while its lifetime is valid.
+- Binding a reference to a temporary does not extend lifetime except where ordinary C++ says
+  it does.
+
+## E.16 Function effects
+
+- Every verified function has a sound semantic effect summary derived from its checked
+  behavior.
+- The summary includes writes and other externally observable operations relevant to
+  preservation of proof facts.
+- A caller may preserve a storage fact across the call only when the summary proves the call
+  cannot invalidate that fact.
+- Effect summaries are verification metadata and do not alter native calling convention.
+
+## E.17 Unknown call effects
+
+- Without a checked effect summary, the verifier must conservatively invalidate facts about
+  every mutable state location the call could access under C++.
+- Reachability includes pointer/reference arguments, objects reachable from values,
+  globals/statics, escaped aliases, callbacks, dynamic dispatch and implementation-visible
+  external state.
+- By-value parameter passing isolates the parameter object itself, not storage reachable
+  through pointers/references contained in the value.
+
+## E.18 Callbacks
+
+- Passing a callback or callable object to code whose invocation behavior is not verified
+  means the callback may execute wherever the callee semantics allow.
+- Effects of potential callback execution must be included when preserving facts.
+- A callback contract may be used only when the invoked target is constrained to satisfy it.
+
+## E.19 Globals and statics
+
+- Mutable global/static state may be modified by any code with access to it unless a checked
+  effect rule proves otherwise.
+- Thread-safe initialization and destruction follow C++.
+- Facts about mutable global state require invalidation across calls or concurrency actions
+  that may mutate it.
+
+## E.20 Thread-local storage
+
+- Thread-local objects have per-thread runtime instances according to C++.
+- A proof about one thread-local instance does not imply the same runtime value in another
+  thread.
+- Initialization/destruction and concurrency interactions follow the selected C++ rules.
+
+## E.21 Volatile storage
+
+- Volatile access is runtime-observable and cannot be treated as pure mathematical
+  observation.
+- Repeated volatile reads need not yield the same value.
+- A volatile write is an effect and invalidates relevant facts.
+
+## E.22 Atomic storage
+
+- Atomic access uses §34 concurrency semantics and the exact requested memory order.
+- Atomicity does not imply an arbitrary sequentially consistent proof model when a weaker
+  order is used.
+- Facts about an atomic value may become stale after an interference point unless
+  synchronization establishes the needed relation.
+
+## E.23 Refinement storage invariant
+
+- Whenever a live place has declared refinement type, every C++ operation that establishes a
+  new value in that place must prove the complete refinement predicate for the new value.
+- This applies to construction, assignment, compound update, member write, element write,
+  copy/move destination state, call effects, deserialization and foreign boundary writes.
+- A refinement is not merely checked on read.
+
+## E.24 Capability invalidation
+
+- Ending lifetime invalidates readability/writability tied to that lifetime.
+- Reallocation invalidates capabilities according to the container/allocation semantics.
+- A write does not generally invalidate the ability to read the same live initialized
+  object, but it invalidates facts about the previous value.
+- Deallocation invalidates every capability into the region.
+
+# Normative Annex F — Functions, members, classes and polymorphism
+
+## F.1 Function entry
+
+- At verified function entry, parameters and the implicit object have the values delivered
+  by ordinary C++ argument passing and binding.
+- The function may suppose its `expects` proposition only after the caller obligation has
+  been established in verified composition or because the function is being verified under
+  its declared precondition.
+- Refined parameters contribute their membership predicates as entry facts.
+- No postcondition is assumed at entry.
+
+## F.2 Function normal return
+
+- Every normal return must establish the declared `ensures` proposition and refined return
+  membership.
+- For void functions there is no `result` binding.
+- Reference/member/global observations in `ensures` denote the normal post-state unless
+  wrapped by `old(...)`.
+- Destruction performed before the actual return according to C++ is part of the state on
+  which the final postcondition is interpreted when the destruction can affect observed
+  state.
+
+## F.3 Exceptional exit
+
+- An escaping exception is not a normal return and therefore does not owe the ordinary
+  `ensures` clause.
+- The verified body still owes defined behavior, lifetime correctness, refinement
+  preservation for live refined storage, and any exception-related C++ obligations along the
+  exceptional path.
+- A caller cannot assume the callee postcondition on an exceptional continuation.
+
+## F.4 `old` snapshots
+
+- `old(e)` denotes the specification value of `e` in the function entry state.
+- The expression must be a valid specification expression when interpreted in that entry
+  state.
+- If evaluating the corresponding runtime expression would require an object that was not
+  alive/initialized at entry, `old(e)` is invalid.
+- `old` does not allocate a runtime snapshot or change ABI.
+- Aliasing/mutation after entry cannot change the logical snapshot.
+
+## F.5 Member functions
+
+- The implicit object participates in preconditions, postconditions, effects and aliasing
+  like an explicit object argument.
+- Unqualified member names in a contract refer to the entity selected by ordinary C++ member
+  lookup.
+- A `const` member function does not prove global immutability of reachable state or mutable
+  members.
+- Reference qualifiers, `noexcept`, `override`, `final`, explicit object parameters and
+  trailing qualifiers retain ordinary C++ semantics.
+
+## F.6 Constructors
+
+- A constructor has no return-value `result`.
+- Its postcondition is interpreted after successful initialization of the complete object
+  for the constructor whose contract is being checked.
+- `old(member)` is invalid for a member whose object lifetime/value did not exist in the
+  constructor entry state.
+- Base/member initialization order is the C++ order, independent of initializer-list
+  spelling.
+- A throwing constructor has no normal post-state for the complete object; destruction of
+  already-constructed subobjects follows C++.
+- Refined members must satisfy their predicates when their initialization completes and
+  after every later mutation.
+
+## F.7 Destructors
+
+- A destructor verifies runtime operations performed while the relevant subobjects are
+  alive.
+- A destructor postcondition cannot assert ordinary value properties of subobjects after
+  their lifetimes have ended.
+- Base/member destruction order is ordinary C++.
+- Throwing behavior follows C++ destructor/exception rules, including termination where
+  applicable.
+
+## F.8 Copy/move special members
+
+- Implicitly generated, defaulted and user-provided special members retain C++
+  generation/deletion rules.
+- If their semantics are used in verified code, the verifier must account for the actual
+  generated/memberwise operations or a checked contract/model.
+- Defaulting does not automatically prove preservation of arbitrary user Laws/refinements
+  unless the generated operations establish them.
+
+## F.9 Inheritance
+
+- Base-subobject construction, conversion, access and destruction follow C++.
+- A property of a derived object may use base guarantees only where ordinary C++ establishes
+  the corresponding base-subobject relation.
+- Downcasts require the exact C++ dynamic/static conditions applicable to the cast.
+
+## F.10 Virtual overriding contracts
+
+- A call verified through a base static type may rely only on the base virtual contract
+  unless a stronger dynamic-type fact is established.
+- An override MUST NOT strengthen the effective precondition required from callers of the
+  base contract.
+- An override MUST guarantee at least the base postcondition on every normal return
+  reachable through the base interface.
+- An override MUST NOT expose a broader externally observable effect set than the base
+  contract permits when such broadening would invalidate caller reasoning.
+- If the base callable is `pure`, an override used through that interface must satisfy the
+  corresponding purity guarantee.
+- If termination is part of the base semantic guarantee, an override must preserve it.
+
+## F.11 Multiple inheritance and virtual bases
+
+- Pointer/reference adjustment and base identity follow C++.
+- Aliasing between base-subobject views must reflect that they may denote subobjects of one
+  complete object.
+- Virtual-base construction/destruction is performed according to the most-derived-object
+  rules.
+
+## F.12 Function pointers and references
+
+- A function pointer/reference carries runtime target identity according to C++.
+- A verified indirect call requires a semantic contract valid for every target the
+  pointer/reference may denote on that path.
+- A type-compatible pointer does not by itself prove the target satisfies a particular C++L
+  contract.
+
+## F.13 Callable objects
+
+- Invocation through `operator()` is an ordinary member call.
+- Captured/referenced state participates in effects and aliasing.
+- A callable type can be used with a verified higher-order interface only when the required
+  callable contract is established.
+
+# Normative Annex G — Templates, concepts and compile-time C++
+
+## G.1 Template definition and instantiation
+
+- Ordinary template parsing, dependent lookup, substitution and instantiation follow C++.
+- C++L contracts, refinements, Laws and proof obligations may depend on template parameters.
+- A verification claim about a concrete specialization is interpreted after C++ substitution
+  and semantic resolution of that specialization.
+- A generic proof may be reused only for instantiations for which its premises and modeled
+  operations are satisfied.
+
+## G.2 Constraint satisfaction
+
+- C++ concepts and `requires` clauses determine C++ template viability.
+- Constraint satisfaction is not automatically proof evidence for unrelated runtime
+  propositions.
+- When a concept is defined entirely by compile-time structural/type properties, those exact
+  properties may be used where the formal model defines the correspondence.
+
+## G.3 Non-type template parameters
+
+- Their values and structural-type rules are C++ semantics.
+- A non-type template argument may serve as a refinement index when its formal value is
+  stable and well-defined.
+- No runtime storage is introduced for a proof-only use of an already compile-time template
+  value.
+
+## G.4 `constexpr`
+
+- `constexpr` retains ordinary C++ meaning and does not by itself mean `pure`, `verified`,
+  or total.
+- A successful constant evaluation may supply exact value facts where the correspondence to
+  the runtime expression is valid.
+- Potential runtime execution of a `constexpr` function is still runtime C++ and must
+  satisfy the normal verification rules when verified.
+
+## G.5 `consteval`
+
+- `consteval` requires immediate invocation according to C++.
+- Compile-time execution is not automatically formal proof; formal facts require the same
+  C++L evidence rules.
+- An immediate function used in a specification may be modeled as a formal function only
+  when purity, termination and semantic correspondence are established.
+
+## G.6 `constinit`
+
+- `constinit` constrains initialization timing as C++ specifies and does not imply
+  immutability, purity or proof.
+
+## G.7 Template specializations
+
+- Explicit and partial specializations are distinct C++ entities according to ordinary
+  rules.
+- Verification metadata selected for an instantiation must correspond to the specialization
+  actually instantiated.
+- A contract/model for a primary template cannot be applied blindly to a specialization
+  whose semantics differ.
+
+## G.8 Explicit instantiation
+
+- Explicit instantiation may move code generation across translation units but must preserve
+  all verification metadata needed to justify callers.
+- Native symbol availability alone is insufficient evidence for a verified summary.
+
+## G.9 Variadic templates and packs
+
+- Pack expansion follows C++.
+- Proof obligations are generated for each semantically instantiated operation, not for an
+  imagined homogeneous pack unless the template proves that property.
+
+## G.10 Fold expressions
+
+- A fold uses C++ operator grouping and empty-pack identity rules.
+- Effects and evaluation semantics of the selected operators remain C++ semantics.
+- A mathematical associativity rewrite is permitted only when justified for the instantiated
+  operation.
+
+# Normative Annex H — Proof-language source semantics
+
+This annex specifies source-level proof behavior while leaving the formal calculus and
+proof-object encoding to `FOUNDATIONS.md`. The source semantics below are mandatory.
+
+## H.1 Goals and premises
+
+- A proof body has exactly one current goal at each linear proof point unless a structural
+  statement creates multiple subgoals/arms.
+- Premises are propositions already justified by the enclosing Law/proof contract,
+  implication introduction, structural case, induction principle, or previously established
+  evidence.
+- A proof statement cannot add an arbitrary proposition merely by naming it.
+
+## H.2 `refl`
+
+- `refl;` succeeds only when the current goal is formal equality whose sides are
+  definitionally equal under the formal normalization semantics.
+- It does not invoke user-defined C++ `operator==` and does not treat approximate equality
+  as exact equality.
+
+## H.3 `exact`
+
+- `exact e;` requires `e` to denote proof evidence for a proposition definitionally equal to
+  the current goal after valid instantiation/substitution.
+- A runtime Boolean value is not proof evidence merely because it happens to be true.
+- `exact` closes the current goal and introduces no additional assumptions.
+
+## H.4 `apply`
+
+- `apply e;` requires evidence or a theorem whose conclusion can be instantiated to the
+  current goal.
+- Its unsatisfied premises become new subgoals in semantic order.
+- The conclusion cannot be used until all required premises are established.
+- Recursive proof application is subject to the proof-termination rules and cannot be used
+  to manufacture circular evidence.
+
+## H.5 `assume`
+
+- `assume h : P;` binds the name `h` to an existing premise definitionally equal to `P`.
+- The statement fails if no such premise is available.
+- When the current goal is implication `P -> Q`, an `assume h : P;` may perform implication
+  introduction by extending the local proof context with the premise and changing the goal
+  to `Q`.
+- The bound evidence is scoped lexically and cannot escape its proof/arm scope.
+
+## H.6 `rewrite`
+
+- `rewrite h;` requires equality evidence usable for substitution in the current goal.
+- Rewriting is capture-avoiding and type-correct.
+- The default source spelling rewrites left-to-right; a future reverse-direction spelling
+  would require separate grammar and is not implied.
+- Rewriting does not execute runtime assignment.
+
+## H.7 Conjunction
+
+- A conjunction goal requires evidence for both conjuncts.
+- Evidence for a conjunction permits projection of either conjunct in proof reasoning.
+- The source language need not expose a dedicated split command; automation or theorem
+  application may construct/project conjunction evidence, but the resulting evidence must
+  satisfy the formal rules.
+
+## H.8 Disjunction
+
+- A disjunction goal requires evidence selecting a disjunct or an equivalent derivation.
+- Evidence for `P || Q` does not establish `P` alone or `Q` alone without a valid
+  elimination/case derivation.
+- Excluded middle is not implicit unless derived from a defined decidability principle for
+  the proposition in question.
+
+## H.9 Implication
+
+- Implication introduction extends the proof context with the premise and proves the
+  conclusion under that premise.
+- Implication elimination requires evidence for the implication and evidence for its
+  premise.
+- An `expects` clause on a Law is syntactic theorem-premise structure and therefore
+  participates in the same implication semantics.
+
+## H.10 Universal quantification
+
+- Universal introduction proves the body for an arbitrary fresh binder of the quantified
+  type without assuming properties not supplied by that type/context.
+- Universal elimination instantiates checked evidence at a well-typed term.
+- A quantifier binder has no runtime storage and cannot be addressed or mutated.
+
+## H.11 Existential quantification
+
+- Existential evidence consists of a witness of the quantified type together with evidence
+  for the proposition instantiated at that witness.
+- Automatic proof search may construct such evidence, and `exact` may consume
+  already-constructed existential evidence.
+- The core source surface defined here does not add a separate `witness` command; explicit
+  witness construction is expressed through reusable evidence/theorems provided by the proof
+  environment and the existential-introduction semantics formalized in `FOUNDATIONS.md`.
+- Failure to find a witness is not proof of negation.
+
+## H.12 Law application
+
+- A proven Law can be instantiated at arguments satisfying its parameter types.
+- If the Law has an `expects` premise, that instantiated premise must be established before
+  the conclusion becomes available.
+- An unresolved Law cannot be applied.
+- A trusted Law can be applied like a proven Law but preserves its trust dependency.
+
+## H.13 Named proof application
+
+- A named `proof` is reusable evidence and may be referenced by `exact`/`apply` according to
+  its proposition and parameters.
+- Proof declarations do not produce runtime functions or callable symbols.
+
+## H.14 Structural cases
+
+- `cases` creates one proof obligation per semantic state not proven impossible.
+- Each arm receives exactly the binder values and premises defined by the state partition.
+- Every arm must prove the same enclosing goal.
+
+## H.15 Product decomposition
+
+- `decompose` introduces component binders corresponding to the modeled product projections
+  and leaves the enclosing goal unchanged.
+- The decomposition creates no runtime copies.
+
+## H.16 Induction
+
+- `induction` uses the well-founded induction principle of the selected domain.
+- Each recursive/predecessor arm receives induction hypotheses only for structurally smaller
+  values defined by that principle.
+- An induction hypothesis is a supplied premise and may be named by `assume`; it is not
+  obtained by recursively calling the proof being defined.
+
+## H.17 Proof termination
+
+- Proof elaboration and proof-relevant computation must be well-founded.
+- Circular proof dependencies without a valid inductive/well-founded rule are rejected.
+- Divergence cannot be interpreted as evidence.
+
+## H.18 Proof erasure
+
+- Every proof statement, proof binder, proof-local evidence value and proof-control branch
+  erases completely.
+- Erasure must not remove any ordinary C++ evaluation because proof bodies cannot contain
+  runtime statements whose effects would need preserving.
+
+# Normative Annex I — Refinement and dependent-type obligations
+
+## I.1 Refinement identity
+
+- A refinement declaration creates a distinct verification-level type identity even when its
+  runtime representation equals the base type.
+- Aliases of that refinement preserve its verification identity.
+- Two independently declared refinements with textually equal predicates remain distinct
+  refinement declarations unless the language explicitly relates them by
+  implication/equality.
+
+## I.2 Base-to-refinement crossing
+
+- A base value may enter a refinement only when the complete predicate instantiated at that
+  value is established in the current context, or when the crossing is justified by explicit
+  trusted evidence.
+- The compiler MUST NOT insert a hidden runtime predicate check.
+
+## I.3 Refinement-to-base crossing
+
+- A refinement value may be used as its base representation without additional runtime
+  conversion.
+- Its membership predicate remains available as proof evidence while the logical value
+  version remains valid.
+
+## I.4 Refinement-to-refinement crossing
+
+- Crossing from refinement `P` to refinement `Q` requires establishing `P(v) -> Q(v)` under
+  the current facts for the actual value `v`.
+- No nominal subtyping relation is inferred merely from declaration order.
+
+## I.5 Nested refinements
+
+- A refinement whose base is another refinement carries the conjunction of all inherited
+  predicates after substitution.
+- No inherited predicate may be dropped during aliasing, indexing or erasure analysis.
+
+## I.6 Refined locals
+
+- Initialization establishes membership for the initial logical version.
+- Every assignment/update establishes membership for the new logical version.
+- A fact about a refined local is invalidated/replaced when that local receives a new
+  version.
+
+## I.7 Refined parameters
+
+- A refined by-value parameter contributes its membership predicate at entry.
+- A refined reference parameter requires the referent value to satisfy membership at entry
+  and after any normal return if the function may mutate the referent.
+- Potential alias writes must not leave stale refinement evidence.
+
+## I.8 Refined return types
+
+- Every normal return must prove membership of the returned value.
+- An `ensures` clause is additional to, not a replacement for, refined-return membership.
+
+## I.9 Refined members
+
+- Every constructor path must establish the member predicate when the member becomes
+  initialized.
+- Copy/move construction and assignment must establish it for the destination member.
+- Direct/indirect writes through references, pointers, proxies, algorithms or foreign calls
+  must establish it before the refined place receives the new version.
+- A verifier must not defer checking until the next read.
+
+## I.10 Refined array/container elements
+
+- Every element construction/write must establish the element refinement.
+- Operations that may move/reallocate elements must preserve membership for every resulting
+  live element.
+- A container model may summarize these obligations only when the summary itself is
+  checked/modelled soundly.
+
+## I.11 Indexed refinements
+
+- Index binders are part of verification identity and are substituted at each application.
+- Index expressions must have stable formal meaning at the point the type is formed.
+- Changing mutable runtime state cannot retroactively change the identity/predicate of an
+  already formed indexed refinement.
+
+## I.12 ABI and overloads
+
+- Refinement predicates and proof-only indices are absent from runtime representation unless
+  an explicitly runtime C++ component already represents the value.
+- Overload sets cannot distinguish solely on erased refinement identity.
+
+## I.13 Runtime validation
+
+- Ordinary C++ control flow may establish the predicate for one concrete runtime value.
+- The refinement crossing occurs only after the successful path has established the
+  proposition.
+- No C++L runtime validation library is required.
+
+## I.14 FFI/deserialization
+
+- External bytes/values do not acquire refinement membership from the target type spelling.
+- The boundary must validate at runtime, provide checked formal evidence, or rely on an
+  explicit trusted Law.
+
+# Normative Annex J — Core standard-library semantic models
+
+C++L does not replace the C++ standard library. When a complete conforming implementation
+verifies code using the standard abstractions below, its formal model MUST agree with the
+selected standard-library semantics. Exact vendor/library availability belongs in
+`COMPATIBILITY.md`; implementation progress belongs in `STATUS.md`.
+
+## J.1 `std::array<T,N>`
+
+- It is a fixed-size aggregate/container of `N` elements with ordinary C++ element
+  lifetimes.
+- Element access requires the same bounds/definedness guarantees as the selected member
+  operation.
+- Proof-side product decomposition may expose the `N` elements when their values are
+  formally modelable.
+- No proof model may assume heap allocation or reallocation.
+
+## J.2 `std::span<T,Extent>`
+
+- A span is a non-owning view; its validity depends on the lifetime and extent of the
+  referenced storage.
+- Constructing a span establishes only the extent/provenance guaranteed by the constructor
+  preconditions.
+- Copying a span does not copy elements or extend element lifetime.
+- Element access requires the underlying range to remain live/readable or writable as
+  appropriate.
+
+## J.3 `std::optional<T>`
+
+- The semantic states are `none` and `some(value)`.
+- Accessing the contained value requires the engaged state under the selected member
+  operation semantics.
+- Reset/emplace/assignment create lifetime transitions for the contained object and
+  invalidate stale payload facts.
+
+## J.4 `std::variant<Ts...>`
+
+- The semantic states are one active alternative per index plus `valueless`.
+- Alternative indices distinguish repeated types.
+- Accessing an alternative requires the matching active state or the operation must be
+  reasoned about through its documented exceptional behavior.
+- Assignment/emplacement may change the active alternative and can enter `valueless` where
+  C++ permits.
+
+## J.5 `std::expected<T,E>`
+
+- The semantic states are `value(payload)` and `error(reason)`.
+- Value/error access requires the matching state or follows the documented
+  exception/undefined behavior of the selected operation.
+- State-changing assignment/emplacement invalidates facts about the prior alternative.
+
+## J.6 `std::pair` and `std::tuple`
+
+- Product decomposition exposes element values in index order when formally modeled.
+- Reference elements remain aliases and are not copied into independent logical storage.
+- Member operations retain their ordinary effects and exception behavior.
+
+## J.7 `std::vector<T>`
+
+- The abstract logical content is a finite sequence whose length equals the runtime size.
+- Element access requires the selected operation bounds rule and live element lifetime.
+- Operations that reallocate invalidate pointers/references/iterators according to the C++
+  standard; verification facts using them must be invalidated accordingly.
+- Mutation updates the abstract sequence and every affected element/storage version.
+- Capacity is not semantic sequence length and must not be conflated with size.
+
+## J.8 `std::basic_string`
+
+- The abstract content is a finite sequence of character values consistent with the selected
+  specialization.
+- Mutation/reallocation invalidates iterators/pointers/references according to the standard.
+- Null-termination properties may be used only where the selected member function guarantees
+  them.
+
+## J.9 `std::basic_string_view`
+
+- It is a non-owning character range and does not extend the lifetime of referenced storage.
+- Proof facts about its characters require the backing storage to remain valid.
+
+## J.10 smart pointers
+
+- `std::unique_ptr` ownership is unique according to its move/destruction semantics, but
+  dereference still requires a live pointee and non-null state where applicable.
+- `std::shared_ptr` shared ownership/lifetime semantics follow the control block and
+  aliasing constructors; pointer equality is not ownership identity.
+- `std::weak_ptr` does not keep the object alive; successful `lock()` establishes a
+  temporary owning `shared_ptr` according to C++.
+- Custom deleter effects are runtime effects.
+
+## J.11 iterators
+
+- Iterator category/concept and validity are determined by the selected iterator type and
+  owning range.
+- Dereference/increment/comparison require the preconditions defined by the iterator/range
+  semantics.
+- Container operations invalidate iterators exactly where the C++ standard says they do.
+- An end iterator is not dereferenceable merely because it is a valid iterator value.
+
+## J.12 ranges
+
+- Range adaptors may be lazy and may hold references/views into other objects; verification
+  must preserve those lifetime dependencies.
+- A range-for or algorithm using a range consumes the iterator/sentinel semantics of that
+  range.
+
+## J.13 associative containers
+
+- The abstract model is a finite collection keyed/ordered according to the container
+  semantics.
+- Lookup results and iterator validity follow the selected operation guarantees.
+- Comparator/hash/equality callables contribute their own purity/effect/definedness
+  obligations when formal reasoning depends on them.
+
+## J.14 algorithms
+
+- Standard algorithms are ordinary runtime calls unless a formal model/checked
+  implementation summary is available.
+- Preconditions on iterator ranges, ordering relations and callable requirements must be
+  established before using a verified summary.
+- Mutation/effects are exactly those permitted by the algorithm specification and supplied
+  callables.
+
+## J.15 `std::function` and type-erased callables
+
+- A runtime wrapper may target different callable objects over time.
+- A verified call through the wrapper requires a contract valid for every possible stored
+  target consistent with the current facts.
+- Type erasure does not erase proof obligations about callback effects.
+
+## J.16 synchronization primitives
+
+- Mutexes, locks, condition variables and atomic facilities follow §34 plus their standard
+  semantics.
+- Ownership of a lock may establish access to protected invariants only when a corresponding
+  synchronization invariant is formally defined and justified.
+
+# Normative Annex K — Exceptions, concurrency and coroutines
+
+## K.1 Exception object construction
+
+- A thrown expression is evaluated and the exception object is initialized according to C++.
+- Any undefined behavior or refinement crossing during construction must be verified before
+  the exceptional continuation exists.
+
+## K.2 Stack unwinding
+
+- Destructors run in the C++ specified order.
+- Their effects mutate the logical state of the exceptional continuation.
+- A destructor that ends lifetime invalidates all dependent facts.
+
+## K.3 Catch handlers
+
+- Handler matching and binding use C++ dynamic exception semantics.
+- A handler receives only facts common to exceptional paths that can select it, plus facts
+  established by the exception-type match/binding.
+
+## K.4 `noexcept`
+
+- The C++ exception specification controls runtime termination behavior and type properties.
+- A verified proof of normal-return postconditions does not by itself prove no exception
+  escapes.
+- If a semantic use requires exception freedom, that fact must be established separately
+  from the ordinary postcondition.
+
+## K.5 Thread interference
+
+- Without synchronization, a proof about shared mutable state may not assume that another
+  thread leaves it unchanged.
+- Data-race freedom is a required defined-behavior obligation for verified concurrent
+  accesses.
+- Sequential proof facts cannot cross an interference point unless the concurrency model
+  justifies their preservation.
+
+## K.6 Atomics
+
+- Atomic operations are indivisible only to the extent defined by C++ and the selected
+  memory order.
+- Relaxed operations do not establish happens-before relationships beyond their atomic
+  modification-order semantics.
+- Acquire/release/seq_cst facts must follow the C++ memory model; no stronger ordering is
+  invented.
+
+## K.7 Locks
+
+- Lock/unlock operations are runtime calls/effects.
+- A proof may use a protected invariant only after successful acquisition under a formally
+  defined synchronization discipline.
+- Unlock must re-establish whatever invariant is required for transfer to other threads.
+
+## K.8 Coroutines and suspension
+
+- Suspension divides execution into resumable segments and extends selected local lifetimes
+  into the coroutine frame.
+- External execution between suspension/resumption may invalidate shared-state facts.
+- Destroying a suspended coroutine ends frame/subobject lifetimes and invalidates
+  references/pointers as C++ specifies.
+
+# Normative Annex L — Translation units, modules and external boundaries
+
+## L.1 Public contracts
+
+- A caller may reason from a public verified contract without seeing the runtime body only
+  when checked evidence for the implementation corresponding to that contract is available
+  to the verification environment.
+- A declaration alone states an obligation/summary; it does not prove the body satisfies it.
+
+## L.2 Verification metadata across translation units
+
+- Contracts, refinement identities/predicates, Law propositions/evidence availability,
+  purity, termination guarantees, effect summaries and trust dependencies needed by callers
+  are semantic interface metadata.
+- The metadata is not native ABI state and must not change calling conventions.
+- A complete conforming implementation must preserve the metadata relationship across
+  translation-unit boundaries by some sound mechanism.
+- If required evidence is unavailable, verification fails closed rather than assuming the
+  summary.
+
+## L.3 Headers
+
+- Existing C++ headers may carry C++L declarations.
+- A separate header language is not required.
+- Repeated inclusion/redeclaration follows C++ entity rules plus C++L contract
+  compatibility.
+
+## L.4 Modules
+
+- C++ module ownership/import semantics remain ordinary C++.
+- Imported C++L declarations preserve the same semantic metadata and evidence requirements
+  as header declarations.
+- The language introduces no mandatory new module source syntax solely for proof metadata.
+
+## L.5 Dynamic/shared libraries
+
+- Native dynamic linking does not itself authenticate or prove C++L metadata.
+- A verified caller may rely on a library contract only when the build/verifier environment
+  establishes that the loaded implementation corresponds to the checked/trusted interface
+  assumptions.
+- That correspondence concern does not change native ABI semantics.
+
+## L.6 C and foreign ABIs
+
+- Foreign calls retain their ABI and runtime semantics.
+- A foreign function with no checked semantic model is unverified and has conservative
+  effects.
+- Properties of foreign outputs enter verified reasoning only through runtime validation,
+  verified wrappers/models, or explicit trusted Laws.
+
+## L.7 Inline assembly and platform APIs
+
+- They follow the same boundary rule as foreign code: no formal fact is inferred solely from
+  source spelling or successful runtime execution.
+- Unsafe boundaries may execute them while preserving conservative effects; trusted Laws may
+  explicitly state assumptions when intended.
+
+## L.8 Serialization and persistence
+
+- Deserializing bytes into a value does not automatically establish semantic/refinement
+  invariants merely because the destination static type has them.
+- The boundary must establish object-lifetime validity and every required predicate through
+  checked runtime logic, formal evidence or explicit trust.
+
+# Normative Annex M — Erasure and runtime-equivalence matrix
+
+This annex makes the erasure contract explicit for agents and implementations. Every
+accepted C++L program must erase to ordinary C++ whose observable runtime semantics are
+those of the retained runtime source.
+
+| Source construct                          | Erased portion           | Runtime result                                                                      |
+| ----------------------------------------- | ------------------------ | ----------------------------------------------------------------------------------- |
+| `law` declaration                         | entire declaration       | none                                                                                |
+| `trusted law` declaration                 | entire declaration       | trust dependency remains only in verification metadata                              |
+| `proof` declaration                       | entire declaration       | none                                                                                |
+| `proves` clause                           | clause                   | none                                                                                |
+| `expects` clause                          | clause                   | none                                                                                |
+| `ensures` clause                          | clause                   | none                                                                                |
+| `verified` modifier                       | modifier                 | function body retained                                                              |
+| `pure` modifier                           | modifier                 | function body retained                                                              |
+| `ghost` declaration                       | entire ghost declaration | none                                                                                |
+| `invariant` clause                        | clause                   | runtime loop retained                                                               |
+| `decreases` clause                        | clause                   | runtime function/loop retained                                                      |
+| `forall` / `exists`                       | formal proposition       | none                                                                                |
+| proof `cases`                             | entire proof statement   | none                                                                                |
+| `decompose`                               | entire proof statement   | none                                                                                |
+| `induction`                               | entire proof statement   | none                                                                                |
+| `refl`/`exact`/`apply`/`assume`/`rewrite` | proof statement          | none                                                                                |
+| refinement predicate                      | predicate metadata       | base runtime representation retained                                                |
+| proof-only index                          | index metadata           | no runtime state unless the corresponding value independently exists in runtime C++ |
+| `result`/`old`/`self` formal meanings     | formal bindings          | none                                                                                |
+| memory propositions                       | formal propositions      | none                                                                                |
+| mathematical domains                      | formal values/types      | none                                                                                |
+| `unsafe` marker                           | marker only              | enclosed runtime operations retained                                                |
+| ordinary runtime validation               | nothing                  | runtime branches/checks retained exactly as ordinary C++                            |
+
+## M.1 Forbidden hidden runtime artifacts
+
+- No proof interpreter, theorem VM, proof heap, proof garbage collector, proof dispatch
+  table or proof stack may be required merely because verification was used.
+- No hidden contract assertion, refinement check, validation flag or proof-status flag may
+  be injected unless the programmer wrote equivalent ordinary runtime behavior through an
+  explicitly runtime feature.
+- No hidden field may be added to an existing runtime object solely for proof state.
+- No proof-only parameter may be added to a native calling convention.
+- No proof-only branch/loop may appear in runtime control flow.
+- No runtime constructor/destructor may be introduced solely to carry proof evidence.
+- Ghost initialization/destruction that would require observable runtime effects is
+  therefore ill-formed rather than executed and erased inconsistently.
+
+## M.2 Deterministic lowering
+
+- For a fixed selected C++ mode and C++L source, the verification-only lowering of accepted
+  syntax must be semantically deterministic.
+- Refinement declarations lower to their base C++ representation in a way that preserves
+  ordinary name/type usability without inventing runtime wrappers.
+- Erasure must preserve preprocessing/source-level ordinary C++ constructs required for
+  compilation of the retained program.
+
+# Normative Annex N — Complete verification coverage requirements
+
+A complete conforming implementation is not permitted to define a smaller “verified C++
+subset” than the selected supported C++ mode merely because a construct is difficult. For
+every ordinary C++ construct that is legal in the selected mode and appears inside a
+verification-enabled runtime region, the implementation must either verify its semantics
+soundly according to this specification and the selected C++ standard, or reject the entire
+implementation as incomplete conformance. This annex enumerates the semantic coverage
+expected from a complete implementation.
+
+### N.1 `scalar initialization`
+
+A complete implementation MUST support verification of legal uses of scalar initialization
+in a verification-enabled runtime region whenever the selected C++ mode supports the
+construct. The required semantic dimensions include
+initialization/lifetime/value/refinement.
+
+- Runtime behavior of scalar initialization remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.2 `aggregate initialization`
+
+A complete implementation MUST support verification of legal uses of aggregate
+initialization in a verification-enabled runtime region whenever the selected C++ mode
+supports the construct. The required semantic dimensions include member
+order/lifetime/refinements.
+
+- Runtime behavior of aggregate initialization remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.3 `list initialization`
+
+A complete implementation MUST support verification of legal uses of list initialization in
+a verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include overload/narrowing/elements.
+
+- Runtime behavior of list initialization remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.4 `default initialization`
+
+A complete implementation MUST support verification of legal uses of default initialization
+in a verification-enabled runtime region whenever the selected C++ mode supports the
+construct. The required semantic dimensions include indeterminate-state rules.
+
+- Runtime behavior of default initialization remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.5 `value initialization`
+
+A complete implementation MUST support verification of legal uses of value initialization in
+a verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include zero/value construction.
+
+- Runtime behavior of value initialization remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.6 `direct initialization`
+
+A complete implementation MUST support verification of legal uses of direct initialization
+in a verification-enabled runtime region whenever the selected C++ mode supports the
+construct. The required semantic dimensions include selected constructor/conversion.
+
+- Runtime behavior of direct initialization remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.7 `copy initialization`
+
+A complete implementation MUST support verification of legal uses of copy initialization in
+a verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include selected conversion/construction.
+
+- Runtime behavior of copy initialization remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.8 `reference binding`
+
+A complete implementation MUST support verification of legal uses of reference binding in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include lifetime/aliasing/conversions.
+
+- Runtime behavior of reference binding remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.9 `structured bindings`
+
+A complete implementation MUST support verification of legal uses of structured bindings in
+a verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include underlying binding category/lifetimes.
+
+- Runtime behavior of structured bindings remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.10 `destructuring via tuple protocol`
+
+A complete implementation MUST support verification of legal uses of destructuring via tuple
+protocol in a verification-enabled runtime region whenever the selected C++ mode supports
+the construct. The required semantic dimensions include get/tuple_size/tuple_element
+semantics.
+
+- Runtime behavior of destructuring via tuple protocol remains exactly the selected C++
+  behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.11 `integer arithmetic`
+
+A complete implementation MUST support verification of legal uses of integer arithmetic in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include promotions/overflow/definedness.
+
+- Runtime behavior of integer arithmetic remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.12 `floating arithmetic`
+
+A complete implementation MUST support verification of legal uses of floating arithmetic in
+a verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include rounding/NaN/infinity/target semantics.
+
+- Runtime behavior of floating arithmetic remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.13 `pointer arithmetic`
+
+A complete implementation MUST support verification of legal uses of pointer arithmetic in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include provenance/array bounds/one-past.
+
+- Runtime behavior of pointer arithmetic remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.14 `enum conversions`
+
+A complete implementation MUST support verification of legal uses of enum conversions in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include underlying values/conversion rules.
+
+- Runtime behavior of enum conversions remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.15 `bit operations`
+
+A complete implementation MUST support verification of legal uses of bit operations in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include promotions/width/shift validity.
+
+- Runtime behavior of bit operations remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.16 `comparisons`
+
+A complete implementation MUST support verification of legal uses of comparisons in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include selected operator/value semantics.
+
+- Runtime behavior of comparisons remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.17 `three-way comparison`
+
+A complete implementation MUST support verification of legal uses of three-way comparison in
+a verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include selected category/operator semantics.
+
+- Runtime behavior of three-way comparison remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.18 `conditional expression`
+
+A complete implementation MUST support verification of legal uses of conditional expression
+in a verification-enabled runtime region whenever the selected C++ mode supports the
+construct. The required semantic dimensions include branch-sensitive evaluation/type.
+
+- Runtime behavior of conditional expression remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.19 `comma expression`
+
+A complete implementation MUST support verification of legal uses of comma expression in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include sequencing/effects.
+
+- Runtime behavior of comma expression remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.20 `assignments`
+
+A complete implementation MUST support verification of legal uses of assignments in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include write/version/refinement.
+
+- Runtime behavior of assignments remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.21 `member access`
+
+A complete implementation MUST support verification of legal uses of member access in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include subobject/access/lifetime.
+
+- Runtime behavior of member access remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.22 `subscript`
+
+A complete implementation MUST support verification of legal uses of subscript in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include bounds/provenance/overload.
+
+- Runtime behavior of subscript remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.23 `function call`
+
+A complete implementation MUST support verification of legal uses of function call in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include pre/post/effects/exceptions.
+
+- Runtime behavior of function call remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.24 `virtual call`
+
+A complete implementation MUST support verification of legal uses of virtual call in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include dynamic targets/base contract.
+
+- Runtime behavior of virtual call remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.25 `indirect call`
+
+A complete implementation MUST support verification of legal uses of indirect call in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include target-set contract.
+
+- Runtime behavior of indirect call remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.26 `operator overload`
+
+A complete implementation MUST support verification of legal uses of operator overload in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include function-call semantics.
+
+- Runtime behavior of operator overload remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.27 `user conversion`
+
+A complete implementation MUST support verification of legal uses of user conversion in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include selected conversion function/constructor.
+
+- Runtime behavior of user conversion remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.28 `casts`
+
+A complete implementation MUST support verification of legal uses of casts in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include exact C++ cast semantics.
+
+- Runtime behavior of casts remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.29 `RTTI`
+
+A complete implementation MUST support verification of legal uses of RTTI in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include dynamic type/lifetime.
+
+- Runtime behavior of RTTI remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.30 `type traits`
+
+A complete implementation MUST support verification of legal uses of type traits in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include compile-time C++ facts.
+
+- Runtime behavior of type traits remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.31 `if`
+
+A complete implementation MUST support verification of legal uses of if in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include path split/join.
+
+- Runtime behavior of if remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.32 `switch`
+
+A complete implementation MUST support verification of legal uses of switch in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include case/fallthrough/control value.
+
+- Runtime behavior of switch remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.33 `while`
+
+A complete implementation MUST support verification of legal uses of while in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include invariant/back-edge/exit.
+
+- Runtime behavior of while remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.34 `for`
+
+A complete implementation MUST support verification of legal uses of for in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include init/condition/step/invariant.
+
+- Runtime behavior of for remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.35 `range-for`
+
+A complete implementation MUST support verification of legal uses of range-for in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include range/iterators/lifetimes.
+
+- Runtime behavior of range-for remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.36 `do-while`
+
+A complete implementation MUST support verification of legal uses of do-while in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include post-test invariant/exit.
+
+- Runtime behavior of do-while remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.37 `break`
+
+A complete implementation MUST support verification of legal uses of break in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include targeted exit facts.
+
+- Runtime behavior of break remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.38 `continue`
+
+A complete implementation MUST support verification of legal uses of continue in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include back-edge obligations.
+
+- Runtime behavior of continue remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.39 `return`
+
+A complete implementation MUST support verification of legal uses of return in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include postcondition/refined return/destruction.
+
+- Runtime behavior of return remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.40 `goto`
+
+A complete implementation MUST support verification of legal uses of goto in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include join/fixed-point/lifetime legality.
+
+- Runtime behavior of goto remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.41 `try/catch`
+
+A complete implementation MUST support verification of legal uses of try/catch in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include exception path joins.
+
+- Runtime behavior of try/catch remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.42 `throw`
+
+A complete implementation MUST support verification of legal uses of throw in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include exception object/unwinding.
+
+- Runtime behavior of throw remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.43 `noexcept`
+
+A complete implementation MUST support verification of legal uses of noexcept in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include termination/exception-spec semantics.
+
+- Runtime behavior of noexcept remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.44 `RAII`
+
+A complete implementation MUST support verification of legal uses of RAII in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include scope destruction/effects.
+
+- Runtime behavior of RAII remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.45 `new/delete`
+
+A complete implementation MUST support verification of legal uses of new/delete in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include allocation/lifetime/deallocation.
+
+- Runtime behavior of new/delete remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.46 `placement new`
+
+A complete implementation MUST support verification of legal uses of placement new in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include storage reuse/lifetime.
+
+- Runtime behavior of placement new remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.47 `launder/lifetime utilities`
+
+A complete implementation MUST support verification of legal uses of launder/lifetime
+utilities in a verification-enabled runtime region whenever the selected C++ mode supports
+the construct. The required semantic dimensions include object model correspondence.
+
+- Runtime behavior of launder/lifetime utilities remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.48 `volatile`
+
+A complete implementation MUST support verification of legal uses of volatile in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include observable unstable access.
+
+- Runtime behavior of volatile remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.49 `atomics`
+
+A complete implementation MUST support verification of legal uses of atomics in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include memory-order semantics.
+
+- Runtime behavior of atomics remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.50 `mutex/locks`
+
+A complete implementation MUST support verification of legal uses of mutex/locks in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include synchronization/interference.
+
+- Runtime behavior of mutex/locks remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.51 `classes`
+
+A complete implementation MUST support verification of legal uses of classes in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include members/bases/invariants through refinements.
+
+- Runtime behavior of classes remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.52 `unions`
+
+A complete implementation MUST support verification of legal uses of unions in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include active member/lifetimes.
+
+- Runtime behavior of unions remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.53 `inheritance`
+
+A complete implementation MUST support verification of legal uses of inheritance in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include base subobjects/conversions.
+
+- Runtime behavior of inheritance remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.54 `virtual inheritance`
+
+A complete implementation MUST support verification of legal uses of virtual inheritance in
+a verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include shared base identity.
+
+- Runtime behavior of virtual inheritance remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.55 `constructors`
+
+A complete implementation MUST support verification of legal uses of constructors in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include ordered initialization/poststate.
+
+- Runtime behavior of constructors remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.56 `destructors`
+
+A complete implementation MUST support verification of legal uses of destructors in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include ordered lifetime end/effects.
+
+- Runtime behavior of destructors remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.57 `copy special members`
+
+A complete implementation MUST support verification of legal uses of copy special members in
+a verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include actual generated/user semantics.
+
+- Runtime behavior of copy special members remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.58 `move special members`
+
+A complete implementation MUST support verification of legal uses of move special members in
+a verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include source/destination poststates.
+
+- Runtime behavior of move special members remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.59 `defaulted/deleted functions`
+
+A complete implementation MUST support verification of legal uses of defaulted/deleted
+functions in a verification-enabled runtime region whenever the selected C++ mode supports
+the construct. The required semantic dimensions include C++ generation/deletion.
+
+- Runtime behavior of defaulted/deleted functions remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.60 `friendship`
+
+A complete implementation MUST support verification of legal uses of friendship in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include access only.
+
+- Runtime behavior of friendship remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.61 `templates`
+
+A complete implementation MUST support verification of legal uses of templates in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include instantiation/substitution/metadata.
+
+- Runtime behavior of templates remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.62 `partial specialization`
+
+A complete implementation MUST support verification of legal uses of partial specialization
+in a verification-enabled runtime region whenever the selected C++ mode supports the
+construct. The required semantic dimensions include selected specialization semantics.
+
+- Runtime behavior of partial specialization remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.63 `explicit specialization`
+
+A complete implementation MUST support verification of legal uses of explicit specialization
+in a verification-enabled runtime region whenever the selected C++ mode supports the
+construct. The required semantic dimensions include entity-specific contract/model.
+
+- Runtime behavior of explicit specialization remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.64 `explicit instantiation`
+
+A complete implementation MUST support verification of legal uses of explicit instantiation
+in a verification-enabled runtime region whenever the selected C++ mode supports the
+construct. The required semantic dimensions include metadata preservation.
+
+- Runtime behavior of explicit instantiation remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.65 `concepts`
+
+A complete implementation MUST support verification of legal uses of concepts in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include C++ constraints vs proofs.
+
+- Runtime behavior of concepts remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.66 `requires expressions`
+
+A complete implementation MUST support verification of legal uses of requires expressions in
+a verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include compile-time structural facts.
+
+- Runtime behavior of requires expressions remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.67 `constexpr`
+
+A complete implementation MUST support verification of legal uses of constexpr in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include constant evaluation vs proof.
+
+- Runtime behavior of constexpr remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.68 `consteval`
+
+A complete implementation MUST support verification of legal uses of consteval in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include immediate execution vs proof.
+
+- Runtime behavior of consteval remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.69 `constinit`
+
+A complete implementation MUST support verification of legal uses of constinit in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include initialization timing only.
+
+- Runtime behavior of constinit remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.70 `fold expressions`
+
+A complete implementation MUST support verification of legal uses of fold expressions in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include C++ grouping/operator semantics.
+
+- Runtime behavior of fold expressions remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.71 `lambdas`
+
+A complete implementation MUST support verification of legal uses of lambdas in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include capture/closure/call effects.
+
+- Runtime behavior of lambdas remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.72 `generic lambdas`
+
+A complete implementation MUST support verification of legal uses of generic lambdas in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include templated call operator semantics.
+
+- Runtime behavior of generic lambdas remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.73 `coroutines`
+
+A complete implementation MUST support verification of legal uses of coroutines in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include frame/suspension/resumption.
+
+- Runtime behavior of coroutines remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.74 `modules`
+
+A complete implementation MUST support verification of legal uses of modules in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include interface metadata/linkage.
+
+- Runtime behavior of modules remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.75 `headers`
+
+A complete implementation MUST support verification of legal uses of headers in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include redeclaration/ODR metadata.
+
+- Runtime behavior of headers remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.76 `inline entities`
+
+A complete implementation MUST support verification of legal uses of inline entities in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include ODR-equivalent contracts.
+
+- Runtime behavior of inline entities remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.77 `namespaces`
+
+A complete implementation MUST support verification of legal uses of namespaces in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include lookup/formal scope.
+
+- Runtime behavior of namespaces remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.78 `linkage`
+
+A complete implementation MUST support verification of legal uses of linkage in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include entity identity/cross-TU evidence.
+
+- Runtime behavior of linkage remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.79 `dynamic libraries`
+
+A complete implementation MUST support verification of legal uses of dynamic libraries in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include interface/implementation correspondence.
+
+- Runtime behavior of dynamic libraries remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.80 `foreign calls`
+
+A complete implementation MUST support verification of legal uses of foreign calls in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include boundary/effects/validation.
+
+- Runtime behavior of foreign calls remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.81 `std::array`
+
+A complete implementation MUST support verification of legal uses of std::array in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include fixed extent/elements.
+
+- Runtime behavior of std::array remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.82 `std::span`
+
+A complete implementation MUST support verification of legal uses of std::span in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include non-owning extent/lifetime.
+
+- Runtime behavior of std::span remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.83 `std::optional`
+
+A complete implementation MUST support verification of legal uses of std::optional in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include engaged/disengaged state.
+
+- Runtime behavior of std::optional remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.84 `std::variant`
+
+A complete implementation MUST support verification of legal uses of std::variant in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include indexed alternative/valueless.
+
+- Runtime behavior of std::variant remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.85 `std::expected`
+
+A complete implementation MUST support verification of legal uses of std::expected in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include value/error state.
+
+- Runtime behavior of std::expected remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.86 `std::pair`
+
+A complete implementation MUST support verification of legal uses of std::pair in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include product elements.
+
+- Runtime behavior of std::pair remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.87 `std::tuple`
+
+A complete implementation MUST support verification of legal uses of std::tuple in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include product elements.
+
+- Runtime behavior of std::tuple remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.88 `std::vector`
+
+A complete implementation MUST support verification of legal uses of std::vector in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include sequence/reallocation/invalidation.
+
+- Runtime behavior of std::vector remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.89 `std::string`
+
+A complete implementation MUST support verification of legal uses of std::string in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include sequence/reallocation/terminator.
+
+- Runtime behavior of std::string remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.90 `std::string_view`
+
+A complete implementation MUST support verification of legal uses of std::string_view in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include non-owning range/lifetime.
+
+- Runtime behavior of std::string_view remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.91 `unique_ptr`
+
+A complete implementation MUST support verification of legal uses of unique_ptr in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include unique ownership/move/deletion.
+
+- Runtime behavior of unique_ptr remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.92 `shared_ptr`
+
+A complete implementation MUST support verification of legal uses of shared_ptr in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include shared ownership/aliasing/control block.
+
+- Runtime behavior of shared_ptr remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.93 `weak_ptr`
+
+A complete implementation MUST support verification of legal uses of weak_ptr in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include non-owning/lock.
+
+- Runtime behavior of weak_ptr remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.94 `iterators`
+
+A complete implementation MUST support verification of legal uses of iterators in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include validity/category/range.
+
+- Runtime behavior of iterators remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.95 `ranges`
+
+A complete implementation MUST support verification of legal uses of ranges in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include views/lazy lifetimes.
+
+- Runtime behavior of ranges remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.96 `algorithms`
+
+A complete implementation MUST support verification of legal uses of algorithms in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include iterator/callable preconditions/effects.
+
+- Runtime behavior of algorithms remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.97 `associative containers`
+
+A complete implementation MUST support verification of legal uses of associative containers
+in a verification-enabled runtime region whenever the selected C++ mode supports the
+construct. The required semantic dimensions include key/comparator/iterator semantics.
+
+- Runtime behavior of associative containers remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.98 `unordered containers`
+
+A complete implementation MUST support verification of legal uses of unordered containers in
+a verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include hash/equality/rehash invalidation.
+
+- Runtime behavior of unordered containers remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.99 `function wrappers`
+
+A complete implementation MUST support verification of legal uses of function wrappers in a
+verification-enabled runtime region whenever the selected C++ mode supports the construct.
+The required semantic dimensions include type-erased target/effects.
+
+- Runtime behavior of function wrappers remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+### N.100 `synchronization library`
+
+A complete implementation MUST support verification of legal uses of synchronization library
+in a verification-enabled runtime region whenever the selected C++ mode supports the
+construct. The required semantic dimensions include locks/condition variables/atomics.
+
+- Runtime behavior of synchronization library remains exactly the selected C++ behavior.
+- All C++ preconditions for defined behavior are proof obligations on each path that
+  evaluates the construct.
+- Every read consumes the lifetime/initialization/access facts required by the selected
+  operation.
+- Every write creates new logical storage versions, invalidates aliases as required, and
+  re-establishes applicable refinements.
+- Every call-like operation uses checked preconditions, postconditions, effects, exception
+  behavior and dispatch information when available; otherwise it is treated conservatively.
+- Evaluation order and sequencing are not strengthened beyond C++.
+- Normal and exceptional continuations carry only facts justified on those continuations.
+- Pure/specification contexts may use the construct only when its admitted semantics are
+  side-effect-free, deterministic in the required sense, and sufficiently total for that
+  context.
+- Proof-only syntax must not change the runtime representation, ABI, lifetime or execution
+  of the construct.
+- If an implementation cannot soundly establish these semantics, it is incomplete with
+  respect to the complete target specification; it MUST NOT silently treat the construct as
+  verified.
+
+# Normative Annex O — Boundary examples and required interpretations
+
+## O.1 Short-circuit protects division
+
+```cpp
+verified bool nonzero_ratio(unsigned x, unsigned y)
+    ensures (result == (y != 0u && x / y > 0u))
+{
+    return y != 0u && x / y > 0u;
+}
+```
+
+The division is evaluated only on the path `y != 0u`. Verification must not require the
+division to be defined on the short-circuited false path. The postcondition itself is a
+runtime Boolean relation and its formal interpretation must preserve the same selected
+operation semantics rather than evaluating an undefined division unconditionally.
+
+## O.2 Refinement from branch validation
+
+```cpp
+type Percentage = int where (self >= 0 && self <= 100);
+
+verified bool consume_if_percentage(int raw)
+{
+    if (raw >= 0 && raw <= 100) {
+        Percentage p = raw;
+        consume(p);
+        return true;
+    }
+    return false;
+}
+```
+
+The successful runtime branch supplies exactly the facts needed for the refinement crossing.
+No hidden validator is inserted. The false branch creates no `Percentage`.
+
+## O.3 Alias invalidates value fact
+
+```cpp
+verified void write(unsigned& a, unsigned& b)
+    ensures (a == b)
+{
+    a = 1u;
+    b = 2u;
+}
+```
+
+Because `a` and `b` may alias, the write through `b` may also change the place denoted by
+`a`. The verifier may not preserve the fact `a == 1u` across the second write without
+proving disjointness. The stated postcondition is not universally valid.
+
+## O.4 Const reference does not freeze object
+
+```cpp
+void external(unsigned&);
+
+verified unsigned observe(const unsigned& x, unsigned& alias)
+{
+    external(alias);
+    return x;
+}
+```
+
+The `const` access path through `x` does not prove that `external(alias)` cannot mutate the
+same underlying object. Facts about `x` must be invalidated when aliasing is possible.
+
+## O.5 Non-null is insufficient
+
+```cpp
+verified int read(int* p)
+    expects (p != nullptr)
+{
+    return *p;
+}
+```
+
+The precondition proves only non-nullness. Dereference additionally requires live,
+initialized, in-bounds, provenance-valid readable storage. A complete implementation must
+require those facts rather than treating non-nullness as a memory capability.
+
+## O.6 Refined member construction
+
+```cpp
+type Positive = int where (self > 0);
+struct Counter { Positive value; };
+
+Counter bad() {
+    return Counter{0};
+}
+```
+
+Where C++L verification is claimed for this construction boundary, `0` cannot establish
+`Positive`. A verifier must not allow the invalid value to enter refined storage and hope to
+catch it on a later read.
+
+## O.7 Virtual precondition strengthening is invalid
+
+```cpp
+struct Base {
+    virtual verified unsigned f(unsigned x)
+        expects (x > 0u)
+        ensures (result > 0u);
+};
+
+struct Derived : Base {
+    verified unsigned f(unsigned x) override
+        expects (x > 10u)
+        ensures (result > 0u);
+};
+```
+
+A caller through `Base&` is permitted to call with `x == 1`. The override cannot require `x
+
+> 10` because that would strengthen the precondition and invalidate base-interface
+> reasoning.
+
+## O.8 Override may strengthen postcondition
+
+```cpp
+struct Base {
+    virtual verified unsigned f(unsigned x)
+        ensures (result >= x);
+};
+
+struct Derived : Base {
+    verified unsigned f(unsigned x) override
+        ensures (result == x);
+};
+```
+
+The derived postcondition implies the base postcondition and is therefore substitutable,
+assuming effects/purity/termination requirements are also compatible.
+
+## O.9 Loop partial correctness
+
+```cpp
+verified unsigned count(unsigned n)
+    ensures (result == n)
+{
+    unsigned i = 0u;
+    while (i < n)
+        invariant (i <= n)
+    {
+        ++i;
+    }
+    return i;
+}
+```
+
+The invariant establishes the postcondition if the loop exits. Without a required
+termination argument, this alone is a partial-correctness proof.
+
+## O.10 Loop total correctness with decreases
+
+```cpp
+verified unsigned count(unsigned n)
+    ensures (result == n)
+{
+    unsigned i = 0u;
+    while (i < n)
+        invariant (i <= n)
+        decreases (n - i)
+    {
+        ++i;
+    }
+    return i;
+}
+```
+
+The measure requests termination. The verifier must prove it is well-founded and strictly
+decreases on every continuing iteration.
+
+## O.11 `old` survives mutation
+
+```cpp
+verified void increment(unsigned& x)
+    expects (x < UINT_MAX)
+    ensures (x == old(x) + 1u)
+{
+    ++x;
+}
+```
+
+`old(x)` is the entry logical value. It does not alias the current mutable version of `x`
+and requires no runtime snapshot.
+
+## O.12 Unsafe result has no facts
+
+```cpp
+unsafe unsigned read_device();
+
+verified bool use_device()
+{
+    unsigned x = 0u;
+    unsafe { x = read_device(); }
+    return x <= 100u;
+}
+```
+
+The unsafe call executes, but no range proposition is produced. The returned Boolean is
+ordinary runtime behavior; any proof that `x <= 100` always holds still requires validation
+or trust.
+
+## O.13 Trusted Law is explicit assumption
+
+```cpp
+trusted law device_range(unsigned x)
+    proves (x <= 100u);
+```
+
+This is an explicit universal assumption and therefore extremely strong. Any proof using it
+carries a trust dependency. It is not equivalent to runtime validation of one device
+reading.
+
+## O.14 Variant valueless state
+
+```cpp
+proof inspect(std::variant<int, bool> v)
+    proves (Eq<bool>(true, true))
+{
+    cases v {
+        alternative<0>(i) => { refl; }
+        alternative<1>(b) => { refl; }
+        valueless => { refl; }
+    }
+}
+```
+
+The valueless state is part of the complete semantic partition and cannot be omitted unless
+the current context proves it impossible.
+
+## O.15 Enum unnamed state
+
+```cpp
+enum class Mode : unsigned { idle = 0u, active = 1u };
+
+proof inspect(Mode m)
+    proves (Eq<bool>(true, true))
+{
+    cases m {
+        Mode::idle => { refl; }
+        Mode::active => { refl; }
+        unnamed(v) => { refl; }
+    }
+}
+```
+
+The enumeration can carry underlying values that do not equal a named enumerator.
+`unnamed(v)` is therefore a real residual state, not a wildcard.
+
+# Normative Annex P — Agent implementation acceptance contract
+
+This annex exists so an implementation agent cannot treat examples, missing repository code,
+or a smaller present compiler as permission to narrow the target language. It is normative
+language conformance guidance, not project status.
+
+1. Parse every C++L construct defined by the normative grammar without changing the meaning
+   of ordinary supported C++.
+2. Resolve ordinary C++ names, types, overloads, templates, conversions, lifetimes and
+   control flow according to the selected C++ language mode.
+3. Generate every proof obligation required by this specification for verified code,
+   contracts, refinements, memory safety, defined behavior and termination.
+4. Accept a `PROVEN` claim only when valid formal evidence exists under the explicit
+   premises and trust dependencies.
+5. Never use proof-search success as a substitute for evidence validation.
+6. Never use proof-search failure, timeout or unsupported internal machinery as evidence of
+   falsehood.
+7. Never weaken a Law, contract, refinement, invariant, effect or termination requirement to
+   make a program verify.
+8. Never strengthen runtime behavior by inserting hidden checks/assertions for failed proof
+   obligations.
+9. Preserve proof-only/runtme-domain separation and erasure semantics.
+10. Preserve ordinary runtime calls, evaluation order, exceptions, lifetimes, destruction,
+    concurrency and ABI unless the programmer changed ordinary runtime C++.
+11. Carry semantic verification metadata across declarations, templates, translation units
+    and modules whenever verified composition requires it.
+12. Treat absence of required evidence/metadata as verification failure rather than trust.
+13. Track aliasing/effects conservatively enough that a mutation cannot leave stale facts
+    usable.
+14. Model refined storage at every write/construction crossing, not only when read.
+15. Model virtual/indirect dispatch against every possible runtime target relevant to the
+    path.
+16. Account for exceptional continuations whenever ordinary C++ may throw.
+17. Account for concurrency/interference whenever shared mutable state may be observed
+    across threads.
+18. Support the full selected C++ runtime language inside verified regions for complete
+    conformance; implementation staging belongs only in `STATUS.md`.
+19. Emit ordinary C++ after erasure/lowering without a required C++L proof runtime.
+20. Produce diagnostics that identify the failed semantic obligation without pretending the
+    language specification excludes the construct.
+
+# Normative Annex Q — C++L semantic inventory
+
+| Feature                     | Domain                      | Runtime effect          | Core obligation                                   |
+| --------------------------- | --------------------------- | ----------------------- | ------------------------------------------------- |
+| `verified`                  | verification                | body executes           | all declared/safety obligations proven            |
+| `pure`                      | verification + runtime body | body executes           | referential transparency/effects checked          |
+| `expects`                   | specification               | none                    | caller establishes premise                        |
+| `ensures`                   | specification               | none                    | callee establishes on normal return               |
+| `law`                       | specification/proof         | none                    | theorem evidence exists                           |
+| `trusted law`               | specification/trust         | none                    | explicit assumption recorded                      |
+| `proof`                     | proof                       | none                    | named evidence established                        |
+| `refl`                      | proof                       | none                    | definitional equality                             |
+| `exact`                     | proof                       | none                    | evidence matches goal                             |
+| `apply`                     | proof                       | none                    | conclusion matches goal; premises discharged      |
+| `assume`                    | proof                       | none                    | names existing premise / implication introduction |
+| `rewrite`                   | proof                       | none                    | checked equality substitution                     |
+| `forall`                    | specification               | none                    | universal evidence                                |
+| `exists`                    | specification               | none                    | witness + evidence                                |
+| refinement `type ... where` | verification type           | base representation     | predicate at every introduction/write             |
+| indexed refinement          | verification type           | base representation     | index substitution/stability + predicate          |
+| `result`                    | specification binding       | none                    | normal return value                               |
+| `old`                       | specification binding       | none                    | entry-state value                                 |
+| `self`                      | specification binding       | none                    | candidate refinement value                        |
+| `ghost`                     | proof                       | none                    | no runtime dependency/effects                     |
+| proof `cases`               | proof                       | none                    | exhaustive state partition                        |
+| `decompose`                 | proof                       | none                    | product projections                               |
+| `induction`                 | proof                       | none                    | well-founded induction principle                  |
+| `invariant`                 | specification               | runtime loop unchanged  | entry/preservation/exit                           |
+| `decreases`                 | specification               | runtime code unchanged  | well-founded strict descent                       |
+| `unsafe`                    | runtime boundary            | operations execute      | no proof facts; conservative effects              |
+| runtime validation          | runtime                     | explicit checks execute | successful path establishes concrete fact         |
+| `readable`/`writable`       | specification               | none                    | memory capability proposition                     |
+| @N/@Z                       | proof math                  | none                    | exact mathematical arithmetic                     |
+| @Seq/@Set/@Map              | proof math                  | none                    | finite abstract values                            |
+
+---
+
+---
+
+# Normative Annex R — Detailed contract composition semantics
+
+This annex removes ambiguity about how contracts compose with calls, storage, aliases,
+members, exceptions, dynamic dispatch and translation-unit boundaries. It defines
+source-language meaning only.
+
+## R.1 Contract instantiation
+
+- A function contract is interpreted after ordinary C++ parameter types, cv/ref
+  qualifiers, template substitution, overload selection and default arguments have been
+  resolved for the selected entity.
+- At a call, every formal parameter occurrence in the contract is substituted with the
+  logical value corresponding to the actual argument as bound by C++.
+- Substitution is capture-avoiding and preserves the distinction between entry values,
+  post-state values and proof binders.
+- For reference parameters, the parameter denotes the referred value at the relevant
+  contract state rather than a copied argument object.
+- For the implicit object, member names and `this` are interpreted against the selected
+  object/subobject according to ordinary C++ dispatch and adjustment rules.
+
+## R.2 Entry-state interpretation
+
+- `expects` is interpreted in the state immediately before the callee begins execution,
+  after argument expressions and parameter binding have completed according to C++.
+- Effects of argument evaluation occur before the callee entry state whenever C++
+  sequences them before entry.
+- If argument evaluations are unsequenced relative to one another, verification may rely
+  only on facts valid for every permitted evaluation ordering.
+- A precondition may refer to parameter values, the implicit object, globals and other
+  formally modeled state that exists at entry.
+- A precondition must itself be a defined, side-effect-free specification expression.
+
+## R.3 Normal post-state interpretation
+
+- `ensures` is interpreted after the runtime body has reached a normal return and after
+  all C++ operations that occur before completion of that return have been accounted
+  for.
+- `result` denotes the returned value after the return expression conversions required
+  by C++.
+- References, object members and globals without `old` denote their normal post-state
+  values.
+- `old(e)` denotes the corresponding entry-state value and is unaffected by post-entry
+  mutation.
+- The postcondition cannot retroactively justify an earlier undefined operation in the
+  body.
+
+## R.4 Preconditions at calls
+
+- A verified caller must prove the instantiated precondition before using the callee as
+  a verified call.
+- A callee precondition is not a runtime branch and is not inserted as an assertion.
+- If the call is in a conditional expression or short-circuited operand, the
+  precondition is owed only on paths where C++ actually evaluates the call.
+- If the call is potentially virtual or indirect, the obligation must be valid for the
+  contract applicable to every possible target under the dispatch rule.
+
+## R.5 Postconditions at calls
+
+- A callee postcondition becomes available only on the normal-return continuation.
+- The caller must first apply the callee effect summary to the logical storage state and
+  invalidate facts that the call may destroy.
+- The postcondition is then interpreted over the resulting post-call state and the fresh
+  logical result value.
+- A postcondition about a referenced actual must use the same aliased post-state place
+  when two formal references bind the same caller storage.
+
+## R.6 Aliased actual arguments
+
+- Repeated actual arguments or distinct expressions that may denote the same place are
+  not assumed distinct.
+- A contract that relates two reference parameters must remain sound when they alias
+  unless the precondition explicitly proves a disjointness condition provided by the
+  formal memory model.
+- Effect application must not create two contradictory independent post-state versions
+  for one actual place.
+
+## R.7 Call result identity
+
+- Each runtime call evaluation creates a distinct logical result occurrence even when
+  two calls invoke the same pure function with textually equal arguments.
+- If purity and deterministic semantics prove those result values equal, that equality
+  may be derived; it is not a consequence of textual call duplication alone for impure
+  functions.
+
+## R.8 Calls used in specifications
+
+- A function may be used as a mathematical/specification function only when its formal
+  meaning is sufficiently pure, total for the specification use, and semantically
+  defined for the arguments.
+- A merely `verified` runtime function with effects is not automatically a specification
+  function.
+- A partial-correctness runtime contract cannot be unfolded as a total mathematical
+  definition.
+
+## R.9 Exceptional calls
+
+- If a call may throw, the normal postcondition is unavailable on the exceptional
+  continuation.
+- Effect/lifetime changes that occurred before the throw remain part of the exceptional
+  state according to C++.
+- A proof that assumes a postcondition after a potentially throwing call must first
+  establish that execution is on the normal continuation.
+
+## R.10 Contract inheritance across declarations
+
+- The contract belongs to the resolved C++ function entity and therefore survives
+  header/source separation.
+- A definition without repeated C++L syntax inherits the entity contract.
+- A repeated contract must be semantically equivalent; textual identity is sufficient
+  but not necessary if the specification defines an equivalent normalized proposition.
+- A declaration with no checked implementation evidence does not by itself authorize
+  caller use of the summary as proven.
+
+## R.11 Virtual base contract
+
+- A call through a base virtual interface is verified against the base contract.
+- Every override must be substitutable for callers satisfying that contract.
+- An override may accept a weaker precondition or provide a stronger postcondition, but
+  must not demand more or guarantee less than the base interface.
+- The override effect set must be no broader than the effect assumptions made available
+  by the base interface.
+
+## R.12 Pure contract interaction
+
+- A `pure` declaration additionally asserts the checked effect/observational
+  restrictions of §13.
+- Purity does not remove ordinary preconditions or postconditions.
+- A pure function used in a specification still requires termination and exception
+  behavior suitable for total formal evaluation.
+
+## R.13 Constructor contracts
+
+- Constructor `expects` is evaluated before constructor body execution with the ordinary
+  C++ parameters and the construction context available to the extent specified by C++.
+- Constructor `ensures` is evaluated only after successful complete construction for the
+  constructor entity being verified.
+- There is no `result` value.
+- Members/bases not alive in the entry state cannot be referenced through `old` as if
+  they had pre-construction values.
+
+## R.14 Destructor contracts
+
+- A destructor may have verification obligations over the state that is still alive at
+  each program point.
+- A normal completion property cannot observe destroyed subobjects as live values after
+  their lifetime end.
+- Destructor execution remains runtime behavior and is never erased as proof metadata.
+
+## R.15 Function-local static effects
+
+- Initialization of a function-local static is a runtime effect with the thread-safety
+  and exception semantics defined by C++.
+- A verified function reading or mutating such state includes it in its semantic effect
+  reasoning.
+- Purity generally forbids hidden mutable static dependence unless the value is formally
+  immutable and initialization itself is compatible with the purity model.
+
+## R.16 Default arguments
+
+- Default argument expressions are part of caller-side C++ evaluation and are verified
+  at the call site when evaluated there.
+- A callee contract is instantiated with the resulting argument value exactly as if the
+  expression had been written explicitly.
+
+## R.17 Variadic functions
+
+- C-style variadic calls retain their ABI and type-safety limitations.
+- A verified summary may be used only when the semantics of the variable arguments and
+  their accesses are formally specified and checked.
+- Otherwise a variadic foreign/unverified boundary contributes no arbitrary facts and
+  receives conservative effects.
+
+## R.18 `noexcept` interaction
+
+- `noexcept` affects C++ runtime termination and function type where applicable; it is
+  not a C++L postcondition.
+- A verified `noexcept` body must still be checked for every operation relevant to the
+  claimed properties; throwing through a `noexcept` boundary has the ordinary terminate
+  semantics.
+
+## R.19 Reference return
+
+- A function returning a reference returns an alias, not an independent copied logical
+  value.
+- The returned reference must refer to storage whose lifetime satisfies C++ after the
+  call.
+- Postconditions describing the referred value apply to the returned place/version and
+  participate in later alias invalidation.
+
+## R.20 Pointer return
+
+- A pointer result carries only the pointer/provenance/capability facts established by
+  the contract or formal body semantics.
+- Non-nullness alone does not imply readable/writable pointee storage.
+
+# Normative Annex S — Complete C++ declaration coverage
+
+C++L is a C++ superset. The declarations below retain ordinary C++ runtime and language
+meaning. This annex states the additional verification obligations that apply when they
+participate in verified reasoning.
+
+## S.1 namespace definition
+
+Runtime/source domain: scope/lookup only. No runtime entity is created by the namespace
+itself. Laws/proofs in the namespace use that lexical scope.
+
+- Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
+- Verification metadata must attach to the same semantic entity C++ identifies.
+- No declaration form silently manufactures proof evidence merely by existing.
+- If the declaration can create or mutate runtime storage, every such path must satisfy
+  lifetime, defined-behavior and refinement obligations.
+- If the declaration affects overload/template selection, verification must reason about
+  the entity actually selected after C++ semantic analysis.
+- Erasure of C++L-only metadata must leave the ordinary C++ declaration/runtime entity
+  meaning intact.
+
+## S.2 namespace alias
+
+Runtime/source domain: name resolution. The alias changes lookup spelling only and does
+not duplicate verification metadata.
+
+- Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
+- Verification metadata must attach to the same semantic entity C++ identifies.
+- No declaration form silently manufactures proof evidence merely by existing.
+- If the declaration can create or mutate runtime storage, every such path must satisfy
+  lifetime, defined-behavior and refinement obligations.
+- If the declaration affects overload/template selection, verification must reason about
+  the entity actually selected after C++ semantic analysis.
+- Erasure of C++L-only metadata must leave the ordinary C++ declaration/runtime entity
+  meaning intact.
+
+## S.3 using-declaration
+
+Runtime/source domain: name introduction. The introduced declaration retains the
+original entity contract/refinement/formal metadata.
+
+- Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
+- Verification metadata must attach to the same semantic entity C++ identifies.
+- No declaration form silently manufactures proof evidence merely by existing.
+- If the declaration can create or mutate runtime storage, every such path must satisfy
+  lifetime, defined-behavior and refinement obligations.
+- If the declaration affects overload/template selection, verification must reason about
+  the entity actually selected after C++ semantic analysis.
+- Erasure of C++L-only metadata must leave the ordinary C++ declaration/runtime entity
+  meaning intact.
+
+## S.4 using-directive
+
+Runtime/source domain: lookup. It changes lookup candidates exactly as C++ specifies and
+does not create proof evidence.
+
+- Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
+- Verification metadata must attach to the same semantic entity C++ identifies.
+- No declaration form silently manufactures proof evidence merely by existing.
+- If the declaration can create or mutate runtime storage, every such path must satisfy
+  lifetime, defined-behavior and refinement obligations.
+- If the declaration affects overload/template selection, verification must reason about
+  the entity actually selected after C++ semantic analysis.
+- Erasure of C++L-only metadata must leave the ordinary C++ declaration/runtime entity
+  meaning intact.
+
+## S.5 type alias / typedef
+
+Runtime/source domain: type naming. Aliases of refinements preserve refinement identity
+and predicates; aliases of ordinary C++ types add no formal invariant.
+
+- Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
+- Verification metadata must attach to the same semantic entity C++ identifies.
+- No declaration form silently manufactures proof evidence merely by existing.
+- If the declaration can create or mutate runtime storage, every such path must satisfy
+  lifetime, defined-behavior and refinement obligations.
+- If the declaration affects overload/template selection, verification must reason about
+  the entity actually selected after C++ semantic analysis.
+- Erasure of C++L-only metadata must leave the ordinary C++ declaration/runtime entity
+  meaning intact.
+
+## S.6 enumeration
+
+Runtime/source domain: runtime integral/enum value set. Proof-side cases must include
+every distinct named value plus the unnamed residual where the C++ value set exceeds
+named enumerators.
+
+- Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
+- Verification metadata must attach to the same semantic entity C++ identifies.
+- No declaration form silently manufactures proof evidence merely by existing.
+- If the declaration can create or mutate runtime storage, every such path must satisfy
+  lifetime, defined-behavior and refinement obligations.
+- If the declaration affects overload/template selection, verification must reason about
+  the entity actually selected after C++ semantic analysis.
+- Erasure of C++L-only metadata must leave the ordinary C++ declaration/runtime entity
+  meaning intact.
+
+## S.7 scoped enumeration
+
+Runtime/source domain: runtime enum value set. No implicit integral conversion is
+invented; explicit conversions follow C++ and proof reasoning uses the true underlying
+value set.
+
+- Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
+- Verification metadata must attach to the same semantic entity C++ identifies.
+- No declaration form silently manufactures proof evidence merely by existing.
+- If the declaration can create or mutate runtime storage, every such path must satisfy
+  lifetime, defined-behavior and refinement obligations.
+- If the declaration affects overload/template selection, verification must reason about
+  the entity actually selected after C++ semantic analysis.
+- Erasure of C++L-only metadata must leave the ordinary C++ declaration/runtime entity
+  meaning intact.
+
+## S.8 class/struct
+
+Runtime/source domain: runtime object type. Members, bases, special members, lifetime
+and layout remain C++; refinements on members are storage invariants at every write.
+
+- Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
+- Verification metadata must attach to the same semantic entity C++ identifies.
+- No declaration form silently manufactures proof evidence merely by existing.
+- If the declaration can create or mutate runtime storage, every such path must satisfy
+  lifetime, defined-behavior and refinement obligations.
+- If the declaration affects overload/template selection, verification must reason about
+  the entity actually selected after C++ semantic analysis.
+- Erasure of C++L-only metadata must leave the ordinary C++ declaration/runtime entity
+  meaning intact.
+
+## S.9 union
+
+Runtime/source domain: overlapping runtime storage. Only the active member/lifetime
+permitted by C++ may be treated as a live value; no all-members product model is
+allowed.
+
+- Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
+- Verification metadata must attach to the same semantic entity C++ identifies.
+- No declaration form silently manufactures proof evidence merely by existing.
+- If the declaration can create or mutate runtime storage, every such path must satisfy
+  lifetime, defined-behavior and refinement obligations.
+- If the declaration affects overload/template selection, verification must reason about
+  the entity actually selected after C++ semantic analysis.
+- Erasure of C++L-only metadata must leave the ordinary C++ declaration/runtime entity
+  meaning intact.
+
+## S.10 bit-field
+
+Runtime/source domain: subobject-like stored value. Reads/writes follow C++ bit-field
+rules; addressability and overlap assumptions must not exceed C++.
+
+- Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
+- Verification metadata must attach to the same semantic entity C++ identifies.
+- No declaration form silently manufactures proof evidence merely by existing.
+- If the declaration can create or mutate runtime storage, every such path must satisfy
+  lifetime, defined-behavior and refinement obligations.
+- If the declaration affects overload/template selection, verification must reason about
+  the entity actually selected after C++ semantic analysis.
+- Erasure of C++L-only metadata must leave the ordinary C++ declaration/runtime entity
+  meaning intact.
+
+## S.11 static data member
+
+Runtime/source domain: shared storage. Effects/initialization/concurrency are tracked as
+global/static state.
+
+- Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
+- Verification metadata must attach to the same semantic entity C++ identifies.
+- No declaration form silently manufactures proof evidence merely by existing.
+- If the declaration can create or mutate runtime storage, every such path must satisfy
+  lifetime, defined-behavior and refinement obligations.
+- If the declaration affects overload/template selection, verification must reason about
+  the entity actually selected after C++ semantic analysis.
+- Erasure of C++L-only metadata must leave the ordinary C++ declaration/runtime entity
+  meaning intact.
+
+## S.12 thread_local variable
+
+Runtime/source domain: per-thread storage. Facts are thread-instance-specific;
+initialization/destruction follow C++.
+
+- Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
+- Verification metadata must attach to the same semantic entity C++ identifies.
+- No declaration form silently manufactures proof evidence merely by existing.
+- If the declaration can create or mutate runtime storage, every such path must satisfy
+  lifetime, defined-behavior and refinement obligations.
+- If the declaration affects overload/template selection, verification must reason about
+  the entity actually selected after C++ semantic analysis.
+- Erasure of C++L-only metadata must leave the ordinary C++ declaration/runtime entity
+  meaning intact.
+
+## S.13 inline variable
+
+Runtime/source domain: ODR entity. Verification metadata must be equivalent across ODR
+declarations; runtime identity is ordinary C++.
+
+- Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
+- Verification metadata must attach to the same semantic entity C++ identifies.
+- No declaration form silently manufactures proof evidence merely by existing.
+- If the declaration can create or mutate runtime storage, every such path must satisfy
+  lifetime, defined-behavior and refinement obligations.
+- If the declaration affects overload/template selection, verification must reason about
+  the entity actually selected after C++ semantic analysis.
+- Erasure of C++L-only metadata must leave the ordinary C++ declaration/runtime entity
+  meaning intact.
+
+## S.14 function declaration
+
+Runtime/source domain: callable entity. Contracts/verification modifiers attach to the
+resolved entity and compose across declarations.
+
+- Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
+- Verification metadata must attach to the same semantic entity C++ identifies.
+- No declaration form silently manufactures proof evidence merely by existing.
+- If the declaration can create or mutate runtime storage, every such path must satisfy
+  lifetime, defined-behavior and refinement obligations.
+- If the declaration affects overload/template selection, verification must reason about
+  the entity actually selected after C++ semantic analysis.
+- Erasure of C++L-only metadata must leave the ordinary C++ declaration/runtime entity
+  meaning intact.
+
+## S.15 function definition
+
+Runtime/source domain: runtime body. The body must establish the entity contract and all
+safety/refinement/effect obligations.
+
+- Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
+- Verification metadata must attach to the same semantic entity C++ identifies.
+- No declaration form silently manufactures proof evidence merely by existing.
+- If the declaration can create or mutate runtime storage, every such path must satisfy
+  lifetime, defined-behavior and refinement obligations.
+- If the declaration affects overload/template selection, verification must reason about
+  the entity actually selected after C++ semantic analysis.
+- Erasure of C++L-only metadata must leave the ordinary C++ declaration/runtime entity
+  meaning intact.
+
+## S.16 deleted function
+
+Runtime/source domain: unavailable callable. C++ deletion rules govern viability; no
+contract makes a deleted call legal.
+
+- Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
+- Verification metadata must attach to the same semantic entity C++ identifies.
+- No declaration form silently manufactures proof evidence merely by existing.
+- If the declaration can create or mutate runtime storage, every such path must satisfy
+  lifetime, defined-behavior and refinement obligations.
+- If the declaration affects overload/template selection, verification must reason about
+  the entity actually selected after C++ semantic analysis.
+- Erasure of C++L-only metadata must leave the ordinary C++ declaration/runtime entity
+  meaning intact.
+
+## S.17 defaulted function
+
+Runtime/source domain: compiler-generated runtime semantics. Verification must model the
+actual generated operations and their effects/definedness.
+
+- Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
+- Verification metadata must attach to the same semantic entity C++ identifies.
+- No declaration form silently manufactures proof evidence merely by existing.
+- If the declaration can create or mutate runtime storage, every such path must satisfy
+  lifetime, defined-behavior and refinement obligations.
+- If the declaration affects overload/template selection, verification must reason about
+  the entity actually selected after C++ semantic analysis.
+- Erasure of C++L-only metadata must leave the ordinary C++ declaration/runtime entity
+  meaning intact.
+
+## S.18 friend declaration
+
+Runtime/source domain: access relationship. Friendship changes C++ access but creates no
+proposition by itself.
+
+- Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
+- Verification metadata must attach to the same semantic entity C++ identifies.
+- No declaration form silently manufactures proof evidence merely by existing.
+- If the declaration can create or mutate runtime storage, every such path must satisfy
+  lifetime, defined-behavior and refinement obligations.
+- If the declaration affects overload/template selection, verification must reason about
+  the entity actually selected after C++ semantic analysis.
+- Erasure of C++L-only metadata must leave the ordinary C++ declaration/runtime entity
+  meaning intact.
+
+## S.19 static_assert
+
+Runtime/source domain: compile-time C++ assertion. A successful static_assert is a C++
+compilation fact; it can inform formal reasoning only through a defined correspondence,
+not as arbitrary proof evidence.
+
+- Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
+- Verification metadata must attach to the same semantic entity C++ identifies.
+- No declaration form silently manufactures proof evidence merely by existing.
+- If the declaration can create or mutate runtime storage, every such path must satisfy
+  lifetime, defined-behavior and refinement obligations.
+- If the declaration affects overload/template selection, verification must reason about
+  the entity actually selected after C++ semantic analysis.
+- Erasure of C++L-only metadata must leave the ordinary C++ declaration/runtime entity
+  meaning intact.
+
+## S.20 attribute
+
+Runtime/source domain: C++/implementation annotation. C++L preserves runtime/semantic
+meaning of supported attributes and must not infer extra proof facts from unknown
+attributes.
+
+- Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
+- Verification metadata must attach to the same semantic entity C++ identifies.
+- No declaration form silently manufactures proof evidence merely by existing.
+- If the declaration can create or mutate runtime storage, every such path must satisfy
+  lifetime, defined-behavior and refinement obligations.
+- If the declaration affects overload/template selection, verification must reason about
+  the entity actually selected after C++ semantic analysis.
+- Erasure of C++L-only metadata must leave the ordinary C++ declaration/runtime entity
+  meaning intact.
+
+## S.21 alignas
+
+Runtime/source domain: object layout/alignment requirement. Alignment
+obligations/capabilities must agree with the resulting C++ object layout.
+
+- Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
+- Verification metadata must attach to the same semantic entity C++ identifies.
+- No declaration form silently manufactures proof evidence merely by existing.
+- If the declaration can create or mutate runtime storage, every such path must satisfy
+  lifetime, defined-behavior and refinement obligations.
+- If the declaration affects overload/template selection, verification must reason about
+  the entity actually selected after C++ semantic analysis.
+- Erasure of C++L-only metadata must leave the ordinary C++ declaration/runtime entity
+  meaning intact.
+
+## S.22 linkage specification
+
+Runtime/source domain: ABI/linkage. `extern "C"` and other linkage forms retain their
+C++ ABI meaning; C++L metadata stays outside native ABI.
+
+- Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
+- Verification metadata must attach to the same semantic entity C++ identifies.
+- No declaration form silently manufactures proof evidence merely by existing.
+- If the declaration can create or mutate runtime storage, every such path must satisfy
+  lifetime, defined-behavior and refinement obligations.
+- If the declaration affects overload/template selection, verification must reason about
+  the entity actually selected after C++ semantic analysis.
+- Erasure of C++L-only metadata must leave the ordinary C++ declaration/runtime entity
+  meaning intact.
+
+## S.23 deduction guide
+
+Runtime/source domain: template deduction rule. The instantiated entity/model is the one
+selected by ordinary C++ deduction.
+
+- Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
+- Verification metadata must attach to the same semantic entity C++ identifies.
+- No declaration form silently manufactures proof evidence merely by existing.
+- If the declaration can create or mutate runtime storage, every such path must satisfy
+  lifetime, defined-behavior and refinement obligations.
+- If the declaration affects overload/template selection, verification must reason about
+  the entity actually selected after C++ semantic analysis.
+- Erasure of C++L-only metadata must leave the ordinary C++ declaration/runtime entity
+  meaning intact.
+
+## S.24 concept definition
+
+Runtime/source domain: compile-time predicate on template arguments. Concept truth is
+not automatically a runtime theorem beyond the exact compile-time property it defines.
+
+- Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
+- Verification metadata must attach to the same semantic entity C++ identifies.
+- No declaration form silently manufactures proof evidence merely by existing.
+- If the declaration can create or mutate runtime storage, every such path must satisfy
+  lifetime, defined-behavior and refinement obligations.
+- If the declaration affects overload/template selection, verification must reason about
+  the entity actually selected after C++ semantic analysis.
+- Erasure of C++L-only metadata must leave the ordinary C++ declaration/runtime entity
+  meaning intact.
+
+## S.25 template declaration
+
+Runtime/source domain: family of C++ entities. Verification is instantiated/specialized
+consistently with C++ template semantics.
+
+- Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
+- Verification metadata must attach to the same semantic entity C++ identifies.
+- No declaration form silently manufactures proof evidence merely by existing.
+- If the declaration can create or mutate runtime storage, every such path must satisfy
+  lifetime, defined-behavior and refinement obligations.
+- If the declaration affects overload/template selection, verification must reason about
+  the entity actually selected after C++ semantic analysis.
+- Erasure of C++L-only metadata must leave the ordinary C++ declaration/runtime entity
+  meaning intact.
+
+## S.26 explicit specialization
+
+Runtime/source domain: specialized C++ entity. May have distinct checked
+behavior/contract only where declaration compatibility rules permit it.
+
+- Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
+- Verification metadata must attach to the same semantic entity C++ identifies.
+- No declaration form silently manufactures proof evidence merely by existing.
+- If the declaration can create or mutate runtime storage, every such path must satisfy
+  lifetime, defined-behavior and refinement obligations.
+- If the declaration affects overload/template selection, verification must reason about
+  the entity actually selected after C++ semantic analysis.
+- Erasure of C++L-only metadata must leave the ordinary C++ declaration/runtime entity
+  meaning intact.
+
+## S.27 partial specialization
+
+Runtime/source domain: specialization selection. Formal metadata must correspond to the
+specialization actually selected.
+
+- Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
+- Verification metadata must attach to the same semantic entity C++ identifies.
+- No declaration form silently manufactures proof evidence merely by existing.
+- If the declaration can create or mutate runtime storage, every such path must satisfy
+  lifetime, defined-behavior and refinement obligations.
+- If the declaration affects overload/template selection, verification must reason about
+  the entity actually selected after C++ semantic analysis.
+- Erasure of C++L-only metadata must leave the ordinary C++ declaration/runtime entity
+  meaning intact.
+
+## S.28 explicit instantiation
+
+Runtime/source domain: instantiation placement. Verification evidence/metadata must
+remain available to callers independently of where code generation occurs.
+
+- Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
+- Verification metadata must attach to the same semantic entity C++ identifies.
+- No declaration form silently manufactures proof evidence merely by existing.
+- If the declaration can create or mutate runtime storage, every such path must satisfy
+  lifetime, defined-behavior and refinement obligations.
+- If the declaration affects overload/template selection, verification must reason about
+  the entity actually selected after C++ semantic analysis.
+- Erasure of C++L-only metadata must leave the ordinary C++ declaration/runtime entity
+  meaning intact.
+
+## S.29 module declaration/import/export
+
+Runtime/source domain: module interface semantics. Exported/imported verification
+metadata must correspond to the exported C++ entities; native module semantics remain
+C++.
+
+- Ordinary C++ parsing, lookup, type rules, access and linkage remain authoritative.
+- Verification metadata must attach to the same semantic entity C++ identifies.
+- No declaration form silently manufactures proof evidence merely by existing.
+- If the declaration can create or mutate runtime storage, every such path must satisfy
+  lifetime, defined-behavior and refinement obligations.
+- If the declaration affects overload/template selection, verification must reason about
+  the entity actually selected after C++ semantic analysis.
+- Erasure of C++L-only metadata must leave the ordinary C++ declaration/runtime entity
+  meaning intact.
+
+# Normative Annex T — Defined-behavior obligation catalogue
+
+Verified code cannot obtain proof facts from undefined behavior. The selected C++
+standard remains the source of the complete UB/precondition set; this catalogue
+identifies major obligation families that a complete C++L implementation must preserve.
+It is not permission to ignore a C++ rule omitted from the examples.
+
+## T.1 signed integer overflow
+
+- The verifier MUST prove result is representable before the operation is relied upon.
+- The obligation is path-sensitive and is owed only on runtime paths that evaluate the
+  operation, preserving ordinary C++ short-circuiting and control flow.
+- A proof that ignores the operation result does not remove the defined-behavior
+  obligation.
+- An `unsafe` boundary may stop C++L from claiming the strongest proof for the
+  operation, but it does not make undefined runtime behavior defined and cannot create
+  proof facts from it.
+- A trusted Law may explicitly assume a proposition relevant to the obligation; the
+  resulting proof remains trust-dependent.
+
+## T.2 division/remainder by zero
+
+- The verifier MUST prove divisor is nonzero.
+- The obligation is path-sensitive and is owed only on runtime paths that evaluate the
+  operation, preserving ordinary C++ short-circuiting and control flow.
+- A proof that ignores the operation result does not remove the defined-behavior
+  obligation.
+- An `unsafe` boundary may stop C++L from claiming the strongest proof for the
+  operation, but it does not make undefined runtime behavior defined and cannot create
+  proof facts from it.
+- A trusted Law may explicitly assume a proposition relevant to the obligation; the
+  resulting proof remains trust-dependent.
+
+## T.3 signed minimum divided by -1 where undefined
+
+- The verifier MUST prove the exceptional operand pair cannot occur.
+- The obligation is path-sensitive and is owed only on runtime paths that evaluate the
+  operation, preserving ordinary C++ short-circuiting and control flow.
+- A proof that ignores the operation result does not remove the defined-behavior
+  obligation.
+- An `unsafe` boundary may stop C++L from claiming the strongest proof for the
+  operation, but it does not make undefined runtime behavior defined and cannot create
+  proof facts from it.
+- A trusted Law may explicitly assume a proposition relevant to the obligation; the
+  resulting proof remains trust-dependent.
+
+## T.4 invalid shift count
+
+- The verifier MUST prove nonnegative/in-range count after promotions.
+- The obligation is path-sensitive and is owed only on runtime paths that evaluate the
+  operation, preserving ordinary C++ short-circuiting and control flow.
+- A proof that ignores the operation result does not remove the defined-behavior
+  obligation.
+- An `unsafe` boundary may stop C++L from claiming the strongest proof for the
+  operation, but it does not make undefined runtime behavior defined and cannot create
+  proof facts from it.
+- A trusted Law may explicitly assume a proposition relevant to the obligation; the
+  resulting proof remains trust-dependent.
+
+## T.5 invalid signed left shift
+
+- The verifier MUST prove every C++ definedness condition for the selected operands.
+- The obligation is path-sensitive and is owed only on runtime paths that evaluate the
+  operation, preserving ordinary C++ short-circuiting and control flow.
+- A proof that ignores the operation result does not remove the defined-behavior
+  obligation.
+- An `unsafe` boundary may stop C++L from claiming the strongest proof for the
+  operation, but it does not make undefined runtime behavior defined and cannot create
+  proof facts from it.
+- A trusted Law may explicitly assume a proposition relevant to the obligation; the
+  resulting proof remains trust-dependent.
+
+## T.6 out-of-bounds array access
+
+- The verifier MUST prove index/access remains within the permitted object/array range.
+- The obligation is path-sensitive and is owed only on runtime paths that evaluate the
+  operation, preserving ordinary C++ short-circuiting and control flow.
+- A proof that ignores the operation result does not remove the defined-behavior
+  obligation.
+- An `unsafe` boundary may stop C++L from claiming the strongest proof for the
+  operation, but it does not make undefined runtime behavior defined and cannot create
+  proof facts from it.
+- A trusted Law may explicitly assume a proposition relevant to the obligation; the
+  resulting proof remains trust-dependent.
+
+## T.7 invalid pointer arithmetic
+
+- The verifier MUST prove provenance and permitted array range including one-past rules.
+- The obligation is path-sensitive and is owed only on runtime paths that evaluate the
+  operation, preserving ordinary C++ short-circuiting and control flow.
+- A proof that ignores the operation result does not remove the defined-behavior
+  obligation.
+- An `unsafe` boundary may stop C++L from claiming the strongest proof for the
+  operation, but it does not make undefined runtime behavior defined and cannot create
+  proof facts from it.
+- A trusted Law may explicitly assume a proposition relevant to the obligation; the
+  resulting proof remains trust-dependent.
+
+## T.8 null dereference
+
+- The verifier MUST prove non-nullness plus all other dereference capabilities.
+- The obligation is path-sensitive and is owed only on runtime paths that evaluate the
+  operation, preserving ordinary C++ short-circuiting and control flow.
+- A proof that ignores the operation result does not remove the defined-behavior
+  obligation.
+- An `unsafe` boundary may stop C++L from claiming the strongest proof for the
+  operation, but it does not make undefined runtime behavior defined and cannot create
+  proof facts from it.
+- A trusted Law may explicitly assume a proposition relevant to the obligation; the
+  resulting proof remains trust-dependent.
+
+## T.9 dangling pointer/reference use
+
+- The verifier MUST prove target lifetime is active.
+- The obligation is path-sensitive and is owed only on runtime paths that evaluate the
+  operation, preserving ordinary C++ short-circuiting and control flow.
+- A proof that ignores the operation result does not remove the defined-behavior
+  obligation.
+- An `unsafe` boundary may stop C++L from claiming the strongest proof for the
+  operation, but it does not make undefined runtime behavior defined and cannot create
+  proof facts from it.
+- A trusted Law may explicitly assume a proposition relevant to the obligation; the
+  resulting proof remains trust-dependent.
+
+## T.10 uninitialized/indeterminate read
+
+- The verifier MUST prove the read is permitted and value initialized as required by
+  C++.
+- The obligation is path-sensitive and is owed only on runtime paths that evaluate the
+  operation, preserving ordinary C++ short-circuiting and control flow.
+- A proof that ignores the operation result does not remove the defined-behavior
+  obligation.
+- An `unsafe` boundary may stop C++L from claiming the strongest proof for the
+  operation, but it does not make undefined runtime behavior defined and cannot create
+  proof facts from it.
+- A trusted Law may explicitly assume a proposition relevant to the obligation; the
+  resulting proof remains trust-dependent.
+
+## T.11 misaligned access
+
+- The verifier MUST prove alignment required by the accessed type/operation.
+- The obligation is path-sensitive and is owed only on runtime paths that evaluate the
+  operation, preserving ordinary C++ short-circuiting and control flow.
+- A proof that ignores the operation result does not remove the defined-behavior
+  obligation.
+- An `unsafe` boundary may stop C++L from claiming the strongest proof for the
+  operation, but it does not make undefined runtime behavior defined and cannot create
+  proof facts from it.
+- A trusted Law may explicitly assume a proposition relevant to the obligation; the
+  resulting proof remains trust-dependent.
+
+## T.12 strict-aliasing/type-access violation
+
+- The verifier MUST prove the glvalue access is permitted by the C++ object model.
+- The obligation is path-sensitive and is owed only on runtime paths that evaluate the
+  operation, preserving ordinary C++ short-circuiting and control flow.
+- A proof that ignores the operation result does not remove the defined-behavior
+  obligation.
+- An `unsafe` boundary may stop C++L from claiming the strongest proof for the
+  operation, but it does not make undefined runtime behavior defined and cannot create
+  proof facts from it.
+- A trusted Law may explicitly assume a proposition relevant to the obligation; the
+  resulting proof remains trust-dependent.
+
+## T.13 inactive union member access
+
+- The verifier MUST prove a C++ rule permits the access or establish the active-member
+  transition.
+- The obligation is path-sensitive and is owed only on runtime paths that evaluate the
+  operation, preserving ordinary C++ short-circuiting and control flow.
+- A proof that ignores the operation result does not remove the defined-behavior
+  obligation.
+- An `unsafe` boundary may stop C++L from claiming the strongest proof for the
+  operation, but it does not make undefined runtime behavior defined and cannot create
+  proof facts from it.
+- A trusted Law may explicitly assume a proposition relevant to the obligation; the
+  resulting proof remains trust-dependent.
+
+## T.14 use after lifetime end
+
+- The verifier MUST prove the object lifetime still exists at the operation.
+- The obligation is path-sensitive and is owed only on runtime paths that evaluate the
+  operation, preserving ordinary C++ short-circuiting and control flow.
+- A proof that ignores the operation result does not remove the defined-behavior
+  obligation.
+- An `unsafe` boundary may stop C++L from claiming the strongest proof for the
+  operation, but it does not make undefined runtime behavior defined and cannot create
+  proof facts from it.
+- A trusted Law may explicitly assume a proposition relevant to the obligation; the
+  resulting proof remains trust-dependent.
+
+## T.15 double delete / invalid delete
+
+- The verifier MUST prove matching allocation/deallocation ownership conditions.
+- The obligation is path-sensitive and is owed only on runtime paths that evaluate the
+  operation, preserving ordinary C++ short-circuiting and control flow.
+- A proof that ignores the operation result does not remove the defined-behavior
+  obligation.
+- An `unsafe` boundary may stop C++L from claiming the strongest proof for the
+  operation, but it does not make undefined runtime behavior defined and cannot create
+  proof facts from it.
+- A trusted Law may explicitly assume a proposition relevant to the obligation; the
+  resulting proof remains trust-dependent.
+
+## T.16 delete through invalid base/type
+
+- The verifier MUST prove C++ destruction/deallocation requirements including virtual
+  destructor where needed.
+- The obligation is path-sensitive and is owed only on runtime paths that evaluate the
+  operation, preserving ordinary C++ short-circuiting and control flow.
+- A proof that ignores the operation result does not remove the defined-behavior
+  obligation.
+- An `unsafe` boundary may stop C++L from claiming the strongest proof for the
+  operation, but it does not make undefined runtime behavior defined and cannot create
+  proof facts from it.
+- A trusted Law may explicitly assume a proposition relevant to the obligation; the
+  resulting proof remains trust-dependent.
+
+## T.17 invalid downcast
+
+- The verifier MUST prove dynamic/static cast requirements.
+- The obligation is path-sensitive and is owed only on runtime paths that evaluate the
+  operation, preserving ordinary C++ short-circuiting and control flow.
+- A proof that ignores the operation result does not remove the defined-behavior
+  obligation.
+- An `unsafe` boundary may stop C++L from claiming the strongest proof for the
+  operation, but it does not make undefined runtime behavior defined and cannot create
+  proof facts from it.
+- A trusted Law may explicitly assume a proposition relevant to the obligation; the
+  resulting proof remains trust-dependent.
+
+## T.18 bad `std::get`/state access where specified as exception or UB
+
+- The verifier MUST verify the exact selected standard operation behavior.
+- The obligation is path-sensitive and is owed only on runtime paths that evaluate the
+  operation, preserving ordinary C++ short-circuiting and control flow.
+- A proof that ignores the operation result does not remove the defined-behavior
+  obligation.
+- An `unsafe` boundary may stop C++L from claiming the strongest proof for the
+  operation, but it does not make undefined runtime behavior defined and cannot create
+  proof facts from it.
+- A trusted Law may explicitly assume a proposition relevant to the obligation; the
+  resulting proof remains trust-dependent.
+
+## T.19 iterator invalidation
+
+- The verifier MUST prove iterator remains valid after intervening container operations.
+- The obligation is path-sensitive and is owed only on runtime paths that evaluate the
+  operation, preserving ordinary C++ short-circuiting and control flow.
+- A proof that ignores the operation result does not remove the defined-behavior
+  obligation.
+- An `unsafe` boundary may stop C++L from claiming the strongest proof for the
+  operation, but it does not make undefined runtime behavior defined and cannot create
+  proof facts from it.
+- A trusted Law may explicitly assume a proposition relevant to the obligation; the
+  resulting proof remains trust-dependent.
+
+## T.20 dereferencing end iterator
+
+- The verifier MUST prove iterator is dereferenceable.
+- The obligation is path-sensitive and is owed only on runtime paths that evaluate the
+  operation, preserving ordinary C++ short-circuiting and control flow.
+- A proof that ignores the operation result does not remove the defined-behavior
+  obligation.
+- An `unsafe` boundary may stop C++L from claiming the strongest proof for the
+  operation, but it does not make undefined runtime behavior defined and cannot create
+  proof facts from it.
+- A trusted Law may explicitly assume a proposition relevant to the obligation; the
+  resulting proof remains trust-dependent.
+
+## T.21 data race
+
+- The verifier MUST prove synchronization/atomic semantics prevent conflicting
+  unsynchronized access.
+- The obligation is path-sensitive and is owed only on runtime paths that evaluate the
+  operation, preserving ordinary C++ short-circuiting and control flow.
+- A proof that ignores the operation result does not remove the defined-behavior
+  obligation.
+- An `unsafe` boundary may stop C++L from claiming the strongest proof for the
+  operation, but it does not make undefined runtime behavior defined and cannot create
+  proof facts from it.
+- A trusted Law may explicitly assume a proposition relevant to the obligation; the
+  resulting proof remains trust-dependent.
+
+## T.22 destroying locked/live synchronization object incorrectly
+
+- The verifier MUST prove library/C++ preconditions.
+- The obligation is path-sensitive and is owed only on runtime paths that evaluate the
+  operation, preserving ordinary C++ short-circuiting and control flow.
+- A proof that ignores the operation result does not remove the defined-behavior
+  obligation.
+- An `unsafe` boundary may stop C++L from claiming the strongest proof for the
+  operation, but it does not make undefined runtime behavior defined and cannot create
+  proof facts from it.
+- A trusted Law may explicitly assume a proposition relevant to the obligation; the
+  resulting proof remains trust-dependent.
+
+## T.23 calling through invalid function pointer/member pointer
+
+- The verifier MUST prove callable target validity.
+- The obligation is path-sensitive and is owed only on runtime paths that evaluate the
+  operation, preserving ordinary C++ short-circuiting and control flow.
+- A proof that ignores the operation result does not remove the defined-behavior
+  obligation.
+- An `unsafe` boundary may stop C++L from claiming the strongest proof for the
+  operation, but it does not make undefined runtime behavior defined and cannot create
+  proof facts from it.
+- A trusted Law may explicitly assume a proposition relevant to the obligation; the
+  resulting proof remains trust-dependent.
+
+## T.24 invalid object representation assumptions
+
+- The verifier MUST do not infer value equality from bytes except where C++ permits.
+- The obligation is path-sensitive and is owed only on runtime paths that evaluate the
+  operation, preserving ordinary C++ short-circuiting and control flow.
+- A proof that ignores the operation result does not remove the defined-behavior
+  obligation.
+- An `unsafe` boundary may stop C++L from claiming the strongest proof for the
+  operation, but it does not make undefined runtime behavior defined and cannot create
+  proof facts from it.
+- A trusted Law may explicitly assume a proposition relevant to the obligation; the
+  resulting proof remains trust-dependent.
+
+## T.25 lifetime-invalid `this`/member access
+
+- The verifier MUST prove implicit object/subobject lifetime is valid.
+- The obligation is path-sensitive and is owed only on runtime paths that evaluate the
+  operation, preserving ordinary C++ short-circuiting and control flow.
+- A proof that ignores the operation result does not remove the defined-behavior
+  obligation.
+- An `unsafe` boundary may stop C++L from claiming the strongest proof for the
+  operation, but it does not make undefined runtime behavior defined and cannot create
+  proof facts from it.
+- A trusted Law may explicitly assume a proposition relevant to the obligation; the
+  resulting proof remains trust-dependent.
+
+## T.26 throwing through contexts that mandate termination
+
+- The verifier MUST model ordinary terminate behavior and do not treat it as normal
+  return.
+- The obligation is path-sensitive and is owed only on runtime paths that evaluate the
+  operation, preserving ordinary C++ short-circuiting and control flow.
+- A proof that ignores the operation result does not remove the defined-behavior
+  obligation.
+- An `unsafe` boundary may stop C++L from claiming the strongest proof for the
+  operation, but it does not make undefined runtime behavior defined and cannot create
+  proof facts from it.
+- A trusted Law may explicitly assume a proposition relevant to the obligation; the
+  resulting proof remains trust-dependent.
+
+## T.27 violating library preconditions
+
+- The verifier MUST prove the semantic preconditions stated by the selected
+  standard/library model.
+- The obligation is path-sensitive and is owed only on runtime paths that evaluate the
+  operation, preserving ordinary C++ short-circuiting and control flow.
+- A proof that ignores the operation result does not remove the defined-behavior
+  obligation.
+- An `unsafe` boundary may stop C++L from claiming the strongest proof for the
+  operation, but it does not make undefined runtime behavior defined and cannot create
+  proof facts from it.
+- A trusted Law may explicitly assume a proposition relevant to the obligation; the
+  resulting proof remains trust-dependent.
+
+# Normative Annex U — Specification-expression admissibility
+
+Specification expressions are not arbitrary runtime C++ evaluated at compile time. They
+are side-effect-free formal expressions whose C++ subexpressions have defined semantics
+and a checked correspondence to formal values/propositions.
+
+## U.1 integer/boolean literals
+
+Admitted when their formal type/value is defined.
+
+- No observable runtime side effect is permitted merely to evaluate the specification.
+- Undefined C++ behavior cannot be used to define a proposition.
+- The expression must have one unambiguous formal type/meaning after C++ name/type
+  resolution and C++L contextual interpretation.
+- If evaluation depends on mutable storage, the proposition refers to the logical
+  version selected by its specification context.
+- Erasure removes the specification expression completely unless the same source
+  expression independently occurs in ordinary runtime C++.
+
+## U.2 parameter/local value reads
+
+Admitted when the referenced logical value is in scope and reading it as a specification
+value is well-defined.
+
+- No observable runtime side effect is permitted merely to evaluate the specification.
+- Undefined C++ behavior cannot be used to define a proposition.
+- The expression must have one unambiguous formal type/meaning after C++ name/type
+  resolution and C++L contextual interpretation.
+- If evaluation depends on mutable storage, the proposition refers to the logical
+  version selected by its specification context.
+- Erasure removes the specification expression completely unless the same source
+  expression independently occurs in ordinary runtime C++.
+
+## U.3 member reads
+
+Admitted when object/member lifetime and stable formal value are established.
+
+- No observable runtime side effect is permitted merely to evaluate the specification.
+- Undefined C++ behavior cannot be used to define a proposition.
+- The expression must have one unambiguous formal type/meaning after C++ name/type
+  resolution and C++L contextual interpretation.
+- If evaluation depends on mutable storage, the proposition refers to the logical
+  version selected by its specification context.
+- Erasure removes the specification expression completely unless the same source
+  expression independently occurs in ordinary runtime C++.
+
+## U.4 global reads
+
+Admitted only when the formal meaning accounts for mutability and the relevant state
+version.
+
+- No observable runtime side effect is permitted merely to evaluate the specification.
+- Undefined C++ behavior cannot be used to define a proposition.
+- The expression must have one unambiguous formal type/meaning after C++ name/type
+  resolution and C++L contextual interpretation.
+- If evaluation depends on mutable storage, the proposition refers to the logical
+  version selected by its specification context.
+- Erasure removes the specification expression completely unless the same source
+  expression independently occurs in ordinary runtime C++.
+
+## U.5 arithmetic
+
+Admitted with exact machine or mathematical-domain semantics and all definedness
+obligations.
+
+- No observable runtime side effect is permitted merely to evaluate the specification.
+- Undefined C++ behavior cannot be used to define a proposition.
+- The expression must have one unambiguous formal type/meaning after C++ name/type
+  resolution and C++L contextual interpretation.
+- If evaluation depends on mutable storage, the proposition refers to the logical
+  version selected by its specification context.
+- Erasure removes the specification expression completely unless the same source
+  expression independently occurs in ordinary runtime C++.
+
+## U.6 comparisons
+
+Admitted when the selected c++/formal comparison is modeled exactly.
+
+- No observable runtime side effect is permitted merely to evaluate the specification.
+- Undefined C++ behavior cannot be used to define a proposition.
+- The expression must have one unambiguous formal type/meaning after C++ name/type
+  resolution and C++L contextual interpretation.
+- If evaluation depends on mutable storage, the proposition refers to the logical
+  version selected by its specification context.
+- Erasure removes the specification expression completely unless the same source
+  expression independently occurs in ordinary runtime C++.
+
+## U.7 logical connectives
+
+Interpreted as proposition constructors in proposition context.
+
+- No observable runtime side effect is permitted merely to evaluate the specification.
+- Undefined C++ behavior cannot be used to define a proposition.
+- The expression must have one unambiguous formal type/meaning after C++ name/type
+  resolution and C++L contextual interpretation.
+- If evaluation depends on mutable storage, the proposition refers to the logical
+  version selected by its specification context.
+- Erasure removes the specification expression completely unless the same source
+  expression independently occurs in ordinary runtime C++.
+
+## U.8 implication/equivalence
+
+Formal proposition operators only in specification grammar.
+
+- No observable runtime side effect is permitted merely to evaluate the specification.
+- Undefined C++ behavior cannot be used to define a proposition.
+- The expression must have one unambiguous formal type/meaning after C++ name/type
+  resolution and C++L contextual interpretation.
+- If evaluation depends on mutable storage, the proposition refers to the logical
+  version selected by its specification context.
+- Erasure removes the specification expression completely unless the same source
+  expression independently occurs in ordinary runtime C++.
+
+## U.9 formal equality `Eq<T>`
+
+Formal proposition distinct from runtime operator==.
+
+- No observable runtime side effect is permitted merely to evaluate the specification.
+- Undefined C++ behavior cannot be used to define a proposition.
+- The expression must have one unambiguous formal type/meaning after C++ name/type
+  resolution and C++L contextual interpretation.
+- If evaluation depends on mutable storage, the proposition refers to the logical
+  version selected by its specification context.
+- Erasure removes the specification expression completely unless the same source
+  expression independently occurs in ordinary runtime C++.
+
+## U.10 quantifiers
+
+Proof-only binders with no runtime iteration.
+
+- No observable runtime side effect is permitted merely to evaluate the specification.
+- Undefined C++ behavior cannot be used to define a proposition.
+- The expression must have one unambiguous formal type/meaning after C++ name/type
+  resolution and C++L contextual interpretation.
+- If evaluation depends on mutable storage, the proposition refers to the logical
+  version selected by its specification context.
+- Erasure removes the specification expression completely unless the same source
+  expression independently occurs in ordinary runtime C++.
+
+## U.11 pure total function call
+
+Admitted when formal function semantics are established.
+
+- No observable runtime side effect is permitted merely to evaluate the specification.
+- Undefined C++ behavior cannot be used to define a proposition.
+- The expression must have one unambiguous formal type/meaning after C++ name/type
+  resolution and C++L contextual interpretation.
+- If evaluation depends on mutable storage, the proposition refers to the logical
+  version selected by its specification context.
+- Erasure removes the specification expression completely unless the same source
+  expression independently occurs in ordinary runtime C++.
+
+## U.12 `result`
+
+Only in non-void normal-return postcondition.
+
+- No observable runtime side effect is permitted merely to evaluate the specification.
+- Undefined C++ behavior cannot be used to define a proposition.
+- The expression must have one unambiguous formal type/meaning after C++ name/type
+  resolution and C++L contextual interpretation.
+- If evaluation depends on mutable storage, the proposition refers to the logical
+  version selected by its specification context.
+- Erasure removes the specification expression completely unless the same source
+  expression independently occurs in ordinary runtime C++.
+
+## U.13 `old(e)`
+
+Only in function postcondition and interpreted in entry state.
+
+- No observable runtime side effect is permitted merely to evaluate the specification.
+- Undefined C++ behavior cannot be used to define a proposition.
+- The expression must have one unambiguous formal type/meaning after C++ name/type
+  resolution and C++L contextual interpretation.
+- If evaluation depends on mutable storage, the proposition refers to the logical
+  version selected by its specification context.
+- Erasure removes the specification expression completely unless the same source
+  expression independently occurs in ordinary runtime C++.
+
+## U.14 `self`
+
+Only in refinement predicate.
+
+- No observable runtime side effect is permitted merely to evaluate the specification.
+- Undefined C++ behavior cannot be used to define a proposition.
+- The expression must have one unambiguous formal type/meaning after C++ name/type
+  resolution and C++L contextual interpretation.
+- If evaluation depends on mutable storage, the proposition refers to the logical
+  version selected by its specification context.
+- Erasure removes the specification expression completely unless the same source
+  expression independently occurs in ordinary runtime C++.
+
+## U.15 memory predicates
+
+Only as built-in formal propositions over modeled pointer/storage values.
+
+- No observable runtime side effect is permitted merely to evaluate the specification.
+- Undefined C++ behavior cannot be used to define a proposition.
+- The expression must have one unambiguous formal type/meaning after C++ name/type
+  resolution and C++L contextual interpretation.
+- If evaluation depends on mutable storage, the proposition refers to the logical
+  version selected by its specification context.
+- Erasure removes the specification expression completely unless the same source
+  expression independently occurs in ordinary runtime C++.
+
+## U.16 mathematical-domain intrinsics
+
+Only for the domain signatures defined by the specification.
+
+- No observable runtime side effect is permitted merely to evaluate the specification.
+- Undefined C++ behavior cannot be used to define a proposition.
+- The expression must have one unambiguous formal type/meaning after C++ name/type
+  resolution and C++L contextual interpretation.
+- If evaluation depends on mutable storage, the proposition refers to the logical
+  version selected by its specification context.
+- Erasure removes the specification expression completely unless the same source
+  expression independently occurs in ordinary runtime C++.
+
+# Normative Annex V — Cross-feature interaction rules
+
+## V.1 `verified` + `pure`
+
+The body executes at runtime, all verified obligations hold, and the checked effect set
+must satisfy purity. Canonical source ordering is `verified pure`.
+
+- No interaction listed here authorizes hidden runtime proof machinery.
+- Where both participating features generate obligations, both sets of obligations apply
+  unless a specific rule states that one subsumes the other.
+- Ordinary C++ legality remains a prerequisite for any runtime construct involved.
+- A failure to establish the combined obligations is a verification failure, not
+  permission to reinterpret either feature.
+
+## V.2 `verified` + `constexpr`
+
+Both C++ constant-evaluation rules and C++L verification rules apply independently;
+constant evaluability is not proof and verification is not constant evaluation.
+
+- No interaction listed here authorizes hidden runtime proof machinery.
+- Where both participating features generate obligations, both sets of obligations apply
+  unless a specific rule states that one subsumes the other.
+- Ordinary C++ legality remains a prerequisite for any runtime construct involved.
+- A failure to establish the combined obligations is a verification failure, not
+  permission to reinterpret either feature.
+
+## V.3 `verified` + `consteval`
+
+Immediate invocation remains C++; the function must also satisfy its C++L obligations.
+Formal use requires purity/termination as otherwise required.
+
+- No interaction listed here authorizes hidden runtime proof machinery.
+- Where both participating features generate obligations, both sets of obligations apply
+  unless a specific rule states that one subsumes the other.
+- Ordinary C++ legality remains a prerequisite for any runtime construct involved.
+- A failure to establish the combined obligations is a verification failure, not
+  permission to reinterpret either feature.
+
+## V.4 `verified` + `virtual`
+
+The body/override is verified and must satisfy substitutability relative to overridden
+contracts.
+
+- No interaction listed here authorizes hidden runtime proof machinery.
+- Where both participating features generate obligations, both sets of obligations apply
+  unless a specific rule states that one subsumes the other.
+- Ordinary C++ legality remains a prerequisite for any runtime construct involved.
+- A failure to establish the combined obligations is a verification failure, not
+  permission to reinterpret either feature.
+
+## V.5 `verified` + `noexcept`
+
+The body is verified while C++ noexcept semantics remain intact; normal postconditions
+do not describe termination caused by an escaping exception.
+
+- No interaction listed here authorizes hidden runtime proof machinery.
+- Where both participating features generate obligations, both sets of obligations apply
+  unless a specific rule states that one subsumes the other.
+- Ordinary C++ legality remains a prerequisite for any runtime construct involved.
+- A failure to establish the combined obligations is a verification failure, not
+  permission to reinterpret either feature.
+
+## V.6 `pure` + `const` member
+
+Both restrictions apply; `const` alone is not purity and purity alone is not a
+cv-qualification rule.
+
+- No interaction listed here authorizes hidden runtime proof machinery.
+- Where both participating features generate obligations, both sets of obligations apply
+  unless a specific rule states that one subsumes the other.
+- Ordinary C++ legality remains a prerequisite for any runtime construct involved.
+- A failure to establish the combined obligations is a verification failure, not
+  permission to reinterpret either feature.
+
+## V.7 refinement + reference
+
+The reference aliases refined storage; every write through any alias must re-establish
+membership and invalidate stale value facts.
+
+- No interaction listed here authorizes hidden runtime proof machinery.
+- Where both participating features generate obligations, both sets of obligations apply
+  unless a specific rule states that one subsumes the other.
+- Ordinary C++ legality remains a prerequisite for any runtime construct involved.
+- A failure to establish the combined obligations is a verification failure, not
+  permission to reinterpret either feature.
+
+## V.8 refinement + pointer
+
+Pointer value/refinement and pointee storage/refinement are distinct; non-nullness does
+not imply pointee membership or access capability.
+
+- No interaction listed here authorizes hidden runtime proof machinery.
+- Where both participating features generate obligations, both sets of obligations apply
+  unless a specific rule states that one subsumes the other.
+- Ordinary C++ legality remains a prerequisite for any runtime construct involved.
+- A failure to establish the combined obligations is a verification failure, not
+  permission to reinterpret either feature.
+
+## V.9 refinement + member
+
+Construction and every member write must establish membership, including writes through
+aliases and generated special members.
+
+- No interaction listed here authorizes hidden runtime proof machinery.
+- Where both participating features generate obligations, both sets of obligations apply
+  unless a specific rule states that one subsumes the other.
+- Ordinary C++ legality remains a prerequisite for any runtime construct involved.
+- A failure to establish the combined obligations is a verification failure, not
+  permission to reinterpret either feature.
+
+## V.10 refinement + template index
+
+Substitution yields the concrete predicate; proof-only indices affect verification
+identity but not runtime ABI unless independently represented by C++.
+
+- No interaction listed here authorizes hidden runtime proof machinery.
+- Where both participating features generate obligations, both sets of obligations apply
+  unless a specific rule states that one subsumes the other.
+- Ordinary C++ legality remains a prerequisite for any runtime construct involved.
+- A failure to establish the combined obligations is a verification failure, not
+  permission to reinterpret either feature.
+
+## V.11 ghost + runtime value
+
+Ghost state may symbolically refer to runtime values but runtime code may not depend on
+erased ghost state.
+
+- No interaction listed here authorizes hidden runtime proof machinery.
+- Where both participating features generate obligations, both sets of obligations apply
+  unless a specific rule states that one subsumes the other.
+- Ordinary C++ legality remains a prerequisite for any runtime construct involved.
+- A failure to establish the combined obligations is a verification failure, not
+  permission to reinterpret either feature.
+
+## V.12 ghost + destructor
+
+A ghost object requiring observable runtime destruction is invalid; erasure cannot
+remove required runtime effects.
+
+- No interaction listed here authorizes hidden runtime proof machinery.
+- Where both participating features generate obligations, both sets of obligations apply
+  unless a specific rule states that one subsumes the other.
+- Ordinary C++ legality remains a prerequisite for any runtime construct involved.
+- A failure to establish the combined obligations is a verification failure, not
+  permission to reinterpret either feature.
+
+## V.13 unsafe + verified region
+
+Unsafe operations may execute inside a verified function but contribute no unchecked
+facts and conservatively affect storage; surrounding obligations remain.
+
+- No interaction listed here authorizes hidden runtime proof machinery.
+- Where both participating features generate obligations, both sets of obligations apply
+  unless a specific rule states that one subsumes the other.
+- Ordinary C++ legality remains a prerequisite for any runtime construct involved.
+- A failure to establish the combined obligations is a verification failure, not
+  permission to reinterpret either feature.
+
+## V.14 trusted Law + verified proof
+
+The theorem may be used as a premise, but every derived result records the trust
+dependency.
+
+- No interaction listed here authorizes hidden runtime proof machinery.
+- Where both participating features generate obligations, both sets of obligations apply
+  unless a specific rule states that one subsumes the other.
+- Ordinary C++ legality remains a prerequisite for any runtime construct involved.
+- A failure to establish the combined obligations is a verification failure, not
+  permission to reinterpret either feature.
+
+## V.15 runtime validation + refinement
+
+Successful ordinary C++ branch facts can discharge the refinement crossing; the branch
+remains runtime code.
+
+- No interaction listed here authorizes hidden runtime proof machinery.
+- Where both participating features generate obligations, both sets of obligations apply
+  unless a specific rule states that one subsumes the other.
+- Ordinary C++ legality remains a prerequisite for any runtime construct involved.
+- A failure to establish the combined obligations is a verification failure, not
+  permission to reinterpret either feature.
+
+## V.16 runtime validation + trusted
+
+These remain distinct: a runtime check establishes a fact for one execution/value, while
+a trusted Law assumes a proposition without internal proof.
+
+- No interaction listed here authorizes hidden runtime proof machinery.
+- Where both participating features generate obligations, both sets of obligations apply
+  unless a specific rule states that one subsumes the other.
+- Ordinary C++ legality remains a prerequisite for any runtime construct involved.
+- A failure to establish the combined obligations is a verification failure, not
+  permission to reinterpret either feature.
+
+## V.17 cases + mutable subject
+
+Case facts belong to one logical version and are invalidated when the subject may be
+mutated before reuse.
+
+- No interaction listed here authorizes hidden runtime proof machinery.
+- Where both participating features generate obligations, both sets of obligations apply
+  unless a specific rule states that one subsumes the other.
+- Ordinary C++ legality remains a prerequisite for any runtime construct involved.
+- A failure to establish the combined obligations is a verification failure, not
+  permission to reinterpret either feature.
+
+## V.18 induction + machine integer
+
+The induction principle must include range conditions preventing wraparound in the step.
+
+- No interaction listed here authorizes hidden runtime proof machinery.
+- Where both participating features generate obligations, both sets of obligations apply
+  unless a specific rule states that one subsumes the other.
+- Ordinary C++ legality remains a prerequisite for any runtime construct involved.
+- A failure to establish the combined obligations is a verification failure, not
+  permission to reinterpret either feature.
+
+## V.19 decreases + loop
+
+The measure requests/proves termination and is erased; the runtime loop remains
+unchanged.
+
+- No interaction listed here authorizes hidden runtime proof machinery.
+- Where both participating features generate obligations, both sets of obligations apply
+  unless a specific rule states that one subsumes the other.
+- Ordinary C++ legality remains a prerequisite for any runtime construct involved.
+- A failure to establish the combined obligations is a verification failure, not
+  permission to reinterpret either feature.
+
+## V.20 decreases + recursion
+
+Each recursive edge in the applicable recursive component must strictly decrease the
+well-founded measure, including mutual recursion.
+
+- No interaction listed here authorizes hidden runtime proof machinery.
+- Where both participating features generate obligations, both sets of obligations apply
+  unless a specific rule states that one subsumes the other.
+- Ordinary C++ legality remains a prerequisite for any runtime construct involved.
+- A failure to establish the combined obligations is a verification failure, not
+  permission to reinterpret either feature.
+
+## V.21 old + aliasing
+
+`old(e)` is fixed at entry even if aliases later mutate the referenced storage;
+current-state occurrences remain version-sensitive.
+
+- No interaction listed here authorizes hidden runtime proof machinery.
+- Where both participating features generate obligations, both sets of obligations apply
+  unless a specific rule states that one subsumes the other.
+- Ordinary C++ legality remains a prerequisite for any runtime construct involved.
+- A failure to establish the combined obligations is a verification failure, not
+  permission to reinterpret either feature.
+
+## V.22 postcondition + exceptional exit
+
+The normal postcondition is unavailable on a propagated exceptional path.
+
+- No interaction listed here authorizes hidden runtime proof machinery.
+- Where both participating features generate obligations, both sets of obligations apply
+  unless a specific rule states that one subsumes the other.
+- Ordinary C++ legality remains a prerequisite for any runtime construct involved.
+- A failure to establish the combined obligations is a verification failure, not
+  permission to reinterpret either feature.
+
+## V.23 pure + throwing
+
+Purity alone does not imply exception freedom. Use in total formal evaluation
+additionally requires appropriate total/exception semantics.
+
+- No interaction listed here authorizes hidden runtime proof machinery.
+- Where both participating features generate obligations, both sets of obligations apply
+  unless a specific rule states that one subsumes the other.
+- Ordinary C++ legality remains a prerequisite for any runtime construct involved.
+- A failure to establish the combined obligations is a verification failure, not
+  permission to reinterpret either feature.
+
+## V.24 virtual + effects
+
+An override cannot broaden effects beyond what callers through the base contract are
+permitted to assume.
+
+- No interaction listed here authorizes hidden runtime proof machinery.
+- Where both participating features generate obligations, both sets of obligations apply
+  unless a specific rule states that one subsumes the other.
+- Ordinary C++ legality remains a prerequisite for any runtime construct involved.
+- A failure to establish the combined obligations is a verification failure, not
+  permission to reinterpret either feature.
+
+## V.25 template + Law
+
+The theorem meaning after instantiation uses the actual substituted C++ types/values and
+cannot reuse evidence from a semantically different specialization.
+
+- No interaction listed here authorizes hidden runtime proof machinery.
+- Where both participating features generate obligations, both sets of obligations apply
+  unless a specific rule states that one subsumes the other.
+- Ordinary C++ legality remains a prerequisite for any runtime construct involved.
+- A failure to establish the combined obligations is a verification failure, not
+  permission to reinterpret either feature.
+
+## V.26 module + contract
+
+Imported/exported semantic metadata must identify the same C++ entity and preserve
+proof/trust meaning across the module boundary.
+
+- No interaction listed here authorizes hidden runtime proof machinery.
+- Where both participating features generate obligations, both sets of obligations apply
+  unless a specific rule states that one subsumes the other.
+- Ordinary C++ legality remains a prerequisite for any runtime construct involved.
+- A failure to establish the combined obligations is a verification failure, not
+  permission to reinterpret either feature.
+
+# Normative Annex W — Positive and negative conformance corpus requirements
+
+This annex defines semantic classes of examples that a complete implementation must
+distinguish. It does not prescribe repository fixture layout or test framework.
+
+## W.1 ordinary C++ preservation
+
+Valid supported C++ with no C++L semantics continues to compile/run with unchanged
+observable behavior.
+
+- The result is determined by language semantics, not by current compiler coverage.
+- A complete implementation must diagnose the invalid class rather than accepting it
+  under a weaker interpretation.
+- A valid class must not require a hidden runtime proof engine.
+
+## W.2 valid verified function
+
+All safety and contract obligations are established; compilation succeeds.
+
+- The result is determined by language semantics, not by current compiler coverage.
+- A complete implementation must diagnose the invalid class rather than accepting it
+  under a weaker interpretation.
+- A valid class must not require a hidden runtime proof engine.
+
+## W.3 invalid postcondition
+
+Body fails to establish a declared postcondition on at least one normal path;
+verification fails.
+
+- The result is determined by language semantics, not by current compiler coverage.
+- A complete implementation must diagnose the invalid class rather than accepting it
+  under a weaker interpretation.
+- A valid class must not require a hidden runtime proof engine.
+
+## W.4 invalid precondition call
+
+Caller cannot establish callee precondition on a reachable call path; verification
+fails.
+
+- The result is determined by language semantics, not by current compiler coverage.
+- A complete implementation must diagnose the invalid class rather than accepting it
+  under a weaker interpretation.
+- A valid class must not require a hidden runtime proof engine.
+
+## W.5 valid path refinement
+
+Runtime branch proves refinement predicate before crossing; succeeds.
+
+- The result is determined by language semantics, not by current compiler coverage.
+- A complete implementation must diagnose the invalid class rather than accepting it
+  under a weaker interpretation.
+- A valid class must not require a hidden runtime proof engine.
+
+## W.6 invalid refinement crossing
+
+Base value enters refinement without evidence; fails.
+
+- The result is determined by language semantics, not by current compiler coverage.
+- A complete implementation must diagnose the invalid class rather than accepting it
+  under a weaker interpretation.
+- A valid class must not require a hidden runtime proof engine.
+
+## W.7 alias invalidation
+
+A may-alias write prevents reuse of stale facts; invalid stale-proof example fails.
+
+- The result is determined by language semantics, not by current compiler coverage.
+- A complete implementation must diagnose the invalid class rather than accepting it
+  under a weaker interpretation.
+- A valid class must not require a hidden runtime proof engine.
+
+## W.8 valid old snapshot
+
+Entry-state relation remains provable after mutation; succeeds without runtime copy.
+
+- The result is determined by language semantics, not by current compiler coverage.
+- A complete implementation must diagnose the invalid class rather than accepting it
+  under a weaker interpretation.
+- A valid class must not require a hidden runtime proof engine.
+
+## W.9 invalid ghost leak
+
+Runtime result/control/effect depends on ghost state; fails.
+
+- The result is determined by language semantics, not by current compiler coverage.
+- A complete implementation must diagnose the invalid class rather than accepting it
+  under a weaker interpretation.
+- A valid class must not require a hidden runtime proof engine.
+
+## W.10 valid Law automation
+
+Semicolon Law produces valid evidence; succeeds.
+
+- The result is determined by language semantics, not by current compiler coverage.
+- A complete implementation must diagnose the invalid class rather than accepting it
+  under a weaker interpretation.
+- A valid class must not require a hidden runtime proof engine.
+
+## W.11 unproven Law
+
+Automation cannot establish theorem and no proof body supplies evidence; fails.
+
+- The result is determined by language semantics, not by current compiler coverage.
+- A complete implementation must diagnose the invalid class rather than accepting it
+  under a weaker interpretation.
+- A valid class must not require a hidden runtime proof engine.
+
+## W.12 trusted Law dependency
+
+Assumption is admitted and dependency is reported semantically as TRUSTED.
+
+- The result is determined by language semantics, not by current compiler coverage.
+- A complete implementation must diagnose the invalid class rather than accepting it
+  under a weaker interpretation.
+- A valid class must not require a hidden runtime proof engine.
+
+## W.13 invalid assume
+
+Proof names proposition not present as premise; fails.
+
+- The result is determined by language semantics, not by current compiler coverage.
+- A complete implementation must diagnose the invalid class rather than accepting it
+  under a weaker interpretation.
+- A valid class must not require a hidden runtime proof engine.
+
+## W.14 valid exhaustive cases
+
+Every semantic state has an arm or is proven impossible; succeeds.
+
+- The result is determined by language semantics, not by current compiler coverage.
+- A complete implementation must diagnose the invalid class rather than accepting it
+  under a weaker interpretation.
+- A valid class must not require a hidden runtime proof engine.
+
+## W.15 invalid stale cases
+
+A semantic state is omitted without contradiction evidence; fails.
+
+- The result is determined by language semantics, not by current compiler coverage.
+- A complete implementation must diagnose the invalid class rather than accepting it
+  under a weaker interpretation.
+- A valid class must not require a hidden runtime proof engine.
+
+## W.16 valid induction
+
+Every induction case is proven using only supplied premises/hypotheses; succeeds.
+
+- The result is determined by language semantics, not by current compiler coverage.
+- A complete implementation must diagnose the invalid class rather than accepting it
+  under a weaker interpretation.
+- A valid class must not require a hidden runtime proof engine.
+
+## W.17 circular proof
+
+Recursive proof dependency lacks a valid induction/well-founded rule; fails.
+
+- The result is determined by language semantics, not by current compiler coverage.
+- A complete implementation must diagnose the invalid class rather than accepting it
+  under a weaker interpretation.
+- A valid class must not require a hidden runtime proof engine.
+
+## W.18 partial loop correctness
+
+Invariant proves postcondition on exit without termination claim; may succeed as partial
+correctness.
+
+- The result is determined by language semantics, not by current compiler coverage.
+- A complete implementation must diagnose the invalid class rather than accepting it
+  under a weaker interpretation.
+- A valid class must not require a hidden runtime proof engine.
+
+## W.19 invalid decreases
+
+Measure is not well-founded or fails strict descent on a continuing edge; requested
+total correctness fails.
+
+- The result is determined by language semantics, not by current compiler coverage.
+- A complete implementation must diagnose the invalid class rather than accepting it
+  under a weaker interpretation.
+- A valid class must not require a hidden runtime proof engine.
+
+## W.20 valid runtime validation
+
+Explicit ordinary C++ check establishes a concrete path fact; succeeds and check remains
+at runtime.
+
+- The result is determined by language semantics, not by current compiler coverage.
+- A complete implementation must diagnose the invalid class rather than accepting it
+  under a weaker interpretation.
+- A valid class must not require a hidden runtime proof engine.
+
+## W.21 hidden assertion prohibition
+
+Failed proof never compiles by silently inserting assert/throw/check.
+
+- The result is determined by language semantics, not by current compiler coverage.
+- A complete implementation must diagnose the invalid class rather than accepting it
+  under a weaker interpretation.
+- A valid class must not require a hidden runtime proof engine.
+
+## W.22 pointer non-null insufficiency
+
+Non-null pointer without lifetime/bounds/init/access evidence cannot justify
+dereference.
+
+- The result is determined by language semantics, not by current compiler coverage.
+- A complete implementation must diagnose the invalid class rather than accepting it
+  under a weaker interpretation.
+- A valid class must not require a hidden runtime proof engine.
+
+## W.23 valid memory capability
+
+All dereference capability/lifetime/bounds facts are established; operation may verify.
+
+- The result is determined by language semantics, not by current compiler coverage.
+- A complete implementation must diagnose the invalid class rather than accepting it
+  under a weaker interpretation.
+- A valid class must not require a hidden runtime proof engine.
+
+## W.24 invalid virtual override
+
+Override strengthens precondition or weakens postcondition/effects; declaration fails
+C++L compatibility.
+
+- The result is determined by language semantics, not by current compiler coverage.
+- A complete implementation must diagnose the invalid class rather than accepting it
+  under a weaker interpretation.
+- A valid class must not require a hidden runtime proof engine.
+
+## W.25 valid virtual override
+
+Override is substitutable; succeeds.
+
+- The result is determined by language semantics, not by current compiler coverage.
+- A complete implementation must diagnose the invalid class rather than accepting it
+  under a weaker interpretation.
+- A valid class must not require a hidden runtime proof engine.
+
+## W.26 cross-TU missing evidence
+
+Contract visible but proof/evidence identity unavailable; verified composition fails
+closed.
+
+- The result is determined by language semantics, not by current compiler coverage.
+- A complete implementation must diagnose the invalid class rather than accepting it
+  under a weaker interpretation.
+- A valid class must not require a hidden runtime proof engine.
+
+## W.27 erasure equivalence
+
+Accepted proof annotations erase without changing runtime behavior/ABI.
+
+- The result is determined by language semantics, not by current compiler coverage.
+- A complete implementation must diagnose the invalid class rather than accepting it
+  under a weaker interpretation.
+- A valid class must not require a hidden runtime proof engine.
+
+---
+
+---
+
+# Normative Annex X — Exhaustive implementation semantics by source construct
+
+This annex is deliberately repetitive and implementation-facing. Each entry states
+the minimum semantic dimensions that a complete implementation must preserve for
+that source construct. The repetition is normative: an implementation agent must not
+assume that a dimension omitted from a nearby example is therefore irrelevant.
+
+## X.1 integer literal
+
+Primary semantic focus: exact C++ literal typing, suffixes, representability and
+machine value.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.2 floating literal
+
+Primary semantic focus: selected floating type, rounding and target semantics.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.3 character literal
+
+Primary semantic focus: encoding/type/value rules of the selected C++ mode.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.4 string literal
+
+Primary semantic focus: array object, storage duration, encoding and concatenation
+rules.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.5 boolean literal
+
+Primary semantic focus: C++ bool value and proposition lifting where permitted.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.6 nullptr literal
+
+Primary semantic focus: null pointer value and conversion rules.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.7 identifier expression
+
+Primary semantic focus: ordinary lookup, entity identity and current logical value
+version.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.8 qualified-id
+
+Primary semantic focus: C++ qualification and access.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.9 `this` expression
+
+Primary semantic focus: implicit object identity, cv/ref category and lifetime.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.10 parenthesized expression
+
+Primary semantic focus: C++ parsing/value-category preservation.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.11 lvalue-to-rvalue conversion
+
+Primary semantic focus: initialized live readable value.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.12 array-to-pointer conversion
+
+Primary semantic focus: array provenance and extent relationship.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.13 function-to-pointer conversion
+
+Primary semantic focus: callable target identity.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.14 integral promotion
+
+Primary semantic focus: exact promoted type and value semantics.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.15 usual arithmetic conversion
+
+Primary semantic focus: exact common type selection.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.16 qualification conversion
+
+Primary semantic focus: cv/access semantics without invented immutability.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.17 temporary materialization
+
+Primary semantic focus: temporary lifetime and value category.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.18 unary plus
+
+Primary semantic focus: promotions and numeric semantics.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.19 unary minus
+
+Primary semantic focus: promotions and signed-overflow definedness.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.20 logical not
+
+Primary semantic focus: runtime truth conversion or proposition negation by context.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.21 bitwise complement
+
+Primary semantic focus: machine-width bit semantics.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.22 address-of
+
+Primary semantic focus: object/function pointer formation and provenance.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.23 dereference
+
+Primary semantic focus: lifetime/provenance/bounds/alignment/readability.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.24 prefix increment
+
+Primary semantic focus: read-arithmetic-write and new version.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.25 postfix increment
+
+Primary semantic focus: old expression value plus new stored version.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.26 prefix decrement
+
+Primary semantic focus: read-arithmetic-write and new version.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.27 postfix decrement
+
+Primary semantic focus: old expression value plus new stored version.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.28 addition
+
+Primary semantic focus: numeric/pointer overload-selected semantics.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.29 subtraction
+
+Primary semantic focus: numeric/pointer difference semantics.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.30 multiplication
+
+Primary semantic focus: numeric semantics and overflow definedness.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.31 division
+
+Primary semantic focus: numeric semantics, zero and signed corner cases.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.32 remainder
+
+Primary semantic focus: numeric semantics, zero and signed corner cases.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.33 left shift
+
+Primary semantic focus: promotion/count/value definedness.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.34 right shift
+
+Primary semantic focus: promotion/count and selected signedness semantics.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.35 bitwise and
+
+Primary semantic focus: machine bit semantics or selected overload.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.36 bitwise or
+
+Primary semantic focus: machine bit semantics or selected overload.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.37 bitwise xor
+
+Primary semantic focus: machine bit semantics or selected overload.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.38 less-than
+
+Primary semantic focus: selected comparison and pointer/object restrictions.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.39 less-or-equal
+
+Primary semantic focus: selected comparison and formal lifting.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.40 greater-than
+
+Primary semantic focus: selected comparison and formal lifting.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.41 greater-or-equal
+
+Primary semantic focus: selected comparison and formal lifting.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.42 equality operator
+
+Primary semantic focus: C++ Boolean equality distinct from formal Eq.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.43 inequality operator
+
+Primary semantic focus: C++ Boolean inequality distinct from proof negation unless
+lifted.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.44 three-way comparison
+
+Primary semantic focus: comparison-category semantics and selected overload.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.45 logical and runtime
+
+Primary semantic focus: short-circuit true/false path partition.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.46 logical or runtime
+
+Primary semantic focus: short-circuit true/false path partition.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.47 logical conjunction formal
+
+Primary semantic focus: proof conjunction with both operands defined.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.48 logical disjunction formal
+
+Primary semantic focus: proof disjunction with valid selected evidence.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.49 conditional operator
+
+Primary semantic focus: branch-sensitive arm evaluation and result type.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.50 assignment
+
+Primary semantic focus: rhs evaluation, target write/version/refinement.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.51 compound assignment
+
+Primary semantic focus: single lhs evaluation, operation definedness, write.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.52 comma operator
+
+Primary semantic focus: left-to-right sequencing and right result.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.53 member access dot
+
+Primary semantic focus: subobject lookup/access/lifetime.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.54 member access arrow
+
+Primary semantic focus: pointer dereference plus member subobject semantics.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.55 built-in subscript
+
+Primary semantic focus: pointer arithmetic/dereference/bounds.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.56 overloaded subscript
+
+Primary semantic focus: ordinary call contract/effects.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.57 direct function call
+
+Primary semantic focus: callee selection/pre/post/effects/exceptions.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.58 member function call
+
+Primary semantic focus: implicit object plus call semantics.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.59 virtual call
+
+Primary semantic focus: dynamic target set plus base-interface contract.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.60 function pointer call
+
+Primary semantic focus: target validity and contract for all possible targets.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.61 callable object invocation
+
+Primary semantic focus: operator() contract/effects/captured state.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.62 constructor call
+
+Primary semantic focus: initialization order/lifetime/poststate.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.63 conversion function call
+
+Primary semantic focus: selected conversion and effects.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.64 static_cast
+
+Primary semantic focus: exact selected C++ conversion and no invented evidence.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.65 dynamic_cast
+
+Primary semantic focus: RTTI/lifetime and success/failure state.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.66 const_cast
+
+Primary semantic focus: cv conversion without permission invention.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.67 reinterpret_cast
+
+Primary semantic focus: representation conversion without capability invention.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.68 C-style cast
+
+Primary semantic focus: actual selected sequence of C++ casts.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.69 functional cast
+
+Primary semantic focus: direct/list initialization selected by C++.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.70 sizeof
+
+Primary semantic focus: C++ unevaluated operand and ABI size semantics.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.71 alignof
+
+Primary semantic focus: C++ alignment semantics.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.72 decltype
+
+Primary semantic focus: C++ type-forming/value-category semantics.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.73 noexcept expression
+
+Primary semantic focus: C++ compile-time throwability query.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.74 typeid
+
+Primary semantic focus: RTTI evaluation and polymorphic lifetime semantics.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.75 new expression
+
+Primary semantic focus: allocation, construction, exceptions, returned pointer
+facts.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.76 delete expression
+
+Primary semantic focus: destruction/deallocation ownership and lifetime end.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.77 placement construction
+
+Primary semantic focus: storage reuse and new object lifetime.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.78 lambda expression
+
+Primary semantic focus: capture/closure/lifetime/call semantics.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.79 fold expression
+
+Primary semantic focus: C++ fold grouping and selected operator semantics.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.80 requires expression
+
+Primary semantic focus: C++ compile-time satisfaction only.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.81 pack expansion
+
+Primary semantic focus: instantiated operation per pack element.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.82 co_await
+
+Primary semantic focus: awaiter protocol, suspension and state invalidation.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.83 co_yield
+
+Primary semantic focus: promise protocol, suspension and frame lifetime.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.84 co_return
+
+Primary semantic focus: promise return semantics and coroutine completion.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.85 expression statement
+
+Primary semantic focus: all evaluated effects and definedness despite discarded
+result.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.86 null statement
+
+Primary semantic focus: no runtime effect and no proof fact.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.87 compound statement
+
+Primary semantic focus: lexical scope, sequencing and destruction at exit.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.88 declaration statement
+
+Primary semantic focus: initialization/lifetime/refinement.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.89 if statement
+
+Primary semantic focus: path split and sound join.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.90 if constexpr
+
+Primary semantic focus: C++ discarded-branch semantics.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.91 switch statement
+
+Primary semantic focus: case matching/fallthrough/default state.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.92 while statement
+
+Primary semantic focus: invariant/head/body/exit/back-edge.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.93 classic for statement
+
+Primary semantic focus: init/head/body/step/back-edge.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.94 range-for statement
+
+Primary semantic focus: range object/iterators/lifetime/body.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.95 do-while statement
+
+Primary semantic focus: body-before-test invariant semantics.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.96 break statement
+
+Primary semantic focus: targeted exit and path facts.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.97 continue statement
+
+Primary semantic focus: continuing edge and invariant/termination obligations.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.98 return statement
+
+Primary semantic focus: return conversion/refinement/postcondition/destruction.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.99 goto statement
+
+Primary semantic focus: target join/fixed-point and C++ legality.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.100 label statement
+
+Primary semantic focus: join of all predecessors.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.101 try block
+
+Primary semantic focus: normal and exceptional path partition.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.102 catch handler
+
+Primary semantic focus: exception match/binding and join.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.103 throw expression
+
+Primary semantic focus: exception object/unwinding.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.104 inline asm
+
+Primary semantic focus: unmodeled runtime boundary unless formally specified.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.105 local variable declaration
+
+Primary semantic focus: storage duration, initialization and versions.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.106 static local declaration
+
+Primary semantic focus: guarded initialization/shared effects.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.107 thread_local declaration
+
+Primary semantic focus: per-thread lifetime and effects.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.108 global variable declaration
+
+Primary semantic focus: initialization order/storage/effects.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.109 reference declaration
+
+Primary semantic focus: binding/lifetime/aliasing.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.110 pointer variable declaration
+
+Primary semantic focus: pointer value without automatic capability.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.111 array declaration
+
+Primary semantic focus: element lifetimes and extent.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.112 structured binding
+
+Primary semantic focus: underlying binding mode and lifetime.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.113 namespace declaration
+
+Primary semantic focus: lookup/scope only.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.114 namespace alias
+
+Primary semantic focus: lookup aliasing only.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.115 using declaration
+
+Primary semantic focus: entity introduction preserving metadata.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.116 using directive
+
+Primary semantic focus: lookup only.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.117 typedef declaration
+
+Primary semantic focus: type alias preserving refinement identity when applicable.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.118 using type alias
+
+Primary semantic focus: type alias preserving refinement identity when applicable.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.119 enum declaration
+
+Primary semantic focus: complete underlying value set.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.120 class declaration
+
+Primary semantic focus: object/member/base runtime semantics.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.121 union declaration
+
+Primary semantic focus: overlapping active-member semantics.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.122 bit-field declaration
+
+Primary semantic focus: bit-field access/addressability rules.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.123 function declaration
+
+Primary semantic focus: entity contract attachment.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.124 function definition
+
+Primary semantic focus: body establishes semantic summary.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.125 defaulted function
+
+Primary semantic focus: actual generated C++ operations.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.126 deleted function
+
+Primary semantic focus: unavailable callable.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.127 friend declaration
+
+Primary semantic focus: access only.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.128 static_assert
+
+Primary semantic focus: C++ compile-time assertion distinct from proof evidence.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.129 attribute specifier
+
+Primary semantic focus: preserve known C++ meaning; no invented proof meaning.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.130 alignas specifier
+
+Primary semantic focus: runtime/object layout alignment rule.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.131 extern linkage declaration
+
+Primary semantic focus: native linkage/ABI plus separate metadata.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.132 template declaration
+
+Primary semantic focus: generic C++ entity and proof substitution.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.133 template specialization
+
+Primary semantic focus: selected specialized entity semantics.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.134 explicit instantiation
+
+Primary semantic focus: code-generation placement plus metadata availability.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.135 concept declaration
+
+Primary semantic focus: compile-time constraint distinct from runtime theorem.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.136 deduction guide
+
+Primary semantic focus: C++ template argument deduction only.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.137 module declaration
+
+Primary semantic focus: C++ module ownership and semantic interface metadata.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.138 module import
+
+Primary semantic focus: imported runtime/formal entity identity.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.139 module export
+
+Primary semantic focus: exported runtime/formal entity identity.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.140 constructor
+
+Primary semantic focus: ordered base/member construction and no result.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.141 destructor
+
+Primary semantic focus: ordered lifetime end and effects.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.142 copy constructor
+
+Primary semantic focus: source read/destination construction semantics.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.143 move constructor
+
+Primary semantic focus: source mutation/destination construction semantics.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.144 copy assignment
+
+Primary semantic focus: read/write/alias/self-assignment semantics.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.145 move assignment
+
+Primary semantic focus: source/destination mutation and self-move semantics.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.146 virtual function
+
+Primary semantic focus: dispatch/substitutability/effects.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.147 pure virtual function
+
+Primary semantic focus: abstract interface contract and no body assumption.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.148 base class conversion
+
+Primary semantic focus: C++ object adjustment/access.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.149 downcast
+
+Primary semantic focus: dynamic/static conditions and lifetime.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.150 multiple inheritance
+
+Primary semantic focus: subobject identity and pointer adjustment.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+## X.151 virtual inheritance
+
+Primary semantic focus: shared virtual base identity/lifetime.
+
+- C++L MUST begin from the exact ordinary C++ semantic entity and operation selected
+  by parsing, name lookup, overload resolution, template substitution and implicit
+  conversion.
+- The verifier MUST preserve every C++ sequencing and evaluation-order constraint
+  relevant to the construct and MUST NOT assume a stronger order where C++ leaves
+  alternatives.
+- Every evaluated operation that has a C++ defined-behavior precondition contributes
+  that precondition as a proof obligation on the evaluating path.
+- Every runtime read must be justified by the applicable lifetime, initialization,
+  provenance, bounds, cv/access and concurrency conditions.
+- Every runtime write must update the logical storage state, invalidate may-alias
+  facts, and re-establish every refinement invariant applicable to the written
+  place.
+- Every call-like behavior must use a checked semantic summary when one is available
+  and otherwise conservatively model possible effects and exceptional continuations.
+- Facts produced by the construct are available only on the continuations on which
+  the corresponding runtime event actually occurred.
+- A proof or specification may use the construct only if its formal interpretation
+  is side-effect-free and sufficiently total for the formal context.
+- A trusted Law may supply an explicit assumption relevant to the construct, but the
+  resulting reasoning remains trust-dependent.
+- An unsafe boundary may execute the runtime construct without proving its strongest
+  properties, but it cannot manufacture proof evidence and must conservatively
+  account for effects.
+- Erasure of C++L syntax MUST NOT alter the ordinary runtime execution, lifetime,
+  destruction, exception behavior, data layout or calling convention of the
+  construct.
+- No hidden validation, assertion, wrapper, tag, proof object or runtime metadata
+  may be inserted merely to make a failed proof succeed.
+- If the construct participates in a `pure` function, its effects/observations must
+  satisfy the purity semantics in addition to ordinary verification obligations.
+- If the construct occurs in a region for which termination is required, all
+  control-flow/call edges it introduces must preserve the applicable well-founded
+  argument.
+- If the construct interacts with shared state, concurrency reasoning must be at
+  least as strong as the selected C++ memory model requires; sequential reasoning is
+  insufficient where interference is possible.
+- If template instantiation changes the selected operation or type, verification
+  must use the instantiated semantics and cannot reuse evidence for a semantically
+  different specialization.
+- If the construct crosses a translation-unit/module boundary, required verification
+  metadata must correspond to the same resolved C++ entity and checked
+  implementation.
+- A complete implementation that cannot soundly handle the construct inside verified
+  code is incomplete; it MUST NOT reinterpret the program as verified under a weaker
+  semantics.
+
+# Normative Annex Y — Extended standard-library model obligations
+
+## Y.1 `std::vector`
+
+Model family: contiguous dynamic sequence. Required semantic focus: size/capacity,
+element lifetime, reallocation invalidation, allocator/callable effects.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.2 `std::deque`
+
+Model family: segmented dynamic sequence. Required semantic focus: element/iterator
+invalidation exactly per standard operations.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.3 `std::list`
+
+Model family: linked sequence. Required semantic focus: node lifetime, splice/erase
+iterator validity, allocator effects.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.4 `std::forward_list`
+
+Model family: singly linked sequence. Required semantic focus: node lifetime and
+before-begin semantics.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.5 `std::map`
+
+Model family: ordered associative map. Required semantic focus: key ordering
+comparator calls, iterator/node stability.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.6 `std::multimap`
+
+Model family: ordered multi-map. Required semantic focus: duplicate-key semantics
+and iterator/node stability.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.7 `std::set`
+
+Model family: ordered associative set. Required semantic focus: key immutability
+through iterators and comparator semantics.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.8 `std::multiset`
+
+Model family: ordered multi-set. Required semantic focus: duplicate-key semantics.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.9 `std::unordered_map`
+
+Model family: hashed associative map. Required semantic focus: hash/equality calls,
+rehash invalidation, bucket-independent abstract mapping.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.10 `std::unordered_set`
+
+Model family: hashed set. Required semantic focus: hash/equality calls and rehash
+invalidation.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.11 `std::stack`
+
+Model family: container adaptor. Required semantic focus: top/push/pop semantics
+delegated to underlying container.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.12 `std::queue`
+
+Model family: container adaptor. Required semantic focus: front/back/push/pop
+semantics delegated to underlying container.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.13 `std::priority_queue`
+
+Model family: heap adaptor. Required semantic focus: comparator semantics and top
+element relation.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.14 `std::array`
+
+Model family: fixed array. Required semantic focus: fixed extent and aggregate
+element lifetime.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.15 `std::span`
+
+Model family: non-owning contiguous view. Required semantic focus:
+extent/lifetime/provenance.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.16 `std::mdspan`
+
+Model family: non-owning multidimensional view. Required semantic focus:
+mapping/extents/accessor semantics and backing lifetime.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.17 `std::string`
+
+Model family: owning character sequence. Required semantic focus:
+size/content/reallocation/invalidation.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.18 `std::string_view`
+
+Model family: non-owning character view. Required semantic focus: backing lifetime
+and extent.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.19 `std::optional`
+
+Model family: optional object. Required semantic focus: engaged state and payload
+lifetime.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.20 `std::variant`
+
+Model family: sum object. Required semantic focus: indexed active alternative and
+valueless state.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.21 `std::expected`
+
+Model family: value-or-error object. Required semantic focus: value/error state and
+payload lifetime.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.22 `std::pair`
+
+Model family: two-component product. Required semantic focus: first/second lifetimes
+and references.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.23 `std::tuple`
+
+Model family: heterogeneous product. Required semantic focus: indexed components and
+reference elements.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.24 `std::unique_ptr`
+
+Model family: unique owning pointer. Required semantic focus:
+move/reset/release/deleter and pointee lifetime.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.25 `std::shared_ptr`
+
+Model family: shared owning pointer. Required semantic focus: control block
+ownership, aliasing pointer and deleter.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.26 `std::weak_ptr`
+
+Model family: non-owning shared observer. Required semantic focus: expiration and
+lock.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.27 `std::function`
+
+Model family: type-erased callable. Required semantic focus: possible target
+contract/effects and empty state.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.28 `std::move_only_function`
+
+Model family: move-only type-erased callable. Required semantic focus: possible
+target contract/effects and moved-from state.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.29 `std::reference_wrapper`
+
+Model family: reference-like wrapper. Required semantic focus: alias semantics and
+no lifetime extension.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.30 `std::atomic`
+
+Model family: atomic object. Required semantic focus: memory order/modification
+order and value semantics.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.31 `std::mutex`
+
+Model family: mutual exclusion primitive. Required semantic focus: lock ownership
+and synchronization.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.32 `std::shared_mutex`
+
+Model family: shared/exclusive synchronization. Required semantic focus:
+mode-specific ownership.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.33 `std::condition_variable`
+
+Model family: condition synchronization. Required semantic focus: wait unlock/relock
+and spurious wakeups.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.34 `std::thread`
+
+Model family: thread lifetime. Required semantic focus: joinability, concurrent
+execution, join/detach.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.35 `std::jthread`
+
+Model family: joining thread. Required semantic focus: stop token and destruction
+join semantics.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.36 `std::future`
+
+Model family: asynchronous result. Required semantic focus: shared state
+readiness/get lifetime.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.37 `std::promise`
+
+Model family: asynchronous producer. Required semantic focus: shared state mutation
+and single satisfaction.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.38 `std::filesystem::path`
+
+Model family: runtime value abstraction. Required semantic focus: no theorem about
+filesystem existence without runtime interaction.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.39 `std::chrono durations/time_points`
+
+Model family: typed arithmetic. Required semantic focus: representation/period
+conversions and clock-specific runtime observations.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.40 `std::allocator`
+
+Model family: allocation policy. Required semantic focus:
+allocation/deallocation/object lifetime separation.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.41 `std::pmr abstractions`
+
+Model family: resource-backed allocation. Required semantic focus: resource
+lifetime/effects and allocation semantics.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.42 `std::ranges views`
+
+Model family: lazy non-owning/adaptor semantics. Required semantic focus: backing
+lifetimes, iterator validity and deferred calls.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+## Y.43 `std::ranges algorithms`
+
+Model family: algorithm calls. Required semantic focus: iterator/sentinel/callable
+preconditions and effects.
+
+- The formal model MUST agree with the selected C++ standard/library observable
+  semantics and preconditions; it may abstract representation details not observable
+  through the modeled interface.
+- Construction/destruction establishes and ends contained object lifetimes exactly
+  as the library semantics require.
+- Operations that invalidate pointers, references, iterators, views or handles MUST
+  invalidate the corresponding proof facts/capabilities.
+- Callable arguments such as comparators, hashers, predicates, deleters or
+  allocators contribute their own call/effect/exception obligations.
+- The abstract model must distinguish logical size/content/state from capacity,
+  storage representation or implementation details unless the standard exposes those
+  properties.
+- A standard-library precondition is a verification obligation before a verified
+  summary may be applied.
+- An operation documented to throw produces exceptional continuations on which
+  normal postconditions are unavailable.
+- A library type does not become pure, immutable, thread-safe or total merely
+  because it has an abstract mathematical model.
+- Refined element/value types must satisfy their predicates after every library
+  operation that constructs or writes such values.
+- Erasure of proof information MUST NOT change the standard-library object
+  representation, allocator behavior, runtime calls or ABI.
+
+# Normative Annex Z — Semantic edge-case catalogue
+
+## Z.1 self-aliasing assignment
+
+`x = x` and user-defined self-assignment must use actual C++ semantics; do not
+assume no effect for overloaded assignment.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.2 self-move assignment
+
+C++ type-specific semantics apply; no generic unchanged-value assumption.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.3 repeated reference actuals
+
+two formal refs may bind one place; one post-state version must represent that
+place.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.4 temporary bound to const reference
+
+lifetime extension follows exact C++ context, not a generic reference rule.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.5 temporary bound through return
+
+returning a reference to a temporary cannot gain lifetime from a contract.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.6 dangling view/span
+
+non-owning view lifetime must be tied to backing storage.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.7 vector reallocation
+
+all invalidated pointers/refs/iterators lose corresponding facts.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.8 vector no-reallocation path
+
+facts may be preserved only when the specific operation/capacity relation proves no
+invalidation.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.9 string small-buffer representation
+
+formal model must not rely on vendor SSO layout.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.10 shared_ptr aliasing constructor
+
+ownership and stored pointer may refer to different subobjects; do not conflate
+them.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.11 weak_ptr expiration race
+
+concurrent expiration requires synchronization semantics; a prior non-expired
+observation may not remain true.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.12 variant repeated types
+
+alternative identity is index, not type.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.13 variant valueless
+
+must remain a semantic state whenever C++ permits it.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.14 enum duplicate enumerator values
+
+aliases denote one logical value/case, not independent states.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.15 enum unnamed values
+
+underlying domain exceeds declared names and must remain representable.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.16 union common initial sequence
+
+only C++-permitted reads are admitted; no general simultaneous-member reasoning.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.17 no_unique_address overlap
+
+distinct names do not prove disjoint addresses/storage.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.18 empty base optimization
+
+base/subobject disjointness cannot be inferred from conceptual object distinctness
+alone.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.19 pointer one-past
+
+valid for limited arithmetic/comparison, not dereference.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.20 pointer after delete
+
+non-null bits do not imply live pointee capability.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.21 placement new same address
+
+new lifetime/version; stale object facts invalid.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.22 const_cast originally const object
+
+mutation may be UB; const_cast itself is not permission.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.23 reinterpret_cast pointer
+
+cast value does not prove alignment/provenance/type accessibility.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.24 memcmp object equality
+
+byte equality/value equality correspondence only where C++ object-representation
+semantics justify it.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.25 NaN comparison
+
+floating equality/order must preserve NaN behavior.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.26 signed zero
+
+floating proof must distinguish +0/-0 where observable.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.27 floating reassociation
+
+not allowed unless selected floating semantics justify it.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.28 unsigned wrap
+
+modular equality differs from mathematical integer order reasoning.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.29 signed overflow path
+
+must be excluded before using result; cannot be treated as wrap.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.30 short-circuit UB avoidance
+
+unexecuted right operand contributes no runtime UB obligation on that path.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.31 formal conjunction operand definedness
+
+both formal operands must themselves be valid specification expressions.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.32 exception during assignment
+
+partial mutation/state transitions must reflect actual C++ guarantee.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.33 destructor during unwinding
+
+effects/lifetime changes belong to exceptional path.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.34 throw from noexcept
+
+ordinary terminate semantics, not normal postcondition.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.35 callback reentrancy
+
+call may mutate state through reentrant paths unless contract/effect model excludes
+it.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.36 virtual dispatch in constructor/destructor
+
+C++ restricted dynamic dispatch semantics apply.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.37 pure virtual call edge cases
+
+ordinary C++ legality/UB applies; contract cannot make invalid call valid.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.38 default argument side effect
+
+evaluated caller-side according to C++, affects pre-call state.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.39 unspecified argument order
+
+proof cannot depend on one order unless sequencing established.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.40 initializer-list evaluation order
+
+use exact C++ sequencing rules for selected language mode.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.41 aggregate member order
+
+initialization order follows C++ declaration order rules.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.42 constructor initializer spelling order
+
+does not override C++ base/member initialization order.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.43 static initialization order
+
+cross-TU runtime initialization facts require actual C++ ordering guarantees.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.44 thread-local per-thread identity
+
+facts are instance-specific.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.45 volatile repeated read
+
+values need not remain stable.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.46 relaxed atomic
+
+atomicity without acquire/release synchronization.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.47 acquire-release handoff
+
+facts may transfer only according to valid happens-before reasoning.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.48 data-race UB
+
+verification must prove race freedom on claimed paths.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.49 coroutine suspension
+
+shared state may change before resumption.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.50 coroutine frame destruction
+
+references into destroyed frame become invalid.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.51 range view dangling
+
+lazy view may outlive backing object; verify lifetime.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.52 iterator end dereference
+
+end state is not readable element.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.53 unordered rehash
+
+iterator invalidation and bucket representation must not leak into abstract map
+meaning.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.54 comparator side effect
+
+container/algorithm formal model must include callback effects; comparator is not
+assumed pure.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.55 hash inconsistency
+
+formal model cannot assume hash/equality laws unless required/proven by interface
+assumptions.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.56 custom allocator
+
+allocation/deallocation effects and resource lifetime remain relevant.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.57 custom deleter
+
+destruction effects may be arbitrary runtime behavior under its contract.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.58 member function constness
+
+mutable members/reachable objects can still change.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.59 reference member copy
+
+copied object may alias same external referent rather than own a copied value.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.60 atomic reference
+
+non-owning atomic access still depends on referenced object lifetime/alignment.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.61 bit-field address
+
+cannot invent pointer/reference where C++ forbids taking address.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.62 incomplete type
+
+operations requiring completeness remain invalid until C++ permits them.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.63 ODR mismatch
+
+C++L does not repair an invalid C++ program by picking one definition.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.64 module duplicate metadata
+
+imported/redeclared metadata must refer to same semantic entity and agree.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.65 refinement overload collision
+
+erased same signature cannot be distinct native overloads.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.66 refinement alias
+
+alias preserves refinement identity, not just base spelling.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.67 refined union member
+
+membership applies only while that member is active/live.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.68 refined moved-from object
+
+every still-live refined place must satisfy its declared predicate after move
+effects.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.69 old pointer dereference
+
+entry snapshot requires dereference validity in entry state; later deallocation does
+not change captured logical value.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.70 old of new member in constructor
+
+invalid because member had no entry-state value.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.71 result in void contract
+
+invalid special identifier use.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.72 self outside refinement
+
+ordinary identifier unless context says otherwise.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.73 assume without premise
+
+rejected; never an axiom command.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.74 apply unresolved Law
+
+rejected; declaration alone is not evidence.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.75 trusted Law use
+
+derivation may be proven relative to trust but dependency remains.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.76 unsafe then proof
+
+unsafe result needs validation/trust/independent proof before contributing
+proposition.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.77 runtime assertion
+
+does not become Proof<P> merely because execution would continue when P is true.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.78 runtime validation failure
+
+must not produce refined value.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.79 proof case omission
+
+requires contradiction evidence, never heuristic reachability.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.80 proof pointer case
+
+non_null binds no address/capability.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.81 proof induction unsigned max
+
+successor principle includes range premise preventing wrap.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.82 proof recursion
+
+must be structurally/well-founded justified.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.83 decreases tuple
+
+one lexicographic measure list, not conjunction.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.84 loop break
+
+exit path does not receive negated loop condition automatically.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.85 loop continue
+
+must re-establish invariant and descent obligations.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.86 range-for hidden machinery
+
+verification accounts for range/begin/end/iterator operations even though source is
+compact.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.87 do-while invariant
+
+first body execution semantics differ from pre-test loop and must be modeled
+accordingly.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.88 goto join
+
+only facts true on every predecessor survive.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.89 switch fallthrough
+
+later case body may have effects/facts from earlier case path.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.90 if constexpr discarded branch
+
+runtime path absent, but C++ template/discarded-statement rules remain.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.91 consteval proof confusion
+
+compile-time execution does not make its result a theorem without formal
+correspondence.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.92 constexpr runtime call
+
+still runtime when not constant-evaluated.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.93 concept proof confusion
+
+concept satisfaction is not a runtime Law.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.94 foreign ABI success
+
+successful call does not prove undocumented semantic facts.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+## Z.95 serialization type tag
+
+deserialized bytes do not acquire refinement from target alias alone.
+
+- The selected C++ runtime semantics remain authoritative.
+- Any fact used by verified reasoning must be justified by checked semantics, valid
+  proof evidence, concrete runtime validation on that path, or explicit trust.
+- No hidden runtime proof/validation mechanism is implied.
+- When mutation/lifetime/dispatch may invalidate a fact, the verifier must
+  invalidate it rather than preserve a convenient stale proposition.
+- The invalid form must fail verification rather than being weakened, approximated,
+  or silently treated as unverified inside a declaration that claims verification.
+
+---
 
 ## Canonical surface conformance
 
