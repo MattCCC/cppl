@@ -509,8 +509,6 @@ std::string unmodeled_expression(CXCursor cursor, CXCursorKind kind) {
         case CXCursor_UnaryOperator:
             return "operator '" + take(clang_getUnaryOperatorKindSpelling(clang_getCursorUnaryOperatorKind(cursor))) +
                    "' is not modeled";
-        case CXCursor_ConditionalOperator:
-            return "the conditional operator '?:' is not modeled; if/else is";
         case CXCursor_CStyleCastExpr:
         case CXCursor_CXXFunctionalCastExpr:
         case CXCursor_CXXStaticCastExpr:
@@ -551,8 +549,6 @@ std::string statement_name(CXCursorKind kind) {
             return "a 'try' block (exceptions are not modeled)";
         case CXCursor_CXXThrowExpr:
             return "a 'throw' (exceptions are not modeled)";
-        case CXCursor_CallExpr:
-            return "a call whose value is discarded (effects are not modeled)";
         case CXCursor_NullStmt:
             return "an empty statement";
         case CXCursor_GCCAsmStmt:
