@@ -1830,6 +1830,13 @@ namespace-scope arrays, is rejected because its construction and mutation have
 no generated obligations. This is a verification limitation, not a change to the
 ordinary C++ representation or layout of the alias.
 
+A verified body tracks an aggregate local as one place per data member (section
+12.10) and checks the value every construction and write puts there. That covers
+the body-side paths; it is necessary and not sufficient, because ordinary code
+constructs records without generating any obligation. The declared refinement of
+a member therefore remains refused until the unverified construction boundary is
+checked as well.
+
 A refined member is sound only if every way of establishing or changing that
 member is checked against its refinement predicate:
 

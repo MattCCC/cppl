@@ -329,6 +329,84 @@ verified int f(int x, bool b, bool c, bool d) ensures(result > 0) {
 }
 CPP
 
+# --- Member places -----------------------------------------------------------
+#
+# An aggregate local is tracked as one place per data member (SPEC.md 12.10),
+# so a member is storage with its own version rather than a projection out of
+# one value of the whole object. These pin that a write reaches exactly the
+# member written, and no other.
+
+accept aggregate_member_read <<'CPP'
+struct S { int x; int y; };
+verified int f() ensures(result == 3) { S s{3, 7}; return s.x; }
+CPP
+
+accept member_write_is_seen <<'CPP'
+struct S { int x; };
+verified int f() ensures(result == 4) { S s{3}; s.x = 4; return s.x; }
+CPP
+
+# A write to one member must leave its siblings exactly as they were.
+accept sibling_member_untouched <<'CPP'
+struct S { int x; int y; };
+verified int f() ensures(result == 3) { S s{3, 7}; s.y = 9; return s.x; }
+CPP
+
+refuse sibling_member_is_not_the_written_one 'does not satisfy its contract' <<'CPP'
+struct S { int x; int y; };
+verified int f() ensures(result == 9) { S s{3, 7}; s.y = 9; return s.x; }
+CPP
+
+# A member's old version must not survive a write to it.
+refuse written_member_keeps_no_old_value 'does not satisfy its contract' <<'CPP'
+struct S { int x; int y; };
+verified int f() ensures(result == 7) { S s{3, 7}; s.y = 9; return s.y; }
+CPP
+
+# Two objects of one type are different storage.
+accept distinct_objects_are_distinct_places <<'CPP'
+struct S { int x; };
+verified int f() ensures(result == 1) { S a{1}; S b{2}; b.x = 5; return a.x; }
+CPP
+
+refuse distinct_objects_do_not_share_a_write 'does not satisfy its contract' <<'CPP'
+struct S { int x; };
+verified int f() ensures(result == 5) { S a{1}; S b{2}; b.x = 5; return a.x; }
+CPP
+
+# Members take part in ordinary branch and update reasoning.
+accept member_through_a_branch <<'CPP'
+struct S { int x; };
+verified int f(bool b) ensures(result > 0) { S s{1}; if (b) { s.x = 2; } return s.x; }
+CPP
+
+refuse member_through_a_branch_needs_every_route 'does not satisfy its contract' <<'CPP'
+struct S { int x; };
+verified int f(bool b) ensures(result > 1) { S s{1}; if (b) { s.x = 2; } return s.x; }
+CPP
+
+accept member_compound_update <<'CPP'
+struct S { unsigned x; };
+verified unsigned f() ensures(result == 5u) { S s{3u}; s.x += 2u; return s.x; }
+CPP
+
+# Construction this body cannot see the effect of on every member is refused,
+# rather than leaving a member tracked at an unconstrained value.
+refuse partial_aggregate_initialization 'partial aggregate initialization is not modeled' <<'CPP'
+struct S { int x; int y; };
+verified int f() ensures(result == 0) { S s{1}; return s.y; }
+CPP
+
+refuse aggregate_without_an_initializer 'cannot state what each member holds' <<'CPP'
+struct S { int x; };
+verified int f() ensures(result == 0) { S s; return s.x; }
+CPP
+
+refuse aggregate_from_a_constructor 'cannot state what each member holds' <<'CPP'
+struct S { int x; S(int v) : x(v) {} };
+verified int f() ensures(result == 1) { S s(1); return s.x; }
+CPP
+
 # --- Gaps: refused today, and the reason must stay visible -------------------
 #
 # These are reasoning or modeling gaps, not soundness boundaries. Each is

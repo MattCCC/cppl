@@ -151,6 +151,16 @@ reject unchecked_refined_array <<'CPP'
 type Positive = int where(self > 0);
 Positive values[2] = {0, 0};
 CPP
+# A verified body now tracks each member as its own place and checks the value
+# every construction and write puts there (SPEC.md 12.10), which is necessary
+# but not sufficient: ordinary code still constructs records without generating
+# any obligation. The declaration stays refused until that boundary is checked,
+# so this must not begin to compile merely because the body-side crossing works.
+reject refined_member_needs_the_unverified_boundary_too <<'CPP'
+type Positive = int where(self > 0);
+struct S { Positive x; };
+verified int f() ensures(result > 0) { S s{3}; return s.x; }
+CPP
 reject mutable_reference_cannot_bypass_membership <<'CPP'
 type Positive = int where(self > 0);
 verified int wrong() ensures(result == 0) {

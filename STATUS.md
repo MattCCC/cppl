@@ -669,6 +669,17 @@ capability model rather than five, so they are sequenced behind it (RFC 0014
 stated TCB delta (`TRUST.md` 41.2); it adds no kernel rule, axiom or logical
 assumption.
 
+The first step of that model is implemented. A verified body tracks an aggregate
+local as one place per data member (`SPEC.md` 12.10): a member is read at its own
+version and written through the ordinary write path, so a write reaches exactly
+the member written and distinct members and distinct objects never share a fact.
+Only aggregate initialization is admitted, because a constructor call or default
+initialization would leave a tracked member holding a value the body cannot
+state. Member construction and writes inside a verified body now generate the
+refinement obligations they owe; declared refined members stay refused, because
+ordinary code still constructs records without generating any obligation, which
+is the remaining half of that boundary.
+
 The same membership checks cover partial-correctness bodies containing loops and
 their callers, including unused refined locals. Corrupt or unresolved refinement
 metadata fails closed. This closes a verification gap without promoting the
