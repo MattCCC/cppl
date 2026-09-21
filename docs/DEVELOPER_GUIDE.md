@@ -5,8 +5,8 @@ C++L adds checked contracts, Laws, proofs and refinements to ordinary C++.
 **Functions ensure. Laws prove.** Runtime bodies remain C++; specifications and
 proofs are checked before erasure and native compilation.
 
-[SPEC.md](docs/SPEC.md) defines meaning and [the grammar](docs/GRAMMAR.md) defines
-syntax. This guide uses their canonical spelling. [STATUS.md](STATUS.md) records
+[SPEC.md](./SPEC.md) defines meaning and [the grammar](./GRAMMAR.md) defines
+syntax. This guide uses their canonical spelling. [STATUS.md](./STATUS.md) records
 verification coverage; a compiler that cannot check a construct must reject it,
 not accept its proposition as an assumption. Verification limitations do not
 create alternate syntax.
@@ -2923,7 +2923,7 @@ build/dev/bin/cppl -std=c++20 -fsyntax-only source.cpp
 runs verification without linking a native executable.
 
 Consult [TRUST.md](./TRUST.md) for trust-report meaning and
-[tools/cppl-lsp/README.md](tools/cppl-lsp/README.md) for editor setup.
+[tools/cppl-lsp/README.md](../tools/cppl-lsp/README.md) for editor setup.
 
 ### 18.1. Failed proof versus unsupported verification
 

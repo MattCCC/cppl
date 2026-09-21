@@ -796,7 +796,7 @@ A semicolon requests automatic construction and checking of evidence. An
 explicit body supplies proof steps through the same proof pipeline as `proof`.
 Failure of either form MUST fail compilation; neither creates an axiom. A
 `trusted law` is the separately explicit assumption form and MUST NOT have a
-proof body. The concrete grammar is [GRAMMAR.md](docs/GRAMMAR.md#3-law-declaration).
+proof body. The concrete grammar is [GRAMMAR.md](./GRAMMAR.md#3-law-declaration).
 
 ---
 

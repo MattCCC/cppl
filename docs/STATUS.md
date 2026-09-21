@@ -1102,7 +1102,7 @@ See [TRUST.md](./TRUST.md).
 | Erasure fuzzing                                      | `NOT STARTED` |
 | Reproducible release metadata                        | `NOT STARTED` |
 
-See [SECURITY.md](SECURITY.md).
+See [SECURITY.md](../SECURITY.md).
 
 ---
 

@@ -4,7 +4,7 @@ This document defines the **Trusted Computing Base (TCB)** and trust boundaries 
 
 It does **not** define C++L language semantics.
 
-Language syntax and semantics are defined in [SPEC.md](docs/SPEC.md).
+Language syntax and semantics are defined in [SPEC.md](./SPEC.md).
 
 The purpose of this document is to answer:
 
