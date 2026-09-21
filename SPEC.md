@@ -2032,15 +2032,22 @@ cannot hide in an arm. `assume` may name a fact the case supplies; it may not
 introduce a new one. At most 64 arms and 32 nested case statements are
 recognized, subject also to the existing proof-resource limits.
 
-The subject must denote one stable value for the whole statement. This
-implementation requires a value parameter; an expression that could be evaluated
-more than once, or whose value could change, is refused with a diagnostic rather
-than stabilized silently.
+The subject must denote one stable value for the whole statement. Any proof
+expression that denotes such a value is admitted, including a parameter of
+reference type; the subject is projected once, so an expression that would be
+evaluated more than once, or that would require an invented temporary, is
+refused with a diagnostic rather than stabilized silently.
 
-Case-derived facts are flow-sensitive in general. `cases` is currently available
-only in proof bodies, where the subject is a proof parameter and nothing can
-assign to it, so no case fact can go stale and none is carried across a
-mutation. Where `cases` becomes available over values that can change, its facts
+Case-derived facts are flow-sensitive in general. `cases` and `decompose` are
+available only in proof bodies, which contain proof statements alone: no
+assignment, call, construction or destruction can appear in one. No case fact
+can therefore go stale within the statement that derives it. A fact cannot
+escape one either: a subject that another object can write has reference type,
+and a reference type has no formal meaning, so no law or contract can state a
+proposition about it. Mutation and aliasing are thus excluded structurally
+rather than by analysis.
+
+Where a future revision admits `cases` over values that can change, its facts
 MUST participate in the same mutation and alias invalidation framework as every
 other proof fact — a provider MUST NOT be given an invalidation mechanism of its
 own.

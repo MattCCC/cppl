@@ -564,7 +564,8 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
                     const auto& arm = statement.arms[0];
                     if (arm.binders.size() != product->fields.size()) {
                         report(engine, diagnostics::Category::Elaboration, arm.location,
-                               "product binds " + std::to_string(product->fields.size()) + " components");
+                               "product binds " + std::to_string(product->fields.size()) +
+                                   " value(s), but this arm names " + std::to_string(arm.binders.size()));
                         return std::nullopt;
                     }
                     const auto outer_aliases = aliases.size();
