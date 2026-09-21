@@ -15,7 +15,7 @@ for standard in c++17 c++20 c++23; do
     grep -Eq '^Trusted external axioms: +0$' "$run/report"
     "$run/program"
     grep -Fq 'if (x <= 10u)' "$run/runtime.cpp"
-    grep -Fq 'if (identity(x) <= 10u) return bounded(x);' "$run/runtime.cpp"
+    grep -Fzq $'    if (identity(x) <= 10u)\n        return bounded(x);' "$run/runtime.cpp"
     if grep -Eq '\b(verified|ensures|expects|assert)\b' "$run/runtime.cpp"; then
         echo 'formal syntax or runtime checks survived erasure' >&2
         exit 1

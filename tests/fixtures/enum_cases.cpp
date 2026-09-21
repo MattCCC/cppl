@@ -27,11 +27,18 @@ proof nested(StateAlias s, One t)
     proves(Eq<State>(s, s))
 {
     cases s {
-        State::running => { assume h : s == State::running; rewrite h; refl; }
+        State::running => {
+            assume h : s == State::running;
+            rewrite h;
+            refl;
+        }
         State::idle => {
             assume outer : s == State::idle;
             cases t {
-                One::one => { rewrite outer; refl; }
+                One::one => {
+                    rewrite outer;
+                    refl;
+                }
                 unnamed(value) => {
                     assume excluded : value != 1u;
                     rewrite outer;
@@ -39,7 +46,9 @@ proof nested(StateAlias s, One t)
                 }
             }
         }
-        State::unnamed => { refl; }
+        State::unnamed => {
+            refl;
+        }
         unnamed(value) => {
             assume residual : value != static_cast<int>(State::idle) && value != 3 && value != 8;
             refl;
@@ -54,27 +63,56 @@ proof reused(One s)
 }
 
 enum class Empty : unsigned {};
-proof no_enumerators(Empty s) proves(s == s) {
-    cases s { unnamed(value) => { refl; } }
-}
-
-proof under_a_quantifier(One s) proves(forall(unsigned x) { x == x }) {
+proof no_enumerators(Empty s)
+    proves(s == s)
+{
     cases s {
-        One::one => { assume h : s == One::one; refl; }
-        unnamed(value) => { assume h : value != 1u; refl; }
+        unnamed(value) => {
+            refl;
+        }
     }
 }
 
-law stable(State s) ensures(s == s);
-proof stable_holds(State s) proves(stable(s)) {
+proof under_a_quantifier(One s)
+    proves(forall(unsigned x) { x == x })
+{
     cases s {
-        State::idle => { exact later(s); }
-        State::running => { refl; }
-        State::unnamed => { refl; }
-        unnamed(value) => { refl; }
+        One::one => {
+            assume h : s == One::one;
+            refl;
+        }
+        unnamed(value) => {
+            assume h : value != 1u;
+            refl;
+        }
     }
 }
-proof later(State s) proves(s == s) { refl; }
+
+law stable(State s)
+    ensures(s == s);
+proof stable_holds(State s)
+    proves(stable(s))
+{
+    cases s {
+        State::idle => {
+            exact later(s);
+        }
+        State::running => {
+            refl;
+        }
+        State::unnamed => {
+            refl;
+        }
+        unnamed(value) => {
+            refl;
+        }
+    }
+}
+proof later(State s)
+    proves(s == s)
+{
+    refl;
+}
 
 // Every underlying value is a valid scoped-enum state, including unnamed ones.
 int main() {

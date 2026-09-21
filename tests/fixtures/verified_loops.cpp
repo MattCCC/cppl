@@ -185,11 +185,17 @@ verified unsigned count_three()
 }
 
 int main() {
-    if (count_three() != 3u) return 6;
-    if (count_up(5u) != 5u || count_for(7u) != 7u || double_count(4u) != 8u) return 1;
-    if (untouched(3u, 9u) != 9u || drain(6u) != 0u) return 2;
-    if (find_limit(10u, 4u) != 4u || find_limit(3u, 8u) != 3u) return 3;
-    if (skip_some(6u) != 5u || walk_to_ten() != 10u || count_twice(4u) != 4u) return 4;
-    if (grid(3u, 4u) != 12u || grid(0u, 9u) != 0u) return 5;
+    if (count_three() != 3u)
+        return 6;
+    if (count_up(5u) != 5u || count_for(7u) != 7u || double_count(4u) != 8u)
+        return 1;
+    if (untouched(3u, 9u) != 9u || drain(6u) != 0u)
+        return 2;
+    if (find_limit(10u, 4u) != 4u || find_limit(3u, 8u) != 3u)
+        return 3;
+    if (skip_some(6u) != 5u || walk_to_ten() != 10u || count_twice(4u) != 4u)
+        return 4;
+    if (grid(3u, 4u) != 12u || grid(0u, 9u) != 0u)
+        return 5;
     return 0;
 }

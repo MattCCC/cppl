@@ -17,7 +17,7 @@ for standard in c++17 c++20 c++23; do
     grep -Fq 'unsigned y = x + 1u;' "$run/runtime.cpp"
     grep -Fq 'y = 7u;' "$run/runtime.cpp"
     grep -Fq 'unsigned y{x};' "$run/runtime.cpp"
-    grep -Fq 'if (b) x = 2u;' "$run/runtime.cpp"
+    grep -Fzq $'    if (b)\n        x = 2u;' "$run/runtime.cpp"
     grep -Fq 'y = identity(x);' "$run/runtime.cpp"
     grep -Fq 'y *= 3ul;' "$run/runtime.cpp"
     grep -Fq '    y++;' "$run/runtime.cpp"

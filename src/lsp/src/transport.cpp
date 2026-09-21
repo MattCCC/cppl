@@ -416,7 +416,7 @@ class Dispatcher {
         const auto character = params != nullptr ? params->find_string("ch") : std::nullopt;
         if (!uri || position_value == nullptr || !character) {
             respond_error(*id, kInvalidParams,
-                         "textDocument/onTypeFormatting missing 'textDocument.uri', 'position' or 'ch'");
+                          "textDocument/onTypeFormatting missing 'textDocument.uri', 'position' or 'ch'");
             return;
         }
         const auto line = position_value->find_number("line");

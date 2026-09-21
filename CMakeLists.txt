@@ -299,6 +299,11 @@ add_subdirectory(tools/cppl-lsp)
 add_subdirectory(tools/cppl-format)
 add_subdirectory(src/lsp)
 
+# CpplFormatting depends on the cppl-format target above, so it is included
+# here rather than alongside Formatting/Linting.
+
+include(CpplFormatting)
+
 # -----------------------------------------------------------------------------
 # Tests
 # -----------------------------------------------------------------------------
