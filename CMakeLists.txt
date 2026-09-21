@@ -296,6 +296,7 @@ add_subdirectory(vir)
 add_subdirectory(clang)
 add_subdirectory(compiler)
 add_subdirectory(tools/cppl-lsp)
+add_subdirectory(tools/cppl-format)
 add_subdirectory(src/lsp)
 
 # -----------------------------------------------------------------------------

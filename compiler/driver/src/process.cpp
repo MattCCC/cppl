@@ -15,6 +15,7 @@
 #include <windows.h>
 #else
 #include <cerrno>
+#include <fcntl.h>
 #include <spawn.h>
 #include <sys/wait.h>
 #include <system_error>
@@ -85,7 +86,10 @@ bool usable(HANDLE handle) {
 
 } // namespace
 
-ProcessResult run(const std::string& executable, const std::vector<std::string>& arguments) {
+namespace {
+
+ProcessResult spawn_and_wait(const std::string& executable, const std::vector<std::string>& arguments,
+                             HANDLE stdout_handle) {
     std::string command;
     append(command, executable);
     for (const std::string& argument : arguments) {
@@ -95,7 +99,7 @@ ProcessResult run(const std::string& executable, const std::vector<std::string>&
     STARTUPINFOA startup{};
     startup.cb = sizeof(startup);
     const HANDLE input = GetStdHandle(STD_INPUT_HANDLE);
-    const HANDLE output = GetStdHandle(STD_OUTPUT_HANDLE);
+    const HANDLE output = usable(stdout_handle) ? stdout_handle : GetStdHandle(STD_OUTPUT_HANDLE);
     const HANDLE error = GetStdHandle(STD_ERROR_HANDLE);
     if (usable(input) && usable(output) && usable(error)) {
         startup.dwFlags = STARTF_USESTDHANDLES;
@@ -134,10 +138,34 @@ ProcessResult run(const std::string& executable, const std::vector<std::string>&
     return ProcessResult{true, static_cast<int>(status), {}};
 }
 
-#else
+} // namespace
 
 ProcessResult run(const std::string& executable, const std::vector<std::string>& arguments) {
-    std::vector<std::string> words;
+    return spawn_and_wait(executable, arguments, nullptr);
+}
+
+ProcessResult run_capturing_stdout(const std::string& executable, const std::vector<std::string>& arguments,
+                                   const std::filesystem::path& output_path) {
+    SECURITY_ATTRIBUTES inheritable{};
+    inheritable.nLength = sizeof(inheritable);
+    inheritable.bInheritHandle = TRUE;
+
+    const HANDLE file = CreateFileA(output_path.string().c_str(), GENERIC_WRITE, 0, &inheritable, CREATE_ALWAYS,
+                                    FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (!usable(file)) {
+        return ProcessResult{false, -1, "could not create '" + output_path.string() + "': " + describe(GetLastError())};
+    }
+    const ProcessResult result = spawn_and_wait(executable, arguments, file);
+    CloseHandle(file);
+    return result;
+}
+
+#else
+
+namespace {
+
+std::vector<char*> build_argv(const std::string& executable, const std::vector<std::string>& arguments,
+                              std::vector<std::string>& words) {
     words.reserve(arguments.size() + 1);
     words.push_back(executable);
     words.insert(words.end(), arguments.begin(), arguments.end());
@@ -148,14 +176,10 @@ ProcessResult run(const std::string& executable, const std::vector<std::string>&
         argv.push_back(word.data());
     }
     argv.push_back(nullptr);
+    return argv;
+}
 
-    pid_t child = 0;
-    const int spawned = posix_spawnp(&child, executable.c_str(), nullptr, nullptr, argv.data(), environ);
-    if (spawned != 0) {
-        return ProcessResult{false, -1,
-                             "could not run '" + executable + "': " + std::generic_category().message(spawned)};
-    }
-
+ProcessResult wait_for(pid_t child, const std::string& executable) {
     int status = 0;
     while (waitpid(child, &status, 0) < 0) {
         if (errno != EINTR) {
@@ -163,7 +187,6 @@ ProcessResult run(const std::string& executable, const std::vector<std::string>&
                                  "could not wait for '" + executable + "': " + std::generic_category().message(errno)};
         }
     }
-
     if (WIFEXITED(status)) {
         return ProcessResult{true, WEXITSTATUS(status), {}};
     }
@@ -171,6 +194,49 @@ ProcessResult run(const std::string& executable, const std::vector<std::string>&
         return ProcessResult{true, 128 + WTERMSIG(status), "'" + executable + "' terminated by signal"};
     }
     return ProcessResult{true, -1, "'" + executable + "' ended abnormally"};
+}
+
+} // namespace
+
+ProcessResult run(const std::string& executable, const std::vector<std::string>& arguments) {
+    std::vector<std::string> words;
+    const std::vector<char*> argv = build_argv(executable, arguments, words);
+
+    pid_t child = 0;
+    const int spawned = posix_spawnp(&child, executable.c_str(), nullptr, nullptr, argv.data(), environ);
+    if (spawned != 0) {
+        return ProcessResult{false, -1,
+                             "could not run '" + executable + "': " + std::generic_category().message(spawned)};
+    }
+    return wait_for(child, executable);
+}
+
+ProcessResult run_capturing_stdout(const std::string& executable, const std::vector<std::string>& arguments,
+                                   const std::filesystem::path& output_path) {
+    std::vector<std::string> words;
+    const std::vector<char*> argv = build_argv(executable, arguments, words);
+
+    posix_spawn_file_actions_t actions;
+    if (posix_spawn_file_actions_init(&actions) != 0) {
+        return ProcessResult{false, -1, "could not prepare to run '" + executable + "'"};
+    }
+    // O_TRUNC|O_CREAT, 0600: only this process reads it back, from a private
+    // scratch directory (ScratchDirectory), so it is created owner-only.
+    const int opened = posix_spawn_file_actions_addopen(&actions, STDOUT_FILENO, output_path.c_str(),
+                                                        O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (opened != 0) {
+        posix_spawn_file_actions_destroy(&actions);
+        return ProcessResult{false, -1, "could not redirect output for '" + executable + "'"};
+    }
+
+    pid_t child = 0;
+    const int spawned = posix_spawnp(&child, executable.c_str(), &actions, nullptr, argv.data(), environ);
+    posix_spawn_file_actions_destroy(&actions);
+    if (spawned != 0) {
+        return ProcessResult{false, -1,
+                             "could not run '" + executable + "': " + std::generic_category().message(spawned)};
+    }
+    return wait_for(child, executable);
 }
 
 #endif

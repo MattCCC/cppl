@@ -4,8 +4,10 @@
 #include "cppl/lsp/linter.hpp"
 #include "cppl/lsp/protocol.hpp"
 
+#include <cstddef>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -38,6 +40,19 @@ class Server {
     void text_document_did_change(const VersionedTextDocumentIdentifier& id,
                                   const std::vector<TextDocumentContentChangeEvent>& changes);
     void text_document_did_close(const TextDocumentIdentifier& id);
+
+    // Formatting. All three share cppl::formatter's format_document/
+    // format_ranges/format_on_type with the CLI (tools/cppl-format), so
+    // canonical output is identical on both surfaces
+    // (tools/cppl-lsp/README.md). `std::nullopt` means the document is
+    // unknown; an empty (non-null) vector means it is known but already
+    // canonical, matching how LSP distinguishes "no edits" from "no such
+    // document" through a null vs. empty result.
+    [[nodiscard]] std::optional<std::vector<TextEdit>> text_document_formatting(const TextDocumentIdentifier& id);
+    [[nodiscard]] std::optional<std::vector<TextEdit>> text_document_range_formatting(const TextDocumentIdentifier& id,
+                                                                                      const Range& range);
+    [[nodiscard]] std::optional<std::vector<TextEdit>> text_document_on_type_formatting(
+        const TextDocumentIdentifier& id, const Position& position, const std::string& trigger_character);
 
     // Diagnostics
     using DiagnosticPublisher = std::function<void(const std::string& uri, std::vector<Diagnostic>)>;

@@ -73,4 +73,16 @@ struct TextDocumentIdentifier {
     std::string uri;
 };
 
+// A single replacement, as `textDocument/formatting` and friends respond with
+// (LSP: `TextEdit`).
+struct TextEdit {
+    Range range;
+    std::string newText;
+};
+
+struct FormattingOptions {
+    std::uint32_t tabSize = 4;
+    bool insertSpaces = true;
+};
+
 } // namespace cppl::lsp

@@ -277,6 +277,9 @@ Diagnostic Linter::convert_diagnostic(const diagnostics::Diagnostic& diag, const
         case diagnostics::Category::Policy:
             lsp_diag.code = "cppl.policy";
             break;
+        case diagnostics::Category::Style:
+            lsp_diag.code = "cppl.style";
+            break;
         case diagnostics::Category::Internal:
             lsp_diag.code = "cppl.internal";
             break;

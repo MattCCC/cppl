@@ -18,6 +18,8 @@ std::string describe(Category category) {
             return "kernel-rejection";
         case Category::Policy:
             return "policy";
+        case Category::Style:
+            return "style";
         case Category::Internal:
             return "internal";
     }

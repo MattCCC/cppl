@@ -1,11 +1,29 @@
 #include "cppl/lsp/server.hpp"
 
 #include "cppl/driver/buffer_compile.hpp"
+#include "cppl/formatter/format.hpp"
 #include "cppl/lsp/position.hpp"
 
 #include <utility>
 
 namespace cppl::lsp {
+
+namespace {
+
+std::vector<TextEdit> to_text_edits(const std::string& text, const std::vector<formatter::FormatEdit>& edits) {
+    const PositionMapper mapper(text);
+    std::vector<TextEdit> result;
+    result.reserve(edits.size());
+    for (const formatter::FormatEdit& edit : edits) {
+        TextEdit text_edit;
+        text_edit.range = mapper.byte_span_to_range(edit.span);
+        text_edit.newText = edit.replacement;
+        result.push_back(std::move(text_edit));
+    }
+    return result;
+}
+
+} // namespace
 
 Server::Server(std::string clang, std::vector<std::string> clang_arguments)
     : clang_(std::move(clang)),
@@ -56,6 +74,69 @@ void Server::text_document_did_close(const TextDocumentIdentifier& id) {
     documents_.close(id);
 }
 
+std::optional<std::vector<TextEdit>> Server::text_document_formatting(const TextDocumentIdentifier& id) {
+    const Document* doc = documents_.get(id.uri);
+    if (doc == nullptr) {
+        return std::nullopt;
+    }
+
+    formatter::FormatRequest request;
+    request.text = doc->text();
+    request.clang_format.clear(); // cppl::formatter falls back to its own configured default
+    request.virtual_path = doc->path();
+
+    const formatter::FormatResult result = formatter::format_document(request);
+    if (!result.ok) {
+        return std::vector<TextEdit>{}; // known document, formatting failed: no edits rather than an error response
+    }
+    return to_text_edits(doc->text(), result.edits);
+}
+
+std::optional<std::vector<TextEdit>> Server::text_document_range_formatting(const TextDocumentIdentifier& id,
+                                                                            const Range& range) {
+    const Document* doc = documents_.get(id.uri);
+    if (doc == nullptr) {
+        return std::nullopt;
+    }
+
+    const PositionMapper mapper(doc->text());
+    const std::size_t start = mapper.position_to_byte_offset(range.start);
+    const std::size_t end = mapper.position_to_byte_offset(range.end);
+
+    formatter::FormatRequest request;
+    request.text = doc->text();
+    request.virtual_path = doc->path();
+
+    const formatter::FormatResult result =
+        formatter::format_ranges(request, {source::ByteSpan{start, end > start ? end - start : 0}});
+    if (!result.ok) {
+        return std::vector<TextEdit>{};
+    }
+    return to_text_edits(doc->text(), result.edits);
+}
+
+std::optional<std::vector<TextEdit>> Server::text_document_on_type_formatting(const TextDocumentIdentifier& id,
+                                                                              const Position& position,
+                                                                              const std::string& trigger_character) {
+    const Document* doc = documents_.get(id.uri);
+    if (doc == nullptr) {
+        return std::nullopt;
+    }
+
+    const PositionMapper mapper(doc->text());
+    const std::size_t offset = mapper.position_to_byte_offset(position);
+
+    formatter::FormatRequest request;
+    request.text = doc->text();
+    request.virtual_path = doc->path();
+
+    const formatter::FormatResult result = formatter::format_on_type(request, offset, trigger_character);
+    if (!result.ok) {
+        return std::vector<TextEdit>{};
+    }
+    return to_text_edits(doc->text(), result.edits);
+}
+
 void Server::publish_diagnostics(const Document& doc) {
     if (!diagnostic_publisher_) {
         return;
@@ -103,6 +184,12 @@ void Server::publish_diagnostics(const Document& doc) {
         for (const diagnostics::Diagnostic& diagnostic : other_diagnostics) {
             lsp_diagnostics.push_back(linter_.convert_diagnostic(diagnostic, mapper));
         }
+        // The same clause-placement rule the formatter enforces, reported as
+        // Style warnings; cheap (no clang-format subprocess) so it runs on
+        // every publish rather than only when the user asks to format.
+        for (const diagnostics::Diagnostic& diagnostic : formatter::check_style(*outcome.tokens, *outcome.syntax)) {
+            lsp_diagnostics.push_back(linter_.convert_diagnostic(diagnostic, mapper));
+        }
     } else {
         // The pipeline could not even preprocess the buffer (missing clang,
         // a broken #include, ...): fall back to the document's own
@@ -111,6 +198,9 @@ void Server::publish_diagnostics(const Document& doc) {
         // engine diagnostic (preprocessing failures) directly.
         if (doc.tokens() && doc.syntax()) {
             lsp_diagnostics = linter_.lint(*doc.tokens(), *doc.syntax(), doc.diagnostics(), mapper);
+            for (const diagnostics::Diagnostic& diagnostic : formatter::check_style(*doc.tokens(), *doc.syntax())) {
+                lsp_diagnostics.push_back(linter_.convert_diagnostic(diagnostic, mapper));
+            }
         }
         for (const diagnostics::Diagnostic& diagnostic : engine.diagnostics()) {
             lsp_diagnostics.push_back(linter_.convert_diagnostic(diagnostic, mapper));

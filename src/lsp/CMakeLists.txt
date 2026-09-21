@@ -26,6 +26,7 @@ target_link_libraries(cppl_lsp PUBLIC
     cppl_diagnostics
     cppl_source
     cppl_driver
+    cppl_formatter
 )
 
 target_compile_features(cppl_lsp PUBLIC cxx_std_20)

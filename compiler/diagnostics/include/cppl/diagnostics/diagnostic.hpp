@@ -25,6 +25,7 @@ enum class Category : std::uint8_t {
     ProofFailure,         // an obligation was not discharged
     KernelRejection,      // the kernel refused the evidence offered
     Policy,               // the build policy refuses the result
+    Style,                // canonical formatting is violated; never blocks a build
     Internal,             // the compiler failed; never a verification result
 };
 

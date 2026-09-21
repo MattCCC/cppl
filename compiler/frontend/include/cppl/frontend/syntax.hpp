@@ -21,6 +21,7 @@ std::string describe(ClauseKind kind);
 
 struct Clause {
     ClauseKind kind = ClauseKind::Ensures;
+    source::ByteSpan keyword; // the clause keyword itself, e.g. 'ensures'
     source::ByteSpan expression;
     source::SourceLocation location;
 };
@@ -106,6 +107,7 @@ struct ProofDeclaration {
     source::SourceLocation keyword_location;
     std::uint32_t end_line = 0; // presumed line of the closing '}'
     source::ByteSpan parameters;
+    source::ByteSpan proves_keyword; // the 'proves' token itself
     source::ByteSpan proposition;
     source::SourceLocation proposition_location;
     std::vector<ProofStatement> statements;
@@ -150,6 +152,7 @@ struct VerifiedFunction {
 // and nothing the body declares is yet.
 struct LoopSpecification {
     std::size_t function_index = 0; // the verified function whose body holds the loop
+    source::ByteSpan keyword;       // the 'while' or 'for' token itself
     source::SourceLocation keyword_location;
     std::vector<Clause> invariants;
     std::vector<source::SourceLocation> expression_locations; // one per invariant

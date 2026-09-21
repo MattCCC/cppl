@@ -181,6 +181,12 @@ class Dispatcher {
             handle_did_change(params);
         } else if (method == "textDocument/didClose") {
             handle_did_close(params);
+        } else if (method == "textDocument/formatting") {
+            handle_formatting(id_value, params);
+        } else if (method == "textDocument/rangeFormatting") {
+            handle_range_formatting(id_value, params);
+        } else if (method == "textDocument/onTypeFormatting") {
+            handle_on_type_formatting(id_value, params);
         } else if (is_request) {
             respond_error(*id_value, kMethodNotFound, "method not found: " + method);
         } else {
@@ -232,6 +238,16 @@ class Dispatcher {
         // capability the server does not actually implement
         // (tools/cppl-lsp/README.md non-goals: no incremental sync yet).
         capabilities.set("textDocumentSync", json::Value(static_cast<int>(server_.sync_kind())));
+
+        capabilities.set("documentFormattingProvider", json::Value(true));
+        capabilities.set("documentRangeFormattingProvider", json::Value(true));
+
+        json::Value on_type_formatting = json::Value::object();
+        on_type_formatting.set("firstTriggerCharacter", json::Value(std::string("}")));
+        json::Value more_trigger_characters = json::Value::array();
+        more_trigger_characters.push_back(json::Value(std::string(";")));
+        on_type_formatting.set("moreTriggerCharacter", more_trigger_characters);
+        capabilities.set("documentOnTypeFormattingProvider", on_type_formatting);
 
         json::Value server_info = json::Value::object();
         server_info.set("name", json::Value("cppl-lsp"));
@@ -324,6 +340,98 @@ class Dispatcher {
         TextDocumentIdentifier id;
         id.uri = *uri;
         server_.text_document_did_close(id);
+    }
+
+    static json::Value text_edits_to_json(const std::vector<TextEdit>& edits) {
+        json::Value items = json::Value::array();
+        for (const TextEdit& edit : edits) {
+            json::Value range = json::Value::object();
+            json::Value start = json::Value::object();
+            start.set("line", json::Value(edit.range.start.line));
+            start.set("character", json::Value(edit.range.start.character));
+            json::Value end = json::Value::object();
+            end.set("line", json::Value(edit.range.end.line));
+            end.set("character", json::Value(edit.range.end.character));
+            range.set("start", start);
+            range.set("end", end);
+
+            json::Value item = json::Value::object();
+            item.set("range", range);
+            item.set("newText", json::Value(edit.newText));
+            items.push_back(item);
+        }
+        return items;
+    }
+
+    // `std::nullopt` (unknown document) responds with LSP's own `null`
+    // result, per the base protocol; a known-but-already-canonical document
+    // responds with an empty array, which is a different, meaningful result.
+    void respond_edits(const json::Value& id, std::optional<std::vector<TextEdit>> edits) {
+        if (!edits.has_value()) {
+            respond_result(id, json::Value(nullptr));
+            return;
+        }
+        respond_result(id, text_edits_to_json(*edits));
+    }
+
+    void handle_formatting(const json::Value* id, const json::Value* params) {
+        if (id == nullptr) {
+            return; // a notification would be malformed per the LSP spec; nothing to respond to
+        }
+        const json::Value* document = params != nullptr ? params->find("textDocument") : nullptr;
+        const auto uri = document != nullptr ? document->find_string("uri") : std::nullopt;
+        if (!uri) {
+            respond_error(*id, kInvalidParams, "textDocument/formatting missing 'textDocument.uri'");
+            return;
+        }
+        TextDocumentIdentifier document_id;
+        document_id.uri = *uri;
+        respond_edits(*id, server_.text_document_formatting(document_id));
+    }
+
+    void handle_range_formatting(const json::Value* id, const json::Value* params) {
+        if (id == nullptr) {
+            return;
+        }
+        const json::Value* document = params != nullptr ? params->find("textDocument") : nullptr;
+        const json::Value* range_value = params != nullptr ? params->find("range") : nullptr;
+        const auto uri = document != nullptr ? document->find_string("uri") : std::nullopt;
+        const std::optional<Range> range = range_value != nullptr ? parse_range(*range_value) : std::nullopt;
+        if (!uri || !range.has_value()) {
+            respond_error(*id, kInvalidParams, "textDocument/rangeFormatting missing 'textDocument.uri' or 'range'");
+            return;
+        }
+        TextDocumentIdentifier document_id;
+        document_id.uri = *uri;
+        respond_edits(*id, server_.text_document_range_formatting(document_id, *range));
+    }
+
+    void handle_on_type_formatting(const json::Value* id, const json::Value* params) {
+        if (id == nullptr) {
+            return;
+        }
+        const json::Value* document = params != nullptr ? params->find("textDocument") : nullptr;
+        const json::Value* position_value = params != nullptr ? params->find("position") : nullptr;
+        const auto uri = document != nullptr ? document->find_string("uri") : std::nullopt;
+        const auto character = params != nullptr ? params->find_string("ch") : std::nullopt;
+        if (!uri || position_value == nullptr || !character) {
+            respond_error(*id, kInvalidParams,
+                         "textDocument/onTypeFormatting missing 'textDocument.uri', 'position' or 'ch'");
+            return;
+        }
+        const auto line = position_value->find_number("line");
+        const auto column = position_value->find_number("character");
+        if (!line || !column) {
+            respond_error(*id, kInvalidParams, "textDocument/onTypeFormatting has a malformed 'position'");
+            return;
+        }
+        Position position;
+        position.line = static_cast<std::uint32_t>(*line);
+        position.character = static_cast<std::uint32_t>(*column);
+
+        TextDocumentIdentifier document_id;
+        document_id.uri = *uri;
+        respond_edits(*id, server_.text_document_on_type_formatting(document_id, position, *character));
     }
 
     void publish_diagnostics(const std::string& uri, const std::vector<Diagnostic>& diagnostics) {

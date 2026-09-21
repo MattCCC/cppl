@@ -163,6 +163,7 @@ bool try_law(const TokenStream& stream, std::size_t index, diagnostics::Engine& 
 
         Clause clause;
         clause.kind = *kind;
+        clause.keyword = tokens[cursor].span;
         clause.location = stream.location_of(tokens[cursor]);
         clause.expression = source::ByteSpan{tokens[cursor + 1].span.end(),
                                              tokens[clause_close].span.offset - tokens[cursor + 1].span.end()};
@@ -682,6 +683,7 @@ bool try_proof(const TokenStream& stream, std::size_t index, diagnostics::Engine
     proof.end_line = tokens[body_close].line;
     proof.parameters =
         source::ByteSpan{tokens[index + 2].span.end(), tokens[close].span.offset - tokens[index + 2].span.end()};
+    proof.proves_keyword = tokens[proves].span;
     proof.proposition = source::ByteSpan{tokens[proves + 1].span.end(),
                                          tokens[proves_close].span.offset - tokens[proves + 1].span.end()};
     proof.proposition_location = stream.location_of(tokens[proves]);
@@ -847,6 +849,7 @@ bool try_verified(const TokenStream& stream, std::size_t index, diagnostics::Eng
 
         Clause clause;
         clause.kind = *kind;
+        clause.keyword = tokens[cursor].span;
         clause.location = stream.location_of(tokens[cursor]);
         clause.expression = source::ByteSpan{tokens[cursor + 1].span.end(),
                                              tokens[clause_close].span.offset - tokens[cursor + 1].span.end()};
@@ -1005,6 +1008,7 @@ LoopClauses try_loop_clauses(const TokenStream& stream, std::size_t index, diagn
         }
         Clause invariant;
         invariant.kind = ClauseKind::Invariant;
+        invariant.keyword = keyword.span;
         invariant.location = stream.location_of(keyword);
         invariant.expression =
             source::ByteSpan{tokens[clause.keyword + 1].span.end(),
@@ -1018,6 +1022,7 @@ LoopClauses try_loop_clauses(const TokenStream& stream, std::size_t index, diagn
         loop.expression_locations.push_back(stream.location_of(tokens[clause.keyword + 2]));
     }
 
+    loop.keyword = tokens[index].span;
     loop.keyword_location = stream.location_of(tokens[index]);
     loop.clause_region = source::ByteSpan{tokens[written.front().keyword].span.offset,
                                           tokens[cursor].span.offset - tokens[written.front().keyword].span.offset};
