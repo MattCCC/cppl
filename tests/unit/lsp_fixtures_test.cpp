@@ -185,6 +185,32 @@ CPPL_TEST(false_law_is_a_proof_failure_not_a_cpp_semantic_error) {
     CPPL_CHECK(engine.has_errors());
 }
 
+// An unproven refinement is a proof failure the editor must see, and it must
+// reach the buffer pipeline from the same obligation machinery the CLI uses
+// rather than from an editor-only rule (tools/cppl-lsp/README.md). A write
+// through a reference alias is the interesting case: the alias names the
+// referent's storage, so the write owes the refinement there.
+CPPL_TEST(unproven_refinement_through_an_alias_is_a_proof_failure) {
+    diagnostics::Engine engine;
+    driver::BufferCompileRequest request;
+    request.virtual_path = "refinement_alias.cpp";
+    request.text = "type Positive = int where(self > 0);\n"
+                   "verified int wrong() ensures(result > 0) {\n"
+                   "    Positive x = 1;\n"
+                   "    int& r = x;\n"
+                   "    r = 0;\n"
+                   "    return x;\n"
+                   "}\n";
+    request.clang = CPPL_TEST_DEFAULT_CLANG;
+    request.clang_arguments = {"-std=c++20"};
+
+    const auto outcome = driver::compile_buffer(request, engine);
+    CPPL_CHECK(outcome.ok);
+    CPPL_CHECK(outcome.has_cppl);
+    CPPL_CHECK_EQ(count_category(engine, diagnostics::Category::CppSemantic), 0u);
+    CPPL_CHECK(engine.has_errors());
+}
+
 // --- malformed C++L must produce a CpplSyntax diagnostic ---------------
 
 CPPL_TEST(malformed_law_produces_cppl_syntax_diagnostic) {
