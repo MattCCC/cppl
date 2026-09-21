@@ -619,13 +619,19 @@ A permanent regression test pins this. General casts, lambdas, methods,
 alias-return lifetimes, `old` over mutable state, and dependent object flows
 remain unimplemented.
 
-Two reasoning gaps are refused rather than approximated, and `e2e_refinement_flow`
-pins both. A conditional expression bound to a local lowers to one opaque
-`select` term instead of splitting the path, so neither arm's facts reach the
-obligation; the same expression in tail position does split and does verify.
-`&&` states a proposition in a contract clause but is not modeled as an
-if-condition, so a branch establishing a two-sided predicate must be written as
-nested `if`s. Both fail closed and neither is a soundness boundary. Nested effectful expressions without represented C++ sequencing
+Binding a conditional to a local splits the route on its condition, so each arm
+is proved under what its own path supposes rather than as one opaque `select`
+term. An arm that is itself a conditional splits again, and a refinement
+crossing may be discharged arm by arm. This adds proof power and no fact: a
+single failing arm still rejects the binding, and a guarded arm supposes only
+what its condition states.
+
+Two reasoning gaps remain refused rather than approximated, and
+`e2e_refinement_flow` pins both. A conditional whose arm reads an earlier
+conditional local is not resolved transitively. `&&` states a proposition in a
+contract clause but is not modeled as an if-condition, so a branch establishing
+a two-sided predicate must be written as nested `if`s. Both fail closed and
+neither is a soundness boundary. Nested effectful expressions without represented C++ sequencing
 are rejected. These are implementation gaps, not completed capability.
 
 Pointer dereference is blocked rather than merely unimplemented. Every form

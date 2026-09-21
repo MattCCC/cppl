@@ -203,12 +203,47 @@ struct Route {
     const vir::Expr* returned;
 };
 
+bool routes(const vir::Expr& expression, std::vector<Step> steps, std::vector<Route>& result);
+
+// Bind a local whose value is a conditional. A conditional states one `select`
+// term, of which neither arm's facts are known, so the route splits on the
+// condition exactly as it does for a conditional in tail position: the local is
+// bound to the arm this path takes, and owes its predicate under what that path
+// supposes (SPEC.md 12.7). An arm that is itself a conditional splits again, so
+// only a non-conditional value is ever bound. Every expression a step points at
+// is an existing subexpression of this tree.
+bool bind_conditional(const vir::Expr& value, const vir::LocalVersion& binding, const vir::Expr& body,
+                      std::vector<Step> steps, std::vector<Route>& result) {
+    const auto* choice = std::get_if<vir::Conditional>(&value.node);
+    if (choice == nullptr) {
+        steps.push_back(Step{&value, &binding, true});
+        return routes(body, std::move(steps), result);
+    }
+    if (choice->operands.size() != 3 || !choice->operands[0].type.is_boolean())
+        return false;
+    for (const bool taken : {true, false}) {
+        auto arm = steps;
+        arm.push_back(Step{&choice->operands[0], nullptr, taken});
+        if (!bind_conditional(choice->operands[taken ? 1 : 2], binding, body, std::move(arm), result))
+            return false;
+    }
+    return true;
+}
+
 bool routes(const vir::Expr& expression, std::vector<Step> steps, std::vector<Route>& result) {
     if (result.size() >= 128)
         return false;
     if (const auto* bound = std::get_if<vir::LocalVersion>(&expression.node)) {
         if (bound->operands.size() != 2)
             return false;
+        // A conditional value states one `select` term, of which neither arm's
+        // facts are known. The route splits on the condition exactly as it does
+        // for a conditional in tail position, so the local is bound to the arm
+        // that path takes and owes its predicate under what that path supposes
+        // (SPEC.md 12.7). Both arms are existing subexpressions of this tree.
+        if (std::holds_alternative<vir::Conditional>(bound->operands[0].node)) {
+            return bind_conditional(bound->operands[0], *bound, bound->operands[1], std::move(steps), result);
+        }
         steps.push_back(Step{&bound->operands[0], bound, true});
         return routes(bound->operands[1], std::move(steps), result);
     }

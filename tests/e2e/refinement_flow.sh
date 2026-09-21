@@ -99,6 +99,28 @@ accept conditional_in_return <<'CPP'
 verified int f(bool b) ensures(result > 0) { return b ? 1 : 2; }
 CPP
 
+# Binding a conditional to a local splits the route, so each arm is proved under
+# what its own path supposes rather than as one opaque `select` term.
+accept conditional_bound_to_a_local <<'CPP'
+verified int f(bool b) ensures(result > 0) { int x = b ? 1 : 2; return x; }
+CPP
+
+# A refinement crossing may be discharged arm by arm.
+accept refined_crossing_through_a_conditional <<'CPP'
+type Positive = int where(self > 0);
+verified int f(bool b) ensures(result > 0) { Positive x = b ? 1 : 2; return x; }
+CPP
+
+# An arm that is itself a conditional splits again.
+accept nested_conditional_arms <<'CPP'
+verified int f(bool a, bool b) ensures(result > 0) { int x = a ? (b ? 1 : 2) : 3; return x; }
+CPP
+
+# The condition's own facts are available inside the arm it guards.
+accept condition_informs_its_arm <<'CPP'
+verified int f(int y) ensures(result > 0) { int x = y > 0 ? y : 1; return x; }
+CPP
+
 # --- Crossings that must be refused ------------------------------------------
 
 # An ordinary function's declaration is not proof of its refined return.
@@ -127,17 +149,35 @@ type Positive = int where(self > 0);
 verified int f(NonNegative x) ensures(result > 0) { Positive y = x; return y; }
 CPP
 
+# Splitting a conditional adds proof power, never a fact. Each arm must hold on
+# its own path: one failing arm rejects the whole binding.
+refuse conditional_true_arm_fails 'does not satisfy its contract' <<'CPP'
+verified int f(bool b) ensures(result > 0) { int x = b ? 0 : 2; return x; }
+CPP
+refuse conditional_false_arm_fails 'does not satisfy its contract' <<'CPP'
+verified int f(bool b) ensures(result > 0) { int x = b ? 1 : 0; return x; }
+CPP
+refuse conditional_arm_fails_refinement 'not shown to satisfy refinement type' <<'CPP'
+type Positive = int where(self > 0);
+verified int f(bool b) ensures(result > 0) { Positive x = b ? 1 : 0; return x; }
+CPP
+
+# A guarded arm supposes only what its condition states, never more.
+refuse conditional_does_not_overreach 'does not satisfy its contract' <<'CPP'
+verified int f(int y) ensures(result > 5) { int x = y > 0 ? y : 1; return x; }
+CPP
+
 # --- Gaps: refused today, and the reason must stay visible -------------------
 #
 # These are reasoning or modeling gaps, not soundness boundaries. Each is
 # refused, which is the fail-closed direction. If one begins to verify, that is
 # a deliberate improvement and this suite must be updated to `accept`.
 
-# A conditional bound to a local is lowered to one opaque `select` term rather
-# than splitting the path, so neither arm's facts are available. The same
-# expression in tail position does split and does verify (see above).
-refuse conditional_through_a_local 'does not satisfy its contract' <<'CPP'
-verified int f(bool b) ensures(result > 0) { int x = b ? 1 : 2; return x; }
+# A conditional whose arm reads an earlier conditional local is not resolved
+# transitively, so the second binding still sees an opaque term. Direct and
+# nested conditional bindings do split and do verify (see above).
+refuse chained_conditional_locals 'does not satisfy its contract' <<'CPP'
+verified int f(bool a, bool b) ensures(result > 0) { int x = a ? 1 : 2; int y = b ? x : 3; return y; }
 CPP
 
 # '&&' is modeled in a contract clause but not as an if-condition, so a branch
