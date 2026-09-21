@@ -382,6 +382,17 @@ is generated. No body or fact from a recovery AST is accepted as evidence.
 Reference/pointer return lifetimes, pointer dereference validity, general object
 mutation and exceptional post-state are not inferred by this model.
 
+Refined members are refused for the same reason, and the refusal is
+load-bearing. A record enters a verified body as a parameter, so unverified code
+constructs it. Treating a refined field's predicate as a fact available on read
+would let ordinary C++ manufacture refinement evidence, which section 18 of
+`AGENTS.md` forbids: an aggregate `S{-5}` would establish `self > 0` with no
+proof anywhere. Member reads therefore carry no component predicate, and
+refined field declarations are rejected at the boundary until obligations exist
+on every construction and mutation path (`SPEC.md` 17.2). The implementation
+order is construction and write obligations first, then projection and
+membership reasoning — never the reverse.
+
 Pointer dereference validity is an absent obligation, not a trusted assumption.
 No dereference is modeled, so nothing in the trusted base depends on one being
 valid. This is deliberate: `p != nullptr` is necessary and insufficient for a

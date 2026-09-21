@@ -1730,6 +1730,31 @@ namespace-scope arrays, is rejected because its construction and mutation have
 no generated obligations. This is a verification limitation, not a change to the
 ordinary C++ representation or layout of the alias.
 
+A refined member is sound only if every way of establishing or changing that
+member is checked against its refinement predicate:
+
+```text
+aggregate initialization
+default/value initialization
+constructor member initialization
+copy construction
+move construction
+copy assignment
+move assignment
+direct member assignment
+compound member update
+mutation through aliases/references/pointers
+unverified construction boundaries
+```
+
+Supplying a component's predicate on a member *read* is not sufficient and MUST
+NOT be implemented before those obligations exist. A record enters a verified
+body as a parameter, so its construction happens in unverified code: admitting a
+refined field and stating its predicate on read would let an ordinary
+`S{-5}` establish `self > 0`, which no rule of this specification proves. The
+required order is construction and write obligations first, then member
+projection and membership reasoning.
+
 ---
 
 ### 17.3.2 Refinement implication

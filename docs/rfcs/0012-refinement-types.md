@@ -148,7 +148,13 @@ writes and call effects, on both total and partial-correctness paths. No new
 kernel rule, logical assumption or axiom is introduced. The storage, alias and
 post-state correspondence expands the existing frontend/obligation TCB (TRUST.md
 10.1). General object and lifetime flows are still incomplete; STATUS.md records
-those implementation gaps. Refinement flow through a pointer dereference is
+those implementation gaps.
+
+Refined members follow one order, and it is not negotiable: obligations on every
+construction and mutation path first, then member projection and membership
+reasoning. Reversing it is unsound rather than merely incomplete, because a
+record is constructed by unverified code before it ever enters a verified body,
+so a predicate supplied on read is evidence nothing proved (SPEC.md 17.2). Refinement flow through a pointer dereference is
 blocked on the memory-validity obligations of RFC 0014, not merely unimplemented:
 a refinement may not cross into or out of `*p` while dereference validity itself
 is unproved.

@@ -611,9 +611,13 @@ about new versions; refined actual storage still owes membership. Repeated actua
 arguments share state. Branches and loop invariants use the same version model.
 This remains `PROTOTYPE`, not production-complete refinement flow.
 
-Refined members and arrays, general casts, lambdas, methods, alias-return
-lifetimes, `old` over mutable state, and dependent object flows remain
-unimplemented. Nested effectful expressions without represented C++ sequencing
+Refined members and arrays are blocked on construction and mutation obligations,
+not merely unimplemented. Member reads deliberately carry no component
+predicate: a record is constructed by unverified code, so supplying the
+predicate on read would let `S{-5}` prove `self > 0` (`SPEC.md` 17.2, `TRUST.md`).
+A permanent regression test pins this. General casts, lambdas, methods,
+alias-return lifetimes, `old` over mutable state, and dependent object flows
+remain unimplemented. Nested effectful expressions without represented C++ sequencing
 are rejected. These are implementation gaps, not completed capability.
 
 Pointer dereference is blocked rather than merely unimplemented. Every form
