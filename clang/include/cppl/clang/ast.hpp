@@ -2,6 +2,7 @@
 
 #include "cppl/source/location.hpp"
 #include "cppl/source/representation.hpp"
+#include "cppl/source/storage.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -24,6 +25,7 @@ enum class TypeKind : std::uint8_t {
     Bool,
     Proposition,
     Value,
+    Void,
     Unsupported,
 };
 
@@ -112,10 +114,17 @@ struct IntLiteral {
     std::int64_t value = 0;
 };
 
+struct CallEffect {
+    std::uint32_t argument = 0;
+    std::uint32_t version = 0;
+    Type declared;
+};
+
 struct Call {
     std::string callee_usr;
     std::string callee_name;
     std::vector<Expr> arguments;
+    std::vector<CallEffect> effects = {};
 };
 
 struct Binary {
@@ -199,6 +208,18 @@ struct Iterate {
 
 // A construct Clang resolved but C++L does not model. Carrying the reason
 // keeps the failure explainable instead of silently dropping the expression.
+// Completion carries the value and the parameter values in the post-state.
+struct ReturnState {
+    std::vector<Expr> operands; // result, then each parameter
+};
+
+// Possible alias mutation: bind a fresh value without inheriting old facts.
+struct UnknownVersion {
+    std::uint32_t version = 0;
+    Type value_type;
+    std::vector<Expr> operands; // continuation
+};
+
 struct Unsupported {
     std::string reason;
 };
@@ -207,13 +228,15 @@ struct Expr {
     Type type;
     source::SourceLocation location;
     std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, LocalVersion, LocalRef, Loop, Iterate,
-                 Projection, FormalEquality, Universal, Implication, Connective, Unsupported>
+                 Projection, FormalEquality, Universal, Implication, Connective, ReturnState, UnknownVersion,
+                 Unsupported>
         node;
 };
 
 struct Parameter {
     std::string name;
     Type type;
+    source::ParameterPassing passing = source::ParameterPassing::Value;
 };
 
 struct Function {

@@ -7,6 +7,8 @@
 namespace cppl::vir {
 
 std::string describe(const Type& type) {
+    if (type.is_void())
+        return "void";
     // A value that stands for a C++ representation is named the way it was
     // written, not by the scalar it is carried in: a diagnostic about a scoped
     // enum should say `State`, not `i32`.
@@ -114,6 +116,15 @@ std::string describe(const Expr& expr) {
                     text += (index != 0 ? ", " : "") + describe(node.operands[index]);
                 }
                 return text + ")";
+            } else if constexpr (std::is_same_v<Node, ReturnState>) {
+                std::string text = "complete(";
+                for (const auto& operand : node.operands)
+                    text += describe(operand) + "; ";
+                return text + ")";
+            } else if constexpr (std::is_same_v<Node, UnknownVersion>) {
+                return node.operands.size() == 1
+                           ? "havoc#" + std::to_string(node.version) + " in " + describe(node.operands.front())
+                           : "<malformed-mutation>";
             } else if constexpr (std::is_same_v<Node, Iterate>) {
                 std::string text = "next#" + std::to_string(node.loop) + "(";
                 for (std::size_t index = 0; index < node.operands.size(); ++index) {

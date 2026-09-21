@@ -84,13 +84,13 @@ reject narrow_increment 'after promotion' \
     'verified unsigned f(unsigned char x) ensures(result == 0u) { unsigned char y = x; ++y; return 0u; }'
 reject converted_update 'not modeled' \
     'verified unsigned f(unsigned x) ensures(result == x) { unsigned y = x; y += 1; return y; }'
-reject parameter_increment 'assigning to parameter' \
+reject parameter_increment 'does not satisfy its contract' \
     'verified unsigned f(unsigned x) ensures(result == x) { x++; return x; }'
 reject update_in_value 'not modeled' \
     'verified unsigned f(unsigned x) ensures(result == x) { unsigned y = x; unsigned z = ++y; return x; }'
 reject negation_statement 'only if/else' \
     'verified unsigned f(unsigned x) ensures(result == x) { unsigned y = x; -y; return y; }'
-reject parameter_assignment 'assigning to parameter' \
+reject parameter_assignment 'does not satisfy its contract' \
     'verified unsigned f(unsigned x) ensures(result == x) { x = 0u; return x; }'
 reject chained_assignment 'not modeled' \
     'verified unsigned f(unsigned x) ensures(result == 0u) { unsigned y = 0u, z = 0u; y = z = x; return z; }'

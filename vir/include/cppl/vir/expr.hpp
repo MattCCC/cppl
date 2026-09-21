@@ -52,10 +52,18 @@ struct IntLiteral {
     friend bool operator==(const IntLiteral&, const IntLiteral&) = default;
 };
 
+struct CallEffect {
+    std::uint32_t argument = 0;
+    std::uint32_t version = 0;
+    Type declared;
+    friend bool operator==(const CallEffect&, const CallEffect&) = default;
+};
+
 struct Call {
     SymbolId callee;
     std::string callee_name;
     std::vector<Expr> arguments;
+    std::vector<CallEffect> effects = {};
 
     friend bool operator==(const Call&, const Call&) = default;
 };
@@ -155,12 +163,24 @@ struct Iterate {
     friend bool operator==(const Iterate&, const Iterate&) = default;
 };
 
+struct ReturnState {
+    std::vector<Expr> operands; // result, then each parameter
+    friend bool operator==(const ReturnState&, const ReturnState&) = default;
+};
+
+struct UnknownVersion {
+    std::uint32_t version = 0;
+    Type value_type;
+    std::vector<Expr> operands; // continuation
+    friend bool operator==(const UnknownVersion&, const UnknownVersion&) = default;
+};
+
 struct Expr {
     ExprId id;
     Type type;
     Provenance provenance;
     std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, LocalVersion, LocalRef, Loop, Iterate,
-                 Projection, FormalEquality, Universal, Implication, Connective>
+                 Projection, FormalEquality, Universal, Implication, Connective, ReturnState, UnknownVersion>
         node;
 
     friend bool operator==(const Expr&, const Expr&) = default;

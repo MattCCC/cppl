@@ -38,8 +38,8 @@ reject multiple_returns 'unreachable trailing' \
     'verified unsigned f(unsigned x) ensures(result == x) { return x; return x; }'
 reject mutation 'not modeled|cannot state' \
     'verified unsigned f(unsigned x) ensures(result == x) { return ++x; }'
-reject reference 'not modeled' \
-    'verified unsigned f(unsigned& x) ensures(result == x) { return x; }'
+reject reference_false_post_state 'does not satisfy its contract' \
+    'verified unsigned f(unsigned& x) ensures(result == x) { unsigned before = x; x = 0u; return before; }'
 reject throwing 'only if/else' \
     'verified unsigned f(unsigned x) ensures(result == x) { throw x; }'
 reject impure_call 'not available|not declared pure' \
@@ -101,15 +101,15 @@ reject result_parameter 'redefinition of parameter.*result' \
 # Unsupported constructs are named as written, not by Clang's class for them.
 reject bitwise_not "operator '~' is not modeled" \
     'verified unsigned f(unsigned x) ensures(result == x) { return ~x; }'
-reject conditional_operator "conditional operator '\?:' is not modeled" \
-    'verified unsigned f(unsigned x) ensures(result == x) { return x == 0u ? x : x; }'
+reject conditional_operator_false 'does not satisfy its contract' \
+    'verified unsigned f(unsigned x) ensures(result == x) { return x == 0u ? 1u : x; }'
 reject explicit_cast 'explicit conversion is not modeled' \
     'verified unsigned f(unsigned x) ensures(result == x) { return (unsigned)x; }'
 reject switch_statement "found a 'switch' statement" \
     'verified unsigned f(unsigned x) ensures(result == x) { switch (x) { default: return x; } }'
 reject try_block "found a 'try' block" \
     'verified unsigned f(unsigned x) ensures(result == x) { try { return x; } catch (...) { return x; } }'
-reject discarded_call 'call whose value is discarded' \
+reject discarded_call 'not declared pure' \
     'unsigned h(unsigned x); verified unsigned f(unsigned x) ensures(result == x) { h(x); return x; }'
 reject direct_recursion 'it calls itself; recursion is not modeled' \
     'verified unsigned f(unsigned x) ensures(result == x) { if (x == 0u) return 0u; return f(x - 1u) + 1u; }'

@@ -7,6 +7,7 @@
 #include <cstddef>
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -156,6 +157,7 @@ struct ProjectionOptions {
     std::string generated_prefix = "__cppl_";
     std::string unit_key; // distinguishes generated names between units
     std::map<std::string, std::string> binding_types;
+    std::set<std::size_t> void_functions = {}; // Clang-resolved return types
 };
 
 [[nodiscard]] Projection project(const TokenStream& stream, const Syntax& syntax, const ProjectionOptions& options);

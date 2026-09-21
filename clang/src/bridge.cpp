@@ -133,6 +133,9 @@ Type convert_type(CXType type, unsigned depth = 0, ReferenceModel references = R
     // Layout is asked only of built-in integer types, which always have one.
     long long size = 0;
     switch (canonical.kind) {
+        case CXType_Void:
+            converted.kind = TypeKind::Void;
+            break;
         case CXType_Pointer: {
             converted.kind = TypeKind::Value;
             converted.representation.identity = "pointer:" + converted.spelling;
@@ -421,6 +424,7 @@ struct Local {
     std::uint32_t version = 0;
     Type type;
     std::optional<std::size_t> referent = std::nullopt;
+    bool external = false; // may alias another reference parameter
 };
 
 using Locals = std::vector<Local>;
@@ -438,6 +442,16 @@ CXType reference_value_type(CXType written) {
         written = underlying;
     }
     return CXType{CXType_Invalid, {nullptr, nullptr}};
+}
+
+source::ParameterPassing passing_of(CXType written) {
+    const auto canonical = clang_getCanonicalType(written);
+    if (canonical.kind != CXType_LValueReference && canonical.kind != CXType_RValueReference)
+        return source::ParameterPassing::Value;
+    if (clang_isConstQualifiedType(clang_getPointeeType(canonical)))
+        return source::ParameterPassing::ConstReference;
+    return canonical.kind == CXType_RValueReference ? source::ParameterPassing::RvalueReference
+                                                    : source::ParameterPassing::MutableReference;
 }
 
 std::optional<std::size_t> find_binding(const Locals& locals, CXCursor declaration) {
@@ -549,7 +563,8 @@ std::string statement_name(CXCursorKind kind) {
     }
 }
 
-Expr build_expression(CXCursor cursor, const std::vector<CXCursor>& parameters, const Locals& locals, unsigned depth);
+Expr build_expression(CXCursor cursor, const std::vector<CXCursor>& parameters, const Locals& locals, unsigned depth,
+                      bool sequenced_call = false);
 
 Expr build_integer_literal(CXCursor cursor) {
     CXEvalResult evaluated = clang_Cursor_Evaluate(cursor);
@@ -583,7 +598,8 @@ Expr build_integer_literal(CXCursor cursor) {
     return expr;
 }
 
-Expr build_expression(CXCursor cursor, const std::vector<CXCursor>& parameters, const Locals& locals, unsigned depth) {
+Expr build_expression(CXCursor cursor, const std::vector<CXCursor>& parameters, const Locals& locals, unsigned depth,
+                      bool sequenced_call) {
     if (depth > kMaxExpressionDepth) {
         return unsupported_expression(cursor, "expression nests deeper than the bridge allows");
     }
@@ -680,6 +696,20 @@ Expr build_expression(CXCursor cursor, const std::vector<CXCursor>& parameters, 
         }
     }
 
+    if (kind == CXCursor_ConditionalOperator) {
+        const auto parts = children_of(cursor);
+        if (parts.size() != 3)
+            return unsupported_expression(cursor, "malformed conditional expression");
+        Expr result;
+        result.type = convert_type(clang_getCursorType(cursor));
+        result.location = presumed_location(clang_getCursorLocation(cursor));
+        Conditional choice;
+        for (const auto& part : parts)
+            choice.operands.push_back(build_expression(part, parameters, locals, depth + 1));
+        result.node = std::move(choice);
+        return result;
+    }
+
     // Only the value-preserving scoped-enum -> exact underlying-type cast is
     // modeled. Clang resolves both types; all other casts still fail closed.
     if (kind == CXCursor_CXXStaticCastExpr) {
@@ -766,6 +796,13 @@ Expr build_expression(CXCursor cursor, const std::vector<CXCursor>& parameters, 
             return unsupported_expression(cursor, "call does not resolve to an ordinary function");
         }
 
+        for (int index = 0; index < clang_Cursor_getNumArguments(referenced); ++index) {
+            if (source::may_write(passing_of(
+                    clang_getCursorType(clang_Cursor_getArgument(referenced, static_cast<unsigned>(index))))) &&
+                !sequenced_call)
+                return unsupported_expression(
+                    cursor, "a mutating call requires a sequenced statement, initializer or assignment");
+        }
         Call call;
         call.callee_usr = take(clang_getCursorUSR(referenced));
         call.callee_name = qualified_name_of(referenced);
@@ -872,6 +909,8 @@ std::size_t return_paths(const Expr& expression) {
     if (const auto* loop = std::get_if<Loop>(&expression.node)) {
         return return_paths(loop->operands.back());
     }
+    if (const auto* unknown = std::get_if<UnknownVersion>(&expression.node); unknown && unknown->operands.size() == 1)
+        return return_paths(unknown->operands.front());
     return 1;
 }
 
@@ -989,6 +1028,28 @@ void mark_write(CXCursor cursor, const WriteScan& scan) {
         updates = op == CXUnaryOperator_PreInc || op == CXUnaryOperator_PostInc || op == CXUnaryOperator_PreDec ||
                   op == CXUnaryOperator_PostDec;
     }
+    if (kind == CXCursor_CallExpr) {
+        const auto callee = clang_getCursorReferenced(cursor);
+        const auto parameters = parameters_of(callee);
+        if (std::ranges::any_of(parameters, [](CXCursor parameter) {
+                return source::may_write(passing_of(clang_getCursorType(parameter)));
+            })) {
+            for (std::size_t index = 0; index < parameters.size(); ++index) {
+                if (!source::aliases_storage(passing_of(clang_getCursorType(parameters[index]))))
+                    continue;
+                auto argument = clang_Cursor_getArgument(cursor, static_cast<unsigned>(index));
+                while (clang_getCursorKind(argument) == CXCursor_UnexposedExpr ||
+                       clang_getCursorKind(argument) == CXCursor_ParenExpr) {
+                    const auto inner = children_of(argument);
+                    if (inner.size() != 1)
+                        break;
+                    argument = inner.front();
+                }
+                if (auto storage = written_storage(clang_getCursorReferenced(argument), *scan.locals))
+                    (*scan.written)[*storage] = true;
+            }
+        }
+    }
     if (!assigns && !updates) {
         return;
     }
@@ -1022,6 +1083,14 @@ void mark_writes(CXCursor root, const Locals& locals, std::vector<bool>& written
             return CXChildVisit_Recurse;
         },
         &scan);
+    for (std::size_t target = 0; target < locals.size(); ++target) {
+        if (!written[target] || !locals[target].external)
+            continue;
+        for (std::size_t other = 0; other < locals.size(); ++other)
+            if (locals[other].external && !locals[other].referent &&
+                same_modeled_value(locals[target].type, locals[other].type))
+                written[other] = true;
+    }
 }
 
 // Whether control leaves the function rather than reaching what follows. It
@@ -1102,6 +1171,138 @@ struct BodyLowering {
     std::vector<const LoopFrame*> frames;
     std::vector<std::string> consumed_invariants;
     std::string rejection;
+    bool executable_state = true;
+    source::SourceLocation completion_location = {};
+
+    bool has_post_state() const {
+        return executable_state &&
+               (result_type.kind == TypeKind::Void || std::ranges::any_of(parameters, [](CXCursor parameter) {
+                    return source::aliases_storage(passing_of(clang_getCursorType(parameter)));
+                }));
+    }
+
+    Expr completed(Expr value, const Locals& locals, CXCursor at) {
+        if (!has_post_state())
+            return value;
+        ReturnState state;
+        state.operands.push_back(std::move(value));
+        for (std::size_t index = 0; index < parameters.size(); ++index) {
+            const auto local = find_local(locals, parameters[index]);
+            if (local && source::aliases_storage(passing_of(clang_getCursorType(parameters[index])))) {
+                state.operands.push_back(local_read(locals[*local], at));
+            } else {
+                Expr input;
+                input.type = convert_type(clang_getCursorType(parameters[index]), 0, ReferenceModel::Referent);
+                input.location = presumed_location(clang_getCursorLocation(at));
+                input.node =
+                    ParameterRef{static_cast<std::uint32_t>(index), take(clang_getCursorSpelling(parameters[index]))};
+                state.operands.push_back(std::move(input));
+            }
+        }
+        Expr result;
+        result.type = result_type;
+        result.location =
+            clang_Cursor_isNull(at) ? completion_location : presumed_location(clang_getCursorLocation(at));
+        result.node = std::move(state);
+        return result;
+    }
+
+    Expr void_value(CXCursor at) const {
+        Expr value;
+        value.type = result_type;
+        value.location = clang_Cursor_isNull(at) ? completion_location : presumed_location(clang_getCursorLocation(at));
+        value.node = IntLiteral{0};
+        return value;
+    }
+
+    // Havoc uses the same version namespace as exact writes. No premise is
+    // inherited for the new value; old facts still name only old versions.
+    Expr unknown(const Local& storage, Expr body, CXCursor at) {
+        Expr result;
+        result.type = body.type;
+        result.location = presumed_location(clang_getCursorLocation(at));
+        result.node = UnknownVersion{storage.version, storage.type, {std::move(body)}};
+        return result;
+    }
+
+    std::vector<std::size_t> invalidate_aliases(std::size_t storage, Locals& state) {
+        std::vector<std::size_t> changed;
+        if (!state[storage].external)
+            return changed;
+        for (std::size_t index = 0; index < state.size(); ++index) {
+            if (index != storage && state[index].external && !state[index].referent &&
+                same_modeled_value(state[index].type, state[storage].type)) {
+                state[index].version = next_version++;
+                changed.push_back(index);
+            }
+        }
+        return changed;
+    }
+
+    // Evaluate a full expression once, then advance the storage touched by its
+    // call. The continuation sees only these post-call versions.
+    std::optional<Expr> evaluate(CXCursor cursor, Locals& state, std::vector<std::size_t>& invalidated) {
+        while (clang_getCursorKind(cursor) == CXCursor_UnexposedExpr ||
+               clang_getCursorKind(cursor) == CXCursor_ParenExpr) {
+            const auto children = children_of(cursor);
+            if (children.size() != 1 || !same_modeled_value(convert_type(clang_getCursorType(cursor)),
+                                                            convert_type(clang_getCursorType(children.front()))))
+                break;
+            cursor = children.front();
+        }
+        Expr value = build_expression(cursor, parameters, state, 0, true);
+        auto* call = std::get_if<Call>(&value.node);
+        if (!call)
+            return value;
+        const auto callee = clang_getCursorReferenced(cursor);
+        const auto params = parameters_of(callee);
+        const bool writes = std::ranges::any_of(
+            params, [](CXCursor parameter) { return source::may_write(passing_of(clang_getCursorType(parameter))); });
+        if (!writes)
+            return value;
+        std::vector<std::size_t> targets;
+        for (std::size_t index = 0; index < params.size(); ++index) {
+            if (!source::aliases_storage(passing_of(clang_getCursorType(params[index]))))
+                continue;
+            const auto target = written_local(clang_Cursor_getArgument(cursor, static_cast<unsigned>(index)), state);
+            if (!target)
+                return std::nullopt;
+            const auto storage = state[*target].referent.value_or(*target);
+            // Shared actual arguments must share one post-state value.
+            if (std::ranges::find(targets, storage) == targets.end()) {
+                targets.push_back(storage);
+                state[storage].version = next_version++;
+            }
+            call->effects.push_back(
+                CallEffect{static_cast<std::uint32_t>(index), state[storage].version, state[storage].type});
+        }
+        for (std::size_t other = 0; other < state.size(); ++other) {
+            if (!state[other].external || state[other].referent || std::ranges::find(targets, other) != targets.end())
+                continue;
+            if (std::ranges::any_of(targets, [&](std::size_t target) {
+                    return state[target].external && same_modeled_value(state[target].type, state[other].type);
+                })) {
+                state[other].version = next_version++;
+                invalidated.push_back(other);
+            }
+        }
+        return value;
+    }
+
+    std::optional<Expr> lower_call(CXCursor statement, const Continuation& next, const Locals& locals, unsigned depth) {
+        Locals state = locals;
+        std::vector<std::size_t> invalidated;
+        auto value = evaluate(statement, state, invalidated);
+        if (!value)
+            return std::nullopt;
+        const auto version = next_version++;
+        auto body = lower_statements(next, state, depth + 1);
+        if (!body)
+            return std::nullopt;
+        for (auto index : invalidated)
+            *body = unknown(state[index], std::move(*body), statement);
+        return bind(version, "discarded call", std::move(*value), std::move(*body), statement);
+    }
 
     std::nullopt_t reject(std::string reason) {
         if (rejection.empty()) {
@@ -1133,6 +1334,10 @@ struct BodyLowering {
         }
         if (from.index == from.statements->size()) {
             if (from.outer == nullptr) {
+                if (result_type.kind == TypeKind::Void) {
+                    const CXCursor at = clang_getNullCursor();
+                    return completed(void_value(at), locals, at);
+                }
                 return reject("every path must return a value");
             }
             return lower_statements(*from.outer, locals, depth + 1);
@@ -1152,12 +1357,33 @@ struct BodyLowering {
             const std::vector<CXCursor> nested = children_of(statement);
             return lower_statements(Continuation{&next, &nested, 0}, locals, depth + 1);
         }
+        if (kind == CXCursor_CallExpr)
+            return lower_call(statement, next, locals, depth);
+        if (kind == CXCursor_NullStmt)
+            return lower_statements(next, locals, depth + 1);
         if (kind == CXCursor_ReturnStmt) {
             const std::vector<CXCursor> returned = children_of(statement);
-            if (returned.size() != 1) {
+            if (returned.empty() && result_type.kind == TypeKind::Void)
+                return completed(void_value(statement), locals, statement);
+            if (returned.size() != 1)
                 return reject("a return requires one value");
-            }
-            return build_expression(returned[0], parameters, locals, 0);
+            Locals state = locals;
+            std::vector<std::size_t> invalidated;
+            auto value = evaluate(returned.front(), state, invalidated);
+            if (!value)
+                return std::nullopt;
+            const auto* call = std::get_if<Call>(&value->node);
+            if (call == nullptr || call->effects.empty())
+                return completed(std::move(*value), state, statement);
+            const auto version = next_version++;
+            Expr read;
+            read.type = value->type;
+            read.location = value->location;
+            read.node = LocalRef{version, "return value"};
+            Expr body = completed(std::move(read), state, statement);
+            for (auto changed : invalidated)
+                body = unknown(state[changed], std::move(body), statement);
+            return bind(version, "return value", std::move(*value), std::move(body), statement);
         }
         if (kind == CXCursor_DeclStmt) {
             return lower_declaration(children_of(statement), 0, next, locals, depth);
@@ -1495,24 +1721,31 @@ struct BodyLowering {
             }
             initializer = elements[0];
         }
-        Expr value = build_expression(initializer, parameters, locals, 0);
+        Locals declaring = locals;
+        std::vector<std::size_t> invalidated;
+        auto evaluated = evaluate(initializer, declaring, invalidated);
+        if (!evaluated)
+            return std::nullopt;
+        Expr value = std::move(*evaluated);
         if (!std::holds_alternative<Unsupported>(value.node) && !same_modeled_value(type, value.type)) {
             return reject("initializing '" + name + "' of type '" + type.spelling + "' from '" + value.type.spelling +
                           "' is a conversion that is not modeled");
         }
         const std::uint32_t version = next_version++;
-        Locals declaring = locals;
         declaring.push_back(Local{declaration, version, type, referent});
         std::optional<Expr> body = lower_declaration(declared, index + 1, next, declaring, depth);
         if (!body) {
             return std::nullopt;
         }
+        for (auto changed : invalidated)
+            *body = unknown(declaring[changed], std::move(*body), declaration);
         return bind(version, name, std::move(value), std::move(*body), declaration, type);
     }
 
     // The local a write targets. Only a local of this body is ever written.
     std::optional<std::size_t> written_local(CXCursor target, const Locals& locals) {
-        while (clang_getCursorKind(target) == CXCursor_ParenExpr) {
+        while (clang_getCursorKind(target) == CXCursor_ParenExpr ||
+               clang_getCursorKind(target) == CXCursor_UnexposedExpr) {
             const std::vector<CXCursor> inner = children_of(target);
             if (inner.size() != 1) {
                 return reject("this assignment target is not modeled");
@@ -1527,8 +1760,7 @@ struct BodyLowering {
         const std::optional<std::size_t> local = find_binding(locals, declaration);
         if (!local) {
             if (clang_getCursorKind(declaration) == CXCursor_ParmDecl) {
-                return reject("assigning to parameter '" + name +
-                              "' is not modeled: a contract names the value the caller passed");
+                return reject("parameter '" + name + "' has no modeled writable storage");
             }
             return reject("'" + name + "' is not a local of this body");
         }
@@ -1541,6 +1773,7 @@ struct BodyLowering {
         Locals assigned = locals;
         const std::size_t storage = locals[local].referent.value_or(local);
         assigned[storage].version = version;
+        const auto invalidated = invalidate_aliases(storage, assigned);
         std::optional<Expr> body = lower_statements(next, assigned, depth + 1);
         if (!body) {
             return std::nullopt;
@@ -1550,9 +1783,15 @@ struct BodyLowering {
         // type - refinement and all. Dropping it here would let a write into a
         // refined local escape the obligation its declaration owed (SPEC.md 17.2).
         Type required = locals[storage].type;
-        for (const auto& refinement : locals[local].type.refinements) {
-            if (std::ranges::find(required.refinements, refinement) == required.refinements.end())
-                required.refinements.push_back(refinement);
+        auto require = [&](const Type& type) {
+            for (const auto& refinement : type.refinements)
+                if (std::ranges::find(required.refinements, refinement) == required.refinements.end())
+                    required.refinements.push_back(refinement);
+        };
+        require(locals[local].type);
+        for (const auto index : invalidated) {
+            require(locals[index].type);
+            *body = unknown(assigned[index], std::move(*body), statement);
         }
         return bind(version, take(clang_getCursorSpelling(locals[local].declaration)), std::move(value),
                     std::move(*body), statement, required);
@@ -1569,13 +1808,20 @@ struct BodyLowering {
             return std::nullopt;
         }
         const Type& type = locals[*local].type;
-        Expr value = build_expression(operands[1], parameters, locals, 0);
+        Locals state = locals;
+        std::vector<std::size_t> invalidated;
+        auto evaluated = evaluate(operands[1], state, invalidated);
+        if (!evaluated)
+            return std::nullopt;
+        Expr value = std::move(*evaluated);
+        if (!invalidated.empty())
+            return reject("assignment call has uncertain aliases; use a separate call statement");
         if (!std::holds_alternative<Unsupported>(value.node) && !same_modeled_value(type, value.type)) {
             return reject("assigning '" + value.type.spelling + "' to '" +
                           take(clang_getCursorSpelling(locals[*local].declaration)) + "' of type '" + type.spelling +
                           "' is a conversion that is not modeled");
         }
-        return write(*local, std::move(value), statement, next, locals, depth);
+        return write(*local, std::move(value), statement, next, state, depth);
     }
 
     // `x += e`, `x -= e`, `x *= e`, `++x`, `x++`, `--x` and `x--` as statements.
@@ -1655,7 +1901,8 @@ struct BodyLowering {
 };
 
 void extract_body(Function& function, CXCursor cursor, const std::vector<CXCursor>& parameters,
-                  const std::string& invariant_prefix, const std::vector<Selection::Refinement>& refinements) {
+                  const std::string& invariant_prefix, const std::vector<Selection::Refinement>& refinements,
+                  bool executable_state) {
     const std::vector<CXCursor> members = children_of(cursor);
 
     std::size_t body_index = members.size();
@@ -1672,8 +1919,52 @@ void extract_body(Function& function, CXCursor cursor, const std::vector<CXCurso
     function.has_body = true;
 
     const std::vector<CXCursor> statements = children_of(members[body_index]);
-    BodyLowering lowering{parameters, function.result, invariant_prefix, &refinements, 0, 0, {}, {}, {}};
-    function.returned_value = lowering.lower_statements(Continuation{nullptr, &statements, 0}, {}, 0);
+    BodyLowering lowering{parameters, function.result, invariant_prefix, &refinements, 0, 0, {}, {},
+                          {},         executable_state};
+    lowering.completion_location = presumed_location(clang_getRangeEnd(clang_getCursorExtent(members[body_index])));
+    Locals candidates;
+    for (std::size_t index = 0; index < parameters.size(); ++index) {
+        const auto& parameter = function.parameters[index];
+        if (executable_state && (parameter.type.kind == TypeKind::Int || parameter.type.kind == TypeKind::Bool))
+            candidates.push_back(
+                Local{parameters[index], 0, parameter.type, std::nullopt, source::aliases_storage(parameter.passing)});
+    }
+    std::vector<bool> needed(candidates.size(), lowering.has_post_state());
+    mark_writes(members[body_index], candidates, needed);
+    WriteScan aliases{&candidates, &needed};
+    clang_visitChildren(
+        members[body_index],
+        [](CXCursor child, CXCursor, CXClientData data) {
+            auto& scan = *static_cast<WriteScan*>(data);
+            if (clang_getCursorKind(child) == CXCursor_VarDecl &&
+                source::aliases_storage(passing_of(clang_getCursorType(child)))) {
+                if (auto target = written_storage(child, *scan.locals))
+                    (*scan.written)[*target] = true;
+            }
+            return CXChildVisit_Recurse;
+        },
+        &aliases);
+    Locals entry;
+    for (std::size_t index = 0; index < candidates.size(); ++index) {
+        if (!needed[index])
+            continue;
+        candidates[index].version = lowering.next_version++;
+        entry.push_back(candidates[index]);
+    }
+    function.returned_value = lowering.lower_statements(Continuation{nullptr, &statements, 0}, entry, 0);
+    if (function.returned_value) {
+        for (const auto& local : std::views::reverse(entry)) {
+            const auto parameter = std::ranges::find_if(
+                parameters, [&](CXCursor cursor) { return clang_equalCursors(cursor, local.declaration); });
+            Expr value;
+            value.type = local.type;
+            value.location = function.location;
+            value.node = ParameterRef{static_cast<std::uint32_t>(parameter - parameters.begin()),
+                                      take(clang_getCursorSpelling(local.declaration))};
+            *function.returned_value = lowering.bind(local.version, take(clang_getCursorSpelling(local.declaration)),
+                                                     std::move(value), std::move(*function.returned_value), cursor);
+        }
+    }
     if (!function.returned_value) {
         function.body_rejection = lowering.rejection.empty() ? "every path must return a value" : lowering.rejection;
     }
@@ -1996,13 +2287,29 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
 
     // A rejected unit is never verified, and libclang's layout queries can
     // crash on the error types of its recovery expressions.
-    if (result.has_errors && !request.recover_bindings) {
+    if (result.has_errors && !request.recover_bindings && !request.recover_contract_types)
         return result;
-    }
 
     Collector collector;
     collector.selection = &request.selection;
     clang_visitChildren(clang_getTranslationUnitCursor(unit), collect, &collector);
+    if (result.has_errors && request.recover_contract_types && !request.recover_bindings) {
+        // Recover only canonical void return identities, never bodies, layout,
+        // obligations or facts from an erroneous AST. The corrected projection
+        // must pass a fresh Clang analysis before verification can proceed.
+        for (const auto cursor : collector.selected) {
+            const auto offset = physical_offset(cursor);
+            if (std::ranges::find(request.selection.verified_offsets, offset) ==
+                    request.selection.verified_offsets.end() ||
+                clang_getCanonicalType(clang_getCursorResultType(cursor)).kind != CXType_Void)
+                continue;
+            Function function;
+            function.analysis_offset = offset;
+            function.result.kind = TypeKind::Void;
+            result.functions.push_back(std::move(function));
+        }
+        return result;
+    }
 
     // An erased return alias is not evidence. Check even ordinary declarations
     // that were not selected for body elaboration. A verified redeclaration may
@@ -2085,12 +2392,13 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
             // resolves it without requiring a copy, a move, a default
             // constructor or any runtime object. It denotes the subject's own
             // value, so the referent is what it means.
-            Type parameter_type =
-                convert_type(clang_getCursorType(parameter), 0,
-                             projected_expression ? ReferenceModel::Referent : ReferenceModel::Opaque);
-            attach_refinements(parameter_type, parameter, clang_getCursorType(parameter));
+            const auto written = clang_getCursorType(parameter);
+            const auto passing = passing_of(written);
+            Type parameter_type = convert_type(written, 0, ReferenceModel::Referent);
+            attach_refinements(parameter_type, parameter,
+                               source::aliases_storage(passing) ? reference_value_type(written) : written);
             function.parameters.push_back(
-                Parameter{take(clang_getCursorSpelling(parameter)), std::move(parameter_type)});
+                Parameter{take(clang_getCursorSpelling(parameter)), std::move(parameter_type), passing});
         }
 
         // The projector's invariant declarations share the generated prefix,
@@ -2104,7 +2412,9 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
                          request.selection.specification_prefix.empty()
                              ? std::string()
                              : request.selection.specification_prefix + "invariant_",
-                         request.selection.refinements);
+                         request.selection.refinements,
+                         std::ranges::find(request.selection.verified_offsets, function.analysis_offset) !=
+                             request.selection.verified_offsets.end());
         }
         result.functions.push_back(std::move(function));
     }

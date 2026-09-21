@@ -191,9 +191,10 @@ verified int wrong() ensures(result > 0) {
     return r;
 }
 CPP
-reject reference_to_a_parameter_is_refused <<'CPP'
+reject reference_to_parameter_tracks_mutation <<'CPP'
 verified int wrong(int x) ensures(result == x) {
     int& r = x;
+    r = 0;
     return r;
 }
 CPP
@@ -357,7 +358,7 @@ grep -q 'ordinary function.*return cannot establish refinement' "$run/ordinary_r
 grep -q 'ordinary function.*return cannot establish refinement' "$run/pure_does_not_prove_refined_return.log"
 grep -q 'ordinary function.*return cannot establish refinement' "$run/ordinary_refined_reference_return.log"
 grep -q 'must bind a tracked local object' "$run/reference_to_a_temporary_is_refused.log"
-grep -q 'must bind a tracked local object' "$run/reference_to_a_parameter_is_refused.log"
+grep -q 'does not satisfy its contract' "$run/reference_to_parameter_tracks_mutation.log"
 # A write through an alias is a write to the storage: the refinement is owed
 # there, and no fact about an earlier version survives it.
 grep -q 'not shown to satisfy refinement type' "$run/mutable_reference_cannot_bypass_membership.log"

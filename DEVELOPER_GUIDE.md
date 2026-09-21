@@ -1689,6 +1689,21 @@ whether that reasoning is valid
 
 ---
 
+## Extending storage and refinement flow
+
+Use the Clang-resolved binding and `source::ParameterPassing` to identify the
+storage a parameter denotes. `LocalVersion` means an exact value was written;
+`UnknownVersion` means a possible mutation invalidated the previous observation.
+`CallEffect` and `ReturnState` connect the call's new versions to the verified
+postcondition. Do not add a second refinement or alias engine for a syntax node.
+
+A new write path must reach the shared membership predicate, advance versions,
+participate in loop write discovery and carry its source location. Test direct
+and aliased writes, stale preconditions, failed callees, repeated arguments,
+refinement restoration, and runtime erasure. Run `e2e_verified_storage`,
+`negative_verified_storage`, `unit_contracts_test`, and `lsp_fixtures_test` before
+the full repository gate. Semantic requirements are SPEC.md 12.9 and 17.
+
 # 47. Where to read next
 
 Use:

@@ -44,6 +44,7 @@ struct ParseRequest {
     Selection selection;
     std::optional<std::string> content;
     bool recover_bindings = false;
+    bool recover_contract_types = false;
 };
 
 // Parses with Clang and returns the resolved semantic facts.

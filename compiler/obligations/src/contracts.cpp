@@ -123,6 +123,12 @@ void collect_calls(const vir::Expr& expression, const Contracts& contracts, std:
         if (contracts.contains(call->callee.usr)) {
             calls.push_back(&expression);
         }
+    } else if (const auto* returned = std::get_if<vir::ReturnState>(&expression.node)) {
+        for (const auto& operand : returned->operands)
+            collect_calls(operand, contracts, calls);
+    } else if (const auto* unknown = std::get_if<vir::UnknownVersion>(&expression.node)) {
+        for (const auto& operand : unknown->operands)
+            collect_calls(operand, contracts, calls);
     } else if (const auto* bound = std::get_if<vir::LocalVersion>(&expression.node)) {
         for (const auto& operand : bound->operands)
             collect_calls(operand, contracts, calls);
@@ -145,15 +151,17 @@ void collect_calls(const vir::Expr& expression, const Contracts& contracts, std:
     }
 }
 
-bool contains_loop(const vir::Expr& expression) {
-    if (std::holds_alternative<vir::Loop>(expression.node)) {
+bool requires_conditions(const vir::Expr& expression) {
+    if (std::holds_alternative<vir::Loop>(expression.node) ||
+        std::holds_alternative<vir::ReturnState>(expression.node) ||
+        std::holds_alternative<vir::UnknownVersion>(expression.node)) {
         return true;
     }
     if (const auto* bound = std::get_if<vir::LocalVersion>(&expression.node)) {
-        return std::ranges::any_of(bound->operands, contains_loop);
+        return std::ranges::any_of(bound->operands, requires_conditions);
     }
     if (const auto* branch = std::get_if<vir::Conditional>(&expression.node)) {
-        return std::ranges::any_of(branch->operands, contains_loop);
+        return std::ranges::any_of(branch->operands, requires_conditions);
     }
     return false;
 }
@@ -336,6 +344,17 @@ std::expected<void, Failure> state_contract(const vir::Function& function, const
         if (refined->has_value()) {
             plan.preconditions.push_back(**refined);
         }
+    }
+    for (std::size_t index = 0; index < function.parameters.size(); ++index) {
+        if (!source::aliases_storage(function.parameters[index].passing))
+            continue;
+        auto required =
+            membership(program, function.parameters[index].type,
+                       kernel::Term::variable(kernel::parameter_reference(plan.parameters.size() + 1, index)));
+        if (!required)
+            return std::unexpected(required.error());
+        if (*required)
+            plan.postcondition = kernel::Proposition::conjunction(std::move(plan.postcondition), **required);
     }
     return {};
 }
@@ -616,16 +635,53 @@ class Conditions {
                 emit(scope, Origin::CallPrecondition, function_.qualified_name + " -> " + call.callee_name,
                      site->provenance.range, specialize(precondition, callee.parameters, arguments));
             }
-            for (auto& argument : arguments) {
-                argument = kernel::shift(argument, 1);
+            // All post-state values are fresh. Their facts come only from the
+            // proven callee contract, never from the erased parameter type.
+            std::map<std::uint32_t, std::size_t> post_positions;
+            for (const auto& effect : call.effects) {
+                if (!post_positions.contains(effect.version))
+                    post_positions.emplace(effect.version, post_positions.size());
+            }
+            const auto fresh = static_cast<std::uint32_t>(post_positions.size() + 1);
+            for (auto& argument : arguments)
+                argument = kernel::shift(argument, fresh);
+            std::vector<std::uint32_t> effect_arguments;
+            const auto first_post = scope.binders.size();
+            for (const auto& effect : call.effects) {
+                if (effect.argument >= arguments.size() || scope.versions.contains(effect.version) ||
+                    std::ranges::find(effect_arguments, effect.argument) != effect_arguments.end())
+                    return fail("malformed call mutation", site->provenance.range.begin);
+                const auto type = core_type(effect.declared);
+                if (!type || *type != callee.parameters[effect.argument])
+                    return fail("call mutation type mismatch", site->provenance.range.begin);
+                effect_arguments.push_back(effect.argument);
+                const auto position = post_positions.at(effect.version);
+                if (auto existing = scope.opaque.find(effect.version); existing != scope.opaque.end()) {
+                    if (existing->second != first_post + position || scope.binders[existing->second] != *type)
+                        return fail("malformed shared call mutation", site->provenance.range.begin);
+                } else {
+                    scope.opaque.emplace(effect.version, scope.binders.size());
+                    scope.binders.push_back(*type);
+                    scope.events.emplace_back(*type);
+                }
+                arguments[effect.argument] = kernel::Term::variable(
+                    kernel::VarIndex{static_cast<std::uint32_t>(post_positions.size() - position)});
             }
             scope.calls.emplace(site->id.value, scope.binders.size());
             scope.binders.push_back(callee.result);
             scope.events.emplace_back(callee.result);
-            scope.events.emplace_back(
-                postcondition_at(callee, std::move(arguments), kernel::Term::variable(kernel::VarIndex{0})));
+            scope.events.emplace_back(postcondition_at(callee, arguments, kernel::Term::variable(kernel::VarIndex{0})));
             if (std::ranges::find(scope.relied_on, found->second) == scope.relied_on.end()) {
                 scope.relied_on.push_back(found->second);
+            }
+            for (const auto& effect : call.effects) {
+                const auto required = membership(program_, effect.declared, arguments[effect.argument]);
+                if (!required)
+                    return std::unexpected(required.error());
+                if (*required)
+                    emit(scope, Origin::RefinementIntroduction,
+                         function_.qualified_name + " -> " + effect.declared.refinements.front().name,
+                         site->provenance.range, **required);
             }
         }
         return {};
@@ -635,6 +691,41 @@ class Conditions {
         const source::SourceLocation& location = expression.provenance.range.begin;
         if (++steps_ > kMaxConditionSteps) {
             return fail("this body has more than " + std::to_string(kMaxConditionSteps) + " modeled steps", location);
+        }
+
+        if (const auto* unknown = std::get_if<vir::UnknownVersion>(&expression.node)) {
+            const auto type = core_type(unknown->value_type);
+            if (!type || unknown->operands.size() != 1 || scope.versions.contains(unknown->version) ||
+                scope.opaque.contains(unknown->version))
+                return fail("malformed mutation version", location);
+            scope.opaque.emplace(unknown->version, scope.binders.size());
+            scope.binders.push_back(*type);
+            scope.events.emplace_back(*type);
+            return walk(unknown->operands.front(), std::move(scope), loops);
+        }
+        if (const auto* completed = std::get_if<vir::ReturnState>(&expression.node)) {
+            if (completed->operands.size() != plan_.parameters.size() + 1)
+                return fail("malformed post-state", location);
+            std::vector<kernel::Term> arguments;
+            for (std::size_t index = 1; index < completed->operands.size(); ++index) {
+                if (core_type(completed->operands[index].type) != std::optional{plan_.parameters[index - 1]})
+                    return fail("post-state parameter type mismatch", location);
+                auto value = lower(completed->operands[index], scope);
+                if (!value)
+                    return std::unexpected(value.error());
+                arguments.push_back(*value);
+            }
+            const auto& result = completed->operands.front();
+            if (core_type(result.type) != std::optional{plan_.result})
+                return fail("return type mismatch", location);
+            if (auto evaluated = evaluate(result, scope); !evaluated)
+                return evaluated;
+            auto value = lower(result, scope);
+            if (!value)
+                return std::unexpected(value.error());
+            emit(scope, Origin::ReturnPath, function_.qualified_name + " path " + std::to_string(++paths_),
+                 expression.provenance.range, postcondition_at(plan_, std::move(arguments), *value));
+            return {};
         }
 
         if (const auto* bound = std::get_if<vir::LocalVersion>(&expression.node)) {
@@ -906,7 +997,7 @@ void generate_contracts(const vir::Module& module, const DefinitionMap& pure_def
             // A loop, or a call whose contract is itself partial, leaves the
             // body without a total term; its contract is then partial too.
             const bool partial =
-                contains_loop(returned_value) || std::ranges::any_of(calls, [&](const vir::Expr* call) {
+                requires_conditions(returned_value) || std::ranges::any_of(calls, [&](const vir::Expr* call) {
                     return program.contracts[established.at(std::get<vir::Call>(call->node).callee.usr)].partial;
                 });
             auto plan = partial ? build_partial(function, contracts, pure_definitions, established, program)

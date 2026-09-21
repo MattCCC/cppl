@@ -358,17 +358,29 @@ are not semantic identity. Ordinary aliases preserve predicates; unresolved
 indexed alias applications are rejected. This is frontend correspondence, not a
 new logical rule or an additional trusted user boundary.
 
-Reference locals rest on storage correspondence rather than on an aliasing
-analysis. A modeled reference local is required to bind a tracked local object
-directly; the bridge then resolves it to that object's storage, so the reference
-holds no fact of its own. Reads and writes through it are reads and writes of the
-one versioned storage, which is why no fact can become stale and why no
-invalidation mechanism is introduced. What is trusted is that Clang's resolved
-binding identifies the referent, and that a reference so bound cannot later
-denote different storage - which C++ guarantees. What is not inferred: lifetime,
-the referent of any binding that is not a direct reference to a tracked local,
-and aliasing between distinct tracked locals. Every such binding is refused. This
-adds no kernel rule, logical assumption, axiom or trusted user boundary.
+Reference storage and call post-state extend the existing frontend and obligation
+correspondence responsibility (SPEC.md 12.9). This is a TCB expansion: the bridge
+must identify storage, possible aliases, writes and call effects correctly, and
+the condition builder must state contracts over the correct versions. The kernel
+checks the generated propositions; it does not independently check Clang memory
+correspondence. No new trusted user mechanism, kernel rule, logical assumption,
+or axiom is introduced.
+
+A resolved local reference identifies one tracked storage. Reference parameters
+are conservatively allowed to alias other reference parameters of the same
+modeled type, including const references. A write versions its target and
+invalidates possible aliases with universally quantified fresh values. It never
+supposes a declared refinement of an unknown new value. Writes and call effects
+owe the common membership predicate. Repeated call arguments share a post-state
+version, and post-call facts depend on successful callee verification. Loop
+mutation scans include calls and possible aliases.
+
+Void completion uses a fixed logical token outside the executable program.
+Alias return types are recovered only as canonical Clang void identities from an
+erroneous projection, and require a fresh successful Clang parse before any proof
+is generated. No body or fact from a recovery AST is accepted as evidence.
+Reference/pointer return lifetimes, pointer dereference validity, general object
+mutation and exceptional post-state are not inferred by this model.
 
 An ordinary refined-return declaration is not a trusted contract. The bridge
 checks declarations outside the selected proof bodies as well as definitions:

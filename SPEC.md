@@ -1174,8 +1174,9 @@ aliases are resolved by Clang.
 
 Branches and multiple returns extend this fragment under section 12.7,
 locals and assignments under section 12.8, and `while` and `for` loops under
-section 24.3. References, pointers, floating point,
-exceptions, side effects, recursion, and unsupported declarators are rejected.
+section 24.3. Reference storage, call effects and void returns extend it under
+section 12.9. Pointer dereferences, floating point, exceptions, recursion, and
+unsupported declarators remain rejected.
 An ordinary parameter named `result` is currently unsupported on a verified
 definition because that name binds the returned value in its postcondition.
 
@@ -1226,8 +1227,8 @@ Clang MUST resolve each condition and operand type. Every modeled path MUST end
 in a return; an omitted `else` continues with the following statements. Locals
 and assignments are specified in section 12.8, and loops, with their `break`
 and `continue`, in section 24.3. Switches, other jumps, exceptions, side
-effects, implicit type conversions, and trailing unreachable statements remain
-unsupported.
+effects outside section 12.9, implicit type conversions, and trailing unreachable
+statements remain unsupported.
 
 For each return term R, the compiler MUST generate and kernel-prove:
 
@@ -1278,11 +1279,11 @@ A declaration MUST have automatic storage, a modeled type, and an initializer
 that is a single modeled expression: `T x = e;`, `T x{e};`, `T x(e);`, and the
 same forms with `auto` or `const`. An uninitialized local, a `static`,
 `extern`, `register` or `thread_local` declaration, a declaration of a
-reference, pointer, `volatile` or otherwise unmodeled type, an aggregate or
+pointer, `volatile` or otherwise unmodeled type, an aggregate or
 empty braced initializer, and a non-variable declaration are rejected. An
 assignment MUST name a local of the same body, with a value of the same modeled
-type. Assignment through a reference or pointer, to a parameter, and to
-anything outside the body are rejected. C++ decides whether a `const` local may
+type. Reference and parameter writes follow section 12.9. Pointer writes and writes to
+unmodeled storage are rejected. C++ decides whether a `const` local may
 be assigned; C++L adds no `const` model of its own. Conversions in an
 initializer or an assigned value are rejected exactly as elsewhere: a
 difference in qualification alone is not a conversion, because the value read
@@ -1332,6 +1333,59 @@ A read denotes its version's whole value, so the stated terms can grow faster
 than the body. An implementation MAY bound the statements on one path and the
 size of the terms it states, and MUST reject a body beyond those bounds rather
 than approximate it.
+
+
+## 12.9 Reference storage and normal post-state
+
+Verified scalar parameters MAY be passed by value, `T&`, `const T&`, or `T&&`.
+Clang resolves binding, reference collapsing, qualification and access legality.
+A reference denotes existing storage; it introduces no independent object or
+refinement fact. A local reference MAY also bind a modeled parameter's storage.
+Writes through it MUST use the same crossing and version mechanism as direct
+writes. By-value parameters have independent local storage; their contract
+parameter still denotes the caller's input value, as in section 12.5.
+
+A mutable reference parameter MAY alias any other reference parameter with the
+same modeled value type, including a const reference. No distinctness is inferred
+from parameter position. An exact write creates a new value version for its
+referent and fresh unconstrained versions for other possible referents. The
+written value MUST satisfy every refinement of storage it may target. A fact
+about an earlier version MUST NOT constrain a fresh version. Refinement spelling
+alone MUST NOT re-establish membership after invalidation.
+
+In `ensures`, a reference parameter denotes its value on normal return. Each
+return path supplies its current reference values to the postcondition; a refined
+reference parameter also owes its declared predicate at that boundary. Entry
+preconditions and copied local snapshots continue to name entry values.
+
+A verified call MUST prove its preconditions before introducing its result or
+post-state. A potentially mutating call replaces the actual reference arguments'
+versions, invalidates other possible aliases, and states the proven callee's
+postcondition over the new versions. Repeated actual arguments share one new
+version. Every refined actual storage owes membership on its new value, even
+when the formal parameter is an unrefined reference. Such a requirement may use
+the callee's proven postcondition; it MUST depend on successful verification of
+that callee. No call summary is an axiom. Calls through references currently
+require resolved tracked actual storage at an effectful boundary.
+
+`verified void` functions MUST verify an explicit postcondition on every normal
+exit, including `return;`, a returned void call, and fallthrough. There is no
+source `result` binding for void. Void aliases are resolved by Clang. A private
+logical completion token is used only to reuse contract bookkeeping; erasure
+introduces no runtime return value, object or check.
+
+Reference mutation and calls participate in the ordinary branch and loop rules.
+Each possible mutation is included in a loop's carried state; fresh loop-head
+values receive only invariant facts. Calls in a standalone statement, an
+initializer, an assignment's right operand, or a return are sequenced before the
+continuation. Nested effectful expressions whose ordering is not represented are
+rejected. Unsupported lifetime or exceptional-state behavior remains rejected.
+These stateful contracts use the partial-correctness obligation path, including
+for loop-free bodies; they do not introduce total core definitions.
+
+Pure conditional expressions use Clang's resolved result type and the existing
+conditional term and branch rules. Boolean literals denote the two Boolean
+values. These additions do not model numeric promotions or signed overflow.
 
 ---
 
@@ -1650,12 +1704,13 @@ predicates of the reference's own refinement and of the referent's declared type
 together. A refinement fact therefore cannot outlive a write through any alias of
 the storage it describes, because there is no separate fact to go stale. Binding
 itself is a crossing and states the reference's predicate at the referent's
-current version. A reference that binds anything other than a tracked local
-object - a temporary, a parameter, a subobject, or a call result - is refused.
+current version. Modeled parameters also have tracked storage (12.9). A reference
+to an unmodeled temporary, subobject, or reference-returning call is refused.
 
 Not yet modeled, and refused rather than approximated: refined returns of an
-unverified function, refined members, reference and pointer parameters, pointers,
-and refinements in templated contexts. A refinement over a base type outside the
+unverified function, refined members, pointer dereferences and pointee mutation,
+and refinements in templated contexts. Scalar reference parameters, void returns,
+and their call effects are modeled under 12.9. A refinement over a base type outside the
 modeled fragment is refused where it is declared.
 
 Explicit refined storage outside a modeled verified body, including fields and

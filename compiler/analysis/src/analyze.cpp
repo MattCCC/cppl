@@ -49,12 +49,24 @@ std::expected<Result, std::string> analyze(const frontend::TokenStream& stream, 
         result.projection = frontend::project(stream, syntax, options);
         request.content = result.projection.analysis;
         request.recover_bindings = !result.projection.binding_probes.empty();
+        request.recover_contract_types = !syntax.verified_functions.empty();
         select(request, result.projection, syntax);
         auto parsed = clangbridge::parse(request);
         if (!parsed)
             return std::unexpected(parsed.error());
         result.unit = std::move(*parsed);
         bool changed = false;
+        if (result.unit.has_errors) {
+            for (std::size_t index = 0; index < syntax.verified_functions.size(); ++index) {
+                const auto offset =
+                    result.projection.declaration_offset(syntax.verified_functions[index].function_offset);
+                const auto* function = offset ? result.unit.find_at_offset(*offset) : nullptr;
+                if (function && function->result.kind == clangbridge::TypeKind::Void)
+                    changed = options.void_functions.insert(index).second || changed;
+            }
+            if (changed)
+                continue;
+        }
         for (const auto& probe : result.projection.binding_probes) {
             const auto* subject = result.unit.find_by_name(probe.subject);
             if (!subject)

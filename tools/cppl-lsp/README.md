@@ -1096,6 +1096,16 @@ See `vscode/cppl-vscode/README.md` for extension-specific configuration
 
 ---
 
+## Reference state and void contracts
+
+The shared compiler bridge handles scalar reference parameters, verified void
+functions, reference writes and verified call post-state. `compile_buffer`
+reports the same refinement-crossing and stale-alias proof failures as the CLI;
+the editor does not infer a separate alias model. Source locations come from the
+write, call or return that produced the obligation. `lsp_fixtures_test` covers
+successful storage flows and a call invalidating a possibly aliased const
+reference. Detailed pointer-state and effect hovers are not implemented.
+
 ## Currently unsupported
 
 This is a first production-quality vertical slice: transport, document

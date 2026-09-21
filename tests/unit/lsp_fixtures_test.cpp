@@ -96,6 +96,29 @@ CPPL_TEST(valid_refinement_types_produces_no_cpp_semantic_diagnostics) {
     CPPL_CHECK_EQ(count_category(engine, diagnostics::Category::CppSemantic), 0u);
 }
 
+CPPL_TEST(valid_verified_storage_uses_the_shared_semantic_bridge) {
+    diagnostics::Engine engine;
+    const auto outcome = compile_fixture("verified_storage.cpp", engine);
+    CPPL_CHECK(outcome.ok);
+    CPPL_CHECK(outcome.has_cppl);
+    CPPL_CHECK(!engine.has_errors());
+}
+
+CPPL_TEST(possible_reference_call_alias_does_not_retain_an_editor_fact) {
+    diagnostics::Engine engine;
+    driver::BufferCompileRequest request;
+    request.virtual_path = "reference_call_alias.cpp";
+    request.text = "verified void zero(int& x) ensures(x == 0) { x = 0; }\n"
+                   "verified int wrong(int& x, const int& y) expects(y > 0) ensures(result > 0) {\n"
+                   "zero(x); return y; }\n";
+    request.clang = CPPL_TEST_DEFAULT_CLANG;
+    request.clang_arguments = {"-std=c++20"};
+    const auto outcome = driver::compile_buffer(request, engine);
+    CPPL_CHECK(outcome.ok);
+    CPPL_CHECK(engine.has_errors());
+    CPPL_CHECK_EQ(count_category(engine, diagnostics::Category::CppSemantic), 0u);
+}
+
 CPPL_TEST(valid_written_proof_produces_no_cpp_semantic_diagnostics) {
     diagnostics::Engine engine;
     const auto outcome = compile_fixture("written_proof.cpp", engine);

@@ -603,13 +603,18 @@ closed under the path conditions where the value enters, so a branch fact discha
 it. Subtyping is the implication between predicates and carries no runtime check in
 either direction (`SPEC.md` 17.3.2).
 
-A reference local binding a tracked local object aliases that object's storage
-rather than holding a value, so a write through any alias is a write to the one
-storage and owes both the reference's and the referent's predicates. Stale facts
-are impossible by construction: there is no second fact to invalidate. Any other
-reference binding is refused. Refined returns of an unverified function, refined
-members, reference and pointer parameters, pointers, and refinements in templated
-contexts are refused rather than approximated.
+Scalar reference parameters (`T&`, `const T&`, `T&&`), local references to modeled
+parameters, and verified void functions now use storage versions and post-state
+contracts (SPEC.md 12.9). Direct writes and verified calls invalidate possible
+aliases, including const references. Callee postconditions can establish facts
+about new versions; refined actual storage still owes membership. Repeated actual
+arguments share state. Branches and loop invariants use the same version model.
+This remains `PROTOTYPE`, not production-complete refinement flow.
+
+Refined members and arrays, pointer dereference effects, general casts, lambdas,
+methods, alias-return lifetimes, `old` over mutable state, and dependent object
+flows remain unimplemented. Nested effectful expressions without represented C++
+sequencing are rejected. These are implementation gaps, not completed capability.
 
 The same membership checks cover partial-correctness bodies containing loops and
 their callers, including unused refined locals. Corrupt or unresolved refinement

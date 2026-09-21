@@ -31,7 +31,7 @@ std::optional<kernel::Type> lower_type(const vir::Type& type) {
     // C++ `bool` has exactly the two values the core's one-bit unsigned integer
     // has, and no arithmetic on it is modeled: every promotion to `int` is a
     // conversion the bridge already refuses (SPEC.md 12.7).
-    if (type.is_boolean()) {
+    if (type.is_boolean() || type.is_void()) {
         return kernel::Type{kernel::kBoolean};
     }
     if (type.is_value()) {
@@ -209,6 +209,8 @@ class TermLowering {
         }
 
         if (const auto* literal = std::get_if<vir::IntLiteral>(&expr.node)) {
+            if (expr.type.is_void() && literal->value != 0)
+                return fail("malformed void completion", location);
             if (!type.has_value()) {
                 return fail("a literal of type '" + vir::describe(expr.type) + "' has no core representation",
                             location);

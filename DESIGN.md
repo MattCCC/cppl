@@ -1114,6 +1114,14 @@ Refinement types provide a way to attach such meaning directly to values.
 
 This can reduce repeated defensive reasoning and make invariants available to later verification.
 
+A refinement describes a logical value version, not a variable spelling or a
+permanent property of a C++ reference. Storage therefore has a separate identity.
+Exact aliases read and write its current version; a possible alias write replaces
+uncertain observations with fresh values. The same membership obligation applies
+to direct writes and values established by verified calls. This keeps call effects
+from becoming an alternative refinement authority. The kernel checks each
+obligation, while the Clang bridge owns runtime correspondence.
+
 Their exact construction and conversion semantics belong in `SPEC.md`.
 
 ---

@@ -18,6 +18,10 @@ struct IntType {
     friend bool operator==(const IntType&, const IntType&) = default;
 };
 
+struct VoidType {
+    friend bool operator==(const VoidType&, const VoidType&) = default;
+};
+
 struct BoolType {
     friend bool operator==(const BoolType&, const BoolType&) = default;
 };
@@ -83,7 +87,7 @@ struct ValueType {
 };
 
 struct Type {
-    std::variant<IntType, BoolType, PropositionType, ValueType> node;
+    std::variant<IntType, BoolType, PropositionType, ValueType, VoidType> node;
 
     // Outermost refinement first, so a refinement of a refinement keeps every
     // predicate that applies to the value (SPEC.md 17.5).
@@ -95,6 +99,12 @@ struct Type {
 
     static Type integer(std::uint16_t width, bool is_signed) {
         return Type{IntType{width, is_signed}, {}, {}};
+    }
+    static Type void_type() {
+        return Type{VoidType{}, {}, {}};
+    }
+    [[nodiscard]] bool is_void() const noexcept {
+        return std::holds_alternative<VoidType>(node);
     }
     static Type boolean() {
         return Type{BoolType{}, {}, {}};

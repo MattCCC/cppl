@@ -448,6 +448,12 @@ so what it owes is only the part of `Q` that `P` does not give. Composing refine
 their predicates, so `{ x : {y : T | P(y)} | Q(x) }` is `{ x : T | P(x) /\ Q(x) }`,
 with the same base type underneath.
 
+For mutable storage, membership is indexed by the value version: `P(v0)` does
+not imply `P(v1)` after a write. A possible alias mutation introduces a universally
+quantified unknown for the new observation. A verified call supplies its proved
+postcondition at that new value, conditional on its checked entry requirements.
+This changes obligation construction, not the logical inference rules.
+
 Because the base type is what exists at run time, two distinct refinements of one
 base type are the same type to the machine and different types to the
 verifier. Nothing about the machine's view is allowed to depend on which one a value

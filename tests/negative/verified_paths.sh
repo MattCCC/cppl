@@ -52,8 +52,8 @@ reject missing_return 'every path must return' \
     'verified unsigned f(unsigned x) ensures(result <= 10u) { if (x <= 10u) return x; }'
 reject effect_guard 'not modeled' \
     'verified unsigned f(unsigned x) ensures(result <= 10u) { if (++x <= 10u) return x; return 10u; }'
-reject effect_arm 'assigning to parameter' \
-    'verified unsigned f(unsigned x) ensures(result <= 10u) { if (x <= 10u) { x = 0u; return x; } return 10u; }'
+reject effect_arm 'return path.*does not satisfy' \
+    'verified unsigned f(unsigned x) ensures(result <= 10u) { if (x <= 10u) { x = 11u; return x; } return 10u; }'
 reject conversion 'conversion.*not modeled' \
     'verified unsigned f(unsigned x) ensures(result <= 10u) { if (x <= 10) return x; return 10u; }'
 reject float_comparison 'not modeled' \

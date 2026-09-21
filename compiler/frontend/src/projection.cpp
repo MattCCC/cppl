@@ -386,8 +386,14 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
             result_parameter += parameters;
             result_parameter += ", ";
         }
-        result_parameter += stream.spelling(verified.return_type);
-        result_parameter += " result";
+        const bool void_result =
+            options.void_functions.contains(index) || spelled_tokens(stream, verified.return_type) == "void";
+        if (void_result) {
+            result_parameter = std::string(parameters);
+        } else {
+            result_parameter += stream.spelling(verified.return_type);
+            result_parameter += " result";
+        }
 
         ContractFunctions projected;
         projected.function_index = index;

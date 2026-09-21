@@ -3247,6 +3247,28 @@ full: a lowered term is bounded at 16384 core nodes, and the bridge bounds a
 path at 128 nested or consecutive statements. Beyond either bound the body is
 rejected, never truncated.
 
+### Storage versions and call effects
+
+Clang-resolved parameter passing is separate from a parameter's logical value
+type (`source::ParameterPassing`). The bridge maps bindings to storage and routes
+writes through `BodyLowering::write`. `LocalVersion` carries an exact write;
+`UnknownVersion` carries a possible alias mutation with no inherited predicate.
+`CallEffect` identifies an argument's new logical version and declared target
+type. `ReturnState` carries the result and parameter observations at normal exit.
+All nodes retain source provenance and use the same version namespace.
+
+The existing partial-correctness condition builder consumes these nodes. It
+quantifies unknown versions, checks call preconditions before adding post-state,
+and applies the common membership function to local writes and call crossings.
+Callee dependency identities gate every exported postcondition. Stateful bodies
+never become total kernel definitions. Branch continuations keep their own state;
+loop carried-state discovery includes direct writes, reference aliases and calls.
+The shared driver analysis exposes these same obligations to cppl-lsp.
+
+Void contract projection uses Clang's canonical return type, with a bounded
+reprojection for aliases. Recovery extracts only type identity, and the final
+projection must parse successfully. No runtime output is changed by this step.
+
 ### Machine arithmetic
 
 `kernel/src/arithmetic.cpp` owns the normal forms. Normalization reduces each

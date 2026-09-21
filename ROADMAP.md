@@ -204,8 +204,10 @@ alias the program keeps, make membership an obligation wherever a value enters o
 a declaration, an assignment, a verified call's argument, a return - and treat
 crossing between two of them as the implication between their predicates. Next in
 that core are existential quantification with its proof surface,
-induction and termination. Memory/reference reasoning, signed arithmetic with
-overflow obligations, and SMT remain later work. See `STATUS.md` for the
+induction and termination. Scalar reference storage, void functions, alias
+invalidation and verified call post-state are now prototyped together with their
+refinement crossings. General object and pointer memory reasoning, signed
+arithmetic with overflow obligations, and SMT remain incomplete. See `STATUS.md` for the
 supported fragment.
 
 Implement:

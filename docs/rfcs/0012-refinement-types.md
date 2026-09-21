@@ -133,24 +133,19 @@ overloads distinguished only by which refinement they name are a redefinition. T
 analysis text carries the aliases, so Clang reports it at the declaration the author
 wrote rather than in emitted output.
 
-## References alias storage
+## References and call post-state
 
-A reference local that binds a tracked local object is not given a value or a fact
-of its own. It resolves to the referent's storage, so a read through it is a read
-of that storage's current logical version and a write through it is a write to
-that storage, versioned like any other. This is why no alias-invalidation
-machinery is needed: a refinement fact describes a version, and a write through
-any alias produces a new version, so there is never a stale fact to retract.
+SPEC.md 12.9 extends the storage model to scalar reference parameters, local
+references to parameters, void functions, and verified call effects. Each exact
+write advances a storage version. A possible alias write creates fresh universally
+quantified observations, including for const references. Old predicates do not
+constrain them. Calls first prove entry requirements and then supply the verified
+postcondition over fresh post-state; repeated actual arguments share one version.
 
-A write through an alias owes the predicates of the reference's own refinement and
-of the referent's declared type together, because both types still describe that
-one storage. The binding itself is a crossing and owes the reference's predicate
-at the referent's current version. Anything that is not a direct binding to a
-tracked local - a temporary, a parameter, a subobject, a call result - is refused
-rather than approximated.
-
-## Boundary
-
-Not modeled, and refused rather than approximated: refined returns of an unverified
-function, refined members, reference and pointer parameters, pointers, and
-refinements in templated contexts. SPEC.md 17.3.1 states the fragment.
+Refined actual storage owes membership even when the callee accepts an unrefined
+reference. The common predicate instantiation is used for initialization, direct
+writes and call effects, on both total and partial-correctness paths. No new
+kernel rule, logical assumption or axiom is introduced. The storage, alias and
+post-state correspondence expands the existing frontend/obligation TCB (TRUST.md
+10.1). General object, pointer and lifetime flows are still incomplete; STATUS.md
+records those implementation gaps.

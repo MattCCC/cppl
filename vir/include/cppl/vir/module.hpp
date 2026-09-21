@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cppl/source/location.hpp"
+#include "cppl/source/storage.hpp"
 #include "cppl/vir/expr.hpp"
 #include "cppl/vir/ids.hpp"
 #include "cppl/vir/types.hpp"
@@ -17,6 +18,7 @@ namespace cppl::vir {
 struct Parameter {
     std::string name;
     Type type;
+    source::ParameterPassing passing = source::ParameterPassing::Value;
 
     friend bool operator==(const Parameter&, const Parameter&) = default;
 };

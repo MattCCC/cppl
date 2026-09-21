@@ -28,6 +28,9 @@ void report(diagnostics::Engine& engine, diagnostics::Category category, const s
 std::optional<vir::Type> convert_type(const clangbridge::Type& type) {
     std::optional<vir::Type> converted;
     switch (type.kind) {
+        case clangbridge::TypeKind::Void:
+            converted = vir::Type::void_type();
+            break;
         case clangbridge::TypeKind::Int:
             converted = vir::Type::integer(type.width, type.is_signed);
             break;
@@ -217,13 +220,35 @@ class ExpressionElaborator {
             return result;
         }
 
+        if (const auto* completed = std::get_if<clangbridge::ReturnState>(&expr.node)) {
+            vir::ReturnState converted;
+            for (const auto& operand : completed->operands) {
+                auto value = convert(operand);
+                if (!value)
+                    return std::nullopt;
+                converted.operands.push_back(std::move(*value));
+            }
+            result.node = std::move(converted);
+            return result;
+        }
+        if (const auto* unknown = std::get_if<clangbridge::UnknownVersion>(&expr.node)) {
+            auto value_type = convert_type(unknown->value_type);
+            if (!value_type || unknown->operands.size() != 1)
+                return std::nullopt;
+            auto body = convert(unknown->operands.front());
+            if (!body)
+                return std::nullopt;
+            result.node = vir::UnknownVersion{unknown->version, *value_type, {std::move(*body)}};
+            return result;
+        }
+
         if (const auto* parameter = std::get_if<clangbridge::ParameterRef>(&expr.node)) {
             result.node = vir::ParameterRef{parameter->index, parameter->name};
             return result;
         }
 
         if (const auto* literal = std::get_if<clangbridge::IntLiteral>(&expr.node)) {
-            if (!type->is_integer() && !type->is_boolean()) {
+            if (!type->is_integer() && !type->is_boolean() && !type->is_void()) {
                 failure_ = Failure{"a literal of non-integer type is not modeled", expr.location};
                 return std::nullopt;
             }
@@ -241,6 +266,12 @@ class ExpressionElaborator {
                     return std::nullopt;
                 }
                 converted.arguments.push_back(std::move(*converted_argument));
+            }
+            for (const auto& effect : call->effects) {
+                auto declared = convert_type(effect.declared);
+                if (!declared)
+                    return std::nullopt;
+                converted.effects.push_back({effect.argument, effect.version, *declared});
             }
             result.node = std::move(converted);
             return result;
@@ -354,6 +385,12 @@ void collect_callees(const vir::Expr& expr, std::vector<vir::SymbolId>& callees)
         }
         return;
     }
+    if (const auto* returned = std::get_if<vir::ReturnState>(&expr.node))
+        for (const auto& operand : returned->operands)
+            collect_callees(operand, callees);
+    if (const auto* unknown = std::get_if<vir::UnknownVersion>(&expr.node))
+        for (const auto& operand : unknown->operands)
+            collect_callees(operand, callees);
     if (const auto* binary = std::get_if<vir::Binary>(&expr.node)) {
         for (const vir::Expr& operand : binary->operands) {
             collect_callees(operand, callees);
@@ -410,7 +447,7 @@ std::optional<std::vector<vir::Parameter>> convert_parameters(const clangbridge:
                    "this implementation models built-in integer and boolean types only");
             return std::nullopt;
         }
-        parameters.push_back(vir::Parameter{parameter.name, *type});
+        parameters.push_back(vir::Parameter{parameter.name, *type, parameter.passing});
     }
     return parameters;
 }
@@ -1210,7 +1247,8 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
                 } else if (candidate.pure && calls_only_pure &&
                            !std::holds_alternative<vir::Conditional>(converted.returned_value->node) &&
                            !std::holds_alternative<vir::LocalVersion>(converted.returned_value->node) &&
-                           !std::holds_alternative<vir::Loop>(converted.returned_value->node)) {
+                           !std::holds_alternative<vir::Loop>(converted.returned_value->node) &&
+                           !std::holds_alternative<vir::ReturnState>(converted.returned_value->node)) {
                     converted.purity = vir::Purity::Pure;
                 } else if (candidate.pure && candidate.contract == nullptr) {
                     rejection = "pure specification helpers require a single return expression";

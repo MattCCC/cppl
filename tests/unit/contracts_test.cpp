@@ -565,3 +565,48 @@ CPPL_TEST(mismatched_refinement_indices_fail_closed) {
     CPPL_CHECK(program.contracts.empty());
     CPPL_CHECK(program.obligations.empty());
 }
+
+CPPL_TEST(post_state_requires_all_parameters_and_the_return_value) {
+    for (const auto count : {0u, 1u, 2u, 4u}) {
+        auto function = first();
+        v::Expr state;
+        state.type = vUnsigned;
+        state.node = v::ReturnState{std::vector<v::Expr>(count, parameter(0))};
+        function.returned_value = std::move(state);
+        cppl::elaboration::Result elaborated;
+        elaborated.module.functions.push_back(std::move(function));
+        cppl::diagnostics::Engine engine;
+        const auto program = o::generate(elaborated.module, elaborated, engine);
+        CPPL_CHECK(engine.has_errors());
+        CPPL_CHECK(program.contracts.empty());
+    }
+}
+
+CPPL_TEST(an_unknown_version_does_not_inherit_the_old_value) {
+    auto function = first();
+    CPPL_CHECK(function.contract.has_value());
+    function.contract->postcondition = equality(parameter(2), number(1));
+    v::Expr unknown;
+    unknown.type = vUnsigned;
+    unknown.node = v::UnknownVersion{1, vUnsigned, {local(1)}};
+    function.returned_value = versioned(0, number(1), std::move(unknown));
+    auto program = generate(std::move(function));
+    CPPL_CHECK(program.contracts.front().partial);
+    cppl::diagnostics::Engine engine;
+    const auto results = cppl::automation::verify(program, engine);
+    CPPL_CHECK(!results.front().verdict.is_proven());
+}
+
+CPPL_TEST(an_unknown_version_cannot_rebind_a_previous_version) {
+    auto function = first();
+    v::Expr unknown;
+    unknown.type = vUnsigned;
+    unknown.node = v::UnknownVersion{0, vUnsigned, {local(0)}};
+    function.returned_value = versioned(0, number(1), std::move(unknown));
+    cppl::elaboration::Result elaborated;
+    elaborated.module.functions.push_back(std::move(function));
+    cppl::diagnostics::Engine engine;
+    const auto program = o::generate(elaborated.module, elaborated, engine);
+    CPPL_CHECK(engine.has_errors());
+    CPPL_CHECK(program.contracts.empty());
+}
