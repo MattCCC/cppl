@@ -655,11 +655,19 @@ implementation gaps, not completed capability.
 
 Pointer dereference is blocked rather than merely unimplemented. Every form
 (`*p`, `*p = e`, `p->m`, `p[i]`) is refused because dereference validity needs
-memory-validity obligations that do not exist; `p != nullptr` is necessary and
+storage and capability obligations; `p != nullptr` is necessary and
 insufficient, and the pointer's state model may not supply the difference
-(`SPEC.md` 12.9). RFC 0014 proposes those obligations and gates the work.
-Pointer values and proof-side `null`/`non_null` case analysis are `IMPLEMENTED`
-and unaffected.
+(`SPEC.md` 12.9). RFC 0014 is accepted and specifies that model, normatively
+stated in `SPEC.md` 12.10; the access forms are refused until they are
+implemented against it. Pointer values and proof-side `null`/`non_null` case
+analysis are `IMPLEMENTED` and unaffected.
+
+The storage model that gates dereference also gates refined members, subscripts,
+reference capture and returned aliases: all of them need one place, region and
+capability model rather than five, so they are sequenced behind it (RFC 0014
+§17). Capability tracking is a correspondence-layer responsibility and carries a
+stated TCB delta (`TRUST.md` 41.2); it adds no kernel rule, axiom or logical
+assumption.
 
 The same membership checks cover partial-correctness bodies containing loops and
 their callers, including unused refined locals. Corrupt or unresolved refinement

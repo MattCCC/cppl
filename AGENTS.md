@@ -1263,6 +1263,45 @@ TRUST.md states what is not inferred
 
 ---
 
+# Storage and memory invariants
+
+These govern the generic storage model (`SPEC.md` 12.10, RFC 0014). It is
+generic on purpose: refinement types consume it and must never define it.
+
+- Storage is modeled as places, regions, capabilities and versions. A place is
+  never a value, never an address, and never reaches the kernel as a term. A
+  refinement fact belongs to a version of a place, never to a source name.
+- Every read resolves a place to its current version, provenance and valid
+  facts through one shared mechanism. Every write goes through one shared path:
+  prove the target writable, prove the value satisfies the target storage's
+  refinement, establish a new version, invalidate what may alias it. No access
+  form gets its own read or write.
+- Non-nullness does not imply dereference validity. Nothing about a pointer's
+  value, and nothing a decomposition provider states, may establish a
+  capability. A provider states states and never lifetime, provenance,
+  dereferenceability, bounds, initialization, ownership or uniqueness.
+- Disjointness is proved, never assumed, and only from Clang-resolved
+  distinctness. Type-based aliasing must not be used to justify a proof: it
+  presupposes the undefined-behavior freedom the proof has not established.
+  Where distinctness is unproved, invalidate. False rejection is preferable to
+  a stale unsound fact.
+- A capability is established by a proven obligation or by an explicit,
+  recorded `trusted` boundary, and by nothing else. A failed capability
+  obligation is a diagnostic, never a silent downgrade to an assumption.
+- An unverified call is never assumed pure. A fact invalidated by an effect is
+  re-established only by a proven postcondition, never by a summary asserted
+  without proof and never by refinement spelling alone.
+- No cast automatically preserves semantic refinement, and no reference,
+  pointer, subscript or member operation manufactures proof.
+- Storage, capabilities and versions are proof-only. They introduce no runtime
+  check, tag, metadata, wrapper type, temporary or layout change.
+- Capability tracking lives in the correspondence layer and carries a stated
+  TCB delta (`TRUST.md` 41.2). Do not report it as zero, and do not move it
+  into the kernel: it is a decidable flow analysis, and the kernel would grow
+  without checking more.
+
+---
+
 # Path and value-provenance invariants
 
 - A path-sensitive value must preserve its branch provenance through local

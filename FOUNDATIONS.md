@@ -411,6 +411,45 @@ This allows the verifier to reason backward from a desired postcondition through
 - function calls
 - state updates
 
+## Storage, capabilities and framing
+
+Hoare logic assigns meaning to a *state*, and the classical difficulty is not
+the assignment rule but the **frame**: which parts of the state a command leaves
+alone. C++L's storage model (`SPEC.md` 12.10, RFC 0014) is the answer to that
+question, and it is deliberately the conservative one.
+
+A **place** is where a value lives, a **region** is the object it belongs to,
+and a **capability** is what the state permits there. Assignment to a place is
+the ordinary Hoare assignment rule applied to one place, with two additions:
+the write must satisfy the declared refinement of its target before it is bound,
+and every place that **may alias** the target loses its facts.
+
+That last clause is the frame rule, stated in the direction that fails safe:
+
+```text
+a fact survives a write   only if   its place is proved disjoint from the target
+```
+
+rather than the more permissive reading, under which a fact survives unless
+aliasing is proved. Disjointness is derived from Clang-resolved structure —
+distinct locals, distinct members, distinct proved indices — and never from
+type-based aliasing, because that inference presupposes the
+undefined-behavior freedom the proof has not yet established and would make the
+reasoning circular.
+
+Capabilities are not propositions in the kernel's logic. They are hypotheses the
+obligation layer tracks, because validity is a property of the *state*, not a
+computable function of any value: `free(p)` destroys the validity of `*p`
+without changing `p`. Predicates over values cannot express that, which is why
+the model attaches lifetime and extent to regions. What does reach the kernel
+is everything genuinely requiring proof — refinement membership on each write,
+and `index < extent` for each subscript, both ordinary propositions over terms.
+
+Separation logic answers the same framing question with more precision, and the
+place/region model is compatible with adding it later as a layer above. It is
+not adopted now because its precision would come at the cost of a much larger
+trusted core than the conservative frame rule requires.
+
 ## Refinement typing
 
 A refinement type augments a base type with a predicate.

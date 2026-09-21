@@ -416,11 +416,13 @@ valid dereference, and admitting `*p` on that basis would install
 `non-null implies dereferenceable` as a global assumption the kernel never
 checks. The pointer provider continues to state `null` and `non_null` only, and
 never lifetime, provenance, dereferenceability, bounds, initialization,
-ownership or uniqueness. RFC 0014 proposes separate `readable`/`writable`
-obligations, discharged by the ordinary proof system, with `trusted`/`unsafe` as
-an explicit escape hatch that records a trust event rather than assuming
-validity everywhere. Until those obligations exist, every dereference form is
-refused. This paragraph adds no kernel rule, axiom, assumption or TCB delta.
+ownership or uniqueness. RFC 0014 specifies the storage, region and capability
+model that supplies the difference, normatively stated in `SPEC.md` 12.10, with
+`trusted` as an explicit escape hatch that records a trust event rather than
+assuming validity everywhere. Until a given access form is implemented against
+that model, it is refused. This paragraph adds no kernel rule, axiom, assumption
+or TCB delta; the correspondence delta the model itself carries is stated in
+section 41.2.
 
 An ordinary refined-return declaration is not a trusted contract. The bridge
 checks declarations outside the selected proof bodies as well as definitions:
@@ -1584,6 +1586,46 @@ automation fallback. Equality conversion produces existing substitution and
 reflexivity terms; the kernel checks both conversions independently. No axiom,
 logical assumption, trusted mechanism, or kernel rule is added.
 
+Storage capability tracking is a correspondence responsibility, and it is a
+real addition to this layer (RFC 0014, `SPEC.md` 12.10). It is stated here
+rather than reported as a zero delta, because the value model itself expands.
+
+A capability — `readable`, `writable`, `initialized` at a place — is carried as
+a context hypothesis by the obligation layer, not as a proposition the kernel
+reasons about. The kernel's proposition language bottoms out in equality over
+terms, and its context admits no uninterpreted symbol, so a capability is not
+expressible as a kernel proposition without a new term former or a new
+proposition former. Both were rejected: the first invites a capability to be
+discharged by evaluation, and the second is a representation-specific kernel
+rule in all but name (`AGENTS.md` 38). Capability checking is instead a
+decidable flow analysis — no search, no induction, no quantifier reasoning —
+which is why it belongs beside the other rules that map C++ semantics onto
+logic rather than inside the kernel, where it would grow the trusted core
+without making it check more.
+
+What still reaches the kernel is everything that requires proof rather than
+tracking: refinement membership on every write, and a subscript's
+`index < extent` obligation, which is an ordinary proposition over terms
+discharged by the existing linear-arithmetic rule. Bounds safety is proved, not
+tracked.
+
+A defect in capability tracking can cause the kernel to check the wrong
+statement, which is the failure class every correspondence rule shares; it
+cannot make the kernel accept an invalid derivation. The specific claims this
+layer must get right are: that a place's capability is dropped when any
+may-aliasing write or unknown call effect occurs; that disjointness is only ever
+concluded from Clang-resolved distinctness, never from type-based aliasing; and
+that a `trusted` boundary is the only way a capability appears without being
+established, with every such introduction named in the trust report.
+
+```text
+kernel rules added          0
+axioms added                0
+logical assumptions added   0
+core/kernel version         unchanged
+correspondence rules added  capability tracking and access checking
+```
+
 ## 41.3 Runtime trust
 
 Each compiler invocation owns a fresh temporary directory until native compilation
@@ -1633,7 +1675,11 @@ Each of these requires an explicit update to this document before it is merged:
 - trusting a solver result that is not independently checked;
 - reusing a cached proof result;
 - any lowering rule that equates a C++ operation with a core primitive whose
-  behaviour differs on some input.
+  behaviour differs on some input;
+- concluding that two places are disjoint from anything other than
+  Clang-resolved distinctness, type-based aliasing in particular;
+- allowing a storage capability to be established by any mechanism other than a
+  proven obligation or a recorded `trusted` boundary.
 
 ## 41.6 Proof decomposition
 

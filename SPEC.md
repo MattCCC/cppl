@@ -1433,15 +1433,71 @@ dereference requires liveness, initialization for reads, sufficient bounds,
 provenance and access permission, and `p != nullptr` establishes none of them: it
 is necessary and insufficient. A pointer's state model states `null` and
 `non_null` and MUST NOT supply the difference (section 20.5). Dereference
-therefore requires separate memory-validity obligations, which this
-implementation does not provide; until it does, no dereference is modeled and no
-implementation may admit one on the strength of a non-null precondition. RFC 0014
-proposes those obligations. Pointer values, their comparisons, and proof-side
-case analysis over `null` and `non_null` are unaffected.
+therefore requires separate storage and capability obligations, defined in
+section 12.10 and specified by RFC 0014. Until that model is implemented for a
+given access form, no dereference is modeled, and no implementation may admit one
+on the strength of a non-null precondition. Pointer values, their comparisons,
+and proof-side case analysis over `null` and `non_null` are unaffected.
 
 Pure conditional expressions use Clang's resolved result type and the existing
 conditional term and branch rules. Boolean literals denote the two Boolean
 values. These additions do not model numeric promotions or signed overflow.
+
+---
+
+## 12.10 Storage and access
+
+This section is the normative boundary for the storage model specified by RFC
+0014. It is generic: refinement types consume it and MUST NOT define it.
+
+A **place** designates storage. A place is a logical construct; it is never an
+address and never a runtime value. Places are a local's storage, a by-reference
+parameter's referent, a data member of a place, an element of an array-like
+place, the pointee a pointer value designates, or a materialized temporary. A
+member and an element are projections naming storage within a place; a pointee
+place is the only form whose construction requires a capability.
+
+Reading a place yields a value; a place itself MUST NOT be a term the proof
+kernel receives. Places are identified structurally after Clang resolution, so
+two distinct data members of one complete object are distinct places.
+
+A **region** is the object a place belongs to, and carries extent, liveness and
+provenance. A member or element shares the region of the place it projects from.
+
+A **capability** is what the current state permits at a place: `readable`,
+`writable` or `initialized`. `initialized` entails `readable`. `writable` does
+NOT entail `readable`. Neither `p != nullptr` nor a pointer's decomposition
+state entails any capability, and no capability entails `p != nullptr`. A read
+requires `initialized`; a write requires `writable`.
+
+Two places MAY alias unless disjointness is proved. Distinct locals are
+disjoint, distinct members of one object are disjoint, and distinct proved
+indices into one array are disjoint. Any two pointee places MAY alias.
+Type-based disjointness MUST NOT be used, because it depends on
+undefined-behavior freedom the program has not been shown to have.
+
+A write to a place MUST prove the place writable, MUST prove the written value
+satisfies every refinement of that storage before the write is bound, MUST
+establish a new version of the place, and MUST give every place that may alias
+it a fresh unconstrained version. A fresh version of refined storage owes its
+predicate again; refinement spelling alone MUST NOT re-establish membership.
+
+A call MAY change storage. A by-value parameter has no effect on caller storage,
+and neither does a parameter of const reference or const pointer type. An
+unverified callee MUST NOT be assumed pure: it may write every region reachable
+through its non-const reference and pointer parameters and every region whose
+address may have escaped. A verified callee has exactly its stated effects, and
+only after its contract and the call's entry obligations are proven. A fact
+invalidated by an effect is re-established only by a proven postcondition.
+
+An access whose capability cannot be established MUST be rejected. Where a
+capability originates outside the verified world, an explicit `trusted` boundary
+MAY introduce it as a recorded trust event, which MUST name the capability, the
+place, the source location and the mechanism in the trust report. A failed
+capability obligation MUST NOT be silently downgraded to an assumption.
+
+Storage, regions, capabilities and versions are proof-only and erase completely.
+They introduce no runtime check, tag, metadata, wrapper or layout change.
 
 ---
 

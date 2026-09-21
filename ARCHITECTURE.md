@@ -3469,6 +3469,64 @@ A new representation that fits either shape reuses it; adding a third shape, an
 arm label for an unmodeled state, or a per-representation rule anywhere in this
 pipeline is a design error, not an extension point.
 
+## 97.10 Storage, capabilities and effects
+
+Storage is modeled once, for every access form. `SPEC.md` 12.10 is the normative
+boundary and RFC 0014 the design. The model is generic: refinement types consume
+it, and nothing in it is refinement-specific.
+
+```text
+Clang-resolved lvalue
+    ↓
+Place          local | parameter | field | element | pointee | temporary
+    ↓
+Region         extent, liveness, provenance   (shared by a place's projections)
+    ↓
+Capability     readable | writable | initialized
+    ↓
+Version        which value is there now
+```
+
+**A place is not a value.** Reading a place yields a value; the place itself
+never becomes a kernel term, which is what keeps the kernel's term language
+closed. `Deref` is the one constructor crossing from a value to a place, and the
+only one whose formation requires a capability — so dereference is a projection
+in this model, not a special case with its own rules.
+
+**One read path and one write path.** Every access form — a local, a member, an
+element, a pointee, a capture, a temporary, a call result — resolves to a place
+and goes through the same read or write. A write proves the place writable,
+proves the value satisfies the target storage's refinement *before* binding it,
+establishes a new version, and havocs every place that may alias the target.
+Adding a syntax-specific read or write is the design error this structure exists
+to prevent; it is what would produce five incompatible aliasing stories.
+
+**Aliasing fails safe.** Disjointness is proved from Clang-resolved structure —
+distinct locals, distinct members of one object, distinct proved indices — and
+never from type-based aliasing, whose validity presupposes the UB-freedom the
+proof has not established. Two arbitrary pointee places may alias. Where
+distinctness is unproved, facts are invalidated.
+
+**Capabilities are tracked, bounds are proved.** A capability is a context
+hypothesis the obligation layer carries, not a kernel proposition: validity is a
+property of the state rather than of any value, since `free(p)` destroys the
+validity of `*p` without changing `p`. Capability checking is a decidable flow
+analysis and lives in the correspondence layer with a stated TCB delta
+(`TRUST.md` 41.2). What reaches the kernel is what needs proof — refinement
+membership on every write, and `index < extent` on every subscript, both
+ordinary propositions discharged by existing rules. The kernel gains no storage
+rule, no memory rule and no capability rule.
+
+**Effects are derived, never assumed.** Parameter kinds and constness come from
+Clang; a verified callee has exactly its proven stated effects, and an
+unverified callee is never assumed pure. A fact an effect invalidated is
+re-established only by a proven postcondition.
+
+The escape hatch is `trusted`, and it is explicit: a capability introduced there
+is a recorded trust event naming the capability, the place, the location and the
+mechanism. A failed capability obligation is a diagnostic, never a silent
+downgrade to an assumption.
+
 ### Abstract value boundary
 
 Core/kernel 0.6.0 carries nominal abstract sorts with finite typed observation
