@@ -819,7 +819,7 @@ None alone provide the intended proof-aware language model.
 - [TRUST.md](docs/TRUST.md) - Trusted Computing Base, assumptions, and trust boundaries
 - [COMPATIBILITY.md](docs/COMPATIBILITY.md) - C++ source, ABI, toolchain, and standard compatibility
 - [STATUS.md](docs/STATUS.md) - current implementation status and verification maturity
-- [ROADMAP.md](ROADMAP.md) - planned implementation sequence and milestones
+- [ROADMAP.md](docs/ROADMAP.md) - planned implementation sequence and milestones
 - [SECURITY.md](SECURITY.md) - soundness and security policy
 - [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md) - intellectual and project credits
 - [CONTRIBUTING.md](CONTRIBUTING.md) - contribution and development process

@@ -33,7 +33,7 @@ Those are defined elsewhere.
 | [ARCHITECTURE.md](./ARCHITECTURE.md)   | Compiler structure, components, dependencies, and data flow |
 | [FOUNDATIONS.md](./FOUNDATIONS.md)     | Mathematical foundations and intellectual lineage           |
 | [STATUS.md](./STATUS.md)               | Actual implementation maturity                              |
-| [ROADMAP.md](ROADMAP.md)               | Planned implementation sequence                             |
+| [ROADMAP.md](./ROADMAP.md)             | Planned implementation sequence                             |
 
 When this document discusses a language feature, it explains the **reason for the feature** rather than defining its exact semantics.
 
