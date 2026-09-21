@@ -552,7 +552,8 @@ cppl trust-report
 
 Also:
 
-- LSP
+- LSP hover, go-to-definition, completion and incremental sync (sync and
+  diagnostics are implemented; see `STATUS.md`)
 - IDE diagnostics
 - proof goals
 - counterexamples

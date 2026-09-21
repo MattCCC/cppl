@@ -886,7 +886,8 @@ AI output must always be independently verified.
 | `cppl prove`            | `SPECIFIED`   |
 | `cppl explain`          | `SPECIFIED`   |
 | `cppl trust-report`     | `PARTIAL`     |
-| LSP                     | `NOT STARTED` |
+| LSP: sync and diagnostics | `PARTIAL`   |
+| LSP: hover, definition, completion | `NOT STARTED` |
 | IDE proof goals         | `NOT STARTED` |
 | Proof navigation        | `NOT STARTED` |
 | Counterexample UI       | `NOT STARTED` |
@@ -896,6 +897,18 @@ The driver is Clang-compatible rather than subcommand-based: `cppl` takes the
 arguments `clang++` takes. Trust reporting exists as `--cppl-trust-report`; the
 subcommand forms above are not implemented. The report counts partial-
 correctness contracts and loop-invariant obligations separately.
+
+`cppl-lsp` implements `initialize`, `shutdown`, `exit`, full-document
+`textDocument/didOpen`, `didChange` and `didClose`, and
+`textDocument/publishDiagnostics`. Diagnostics come from the ordinary compile
+pipeline over the live buffer (`driver::compile_buffer`), so the server has no
+decomposition, exhaustiveness or verification engine of its own; a structural
+linter adds contextual C++L checks over the same recognized syntax rather than
+re-recognizing it. Transport is separate from analysis, and the library is
+tested without an editor. The server advertises only `textDocumentSync`: hover,
+go-to-definition, completion and incremental sync are designed in
+`tools/cppl-lsp/README.md` but not implemented, and are deliberately not
+advertised as capabilities.
 
 ---
 
@@ -1293,6 +1306,8 @@ The credibility of a proof-oriented language depends on maintaining those distin
 ## Abstract observation core
 
 The core supports nominal abstract values and typed logical projections, with
-independent malformed-evidence and substitution tests. This is implemented
-value-model infrastructure; it does not by itself promote source decomposition
-providers, mutation analysis, or editor tooling to implemented status.
+independent malformed-evidence and substitution tests. The source decomposition
+providers built on it are implemented and listed above. Nothing here promotes
+mutation analysis or the unimplemented editor capabilities to implemented
+status: `cases` is still unavailable over values that can change, and the
+language server still offers sync and diagnostics only.

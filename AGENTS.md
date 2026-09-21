@@ -939,6 +939,12 @@ ROADMAP.md
 STATUS.md
     implementation maturity
 
+DEVELOPER_GUIDE.md
+    how to work in the language and extend the compiler
+
+tools/<tool>/README.md
+    how to build, run and test one tool, and its own non-goals
+
 SECURITY.md
     soundness/security policy
 

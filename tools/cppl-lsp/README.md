@@ -16,6 +16,30 @@ The goal is to make C++L feel like a native extension of C++.
 
 ---
 
+## Implementation status
+
+Most of this document is **design**, not a description of what is built. What
+ships today is:
+
+```text
+initialize / initialized / shutdown / exit
+textDocument/didOpen, didChange, didClose   full-document sync
+textDocument/publishDiagnostics             from the real compile pipeline
+```
+
+Diagnostics come from `driver::compile_buffer` over the live buffer — the same
+pipeline the CLI runs — so the server holds no decomposition, exhaustiveness or
+verification logic of its own. A structural linter adds contextual C++L checks
+over the syntax that pipeline already recognized, rather than recognizing it a
+second time.
+
+The server advertises only `textDocumentSync`. **Hover, navigation, completion,
+semantic tokens and incremental sync are specified below but not implemented**,
+and are deliberately not advertised as capabilities: an editor is told what the
+server can do, never what it intends to do. `STATUS.md` tracks this.
+
+---
+
 ## Architecture
 
 ```text
