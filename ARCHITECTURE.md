@@ -2975,7 +2975,7 @@ then reads the resolved expression. Nothing in C++L parses C++ expressions.
 
 The generated function carries the Law's own name, so a Law occupies a formal
 declaration namespace associated with its C++ scope (`GRAMMAR.md` 46). That is
-what lets a proof name a Law: `proves(L(x))` is an ordinary call, bound by
+what lets a proof name a Law: `proves (L(x))` is an ordinary call, bound by
 Clang, and the elaborator meets the Law again through the symbol Clang
 resolved rather than through the spelling the author used.
 
@@ -3055,7 +3055,7 @@ See RFC 0011; SPEC.md 7.8 owns its meaning.
 A proof declaration is projected the same way. Its `proves` clause becomes the
 body of a generated function or an explicit-equality probe. Clang resolves
 the C++ parts; its statements are C++L and are never projected into C++ at all.
-A direct `proves(P)` has a proof obligation identified independently of any Law.
+A direct `proves (P)` has a proof obligation identified independently of any Law.
 It always requires its written evidence; failure never invokes automation.
 
 A statement may instantiate the proof it names, as in `exact q(t);`. Each `t`
@@ -3310,7 +3310,7 @@ signed operands and every other arithmetic operator.
 
 ### Loops and partial-correctness contracts
 
-The recognizer takes `invariant(...)` clauses between a `while` or `for` header
+The recognizer takes `invariant (...)` clauses between a `while` or `for` header
 and a block body inside a verified function. The projector blanks them from
 both texts and inserts, just inside the body's `{`, one generated `bool`
 declaration per invariant, so Clang resolves each invariant in the scope the
@@ -3496,7 +3496,7 @@ in this model, not a special case with its own rules.
 **One read path and one write path.** Every access form — a local, a member, an
 element, a pointee, a capture, a temporary, a call result — resolves to a place
 and goes through the same read or write. A write proves the place writable,
-proves the value satisfies the target storage's refinement *before* binding it,
+proves the value satisfies the target storage's refinement _before_ binding it,
 establishes a new version, and havocs every place that may alias the target.
 Adding a syntax-specific read or write is the design error this structure exists
 to prevent; it is what would produce five incompatible aliasing stories.

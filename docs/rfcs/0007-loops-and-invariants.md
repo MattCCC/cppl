@@ -8,7 +8,7 @@ Status: implemented by this slice; normative rules are SPEC.md 23 and 24.3.
 
 ## Meaning
 
-`while (c) invariant(I) { body }` and `for (init; c; step) invariant(I) { body }`
+`while (c) invariant (I) { body }` and `for (init; c; step) invariant (I) { body }`
 are verified by the partial-correctness loop rule. Each local the loop writes
 is carried: at the head it is a fresh value of which only the invariants and
 the condition are known. The body must be verified to take any state at the

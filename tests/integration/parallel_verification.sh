@@ -9,7 +9,7 @@ run=$(mktemp -d "$WORK/parallel-verification.XXXXXX")
 export CPPL_TEST_SYNC="$run"
 
 cat > "$run/input.cpp" <<'CPP'
-verified unsigned value() ensures(result == VALUE) { return VALUE; }
+verified unsigned value() ensures (result == VALUE) { return VALUE; }
 int main() { return static_cast<int>(value()); }
 CPP
 

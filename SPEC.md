@@ -702,7 +702,7 @@ P -> Q
 ```
 
 which claims nothing about `P`: what it states is `Q` under the supposition of
-`P`. A Law written `expects(P) ensures(Q)` states the same proposition, and both
+`P`. A Law written `expects (P) ensures (Q)` states the same proposition, and both
 are discharged the same way.
 
 ---
@@ -1402,7 +1402,6 @@ than the body. An implementation MAY bound the statements on one path and the
 size of the terms it states, and MUST reject a body beyond those bounds rather
 than approximate it.
 
-
 ## 12.9 Reference storage and normal post-state
 
 Verified scalar parameters MAY be passed by value, `T&`, `const T&`, or `T&&`.
@@ -1471,8 +1470,7 @@ values. These additions do not model numeric promotions or signed overflow.
 
 ## 12.10 Storage and access
 
-This section is the normative boundary for the storage model specified by RFC
-0014. It is generic: refinement types consume it and MUST NOT define it.
+This section is the normative boundary for the storage model specified by RFC 0014. It is generic: refinement types consume it and MUST NOT define it.
 
 A **place** designates storage. A place is a logical construct; it is never an
 address and never a runtime value. Places are a local's storage, a by-reference
@@ -1877,7 +1875,7 @@ mutation through aliases/references/pointers
 unverified construction boundaries
 ```
 
-Supplying a component's predicate on a member *read* is not sufficient and MUST
+Supplying a component's predicate on a member _read_ is not sufficient and MUST
 NOT be implemented before those obligations exist. A record enters a verified
 body as a parameter, so its construction happens in unverified code: admitting a
 refined field and stating its predicate on read would let an ordinary
@@ -2213,6 +2211,7 @@ A case may be closed by evidence that it cannot occur.
 Impossibility MUST be established formally rather than guessed from control-flow heuristics.
 
 ---
+
 ## 20.5 Proof decomposition
 
 `cases` is representation-independent. What states a value has is supplied by a
@@ -2344,14 +2343,14 @@ exposed to source only in the state where the C++ payload exists.
 
 ### 20.5.4 Implemented providers
 
-| Representation | Model | Residual state |
-| --- | --- | --- |
-| scoped enumeration | one case per distinct enumerator value | `unnamed` |
-| `std::variant` | `alternative<i>(value)` per alternative index | `valueless` |
-| `std::optional` | `some(value)` | `none` |
-| `std::expected` | `value(payload)` | `error(reason)` |
-| pointer | `null` | `non_null`, binding nothing |
-| record, `std::pair`, `std::tuple`, `std::array`, built-in array | one `components(...)` arm | none; a product has one state |
+| Representation                                                  | Model                                         | Residual state                |
+| --------------------------------------------------------------- | --------------------------------------------- | ----------------------------- |
+| scoped enumeration                                              | one case per distinct enumerator value        | `unnamed`                     |
+| `std::variant`                                                  | `alternative<i>(value)` per alternative index | `valueless`                   |
+| `std::optional`                                                 | `some(value)`                                 | `none`                        |
+| `std::expected`                                                 | `value(payload)`                              | `error(reason)`               |
+| pointer                                                         | `null`                                        | `non_null`, binding nothing   |
+| record, `std::pair`, `std::tuple`, `std::array`, built-in array | one `components(...)` arm                     | none; a product has one state |
 
 A representation is recognized by its Clang-resolved canonical identity after
 substitution, never by spelling. A standard type is identified through its
@@ -2415,7 +2414,6 @@ compiler reports an omitted arm rather than supplying an assumption.
 See RFC 0013 and `TRUST.md` 41.2 for correspondence responsibilities.
 
 ---
-
 
 # 21. Induction
 

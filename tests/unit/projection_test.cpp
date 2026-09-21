@@ -24,22 +24,22 @@ const std::string kUnit = "# 1 \"main.cpp\"\n"
                           "law identity_returns_input(int x)\n"
                           "    proves (identity(x) == x);\n"
                           "proof identity_returns_input_holds(int x)\n"
-                          "    proves(identity_returns_input(x))\n"
+                          "    proves (identity_returns_input(x))\n"
                           "{\n"
                           "    refl;\n"
                           "}\n"
                           "law identity_of_zero()\n"
                           "    proves (identity(0) == 0);\n"
                           "proof identity_of_zero_holds()\n"
-                          "    proves(identity_of_zero())\n"
+                          "    proves (identity_of_zero())\n"
                           "{\n"
                           "    exact identity_returns_input_holds(0);\n"
                           "}\n"
                           "law identity_under_a_premise(int x)\n"
-                          "    expects(identity(x) == 0)\n"
+                          "    expects (identity(x) == 0)\n"
                           "    proves (identity(x) == x);\n"
                           "proof identity_under_a_premise_holds(int x)\n"
-                          "    proves(identity_under_a_premise(x))\n"
+                          "    proves (identity_under_a_premise(x))\n"
                           "{\n"
                           "    assume h : identity(x) == 0;\n"
                           "    refl;\n"
@@ -54,10 +54,10 @@ std::size_t count_newlines(std::string_view text) {
 
 CPPL_TEST(physical_declarations_stay_distinct_when_displayed_locations_repeat) {
     const std::string source = "#line 1 \"same.cpp\"\n"
-                               "verified unsigned a() ensures(result == 0u) {return 0u;}"
+                               "verified unsigned a() ensures (result == 0u) {return 0u;}"
                                "law same() proves (0u == 0u);\n"
                                "#line 1 \"same.cpp\"\n"
-                               "verified unsigned b() ensures(result == 1u) {return 1u;}"
+                               "verified unsigned b() ensures (result == 1u) {return 1u;}"
                                "namespace B {law same() proves (1u == 1u);}\n"
                                "#line 5 \"same.cpp\"\n"
                                "pure unsigned c() {return 2u;}\n"
@@ -324,8 +324,8 @@ CPPL_TEST(a_unit_without_formal_syntax_is_left_untouched) {
 
 CPPL_TEST(contracts_erase_without_changing_runtime_values_or_source_locations) {
     const std::string text = "verified unsigned f(unsigned x)\n"
-                             "expects(x == 0u)\nensures(result == 0u)\n{ return x; } "
-                             "verified unsigned g(unsigned y) ensures(result == y) { return y; }\n"
+                             "expects (x == 0u)\nensures (result == 0u)\n{ return x; } "
+                             "verified unsigned g(unsigned y) ensures (result == y) { return y; }\n"
                              "int result = 7;\n";
     cppl::diagnostics::Engine engine;
     const auto stream = cppl::frontend::lex(text, "contracts.cpp");
@@ -356,11 +356,11 @@ CPPL_TEST(contracts_erase_without_changing_runtime_values_or_source_locations) {
 }
 
 CPPL_TEST(loop_invariants_leave_the_runtime_and_reach_clang_inside_the_body) {
-    const std::string text = "verified unsigned f(unsigned n) ensures(result == n) {\n"
+    const std::string text = "verified unsigned f(unsigned n) ensures (result == n) {\n"
                              "    unsigned i = 0u;\n"
                              "    while (i < n)\n"
-                             "        invariant(i <= n)\n"
-                             "        invariant(i >= 0u) { i = i + 1u; }\n"
+                             "        invariant (i <= n)\n"
+                             "        invariant (i >= 0u) { i = i + 1u; }\n"
                              "    return i;\n"
                              "}\n";
     cppl::diagnostics::Engine engine;

@@ -31,7 +31,7 @@ reject() {
     grep -q error "$run/$name.log"
 }
 reject false_conjunction <<'CPP'
-proof wrong(unsigned x) proves(Eq<unsigned>(x, x) && Eq<unsigned>(0u, 1u)) { refl; }
+proof wrong(unsigned x) proves (Eq<unsigned>(x, x) && Eq<unsigned>(0u, 1u)) { refl; }
 CPP
 reject one_way_equivalence <<'CPP'
 law wrong(unsigned x) proves (Eq<unsigned>(x, 0u) <-> Eq<unsigned>(x, x));
@@ -40,15 +40,15 @@ reject reverse_one_way <<'CPP'
 law wrong(unsigned x) proves (Eq<unsigned>(x, x) <-> Eq<unsigned>(x, 0u));
 CPP
 reject captured_conjunct <<'CPP'
-law wrong(unsigned x) expects(Eq<unsigned>(x, 0u))
+law wrong(unsigned x) expects (Eq<unsigned>(x, 0u))
     proves (Eq<unsigned>(x, 0u) && (forall (unsigned x) { Eq<unsigned>(x, 0u) }));
 CPP
 reject wrong_evidence <<'CPP'
-proof first(unsigned x) proves(Eq<unsigned>(x, x)) { refl; }
-proof wrong(unsigned x) proves(Eq<unsigned>(x, x) <-> Eq<unsigned>(x, x)) { exact first(x); }
+proof first(unsigned x) proves (Eq<unsigned>(x, x)) { refl; }
+proof wrong(unsigned x) proves (Eq<unsigned>(x, x) <-> Eq<unsigned>(x, x)) { exact first(x); }
 CPP
 reject wrong_type <<'CPP'
-proof wrong(unsigned x) proves(Eq<unsigned>(x, x) && 7u) { refl; }
+proof wrong(unsigned x) proves (Eq<unsigned>(x, x) && 7u) { refl; }
 CPP
 reject missing_side <<'CPP'
 law wrong(unsigned x) proves (Eq<unsigned>(x, x) <->);
@@ -59,7 +59,7 @@ law wrong(unsigned x) proves (take(Eq<unsigned>(x, x) && Eq<unsigned>(x, x)));
 CPP
 reject written_failure <<'CPP'
 law valid(unsigned x) proves (Eq<unsigned>(x, x) <-> Eq<unsigned>(x, x));
-proof wrong(unsigned x) proves(valid(x)) { exact missing; }
+proof wrong(unsigned x) proves (valid(x)) { exact missing; }
 CPP
 
 # Equivalence is looser than implication, so this states
@@ -72,8 +72,8 @@ CPP
 # A boundary, not a soundness claim: no written spelling projects one side out
 # of a conjunctive premise. Automation does it, and the kernel checks it.
 reject written_conjunction_side <<'CPP'
-law valid(unsigned x) expects(Eq<unsigned>(x, 0u) && Eq<unsigned>(x + 1u, 1u)) proves (Eq<unsigned>(x, 0u));
-proof wrong(unsigned x) proves(valid(x)) {
+law valid(unsigned x) expects (Eq<unsigned>(x, 0u) && Eq<unsigned>(x + 1u, 1u)) proves (Eq<unsigned>(x, 0u));
+proof wrong(unsigned x) proves (valid(x)) {
     assume h : Eq<unsigned>(x, 0u) && Eq<unsigned>(x + 1u, 1u);
     exact h;
 }

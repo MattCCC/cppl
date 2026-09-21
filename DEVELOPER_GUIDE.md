@@ -12,20 +12,20 @@ create alternate syntax.
 
 ## 1. What runs and what erases
 
-| Construct | Runtime behavior | Erasure |
-| --- | --- | --- |
-| Ordinary C++ body | Executes normally | Preserved |
-| `verified`, `pure` | Body executes | Modifiers/metadata removed |
-| `expects`, `ensures`, `proves` | None | Removed |
-| `law`, `proof` | None | Entire declaration removed |
-| `cases`, `decompose`, `induction` | None | Removed with proof |
-| `ghost` local | None | Removed |
-| Refinement predicate/indices | None | Removed |
-| Refinement base value | Ordinary C++ value | Base representation preserved |
-| `invariant`, `decreases` | None | Clauses removed; loop/body retained |
-| `trusted law` | None | Assumption retained in verification report, erased from executable |
-| `unsafe` | Body/operation executes | Marker removed, runtime operations retained |
-| Explicit runtime validation | Executes | Preserved |
+| Construct                         | Runtime behavior        | Erasure                                                            |
+| --------------------------------- | ----------------------- | ------------------------------------------------------------------ |
+| Ordinary C++ body                 | Executes normally       | Preserved                                                          |
+| `verified`, `pure`                | Body executes           | Modifiers/metadata removed                                         |
+| `expects`, `ensures`, `proves`    | None                    | Removed                                                            |
+| `law`, `proof`                    | None                    | Entire declaration removed                                         |
+| `cases`, `decompose`, `induction` | None                    | Removed with proof                                                 |
+| `ghost` local                     | None                    | Removed                                                            |
+| Refinement predicate/indices      | None                    | Removed                                                            |
+| Refinement base value             | Ordinary C++ value      | Base representation preserved                                      |
+| `invariant`, `decreases`          | None                    | Clauses removed; loop/body retained                                |
+| `trusted law`                     | None                    | Assumption retained in verification report, erased from executable |
+| `unsafe`                          | Body/operation executes | Marker removed, runtime operations retained                        |
+| Explicit runtime validation       | Executes                | Preserved                                                          |
 
 A contract is not a hidden runtime assertion. A failed proof is a compilation
 error. Tests, solver output and AI suggestions cannot replace kernel-checked
@@ -38,6 +38,7 @@ one space before `(`, and its own continuation line. The order is `expects`,
 `ensures`, `decreases`, with at most one of each.
 
 <!-- cppl-example: verify -->
+
 ```cpp
 verified int identity(int x)
     ensures (result == x)
@@ -51,6 +52,7 @@ postcondition. An expects-only function still has to satisfy its body safety
 obligations. Here unsigned arithmetic avoids signed overflow:
 
 <!-- cppl-example: verify -->
+
 ```cpp
 verified unsigned next(unsigned x)
     expects (x < 100u)
@@ -69,6 +71,7 @@ verified unsigned withdraw(unsigned balance, unsigned amount)
 A contract applies to every normal return, including early returns:
 
 <!-- cppl-example: verify -->
+
 ```cpp
 verified unsigned bounded(unsigned x)
     ensures (result <= 10u)
@@ -83,6 +86,7 @@ verified unsigned bounded(unsigned x)
 A private helper can carry its contract on the definition:
 
 <!-- cppl-example: verify -->
+
 ```cpp
 static verified int normalize(int x)
     expects (x >= 0)
@@ -106,6 +110,7 @@ interchangeable flags on a verified function.
 A Law has no result. A void function describes state changes instead:
 
 <!-- cppl-example: verify -->
+
 ```cpp
 verified void clear(unsigned& value)
     ensures (value == 0u)
@@ -132,16 +137,17 @@ Normal parameter/member observations in the postcondition describe the normal
 post-state. Preconditions refer to entry state. An exceptional exit is not a
 normal return and does not acquire an invented exception guarantee.
 
-| Identifier | Special meaning and scope | Outside that scope |
-| --- | --- | --- |
-| `result` | Returned value in non-void `ensures` | Ordinary C++ name |
-| `old(expression)` | Entry value in function `ensures` | Ordinary C++ call/name |
-| `self` | Candidate value in refinement `where` | Ordinary C++ name |
+| Identifier        | Special meaning and scope             | Outside that scope     |
+| ----------------- | ------------------------------------- | ---------------------- |
+| `result`          | Returned value in non-void `ensures`  | Ordinary C++ name      |
+| `old(expression)` | Entry value in function `ensures`     | Ordinary C++ call/name |
+| `self`            | Candidate value in refinement `where` | Ordinary C++ name      |
 
 Members use C++ `this` and ordinary member lookup; `self` is not a second spelling
 for the implicit object. Ordinary C++ remains valid:
 
 <!-- cppl-example: verify -->
+
 ```cpp
 int result = 0;
 int self = 1;
@@ -156,6 +162,7 @@ A Law is a compile-time theorem. Parameters are universally quantified, an
 optional `expects` is its premise, and `proves` is its conclusion.
 
 <!-- cppl-example: verify -->
+
 ```cpp
 law addition_identity(unsigned x)
     proves (x + 0u == x);
@@ -170,6 +177,7 @@ accepted by the kernel, compilation fails. A declaration does not create an
 axiom. Write a proof body when explicit evidence is useful:
 
 <!-- cppl-example: verify -->
+
 ```cpp
 law equality_is_reflexive(int x)
     proves (Eq<int>(x, x))
@@ -204,6 +212,7 @@ also refers to an undefined return-value `result`.
 A named `proof` constructs reusable evidence without a runtime function:
 
 <!-- cppl-example: verify -->
+
 ```cpp
 proof same(int x)
     proves (Eq<int>(x, x))
@@ -218,18 +227,19 @@ proof use_same(int x)
 }
 ```
 
-| Statement | Meaning |
-| --- | --- |
-| `refl;` | Close a definitionally reflexive equality |
-| `exact same(x);` | Close the goal with existing evidence |
-| `apply same(x);` | Apply evidence; discharge its premises |
-| `assume h : x == 0u;` | Name a matching context-supplied premise |
-| `rewrite h;` | Rewrite the goal left-to-right using checked equality |
+| Statement             | Meaning                                               |
+| --------------------- | ----------------------------------------------------- |
+| `refl;`               | Close a definitionally reflexive equality             |
+| `exact same(x);`      | Close the goal with existing evidence                 |
+| `apply same(x);`      | Apply evidence; discharge its premises                |
+| `assume h : x == 0u;` | Name a matching context-supplied premise              |
+| `rewrite h;`          | Rewrite the goal left-to-right using checked equality |
 
 Commands are statements, not calls such as `exact(same);`. An evidence reference
 may itself have arguments. `assume` never asserts an arbitrary proposition:
 
 <!-- cppl-example: verify -->
+
 ```cpp
 law given_zero(unsigned x)
     expects (x == 0u)
@@ -250,6 +260,7 @@ propositional equality requires evidence. `&&`, `||`, `->`, and `<->` compose
 formal propositions in specification contexts.
 
 <!-- cppl-example: verify -->
+
 ```cpp
 law every_value_equals_itself()
     proves (forall (unsigned x) { Eq<unsigned>(x, x) });
@@ -293,6 +304,7 @@ obligations, even when an idealized mathematical identity would hold.
 A refinement restricts an existing C++ type. `self` is the value being refined:
 
 <!-- cppl-example: verify -->
+
 ```cpp
 type NonNegative = int where (self >= 0);
 type Percentage = NonNegative where (self <= 100);
@@ -321,6 +333,7 @@ assignment, member/element write and verified call effect. Branch facts can
 establish the predicate:
 
 <!-- cppl-example: verify -->
+
 ```cpp
 type Positive = int where (self > 0);
 
@@ -390,6 +403,7 @@ Indexed refinements declare typed indices with parentheses and apply them with
 angle brackets:
 
 <!-- cppl-example: verify -->
+
 ```cpp
 type Index(unsigned n) = unsigned where (self < n);
 
@@ -414,6 +428,7 @@ corresponding entry evidence. Such trust remains in the report.
 `pure` requests checked referential transparency. Its body remains ordinary C++:
 
 <!-- cppl-example: verify -->
+
 ```cpp
 pure unsigned same_value(unsigned value) {
     return value;
@@ -515,6 +530,7 @@ Bindings are aliases or logical projections of the subject, never copied values.
 Scoped enums include every distinct named value and the unnamed residual:
 
 <!-- cppl-example: verify -->
+
 ```cpp
 enum class Mode { idle, active };
 
@@ -545,6 +561,7 @@ that stale proof. `_` is not a C++L proof catch-all.
 Variant alternatives use indices, including when two alternatives share a type:
 
 <!-- cppl-example: verify -->
+
 ```cpp
 #include <variant>
 
@@ -570,6 +587,7 @@ proof variant_identity(std::variant<int, bool> value)
 Optional payloads and nested decomposition use the same grammar:
 
 <!-- cppl-example: verify -->
+
 ```cpp
 #include <optional>
 
@@ -619,6 +637,7 @@ proof expected_identity(std::expected<unsigned, int> value)
 Pointer decomposition states only nullness:
 
 <!-- cppl-example: verify -->
+
 ```cpp
 proof pointer_states(int* pointer)
     proves (Eq<bool>(true, true))
@@ -640,6 +659,7 @@ writability. Product decomposition uses the separate product operation and the
 same arm body/binder grammar:
 
 <!-- cppl-example: verify -->
+
 ```cpp
 struct Point {
     int x;
@@ -733,6 +753,7 @@ continuing iteration, including `continue`. Normal loop exit combines it with
 the failed condition; `break` retains only the facts on its own path.
 
 <!-- cppl-example: verify -->
+
 ```cpp
 verified unsigned count(unsigned n)
     ensures (result == n)
@@ -770,6 +791,7 @@ verified unsigned terminating_count(unsigned n)
 For loops put the same clauses after the header:
 
 <!-- cppl-example: verify -->
+
 ```cpp
 verified unsigned count_for(unsigned n)
     ensures (result == n)
@@ -1004,16 +1026,16 @@ src/
 A separate `proofs/` directory is optional. Shared theorem evidence can live with
 its interface; do not split formal metadata away from callers that need it.
 
-| Construct | Normally in header/interface? |
-| --- | --- |
-| Public verified contract | Yes |
-| Runtime function body | Usually no |
+| Construct                        | Normally in header/interface?                  |
+| -------------------------------- | ---------------------------------------------- |
+| Public verified contract         | Yes                                            |
+| Runtime function body            | Usually no                                     |
 | Template definition and contract | Yes, unless explicit instantiation is arranged |
-| Shared refinement | Yes |
-| Shared Law and reusable evidence | Yes |
-| Implementation-only Law/proof | No |
-| Trusted external assumption | At the boundary's interface |
-| Ghost local | No; inside its verification-enabled block |
+| Shared refinement                | Yes                                            |
+| Shared Law and reusable evidence | Yes                                            |
+| Implementation-only Law/proof    | No                                             |
+| Trusted external assumption      | At the boundary's interface                    |
+| Ghost local                      | No; inside its verification-enabled block      |
 
 Across translation units, preserve contracts, refinement identity/predicates,
 Law propositions/evidence, purity/effect metadata and trust dependencies. Native
@@ -1095,7 +1117,7 @@ What cppl-lsp fixes automatically through formatting:
 Before (noncanonical layout):
 
 ```cpp
-verified int f(int x) ensures(result == x) expects(x > 0) {
+verified int f(int x) ensures (result == x) expects (x > 0) {
     return x;
 }
 ```
@@ -1113,16 +1135,16 @@ verified int f(int x)
 
 Migration diagnostics must preserve meaning:
 
-| Input issue | Deterministic correction | Safety condition |
-| --- | --- | --- |
-| Missing clause parentheses | Wrap the delimited expression | Boundary is unambiguous |
-| Wrong order/header-line clauses | Reorder and format complete clauses | Preserve predicate text and comments |
-| Repeated `expects`/`ensures`/`invariant` | One ordered `&&` predicate | Predicates have conjunction semantics |
-| Law `ensures` | Replace keyword with `proves` | No invalid Law `result` use |
-| `pure verified` | `verified pure` | Both are contextual modifiers |
-| Compact proof arms | Expanded `Label(bindings) => { }` | Same labels, bindings and steps |
-| Obsolete proof `case` | `cases` | Inside a proof, never a C++ switch |
-| Untyped refinement index | Write its declared index type | Intended type is established; otherwise ask for an edit |
+| Input issue                              | Deterministic correction            | Safety condition                                        |
+| ---------------------------------------- | ----------------------------------- | ------------------------------------------------------- |
+| Missing clause parentheses               | Wrap the delimited expression       | Boundary is unambiguous                                 |
+| Wrong order/header-line clauses          | Reorder and format complete clauses | Preserve predicate text and comments                    |
+| Repeated `expects`/`ensures`/`invariant` | One ordered `&&` predicate          | Predicates have conjunction semantics                   |
+| Law `ensures`                            | Replace keyword with `proves`       | No invalid Law `result` use                             |
+| `pure verified`                          | `verified pure`                     | Both are contextual modifiers                           |
+| Compact proof arms                       | Expanded `Label(bindings) => { }`   | Same labels, bindings and steps                         |
+| Obsolete proof `case`                    | `cases`                             | Inside a proof, never a C++ switch                      |
+| Untyped refinement index                 | Write its declared index type       | Intended type is established; otherwise ask for an edit |
 
 A migration note is not compiler acceptance of a legacy dialect. If a correction
 could alter meaning, the diagnostic asks for a source edit rather than guessing.
@@ -1133,17 +1155,17 @@ No fix may weaken a Law, remove an arm or turn a failed proof into trust.
 A useful diagnostic identifies the source location, goal, available premises,
 failed obligation and trust provenance. Distinguish these common causes:
 
-| Diagnostic | Action |
-| --- | --- |
-| Law needs `proves` | Correct its conclusion keyword |
-| Clause requires parentheses/order | Apply the syntax/layout fix |
-| Refinement introduction failed | Establish the predicate on this value version |
-| Non-exhaustive cases | Add the missing state or prove it impossible |
-| `assume` does not match a premise | Use only evidence actually supplied by the context |
-| Ghost value affects runtime | Keep the runtime computation independent of erased state |
-| Capability obligation failed | Supply valid memory evidence, not just non-nullness |
-| Termination measure does not decrease | Correct the algorithm or its justified measure |
-| Unsupported semantics | Keep verification fail-closed; no implicit assumption |
+| Diagnostic                            | Action                                                   |
+| ------------------------------------- | -------------------------------------------------------- |
+| Law needs `proves`                    | Correct its conclusion keyword                           |
+| Clause requires parentheses/order     | Apply the syntax/layout fix                              |
+| Refinement introduction failed        | Establish the predicate on this value version            |
+| Non-exhaustive cases                  | Add the missing state or prove it impossible             |
+| `assume` does not match a premise     | Use only evidence actually supplied by the context       |
+| Ghost value affects runtime           | Keep the runtime computation independent of erased state |
+| Capability obligation failed          | Supply valid memory evidence, not just non-nullness      |
+| Termination measure does not decrease | Correct the algorithm or its justified measure           |
+| Unsupported semantics                 | Keep verification fail-closed; no implicit assumption    |
 
 Use `cppl` with ordinary Clang compile options. For example,
 `build/dev/bin/cppl -std=c++20 -fsyntax-only source.cpp` runs verification without
@@ -1152,24 +1174,24 @@ and [tools/cppl-lsp/README.md](tools/cppl-lsp/README.md) for editor setup.
 
 ## 19. C++L cheat sheet
 
-| Goal / canonical form | Runtime? | Main context / usual location |
-| --- | --- | --- |
-| `verified int f(int x)` | Body runs | Public contract in header; body in source |
-| `expects (x > 0)` | No | Function precondition / Law premise |
-| `ensures (result == x)` | No | Runtime function postcondition |
-| `law L(int x) proves (x == x);` | No | Shared header or private source theorem |
-| `proof P(int x) proves (Eq<int>(x, x)) { refl; }` | No | Reusable evidence; format as expanded block |
-| `type Positive = int where (self > 0);` | Base only | Shared type declaration in header |
-| `type Index(unsigned n) = unsigned where (self < n);` | Base only | Indexed refinement, applied as `Index<4u>` |
-| `pure unsigned f(unsigned x)` | Body runs | Checked effect-free function |
-| `invariant (i <= n)` | No | Loop clause in runtime implementation |
-| `decreases (n - i)` | No | Function/loop termination measure |
-| `ghost unsigned original = x;` | No | Verification-only local |
-| `cases value { Label => { refl; } }` | No | Proof state split; expanded arms |
-| `decompose point { components(x, y) => { refl; } }` | No | Proof product projections |
-| `induction n;` | No | Proof with domain induction principle |
-| `trusted law boundary(unsigned x) proves (x == 0u);` | No | Explicit assumption at a boundary |
-| `unsafe { operation(); }` | Operations execute | Explicit unsafe block |
+| Goal / canonical form                                 | Runtime?           | Main context / usual location               |
+| ----------------------------------------------------- | ------------------ | ------------------------------------------- |
+| `verified int f(int x)`                               | Body runs          | Public contract in header; body in source   |
+| `expects (x > 0)`                                     | No                 | Function precondition / Law premise         |
+| `ensures (result == x)`                               | No                 | Runtime function postcondition              |
+| `law L(int x) proves (x == x);`                       | No                 | Shared header or private source theorem     |
+| `proof P(int x) proves (Eq<int>(x, x)) { refl; }`     | No                 | Reusable evidence; format as expanded block |
+| `type Positive = int where (self > 0);`               | Base only          | Shared type declaration in header           |
+| `type Index(unsigned n) = unsigned where (self < n);` | Base only          | Indexed refinement, applied as `Index<4u>`  |
+| `pure unsigned f(unsigned x)`                         | Body runs          | Checked effect-free function                |
+| `invariant (i <= n)`                                  | No                 | Loop clause in runtime implementation       |
+| `decreases (n - i)`                                   | No                 | Function/loop termination measure           |
+| `ghost unsigned original = x;`                        | No                 | Verification-only local                     |
+| `cases value { Label => { refl; } }`                  | No                 | Proof state split; expanded arms            |
+| `decompose point { components(x, y) => { refl; } }`   | No                 | Proof product projections                   |
+| `induction n;`                                        | No                 | Proof with domain induction principle       |
+| `trusted law boundary(unsigned x) proves (x == 0u);`  | No                 | Explicit assumption at a boundary           |
+| `unsafe { operation(); }`                             | Operations execute | Explicit unsafe block                       |
 
 The compact forms in this reference table describe tokens; the formatter expands
 clauses and proof bodies to the canonical layout used throughout the guide.

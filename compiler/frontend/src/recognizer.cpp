@@ -23,8 +23,8 @@ bool is_type_keyword(const Token& token) {
 // can only end a previous declaration, statement or label.
 bool at_declaration_start(const std::vector<Token>& tokens, std::size_t index) {
     while (index > 0 && (tokens[index - 1].is_identifier("static") || tokens[index - 1].is_identifier("inline") ||
-                        tokens[index - 1].is_identifier("constexpr") || tokens[index - 1].is_identifier("consteval") ||
-                        tokens[index - 1].is_identifier("virtual") || tokens[index - 1].is_identifier("extern")))
+                         tokens[index - 1].is_identifier("constexpr") || tokens[index - 1].is_identifier("consteval") ||
+                         tokens[index - 1].is_identifier("virtual") || tokens[index - 1].is_identifier("extern")))
         --index;
     if (index == 0) {
         return true;
@@ -369,7 +369,7 @@ bool try_refinement_type(const TokenStream& stream, std::size_t index, diagnosti
         report(engine, stream, tokens[equals], diagnostics::Category::CpplSyntax,
                "refinement type '" + refinement.name + "' declares no base type",
                "a refinement restricts the values of an ordinary C++ type: 'type " + refinement.name +
-                   " = int where(...)'");
+                   " = int where (...)'");
         malformed = true;
     }
     if (blank(refinement.predicate)) {
@@ -1034,7 +1034,7 @@ enum class LoopClauses : std::uint8_t {
 
 // `while (c)` or `for (...)` followed by loop specification clauses and a block
 // (GRAMMAR.md 25, 26). The clauses are C++L only where the tokens cannot be
-// C++: `invariant(x) { ... };` declares `x` when `invariant` names a type, so a
+// C++: `invariant (x) { ... };` declares `x` when `invariant` names a type, so a
 // lone single-identifier invariant before a block that `;` follows is left to
 // C++ (SPEC.md 3.1).
 LoopClauses try_loop_clauses(const TokenStream& stream, std::size_t index, diagnostics::Engine& engine,
@@ -1077,10 +1077,11 @@ LoopClauses try_loop_clauses(const TokenStream& stream, std::size_t index, diagn
     for (const Written& clause : written) {
         const Token& keyword = tokens[clause.keyword];
         if (keyword.is_identifier("decreases")) {
-            loop.decreases = Clause{ClauseKind::Decreases, keyword.span,
-                                   {tokens[clause.keyword + 1].span.end(),
-                                    tokens[clause.close].span.offset - tokens[clause.keyword + 1].span.end()},
-                                   stream.location_of(keyword)};
+            loop.decreases = Clause{ClauseKind::Decreases,
+                                    keyword.span,
+                                    {tokens[clause.keyword + 1].span.end(),
+                                     tokens[clause.close].span.offset - tokens[clause.keyword + 1].span.end()},
+                                    stream.location_of(keyword)};
             report(engine, stream, keyword, diagnostics::Category::UnsupportedSemantics,
                    "loop termination is not verified by this implementation",
                    "a verified loop establishes partial correctness only; 'decreases' is refused rather than "
@@ -1330,7 +1331,7 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
             }
         }
 
-        // proof name(...) proves(...) { ... }  (GRAMMAR.md 4)
+        // proof name(...) proves (...) { ... }  (GRAMMAR.md 4)
         if (tokens[index].is_identifier("proof")) {
             ProofDeclaration proof;
             std::size_t next = index + 1;

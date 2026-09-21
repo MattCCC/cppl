@@ -17,42 +17,42 @@ reject() {
     grep -q 'error' "$run/$name.log"
 }
 reject false <<'CPP'
-proof false_equality() proves(Eq<int>(1, 2)) { refl; }
+proof false_equality() proves (Eq<int>(1, 2)) { refl; }
 CPP
 reject wrong_evidence <<'CPP'
-proof first(int x) proves(Eq<int>(x, x)) { refl; }
-proof wrong(int x, int y) proves(Eq<int>(x, y)) { exact first(x); }
+proof first(int x) proves (Eq<int>(x, x)) { refl; }
+proof wrong(int x, int y) proves (Eq<int>(x, y)) { exact first(x); }
 CPP
 reject wrong_type <<'CPP'
-proof wrong(unsigned x) proves(Eq<int>(x, x)) { refl; }
+proof wrong(unsigned x) proves (Eq<int>(x, x)) { refl; }
 CPP
 reject missing_operand <<'CPP'
-proof wrong(int x) proves(Eq<int>(x)) { refl; }
+proof wrong(int x) proves (Eq<int>(x)) { refl; }
 CPP
 reject extra_angle <<'CPP'
-proof wrong(int x) proves(Eq<int>>(x, x)) { refl; }
+proof wrong(int x) proves (Eq<int>>(x, x)) { refl; }
 CPP
 reject extra_operand <<'CPP'
-proof wrong(int x) proves(Eq<int>(x, x, x)) { refl; }
+proof wrong(int x) proves (Eq<int>(x, x, x)) { refl; }
 CPP
 reject unmodeled_type <<'CPP'
 struct S {};
 bool operator==(S, S) { return true; }
-proof wrong(S x, S y) proves(Eq<S>(x, y)) { refl; }
+proof wrong(S x, S y) proves (Eq<S>(x, y)) { refl; }
 CPP
 reject self_reference <<'CPP'
-proof wrong(int x) proves(Eq<int>(x, 0)) { exact wrong(x); }
+proof wrong(int x) proves (Eq<int>(x, 0)) { exact wrong(x); }
 CPP
 reject mutual_reference <<'CPP'
-proof first(int x) proves(Eq<int>(x, 0)) { exact second(x); }
-proof second(int x) proves(Eq<int>(x, 0)) { exact first(x); }
+proof first(int x) proves (Eq<int>(x, 0)) { exact second(x); }
+proof second(int x) proves (Eq<int>(x, 0)) { exact first(x); }
 CPP
 reject written_failure <<'CPP'
-proof wrong(int x) proves(Eq<int>(x, x)) { exact absent; }
+proof wrong(int x) proves (Eq<int>(x, x)) { exact absent; }
 CPP
 reject outside_scope <<'CPP'
-proof first(int x) proves(Eq<int>(x, x)) { refl; }
-proof second() proves(Eq<int>(x, x)) { refl; }
+proof first(int x) proves (Eq<int>(x, x)) { refl; }
+proof second() proves (Eq<int>(x, x)) { refl; }
 CPP
 reject same_presumed_location <<'CPP'
 #line 10 "same.cpp"
@@ -62,22 +62,22 @@ law overloaded(int x) proves (Eq<int>(x, 0));
 CPP
 reject unproven_helper <<'CPP'
 unsigned helper(unsigned x) { return x; }
-proof wrong(unsigned x) proves(Eq<unsigned>(helper(x), x)) { refl; }
+proof wrong(unsigned x) proves (Eq<unsigned>(helper(x), x)) { refl; }
 CPP
 reject impossible_assumption <<'CPP'
-proof wrong(int x) proves(Eq<int>(x, 0)) { assume h : Eq<int>(x, 0); exact h; }
+proof wrong(int x) proves (Eq<int>(x, 0)) { assume h : Eq<int>(x, 0); exact h; }
 CPP
 reject false_contract <<'CPP'
-verified unsigned wrong(unsigned x) ensures(Eq<unsigned>(result, x)) { return x + 1u; }
+verified unsigned wrong(unsigned x) ensures (Eq<unsigned>(result, x)) { return x + 1u; }
 CPP
 # An explicit equality may compose through a connective (SPEC.md 7.6), but it is
 # not a value another explicit equality can compare.
 reject formal_operand_of_formal <<'CPP'
-proof wrong(int x) proves(Eq<bool>(Eq<int>(x, x), Eq<int>(x, x))) { refl; }
+proof wrong(int x) proves (Eq<bool>(Eq<int>(x, x), Eq<int>(x, x))) { refl; }
 CPP
 reject failed_dependency <<'CPP'
-proof first(int x) proves(Eq<int>(x, 0)) { refl; }
-proof second(int x) proves(Eq<int>(x, 0)) { exact first(x); }
+proof first(int x) proves (Eq<int>(x, 0)) { refl; }
+proof second(int x) proves (Eq<int>(x, 0)) { exact first(x); }
 CPP
 # Written failures must retain their own failure, even for a true proposition.
 grep -q 'no proof or assumed premise' "$run/written_failure.log"

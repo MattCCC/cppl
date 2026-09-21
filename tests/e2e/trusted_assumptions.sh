@@ -91,7 +91,7 @@ reports an_assumption_may_be_false 'Laws proven: +0'
 
 refuse an_assumption_with_a_written_proof 'nothing to discharge' <<'CPP'
 trusted law assumed(unsigned x) proves (x + 0u == x);
-proof assumed_proof(unsigned x) proves(assumed(x)) { refl; }
+proof assumed_proof(unsigned x) proves (assumed(x)) { refl; }
 CPP
 
 # --- `trusted` stays contextual ----------------------------------------------

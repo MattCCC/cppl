@@ -46,9 +46,9 @@ reject macros
 
 cat > "$run/remapped.cpp" <<'CPP'
 #line 1 "same.cpp"
-verified unsigned a() ensures(result == 0u) { return 0u; }
+verified unsigned a() ensures (result == 0u) { return 0u; }
 #line 1 "same.cpp"
-verified unsigned b() ensures(result == 0u) { return 1u; }
+verified unsigned b() ensures (result == 0u) { return 1u; }
 int main() { return static_cast<int>(b()); }
 CPP
 reject remapped
@@ -58,9 +58,9 @@ cat > "$run/valid.cpp" <<'CPP'
 namespace A { law same() proves (0u == 0u); } namespace B { law same() proves (1u == 1u); }
 law same(unsigned x) proves (x == x); law same(int x) proves (x == x);
 #line 20 "same.cpp"
-verified unsigned a() ensures(result == 7u) { return 7u; }
+verified unsigned a() ensures (result == 7u) { return 7u; }
 #line 20 "same.cpp"
-verified unsigned b() ensures(result == 9u) { return 9u; }
+verified unsigned b() ensures (result == 9u) { return 9u; }
 #line 30 "same.cpp"
 pure unsigned c() { return 11u; }
 #line 30 "same.cpp"

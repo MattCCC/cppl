@@ -27,10 +27,10 @@ pure unsigned add_one(unsigned x) {
 
 // A quantified law holds for every value of its binder, not only for the
 // arguments a caller happens to supply.
-law identity_everywhere(unsigned x)
+law identity_everywhere (unsigned x)
     proves (forall (unsigned y) { Eq<unsigned>(identity(y), y) });
 proof identity_everywhere_holds(unsigned x)
-    proves (identity_everywhere(x))
+    proves (identity_everywhere (x))
 {
     refl;
 }

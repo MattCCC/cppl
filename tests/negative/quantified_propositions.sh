@@ -19,7 +19,7 @@ reject() {
 
 # False propositions, stated with a quantifier or an implication.
 reject false_universal <<'CPP'
-proof wrong(unsigned x) proves(forall (unsigned y) { Eq<unsigned>(y, x) }) { refl; }
+proof wrong(unsigned x) proves (forall (unsigned y) { Eq<unsigned>(y, x) }) { refl; }
 CPP
 reject false_implication <<'CPP'
 law wrong(unsigned x) proves (Eq<unsigned>(x, 0u) -> Eq<unsigned>(x, 1u));
@@ -32,9 +32,9 @@ CPP
 # about the variable the goal quantifies over.
 reject shadowed_premise <<'CPP'
 law wrong(unsigned x)
-    expects(Eq<unsigned>(x, 0u))
+    expects (Eq<unsigned>(x, 0u))
     proves (forall (unsigned x) { Eq<unsigned>(x, 0u) });
-proof wrong_holds(unsigned x) proves(wrong(x)) {
+proof wrong_holds(unsigned x) proves (wrong(x)) {
     assume h : Eq<unsigned>(x, 0u);
     rewrite h;
     refl;
@@ -44,7 +44,7 @@ CPP
 # A binder a proposition writes for itself has no name a statement can use.
 reject binder_named_in_a_statement <<'CPP'
 law l(unsigned x) proves (forall (unsigned y) { Eq<unsigned>(y, y) });
-proof l_holds(unsigned x) proves(l(x)) {
+proof l_holds(unsigned x) proves (l(x)) {
     assume h : Eq<unsigned>(y, y);
     exact h;
 }
@@ -53,14 +53,14 @@ CPP
 # Evidence that stays quantified cannot be instantiated at the goal's binder.
 reject quantified_evidence <<'CPP'
 pure unsigned identity(unsigned x) { return x; }
-proof everywhere(unsigned x) proves(forall (unsigned y) { Eq<unsigned>(identity(y), y) }) { refl; }
-proof wrong(unsigned x) proves(Eq<unsigned>(identity(x), x)) { exact everywhere(x); }
+proof everywhere (unsigned x) proves (forall (unsigned y) { Eq<unsigned>(identity(y), y) }) { refl; }
+proof wrong(unsigned x) proves (Eq<unsigned>(identity(x), x)) { exact everywhere (x); }
 CPP
 
 # Wrong evidence, and evidence at the wrong quantifier prefix.
 reject wrong_evidence <<'CPP'
-proof first(unsigned x) proves(Eq<unsigned>(x, x)) { refl; }
-proof wrong(unsigned x) proves(forall (unsigned y) { Eq<unsigned>(y, y) }) { exact first(x); }
+proof first(unsigned x) proves (Eq<unsigned>(x, x)) { refl; }
+proof wrong(unsigned x) proves (forall (unsigned y) { Eq<unsigned>(y, y) }) { exact first(x); }
 CPP
 
 # Binder types the formal core does not model.
@@ -101,8 +101,8 @@ reject existential <<'CPP'
 law wrong(unsigned x) proves (exists (unsigned y) { Eq<unsigned>(y, x) });
 CPP
 reject invariant <<'CPP'
-verified unsigned wrong(unsigned x) ensures(result == x) {
-    while (x == 1u) invariant(forall (unsigned y) { Eq<unsigned>(y, y) }) { }
+verified unsigned wrong(unsigned x) ensures (result == x) {
+    while (x == 1u) invariant (forall (unsigned y) { Eq<unsigned>(y, y) }) { }
     return x;
 }
 CPP
@@ -137,26 +137,26 @@ reject false_nested_conjunct <<'CPP'
 law wrong(unsigned x) proves (x == x && (x == x && x != x));
 CPP
 reject unrelated_conjunct <<'CPP'
-law wrong(unsigned x, unsigned y) expects(x == 0u && y == 1u) proves (x == 1u);
+law wrong(unsigned x, unsigned y) expects (x == 0u && y == 1u) proves (x == 1u);
 CPP
 reject conjunction_capture <<'CPP'
-law wrong(unsigned x) expects(x == 0u && x != 1u)
+law wrong(unsigned x) expects (x == 0u && x != 1u)
     proves (forall (unsigned x) { x == 0u && x != 1u });
 CPP
 reject wrong_conjunction_evidence <<'CPP'
-proof pair(unsigned x) proves(x == x && x + 1u == x + 1u) { refl; }
-proof wrong(unsigned x) proves(x == x && x != x) { exact pair(x); }
+proof pair(unsigned x) proves (x == x && x + 1u == x + 1u) { refl; }
+proof wrong(unsigned x) proves (x == x && x != x) { exact pair(x); }
 CPP
 reject equality_for_conjunction <<'CPP'
-proof single(unsigned x) proves(x == x) { refl; }
-proof wrong(unsigned x) proves(x == x && x == x) { exact single(x); }
+proof single(unsigned x) proves (x == x) { refl; }
+proof wrong(unsigned x) proves (x == x && x == x) { exact single(x); }
 CPP
 reject wrong_written_conjunction <<'CPP'
 law valid(unsigned x) proves (x == x && x == x);
-proof wrong(unsigned x) proves(valid(x)) { exact missing; }
+proof wrong(unsigned x) proves (valid(x)) { exact missing; }
 CPP
 reject conjunction_cycle <<'CPP'
-proof wrong(unsigned x) proves(x != x && x != x) { exact wrong(x); }
+proof wrong(unsigned x) proves (x != x && x != x) { exact wrong(x); }
 CPP
 reject conjunction_wrong_type <<'CPP'
 struct S {};
@@ -166,11 +166,11 @@ reject malformed_conjunction <<'CPP'
 law wrong(unsigned x) proves (x == x &&);
 CPP
 reject false_conjunctive_contract <<'CPP'
-verified unsigned wrong(unsigned x) ensures(result == x && result != x) { return x; }
+verified unsigned wrong(unsigned x) ensures (result == x && result != x) { return x; }
 CPP
 reject unproved_conjunctive_precondition <<'CPP'
-verified unsigned f(unsigned x) expects(x == 0u && x == 1u) ensures(result == x) { return x; }
-verified unsigned wrong(unsigned x) ensures(result == x) { return f(x); }
+verified unsigned f(unsigned x) expects (x == 0u && x == 1u) ensures (result == x) { return x; }
+verified unsigned wrong(unsigned x) ensures (result == x) { return f(x); }
 CPP
 
 # Value uses of a connective are refused explicitly.
@@ -182,14 +182,14 @@ CPP
 # it selects between, so a conjunction is refused as a value and modeled as a
 # condition. What it must not do is prove more than the routes state.
 reject conjunction_as_condition_proves_no_more <<'CPP'
-verified unsigned wrong(unsigned x) ensures(result == 0u) {
+verified unsigned wrong(unsigned x) ensures (result == 0u) {
     if (x == 0u && x != 1u) return x;
     return x;
 }
 CPP
 reject conjunction_in_invariant <<'CPP'
-verified unsigned wrong(unsigned x) ensures(result == x) {
-    while (x != x) invariant(x == x && x == x) { }
+verified unsigned wrong(unsigned x) ensures (result == x) {
+    while (x != x) invariant (x == x && x == x) { }
     return x;
 }
 CPP

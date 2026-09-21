@@ -1370,7 +1370,7 @@ refused before any instance of it can be taken. Discharging a premise works the
 same way - the implication is restated, checked, and the conclusion is the
 kernel's own.
 
-**A premise is supposed, never granted.** `expects(P) ensures(Q)` does not mean
+**A premise is supposed, never granted.** `expects (P) ensures (Q)` does not mean
 that `P` is trusted; it means that `Q` is to be proved under the supposition
 `P`, and what is established is `P -> Q`. The hypothesis exists for exactly as
 long as the implication introduction that placed it in the context, the kernel
@@ -1662,8 +1662,7 @@ A trust report therefore shows zero trusted solvers, and says so because it is
 true, not because the field is unfilled. Unverified FFI boundaries are reported
 as _not analysed_ rather than as zero: C++L does not yet look for them.
 
-Trusted external axioms are no longer always zero. A `trusted law` (`SPEC.md`
-27) is an explicit assumption: its proposition is stated to the formal core and
+Trusted external axioms are no longer always zero. A `trusted law` (`SPEC.md` 27) is an explicit assumption: its proposition is stated to the formal core and
 admitted without proof. This is the one mechanism by which a proposition becomes
 usable without evidence, and it exists so that a fact C++L cannot establish - an
 external API contract, an OS guarantee - is recorded where it can be audited

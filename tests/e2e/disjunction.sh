@@ -48,43 +48,43 @@ CPP
 
 # Supposing a disjunction does not establish either of its sides.
 reject side_from_a_premise <<'CPP'
-law wrong(unsigned x) expects(x == 0u || x == 1u) proves (x == 0u);
+law wrong(unsigned x) expects (x == 0u || x == 1u) proves (x == 0u);
 CPP
 reject right_side_from_a_premise <<'CPP'
-law wrong(unsigned x) expects(x == 0u || x == 1u) proves (x == 1u);
+law wrong(unsigned x) expects (x == 0u || x == 1u) proves (x == 1u);
 CPP
 
 # The conclusion has to follow from every side: here the second case fails.
 reject one_case_fails <<'CPP'
-law wrong(unsigned x) expects(x == 0u || x == 5u) proves (x <= 1u);
+law wrong(unsigned x) expects (x == 0u || x == 5u) proves (x <= 1u);
 CPP
 
 # A disjunctive precondition is not discharged by a call site that establishes
 # neither side.
 reject unproved_disjunctive_precondition <<'CPP'
-verified unsigned f(unsigned x) expects(x == 1u || x == 2u) ensures(result != 0u) { return x; }
-verified unsigned wrong(unsigned x) ensures(result == 0u) { return f(x) - f(x); }
+verified unsigned f(unsigned x) expects (x == 1u || x == 2u) ensures (result != 0u) { return x; }
+verified unsigned wrong(unsigned x) ensures (result == 0u) { return f(x) - f(x); }
 CPP
 
 # A false side of a contract's conclusion.
 reject false_disjunctive_contract <<'CPP'
-verified unsigned wrong(unsigned x) ensures(result == 1u || result == 2u) { return x; }
+verified unsigned wrong(unsigned x) ensures (result == 1u || result == 2u) { return x; }
 CPP
 
 # Wrong evidence, and a written failure that does not fall back to automation.
 reject wrong_evidence <<'CPP'
-proof first(unsigned x) proves(Eq<unsigned>(x, x)) { refl; }
-proof wrong(unsigned x) proves(Eq<unsigned>(x, x) || Eq<unsigned>(x, 1u)) { exact first(x); }
+proof first(unsigned x) proves (Eq<unsigned>(x, x)) { refl; }
+proof wrong(unsigned x) proves (Eq<unsigned>(x, x) || Eq<unsigned>(x, 1u)) { exact first(x); }
 CPP
 reject written_failure <<'CPP'
 law valid(unsigned x) proves (x == x || x == 1u);
-proof wrong(unsigned x) proves(valid(x)) { exact missing; }
+proof wrong(unsigned x) proves (valid(x)) { exact missing; }
 CPP
 
 # A binder a side quantifies over is not the law's parameter.
 reject capture <<'CPP'
 law wrong(unsigned x)
-    expects(Eq<unsigned>(x, 0u))
+    expects (Eq<unsigned>(x, 0u))
     proves ((forall (unsigned x) { Eq<unsigned>(x, 0u) }) || Eq<unsigned>(x, 1u));
 CPP
 
@@ -93,23 +93,23 @@ reject missing_side <<'CPP'
 law wrong(unsigned x) proves (x == 0u ||);
 CPP
 reject wrong_type <<'CPP'
-proof wrong(unsigned x) proves(Eq<unsigned>(x, x) || 7u) { refl; }
+proof wrong(unsigned x) proves (Eq<unsigned>(x, x) || 7u) { refl; }
 CPP
 reject as_a_value <<'CPP'
-verified bool wrong(unsigned x) ensures(result == x) { return x == x || x == x; }
+verified bool wrong(unsigned x) ensures (result == x) { return x == x || x == x; }
 CPP
 # A condition is not a value position: `||` there is elaborated into the routes
 # it selects between. The true route is the union of the two sides, so it
 # establishes neither of them on its own.
 reject as_a_condition_establishes_neither_side <<'CPP'
-verified unsigned wrong(unsigned x) ensures(result == 0u) {
+verified unsigned wrong(unsigned x) ensures (result == 0u) {
     if (x == 0u || x != 1u) return x;
     return 0u;
 }
 CPP
 reject in_an_invariant <<'CPP'
-verified unsigned wrong(unsigned x) ensures(result == x) {
-    while (x != x) invariant(x == x || x != x) { }
+verified unsigned wrong(unsigned x) ensures (result == x) {
+    while (x != x) invariant (x == x || x != x) { }
     return x;
 }
 CPP

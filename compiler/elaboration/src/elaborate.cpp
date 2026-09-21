@@ -1090,8 +1090,8 @@ void elaborate_proofs(const Request& request, const std::map<std::string, vir::L
 
         std::optional<vir::LawId> law;
         if (declaration.inline_law) {
-            const auto projected_law = std::ranges::find_if(
-                request.projection.specification_functions, [&](const auto& candidate) {
+            const auto projected_law =
+                std::ranges::find_if(request.projection.specification_functions, [&](const auto& candidate) {
                     return candidate.law_index == *declaration.inline_law;
                 });
             const auto* resolved = projected_law == request.projection.specification_functions.end()
@@ -1126,7 +1126,7 @@ void elaborate_proofs(const Request& request, const std::map<std::string, vir::L
             }
         }
 
-        // The claim's arguments need no check here. `proves(L(...))` is an
+        // The claim's arguments need no check here. `proves (L(...))` is an
         // ordinary C++ call, so Clang has already settled their number and
         // their types; which proposition they state is worked out where the
         // law's own proposition is known, by instantiating it at them.

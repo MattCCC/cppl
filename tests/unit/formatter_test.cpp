@@ -102,7 +102,7 @@ CPPL_TEST(verified_function_gets_one_space_before_clause_paren) {
     const std::string input = "verified int f(int x) ensures (result >= 0) {\n    return x;\n}\n";
     const std::string formatted = format_text(input);
     CPPL_CHECK(formatted.find("ensures (") != std::string::npos);
-    CPPL_CHECK(formatted.find("ensures(") == std::string::npos);
+    CPPL_CHECK(formatted.find("ensures (") == std::string::npos);
 }
 
 CPPL_TEST(already_canonical_verified_function_is_a_no_op) {
@@ -300,7 +300,7 @@ CPPL_TEST(check_style_flags_a_clause_that_is_not_on_its_own_line) {
 }
 
 CPPL_TEST(check_style_flags_missing_space_before_clause_paren) {
-    const std::string text = "law l(int x)\n    proves(x == x);\n";
+    const std::string text = "law l(int x)\n    proves (x == x);\n";
     const frontend::TokenStream tokens = frontend::lex(text, "style.cpp");
     diagnostics::Engine engine;
     const frontend::Syntax syntax = frontend::recognize(tokens, engine);

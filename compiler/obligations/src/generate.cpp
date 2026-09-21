@@ -1998,7 +1998,7 @@ Program generate(const vir::Module& module, const elaboration::Result& elaborate
 
     detail::generate_contracts(module, definitions, program, engine, explain);
 
-    // Direct proves(P) declarations have their own obligations. They never
+    // Direct proves (P) declarations have their own obligations. They never
     // become synthetic Laws or enter the automatic-proof fallback path.
     for (const auto& proof : module.proofs) {
         if (proof.law)

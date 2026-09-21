@@ -430,7 +430,7 @@ v::Expr control(decltype(v::Expr::node) node) {
     return expression;
 }
 
-// count(n) ensures(result == n) { unsigned i = 0u; while (i < n) invariant(I) { i = i + 1u; } return i; }
+// count(n) ensures (result == n) { unsigned i = 0u; while (i < n) invariant (I) { i = i + 1u; } return i; }
 v::Function counting(v::Expr invariant, std::uint32_t loop_id = 0) {
     v::Function function;
     function.id = v::FunctionId{0};

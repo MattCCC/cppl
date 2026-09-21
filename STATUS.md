@@ -125,7 +125,7 @@ Everything else is reported as unsupported and produces no obligation. See
 `ARCHITECTURE.md` 97 for the implemented structure and `TRUST.md` 41 for what
 must be trusted today.
 
-A precondition is supposed, never granted: `expects(P) ensures(Q)` states
+A precondition is supposed, never granted: `expects (P) ensures (Q)` states
 `P -> Q`, and the premise reaches a proof only through implication
 introduction. `assume` names that premise and is an error where the goal
 supposes none. `rewrite` then uses an equality to transform the goal, so a
@@ -178,7 +178,7 @@ rejected. Every value is modeled where it is written, read or not. Each read rep
 local's value, so bodies whose stated terms exceed a fixed size are rejected
 too. Locals add no kernel rule and no runtime change.
 
-`while` and `for` loops with a block body may state `invariant(...)` clauses
+`while` and `for` loops with a block body may state `invariant (...)` clauses
 (`SPEC.md` 24.3). Each local the loop writes is carried: at the head it is a
 fresh value of which only the invariants and the condition are known. Every
 invariant is proven on entry and at the end of every iteration path, including
@@ -207,14 +207,14 @@ type.
 
 Six representation families are `IMPLEMENTED`:
 
-| Representation | States |
-| --- | --- |
-| scoped enumerations | one case per distinct enumerator value, residual `unnamed` |
-| `std::variant` | `alternative<i>` per index, residual `valueless` |
-| `std::optional` | `some(value)`, residual `none` |
-| `std::expected` | `value(payload)`, residual `error(reason)` |
-| pointers | `null`, residual `non_null` |
-| products | one `components(...)` arm: records, `std::pair`, `std::tuple`, `std::array`, built-in arrays |
+| Representation      | States                                                                                       |
+| ------------------- | -------------------------------------------------------------------------------------------- |
+| scoped enumerations | one case per distinct enumerator value, residual `unnamed`                                   |
+| `std::variant`      | `alternative<i>` per index, residual `valueless`                                             |
+| `std::optional`     | `some(value)`, residual `none`                                                               |
+| `std::expected`     | `value(payload)`, residual `error(reason)`                                                   |
+| pointers            | `null`, residual `non_null`                                                                  |
+| products            | one `components(...)` arm: records, `std::pair`, `std::tuple`, `std::array`, built-in arrays |
 
 Tagged sums share one mechanism and products share another, so these are two
 provider implementations rather than six. Nesting composes generically in both
@@ -977,21 +977,21 @@ AI output must always be independently verified.
 
 # Developer tooling status
 
-| Tool                    | Status        |
-| ----------------------- | ------------- |
-| Clang-compatible driver | `PROTOTYPE`   |
-| `cppl build`            | `SPECIFIED`   |
-| `cppl check`            | `SPECIFIED`   |
-| `cppl prove`            | `SPECIFIED`   |
-| `cppl explain`          | `SPECIFIED`   |
-| `cppl trust-report`     | `PARTIAL`     |
-| LSP: sync and diagnostics | `PARTIAL`   |
-| LSP/CLI: canonical clause formatting | `PROTOTYPE` |
-| LSP: hover, definition, completion | `NOT STARTED` |
-| IDE proof goals         | `NOT STARTED` |
-| Proof navigation        | `NOT STARTED` |
-| Counterexample UI       | `NOT STARTED` |
-| Structured diagnostics  | `PROTOTYPE`   |
+| Tool                                 | Status        |
+| ------------------------------------ | ------------- |
+| Clang-compatible driver              | `PROTOTYPE`   |
+| `cppl build`                         | `SPECIFIED`   |
+| `cppl check`                         | `SPECIFIED`   |
+| `cppl prove`                         | `SPECIFIED`   |
+| `cppl explain`                       | `SPECIFIED`   |
+| `cppl trust-report`                  | `PARTIAL`     |
+| LSP: sync and diagnostics            | `PARTIAL`     |
+| LSP/CLI: canonical clause formatting | `PROTOTYPE`   |
+| LSP: hover, definition, completion   | `NOT STARTED` |
+| IDE proof goals                      | `NOT STARTED` |
+| Proof navigation                     | `NOT STARTED` |
+| Counterexample UI                    | `NOT STARTED` |
+| Structured diagnostics               | `PROTOTYPE`   |
 
 The driver is Clang-compatible rather than subcommand-based: `cppl` takes the
 arguments `clang++` takes. Trust reporting exists as `--cppl-trust-report`; the

@@ -13,7 +13,7 @@ A proposition may state universal quantification over binders of its own and
 implication between two propositions:
 
 ```cpp
-law identity_everywhere(unsigned x)
+law identity_everywhere (unsigned x)
     proves (forall (unsigned y) { Eq<unsigned>(identity(y), y) });
 
 law zero_increments(unsigned x)
@@ -22,7 +22,7 @@ law zero_increments(unsigned x)
 
 The first holds for every value of `y`, not only for the arguments a caller
 supplies. The second claims nothing about its premise: what it states is the
-conclusion under that supposition, which is what `expects(P) ensures(Q)` has
+conclusion under that supposition, which is what `expects (P) ensures (Q)` has
 always stated for a Law.
 
 Both may appear wherever a proposition may: a Law, a `proves` clause, an

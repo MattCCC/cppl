@@ -107,7 +107,7 @@ struct ProofArm {
     std::vector<ProofStatement> statements;
 };
 
-// proof name(parameters) proves(proposition) { statements }   (GRAMMAR.md 4)
+// proof name(parameters) proves (proposition) { statements }   (GRAMMAR.md 4)
 struct ProofDeclaration {
     // An inline Law body uses the same proof pipeline and owns only its body
     // span. The Law owns the preceding header; erasure covers both spans.
@@ -123,7 +123,7 @@ struct ProofDeclaration {
     std::vector<ProofStatement> statements;
 };
 
-// verified [pure] T f(params) [expects(P)] ensures(Q) { body }  (GRAMMAR.md 6)
+// verified [pure] T f(params) [expects (P)] ensures (Q) { body }  (GRAMMAR.md 6)
 //
 // The contract is carried here as spans. What it means is decided once Clang
 // has resolved it, like every other specification expression.
@@ -153,8 +153,8 @@ struct VerifiedFunction {
     [[nodiscard]] std::vector<const Clause*> preconditions() const; // in source order
 };
 
-// while (condition) invariant(P)... { body }
-// for (init; condition; increment) invariant(P)... { body }   (GRAMMAR.md 25, 26)
+// while (condition) invariant (P)... { body }
+// for (init; condition; increment) invariant (P)... { body }   (GRAMMAR.md 25, 26)
 //
 // The clauses stand between the loop header and its body. They are not C++, so
 // they leave both texts; Clang is instead given one declaration per invariant

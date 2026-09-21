@@ -18,7 +18,7 @@ for standard in c++17 c++20 c++23; do
     # 32. No proof construct survives into the erased translation unit.
     ! grep -qE '(^|[^_[:alnum:]])(cases|decompose|valueless|components|non_null)[^_[:alnum:]]*(v|o|p|t|a|n|e|inner|maybe)? *[{(]' \
         "$run/runtime.cpp"
-    ! grep -q 'alternative<0>\|=> *{\|proves(\|refl;' "$run/runtime.cpp"
+    ! grep -q 'alternative<0>\|=> *{\|proves (\|refl;' "$run/runtime.cpp"
     "$CLANG" "-std=$standard" -x c++-cpp-output "$run/runtime.cpp" -o "$run/erased"
     test "$("$run/erased")" = "$("$run/program")"
 done
@@ -29,7 +29,7 @@ if "$CPPL" -std=c++23 -fsyntax-only "$FIXTURES/expected_cases.cpp" > /dev/null 2
     grep -Eq '^Proof declarations proven: +4$' "$run/expected_report"
     grep -Eq '^Trusted external axioms: +0$' "$run/expected_report"
     test "$("$run/expected")" = '5'
-    ! grep -q 'alternative<0>\|=> *{\|proves(\|refl;' "$run/expected_runtime.cpp"
+    ! grep -q 'alternative<0>\|=> *{\|proves (\|refl;' "$run/expected_runtime.cpp"
     "$CLANG" -std=c++23 -x c++-cpp-output "$run/expected_runtime.cpp" -o "$run/expected_erased"
     test "$("$run/expected_erased")" = "$("$run/expected")"
     echo 'std::expected decomposes and erases'

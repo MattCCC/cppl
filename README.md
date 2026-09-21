@@ -328,6 +328,50 @@ The implementation is accepted because the compiler can prove the specification,
 
 ## Usage
 
+Compile C++ with `cppl`:
+
+```bash
+cppl main.cpp -o main
+```
+
+C++L is designed for incremental adoption. Ordinary supported C++ remains ordinary C++; verification constructs are added only where stronger guarantees are needed.
+
+A runtime function can carry a compile-time contract:
+
+```cpp cppl-example
+verified int increment(int x)
+    ensures (result == x + 1)
+{
+    return x + 1;
+}
+```
+
+The function body is runtime C++. The `verified` modifier and `ensures` clause are verification-only: C++L proves the contract at compile time and removes the verification syntax before ordinary C++ compilation.
+
+C++L can also state compile-time Laws:
+
+```cpp cppl-example
+pure int identity(int x)
+{
+    return x;
+}
+
+law identity_returns_input(int x)
+    proves (identity(x) == x);
+```
+
+A Law is a theorem, not a runtime assertion, Boolean test, unit test, or comment. If C++L cannot establish the proposition, verified compilation fails.
+
+For practical C++L usage, including contracts, Laws, proofs, refinement types, `ghost`, `cases`, induction, loop invariants, termination, trusted boundaries, headers and source files, templates, formatting, and project organization, see [DEVELOPER_GUIDE.md](DEVELOPER_GUIDE.md).
+
+For the normative language definition, see [SPEC.md](SPEC.md).
+
+For the proof model and trusted computing base, see [TRUST.md](TRUST.md).
+
+For currently implemented language coverage and remaining limitations, see [STATUS.md](STATUS.md).
+
+## Usage
+
 Compile ordinary C++ with `cppl`:
 
 ```bash
@@ -369,7 +413,7 @@ law identity_returns_input(int x)
     proves (identity(x) == x);
 
 proof identity_returns_input_holds(int x)
-    proves(identity_returns_input(x))
+    proves (identity_returns_input(x))
 {
     refl;
 }
@@ -386,7 +430,7 @@ law identity_returns_input(unsigned x)
     proves (identity(x) == x);
 
 proof identity_general(unsigned x)
-    proves(identity_returns_input(x))
+    proves (identity_returns_input(x))
 {
     refl;
 }
@@ -395,7 +439,7 @@ law identity_of_41()
     proves (identity(41u) == 41u);
 
 proof identity_at_41()
-    proves(identity_of_41())
+    proves (identity_of_41())
 {
     exact identity_general(41u);
 }
@@ -409,11 +453,11 @@ pure unsigned add_one(unsigned x) {
 }
 
 law increment_is_stable(unsigned x)
-    expects(add_one(x) == x)
+    expects (add_one(x) == x)
     proves (add_one(x) == x);
 
 proof increment_is_stable_holds(unsigned x)
-    proves(increment_is_stable(x))
+    proves (increment_is_stable(x))
 {
     assume premise : add_one(x) == x;
     exact premise;
@@ -432,11 +476,11 @@ pure unsigned add_one(unsigned x) {
 }
 
 law guarded_increment(unsigned x)
-    expects(identity(x) == x)
+    expects (identity(x) == x)
     proves (add_one(x) == add_one(x));
 
 proof guarded_increment_holds(unsigned x)
-    proves(guarded_increment(x))
+    proves (guarded_increment(x))
 {
     refl;
 }
@@ -445,7 +489,7 @@ law increment_is_itself(unsigned x)
     proves (add_one(x) == add_one(x));
 
 proof increment_is_itself_holds(unsigned x)
-    proves(increment_is_itself(x))
+    proves (increment_is_itself(x))
 {
     apply guarded_increment_holds(x);
     refl;
@@ -460,11 +504,11 @@ pure unsigned identity(unsigned x) {
 }
 
 law identity_at_zero(unsigned x)
-    expects(x == 0u)
+    expects (x == 0u)
     proves (identity(x) == 0u);
 
 proof identity_at_zero_holds(unsigned x)
-    proves(identity_at_zero(x))
+    proves (identity_at_zero(x))
 {
     assume h : x == 0u;
     rewrite h;
@@ -478,7 +522,7 @@ Contracts can also verify an executable function directly:
 
 ```cpp cppl-example
 verified int identity(int x)
-    ensures(result == x)
+    ensures (result == x)
 {
     return x;
 }
@@ -490,14 +534,14 @@ The current fragment supports pure integer return expressions and contracts:
 
 ```cpp cppl-example
 verified unsigned inc(unsigned x)
-    ensures(result == x + 1u)
+    ensures (result == x + 1u)
 {
     return x + 1u;
 }
 
 verified unsigned zero_if_zero(unsigned x)
-    expects(x == 0u)
-    ensures(result == 0u)
+    expects (x == 0u)
+    ensures (result == 0u)
 {
     return x;
 }
@@ -508,22 +552,22 @@ Verified functions can also call one another through their contracts:
 
 ```cpp cppl-example
 verified unsigned bump_zero(unsigned x)
-    expects(x == 0u)
-    ensures(result == 1u)
+    expects (x == 0u)
+    ensures (result == 1u)
 {
     return x + 1u;
 }
 
 verified unsigned bump_one(unsigned x)
-    expects(x == 1u)
-    ensures(result == 2u)
+    expects (x == 1u)
+    ensures (result == 2u)
 {
     return x + 1u;
 }
 
 verified unsigned two_from_zero(unsigned x)
-    expects(x == 0u)
-    ensures(result == 2u)
+    expects (x == 0u)
+    ensures (result == 2u)
 {
     return bump_one(bump_zero(x));
 }
@@ -537,7 +581,7 @@ Branches generate a separate proof obligation for each return path:
 
 ```cpp cppl-example
 verified unsigned clamp(unsigned x)
-    ensures(result <= 10u)
+    ensures (result <= 10u)
 {
     if (x <= 10u)
         return x;
@@ -554,7 +598,7 @@ Bodies may also use ordinary locals and assignments:
 
 ```cpp cppl-example
 verified unsigned pick(unsigned x, bool wide)
-    ensures(result <= 10u)
+    ensures (result <= 10u)
 {
     unsigned limit = 0u;
 
@@ -577,7 +621,7 @@ Unsigned arithmetic is reasoned about as the machine performs it, modulo
 
 ```cpp cppl-example
 verified unsigned distance_below(unsigned x, unsigned y)
-    ensures(result <= x)
+    ensures (result <= x)
 {
     if (y <= x)
         return x - y;
@@ -585,8 +629,8 @@ verified unsigned distance_below(unsigned x, unsigned y)
 }
 
 verified unsigned next_index(unsigned i, unsigned n)
-    expects(i < n)
-    ensures(result <= n)
+    expects (i < n)
+    ensures (result <= n)
 {
     return i + 1u;
 }
@@ -605,11 +649,11 @@ Loops are verified against the invariants written on them:
 
 ```cpp cppl-example
 verified unsigned count_to(unsigned n)
-    ensures(result == n)
+    ensures (result == n)
 {
     unsigned i = 0u;
     while (i < n)
-        invariant(i <= n)
+        invariant (i <= n)
     {
         ++i;
     }
@@ -636,7 +680,7 @@ This example proves a property of an ordinary C++ `unsigned` by induction:
 
 ```cpp cppl-planned
 pure unsigned add(unsigned a, unsigned b)
-    decreases(a)
+    decreases (a)
 {
     return a == 0u ? b : add(a - 1u, b) + 1u;
 }
@@ -645,7 +689,7 @@ law add_zero(unsigned x)
     proves (add(x, 0u) == x);
 
 proof add_zero_holds(unsigned x)
-    proves(add_zero(x))
+    proves (add_zero(x))
 {
     induction x;
 }

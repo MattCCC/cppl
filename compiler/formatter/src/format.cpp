@@ -399,7 +399,7 @@ std::vector<FormatEdit> parse_replacements_xml(std::string_view xml) {
 // indentation for a loop nested inside another loop, because clang-format
 // never saw the outer loop's own brace open while indenting the inner one.
 // But formatting the file totally unrestricted re-merges a relocated clause
-// block back onto one line, since a bare `invariant(...)`/`expects(...)` call
+// block back onto one line, since a bare `invariant (...)`/`expects (...)` call
 // looks like ordinary joinable C++ to it (also verified directly). Blanking
 // each excluded span - replacing its bytes with spaces, one line's worth of
 // newlines preserved, exactly `frontend::project`'s own technique in
@@ -555,7 +555,7 @@ FormatResult format_ranges_once(const FormatRequest& request, const std::vector<
     // C++L clause above already claimed: clang-format is allowed to have an
     // opinion about a boundary a clause touches (e.g. the space between a
     // proof's closing ')' and its body's '{' on the same physical line,
-    // 'proves(p) { refl; }' - verified directly, clang-format wants to expand
+    // 'proves (p) { refl; }' - verified directly, clang-format wants to expand
     // that inline body under this repo's own AllowShortBlocksOnASingleLine:
     // Never, regardless of the clause sharing its line). Excluding the whole
     // line here would silently hide that legitimate ordinary-C++ edit; the
@@ -591,9 +591,8 @@ FormatResult format_ranges_once(const FormatRequest& request, const std::vector<
     std::ranges::sort(edits,
                       [](const FormatEdit& lhs, const FormatEdit& rhs) { return lhs.span.offset < rhs.span.offset; });
 
-    result.ok = std::ranges::none_of(result.diagnostics, [](const auto& diagnostic) {
-        return diagnostic.severity == diagnostics::Severity::Error;
-    });
+    result.ok = std::ranges::none_of(
+        result.diagnostics, [](const auto& diagnostic) { return diagnostic.severity == diagnostics::Severity::Error; });
     result.edits = std::move(edits);
     return result;
 }

@@ -52,7 +52,7 @@ law implication_is_looser(unsigned x)
     proves (x == 0u || x == 1u -> x <= 1u);
 
 // Under a binder, and on either side of an implication.
-law everywhere(unsigned x)
+law everywhere (unsigned x)
     proves (forall (unsigned y) { y == y || y == 1u });
 law guarded(unsigned x)
     proves (x == 0u -> x == 0u || x == 1u);
