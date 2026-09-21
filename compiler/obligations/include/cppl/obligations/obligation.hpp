@@ -91,6 +91,7 @@ struct RefinementPredicate {
     std::string name;
     std::vector<kernel::Type> parameters;
     kernel::Proposition predicate;
+    std::string identity = {};
 };
 
 struct Program {

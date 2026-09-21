@@ -50,7 +50,7 @@ std::string describe(Origin origin) {
 
 const RefinementPredicate* Program::refinement(std::string_view name) const {
     for (const RefinementPredicate& candidate : refinements) {
-        if (candidate.name == name) {
+        if ((candidate.identity.empty() ? candidate.name : candidate.identity) == name) {
             return &candidate;
         }
     }

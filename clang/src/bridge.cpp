@@ -341,30 +341,22 @@ Expr unsupported_expression(CXCursor cursor, std::string reason) {
 // values are not reachable through the type. They stand as the declaration's own
 // leading children, after the reference to the alias template, where Clang has
 // already evaluated them.
-std::vector<Refinement> refinements_of(CXCursor declared, CXType written,
-                                       const std::vector<Selection::Refinement>& known) {
-    std::vector<Refinement> found;
-    if (known.empty()) {
-        return found;
-    }
+std::size_t physical_offset(CXCursor cursor);
 
+std::vector<std::int64_t> refinement_arguments(CXCursor declared) {
     std::vector<std::int64_t> arguments;
     const CXCursor initializer = clang_Cursor_getVarDeclInitializer(declared);
-    for (const CXCursor& child : children_of(declared)) {
-        if (clang_Cursor_isNull(initializer) == 0 && clang_equalCursors(child, initializer) != 0) {
+    for (const CXCursor child : children_of(declared)) {
+        if (!clang_Cursor_isNull(initializer) && clang_equalCursors(child, initializer))
             break;
-        }
-        const CXCursorKind kind = clang_getCursorKind(child);
-        if (kind == CXCursor_TemplateRef || kind == CXCursor_TypeRef || kind == CXCursor_NamespaceRef) {
+        const auto kind = clang_getCursorKind(child);
+        if (kind == CXCursor_TemplateRef || kind == CXCursor_TypeRef || kind == CXCursor_NamespaceRef)
             continue;
-        }
-        // Index arguments stand before anything the declaration itself contains.
-        if (clang_isDeclaration(kind) != 0 || clang_isStatement(kind) != 0) {
+        if (clang_isDeclaration(kind) || clang_isStatement(kind))
             break;
-        }
         if (CXEvalResult evaluated = clang_Cursor_Evaluate(child)) {
             const bool integral = clang_EvalResult_getKind(evaluated) == CXEval_Int;
-            const long long value = integral ? clang_EvalResult_getAsLongLong(evaluated) : 0;
+            const auto value = integral ? clang_EvalResult_getAsLongLong(evaluated) : 0;
             clang_EvalResult_dispose(evaluated);
             if (integral) {
                 arguments.push_back(static_cast<std::int64_t>(value));
@@ -373,38 +365,52 @@ std::vector<Refinement> refinements_of(CXCursor declared, CXType written,
         }
         break;
     }
+    return arguments;
+}
 
-    // An alias chain is finite, and this bounds it even if Clang hands back one
-    // that is not.
-    for (unsigned step = 0; step < 32; ++step) {
-        const CXCursor declaration = clang_getTypeDeclaration(written);
+std::expected<std::vector<Refinement>, std::string> refinements_of(CXCursor declared, CXType written,
+                                                                   const std::vector<Selection::Refinement>& known) {
+    std::vector<Refinement> found;
+    if (known.empty())
+        return found;
+    auto arguments = refinement_arguments(declared);
+    std::vector<CXCursor> visited;
+    for (unsigned step = 0; step < kMaxExpressionDepth; ++step) {
+        CXCursor declaration = clang_getTypeDeclaration(written);
+        if (clang_getCursorKind(declaration) == CXCursor_TypeAliasTemplateDecl) {
+            const auto children = children_of(declaration);
+            const auto alias = std::ranges::find_if(
+                children, [](CXCursor child) { return clang_getCursorKind(child) == CXCursor_TypeAliasDecl; });
+            if (alias == children.end())
+                return std::unexpected("refinement alias template has no resolved alias declaration");
+            declaration = *alias;
+        }
         const CXCursorKind kind = clang_getCursorKind(declaration);
-        if (kind != CXCursor_TypeAliasDecl && kind != CXCursor_TypedefDecl && kind != CXCursor_TypeAliasTemplateDecl) {
-            break;
+        if (kind != CXCursor_TypeAliasDecl && kind != CXCursor_TypedefDecl && kind != CXCursor_TypeAliasTemplateDecl)
+            return found;
+        if (std::ranges::any_of(visited, [&](CXCursor previous) { return clang_equalCursors(previous, declaration); }))
+            return std::unexpected("cyclic refinement alias metadata");
+        visited.push_back(declaration);
+        // The projector records the generated alias's physical identity. Source
+        // spelling and presumed #line locations cannot identify a refinement.
+        const auto entry = std::ranges::find(known, physical_offset(declaration), &Selection::Refinement::alias_offset);
+        if (entry != known.end()) {
+            if (entry->index_count != arguments.size())
+                return std::unexpected("refinement '" + entry->name + "' has unresolved index arguments");
+            found.push_back(Refinement{entry->name, arguments, entry->probe});
         }
-        const std::string name = take(clang_getCursorSpelling(declaration));
-        const auto entry =
-            std::ranges::find_if(known, [&](const Selection::Refinement& candidate) { return candidate.name == name; });
-        if (entry == known.end()) {
-            break; // an ordinary alias, which refines nothing
-        }
-
-        Refinement refinement;
-        refinement.name = name;
-        if (entry->index_count != 0 && arguments.size() >= entry->index_count) {
-            refinement.arguments.assign(arguments.begin(),
-                                        arguments.begin() + static_cast<std::ptrdiff_t>(entry->index_count));
-        }
-        found.push_back(std::move(refinement));
-
         const CXType underlying = clang_getTypedefDeclUnderlyingType(declaration);
-        if (underlying.kind == CXType_Invalid || clang_equalTypes(underlying, written) != 0) {
-            break;
+        if (underlying.kind == CXType_Invalid) {
+            if (kind == CXCursor_TypeAliasTemplateDecl)
+                return std::unexpected("dependent refinement alias substitution is not resolved by the Clang bridge");
+            return found;
         }
         written = underlying;
-        arguments.clear(); // only the written type's own application has values here
+        // An ordinary alias may name an indexed refinement. Read that alias's
+        // resolved application, not the initializer or a previous alias's indices.
+        arguments = refinement_arguments(declaration);
     }
-    return found;
+    return std::unexpected("refinement alias chain exceeds the analysis limit");
 }
 
 // A local's identity is the declaration Clang resolved; its current logical
@@ -1404,7 +1410,10 @@ struct BodyLowering {
             return reject("local '" + name + "' has type '" + type.spelling + "', which is not modeled");
         }
         if (refinements != nullptr) {
-            type.refinements = refinements_of(declaration, clang_getCursorType(declaration), *refinements);
+            auto resolved = refinements_of(declaration, clang_getCursorType(declaration), *refinements);
+            if (!resolved)
+                return reject(resolved.error());
+            type.refinements = std::move(*resolved);
         }
         CXCursor initializer = clang_Cursor_getVarDeclInitializer(declaration);
         if (clang_Cursor_isNull(initializer) != 0) {
@@ -1894,8 +1903,17 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
         // Clang canonicalizes away, so it is recovered from the written type here
         // (SPEC.md 17.3): a refined parameter carries its predicate into the body,
         // and a refined result states one at every return.
-        function.result.refinements =
-            refinements_of(cursor, clang_getCursorResultType(cursor), request.selection.refinements);
+        const auto attach_refinements = [&](Type& type, CXCursor declaration, CXType written) {
+            auto resolved = refinements_of(declaration, written, request.selection.refinements);
+            if (resolved) {
+                type.refinements = std::move(*resolved);
+            } else {
+                result.has_errors = true;
+                result.diagnostics.push_back(
+                    {Severity::Error, resolved.error(), presumed_location(clang_getCursorLocation(declaration))});
+            }
+        };
+        attach_refinements(function.result, cursor, clang_getCursorResultType(cursor));
 
         const std::vector<CXCursor> parameter_cursors = parameters_of(cursor);
         for (const CXCursor& parameter : parameter_cursors) {
@@ -1906,8 +1924,7 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
             Type parameter_type =
                 convert_type(clang_getCursorType(parameter), 0,
                              projected_expression ? ReferenceModel::Referent : ReferenceModel::Opaque);
-            parameter_type.refinements =
-                refinements_of(parameter, clang_getCursorType(parameter), request.selection.refinements);
+            attach_refinements(parameter_type, parameter, clang_getCursorType(parameter));
             function.parameters.push_back(
                 Parameter{take(clang_getCursorSpelling(parameter)), std::move(parameter_type)});
         }

@@ -16,7 +16,8 @@ void select(clangbridge::ParseRequest& request, const frontend::Projection& proj
     for (const auto& refinement : projection.refinement_probes) {
         if (refinement.shape.kind != source::ProjectionKind::Expression)
             request.selection.proposition_probes.push_back({refinement.probe, refinement.shape});
-        request.selection.refinements.push_back({refinement.name, refinement.probe, refinement.index_count});
+        request.selection.refinements.push_back(
+            {refinement.name, refinement.probe, refinement.index_count, refinement.alias_offset});
     }
     for (const auto& declaration : projection.declaration_offsets)
         request.selection.offsets.push_back(declaration.analysis);

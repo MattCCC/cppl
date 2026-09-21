@@ -53,7 +53,7 @@ std::optional<vir::Type> convert_type(const clangbridge::Type& type) {
     // about it (SPEC.md 17). Both are carried, so verification can tell
     // `Percentage` from `int` while code generation cannot.
     for (const clangbridge::Refinement& refinement : type.refinements) {
-        converted->refinements.push_back(vir::Refinement{refinement.name, refinement.arguments});
+        converted->refinements.push_back(vir::Refinement{refinement.name, refinement.arguments, refinement.identity});
     }
     // What C++ representation the value stands for, when it is one a
     // decomposition provider may model. Nothing is inferred from a spelling:
@@ -966,6 +966,7 @@ void elaborate_refinements(const Request& request, std::uint32_t& next_expressio
 
         vir::RefinementDeclaration refined;
         refined.name = declaration.name;
+        refined.identity = probe->probe;
         refined.base = parameters->back().type;
         refined.indices.assign(parameters->begin(), parameters->end() - 1);
         refined.predicate = std::move(*predicate);

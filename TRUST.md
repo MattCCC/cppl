@@ -352,6 +352,12 @@ fail closed. These checks introduce no kernel rules, logical assumptions, axioms
 or trusted mechanisms; the existing obligation builder remains responsible for
 enumerating the crossings whose evidence the kernel checks.
 
+Alias-to-predicate correspondence uses the generated alias's physical identity
+and Clang's resolved declaration chain. Unqualified spelling and `#line` locations
+are not semantic identity. Ordinary aliases preserve predicates; unresolved
+indexed alias applications are rejected. This is frontend correspondence, not a
+new logical rule or an additional trusted user boundary.
+
 The erasure pass MUST NOT silently:
 
 - remove required runtime validation

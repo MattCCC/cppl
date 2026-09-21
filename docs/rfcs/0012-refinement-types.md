@@ -60,6 +60,13 @@ where verification needs it. Clang canonicalizes a refinement to its base type, 
 the name is recovered from the alias declaration the written type came through -
 not from the type's spelling.
 
+The projector records the physical analysis-buffer identity of each generated
+alias. The bridge follows Clang alias declarations, including ordinary `using`
+and `typedef` chains, and associates only that alias with its predicate probe.
+Identically spelled declarations in separate namespaces therefore remain distinct.
+Constant indexed applications in an alias chain retain their own resolved
+arguments; unresolved substitution fails closed.
+
 ## Introduction and elimination
 
 A declaration asserts nothing. Membership is an obligation with its own origin,

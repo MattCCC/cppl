@@ -51,7 +51,8 @@ std::expected<std::optional<kernel::Proposition>, Failure> membership(const Prog
                                                                       const kernel::Term& value) {
     std::optional<kernel::Proposition> required;
     for (const vir::Refinement& refinement : type.refinements) {
-        const RefinementPredicate* stated = program.refinement(refinement.name);
+        const RefinementPredicate* stated =
+            program.refinement(refinement.identity.empty() ? refinement.name : refinement.identity);
         if (stated == nullptr || stated->parameters.empty()) {
             return std::unexpected(Failure{"refinement '" + refinement.name + "' has no resolved predicate", {}, {}});
         }

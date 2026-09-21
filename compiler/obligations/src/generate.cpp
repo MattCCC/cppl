@@ -1956,6 +1956,7 @@ Program generate(const vir::Module& module, const elaboration::Result& elaborate
     for (const auto& refinement : module.refinements) {
         RefinementPredicate stated;
         stated.name = refinement.name;
+        stated.identity = refinement.identity;
         bool modeled = true;
         for (const auto& index : refinement.indices) {
             const std::optional<kernel::Type> type = detail::core_type(index.type);

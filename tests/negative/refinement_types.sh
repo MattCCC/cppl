@@ -65,6 +65,41 @@ verified unsigned wrong(unsigned x) ensures(result == 5u) {
 }
 CPP
 
+reject inherited_predicate_through_alias <<'CPP'
+type Positive = int where(self > 0);
+using Base = Positive;
+type Bounded = Base where(self <= 100);
+verified int wrong() ensures(result == 0) {
+    Bounded value = 0;
+    return value;
+}
+CPP
+reject ordinary_alias_cannot_drop_membership <<'CPP'
+type Positive = int where(self > 0);
+typedef Positive First;
+using Second = First;
+verified int wrong() ensures(result == 0) {
+    Second value = 0;
+    return value;
+}
+CPP
+reject indexed_alias_cannot_drop_membership <<'CPP'
+type Index(unsigned n) = unsigned where(self < n);
+using Four = Index<4>;
+verified unsigned wrong() ensures(result == 4u) {
+    Four value = 4u;
+    return value;
+}
+CPP
+reject same_spelling_does_not_select_another_refinement <<'CPP'
+namespace first { type Range = unsigned where(self < 10u); }
+namespace second { type Range = unsigned where(self < 3u); }
+verified unsigned wrong() ensures(result == 5u) {
+    second::Range value = 5u;
+    return value;
+}
+CPP
+
 # A refined result must hold on the path that returns.
 reject false_refined_result <<'CPP'
 type Small = unsigned where(self < 10u);
@@ -274,6 +309,35 @@ int main() {
     where<int> w{0};
     return w.value;
 }
+CPP
+
+accept ordinary_alias_same_spelling_is_not_refined <<'CPP'
+namespace first { type Positive = int where(self > 0); }
+namespace second { using Positive = int; }
+verified int zero() ensures(result == 0) {
+    second::Positive value = 0;
+    return value;
+}
+int main() { return zero(); }
+CPP
+accept indexed_alias_preserves_arguments <<'CPP'
+type Index(unsigned n) = unsigned where(self < n);
+using Four = Index<4>;
+using Again = Four;
+verified unsigned three() ensures(result == 3u) {
+    Again value = 3u;
+    return value;
+}
+int main() { return three() == 3u ? 0 : 1; }
+CPP
+accept nested_alias_preserves_all_predicates <<'CPP'
+type Positive = int where(self > 0);
+using Base = Positive;
+type Bounded = Base where(self <= 100);
+verified int identity(Bounded value) ensures(result > 0 && result <= 100) {
+    return value;
+}
+int main() { return identity(1) == 1 ? 0 : 1; }
 CPP
 
 echo "refinement membership is proven or refused; contextual words keep their C++ meaning"

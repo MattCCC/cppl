@@ -24,6 +24,7 @@ struct Edit {
     source::ByteSpan span;
     std::string replacement;
     std::optional<std::size_t> specification_index = std::nullopt;
+    std::optional<std::size_t> refinement_index = std::nullopt;
 };
 
 // The tokens of a span, on one line. Two tokens the author wrote adjacently stay
@@ -198,6 +199,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
 
         std::string replacement = "\n";
         replacement += line_directive(refinement.keyword_location.line, refinement.keyword_location.file);
+        probe.alias_offset = replacement.size() + lowering.find("using ") + 6;
         replacement += lowering.substr(0, lowering.find_last_of(';') + 1);
         replacement += "\n";
         replacement += line_directive(refinement.predicate_location.line, refinement.keyword_location.file);
@@ -217,7 +219,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         replacement += line_directive(refinement.end_line, refinement.keyword_location.file);
 
         projection.refinement_probes.push_back(std::move(probe));
-        edits.push_back(Edit{refinement.range.span, std::move(replacement)});
+        edits.push_back(Edit{refinement.range.span, std::move(replacement), std::nullopt, index});
     }
 
     for (std::size_t index = 0; index < syntax.laws.size(); ++index) {
@@ -502,6 +504,9 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
             // emit() recorded the name relative to its replacement; only now
             // is its physical position in the complete analysis text known.
             projection.specification_functions[*edit.specification_index].analysis_offset += projection.analysis.size();
+        }
+        if (edit.refinement_index.has_value()) {
+            projection.refinement_probes[*edit.refinement_index].alias_offset += projection.analysis.size();
         }
         projection.analysis.append(edit.replacement);
         cursor = edit.span.end();

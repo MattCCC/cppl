@@ -34,6 +34,7 @@ enum class TypeKind : std::uint8_t {
 struct Refinement {
     std::string name;
     std::vector<std::int64_t> arguments;
+    std::string identity = {};
 
     friend bool operator==(const Refinement&, const Refinement&) = default;
 };
@@ -55,7 +56,7 @@ struct Enumerator {
 // semantic identity rather than on a spelling: aliases, qualified names and
 // template specializations that resolve to one declaration share it.
 struct Representation {
-    std::string identity;
+    std::string identity = {};
     std::string name; // qualified name, for diagnostics only
     std::vector<Enumerator> enumerators;
     source::RepresentationKind kind = source::RepresentationKind::None;

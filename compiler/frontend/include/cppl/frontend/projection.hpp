@@ -95,6 +95,7 @@ struct RefinementProbe {
     std::size_t index_count = 0; // parameters standing before `self`
     source::SourceLocation location;
     source::ProjectionShape shape;
+    std::size_t alias_offset = 0; // generated alias name in the analysis buffer
 };
 
 // A runtime-bearing C++L declaration and the canonical C++ it lowers to

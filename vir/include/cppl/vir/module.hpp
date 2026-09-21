@@ -211,6 +211,7 @@ struct RefinementDeclaration {
     Expr predicate;
     source::SourceRange range;
     source::SourceRange predicate_range;
+    std::string identity = {};
 };
 
 struct Module {

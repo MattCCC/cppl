@@ -1629,6 +1629,11 @@ A refinement whose base type is another refinement states both predicates: the o
 written and every one it inherits (17.5). An indexed refinement states its
 predicate at the values its indices were applied at.
 
+Ordinary `using` and `typedef` aliases preserve refinement metadata, including
+constant indices. Refinements are identified by the Clang-resolved alias
+declaration, not by an unqualified name or a presumed source location. An
+unrelated ordinary alias with the same spelling introduces no predicate.
+
 Not yet modeled, and refused rather than approximated: refined returns of an
 unverified function, refined members, references and pointers, and refinements in
 templated contexts. A refinement over a base type outside the modeled fragment is

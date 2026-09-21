@@ -32,6 +32,7 @@ struct Selection {
         std::string name;
         std::string probe; // the generated function stating its predicate
         std::size_t index_count = 0;
+        std::size_t alias_offset = 0;
     };
     std::vector<Refinement> refinements;
 };

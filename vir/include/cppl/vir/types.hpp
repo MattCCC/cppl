@@ -37,6 +37,7 @@ struct PropositionType {
 struct Refinement {
     std::string name;
     std::vector<std::int64_t> arguments;
+    std::string identity = {};
 
     friend bool operator==(const Refinement&, const Refinement&) = default;
 };
@@ -58,7 +59,7 @@ struct Enumerator {
 // identity and never by spelling: an alias, a qualified name and a template
 // specialization that resolve to one declaration share it.
 struct Representation {
-    std::string identity;
+    std::string identity = {};
     // The qualified name, for diagnostics only.
     std::string name;
     std::vector<Enumerator> enumerators;
