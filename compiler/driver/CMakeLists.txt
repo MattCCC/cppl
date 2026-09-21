@@ -4,10 +4,13 @@
 # the implementation so the command-line tool does not become the compiler
 # (ARCHITECTURE.md 43).
 add_library(cppl_driver STATIC
+    src/buffer_compile.cpp
     src/crash.cpp
     src/driver.cpp
     src/options.cpp
-    src/process.cpp)
+    src/pipeline.cpp
+    src/process.cpp
+    src/scratch.cpp)
 
 target_include_directories(cppl_driver PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)

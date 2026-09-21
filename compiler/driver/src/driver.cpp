@@ -1,20 +1,13 @@
 #include "cppl/driver/driver.hpp"
 
-#include "cppl/analysis/analyze.hpp"
-#include "cppl/automation/evidence.hpp"
 #include "cppl/clang/bridge.hpp"
 #include "cppl/diagnostics/diagnostic.hpp"
 #include "cppl/driver/crash.hpp"
 #include "cppl/driver/options.hpp"
 #include "cppl/driver/process.hpp"
-#include "cppl/elaboration/elaborate.hpp"
-#include "cppl/erasure/erase.hpp"
-#include "cppl/frontend/projection.hpp"
-#include "cppl/frontend/syntax.hpp"
-#include "cppl/frontend/token.hpp"
+#include "cppl/driver/scratch.hpp"
 #include "cppl/kernel/version.hpp"
-#include "cppl/obligations/generate.hpp"
-#include "cppl/source/digest.hpp"
+#include "pipeline.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -26,12 +19,6 @@
 #include <sstream>
 #include <string>
 #include <vector>
-#ifdef _WIN32
-#include <cstdint>
-#include <random>
-#else
-#include <unistd.h>
-#endif
 
 namespace cppl::driver {
 
@@ -47,7 +34,6 @@ struct Summary {
     std::size_t proven_by_written_proof = 0;
     std::size_t proofs_proven = 0;
     std::size_t unresolved = 0;
-    std::size_t units_verified = 0;
 };
 
 struct UnitOutcome {
@@ -68,81 +54,6 @@ void report(diagnostics::Engine& engine, diagnostics::Category category, std::st
         diagnostic.notes.push_back(diagnostics::Note{std::move(note), diagnostic.location});
     }
     engine.report(std::move(diagnostic));
-}
-
-class ScratchDirectory {
-  public:
-    ScratchDirectory() {
-        std::error_code error;
-        const auto temporary = std::filesystem::temp_directory_path(error);
-        if (error) {
-            return;
-        }
-#ifdef _WIN32
-        // The per-user temporary directory is already private, so a name no
-        // other process holds is enough. create_directory reports false without
-        // an error when the name is taken, which is the collision to retry.
-        std::mt19937_64 generator{std::random_device{}()};
-        for (int attempt = 0; attempt < 64; ++attempt) {
-            std::string name = "cppl-";
-            const std::uint64_t value = generator();
-            for (int shift = 60; shift >= 0; shift -= 4) {
-                name.push_back("0123456789abcdef"[(value >> shift) & 0xF]);
-            }
-            const std::filesystem::path candidate = temporary / name;
-            std::error_code creation;
-            if (std::filesystem::create_directory(candidate, creation)) {
-                path_ = candidate;
-                return;
-            }
-            if (creation) {
-                return;
-            }
-        }
-#else
-        // mkdtemp creates the directory owner-only, so the preprocessed source
-        // and the projections are not exposed in a shared temporary directory.
-        std::string pattern = (temporary / "cppl-XXXXXX").string();
-        if (const char* created = ::mkdtemp(pattern.data())) {
-            path_ = created;
-        }
-#endif
-    }
-
-    ScratchDirectory(const ScratchDirectory&) = delete;
-    ScratchDirectory& operator=(const ScratchDirectory&) = delete;
-
-    ~ScratchDirectory() {
-        if (!path_.empty()) {
-            std::error_code error;
-            std::filesystem::remove_all(path_, error);
-        }
-    }
-
-    [[nodiscard]] const std::filesystem::path& path() const {
-        return path_;
-    }
-
-  private:
-    std::filesystem::path path_;
-};
-
-std::filesystem::path scratch_directory(const std::filesystem::path& root, const std::string& input) {
-    std::error_code error;
-    const std::filesystem::path absolute = std::filesystem::absolute(input, error);
-    const source::Digest digest = source::hash_bytes(absolute.string());
-    const std::filesystem::path directory = root / digest.to_short_hex(16);
-    std::filesystem::create_directories(directory, error);
-    return error ? std::filesystem::path{} : directory;
-}
-
-bool write_file(const std::filesystem::path& path, std::string_view content) {
-    std::ofstream stream(path, std::ios::binary | std::ios::trunc);
-    if (!stream) {
-        return false;
-    }
-    stream.write(content.data(), static_cast<std::streamsize>(content.size()));
-    return static_cast<bool>(stream);
 }
 
 std::optional<std::string> read_file(const std::filesystem::path& path) {
@@ -184,19 +95,6 @@ std::vector<std::string> base_arguments(const Options& options) {
         arguments.push_back(argument);
     }
     return arguments;
-}
-
-diagnostics::Severity convert(clangbridge::Severity severity) {
-    switch (severity) {
-        case clangbridge::Severity::Note:
-            return diagnostics::Severity::Note;
-        case clangbridge::Severity::Warning:
-            return diagnostics::Severity::Warning;
-        case clangbridge::Severity::Error:
-        case clangbridge::Severity::Fatal:
-            return diagnostics::Severity::Error;
-    }
-    return diagnostics::Severity::Error;
 }
 
 UnitOutcome compile_unit(const Options& options, const Input& input, const std::filesystem::path& scratch_root,
@@ -250,204 +148,51 @@ UnitOutcome compile_unit(const Options& options, const Input& input, const std::
     }
 
     const Stage recognizing_stage{"recognizing the C++L syntax"};
-    const frontend::TokenStream stream = frontend::lex(*text, input.path);
-    const frontend::Syntax syntax = frontend::recognize(stream, engine);
-
-    if (engine.has_errors()) {
-        outcome.failed = true;
-        return outcome;
-    }
-
-    if (syntax.empty()) {
-        // Ordinary C++: nothing to verify, and the original file is what gets
-        // compiled (ARCHITECTURE.md 29).
-        return outcome;
-    }
-
-    outcome.has_cppl = true;
-    ++summary.units_verified;
-
-    if (input.is_header) {
-        report(engine, diagnostics::Category::UnsupportedSemantics,
-               "'" + input.path + "' contains C++L constructs and is being compiled directly", {},
-               "include the header from a source file so its constructs are verified there");
-        outcome.failed = true;
-        return outcome;
-    }
-    if (options.explicit_language) {
-        report(engine, diagnostics::Category::UnsupportedSemantics,
-               "'-x' is not supported together with C++L constructs", {},
-               "this implementation selects the input language itself when it projects a unit");
-        outcome.failed = true;
-        return outcome;
-    }
-
-    frontend::ProjectionOptions projection_options;
-    projection_options.unit_key = source::hash_bytes(std::filesystem::absolute(input.path).string()).to_short_hex(12);
-    const Stage projecting_stage{"projecting"};
-    frontend::Projection projection = frontend::project(stream, syntax, projection_options);
-    for (const auto& diagnostic : projection.diagnostics)
-        engine.report(diagnostic);
-    if (engine.has_errors()) {
-        outcome.failed = true;
-        return outcome;
-    }
-
-    const std::filesystem::path analysis_path = scratch / (stem + ".analysis.cpp");
-    const std::filesystem::path runtime_path = scratch / (stem + ".runtime.cpp");
-    if (!write_file(analysis_path, projection.analysis) || !write_file(runtime_path, projection.runtime)) {
-        report(engine, diagnostics::Category::Internal, "could not write the projection of '" + input.path + "'");
-        outcome.failed = true;
-        return outcome;
-    }
-
-    clangbridge::ParseRequest request;
-    request.path = analysis_path.string();
-    request.arguments = base_arguments(options);
-    request.arguments.emplace_back("-x");
-    request.arguments.emplace_back("c++-cpp-output");
-    request.arguments.emplace_back("-w");
-    request.selection.specification_prefix = projection_options.generated_prefix;
-    for (const auto& proposition : projection.proposition_probes) {
-        request.selection.proposition_probes.push_back({proposition.name, proposition.shape});
-    }
-    // A refinement type resolves to its base type like any other alias, so the
-    // bridge is told which names carry a predicate (SPEC.md 17).
-    for (const auto& refinement : projection.refinement_probes) {
-        // A predicate that is an ordinary C++ expression is read from the probe's
-        // body, exactly as a law's proposition is; one that states formal syntax
-        // is read from its recorded shape.
-        if (refinement.shape.kind != source::ProjectionKind::Expression) {
-            request.selection.proposition_probes.push_back({refinement.probe, refinement.shape});
+    detail::PipelineRequest request;
+    request.preprocessed_text = *text;
+    request.original_path = input.path;
+    request.scratch = scratch;
+    request.stem = stem;
+    request.clang = options.clang;
+    request.clang_arguments = base_arguments(options);
+    request.emit_projection_path = options.emit_projection;
+    // A header or an explicit -x cannot be told apart from ordinary C++
+    // containing no C++L until recognition has run, which the shared
+    // pipeline already does; this hook rejects those two cases from its
+    // result instead of recognizing the text a second time.
+    const bool is_header = input.is_header;
+    const bool explicit_language = options.explicit_language;
+    const std::string& input_path = input.path;
+    request.reject_if_cppl = [is_header, explicit_language, &input_path](
+                                 const frontend::Syntax&) -> std::optional<detail::PipelineRequest::Rejection> {
+        if (is_header) {
+            return detail::PipelineRequest::Rejection{
+                "'" + input_path + "' contains C++L constructs and is being compiled directly",
+                "include the header from a source file so its constructs are verified there"};
         }
-        request.selection.refinements.push_back({refinement.name, refinement.probe, refinement.index_count});
-    }
-    for (const auto& declaration : projection.declaration_offsets) {
-        request.selection.offsets.push_back(declaration.analysis);
-    }
-    for (const auto& law : projection.specification_functions) {
-        request.selection.offsets.push_back(law.analysis_offset);
-    }
-
-    const Stage parsing_stage{"parsing the analysis projection"};
-    auto analyzed = analysis::analyze(stream, syntax, projection_options, request);
-    std::expected<clangbridge::TranslationUnit, std::string> unit = std::unexpected("analysis failed");
-    if (analyzed) {
-        projection = std::move(analyzed->projection);
-        unit = std::move(analyzed->unit);
-        if (!write_file(analysis_path, projection.analysis)) {
-            report(engine, diagnostics::Category::Internal, "could not write resolved analysis projection");
-            outcome.failed = true;
-            return outcome;
+        if (explicit_language) {
+            return detail::PipelineRequest::Rejection{
+                "'-x' is not supported together with C++L constructs",
+                "this implementation selects the input language itself when it projects a unit"};
         }
-    } else {
-        unit = std::unexpected(analyzed.error());
-    }
-    if (!unit.has_value()) {
-        report(engine, diagnostics::Category::Internal, unit.error());
-        outcome.failed = true;
-        return outcome;
-    }
+        return std::nullopt;
+    };
 
-    for (const clangbridge::Diagnostic& diagnostic : unit->diagnostics) {
-        if (diagnostic.severity != clangbridge::Severity::Error &&
-            diagnostic.severity != clangbridge::Severity::Fatal) {
-            continue;
-        }
-        diagnostics::Diagnostic converted;
-        converted.severity = convert(diagnostic.severity);
-        converted.category = diagnostics::Category::CppSemantic;
-        converted.message = diagnostic.message;
-        converted.location = diagnostic.location;
-        engine.report(std::move(converted));
-    }
-    if (unit->has_errors) {
-        outcome.failed = true;
-        return outcome;
-    }
+    const detail::PipelineOutcome result = detail::run_pipeline(request, engine);
+    outcome.has_cppl = result.has_cppl;
+    outcome.runtime_path = result.runtime_path;
+    outcome.failed = result.failed;
 
-    const Stage elaborating_stage{"elaborating"};
-    const elaboration::Result elaborated =
-        elaboration::elaborate(elaboration::Request{syntax, projection, *unit}, engine);
+    summary.laws += result.counters.laws;
+    summary.proven += result.counters.proven;
+    summary.contracts_proven += result.counters.contracts_proven;
+    summary.partial_contracts_proven += result.counters.partial_contracts_proven;
+    summary.loop_invariants_proven += result.counters.loop_invariants_proven;
+    summary.call_preconditions_proven += result.counters.call_preconditions_proven;
+    summary.proven_by_written_proof += result.counters.proven_by_written_proof;
+    summary.proofs_proven += result.counters.proofs_proven;
+    summary.unresolved += result.counters.unresolved;
 
-    const Stage generating_stage{"generating the proof obligations"};
-    const obligations::Program program = obligations::generate(elaborated.module, elaborated, engine);
-    if (!engine.has_errors() && program.proofs.size() != syntax.proofs.size()) {
-        report(engine, diagnostics::Category::Internal, "not every written proof produced explicit evidence");
-    }
-    const Stage verifying_stage{"verifying the proof obligations"};
-    const std::vector<obligations::ObligationResult> results = automation::verify(program, engine);
-
-    summary.laws += elaborated.module.laws.size();
-    std::size_t declaration_obligations = 0;
-    for (const obligations::ObligationResult& result : results) {
-        if (result.obligation.origin == obligations::Origin::LawProposition ||
-            result.obligation.origin == obligations::Origin::FunctionContract) {
-            ++declaration_obligations;
-        }
-        if (result.verdict.is_proven()) {
-            if (result.obligation.origin == obligations::Origin::FunctionContract) {
-                ++summary.contracts_proven;
-            } else if (result.obligation.origin == obligations::Origin::CallPrecondition) {
-                ++summary.call_preconditions_proven;
-            } else if (result.obligation.origin == obligations::Origin::LawProposition) {
-                ++summary.proven;
-            } else if (result.obligation.origin == obligations::Origin::ProofProposition) {
-                ++summary.proofs_proven;
-            } else if (result.obligation.origin == obligations::Origin::LoopEntry ||
-                       result.obligation.origin == obligations::Origin::LoopPreservation) {
-                ++summary.loop_invariants_proven;
-            }
-            if (result.obligation.law && program.proof_for(result.obligation) != nullptr) {
-                ++summary.proven_by_written_proof;
-            }
-        } else {
-            ++summary.unresolved;
-        }
-    }
-    // A partial-correctness contract has no single obligation of its own: it is
-    // established when every one of its conditions is proven.
-    for (const obligations::ContractVerification& contract : program.contracts) {
-        if (!contract.partial) {
-            continue;
-        }
-        ++declaration_obligations;
-        if (std::ranges::all_of(contract.conditions, [&results](const obligations::VerificationCondition& condition) {
-                return results[condition.obligation].verdict.is_proven();
-            })) {
-            ++summary.contracts_proven;
-            ++summary.partial_contracts_proven;
-        }
-    }
-    const std::size_t required = syntax.laws.size() + syntax.verified_functions.size();
-    if (declaration_obligations < required) {
-        summary.unresolved += required - declaration_obligations;
-        if (!engine.has_errors()) {
-            report(engine, diagnostics::Category::Internal,
-                   "not every formal declaration produced a verification obligation");
-        }
-    }
-
-    const Stage erasing_stage{"erasing the proof-only text"};
-    const erasure::Erased erased = erasure::erase(stream, syntax, projection, engine);
-    if (!erased.report.only_deletions || !erased.report.lines_preserved) {
-        outcome.failed = true;
-        return outcome;
-    }
-
-    if (engine.has_errors()) {
-        outcome.failed = true;
-        return outcome;
-    }
-
-    if (!options.emit_projection.empty() && !write_file(options.emit_projection, erased.runtime)) {
-        report(engine, diagnostics::Category::Internal,
-               "could not write the runtime projection to '" + options.emit_projection + "'");
-        outcome.failed = true;
-        return outcome;
-    }
-
-    outcome.runtime_path = runtime_path.string();
     return outcome;
 }
 
