@@ -168,6 +168,31 @@ proof product_of_optional(std::pair<std::optional<int>, bool> p) proves(Eq<bool>
     }
 }
 
+// 21. A binding denotes the existing subobject. A type that cannot be copied,
+// moved or default-constructed still decomposes: if a binder introduced any of
+// those operations, this would not compile.
+struct Pinned {
+    int v;
+    Pinned() = delete;
+    Pinned(const Pinned&) = delete;
+    Pinned(Pinned&&) = delete;
+    Pinned& operator=(const Pinned&) = delete;
+    Pinned& operator=(Pinned&&) = delete;
+};
+
+struct Holder {
+    Pinned pinned;
+    bool flagged;
+};
+
+proof pinned_components(Holder h) proves(Eq<bool>(true, true)) {
+    decompose h {
+        components(pinned, flagged) => {
+            decompose pinned { components(v) => { refl; } }
+        }
+    }
+}
+
 // 8/29. Binder types resolve to a fixpoint, so nesting depth is what costs, not
 // a fixed pass count. Four levels stay well inside the limit.
 proof deeply_nested(std::optional<std::optional<std::optional<std::optional<int>>>> o)
