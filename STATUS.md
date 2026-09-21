@@ -903,6 +903,7 @@ AI output must always be independently verified.
 | `cppl explain`          | `SPECIFIED`   |
 | `cppl trust-report`     | `PARTIAL`     |
 | LSP: sync and diagnostics | `PARTIAL`   |
+| LSP/CLI: canonical clause formatting | `PROTOTYPE` |
 | LSP: hover, definition, completion | `NOT STARTED` |
 | IDE proof goals         | `NOT STARTED` |
 | Proof navigation        | `NOT STARTED` |
@@ -921,10 +922,16 @@ pipeline over the live buffer (`driver::compile_buffer`), so the server has no
 decomposition, exhaustiveness or verification engine of its own; a structural
 linter adds contextual C++L checks over the same recognized syntax rather than
 re-recognizing it. Transport is separate from analysis, and the library is
-tested without an editor. The server advertises only `textDocumentSync`: hover,
-go-to-definition, completion and incremental sync are designed in
-`tools/cppl-lsp/README.md` but not implemented, and are deliberately not
-advertised as capabilities.
+tested without an editor. The server also advertises
+`documentFormattingProvider`, `documentRangeFormattingProvider` and
+`documentOnTypeFormattingProvider`, backed by one shared `compiler/formatter`
+engine that also backs the standalone `cppl-format` CLI: `expects`, `ensures`,
+`invariant` and `proves` clauses are relocated onto their own canonically
+indented line, ordinary C++ layout is delegated to `clang-format`, and a
+`check_style` pass reuses the same clause-placement rule to add style warnings
+to `publishDiagnostics`. Hover, go-to-definition, completion and incremental
+sync are designed in `tools/cppl-lsp/README.md` but not implemented, and are
+deliberately not advertised as capabilities.
 
 ---
 
