@@ -430,6 +430,37 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
             replacement += ");\n";
             projection.loop_invariants.push_back(std::move(marker));
         }
+        // A `decreases` measure resolves in the same scope as the invariants,
+        // and is an integer rather than a condition. `auto` gives it the type
+        // the expression already has, which the bridge reads back.
+        if (loop.decreases.has_value()) {
+            if (detail::contains_formal_syntax(stream, loop.decreases->expression)) {
+                diagnostics::Diagnostic diagnostic;
+                diagnostic.severity = diagnostics::Severity::Error;
+                diagnostic.category = diagnostics::Category::UnsupportedSemantics;
+                diagnostic.location = loop.decreases->location;
+                diagnostic.message = "formal syntax in a loop measure is not supported yet";
+                projection.diagnostics.push_back(std::move(diagnostic));
+            }
+            LoopInvariantMarker marker;
+            marker.name = options.generated_prefix + "measure_" + std::to_string(projection.loop_invariants.size()) +
+                          (options.unit_key.empty() ? "" : "_" + options.unit_key);
+            marker.loop_index = index;
+            marker.function_index = loop.function_index;
+            marker.measure = true;
+            marker.location = loop.decreases->location;
+
+            const source::SourceLocation& at = loop.measure_location;
+            replacement += line_directive(at.line, loop.keyword_location.file);
+            std::string head = "[[maybe_unused]] auto " + marker.name + " = (";
+            if (at.column > head.size() + 1) {
+                head.append(at.column - 1 - head.size(), ' ');
+            }
+            replacement += head;
+            replacement += stream.spelling(loop.decreases->expression);
+            replacement += ");\n";
+            projection.loop_invariants.push_back(std::move(marker));
+        }
         replacement += line_directive(loop.body_open_line, loop.keyword_location.file);
         replacement.append(loop.body_open_column - 1, ' ');
         edits.push_back(Edit{source::ByteSpan{loop.body_open, 0}, std::move(replacement)});

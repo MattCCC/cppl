@@ -956,7 +956,8 @@ class Conditions {
                                        std::vector<Active>& loops) {
         const source::SourceLocation& location = expression.provenance.range.begin;
         const std::size_t carried = loop.heads.size();
-        if (loop.places.size() != carried || loop.operands.size() != carried + loop.invariants + 1 ||
+        if (loop.places.size() != carried || loop.measures > 1 ||
+            loop.operands.size() != carried + loop.invariants + loop.measures + 1 ||
             std::ranges::any_of(loops, [&loop](const Active& active) { return active.loop->loop == loop.loop; })) {
             return fail("malformed loop", location);
         }
@@ -977,6 +978,22 @@ class Conditions {
         for (std::uint32_t position = 0; position < loop.invariants; ++position) {
             if (!loop.operands[carried + position].type.is_boolean()) {
                 return fail("a loop invariant must be a condition", location);
+            }
+        }
+        // A measure ranges over a well-founded domain (SPEC.md 22.5). An
+        // unsigned machine type ordered by its natural non-wrapping `<` is one;
+        // a signed one is not, because it has no least element the descent can
+        // stop at, and it is refused rather than given an assumed bound.
+        if (loop.measures == 1) {
+            const vir::Expr& measure = loop.operands[carried + loop.invariants];
+            const std::optional<kernel::Type> type = core_type(measure.type);
+            if (!type.has_value() || !type->is_integer()) {
+                return fail("a loop measure must be an integer the formal core represents", location);
+            }
+            if (type->integer_type().signedness != kernel::Signedness::Unsigned) {
+                return fail("a loop measure must range over a well-founded domain, so its type must be "
+                            "unsigned",
+                            location);
             }
         }
 
@@ -1057,6 +1074,64 @@ class Conditions {
             emit(scope, Origin::LoopPreservation, invariant_subject(expression, position), expression.provenance.range,
                  specialize(kernel::predicate(*invariant, true), active->carried, values));
         }
+        if (loop.measures == 1) {
+            if (auto descent = descends(loop, expression, scope, *active, values); !descent) {
+                return descent;
+            }
+        }
+        return {};
+    }
+
+    [[nodiscard]] std::string measure_subject(const vir::Expr& loop) const {
+        return function_.qualified_name + " loop at line " + std::to_string(loop.provenance.range.begin.line) +
+               " measure";
+    }
+
+    // The descent an iteration owes its measure: the value it carries into the
+    // next iteration is strictly below the value the head started from
+    // (SPEC.md 24.3, LOOP-006).
+    //
+    // The measure is read twice from one expression. At the head it is stated
+    // over the carried values as they are bound there; at the end of the
+    // iteration it is stated over the values the iteration produces, by the
+    // same abstraction and instantiation the invariants use, so the two points
+    // are never confused. The comparison is the machine's own `<` at the
+    // measure's unsigned type, whose order is well-founded, so a strict descent
+    // cannot continue forever.
+    std::expected<void, Failure> descends(const vir::Loop& loop, const vir::Expr& expression, const Scope& scope,
+                                          const Active& active, const std::vector<kernel::Term>& values) {
+        const std::size_t carried = loop.heads.size();
+        const vir::Expr& written = loop.operands[carried + loop.invariants];
+        const std::optional<kernel::Type> type = core_type(written.type);
+        if (!type.has_value() || !type->is_integer()) {
+            return fail("a loop measure must be an integer the formal core represents",
+                        expression.provenance.range.begin);
+        }
+
+        OpaqueBindings holes = scope.opaque;
+        for (std::size_t index = 0; index < carried; ++index) {
+            holes[loop.heads[index]] = scope.binders.size() + index;
+        }
+        auto next = lower_value(written, definitions_, scope.binders.size() + carried, &scope.calls, &scope.versions,
+                                &holes);
+        if (!next) {
+            return std::unexpected(next.error());
+        }
+        auto here = lower(written, scope);
+        if (!here) {
+            return std::unexpected(here.error());
+        }
+
+        // next < here, with `next` still abstracted over the head values so the
+        // kernel instantiates it at what this iteration produced.
+        const kernel::IntType integer = type->integer_type();
+        auto descent = kernel::Proposition::equality(
+            kernel::Type{kernel::kBoolean},
+            kernel::Term::primitive(kernel::PrimOp::Less, integer,
+                                    {*next, kernel::shift(*here, static_cast<std::uint32_t>(carried))}),
+            kernel::Term::literal(kernel::kBoolean, 1));
+        emit(scope, Origin::LoopDescent, measure_subject(expression), written.provenance.range,
+             specialize(std::move(descent), active.carried, values));
         return {};
     }
 

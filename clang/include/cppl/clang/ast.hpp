@@ -266,7 +266,8 @@ struct Loop {
     std::vector<std::uint32_t> heads;
     std::vector<Place> places;
     std::uint32_t invariants = 0;
-    std::vector<Expr> operands; // entry values, invariants, head
+    std::uint32_t measures = 0;                      // 0 or 1: a `decreases` measure
+    std::vector<Expr> operands; // entry values, invariants, measures, head
 };
 
 // The end of one iteration of `loop`: the value each carried local holds when

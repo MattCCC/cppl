@@ -240,6 +240,8 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
             } else if (result.obligation.origin == obligations::Origin::LoopEntry ||
                        result.obligation.origin == obligations::Origin::LoopPreservation) {
                 ++outcome.counters.loop_invariants_proven;
+            } else if (result.obligation.origin == obligations::Origin::LoopDescent) {
+                ++outcome.counters.loop_measures_proven;
             }
             if (result.obligation.law && program.proof_for(result.obligation) != nullptr) {
                 ++outcome.counters.proven_by_written_proof;

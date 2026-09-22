@@ -1248,6 +1248,24 @@ ScopeKind scope_kind_before(const std::vector<Token>& tokens, std::size_t brace)
     return ScopeKind::Block;
 }
 
+// Whether a ',' separates components at the top level of `(` ... `)`, which is
+// what makes a `decreases` measure a lexicographic list rather than one
+// expression. Commas nested in a call's arguments or a braced list do not.
+bool has_top_level_comma(const std::vector<Token>& tokens, std::size_t open, std::size_t close) {
+    std::size_t depth = 0;
+    for (std::size_t index = open + 1; index < close; ++index) {
+        const Token& token = tokens[index];
+        if (token.is_punctuator("(") || token.is_punctuator("[") || token.is_punctuator("{")) {
+            ++depth;
+        } else if (token.is_punctuator(")") || token.is_punctuator("]") || token.is_punctuator("}")) {
+            --depth;
+        } else if (depth == 0 && token.is_punctuator(",")) {
+            return true;
+        }
+    }
+    return false;
+}
+
 bool is_loop_clause(const std::vector<Token>& tokens, std::size_t index) {
     return index + 1 < tokens.size() &&
            (tokens[index].is_identifier("invariant") || tokens[index].is_identifier("decreases")) &&
@@ -1308,15 +1326,35 @@ LoopClauses try_loop_clauses(const TokenStream& stream, std::size_t index, std::
     for (const Written& clause : written) {
         const Token& keyword = tokens[clause.keyword];
         if (keyword.is_identifier("decreases")) {
-            loop.decreases = Clause{ClauseKind::Decreases,
-                                    keyword.span,
-                                    {tokens[clause.keyword + 1].span.end(),
-                                     tokens[clause.close].span.offset - tokens[clause.keyword + 1].span.end()},
-                                    stream.location_of(keyword)};
-            report(engine, stream, keyword, diagnostics::Category::UnsupportedSemantics,
-                   "loop termination is not verified by this implementation",
-                   "a verified loop establishes partial correctness only; 'decreases' is refused rather than "
-                   "left unchecked");
+            if (loop.decreases.has_value()) {
+                report(engine, stream, keyword, diagnostics::Category::CpplSyntax,
+                       "a loop states one 'decreases' clause",
+                       "a lexicographic measure is one clause with its parts separated by ','");
+                outcome = LoopClauses::Refused;
+                continue;
+            }
+            const source::ByteSpan measure{tokens[clause.keyword + 1].span.end(),
+                                           tokens[clause.close].span.offset -
+                                               tokens[clause.keyword + 1].span.end()};
+            if (stream.spelling(measure).find_first_not_of(" \t\r\n") == std::string_view::npos) {
+                report(engine, stream, keyword, diagnostics::Category::CpplSyntax,
+                       "'decreases' requires an expression");
+                outcome = LoopClauses::Refused;
+                continue;
+            }
+            // A lexicographic list is one measure per component (SPEC.md 22.3,
+            // TERMINATION-004). Only a single measure is verified here, and a
+            // list is refused rather than read as its first component.
+            if (has_top_level_comma(tokens, clause.keyword + 1, clause.close)) {
+                report(engine, stream, keyword, diagnostics::Category::UnsupportedSemantics,
+                       "a lexicographic 'decreases' list is not verified by this implementation",
+                       "state one measure; the requested obligation must not be accepted unchecked");
+                outcome = LoopClauses::Refused;
+                continue;
+            }
+            loop.decreases =
+                Clause{ClauseKind::Decreases, keyword.span, measure, stream.location_of(keyword)};
+            loop.measure_location = stream.location_of(tokens[clause.keyword + 2]);
             continue;
         }
         Clause invariant;

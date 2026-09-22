@@ -35,6 +35,7 @@ enum class Origin : std::uint8_t {
     ReturnPath,
     LoopEntry,             // a loop invariant holds when the loop is entered
     LoopPreservation,      // an iteration re-establishes a loop invariant
+    LoopDescent,           // an iteration strictly decreases a loop measure (SPEC.md 24.3)
     RefinementIntroduction // a value enters a refinement type (SPEC.md 17.2)
 };
 

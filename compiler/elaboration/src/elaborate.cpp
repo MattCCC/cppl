@@ -388,7 +388,7 @@ class ExpressionElaborator {
             places.reserve(loop->places.size());
             for (const auto& place : loop->places)
                 places.push_back(convert_place(place));
-            vir::Loop converted{loop->loop, loop->heads, std::move(places), 0, {}};
+            vir::Loop converted{loop->loop, loop->heads, std::move(places), 0, 0, {}};
             // One surface invariant can state a conjunction. Each conjunct is
             // still an independent entry/preservation obligation of the one
             // loop rule; no new fact is introduced and disjunction is not split.
@@ -402,15 +402,24 @@ class ExpressionElaborator {
                     converted.operands.push_back(std::move(value));
                 }
             };
+            // The measure and the head follow the invariants, and splitting a
+            // conjunction changes how many of those there are, so they are held
+            // back and appended once every invariant is in place.
+            std::vector<vir::Expr> trailing;
             for (std::size_t index = 0; index < loop->operands.size(); ++index) {
                 auto value = convert(loop->operands[index]);
                 if (!value)
                     return std::nullopt;
                 if (index >= loop->heads.size() && index < loop->heads.size() + loop->invariants)
                     append_invariant(append_invariant, std::move(*value));
-                else
+                else if (index < loop->heads.size())
                     converted.operands.push_back(std::move(*value));
+                else
+                    trailing.push_back(std::move(*value));
             }
+            converted.measures = loop->measures;
+            for (auto& value : trailing)
+                converted.operands.push_back(std::move(value));
             result.node = std::move(converted);
             return result;
         }
@@ -1030,7 +1039,28 @@ void elaborate_contract(const Request& request, const frontend::VerifiedFunction
         }
     }
 
+    // A `verified` function claims its contract is discharged, so there must be
+    // something to discharge. A missing `ensures` read as a trivially true
+    // postcondition would report a verified function that states nothing
+    // (SPEC.md 12, VERIFIED-001 and VERIFIED-002).
+    //
+    // What counts as stating one depends on the result. A non-void function
+    // establishes something about `result` (SPEC.md VERIFIED-009), so it states
+    // `ensures` or returns a refinement type whose predicate it owes
+    // (SPEC.md 17.2). A void function has no `result` (VERIFIED-010), so a
+    // precondition it works under is a contract: its body may still owe
+    // obligations, such as a write through a refined pointer.
     const frontend::Clause* postcondition = declaration.postcondition();
+    if (postcondition == nullptr && function.result.refinements.empty() &&
+        (function.result.kind != clangbridge::TypeKind::Void || declaration.preconditions().empty())) {
+        const bool states_nothing = declaration.preconditions().empty();
+        report(engine, diagnostics::Category::CpplSyntax, declaration.function_location,
+               "verified function '" + function.qualified_name +
+                   (states_nothing ? "' states no contract" : "' has no ensures clause"),
+               "a verified function has exactly one ensures clause, or returns a refinement "
+               "type whose predicate it owes");
+        return;
+    }
     const auto postcondition_location =
         postcondition != nullptr ? postcondition->location : declaration.function_location;
     std::optional<vir::Expr> ensured =

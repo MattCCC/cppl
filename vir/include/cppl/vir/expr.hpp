@@ -158,7 +158,10 @@ struct Loop {
     std::vector<std::uint32_t> heads;
     std::vector<Place> places;
     std::uint32_t invariants = 0;
-    std::vector<Expr> operands; // entry values, invariants, head
+    // 0 or 1. A loop with a measure requests termination, so its iterations
+    // carry a descent obligation as well as preservation (SPEC.md 24.3).
+    std::uint32_t measures = 0;
+    std::vector<Expr> operands; // entry values, invariants, measures, head
 
     friend bool operator==(const Loop&, const Loop&) = default;
 };

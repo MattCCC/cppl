@@ -454,7 +454,7 @@ v::Function counting(v::Expr invariant, std::uint32_t loop_id = 0) {
         control(v::PlaceVersion{2, named("i"), {std::move(step), control(v::Iterate{loop_id, {local(2)}})}, {}});
     auto head =
         control(v::Conditional{{compare(v::BinaryOp::Less, local(1), parameter(0)), std::move(iteration), local(1)}});
-    auto loop = control(v::Loop{0, {1}, {named("i")}, 1, {local(0), std::move(invariant), std::move(head)}});
+    auto loop = control(v::Loop{0, {1}, {named("i")}, 1, 0, {local(0), std::move(invariant), std::move(head)}});
     function.returned_value = control(v::PlaceVersion{0, named("i"), {number(0), std::move(loop)}, {}});
     function.contract = v::Contract{.postcondition = equality(parameter(1), parameter(0))};
     return function;

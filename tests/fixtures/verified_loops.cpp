@@ -179,9 +179,28 @@ verified unsigned count_three()
     return count_from(0u, 3u);
 }
 
+// A loop that requests termination. The measure is the distance still to go,
+// which each iteration strictly reduces, and it ranges over an unsigned type,
+// whose order is well-founded (SPEC.md 22.5, 24.3). Both the invariant and the
+// measure erase; the loop itself remains ordinary C++.
+verified unsigned counted_down(unsigned n)
+    ensures (result == 0u)
+{
+    unsigned left = n;
+    while (left > 0u)
+        invariant (left <= n)
+        decreases (left)
+    {
+        left = left - 1u;
+    }
+    return left;
+}
+
 int main() {
     if (count_three() != 3u)
         return 6;
+    if (counted_down(4u) != 0u || counted_down(0u) != 0u)
+        return 7;
     if (count_up(5u) != 5u || count_for(7u) != 7u || double_count(4u) != 8u)
         return 1;
     if (untouched(3u, 9u) != 9u || drain(6u) != 0u)

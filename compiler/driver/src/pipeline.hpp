@@ -98,6 +98,10 @@ struct PipelineOutcome {
         std::size_t contracts_proven = 0;
         std::size_t partial_contracts_proven = 0;
         std::size_t loop_invariants_proven = 0;
+        // Descent obligations discharged. Reported apart from invariants
+        // because they are what makes a loop total rather than partial
+        // (SPEC.md 23, CORRECT-006).
+        std::size_t loop_measures_proven = 0;
         std::size_t call_preconditions_proven = 0;
         std::size_t proven_by_written_proof = 0;
         std::size_t proofs_proven = 0;

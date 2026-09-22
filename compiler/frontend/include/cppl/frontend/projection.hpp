@@ -67,10 +67,13 @@ struct ContractFunctions {
 // resolves it in the scope the loop head sees. It exists only in the analysis
 // text, and the bridge reads it back as the loop's invariant rather than as a
 // statement of the body.
+// A loop clause resolved in the loop head's scope. An invariant is a condition;
+// a measure is the integer expression of a `decreases` clause (SPEC.md 24.3).
 struct LoopInvariantMarker {
     std::string name;
     std::size_t loop_index = 0;
     std::size_t function_index = 0;
+    bool measure = false;
     source::SourceLocation location;
 };
 

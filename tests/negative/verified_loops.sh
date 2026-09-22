@@ -26,9 +26,10 @@ reject not_preserved 'is not preserved by an iteration' \
     "$count while (i < n) invariant (i == 0u) { ++i; } return 0u; }"
 reject not_preserved_by_continue 'is not preserved by an iteration' \
     'verified unsigned f(unsigned n, bool b) ensures (result <= n) { unsigned seen = 0u; for (unsigned i = 0u; i < n; ++i) invariant (seen == i) { if (b) continue; ++seen; } return seen; }'
-# A caller of a loop function proves every precondition, not only the first.
+# A caller of a loop function proves every conjunct of a precondition, not only
+# the first. One clause states them both (SPEC.md 11.5, CONTRACT-003).
 reject second_expects_unestablished 'call.site precondition|precondition.*not' \
-    'verified unsigned g(unsigned s, unsigned n) expects (s == 0u) expects (n == 3u) ensures (result == 3u) { unsigned i = s; while (i < n) invariant (i <= n) { i = i + 1u; } return i; } verified unsigned f(unsigned n) ensures (result == 3u) { return g(0u, n); }'
+    'verified unsigned g(unsigned s, unsigned n) expects (s == 0u && n == 3u) ensures (result == 3u) { unsigned i = s; while (i < n) invariant (i <= n) { i = i + 1u; } return i; } verified unsigned f(unsigned n) ensures (result == 3u) { return g(0u, n); }'
 # After the loop only the invariants and the failed condition are known.
 reject head_value_leak 'return path.*does not satisfy' \
     "$count while (i < n) invariant (i <= n) { ++i; } if (i == 0u) return n; return 0u; }"
@@ -64,8 +65,14 @@ reject loop_in_pure 'single return expression' \
 # Syntax and constructs outside the modeled subset fail closed.
 reject invariant_outside_verified 'would not be checked' \
     'unsigned f(unsigned n) { unsigned i = 0u; while (i < n) invariant (i <= n) { ++i; } return i; }'
-reject decreases_refused 'termination is not verified' \
-    "$count while (i < n) invariant (i <= n) decreases (n - i) { ++i; } return i; }"
+# A requested termination proof is a claim, so failing to establish descent is
+# a verification failure rather than a silently dropped clause (SPEC.md 22.3).
+reject decreases_without_descent 'is not shown to decrease' \
+    "$count while (i < n) invariant (i <= n) decreases (n) { ++i; } return i; }"
+reject decreases_lexicographic_list 'lexicographic' \
+    "$count while (i < n) invariant (i <= n) decreases (n - i, n) { ++i; } return i; }"
+reject decreases_twice 'one .decreases. clause' \
+    "$count while (i < n) invariant (i <= n) decreases (n - i) decreases (n) { ++i; } return i; }"
 reject do_while 'do-while loops are not modeled' \
     "$count do { ++i; } while (i < n); return n; }"
 reject range_for 'range-based for loops are not modeled' \

@@ -357,10 +357,45 @@ CPPL_TEST(a_loop_invariant_outside_a_verified_function_is_refused) {
     CPPL_CHECK(result.syntax.loops.empty());
 }
 
-CPPL_TEST(a_loop_termination_measure_is_refused_rather_than_ignored) {
+CPPL_TEST(a_loop_termination_measure_is_recognized_as_a_clause) {
     Recognized result;
     recognize("verified unsigned f(unsigned n) ensures (result == n) { unsigned i = 0u;\n"
               "  while (i < n) invariant (i <= n) decreases (n - i) { ++i; } return i; }\n",
+              result);
+    CPPL_CHECK(!result.engine.has_errors());
+    CPPL_CHECK_EQ(result.syntax.loops.size(), std::size_t{1});
+    CPPL_CHECK_EQ(result.syntax.loops[0].invariants.size(), std::size_t{1});
+    CPPL_CHECK(result.syntax.loops[0].decreases.has_value());
+}
+
+CPPL_TEST(a_lexicographic_measure_list_is_refused_rather_than_read_as_its_first_part) {
+    // SPEC.md 22.3 states a lexicographic measure as one clause of several
+    // parts. Only a single measure is verified here, so the list is refused
+    // rather than silently reduced to `n - i`.
+    Recognized result;
+    recognize("verified unsigned f(unsigned n) ensures (result == n) { unsigned i = 0u;\n"
+              "  while (i < n) invariant (i <= n) decreases (n - i, n) { ++i; } return i; }\n",
+              result);
+    CPPL_CHECK(result.engine.has_errors());
+    CPPL_CHECK(result.syntax.loops.empty());
+}
+
+CPPL_TEST(a_measure_with_a_comma_inside_a_call_is_one_measure) {
+    // The comma belongs to the call's arguments, not to a measure list.
+    Recognized result;
+    recognize("unsigned pick(unsigned, unsigned);\n"
+              "verified unsigned f(unsigned n) ensures (result == n) { unsigned i = 0u;\n"
+              "  while (i < n) invariant (i <= n) decreases (pick(n, i)) { ++i; } return i; }\n",
+              result);
+    CPPL_CHECK(!result.engine.has_errors());
+    CPPL_CHECK_EQ(result.syntax.loops.size(), std::size_t{1});
+    CPPL_CHECK(result.syntax.loops[0].decreases.has_value());
+}
+
+CPPL_TEST(a_second_decreases_clause_on_one_loop_is_refused) {
+    Recognized result;
+    recognize("verified unsigned f(unsigned n) ensures (result == n) { unsigned i = 0u;\n"
+              "  while (i < n) invariant (i <= n) decreases (n - i) decreases (n) { ++i; } return i; }\n",
               result);
     CPPL_CHECK(result.engine.has_errors());
     CPPL_CHECK(result.syntax.loops.empty());

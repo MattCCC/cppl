@@ -9,10 +9,13 @@ run=$(mktemp -d "$WORK/verified-loops.XXXXXX")
 for standard in c++17 c++20 c++23; do
     "$CPPL" "-std=$standard" "$FIXTURES/verified_loops.cpp" -o "$run/program" \
         --cppl-trust-report "--cppl-emit-projection=$run/runtime.cpp" > "$run/report"
-    grep -Eq '^Function contracts proven: +14$' "$run/report"
-    grep -Eq '^  partial correctness only: +12$' "$run/report"
-    grep -Eq '^Call preconditions proven: +3$' "$run/report"
-    grep -Eq '^Loop invariants proven: +32$' "$run/report"
+    grep -Eq '^Function contracts proven: +15$' "$run/report"
+    grep -Eq '^  partial correctness only: +13$' "$run/report"
+    grep -Eq '^Call preconditions proven: +2$' "$run/report"
+    grep -Eq '^Loop invariants proven: +34$' "$run/report"
+    # A requested termination proof is discharged and reported on its own, apart
+    # from the invariants (SPEC.md 23, CORRECT-006).
+    grep -Eq '^Loop measures proven: +1$' "$run/report"
     grep -Eq '^Unresolved obligations: +0$' "$run/report"
     grep -Eq '^Trusted external axioms: +0$' "$run/report"
     "$run/program"
@@ -20,6 +23,7 @@ for standard in c++17 c++20 c++23; do
     grep -Fq 'while (i < n)' "$run/runtime.cpp"
     grep -Fq 'for (unsigned i = 0u; i < n; ++i)' "$run/runtime.cpp"
     grep -Fq 'i = bounded_step(i);' "$run/runtime.cpp"
+    grep -Fq 'while (left > 0u)' "$run/runtime.cpp"
     grep -Fq 'break;' "$run/runtime.cpp"
     grep -Fq 'continue;' "$run/runtime.cpp"
     if grep -Eq '\b(verified|ensures|expects|invariant|decreases|assert)\b|__cppl' "$run/runtime.cpp"; then

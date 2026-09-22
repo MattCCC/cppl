@@ -356,11 +356,13 @@ CPPL_TEST(contracts_erase_without_changing_runtime_values_or_source_locations) {
 }
 
 CPPL_TEST(loop_invariants_leave_the_runtime_and_reach_clang_inside_the_body) {
+    // One 'invariant' clause states both conjuncts (SPEC.md 11.5,
+    // CONTRACT-003); the loop rule splits the conjunction into its own
+    // entry and preservation obligations further down the pipeline.
     const std::string text = "verified unsigned f(unsigned n) ensures (result == n) {\n"
                              "    unsigned i = 0u;\n"
                              "    while (i < n)\n"
-                             "        invariant (i <= n)\n"
-                             "        invariant (i >= 0u) { i = i + 1u; }\n"
+                             "        invariant (i <= n && i >= 0u) { i = i + 1u; }\n"
                              "    return i;\n"
                              "}\n";
     cppl::diagnostics::Engine engine;
@@ -368,7 +370,7 @@ CPPL_TEST(loop_invariants_leave_the_runtime_and_reach_clang_inside_the_body) {
     const auto syntax = cppl::frontend::recognize(stream, engine);
     CPPL_CHECK(!engine.has_errors());
     CPPL_CHECK_EQ(syntax.loops.size(), std::size_t{1});
-    CPPL_CHECK_EQ(syntax.loops[0].invariants.size(), std::size_t{2});
+    CPPL_CHECK_EQ(syntax.loops[0].invariants.size(), std::size_t{1});
     const auto projection = cppl::frontend::project(stream, syntax, {});
     const auto erased = cppl::erasure::erase(stream, syntax, projection, engine);
     CPPL_CHECK(!engine.has_errors());
@@ -377,7 +379,7 @@ CPPL_TEST(loop_invariants_leave_the_runtime_and_reach_clang_inside_the_body) {
     CPPL_CHECK(projection.runtime.find("invariant") == std::string::npos);
     CPPL_CHECK(projection.runtime.find("while (i < n)") != std::string::npos);
     CPPL_CHECK(projection.runtime.find("{ i = i + 1u; }") != std::string::npos);
-    CPPL_CHECK_EQ(projection.loop_invariants.size(), std::size_t{2});
+    CPPL_CHECK_EQ(projection.loop_invariants.size(), std::size_t{1});
     for (const auto& marker : projection.loop_invariants) {
         CPPL_CHECK(projection.analysis.find("bool " + marker.name + " = (") != std::string::npos);
     }
@@ -385,9 +387,51 @@ CPPL_TEST(loop_invariants_leave_the_runtime_and_reach_clang_inside_the_body) {
     const auto analysis = cppl::frontend::lex(projection.analysis, "loops.cpp");
     bool found = false;
     for (const auto& token : analysis.tokens()) {
-        if (token.text == "i" && analysis.location_of(token).line == 5 && analysis.location_of(token).column == 30) {
+        if (token.text == "i" && analysis.location_of(token).line == 4 && analysis.location_of(token).column == 41) {
             found = true;
         }
     }
     CPPL_CHECK(found);
+}
+
+CPPL_TEST(a_loop_measure_leaves_the_runtime_and_reaches_clang_as_a_value) {
+    // A `decreases` measure resolves in the loop head's scope like an
+    // invariant, but it is an integer rather than a condition, so it is
+    // declared `auto` and keeps the type the expression already has.
+    const std::string text = "verified unsigned f(unsigned n) ensures (result == n) {\n"
+                             "    unsigned i = 0u;\n"
+                             "    while (i < n)\n"
+                             "        invariant (i <= n)\n"
+                             "        decreases (n - i) { i = i + 1u; }\n"
+                             "    return i;\n"
+                             "}\n";
+    cppl::diagnostics::Engine engine;
+    const auto stream = cppl::frontend::lex(text, "loops.cpp");
+    const auto syntax = cppl::frontend::recognize(stream, engine);
+    CPPL_CHECK(!engine.has_errors());
+    CPPL_CHECK_EQ(syntax.loops.size(), std::size_t{1});
+    CPPL_CHECK(syntax.loops[0].decreases.has_value());
+
+    const auto projection = cppl::frontend::project(stream, syntax, {});
+    const auto erased = cppl::erasure::erase(stream, syntax, projection, engine);
+    CPPL_CHECK(!engine.has_errors());
+    CPPL_CHECK(erased.report.only_deletions);
+
+    // The clause is proof-only: nothing of it survives into the program.
+    CPPL_CHECK(projection.runtime.find("decreases") == std::string::npos);
+    CPPL_CHECK(projection.runtime.find("invariant") == std::string::npos);
+    CPPL_CHECK(projection.runtime.find("while (i < n)") != std::string::npos);
+
+    // One invariant marker and one measure marker reach Clang.
+    CPPL_CHECK_EQ(projection.loop_invariants.size(), std::size_t{2});
+    std::size_t measures = 0;
+    for (const auto& marker : projection.loop_invariants) {
+        if (marker.measure) {
+            ++measures;
+            CPPL_CHECK(projection.analysis.find("auto " + marker.name + " = (") != std::string::npos);
+        } else {
+            CPPL_CHECK(projection.analysis.find("bool " + marker.name + " = (") != std::string::npos);
+        }
+    }
+    CPPL_CHECK_EQ(measures, std::size_t{1});
 }

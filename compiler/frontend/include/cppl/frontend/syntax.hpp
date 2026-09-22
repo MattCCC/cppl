@@ -185,6 +185,7 @@ struct LoopSpecification {
     std::vector<Clause> invariants;
     std::optional<Clause> decreases;
     std::vector<source::SourceLocation> expression_locations; // one per invariant
+    source::SourceLocation measure_location;                  // where `decreases`' expression starts
     source::ByteSpan clause_region;
 
     // Just past the body's '{', where the invariant declarations are inserted,

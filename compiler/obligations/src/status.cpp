@@ -42,6 +42,8 @@ std::string describe(Origin origin) {
             return "loop invariant on entry";
         case Origin::LoopPreservation:
             return "loop invariant preservation";
+        case Origin::LoopDescent:
+            return "loop measure descent";
         case Origin::RefinementIntroduction:
             return "refinement membership";
     }

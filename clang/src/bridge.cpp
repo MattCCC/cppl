@@ -2102,16 +2102,29 @@ struct BodyLowering {
 
     // The generated declaration a loop invariant was projected into, if the
     // statement is one.
-    [[nodiscard]] std::optional<CXCursor> invariant_marker(CXCursor statement) const {
+    // A loop clause the projector declared at the head of the body: an
+    // `invariant_` condition or a `measure_` expression (SPEC.md 24.1, 24.3).
+    struct LoopMarker {
+        CXCursor cursor;
+        bool measure = false;
+    };
+
+    [[nodiscard]] std::optional<LoopMarker> invariant_marker(CXCursor statement) const {
         if (invariant_prefix.empty() || clang_getCursorKind(statement) != CXCursor_DeclStmt) {
             return std::nullopt;
         }
         const std::vector<CXCursor> declared = children_of(statement);
-        if (declared.size() != 1 || clang_getCursorKind(declared[0]) != CXCursor_VarDecl ||
-            !take(clang_getCursorSpelling(declared[0])).starts_with(invariant_prefix)) {
+        if (declared.size() != 1 || clang_getCursorKind(declared[0]) != CXCursor_VarDecl) {
             return std::nullopt;
         }
-        return declared[0];
+        const std::string name = take(clang_getCursorSpelling(declared[0]));
+        if (name.starts_with(invariant_prefix + "invariant_")) {
+            return LoopMarker{declared[0], false};
+        }
+        if (name.starts_with(invariant_prefix + "measure_")) {
+            return LoopMarker{declared[0], true};
+        }
+        return std::nullopt;
     }
 
     // A loop, as its entry, its head, one iteration, and what follows it
@@ -2130,13 +2143,21 @@ struct BodyLowering {
             statements.push_back(header.body);
         }
         std::vector<CXCursor> markers;
+        std::optional<CXCursor> measure_marker;
         std::size_t first = 0;
         while (first < statements.size()) {
-            const std::optional<CXCursor> marker = invariant_marker(statements[first]);
+            const std::optional<LoopMarker> marker = invariant_marker(statements[first]);
             if (!marker) {
                 break;
             }
-            markers.push_back(*marker);
+            if (marker->measure) {
+                if (measure_marker) {
+                    return reject("a loop states one 'decreases' measure");
+                }
+                measure_marker = marker->cursor;
+            } else {
+                markers.push_back(marker->cursor);
+            }
             ++first;
         }
 
@@ -2173,6 +2194,22 @@ struct BodyLowering {
             invariants.push_back(std::move(invariant));
             consumed_invariants.push_back(take(clang_getCursorSpelling(marker)));
         }
+        // The measure is read in the head's scope like an invariant, but it is
+        // a value rather than a condition. Its well-founded domain is checked
+        // where the obligation is stated (SPEC.md 22.5).
+        std::optional<Expr> measure;
+        if (measure_marker) {
+            const CXCursor initializer = clang_Cursor_getVarDeclInitializer(*measure_marker);
+            if (clang_Cursor_isNull(initializer) != 0) {
+                return reject("a loop measure was not resolved");
+            }
+            Expr value = build_expression(initializer, parameters, frame.head, 0);
+            if (!std::holds_alternative<Unsupported>(value.node) && value.type.kind != TypeKind::Int) {
+                return reject("a loop measure must be an integer");
+            }
+            measure = std::move(value);
+            consumed_invariants.push_back(take(clang_getCursorSpelling(*measure_marker)));
+        }
         Expr condition = build_expression(header.condition, parameters, frame.head, 0);
 
         frames.push_back(&frame);
@@ -2208,6 +2245,10 @@ struct BodyLowering {
         loop.invariants = static_cast<std::uint32_t>(invariants.size());
         for (Expr& invariant : invariants) {
             loop.operands.push_back(std::move(invariant));
+        }
+        loop.measures = measure ? 1u : 0u;
+        if (measure) {
+            loop.operands.push_back(std::move(*measure));
         }
         loop.operands.push_back(std::move(head));
 
@@ -3461,7 +3502,7 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
             extract_body(function, body_cursor, body_parameters,
                          request.selection.specification_prefix.empty()
                              ? std::string()
-                             : request.selection.specification_prefix + "invariant_",
+                             : request.selection.specification_prefix,
                          request.selection.refinements,
                          std::ranges::find(request.selection.verified_offsets, function.analysis_offset) !=
                              request.selection.verified_offsets.end(),
