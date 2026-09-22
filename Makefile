@@ -42,6 +42,7 @@ endif
 	format-check \
 	tidy \
 	tidy-changed \
+	test-mutations \
 	spec-rules-check \
 	lint \
 	lint-changed \
@@ -76,6 +77,7 @@ help:
 		'  lint              Run static analysis / lint checks (full, CI)' \
 		'  lint-changed      Run static analysis on changed files only (fast, local)' \
 		'  tidy-changed      Apply lint fixes to changed files only (fast, local)' \
+		'  test-mutations    Break each soundness check and confirm a test catches it' \
 		'' \
 		'Sanitizers:' \
 		'  asan              Build and test with AddressSanitizer' \
@@ -143,6 +145,14 @@ test-integration: build
 		--output-on-failure \
 		-L integration \
 		$(if $(JOBS),--parallel $(JOBS),)
+
+## test-mutations: Disable one soundness check at a time and confirm a test fails
+#
+# Deliberately breaks the kernel in a disposable copy of the tree. A passing
+# suite proves nothing on its own; this measures whether it would notice. Kept
+# out of `check` because each mutation costs a rebuild and a test run.
+test-mutations:
+	./scripts/test-mutations.sh $(if $(JOBS),--jobs $(JOBS),)
 
 ## check: Run repository validation suitable for CI/pre-merge checks
 check: format-check lint spec-rules-check test
