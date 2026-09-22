@@ -1357,9 +1357,8 @@ void elaborate_proofs(const Request& request, const std::map<std::string, vir::L
         // ordinary C++ call, so Clang has already settled their number and
         // their types; which proposition they state is worked out where the
         // law's own proposition is known, by instantiating it at them.
-        std::optional<std::vector<vir::ProofStep>> steps =
-            convert_statements(request, declaration, projected, declared, *parameters, next_expression_id, engine,
-                               &result.subject_states);
+        std::optional<std::vector<vir::ProofStep>> steps = convert_statements(
+            request, declaration, projected, declared, *parameters, next_expression_id, engine, &result.subject_states);
         if (!steps.has_value()) {
             if (law)
                 result.laws_with_refused_proofs.push_back(*law);
