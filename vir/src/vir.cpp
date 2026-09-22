@@ -143,9 +143,8 @@ std::string describe(const Expr& expr) {
             } else if constexpr (std::is_same_v<Node, Element>) {
                 // Spelled as the subscript it denotes: this reaches users in
                 // goals and diagnostics.
-                return node.operands.size() == 2
-                           ? describe(node.operands[0]) + "[" + describe(node.operands[1]) + "]"
-                           : "<malformed-element>";
+                return node.operands.size() == 2 ? describe(node.operands[0]) + "[" + describe(node.operands[1]) + "]"
+                                                 : "<malformed-element>";
             } else if constexpr (std::is_same_v<Node, FormalEquality>) {
                 return node.operands.size() == 2
                            ? "Eq<" + describe(node.operand_type) + ">(" + describe(node.operands[0]) + ", " +
@@ -159,10 +158,10 @@ std::string describe(const Expr& expr) {
                                  describe(node.operands[2]) + ")"
                            : "<malformed-conditional>";
             } else if constexpr (std::is_same_v<Node, PlaceVersion>) {
-                return node.operands.size() == 2 ? "let " + describe(node.place) + "#" + std::to_string(node.version) +
-                                                       " = " + describe(node.operands[0]) + " in " +
-                                                       describe(node.operands[1])
-                                                 : "<malformed-place>";
+                return node.operands.size() == 2
+                           ? "let " + describe(node.place) + "#" + std::to_string(node.version) + " = " +
+                                 describe(node.operands[0]) + " in " + describe(node.operands[1])
+                           : "<malformed-place>";
             } else if constexpr (std::is_same_v<Node, PlaceRef>) {
                 return describe(node.place) + "#" + std::to_string(node.version);
             } else if constexpr (std::is_same_v<Node, Loop>) {
@@ -177,10 +176,10 @@ std::string describe(const Expr& expr) {
                     text += describe(operand) + "; ";
                 return text + ")";
             } else if constexpr (std::is_same_v<Node, UnknownVersion>) {
-                return node.operands.size() == 1 ? "havoc " + describe(node.place) + "#" +
-                                                       std::to_string(node.version) + " in " +
-                                                       describe(node.operands.front())
-                                                 : "<malformed-mutation>";
+                return node.operands.size() == 1
+                           ? "havoc " + describe(node.place) + "#" + std::to_string(node.version) + " in " +
+                                 describe(node.operands.front())
+                           : "<malformed-mutation>";
             } else if constexpr (std::is_same_v<Node, ElementBound>) {
                 return node.operands.size() == 2 && node.extent.size() == 1
                            ? "bounded(" + describe(node.operands[0]) + " < " + describe(node.extent.front()) + ") in " +

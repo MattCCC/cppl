@@ -101,8 +101,7 @@ struct Projection {
 //
 // The observation is total. Forming it proves nothing about the index, and in
 // particular does not prove `index < extent`: that obligation belongs to the
-// C++ subscript and is discharged separately (SPEC.md STORAGE-011,
-// STORAGE-012).
+// C++ subscript and is discharged separately (SPEC.md STORAGE-005).
 struct Element {
     Type domain;
     std::vector<Term> arguments; // exactly two: subject of domain type, then index

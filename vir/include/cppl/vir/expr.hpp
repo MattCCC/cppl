@@ -87,6 +87,17 @@ struct Projection {
     friend bool operator==(const Projection&, const Projection&) = default;
 };
 
+// One element of an array value, selected at a term (FOUNDATIONS.md 45).
+//
+// The index is an operand rather than a constant, which is the whole difference
+// from `Projection`. Forming this observation proves nothing about the index:
+// the `index < extent` obligation is owed separately, by the same
+// `ElementBound` a tracked subscript owes (SPEC.md STORAGE-005).
+struct Element {
+    std::vector<Expr> operands; // subject, index
+    friend bool operator==(const Element&, const Element&) = default;
+};
+
 struct FormalEquality {
     Type operand_type;
     std::vector<Expr> operands;
@@ -217,7 +228,7 @@ struct Expr {
     Type type;
     Provenance provenance;
     std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, PlaceVersion, PlaceRef, Loop, Iterate,
-                 Projection, FormalEquality, Universal, Implication, Connective, ReturnState, UnknownVersion,
+                 Projection, Element, FormalEquality, Universal, Implication, Connective, ReturnState, UnknownVersion,
                  ElementBound>
         node;
 

@@ -52,6 +52,34 @@ std::optional<kernel::Type> lower_type(const vir::Type& type) {
                                  integer.is_signed ? kernel::Signedness::Signed : kernel::Signedness::Unsigned);
 }
 
+// The indexed domain an array type denotes, for an observation whose index is a
+// term (FOUNDATIONS.md 45).
+//
+// The extent comes from the resolved type, never from which elements happen to
+// have been observed already: the type establishes the shape, and element facts
+// only describe particular observations of it (ARCHITECTURE.md ARCH-ELEM-004).
+// A homogeneous domain also requires that every element lower alike, so a
+// signature whose components disagree is not one of these.
+std::optional<kernel::Type> lower_indexed_type(const vir::Type& type) {
+    if (!type.is_value() || type.representation.kind != source::RepresentationKind::Array) {
+        return std::nullopt;
+    }
+    const auto& projections = std::get<vir::ValueType>(type.node).projections;
+    if (projections.empty()) {
+        return std::nullopt;
+    }
+    auto element = lower_type(projections.front());
+    if (!element) {
+        return std::nullopt;
+    }
+    for (const auto& child : projections) {
+        auto lowered = lower_type(child);
+        if (!lowered || !(*lowered == *element))
+            return std::nullopt;
+    }
+    return kernel::Type::indexed(std::move(*element), static_cast<kernel::Wide>(projections.size()));
+}
+
 using detail::DefinitionMap;
 
 std::optional<kernel::PrimOp> comparison(vir::BinaryOp op) {
@@ -208,6 +236,24 @@ class TermLowering {
             if (!subject)
                 return subject;
             return kernel::Term::project(*domain, projection->index, std::move(*subject));
+        }
+
+        if (const auto* element = std::get_if<vir::Element>(&expr.node)) {
+            if (element->operands.size() != 2)
+                return fail("malformed element observation", location);
+            auto domain = lower_indexed_type(element->operands[0].type);
+            if (!domain)
+                return fail("this subscript's array has no modeled indexed structure", location);
+            const auto& observed = std::get<kernel::IndexedType>(domain->node).element.front();
+            if (!type || !(observed == *type))
+                return fail("element result disagrees with its element type", location);
+            auto subject = lower(element->operands[0]);
+            if (!subject)
+                return subject;
+            auto index = lower(element->operands[1]);
+            if (!index)
+                return index;
+            return kernel::Term::element(*domain, std::move(*subject), std::move(*index));
         }
 
         if (const auto* literal = std::get_if<vir::IntLiteral>(&expr.node)) {

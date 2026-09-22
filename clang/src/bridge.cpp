@@ -1101,12 +1101,22 @@ Expr build_expression(CXCursor cursor, const std::vector<CXCursor>& parameters, 
             }
             Expr subject = build_expression(strip(children[0]), parameters, locals, depth + 1);
             if (subject.type.representation.kind == source::RepresentationKind::Array) {
+                bool constant = false;
                 if (CXEvalResult evaluated = clang_Cursor_Evaluate(children[1])) {
                     const bool integral = clang_EvalResult_getKind(evaluated) == CXEval_Int;
                     const auto index = integral ? clang_EvalResult_getAsLongLong(evaluated) : -1;
                     clang_EvalResult_dispose(evaluated);
+                    constant = integral;
                     if (index >= 0 && static_cast<std::size_t>(index) < subject.type.projections.size())
                         return make_projection(std::move(subject), static_cast<std::uint32_t>(index));
+                }
+                // An index Clang already folded to a constant is not symbolic.
+                // One outside the extent selects no element of this array, and
+                // observing it at a term would turn a decided out-of-bounds
+                // access into an obligation that merely fails to prove.
+                if (constant) {
+                    return unsupported_expression(cursor,
+                                                  "proof array index must be a constant within the resolved extent");
                 }
                 // A symbolic index observes the element at a term instead
                 // (FOUNDATIONS.md 45). The extent comes from the resolved array
@@ -2009,8 +2019,7 @@ struct BodyLowering {
         Type indexed;
         if (element == nullptr) {
             indexed = declared_place_type(declaration, prefix, state);
-            if (indexed.representation.kind == source::RepresentationKind::Array &&
-                !indexed.projections.empty()) {
+            if (indexed.representation.kind == source::RepresentationKind::Array && !indexed.projections.empty()) {
                 extent = static_cast<std::uint32_t>(indexed.projections.size());
                 element = &indexed.projections.front();
             }
@@ -2512,10 +2521,13 @@ struct BodyLowering {
             return false;
         }
         const std::vector<CXCursor> declared = children_of(statement);
-        return std::ranges::all_of(declared, [&](CXCursor candidate) {
-            return clang_getCursorKind(candidate) == CXCursor_VarDecl &&
-                   take(clang_getCursorSpelling(candidate)).starts_with(invariant_prefix + "force_");
-        }) && !declared.empty();
+        return std::ranges::all_of(
+                   declared,
+                   [&](CXCursor candidate) {
+                       return clang_getCursorKind(candidate) == CXCursor_VarDecl &&
+                              take(clang_getCursorSpelling(candidate)).starts_with(invariant_prefix + "force_");
+                   }) &&
+               !declared.empty();
     }
 
     [[nodiscard]] std::optional<LoopMarker> invariant_marker(CXCursor statement) const {
