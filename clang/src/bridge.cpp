@@ -1770,6 +1770,25 @@ struct BodyLowering {
                         ")', which was not established; 'p != nullptr' does not imply it";
             return std::nullopt;
         }
+        // A capability permits reaching the pointer's storage; it does not say
+        // which element of that storage a subscript names. The index owes
+        // `index < extent` against the region's stated extent, and that
+        // obligation is not implemented for the sized form (RFC 0014 §7).
+        //
+        // An unimplemented obligation refuses the access rather than permitting
+        // it. Admitting the subscript would let `readable(a, n)` grant access
+        // to every element the pointer could reach, including past `n`, which
+        // is precisely what the extent is there to bound (SPEC.md
+        // VERIFIED-038, VERIFIED-043).
+        if (std::ranges::any_of(access->path, [](const PlaceStep& step) {
+                return step.kind == PlaceStep::Kind::Element || step.kind == PlaceStep::Kind::SymbolicElement;
+            })) {
+            rejection = "subscripting '" + take(clang_getCursorSpelling(declaration)) +
+                        "' requires proving its index lies within the extent of the region '" +
+                        (required == Capability::Kind::Writable ? "writable" : "readable") +
+                        "' names, which is not implemented";
+            return std::nullopt;
+        }
         // The pointee type is what the pointer points to, with its sugar kept
         // so a refinement named on the pointee is still known.
         const CXType pointee = clang_getPointeeType(clang_getCursorType(declaration));

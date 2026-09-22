@@ -748,6 +748,19 @@ their indices are proved unequal: a write at `a[j]` invalidates what was read at
 stale fact. Refined elements owe their predicate at every write, symbolic or
 not.
 
+That obligation is available where the extent comes from a resolved array
+layout. It is not available for the region a capability names: `readable(a, n)`
+states an extent, but relating an index to `n` is not implemented, so a
+subscript through a capability-held pointer is refused rather than admitted.
+Admitting it would let a capability grant access to every element its pointer
+could reach, past the extent the capability itself states. The sized form is
+accepted and its extent carried; any subscript under it fails closed.
+
+A capability names the pointer whose storage it describes, `readable(p)`, as
+`SPEC.md` 12.10 states it. RFC 0014 §12 writes the same capability over the
+place, `readable(*p)`; that spelling is refused by name, because projecting it
+as written would emit the dereference the capability exists to permit.
+
 Pointer values and proof-side `null`/`non_null` case analysis are `IMPLEMENTED`
 and unaffected. Reference capture and returned aliases remain sequenced behind
 the rest of the storage model (RFC 0014 §17).

@@ -329,6 +329,20 @@ FormulaProjection formula(const TokenStream& stream, source::ByteSpan expression
         if (first == close)
             return {{}, {}, "a memory capability requires a pointer operand"};
         const std::size_t comma = capability_comma(tokens, first, close);
+        // This implementation names the capability's place by the pointer that
+        // designates it, `readable(p)`, while RFC 0014 §12 writes the same
+        // capability as `readable(*p)`. The two spellings are otherwise
+        // identical, so a `*` here is refused by name: left alone it projects
+        // as a dereference, and the later failure reports that a capability
+        // spelled exactly as the author intended established nothing.
+        if (tokens[first].text == "*") {
+            return {
+                {},
+                {},
+                "a memory capability names the pointer whose storage it describes, not a dereference of it: write '" +
+                    std::string(tokens[begin].text) + "(" +
+                    std::string(stream.spelling(span_of(tokens, first + 1, comma == close ? close : comma))) + ")'"};
+        }
         // The operands are copied into a lambda that is declared and never
         // called, so Clang resolves the pointer and the extent exactly as
         // written while nothing reaches the runtime. `p` is passed, never `*p`:

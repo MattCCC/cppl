@@ -198,3 +198,62 @@ verified int f(int x) expects (x >= 0) ensures (result > 0) {
     return p;
 }
 CPP
+
+# A capability permits reaching a pointer's storage; it does not decide which
+# element of that storage a subscript names. The index still owes
+# `index < extent`, exactly as a subscript of a local array does
+# (RFC 0014 §7, SPEC.md 12.10 VERIFIED-038).
+#
+# The sized form `readable(a, n)` states the region's extent, so an index into
+# it must be proved to lie within `n`. That obligation is not implemented, and
+# an unimplemented obligation must refuse the access rather than permit it: a
+# capability that silently admitted any index would make `readable` grant
+# unbounded access to memory past the region it names.
+# SPEC: VERIFIED-038, VERIFIED-043
+reject a_capability_does_not_bound_a_symbolic_index 'extent|element index|not implemented' <<'CPP'
+verified unsigned f(unsigned* a, unsigned n, unsigned i) expects (readable(a, n)) ensures (result == result) {
+    return a[i];
+}
+CPP
+
+# The same holds for an index that is constant and plainly outside the stated
+# extent. Nothing relates `999` to `n`, so the access is refused for want of
+# the bound rather than accepted because the index happens to be a literal.
+# SPEC: VERIFIED-038
+reject a_capability_does_not_bound_a_constant_index 'extent|element index|not implemented' <<'CPP'
+verified unsigned f(unsigned* a, unsigned n) expects (readable(a, n)) ensures (result == result) {
+    return a[999u];
+}
+CPP
+
+# The unsized form names a single object, so a subscript of it past element
+# zero reaches storage the capability never described.
+# SPEC: VERIFIED-038
+reject an_unsized_capability_does_not_cover_an_element 'extent|element index|not implemented' <<'CPP'
+verified unsigned f(unsigned* p, unsigned i) expects (readable(p)) ensures (result == result) {
+    return p[i];
+}
+CPP
+
+# This implementation spells a capability over the pointer, `readable(p)`, while
+# RFC 0014 §12 spells the same capability over the place, `readable(*p)`. The
+# difference is one character and the meaning is identical, so the place form is
+# refused by name. Projected as written it would become a dereference -- the very
+# thing the capability exists to permit -- and the author would be told that a
+# capability they spelled as the RFC specifies established nothing.
+reject a_capability_names_its_pointer_not_a_dereference 'names the pointer whose storage it describes' <<'CPP'
+verified int f(int* p) expects (readable(*p)) ensures (result == result) { return *p; }
+CPP
+
+# A capability and an ordinary predicate travel on different channels: only the
+# predicate reaches the kernel, while the capability is a context hypothesis of
+# the obligation layer (RFC 0014 §10). Conjoining them in one clause would put a
+# term the kernel never sees inside a proposition it is asked to prove, so the
+# two are kept apart. A contract states one `expects` clause, so several
+# capabilities necessarily arrive joined by `&&`, and that stays legal.
+reject a_capability_does_not_conjoin_with_a_predicate 'belong in separate clauses' <<'CPP'
+verified int f(int* p, int n) expects (readable(p) && n > 0) ensures (result == result) { return *p; }
+CPP
+reject a_capability_does_not_combine_by_disjunction "combines only with '&&'" <<'CPP'
+verified int f(int* p, int* q) expects (readable(p) || readable(q)) ensures (result == result) { return *p; }
+CPP
