@@ -28,7 +28,7 @@ const k::IntType kI8{8, k::Signedness::Signed};
 k::Term var(std::uint32_t index) {
     return k::Term::variable(k::VarIndex{index});
 }
-k::Term lit(const k::IntType& type, std::int64_t value) {
+k::Term lit(const k::IntType& type, k::Wide value) {
     return k::Term::literal(type, value);
 }
 k::Term prim(k::PrimOp op, const k::IntType& type, std::vector<k::Term> arguments) {
@@ -154,7 +154,7 @@ k::Term random_term(Random& random, const k::IntType& type, std::uint32_t variab
         case 0:
             return var(static_cast<std::uint32_t>(random.below(variables)));
         case 1:
-            return lit(type, k::wrap_into(type, static_cast<std::int64_t>(random.next())));
+            return lit(type, k::wrap_into(type, static_cast<k::Wide>(random.next())));
         case 2:
             return add(type, random_term(random, type, variables, depth - 1),
                        random_term(random, type, variables, depth - 1));
@@ -170,7 +170,7 @@ k::Term random_term(Random& random, const k::IntType& type, std::uint32_t variab
                          random_term(random, type, variables, depth - 1),
                          random_term(random, type, variables, depth - 1)});
         case 6:
-            return mul(type, lit(type, k::wrap_into(type, static_cast<std::int64_t>(random.below(7)) - 3)),
+            return mul(type, lit(type, k::wrap_into(type, static_cast<k::Wide>(random.below(7)) - 3)),
                        random_term(random, type, variables, depth - 1));
         case 7:
             return add(type, random_term(random, type, variables, depth - 1), lit(type, 1));

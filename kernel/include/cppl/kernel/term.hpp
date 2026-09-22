@@ -59,9 +59,12 @@ struct Var {
     friend bool operator==(const Var&, const Var&) = default;
 };
 
+// `value` is `Wide` so that every value of every supported type is denotable:
+// a u64 literal ranges up to 2^64-1, which an `int64_t` cannot hold. A literal
+// outside its type's range is malformed and is rejected when it is typed.
 struct Literal {
     IntType type;
-    std::int64_t value = 0;
+    Wide value = 0;
 
     friend bool operator==(const Literal&, const Literal&) = default;
 };
@@ -95,7 +98,7 @@ struct Term {
     static Term variable(VarIndex index) {
         return Term{Var{index}};
     }
-    static Term literal(IntType type, std::int64_t value) {
+    static Term literal(IntType type, Wide value) {
         return Term{Literal{type, value}};
     }
     static Term call(DefId callee, std::vector<Term> arguments) {

@@ -48,7 +48,7 @@ std::unexpected<CoreError> fail(CoreErrorKind kind, std::string detail) {
                     return std::unexpected(valid.error());
                 }
                 if (!is_representable(node.type, node.value)) {
-                    return fail(CoreErrorKind::MalformedLiteral, "literal " + std::to_string(node.value) +
+                    return fail(CoreErrorKind::MalformedLiteral, "literal " + describe(node.value) +
                                                                      " is not representable in " + describe(node.type));
                 }
                 return std::move(type);
@@ -247,7 +247,7 @@ std::string describe_with_names(const Context& context, const Term& term) {
                 return "#" + std::to_string(node.index.value);
 
             } else if constexpr (std::is_same_v<Node, Literal>) {
-                return std::to_string(node.value);
+                return describe(node.value);
 
             } else {
                 std::string text;

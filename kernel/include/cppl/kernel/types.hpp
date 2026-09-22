@@ -38,15 +38,19 @@ struct IntType {
 bool is_supported(const IntType& type);
 
 // The lowest representable value of the type.
-std::int64_t minimum_value(const IntType& type);
+//
+// These are `Wide` because a 64-bit unsigned type's greatest value, 2^64-1,
+// does not fit an `int64_t`. Returning it narrowed would make the core's idea
+// of a type's range disagree with the machine's.
+Wide minimum_value(const IntType& type);
 
 // The highest representable value of the type.
-std::int64_t maximum_value(const IntType& type);
+Wide maximum_value(const IntType& type);
 
-bool is_representable(const IntType& type, std::int64_t value);
+bool is_representable(const IntType& type, Wide value);
 
 // Two's-complement reduction of `value` into `type`.
-std::int64_t wrap_into(const IntType& type, std::int64_t value);
+Wide wrap_into(const IntType& type, Wide value);
 
 struct Type;
 
@@ -89,6 +93,10 @@ struct Type {
 
 // Includes structural bounds: malformed recursive signatures fail closed.
 bool is_supported(const Type& type);
+
+// The decimal form of a `Wide`. `std::to_string` has no 128-bit overload, so
+// values outside `int64_t` would otherwise be unprintable or truncated.
+std::string describe(Wide value);
 
 std::string describe(const IntType& type);
 std::string describe(const Type& type);

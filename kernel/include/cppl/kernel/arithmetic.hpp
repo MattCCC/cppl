@@ -65,6 +65,6 @@ struct Polynomial {
 [[nodiscard]] Wide value_of(const IntType& type, std::uint64_t bits);
 
 // The residue of `value` modulo 2^width, as the bits of `type`.
-[[nodiscard]] std::uint64_t bits_of(const IntType& type, std::int64_t value);
+[[nodiscard]] std::uint64_t bits_of(const IntType& type, Wide value);
 
 } // namespace cppl::kernel

@@ -1,7 +1,6 @@
 #include "cppl/kernel/types.hpp"
 
 #include <cstdint>
-#include <limits>
 #include <string>
 
 namespace cppl::kernel {
@@ -81,62 +80,56 @@ bool is_supported(const Type& type) {
     return valid(valid, type, 0);
 }
 
-std::int64_t minimum_value(const IntType& type) {
+Wide minimum_value(const IntType& type) {
     if (!is_supported(type) || type.signedness == Signedness::Unsigned) {
         return 0;
     }
-    if (type.width == 64) {
-        return std::numeric_limits<std::int64_t>::min();
-    }
-    return -(std::int64_t{1} << (type.width - 1));
+    return -(Wide{1} << (type.width - 1));
 }
 
-std::int64_t maximum_value(const IntType& type) {
+Wide maximum_value(const IntType& type) {
     if (!is_supported(type)) {
         return 0;
     }
     if (type.signedness == Signedness::Signed) {
-        if (type.width == 64) {
-            return std::numeric_limits<std::int64_t>::max();
-        }
-        return (std::int64_t{1} << (type.width - 1)) - 1;
+        return (Wide{1} << (type.width - 1)) - 1;
     }
-    // Unsigned values wider than 63 bits are outside the range this core can
-    // hold in a literal. They are rejected rather than truncated.
-    if (type.width >= 64) {
-        return std::numeric_limits<std::int64_t>::max();
-    }
-    return (std::int64_t{1} << type.width) - 1;
+    return (Wide{1} << type.width) - 1;
 }
 
-bool is_representable(const IntType& type, std::int64_t value) {
+bool is_representable(const IntType& type, Wide value) {
     if (!is_supported(type)) {
         return false;
-    }
-    if (type.signedness == Signedness::Unsigned && type.width >= 64) {
-        return value >= 0;
     }
     return value >= minimum_value(type) && value <= maximum_value(type);
 }
 
-std::int64_t wrap_into(const IntType& type, std::int64_t value) {
+Wide wrap_into(const IntType& type, Wide value) {
     if (!is_supported(type)) {
         return 0;
     }
-    const auto raw = static_cast<std::uint64_t>(value);
-    if (type.width == 64) {
-        return static_cast<std::int64_t>(raw);
+    const auto modulus = static_cast<Unsigned>(Wide{1} << type.width);
+    const auto truncated = static_cast<Unsigned>(value) & (modulus - 1u);
+    if (type.signedness == Signedness::Signed && truncated >= (modulus >> 1)) {
+        return static_cast<Wide>(truncated) - static_cast<Wide>(modulus);
     }
+    return static_cast<Wide>(truncated);
+}
 
-    const std::uint64_t mask = (std::uint64_t{1} << type.width) - 1u;
-    const std::uint64_t truncated = raw & mask;
-    if (type.signedness == Signedness::Signed) {
-        const std::uint64_t sign_bit = std::uint64_t{1} << (type.width - 1);
-        if ((truncated & sign_bit) != 0u) {
-            return static_cast<std::int64_t>(truncated) - static_cast<std::int64_t>(mask) - std::int64_t{1};
-        }
+std::string describe(Wide value) {
+    if (value == 0) {
+        return "0";
     }
-    return static_cast<std::int64_t>(truncated);
+    Unsigned rest = magnitude(value);
+    std::string digits;
+    while (rest != 0) {
+        digits.push_back(static_cast<char>('0' + static_cast<int>(rest % 10u)));
+        rest /= 10u;
+    }
+    if (value < 0) {
+        digits.push_back('-');
+    }
+    return {digits.rbegin(), digits.rend()};
 }
 
 std::string describe(const IntType& type) {

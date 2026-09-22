@@ -83,7 +83,7 @@ std::string describe(const Term& term) {
             if constexpr (std::is_same_v<Node, Var>) {
                 return "#" + std::to_string(node.index.value);
             } else if constexpr (std::is_same_v<Node, Literal>) {
-                return std::to_string(node.value) + ":" + describe(node.type);
+                return describe(node.value) + ":" + describe(node.type);
             } else if constexpr (std::is_same_v<Node, Call>) {
                 return "def#" + std::to_string(node.callee.value) + describe_arguments(node.arguments);
             } else if constexpr (std::is_same_v<Node, Projection>) {

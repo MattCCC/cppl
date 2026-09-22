@@ -1305,6 +1305,18 @@ capture and hypothesis indices inside a case. There are no new assumptions,
 axioms, trusted mechanisms, or external dependencies. Obligation identities
 distinguish a disjunction from a conjunction of the same ordered sides.
 
+Automation may also close a disjunction that enumerates a domain the core can
+exhaust: the order of one pair of terms, or the values of a machine type narrow
+enough to list side by side. It does so by splitting on a comparison the machine
+decides, which is the decidability principle `SPEC.md` 7.8 allows, and it builds
+the split from the rules already listed here: a conditional elimination over the
+comparison, with a disjunction introduction inside each branch. This adds no
+kernel rule and no axiom, and the kernel checks every step as it does any other.
+The principle is deliberately narrow, because a decidable split must not become
+excluded middle: a disjunction of two complementary propositions over an
+unbounded domain enumerates nothing and is still unproven, which the negative
+test for excluded middle continues to cover.
+
 **Machine arithmetic** (`SPEC.md` 7.1.1, 7.5; RFC 0006) enlarges the logical
 TCB explicitly, and moved the kernel and core versions to 0.3.0. Two parts must be
 right for a `PROVEN` result to mean what it says:
@@ -1330,6 +1342,15 @@ right for a `PROVEN` result to mean what it says:
 Certificates are found by Fourier-Motzkin elimination with case splitting in
 `compiler/automation`, outside the TCB. The rule adds no axiom: it derives
 nothing a model of machine integers does not satisfy.
+
+A literal holds its value in the same 128-bit integer the arithmetic procedures
+use, so every value of every supported type is denotable: a `u64` ranges to
+`2^64-1`, which an `int64_t` cannot hold. Before this, the core's stated range
+for a 64-bit unsigned type disagreed with the machine's, and a literal in the
+upper half of that range had to be written as an expression to be expressed at
+all. Widening the representation narrows what the core accepts rather than
+widening it: a literal outside its type's range is malformed and is refused when
+it is typed, the unsigned case included, which is covered by a negative test.
 
 Conditional elimination was added in the path slice. It combines checked cases into a
 proposition about `select(condition, true_value, false_value)`. The kernel

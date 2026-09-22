@@ -26,7 +26,7 @@ std::uint64_t half(const IntType& type) {
 }
 
 Term literal_of(const IntType& type, std::uint64_t bits) {
-    return Term::literal(type, wrap_into(type, static_cast<std::int64_t>(bits)));
+    return Term::literal(type, wrap_into(type, static_cast<Wide>(bits)));
 }
 
 Wide lowest(const IntType& type) {
@@ -300,8 +300,8 @@ Wide value_of(const IntType& type, std::uint64_t bits) {
     return Wide{bits};
 }
 
-std::uint64_t bits_of(const IntType& type, std::int64_t value) {
-    return static_cast<std::uint64_t>(value) & mask(type);
+std::uint64_t bits_of(const IntType& type, Wide value) {
+    return static_cast<std::uint64_t>(static_cast<unsigned __int128>(value)) & mask(type);
 }
 
 std::expected<Polynomial, CoreError> polynomial(const Term& normal, IntType type, const CoreLimits& limits) {

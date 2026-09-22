@@ -220,14 +220,12 @@ class TermLowering {
             if (!type->is_integer())
                 return fail("literal requires an integer domain", location);
             const auto integer = type->integer_type();
+            // A u64 literal above the signed range arrives with its bits in a
+            // negative `int64_t`. The core denotes the value itself, so the
+            // bits are read back as the unsigned value they stand for.
             if (integer.width == 64 && integer.signedness == kernel::Signedness::Unsigned && literal->value < 0) {
-                const auto bits = static_cast<std::uint64_t>(literal->value);
-                return kernel::Term::primitive(
-                    kernel::PrimOp::AddWrap, integer,
-                    {kernel::Term::primitive(kernel::PrimOp::MulWrap, integer,
-                                             {kernel::Term::literal(integer, static_cast<std::int64_t>(bits >> 32)),
-                                              kernel::Term::literal(integer, std::int64_t{1} << 32)}),
-                     kernel::Term::literal(integer, static_cast<std::int64_t>(bits & 0xffffffffu))});
+                return kernel::Term::literal(integer,
+                                             static_cast<kernel::Wide>(static_cast<std::uint64_t>(literal->value)));
             }
             return kernel::Term::literal(integer, literal->value);
         }

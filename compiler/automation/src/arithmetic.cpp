@@ -26,6 +26,12 @@ constexpr std::size_t kMaxSearchNodes = 512;
 constexpr Wide kMaxPinnedRange = 16;
 constexpr std::size_t kMaxRewrites = 32;
 constexpr std::size_t kMaxDerivations = 48;
+// Case analyses one proof search may open. Each one doubles the work below it,
+// so the bound keeps a failing search from growing without end.
+constexpr std::size_t kMaxCaseSplits = 24;
+// The widest machine type whose values a disjunction may enumerate. A domain
+// this small can be covered side by side; anything wider is not exhausted here.
+constexpr std::uint16_t kMaxEnumeratedWidth = 4;
 
 [[nodiscard]] bool add(Wide& into, Wide value) {
     return !__builtin_add_overflow(into, value, &into);
@@ -349,6 +355,10 @@ void variables_of(const k::Term& term, std::set<std::uint32_t>& found) {
 struct Premise {
     k::Proposition proposition;
     std::size_t binders = 0;
+    // A disjunctive premise already being taken cases on. Its hypothesis stays
+    // where it is, so the indices of the others do not move, but the analysis
+    // does not open it a second time.
+    bool consumed = false;
 };
 
 // An equality usable for rewriting, with its evidence at the leaf.
@@ -394,6 +404,17 @@ class Prover {
                 return std::nullopt;
             return k::ProofTerm::conjunction_introduction(std::move(*left), std::move(*right));
         }
+        // A disjunctive premise in scope is taken apart before the goal is
+        // approached, because each side may be what closes it.
+        if (auto cases = by_premise_cases(goal)) {
+            return cases;
+        }
+        if (std::holds_alternative<k::Or>(goal.node)) {
+            return by_disjunction(goal);
+        }
+        if (auto branch = by_conditional(goal)) {
+            return branch;
+        }
         return rewriting_ ? rewrite_then_close(goal) : by_arithmetic(goal);
     }
 
@@ -423,6 +444,344 @@ class Prover {
                 result);
         }
         return result;
+    }
+
+    // Evidence for `goal` by taking cases on a disjunctive premise in scope.
+    // The goal is established under each side separately; nothing here learns
+    // which side holds, and the kernel checks each case against its own side.
+    std::optional<k::ProofTerm> by_premise_cases(const k::Proposition& goal) {
+        for (std::size_t index = premises_.size(); index > 0; --index) {
+            const Premise& premise = premises_[index - 1];
+            const auto shifted = k::shift(premise.proposition, static_cast<std::uint32_t>(binders_.size() -
+                                                                                          premise.binders));
+            if (premise.consumed || !std::holds_alternative<k::Or>(shifted.node)) {
+                continue;
+            }
+            if (++splits_ > kMaxCaseSplits) {
+                return std::nullopt;
+            }
+            const auto& disjunction = std::get<k::Or>(shifted.node);
+            // The disjunction is used up by this analysis. Its hypothesis stays
+            // in place, so the indices of the premises around it do not move,
+            // but the search does not open it again.
+            premises_[index - 1].consumed = true;
+            auto left = under_premise(*disjunction.left, [&] { return prove(goal); });
+            std::optional<k::ProofTerm> right;
+            if (left) {
+                right = under_premise(*disjunction.right, [&] { return prove(goal); });
+            }
+            premises_[index - 1].consumed = false;
+            if (!left || !right) {
+                continue;
+            }
+            const auto hypothesis = k::ProofTerm::hypothesis(
+                k::HypothesisIndex{static_cast<std::uint32_t>(premises_.size() - index)});
+            return k::ProofTerm::disjunction_elimination(shifted, hypothesis, std::move(*left), std::move(*right));
+        }
+        return std::nullopt;
+    }
+
+    // Evidence for a goal about a selection, by taking cases on its condition.
+    // Each branch supposes the condition's own truth and states the goal with
+    // that branch's value in place of the selection, which is what the kernel
+    // derives from the motive itself.
+    std::optional<k::ProofTerm> by_conditional(const k::Proposition& goal) {
+        const auto* equality = std::get_if<k::Eq>(&goal.node);
+        if (equality == nullptr) {
+            return std::nullopt;
+        }
+        const auto selection = first_selection(*equality);
+        if (!selection) {
+            return std::nullopt;
+        }
+        if (++splits_ > kMaxCaseSplits) {
+            return std::nullopt;
+        }
+        const auto& branch = std::get<k::Prim>(selection->node);
+        auto motive = obligations::rewrite_context(goal, *selection);
+        if (!motive) {
+            return std::nullopt;
+        }
+        auto when_true = under_premise(k::predicate(branch.arguments[0], true), [&] {
+            return prove(k::instantiate(*motive, branch.arguments[1]));
+        });
+        if (!when_true) {
+            return std::nullopt;
+        }
+        auto when_false = under_premise(k::predicate(branch.arguments[0], false), [&] {
+            return prove(k::instantiate(*motive, branch.arguments[2]));
+        });
+        if (!when_false) {
+            return std::nullopt;
+        }
+        return k::ProofTerm::conditional_elimination(k::Type{branch.type}, branch.arguments[0], branch.arguments[1],
+                                                     branch.arguments[2], *motive, std::move(*when_true),
+                                                     std::move(*when_false));
+    }
+
+    // The leftmost selection occurring in an equality, if any. Its branches are
+    // what the case analysis puts in its place.
+    static std::optional<k::Term> first_selection(const k::Eq& equality) {
+        std::optional<k::Term> found;
+        const auto visit = [&](auto&& self, const k::Term& term) -> void {
+            if (found) {
+                return;
+            }
+            if (const auto* primitive = std::get_if<k::Prim>(&term.node)) {
+                for (const auto& argument : primitive->arguments) {
+                    self(self, argument);
+                }
+                if (!found && primitive->op == k::PrimOp::Select && primitive->arguments.size() == 3) {
+                    found = term;
+                }
+            } else if (const auto* call = std::get_if<k::Call>(&term.node)) {
+                for (const auto& argument : call->arguments) {
+                    self(self, argument);
+                }
+            }
+        };
+        visit(visit, equality.lhs);
+        visit(visit, equality.rhs);
+        return found;
+    }
+
+    // Runs `body` with `premise` in scope, and wraps what it returns in the
+    // introduction that puts the premise there. The premise is recorded at the
+    // current binder depth, so the hypothesis indices the leaves use match the
+    // introductions the proof term actually has.
+    template <typename Body>
+    std::optional<k::ProofTerm> under_premise(k::Proposition premise, Body&& body) {
+        premises_.push_back(Premise{premise, binders_.size()});
+        auto proof = std::forward<Body>(body)();
+        premises_.pop_back();
+        if (!proof) {
+            return std::nullopt;
+        }
+        return k::ProofTerm::implication_introduction(std::move(premise), std::move(*proof));
+    }
+
+    // Case analysis on a boolean `condition`, as a selection between one and
+    // zero whose motive ignores the value. Both branch proofs are implications
+    // from the condition's own truth, which is what the kernel derives for them.
+    static k::ProofTerm cases_on(const k::Term& condition, const k::Proposition& goal, k::ProofTerm when_true,
+                                 k::ProofTerm when_false) {
+        return k::ProofTerm::conditional_elimination(k::Type{k::kBoolean}, condition, k::Term::literal(k::kBoolean, 1),
+                                                     k::Term::literal(k::kBoolean, 0), k::shift(goal, 1),
+                                                     std::move(when_true), std::move(when_false));
+    }
+
+    // Evidence for a disjunctive goal by establishing one of its sides. Which
+    // side holds is not decided here: each is attempted and the kernel accepts
+    // only evidence that really establishes the side it names.
+    std::optional<k::ProofTerm> by_disjunction(const k::Proposition& goal) {
+        const auto& disjunction = std::get<k::Or>(goal.node);
+        for (const bool right : {false, true}) {
+            const k::Proposition& side = right ? *disjunction.right : *disjunction.left;
+            if (auto evidence = prove(side)) {
+                return k::ProofTerm::disjunction_introduction(std::move(*evidence), right);
+            }
+        }
+        // No side holds on its own. A disjunction that enumerates a domain the
+        // core can exhaust is still provable, by taking its sides as cases.
+        if (!enumerates_a_domain(goal)) {
+            return std::nullopt;
+        }
+        return by_exhaustive_cases(goal);
+    }
+
+    // The sides of a disjunction, flattened. Nesting associates to the right,
+    // so an enumeration of several values is a chain of them.
+    static void sides_of(const k::Proposition& proposition, std::vector<const k::Proposition*>& found) {
+        if (const auto* disjunction = std::get_if<k::Or>(&proposition.node)) {
+            sides_of(*disjunction->left, found);
+            sides_of(*disjunction->right, found);
+            return;
+        }
+        found.push_back(&proposition);
+    }
+
+    // Whether the sides of `goal` enumerate a domain this search may exhaust.
+    //
+    // Two shapes qualify, and only these. Both are decidability principles
+    // about machine integers, not about propositions in general.
+    //
+    //   - Every side compares the same two terms, so the sides are a subset of
+    //     the order relations on one pair. The order is total and the machine
+    //     decides it.
+    //   - Every side equates one term to a literal of a type narrow enough to
+    //     enumerate, and there are at least as many sides as the type has
+    //     values. The type's domain is then covered.
+    //
+    // A pair of complementary propositions over an unbounded domain is neither,
+    // so excluded middle is not reachable here.
+    static bool enumerates_a_domain(const k::Proposition& goal) {
+        std::vector<const k::Proposition*> sides;
+        sides_of(goal, sides);
+        if (sides.size() < 2) {
+            return false;
+        }
+
+        // An order enumeration: one pair of terms, compared by every side.
+        std::optional<std::pair<k::Term, k::Term>> pair;
+        bool ordered = true;
+        for (const k::Proposition* side : sides) {
+            const auto compared = compared_terms(*side);
+            if (!compared || (pair && !(*compared == *pair))) {
+                ordered = false;
+                break;
+            }
+            pair = compared;
+        }
+        if (ordered) {
+            return true;
+        }
+
+        // A value enumeration: one term, equated to a literal of a narrow type
+        // by every side, with a side for each of the type's values.
+        std::optional<k::Term> subject;
+        std::optional<k::IntType> type;
+        for (const k::Proposition* side : sides) {
+            const auto* equality = std::get_if<k::Eq>(&side->node);
+            if (equality == nullptr || !equality->type.is_integer()) {
+                return false;
+            }
+            const k::IntType& integer = equality->type.integer_type();
+            if (integer.width > kMaxEnumeratedWidth || (type && !(integer == *type))) {
+                return false;
+            }
+            type = integer;
+            const bool literal_right = std::holds_alternative<k::Literal>(equality->rhs.node);
+            const bool literal_left = std::holds_alternative<k::Literal>(equality->lhs.node);
+            if (literal_right == literal_left) {
+                return false;
+            }
+            const k::Term& value = literal_right ? equality->lhs : equality->rhs;
+            if (subject && !(value == *subject)) {
+                return false;
+            }
+            subject = value;
+        }
+        // The values must be distinct, so a side for each one covers the type.
+        return type && sides.size() >= (std::size_t{1} << type->width);
+    }
+
+    // The two terms a proposition compares, when it is an order or equality
+    // between the same pair at the same type.
+    static std::optional<std::pair<k::Term, k::Term>> compared_terms(const k::Proposition& proposition) {
+        const auto* equality = std::get_if<k::Eq>(&proposition.node);
+        if (equality == nullptr) {
+            return std::nullopt;
+        }
+        if (equality->type == k::Type{k::kBoolean}) {
+            for (const auto* side : {&equality->lhs, &equality->rhs}) {
+                const auto* other = side == &equality->lhs ? &equality->rhs : &equality->lhs;
+                const auto* literal = std::get_if<k::Literal>(&other->node);
+                if (literal == nullptr || literal->value != 1) {
+                    continue;
+                }
+                if (const auto* primitive = std::get_if<k::Prim>(&side->node);
+                    primitive != nullptr && is_comparison(primitive->op) && primitive->arguments.size() == 2) {
+                    return std::pair{primitive->arguments[0], primitive->arguments[1]};
+                }
+            }
+            return std::nullopt;
+        }
+        if (!equality->type.is_integer()) {
+            return std::nullopt;
+        }
+        return std::pair{equality->lhs, equality->rhs};
+    }
+
+    // A disjunction whose sides enumerate a domain the core can exhaust: the
+    // values of a narrow machine type, or the order of one pair of terms. No
+    // side holds alone, so the goal is proven by splitting on the first side's
+    // decision: where it holds the goal is that side, and where it fails that
+    // failure is a premise for the rest.
+    //
+    // The split is on a comparison the machine decides, so the two branches are
+    // exhaustive by construction. Each branch is closed by the ordinary search,
+    // and every step is a kernel rule checked independently.
+    //
+    // Only a disjunction over such a domain is taken this way. A decidable
+    // split is not excluded middle and must not stand in for it: `P || not P`
+    // over an arbitrary proposition is not granted here, and a goal needing it
+    // stays unproven (`SPEC.md` 7.8, `TRUST.md` "Disjunction").
+    std::optional<k::ProofTerm> by_exhaustive_cases(const k::Proposition& goal) {
+        if (++splits_ > kMaxCaseSplits) {
+            return std::nullopt;
+        }
+        const auto& disjunction = std::get<k::Or>(goal.node);
+        const auto decision = decide(*disjunction.left);
+        if (!decision) {
+            return std::nullopt;
+        }
+        // Each branch establishes the whole disjunction, by the side its own
+        // premise settles. The introduction of that side sits inside the
+        // introduction of the premise, because the kernel states each branch of
+        // a case analysis as an implication from the condition's own truth.
+        auto when_true = under_premise(k::predicate(*decision, true), [&] {
+            auto side = prove(*disjunction.left);
+            if (!side) {
+                return side;
+            }
+            return std::optional{k::ProofTerm::disjunction_introduction(std::move(*side), false)};
+        });
+        if (!when_true) {
+            return std::nullopt;
+        }
+        auto when_false = under_premise(k::predicate(*decision, false), [&] {
+            // The remaining sides are the rest of the same enumeration, so they
+            // are continued directly rather than judged as a domain again.
+            auto side = std::holds_alternative<k::Or>(disjunction.right->node)
+                            ? by_side_or_cases(*disjunction.right)
+                            : prove(*disjunction.right);
+            if (!side) {
+                return side;
+            }
+            return std::optional{k::ProofTerm::disjunction_introduction(std::move(*side), true)};
+        });
+        if (!when_false) {
+            return std::nullopt;
+        }
+        return cases_on(*decision, goal, std::move(*when_true), std::move(*when_false));
+    }
+
+    // One side of an enumeration, or a further split of the sides that remain.
+    // The domain was judged where the whole disjunction was in hand.
+    std::optional<k::ProofTerm> by_side_or_cases(const k::Proposition& goal) {
+        const auto& disjunction = std::get<k::Or>(goal.node);
+        for (const bool right : {false, true}) {
+            const k::Proposition& side = right ? *disjunction.right : *disjunction.left;
+            if (auto evidence = prove(side)) {
+                return k::ProofTerm::disjunction_introduction(std::move(*evidence), right);
+            }
+        }
+        return by_exhaustive_cases(goal);
+    }
+
+    // The boolean term whose truth is exactly `proposition`, when the machine
+    // decides it: a comparison stated as `comparison == true`, or an equality
+    // of integers, which `Equal` decides. Anything else has no decision
+    // procedure here and no case analysis is offered for it.
+    static std::optional<k::Term> decide(const k::Proposition& proposition) {
+        const auto* equality = std::get_if<k::Eq>(&proposition.node);
+        if (equality == nullptr || !equality->type.is_integer()) {
+            return std::nullopt;
+        }
+        if (equality->type == k::Type{k::kBoolean}) {
+            for (const auto* side : {&equality->lhs, &equality->rhs}) {
+                const auto* other = side == &equality->lhs ? &equality->rhs : &equality->lhs;
+                const auto* literal = std::get_if<k::Literal>(&other->node);
+                if (literal == nullptr || literal->value != 1) {
+                    continue;
+                }
+                if (const auto* primitive = std::get_if<k::Prim>(&side->node);
+                    primitive != nullptr && is_comparison(primitive->op)) {
+                    return *side;
+                }
+            }
+        }
+        return k::Term::primitive(k::PrimOp::Equal, equality->type.integer_type(), {equality->lhs, equality->rhs});
     }
 
     std::optional<k::ProofTerm> by_arithmetic(const k::Proposition& goal) const {
@@ -561,6 +920,7 @@ class Prover {
     bool rewriting_;
     std::vector<k::Type> binders_;
     std::vector<Premise> premises_;
+    std::size_t splits_ = 0;
 };
 
 } // namespace
