@@ -71,22 +71,61 @@ verified int f(unsigned& x, const unsigned& y) expects (y > 0u) ensures (result 
     return 0;
 }
 CPP
-# Dereference awaits the memory-validity obligations of RFC 0014. A non-null
-# precondition is necessary and insufficient, and the pointer's state model may
-# never supply the difference, so every dereference form stays refused.
-reject pointer_read 'memory-validity obligations of RFC 0014' <<'CPP'
+# A dereference requires a memory capability, and non-nullness is not one. A
+# non-null precondition is necessary and insufficient, and the pointer's state
+# model may never supply the difference (SPEC.md VERIFIED-037), so every
+# dereference form below stays refused for want of the capability itself.
+reject pointer_read "requires 'readable" <<'CPP'
 verified int f(int* p) expects (p != nullptr) ensures (result == 0) { return *p; }
 CPP
-reject pointer_write 'memory-validity obligations of RFC 0014' <<'CPP'
+reject pointer_write "requires 'writable" <<'CPP'
 verified void f(int* p) expects (p != nullptr) ensures (true) { *p = 0; }
 CPP
-reject pointer_member 'not modeled|memory-validity' <<'CPP'
+reject pointer_member "requires 'readable" <<'CPP'
 struct S { int m; };
 verified int f(S* p) expects (p != nullptr) ensures (result == 0) { return p->m; }
 CPP
-reject pointer_subscript 'not modeled|memory-validity' <<'CPP'
+reject pointer_subscript "requires 'readable" <<'CPP'
 verified int f(int* p) expects (p != nullptr) ensures (result == 0) { return p[0]; }
 CPP
-reject pointer_arithmetic_write 'memory-validity obligations of RFC 0014' <<'CPP'
-verified void f(int* p) expects (p != nullptr) ensures (true) { *(p + 1) = 0; }
+# A pointer computed by arithmetic names storage this implementation cannot
+# identify, so it is refused whatever capability is in scope: the capability
+# names a place, and there is no place here to name.
+reject pointer_arithmetic_write 'only a local variable is assigned|capability|cannot identify' <<'CPP'
+verified void f(int* p) expects (writable(p)) ensures (true) { *(p + 1) = 0; }
+CPP
+
+# A capability is not symmetric. Reading is not permission to write, and writing
+# is not permission to read: an output buffer may be writable and not readable
+# (RFC 0014 §3).
+reject readable_does_not_permit_a_write "requires 'writable" <<'CPP'
+verified void f(int* p) expects (readable(p)) ensures (true) { *p = 0; }
+CPP
+reject writable_does_not_permit_a_read "requires 'readable" <<'CPP'
+verified int f(int* p) expects (writable(p)) ensures (result == result) { return *p; }
+CPP
+
+# A capability names one pointer's storage. Holding it for one pointer says
+# nothing about another.
+reject a_capability_does_not_transfer_to_another_pointer "requires 'readable" <<'CPP'
+verified int f(int* p, int* q) expects (readable(p)) ensures (result == result) { return *q; }
+CPP
+
+# A write through a pointer to refined storage owes the predicate at the
+# pointee's own place, exactly as a write to a refined local does
+# (SPEC.md REFINEOBL-007).
+reject refined_pointee_write 'not shown to satisfy refinement type' <<'CPP'
+type Positive = int where (self > 0);
+verified void f(Positive* p) expects (writable(p)) ensures (true) { *p = 0; }
+CPP
+
+# Two dereferences may designate one object, so a write through either
+# invalidates what was known through the other. Nothing here proves `p` and `q`
+# distinct, and distinctness is proved, never assumed (RFC 0014 §4).
+reject a_pointer_write_invalidates_another_pointee 'does not satisfy its contract' <<'CPP'
+verified int f(int* p, int* q) expects (readable(p) && writable(q)) ensures (result > 0) {
+    int seen = *p;
+    *q = 0;
+    return seen > 0 ? *p : 1;
+}
 CPP

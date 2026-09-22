@@ -127,7 +127,8 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
             // probe body is a statement: there is nothing to return, and the
             // operands are present only so Clang resolves them (SPEC.md 12.10).
             const bool capability = formula.shape.kind == source::ProjectionKind::Readable ||
-                                    formula.shape.kind == source::ProjectionKind::Writable;
+                                    formula.shape.kind == source::ProjectionKind::Writable ||
+                                    formula.shape.kind == source::ProjectionKind::Capabilities;
             replacement += capability ? ") { " + formula.expression + "; }\n"
                                       : ") { return (" + formula.expression + "); }\n";
             replacement += line_directive(end_line, begin.file);

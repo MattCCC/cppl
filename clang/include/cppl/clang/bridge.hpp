@@ -23,8 +23,23 @@ struct Selection {
     struct PropositionProbe {
         std::string name;
         source::ProjectionShape shape;
+
+        // The clause probe whose proposition this one states. A memory
+        // capability is attributed through it, because the capability
+        // constrains the function that clause belongs to.
+        std::string owner;
     };
     std::vector<PropositionProbe> proposition_probes;
+
+    // Which verified function each contract clause probe belongs to, by the
+    // analysis offset of that function's declaration. A memory capability a
+    // clause states constrains that function's body and no other
+    // (SPEC.md VERIFIED-043).
+    struct ClauseOwner {
+        std::string probe;
+        std::size_t function_offset = 0;
+    };
+    std::vector<ClauseOwner> clause_owners;
 
     // The refinement types declared in this unit (SPEC.md 17). Clang resolves
     // their aliases like any other, so the bridge needs the names to tell a

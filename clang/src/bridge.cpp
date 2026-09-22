@@ -6,6 +6,7 @@
 #include <functional>
 #include <limits>
 #include <ranges>
+#include <unordered_set>
 #include <utility>
 
 namespace cppl::clangbridge {
@@ -463,18 +464,44 @@ struct Local {
     std::vector<PlaceStep> path;
     std::string spelling; // how this place is written, for diagnostics
 
+    // The pointee of a pointer, rather than storage a declaration names. The
+    // entry holding the pointer is what identifies it, together with the
+    // version of that pointer this dereference read: `*p` before and after a
+    // write to `p` are different places (RFC 0014 §1). `declaration` is the
+    // pointer's declaration so lookups that key on it keep working.
+    std::optional<std::size_t> pointer = std::nullopt;
+    std::uint32_t pointer_version = 0;
+
+    [[nodiscard]] bool is_deref() const {
+        return pointer.has_value();
+    }
+
     // Distinct members of one object are distinct storage, so a write to one
     // leaves the others alone. This is the only disjointness concluded here,
     // and it comes from Clang's resolved member identity (AGENTS.md storage
     // invariants): never from a type-based aliasing argument.
     bool same_place(CXCursor object, const std::vector<PlaceStep>& projection) const {
-        return clang_equalCursors(declaration, object) != 0 && path == projection;
+        return !is_deref() && clang_equalCursors(declaration, object) != 0 && path == projection;
     }
 
     // Whether a write to `other` reaches this place: `s` covers `s.x`, and
     // `s.x` covers neither `s.y` nor `s`.
+    //
+    // A dereference is covered only by a dereference of the same pointer
+    // version. Two dereferences of *different* pointers are not concluded
+    // disjoint here: that is decided by `may_alias`, which must assume they
+    // overlap (RFC 0014 §4).
     [[nodiscard]] bool covered_by(const Local& other) const {
-        if (clang_equalCursors(declaration, other.declaration) == 0 || other.path.size() > path.size()) {
+        if (is_deref() != other.is_deref()) {
+            return false;
+        }
+        if (is_deref() && (pointer != other.pointer || pointer_version != other.pointer_version)) {
+            return false;
+        }
+        if (!is_deref() && clang_equalCursors(declaration, other.declaration) == 0) {
+            return false;
+        }
+        if (other.path.size() > path.size()) {
             return false;
         }
         return std::equal(other.path.begin(), other.path.end(), path.begin());
@@ -492,6 +519,17 @@ using Locals = std::vector<Local>;
 // first, because a write through it is a write to that storage (SPEC.md 12.9).
 Place place_of(const Locals& locals, std::size_t entry) {
     const std::size_t storage = locals[entry].referent.value_or(entry);
+    // A dereference is rooted in the pointer it dereferences, not in a
+    // declaration, and is distinguished by the pointer version it read.
+    if (const std::optional<std::size_t>& pointer = locals[storage].pointer; pointer.has_value()) {
+        Place place;
+        place.root.kind = PlaceRoot::Kind::Deref;
+        place.root.id = static_cast<std::uint32_t>(*pointer);
+        place.root.version = locals[storage].pointer_version;
+        place.path = locals[storage].path;
+        place.spelling = locals[entry].spelling;
+        return place;
+    }
     std::size_t root = storage;
     for (std::size_t index = 0; index < locals.size(); ++index) {
         if (clang_equalCursors(locals[index].declaration, locals[storage].declaration) != 0 &&
@@ -611,18 +649,51 @@ std::optional<std::uint32_t> constant_index_of(CXCursor subscript) {
 struct ResolvedAccess {
     CXCursor object;
     std::vector<PlaceStep> path;
+
+    // Whether the access goes through a dereference of `object`, which must
+    // hold a pointer. `*p`, `p->m` and `p[i]` all resolve this way, so one
+    // capability rule and one read/write path serve all three.
+    bool dereferenced = false;
 };
 
 std::optional<ResolvedAccess> resolve_access(CXCursor cursor) {
     std::vector<PlaceStep> path;
+    bool dereferenced = false;
     cursor = strip_parens(cursor);
     for (unsigned depth = 0; depth < kMaxExpressionDepth; ++depth) {
         const auto kind = clang_getCursorKind(cursor);
         if (kind == CXCursor_DeclRefExpr) {
             std::ranges::reverse(path);
-            return ResolvedAccess{cursor, std::move(path)};
+            return ResolvedAccess{cursor, std::move(path), dereferenced};
+        }
+        // A dereference roots the access in the pointee. Nothing may stand
+        // between it and the declaration holding the pointer: a pointer
+        // computed by arithmetic or returned by a call names storage this
+        // implementation cannot identify, so it is refused rather than guessed.
+        if (kind == CXCursor_UnaryOperator && clang_getCursorUnaryOperatorKind(cursor) == CXUnaryOperator_Deref) {
+            const auto children = children_of(cursor);
+            if (children.size() != 1 || dereferenced) {
+                return std::nullopt;
+            }
+            std::ranges::reverse(path);
+            const auto pointer = strip_parens(children[0]);
+            if (clang_getCursorKind(pointer) != CXCursor_DeclRefExpr) {
+                return std::nullopt;
+            }
+            return ResolvedAccess{pointer, std::move(path), true};
         }
         const auto children = children_of(cursor);
+        // `p->m` and `p[i]` dereference without a `*`: Clang leaves the operand
+        // a pointer rather than inserting a visible dereference. Both are the
+        // same access as `(*p).m` and `*(p + i)`, so they resolve to a deref
+        // place and owe the same capability.
+        if ((kind == CXCursor_MemberRefExpr || kind == CXCursor_ArraySubscriptExpr) && !children.empty() &&
+            clang_getCanonicalType(clang_getCursorType(strip_parens(children[0]))).kind == CXType_Pointer) {
+            if (dereferenced) {
+                return std::nullopt;
+            }
+            dereferenced = true;
+        }
         if (kind == CXCursor_MemberRefExpr) {
             const auto field = clang_getCursorReferenced(cursor);
             if (clang_getCursorKind(field) != CXCursor_FieldDecl || children.size() != 1)
@@ -646,12 +717,43 @@ std::optional<ResolvedAccess> resolve_access(CXCursor cursor) {
     return std::nullopt;
 }
 
+// The entry holding a tracked dereference of `pointer` at `version`, with the
+// given projection path, if this body already tracks it.
+std::optional<std::size_t> find_deref(const Locals& locals, std::size_t pointer, std::uint32_t version,
+                                      const std::vector<PlaceStep>& path) {
+    for (std::size_t index = locals.size(); index > 0; --index) {
+        const Local& candidate = locals[index - 1];
+        if (candidate.pointer == std::optional{pointer} && candidate.pointer_version == version &&
+            candidate.path == path) {
+            return index - 1;
+        }
+    }
+    return std::nullopt;
+}
+
 // The tracked place an access names, if it is storage this body tracks.
+//
+// A dereference is not looked up by declaration: it is identified by the
+// pointer and the version whose value it reads.
 std::optional<std::size_t> tracked_place(CXCursor cursor, const Locals& locals) {
     const auto access = resolve_access(cursor);
     if (!access)
         return std::nullopt;
-    return find_local(locals, clang_getCursorReferenced(access->object), access->path);
+    const auto declaration = clang_getCursorReferenced(access->object);
+    if (!access->dereferenced) {
+        return find_local(locals, declaration, access->path);
+    }
+    // A dereference entry records the pointer it came from, so it is found by
+    // matching that pointer's declaration rather than by looking the pointer up
+    // as tracked storage: a pointer parameter is not itself a modeled value.
+    for (std::size_t index = locals.size(); index > 0; --index) {
+        const Local& candidate = locals[index - 1];
+        if (candidate.is_deref() && clang_equalCursors(candidate.declaration, declaration) != 0 &&
+            candidate.path == access->path) {
+            return index - 1;
+        }
+    }
+    return std::nullopt;
 }
 
 // The one read of tracked storage (SPEC.md 12.10, RFC 0014 §17 step 2).
@@ -849,6 +951,15 @@ Expr build_expression(CXCursor cursor, const std::vector<CXCursor>& parameters, 
                 }
                 return nullness;
             }
+        }
+    }
+    // A dereference reads the pointee place, at its own current version. The
+    // place was formed before the expression was lowered, where the capability
+    // obligation was owed: reaching here without one is impossible, which is
+    // why no capability is re-checked at the read (RFC 0014 §17 step 6).
+    if (kind == CXCursor_UnaryOperator && clang_getCursorUnaryOperatorKind(cursor) == CXUnaryOperator_Deref) {
+        if (const auto pointee = tracked_place(cursor, locals)) {
+            return read_place(locals, *pointee, cursor);
         }
     }
     if (kind == CXCursor_MemberRefExpr) {
@@ -1209,6 +1320,51 @@ struct WriteScan {
     std::vector<bool>* written;
 };
 
+// The locals whose address this body takes, by Clang's resolution of `&x` and
+// of an array decaying to a pointer.
+//
+// A local absent from this set cannot be the pointee of any pointer in the
+// body, so a write through a pointer cannot reach it. That is the only
+// precision claimed here: everything address-taken stays permanently at risk,
+// because a pointer formed on one path may be written through on another
+// (RFC 0014 §4, §6).
+std::unordered_set<unsigned> escaped_locals(CXCursor body) {
+    std::unordered_set<unsigned> escaped;
+    clang_visitChildren(
+        body,
+        [](CXCursor cursor, CXCursor, CXClientData data) {
+            auto& found = *static_cast<std::unordered_set<unsigned>*>(data);
+            const auto record = [&](CXCursor operand) {
+                operand = strip_parens(operand);
+                // A member or element of an object puts the whole object at
+                // risk: the pointer reaches storage inside it.
+                if (const auto access = resolve_access(operand)) {
+                    const auto declaration = clang_getCursorReferenced(access->object);
+                    if (clang_getCursorKind(declaration) == CXCursor_VarDecl ||
+                        clang_getCursorKind(declaration) == CXCursor_ParmDecl) {
+                        found.insert(clang_hashCursor(declaration));
+                    }
+                }
+            };
+            if (clang_getCursorKind(cursor) == CXCursor_UnaryOperator &&
+                clang_getCursorUnaryOperatorKind(cursor) == CXUnaryOperator_AddrOf) {
+                const auto children = children_of(cursor);
+                if (children.size() == 1) {
+                    record(children[0]);
+                }
+            }
+            // An array used as a value decays to a pointer to its first
+            // element, which escapes it just as `&a[0]` would.
+            if (clang_getCursorKind(cursor) == CXCursor_DeclRefExpr &&
+                clang_getCanonicalType(clang_getCursorType(cursor)).kind == CXType_ConstantArray) {
+                record(cursor);
+            }
+            return CXChildVisit_Recurse;
+        },
+        &escaped);
+    return escaped;
+}
+
 std::optional<std::size_t> written_storage(CXCursor declaration, const Locals& locals, unsigned depth = 0) {
     if (const auto local = find_local(locals, declaration))
         return local;
@@ -1367,6 +1523,18 @@ struct LoopFrame {
     std::size_t frames_outside = 0; // the enclosing loops, for a `break` into what follows
 };
 
+// A memory capability the contract of the body being lowered states, resolved
+// to the parameter whose pointee it describes (SPEC.md 12.10).
+//
+// This is what makes a dereference legal inside the body. It is not evidence
+// the body produces: the caller owes it at the call, and here it is a
+// hypothesis with a stated origin.
+struct StatedCapability {
+    std::uint32_t parameter = 0;
+    Capability::Kind kind = Capability::Kind::Readable;
+    bool sized = false;
+};
+
 // Lowers a resolved function body into the value it returns.
 //
 // Statements are taken in program order, threading the logical version of each
@@ -1386,6 +1554,57 @@ struct BodyLowering {
     std::string rejection;
     bool executable_state = true;
     source::SourceLocation completion_location = {};
+
+    // Locals whose address is taken somewhere in this body, by Clang's
+    // resolution of `&x`. A local not in this set cannot be the pointee of any
+    // pointer, so a write through a pointer cannot reach it. Escape is
+    // permanent and computed for the whole body, never per program point: a
+    // pointer formed on one path may be written through on another.
+    std::unordered_set<unsigned> escaped;
+
+    // Dereference places formed while lowering the statement in hand, awaiting
+    // the binding that gives each one an entry value.
+    //
+    // A pointee is caller storage: this body did not write it, so its value is
+    // opaque and inherits no fact, exactly as a havocked place does. Binding it
+    // is what makes a read of it well formed, and the binding must wrap the
+    // continuation, which only the statement lowering can do.
+    // The entries themselves rather than indices into a `Locals`: each
+    // statement form lowers over its own copy of the locals, so an index would
+    // not survive back to where the binding is emitted.
+    std::vector<Local> formed_derefs;
+
+    // Wrap `body` in an opaque binding for each dereference place formed while
+    // the statement was lowered, outermost first so each version is bound
+    // before anything reads it.
+    Expr bind_formed_derefs(Expr body, CXCursor at) {
+        for (const Local& entry : std::ranges::reverse_view(formed_derefs)) {
+            Locals one{entry};
+            body = unknown(one, 0, std::move(body), at);
+        }
+        formed_derefs.clear();
+        return body;
+    }
+
+    // The memory capabilities this body may rely on, by the parameter index of
+    // the pointer each one names. These come from the contract's `expects`
+    // clauses and from nothing else: a capability is established by a proven
+    // obligation or a recorded trusted boundary, never because an access needed
+    // it (AGENTS.md storage invariants, SPEC.md VERIFIED-043).
+    const std::vector<StatedCapability>* capabilities = nullptr;
+
+    // Whether the contract grants `kind` on the pointee of the pointer held in
+    // `parameter`. `writable` does not entail `readable` and `readable` does
+    // not entail `writable`: an output buffer may be written and not read
+    // (RFC 0014 §3).
+    [[nodiscard]] bool granted(std::uint32_t parameter, Capability::Kind kind) const {
+        if (capabilities == nullptr) {
+            return false;
+        }
+        return std::ranges::any_of(*capabilities, [&](const StatedCapability& stated) {
+            return stated.parameter == parameter && stated.kind == kind;
+        });
+    }
 
     bool has_post_state() const {
         return executable_state &&
@@ -1428,6 +1647,132 @@ struct BodyLowering {
         return value;
     }
 
+    // Resolve an access to the entry holding the storage it names, forming a
+    // dereference place when it goes through a pointer (RFC 0014 §1, §17
+    // steps 5-6).
+    //
+    // This is the single point where a pointer becomes a place, so the
+    // capability obligation is owed here and cannot be bypassed by choosing a
+    // different syntax: `*p`, `p->m` and `p[i]` all arrive here. The capability
+    // must already be in scope; nothing about the pointer's value establishes
+    // it, and it is never assumed because the access needed it (SPEC.md
+    // VERIFIED-037, VERIFIED-043).
+    //
+    // `required` is the capability the access needs: reading requires
+    // `readable`, writing requires `writable`, and neither entails the other.
+    std::optional<std::size_t> resolve_storage(CXCursor cursor, Locals& state, Capability::Kind required) {
+        const auto access = resolve_access(cursor);
+        if (!access) {
+            return std::nullopt;
+        }
+        const auto declaration = clang_getCursorReferenced(access->object);
+        if (!access->dereferenced) {
+            return find_local(state, declaration, access->path);
+        }
+        // The pointer must be a parameter the contract can name, because a
+        // capability is stated about a parameter. A pointer that is a local has
+        // no stated capability and no way to earn one yet, so it fails closed.
+        //
+        // The pointer's own storage need not be tracked: what is tracked is the
+        // pointee place. A pointer parameter is not a modeled value here, and a
+        // write to the pointer itself is refused elsewhere, so the version that
+        // identifies the pointee is the pointer's initial one.
+        const auto at = std::ranges::find_if(
+            parameters, [&](CXCursor candidate) { return clang_equalCursors(candidate, declaration) != 0; });
+        const auto pointer = find_local(state, declaration);
+        const std::size_t root = pointer.value_or(at == parameters.end()
+                                                      ? std::size_t{0}
+                                                      : static_cast<std::size_t>(at - parameters.begin()));
+        const std::uint32_t version = pointer ? state[*pointer].version : 0;
+        if (auto existing = find_deref(state, root, version, access->path); existing.has_value()) {
+            return existing;
+        }
+        if (at == parameters.end()) {
+            rejection = "dereferencing '" + take(clang_getCursorSpelling(declaration)) +
+                        "' requires a memory capability, and only a pointer parameter named by an expects clause "
+                        "can carry one";
+            return std::nullopt;
+        }
+        const auto index = static_cast<std::uint32_t>(at - parameters.begin());
+        if (!granted(index, required)) {
+            const std::string spelling = take(clang_getCursorSpelling(declaration));
+            rejection = std::string(required == Capability::Kind::Writable ? "writing through '" : "reading '") +
+                        spelling + "' requires '" +
+                        (required == Capability::Kind::Writable ? "writable(" : "readable(") + spelling +
+                        ")', which was not established; 'p != nullptr' does not imply it";
+            return std::nullopt;
+        }
+        // The pointee type is what the pointer points to, with its sugar kept
+        // so a refinement named on the pointee is still known.
+        const CXType pointee = clang_getPointeeType(clang_getCursorType(declaration));
+        Type type = convert_type(pointee, 0, ReferenceModel::Opaque, refinements);
+        if (type.kind == TypeKind::Unsupported) {
+            rejection = "the pointee of '" + take(clang_getCursorSpelling(declaration)) + "' is not modeled";
+            return std::nullopt;
+        }
+        // A refinement on the pointee is verification-level identity Clang
+        // canonicalizes away, so it is recovered from the written type. Without
+        // this a write through `Positive*` would owe nothing (SPEC.md 17.3).
+        if (refinements != nullptr) {
+            auto resolved = refinements_of(declaration, pointee, *refinements);
+            if (!resolved) {
+                rejection = "the pointee of '" + take(clang_getCursorSpelling(declaration)) + "' has " +
+                            resolved.error();
+                return std::nullopt;
+            }
+            type.refinements = std::move(*resolved);
+        }
+        Local entry;
+        entry.declaration = declaration;
+        entry.version = next_version++;
+        entry.type = std::move(type);
+        entry.path = access->path;
+        entry.pointer = root;
+        entry.pointer_version = version;
+        entry.spelling = "*" + take(clang_getCursorSpelling(declaration));
+        state.push_back(std::move(entry));
+        return state.size() - 1;
+    }
+
+    // Form the place of every dereference an expression reads, so the read
+    // resolves to storage rather than to an opaque value.
+    //
+    // A read requires `readable`. The write target is handled separately, by
+    // `written_local`, because writing requires `writable` and neither
+    // capability entails the other (RFC 0014 §3).
+    bool materialize_derefs(CXCursor cursor, Locals& state, unsigned depth = 0) {
+        if (depth > kMaxExpressionDepth) {
+            return true;
+        }
+        const auto kind = clang_getCursorKind(cursor);
+        const bool dereferences =
+            (kind == CXCursor_UnaryOperator && clang_getCursorUnaryOperatorKind(cursor) == CXUnaryOperator_Deref) ||
+            ((kind == CXCursor_MemberRefExpr || kind == CXCursor_ArraySubscriptExpr) &&
+             !children_of(cursor).empty() &&
+             clang_getCanonicalType(clang_getCursorType(strip_parens(children_of(cursor)[0]))).kind == CXType_Pointer);
+        if (dereferences) {
+            if (const auto access = resolve_access(cursor); access && access->dereferenced) {
+                if (!resolve_storage(cursor, state, Capability::Kind::Readable)) {
+                    if (rejection.empty()) {
+                        rejection = "dereferencing a pointer requires a memory capability this implementation "
+                                    "could not resolve";
+                    }
+                    return false;
+                }
+                return true;
+            }
+            rejection = "dereferencing this expression requires a pointer whose storage this implementation "
+                        "can identify";
+            return false;
+        }
+        for (const auto child : children_of(cursor)) {
+            if (!materialize_derefs(child, state, depth + 1)) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     // Havoc uses the same version namespace as exact writes. No premise is
     // inherited for the new value; old facts still name only old versions.
     Expr unknown(const Locals& state, std::size_t entry, Expr body, CXCursor at) {
@@ -1455,7 +1800,26 @@ struct BodyLowering {
     // presupposes the undefined-behavior freedom a proof has not established,
     // so using it here would make the proof circular (AGENTS.md storage
     // invariants).
-    static bool may_alias(const Local& target, const Local& other) {
+    // A dereference designates storage this body cannot name, so it is the
+    // conservative case: two dereferences may always alias, and a dereference
+    // may alias any storage whose address could have reached a pointer. Only
+    // the address-taken locals are at risk, because a local whose address is
+    // never taken cannot be the pointee of any pointer -- and that is a fact
+    // Clang resolves, not a type-based argument (RFC 0014 §4).
+    [[nodiscard]] bool may_alias(const Local& target, const Local& other) const {
+        if (target.is_deref() || other.is_deref()) {
+            if (target.is_deref() && other.is_deref()) {
+                // Same pointer and same pointer version: one place, so the
+                // path decides. Otherwise two unrelated pointees, which may
+                // overlap for all this implementation can prove.
+                if (target.pointer == other.pointer && target.pointer_version == other.pointer_version) {
+                    return target.covered_by(other) || other.covered_by(target);
+                }
+                return true;
+            }
+            const Local& storage = target.is_deref() ? other : target;
+            return storage.external || escaped.contains(clang_hashCursor(storage.declaration));
+        }
         if (clang_equalCursors(target.declaration, other.declaration) != 0) {
             return target.covered_by(other) || other.covered_by(target);
         }
@@ -1490,6 +1854,15 @@ struct BodyLowering {
                                                             convert_type(clang_getCursorType(children.front()))))
                 break;
             cursor = children.front();
+        }
+        const std::size_t before = state.size();
+        if (!materialize_derefs(cursor, state)) {
+            return std::nullopt;
+        }
+        for (std::size_t index = before; index < state.size(); ++index) {
+            if (state[index].is_deref()) {
+                formed_derefs.push_back(state[index]);
+            }
         }
         Expr value = build_expression(cursor, parameters, state, 0, true);
         auto* call = std::get_if<Call>(&value.node);
@@ -1609,8 +1982,26 @@ struct BodyLowering {
         return lower_statement(statement, next, locals, depth);
     }
 
+    // Lower one statement, then bind every dereference place it formed.
+    //
+    // The binding wraps the whole statement's value, so each pointee has an
+    // entry value before anything reads it. Doing it here rather than in each
+    // statement form is what keeps a dereference from needing a lowering rule
+    // of its own (RFC 0014 §17 step 6).
     std::optional<Expr> lower_statement(CXCursor statement, const Continuation& next, const Locals& locals,
                                         unsigned depth) {
+        std::vector<Local> enclosing;
+        enclosing.swap(formed_derefs);
+        std::optional<Expr> lowered = lower_statement_form(statement, next, locals, depth);
+        if (lowered) {
+            lowered = bind_formed_derefs(std::move(*lowered), statement);
+        }
+        formed_derefs = std::move(enclosing);
+        return lowered;
+    }
+
+    std::optional<Expr> lower_statement_form(CXCursor statement, const Continuation& next, const Locals& locals,
+                                             unsigned depth) {
         const CXCursorKind kind = clang_getCursorKind(statement);
         if (kind == CXCursor_CompoundStmt) {
             const std::vector<CXCursor> nested = children_of(statement);
@@ -2154,14 +2545,31 @@ struct BodyLowering {
     // resolves through the one access resolver, so a write reaches exactly the
     // place written and leaves every place disjoint from it alone (SPEC.md
     // 12.10). Only storage this body tracks is ever written.
-    std::optional<std::size_t> written_local(CXCursor target, const Locals& locals) {
+    std::optional<std::size_t> written_local(CXCursor target, Locals& locals) {
         target = strip_parens(target);
-        if (clang_getCursorKind(target) == CXCursor_UnaryOperator &&
-            clang_getCursorUnaryOperatorKind(target) == CXUnaryOperator_Deref) {
-            return reject("writing through a pointer requires the memory-validity obligations of RFC 0014, which are "
-                          "not implemented; 'p != nullptr' alone does not establish that 'p' may be written");
-        }
         const auto access = resolve_access(target);
+        // A write through a pointer is a write to the pointee place, and owes
+        // `writable` there. `readable` does not suffice: an output buffer may
+        // be writable and not readable, and a readable one may not be written
+        // (RFC 0014 §3, SPEC.md VERIFIED-038).
+        if (access && access->dereferenced) {
+            const std::size_t before = locals.size();
+            const auto storage = resolve_storage(target, locals, Capability::Kind::Writable);
+            if (!storage) {
+                return rejection.empty() ? reject("writing through a pointer requires a memory capability this "
+                                                  "implementation could not resolve")
+                                         : std::nullopt;
+            }
+            // A pointee written for the first time still needs an entry value:
+            // the write establishes the next version, and the version before it
+            // must exist for that to be well formed.
+            for (std::size_t index = before; index < locals.size(); ++index) {
+                if (locals[index].is_deref()) {
+                    formed_derefs.push_back(locals[index]);
+                }
+            }
+            return storage;
+        }
         if (!access) {
             if (clang_getCursorKind(target) == CXCursor_ArraySubscriptExpr) {
                 return reject("this subscript does not name one tracked element: writing through a variable index "
@@ -2224,12 +2632,12 @@ struct BodyLowering {
         if (operands.size() != 2) {
             return reject("an assignment requires a target and a value");
         }
-        const std::optional<std::size_t> local = written_local(operands[0], locals);
+        Locals state = locals;
+        const std::optional<std::size_t> local = written_local(operands[0], state);
         if (!local) {
             return std::nullopt;
         }
-        const Type& type = locals[*local].type;
-        Locals state = locals;
+        const Type type = state[*local].type;
         std::vector<std::size_t> invalidated;
         auto evaluated = evaluate(operands[1], state, invalidated);
         if (!evaluated)
@@ -2238,7 +2646,7 @@ struct BodyLowering {
         if (!invalidated.empty())
             return reject("assignment call has uncertain aliases; use a separate call statement");
         if (!std::holds_alternative<Unsupported>(value.node) && !same_modeled_value(type, value.type)) {
-            return reject("assigning '" + value.type.spelling + "' to '" + locals[*local].spelling + "' of type '" +
+            return reject("assigning '" + value.type.spelling + "' to '" + state[*local].spelling + "' of type '" +
                           type.spelling + "' is a conversion that is not modeled");
         }
         return write(*local, std::move(value), statement, next, state, depth);
@@ -2283,11 +2691,21 @@ struct BodyLowering {
             }
         }
 
-        const std::optional<std::size_t> local = written_local(operands[0], locals);
+        Locals state = locals;
+        // A compound update reads the place and then writes it, so it owes both
+        // capabilities. Neither entails the other, so both are required
+        // explicitly (RFC 0014 §3).
+        if (const auto access = resolve_access(strip_parens(operands[0])); access && access->dereferenced) {
+            if (!resolve_storage(strip_parens(operands[0]), state, Capability::Kind::Readable)) {
+                return rejection.empty() ? reject("updating through a pointer requires a readable capability")
+                                         : std::nullopt;
+            }
+        }
+        const std::optional<std::size_t> local = written_local(operands[0], state);
         if (!local) {
             return std::nullopt;
         }
-        const Local& target = locals[*local];
+        const Local target = state[*local];
         const std::string name = target.spelling;
         // The promotion question is about the storage being updated, which for a
         // member is the member's own type, not its object's.
@@ -2299,11 +2717,14 @@ struct BodyLowering {
 
         // The update reads the place it writes, through the one read path: a
         // compound assignment is `x = x op e` at the same storage.
-        Expr current = read_place(locals, target.referent.value_or(*local), operands[0]);
+        Expr current = read_place(state, target.referent.value_or(*local), operands[0]);
 
         Expr amount;
         if (operands.size() == 2) {
-            amount = build_expression(operands[1], parameters, locals, 0);
+            if (!materialize_derefs(operands[1], state)) {
+                return std::nullopt;
+            }
+            amount = build_expression(operands[1], parameters, state, 0);
             if (!std::holds_alternative<Unsupported>(amount.node) && !same_modeled_value(target.type, amount.type)) {
                 return reject("updating '" + name + "' of type '" + target.type.spelling + "' by '" +
                               amount.type.spelling + "' is a conversion that is not modeled");
@@ -2318,13 +2739,13 @@ struct BodyLowering {
         value.type = target.type;
         value.location = presumed_location(clang_getCursorLocation(statement));
         value.node = Binary{op, {std::move(current), std::move(amount)}};
-        return write(*local, std::move(value), statement, next, locals, depth);
+        return write(*local, std::move(value), statement, next, state, depth);
     }
 };
 
 void extract_body(Function& function, CXCursor cursor, const std::vector<CXCursor>& parameters,
                   const std::string& invariant_prefix, const std::vector<Selection::Refinement>& refinements,
-                  bool executable_state) {
+                  bool executable_state, const std::vector<StatedCapability>* capabilities) {
     const std::vector<CXCursor> members = children_of(cursor);
 
     std::size_t body_index = members.size();
@@ -2341,9 +2762,14 @@ void extract_body(Function& function, CXCursor cursor, const std::vector<CXCurso
     function.has_body = true;
 
     const std::vector<CXCursor> statements = children_of(members[body_index]);
-    BodyLowering lowering{parameters, function.result, invariant_prefix, &refinements, 0, 0, {}, {},
-                          {},         executable_state};
+    BodyLowering lowering{.parameters = parameters,
+                          .result_type = function.result,
+                          .invariant_prefix = invariant_prefix,
+                          .refinements = &refinements,
+                          .executable_state = executable_state,
+                          .capabilities = capabilities};
     lowering.completion_location = presumed_location(clang_getRangeEnd(clang_getCursorExtent(members[body_index])));
+    lowering.escaped = escaped_locals(members[body_index]);
     Locals candidates;
     for (std::size_t index = 0; index < parameters.size(); ++index) {
         const auto& parameter = function.parameters[index];
@@ -2531,9 +2957,9 @@ std::expected<Expr, std::string> build_formal(CXCursor cursor, const source::Pro
     // operand of a logical connective that the kernel would then have to check.
     // Combining capabilities is a contract-level matter: state them as separate
     // clauses (SPEC.md 12.10).
-    if (shape.kind == Kind::Readable || shape.kind == Kind::Writable)
-        return std::unexpected("a memory capability cannot be combined with logical connectives; "
-                               "state it as its own expects clause");
+    if (shape.kind == Kind::Readable || shape.kind == Kind::Writable || shape.kind == Kind::Capabilities)
+        return std::unexpected("a memory capability states storage permission, not a value, so it cannot be an "
+                               "operand of a proposition");
     if (shape.kind == Kind::Expression) {
         if (!shape.children.empty())
             return std::unexpected("malformed expression projection");
@@ -2681,12 +3107,56 @@ std::expected<Capability, std::string> build_capability(CXCursor cursor, source:
     return capability;
 }
 
+// A capability clause is either one capability or a conjunction of them, which
+// the projector emitted as a lambda holding one statement per operand.
+std::expected<std::vector<Capability>, std::string> build_capabilities(CXCursor cursor,
+                                                                      const source::ProjectionShape& shape,
+                                                                      const std::vector<CXCursor>& parameters,
+                                                                      unsigned depth) {
+    if (depth > kMaxExpressionDepth)
+        return std::unexpected("memory capabilities nest too deeply");
+    if (shape.kind != source::ProjectionKind::Capabilities) {
+        auto one = build_capability(cursor, shape.kind, parameters);
+        if (!one)
+            return std::unexpected(one.error());
+        return std::vector<Capability>{std::move(*one)};
+    }
+    while (clang_getCursorKind(cursor) == CXCursor_UnexposedExpr || clang_getCursorKind(cursor) == CXCursor_ParenExpr) {
+        const auto nested = children_of(cursor);
+        if (nested.size() != 1)
+            return std::unexpected("malformed memory capability wrapper");
+        cursor = nested[0];
+    }
+    if (clang_getCursorKind(cursor) != CXCursor_LambdaExpr || shape.children.size() != 2)
+        return std::unexpected("malformed conjunction of memory capabilities");
+    std::vector<CXCursor> bodies;
+    for (const auto child : children_of(cursor)) {
+        if (clang_getCursorKind(child) == CXCursor_CompoundStmt)
+            bodies.push_back(child);
+    }
+    if (bodies.size() != 1)
+        return std::unexpected("a conjunction of memory capabilities requires one body");
+    const auto statements = children_of(bodies[0]);
+    if (statements.size() != 2)
+        return std::unexpected("a conjunction of memory capabilities requires two operands");
+    std::vector<Capability> capabilities;
+    for (std::size_t index = 0; index < 2; ++index) {
+        auto operand = build_capabilities(statements[index], shape.children[index], parameters, depth + 1);
+        if (!operand)
+            return operand;
+        capabilities.insert(capabilities.end(), std::make_move_iterator(operand->begin()),
+                            std::make_move_iterator(operand->end()));
+    }
+    return capabilities;
+}
+
 void extract_formal(Function& function, CXCursor cursor, const std::vector<CXCursor>& parameters,
                     const source::ProjectionShape& shape) {
     function.has_body = true;
     function.body_rejection = "malformed formal proposition probe";
-    const bool is_capability =
-        shape.kind == source::ProjectionKind::Readable || shape.kind == source::ProjectionKind::Writable;
+    const bool is_capability = shape.kind == source::ProjectionKind::Readable ||
+                               shape.kind == source::ProjectionKind::Writable ||
+                               shape.kind == source::ProjectionKind::Capabilities;
     for (const auto child : children_of(cursor)) {
         if (clang_getCursorKind(child) != CXCursor_CompoundStmt)
             continue;
@@ -2696,12 +3166,12 @@ void extract_formal(Function& function, CXCursor cursor, const std::vector<CXCur
         // A capability probe states no value, so its body is the projected call
         // as a statement rather than a return.
         if (is_capability) {
-            auto capability = build_capability(statements[0], shape.kind, parameters);
-            if (!capability) {
-                function.body_rejection = capability.error();
+            auto capabilities = build_capabilities(statements[0], shape, parameters, 0);
+            if (!capabilities) {
+                function.body_rejection = capabilities.error();
                 return;
             }
-            function.capability = std::move(*capability);
+            function.capabilities = std::move(*capabilities);
             function.body_rejection.reset();
             return;
         }
@@ -2878,6 +3348,50 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
         }
     }
 
+    // The memory capabilities each verified function's contract states, keyed by
+    // the analysis offset of the declaration they belong to.
+    //
+    // They are collected before any body is lowered because a probe is an
+    // ordinary function of this unit and may be parsed after the body it
+    // constrains. A body may rely only on what its own contract states
+    // (SPEC.md VERIFIED-043).
+    // Keyed by the analysis offset of the verified function the clause belongs
+    // to, so a body may rely only on its own contract.
+    std::unordered_map<std::size_t, std::vector<StatedCapability>> stated_capabilities;
+    for (const auto& probe : request.selection.proposition_probes) {
+        if (probe.shape.kind != source::ProjectionKind::Readable &&
+            probe.shape.kind != source::ProjectionKind::Writable &&
+            probe.shape.kind != source::ProjectionKind::Capabilities) {
+            continue;
+        }
+        const auto at = std::ranges::find_if(collector.functions, [&](CXCursor candidate) {
+            return take(clang_getCursorSpelling(candidate)) == probe.name;
+        });
+        if (at == collector.functions.end()) {
+            continue;
+        }
+        Function resolved;
+        extract_formal(resolved, *at, parameters_of(*at), probe.shape);
+        if (resolved.capabilities.empty()) {
+            continue;
+        }
+        // The probe's parameters mirror the verified function's, so the index
+        // each capability resolved against is the function's own parameter.
+        const auto owner = std::ranges::find_if(request.selection.clause_owners, [&](const auto& candidate) {
+            return candidate.probe == probe.owner;
+        });
+        if (owner == request.selection.clause_owners.end()) {
+            continue;
+        }
+        for (const Capability& capability : resolved.capabilities) {
+            StatedCapability stated;
+            stated.parameter = capability.pointer.root.id;
+            stated.kind = capability.kind;
+            stated.sized = !capability.extent.empty();
+            stated_capabilities[owner->function_offset].push_back(stated);
+        }
+    }
+
     for (const CXCursor& cursor : collector.selected) {
         Function function;
         function.usr = take(clang_getCursorUSR(cursor));
@@ -2943,13 +3457,15 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
             const CXCursor definition = clang_getCursorDefinition(cursor);
             const CXCursor body_cursor = clang_Cursor_isNull(definition) ? cursor : definition;
             const auto body_parameters = parameters_of(body_cursor);
+            const auto stated = stated_capabilities.find(function.analysis_offset);
             extract_body(function, body_cursor, body_parameters,
                          request.selection.specification_prefix.empty()
                              ? std::string()
                              : request.selection.specification_prefix + "invariant_",
                          request.selection.refinements,
                          std::ranges::find(request.selection.verified_offsets, function.analysis_offset) !=
-                             request.selection.verified_offsets.end());
+                             request.selection.verified_offsets.end(),
+                         stated == stated_capabilities.end() ? nullptr : &stated->second);
         }
         result.functions.push_back(std::move(function));
     }

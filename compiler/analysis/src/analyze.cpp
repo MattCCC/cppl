@@ -14,12 +14,23 @@ void select(clangbridge::ParseRequest& request, const frontend::Projection& proj
     request.selection.proposition_probes.clear();
     request.selection.refinements.clear();
     for (const auto& probe : projection.proposition_probes)
-        request.selection.proposition_probes.push_back({probe.name, probe.shape});
+        request.selection.proposition_probes.push_back({probe.name, probe.shape, probe.owner});
     for (const auto& refinement : projection.refinement_probes) {
         if (refinement.shape.kind != source::ProjectionKind::Expression)
-            request.selection.proposition_probes.push_back({refinement.probe, refinement.shape});
+            request.selection.proposition_probes.push_back({refinement.probe, refinement.shape, {}});
         request.selection.refinements.push_back(
             {refinement.name, refinement.probe, refinement.index_count, refinement.alias_offset});
+    }
+    request.selection.clause_owners.clear();
+    for (const frontend::ContractFunctions& contract : projection.contract_functions) {
+        if (contract.function_index >= syntax.verified_functions.size())
+            continue;
+        const auto offset =
+            projection.declaration_offset(syntax.verified_functions[contract.function_index].function_offset);
+        if (!offset)
+            continue;
+        for (const std::string& precondition : contract.precondition_names)
+            request.selection.clause_owners.push_back({precondition, *offset});
     }
     for (const auto& declaration : projection.declaration_offsets)
         request.selection.offsets.push_back(declaration.analysis);

@@ -554,45 +554,48 @@ std::optional<vir::Expr> convert_projected(const Request& request, std::string_v
     return converted;
 }
 
-// The memory capability a projected clause states, when it states one.
+// The memory capabilities a projected clause states, when it states any.
 //
 // A capability leaves elaboration on its own channel and never becomes a
 // `vir::Expr`, because it is not a proposition the kernel can check: it is a
 // property of the execution state, supposed by the obligation layer as a
 // context hypothesis (RFC 0014 §10, SPEC.md 12.10).
-std::optional<vir::Capability> convert_capability(const Request& request, std::string_view generated,
+std::vector<vir::Capability> convert_capabilities(const Request& request, std::string_view generated,
                                                   const source::SourceLocation& written,
                                                   std::uint32_t& next_expression_id, const std::string& subject,
                                                   diagnostics::Engine& engine) {
     const clangbridge::Function* function = proposition_function(request, generated, written);
-    if (function == nullptr || !function->capability.has_value()) {
-        return std::nullopt;
+    if (function == nullptr || function->capabilities.empty()) {
+        return {};
     }
-    const clangbridge::Capability& stated = *function->capability;
-    vir::Capability capability;
-    capability.kind = stated.kind == clangbridge::Capability::Kind::Readable ? vir::CapabilityKind::Readable
-                                                                            : vir::CapabilityKind::Writable;
-    // A capability stated by a contract is owed by the caller, so its origin is
-    // the contract until a trusted law admits it.
-    capability.origin = vir::CapabilityOrigin::Contract;
-    capability.location = written;
-
-    // The capability names the storage its pointer designates. The bridge
-    // resolved which declaration that is, so the place is carried across
-    // directly and the obligation layer can match a dereference against it.
-    capability.place = convert_place(stated.pointer);
-
+    std::vector<vir::Capability> converted_all;
     ExpressionElaborator elaborator(next_expression_id);
-    for (const clangbridge::Expr& extent : stated.extent) {
-        std::optional<vir::Expr> converted = elaborator.convert(extent);
-        if (!converted.has_value()) {
-            report(engine, diagnostics::Category::UnsupportedSemantics, written,
-                   subject + " has an element count this implementation does not model");
-            return std::nullopt;
+    for (const clangbridge::Capability& stated : function->capabilities) {
+        vir::Capability capability;
+        capability.kind = stated.kind == clangbridge::Capability::Kind::Readable ? vir::CapabilityKind::Readable
+                                                                                : vir::CapabilityKind::Writable;
+        // A capability stated by a contract is owed by the caller, so its
+        // origin is the contract until a trusted law admits it.
+        capability.origin = vir::CapabilityOrigin::Contract;
+        capability.location = written;
+
+        // The capability names the storage its pointer designates. The bridge
+        // resolved which declaration that is, so the place is carried across
+        // directly and the obligation layer can match a dereference against it.
+        capability.place = convert_place(stated.pointer);
+
+        for (const clangbridge::Expr& extent : stated.extent) {
+            std::optional<vir::Expr> converted = elaborator.convert(extent);
+            if (!converted.has_value()) {
+                report(engine, diagnostics::Category::UnsupportedSemantics, written,
+                       subject + " has an element count this implementation does not model");
+                return {};
+            }
+            capability.extent.push_back(std::move(*converted));
         }
-        capability.extent.push_back(std::move(*converted));
+        converted_all.push_back(std::move(capability));
     }
-    return capability;
+    return converted_all;
 }
 
 // Resolves a proof body into typed steps.
@@ -1052,10 +1055,12 @@ void elaborate_contract(const Request& request, const frontend::VerifiedFunction
         // A memory capability is a precondition the caller owes, but it is not a
         // proposition: it leaves on the capability channel so it never reaches
         // the kernel (RFC 0014 §10).
-        if (std::optional<vir::Capability> capability =
-                convert_capability(request, projected.precondition_names[index], preconditions[index]->location,
-                                   next_expression_id, subject, engine)) {
-            contract.capabilities.push_back(std::move(*capability));
+        std::vector<vir::Capability> capabilities =
+            convert_capabilities(request, projected.precondition_names[index], preconditions[index]->location,
+                                 next_expression_id, subject, engine);
+        if (!capabilities.empty()) {
+            contract.capabilities.insert(contract.capabilities.end(), std::make_move_iterator(capabilities.begin()),
+                                         std::make_move_iterator(capabilities.end()));
             continue;
         }
         if (engine.has_errors()) {

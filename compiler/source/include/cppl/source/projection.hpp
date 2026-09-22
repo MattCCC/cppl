@@ -21,7 +21,12 @@ enum class ProjectionKind : std::uint8_t {
     // proposition and never becomes a runtime call; the bridge resolves its
     // operands through Clang and hands the obligation layer a capability.
     Readable,
-    Writable
+    Writable,
+    // A conjunction whose operands are all memory capabilities. A contract
+    // states one `expects` clause, so several capabilities reach it joined by
+    // `&&`; the clause is still entirely a capability statement and still never
+    // reaches the kernel.
+    Capabilities
 };
 
 struct ProjectionShape {

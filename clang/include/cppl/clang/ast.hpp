@@ -324,16 +324,16 @@ struct Function {
     // A resolved return expression or a finite conditional return tree.
     std::optional<Expr> returned_value;
 
-    // When this probe states a memory capability rather than a value, the
-    // capability it states. A capability is not an `Expr`: it must not reach
+    // When this probe states memory capabilities rather than a value, the
+    // capabilities it states. A capability is not an `Expr`: it must not reach
     // the kernel's proposition language, so it leaves the bridge by its own
-    // channel (RFC 0014 §10). A probe sets this or `returned_value`, never
-    // both.
-    std::optional<Capability> capability;
+    // channel (RFC 0014 §10). A probe sets these or `returned_value`, never
+    // both. A clause may state several, because a contract has one `expects`.
+    std::vector<Capability> capabilities;
 
     // Why the body could not be reduced to a returned expression, when it
-    // could not. Exactly one of returned_value / capability / body_rejection is
-    // set for a function that has a body.
+    // could not. Exactly one of returned_value / capabilities / body_rejection
+    // is set for a function that has a body.
     std::optional<std::string> body_rejection;
 
     // The generated invariant declarations the body lowering attached to a

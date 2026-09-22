@@ -261,6 +261,9 @@ FormulaProjection formula(const TokenStream& stream, source::ByteSpan expression
         return {{}, {}, "a proposition cannot be empty"};
     expression = span_of(tokens, begin, end);
 
+    const auto is_capability = [](Kind kind) {
+        return kind == Kind::Readable || kind == Kind::Writable || kind == Kind::Capabilities;
+    };
     const auto paired = [&](Kind kind, std::size_t before, std::size_t after) {
         auto left = formula(stream, span_of(tokens, begin, before), depth + 1);
         auto right = formula(stream, span_of(tokens, after, end), depth + 1);
@@ -268,6 +271,23 @@ FormulaProjection formula(const TokenStream& stream, source::ByteSpan expression
             return left;
         if (right.failure)
             return right;
+        // A conjunction of capabilities is itself a capability statement, not a
+        // proposition: a contract states one `expects` clause, so several
+        // capabilities necessarily arrive joined by `&&`. Mixing a capability
+        // with an ordinary predicate is refused, because the two belong to
+        // different channels and only one of them reaches the kernel.
+        if (is_capability(left.shape.kind) || is_capability(right.shape.kind)) {
+            if (kind != Kind::Conjunction) {
+                return FormulaProjection{{}, {}, "a memory capability combines only with '&&'"};
+            }
+            if (!is_capability(left.shape.kind) || !is_capability(right.shape.kind)) {
+                return FormulaProjection{
+                    {}, {}, "a memory capability and an ordinary predicate belong in separate clauses"};
+            }
+            return FormulaProjection{{Kind::Capabilities, {left.shape, right.shape}},
+                                     "[=]() { (" + left.expression + "); (" + right.expression + "); }",
+                                     {}};
+        }
         return FormulaProjection{
             {kind, {left.shape, right.shape}}, "[=]() { (" + left.expression + "); (" + right.expression + "); }", {}};
     };

@@ -520,4 +520,39 @@ refuse lambda_is_not_modeled 'cannot state as a value' <<'CPP'
 verified int f(int x) ensures (result == x) { auto g = [](int v) { return v; }; return g(x); }
 CPP
 
+# A dereference resolves to a place and reads through the one read path
+# (SPEC.md 12.10 VERIFIED-038, RFC 0014 §17 step 6).
+accept a_pointee_reads_through_the_one_read_path <<'CPP'
+verified int f(int* p) expects (readable(p)) ensures (result == result) { return *p; }
+CPP
+
+# A capability permits the access; it does not assert what the storage holds. A
+# pointee this body never wrote has an opaque value, so its declared refinement
+# is not available as a fact: `readable` is not a claim about the value
+# (SPEC.md 12.10). Fail-closed is the correct outcome here, not a limitation to
+# paper over -- the caller's entry validity for pointees is not yet modeled.
+refuse a_capability_does_not_assert_the_pointee_value 'does not satisfy its contract' <<'CPP'
+type Positive = int where (self > 0);
+verified int f(Positive* p) expects (readable(p)) ensures (result > 0) { return *p; }
+CPP
+
+# A write through a pointer owes the pointee's predicate at the pointee's own
+# place, established before the version the write binds.
+accept a_write_through_a_pointer_may_establish_a_refinement <<'CPP'
+type Positive = int where (self > 0);
+verified void f(Positive* p) expects (writable(p)) { *p = 3; }
+CPP
+
+refuse a_write_through_a_pointer_owes_the_predicate 'not shown to satisfy refinement type' <<'CPP'
+type Positive = int where (self > 0);
+verified void f(Positive* p) expects (writable(p)) { *p = 0; }
+CPP
+
+# The capability is what permits the dereference; nothing about the pointer's
+# value supplies it, non-nullness least of all (SPEC.md VERIFIED-037).
+refuse a_dereference_without_a_capability "requires 'readable" <<'CPP'
+type Positive = int where (self > 0);
+verified int f(Positive* p) expects (p != nullptr) ensures (result > 0) { return *p; }
+CPP
+
 echo 'refinement flow: proven crossings and refused crossings both hold'
