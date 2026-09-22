@@ -783,14 +783,27 @@ subscript under it fails closed. An unstated extent is not an unbounded one.
 An index and an extent of different integer types are refused rather than
 converted, because the conversion between them is not modeled.
 
-The obligation is generated wherever the index is a term and the array is
-tracked storage of the body. An array reached only as a value -- an array
-reference parameter, `const T (&a)[N]` among them -- supports a constant
-subscript and refuses a symbolic one: selecting a component of a value at a
-term index has no representation in the kernel's term language, whose
-projection index is a constant. That is a missing term former, not a missing
-obligation, and it is why `PART 2.6`-style dependent-extent parameters are not
-yet verified.
+The obligation is generated wherever the index is a term, and the extent comes
+from the array's resolved type rather than from whichever of its elements an
+earlier access happened to form. A symbolic subscript into `const T (&a)[N]`
+is therefore bounded without any prior `a[0]`, and a dependent extent states
+the same obligation at each specialization's own substituted `N`: `i < 8` does
+not bound an index into an array of 4.
+
+Two routes reach an indexed array, and they answer different questions
+(`ARCHITECTURE.md` 21). A C++ expression that denotes storage takes the Place
+route, which owns capabilities, versions, writes and aliasing; a failure to
+build that Place fails closed rather than falling back. An array already held
+as a formal value takes the indexed observation of `FOUNDATIONS.md` 45, which
+is read-only and has no version of its own. Both prove the same bound against
+the same index term.
+
+Observing an element establishes nothing about the index: the observation is
+total, and `index < extent` is owed separately. An index Clang folds to a
+constant outside the extent is refused as the decided out-of-bounds access it
+is, rather than becoming an obligation that merely fails to prove. Indexed
+observation admits neither injectivity nor extensionality, so equal elements
+never prove equal indices or equal arrays.
 
 A capability names the pointer whose storage it describes, `readable(p)`, as
 `SPEC.md` 12.10 states it. RFC 0014 §12 writes the same capability over the

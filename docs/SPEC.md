@@ -5205,15 +5205,13 @@ representation, solver, or TCB implementation.
 - Array-to-pointer conversion preserves the provenance needed for permitted element access
   but does not erase the bounds obligation.
 - Multidimensional arrays apply these rules at each nested extent.
-- [STORAGE-010] An array element may be read at an index that is a symbolic term and not a
-  constant, whether or not the array is tracked storage of the accessing body. The extent
-  may likewise be symbolic, as it is for `T(&)[N]` under a template.
-- [STORAGE-011] Such a read is admitted only where `index < extent` is proved, against the
+- An array element may be read at an index that is a symbolic term and not a constant, whether or not the array is tracked storage of the accessing body. The extent may likewise be symbolic, as it is for `T(&)[N]` under a template.
+- Such a read is admitted only where `index < extent` is proved, against the
   extent of that array's own type. The obligation is the same one a constant index owes;
   neither the form of the index nor the route by which the array was reached weakens it.
-- [STORAGE-012] Observing an element establishes no bound. That an element observation was
+- Observing an element establishes no bound. That an element observation was
   formed at an index MUST NOT be used as evidence that the index lies within the extent.
-- [STORAGE-013] Distinct element observations of one array are not proved distinct, and
+- Distinct element observations of one array are not proved distinct, and
   equal element observations do not prove their indices equal. Two arrays are not proved
   equal by having equal elements at every index.
 
