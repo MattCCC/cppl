@@ -164,12 +164,21 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
     // templated and leave this empty.
     std::string template_header;
 
+    // Whether the declaration being projected is a template, as opposed to an
+    // explicit specialization whose `template <>` declares no parameters. A
+    // specialization's probes are ordinary functions: its arguments are fixed,
+    // so there is nothing to specialize and nothing to instantiate.
+    bool template_parameters = false;
+
     // What every generated declaration is introduced by. A templated probe
     // cannot be `static`: it is a template, and its header has to precede the
     // declaration it introduces.
-    const auto declaration_prefix = [&template_header] {
+    const auto templated = [&template_parameters] {
+        return template_parameters;
+    };
+    const auto declaration_prefix = [&template_header, &templated] {
         std::string prefix;
-        if (!template_header.empty()) {
+        if (templated()) {
             prefix += template_header;
             prefix += " [[maybe_unused]] ";
             return prefix;
@@ -436,6 +445,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         // template header, so a clause naming a template parameter resolves.
         template_header = verified.template_header.length == 0 ? std::string()
                                                                : std::string(stream.spelling(verified.template_header));
+        template_parameters = verified.template_header.length != 0 && !verified.explicit_specialization;
 
         const std::string suffix = std::to_string(index) + (options.unit_key.empty() ? "" : "_" + options.unit_key);
         std::string_view parameters = stream.spelling(verified.parameters);
@@ -499,18 +509,26 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         // nothing, and the runtime text never sees it (SPEC.md TEMPLATE-001).
         if (!template_header.empty() && verified.body_open != 0) {
             if (const auto names = template_parameter_names(stream, verified.template_header); names.has_value()) {
+                // An explicit specialization, `template <>`, declares no
+                // parameters. Its arguments are already fixed, so its probes
+                // are ordinary functions: there is no primary to specialize,
+                // and nothing has to be forced into existence because the
+                // declaration itself is the instantiation (SPEC.md
+                // TEMPLATE-001).
+                const bool specialization = !templated();
+                const std::string probe_header = specialization ? std::string{} : template_header + " ";
                 std::string declared = "\n";
                 declared += line_directive(verified.function_location.line, verified.function_location.file);
-                declared += template_header;
-                declared += " bool ";
+                declared += probe_header;
+                declared += "bool ";
                 declared += projected.postcondition_name;
                 declared += "(";
                 declared += result_parameter;
                 declared += ");";
                 for (const std::string& precondition : projected.precondition_names) {
                     declared += " ";
-                    declared += template_header;
-                    declared += " bool ";
+                    declared += probe_header;
+                    declared += "bool ";
                     declared += precondition;
                     declared += "(";
                     declared += parameters;
@@ -523,24 +541,27 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
                     verified.template_header.length != 0 ? verified.template_header.offset : verified.keyword.offset;
                 edits.push_back(Edit{source::ByteSpan{before, 0}, std::move(declared)});
 
-                std::string forced = "\n";
-                forced += line_directive(verified.function_location.line, verified.function_location.file);
-                forced += "[[maybe_unused]] auto " + options.generated_prefix + "force_" + suffix + " = &" +
-                          projected.postcondition_name + "<" + *names + ">;";
-                for (std::size_t position = 0; position < projected.precondition_names.size(); ++position) {
-                    forced += " [[maybe_unused]] auto " + options.generated_prefix + "force_" + suffix + "_" +
-                              std::to_string(position) + " = &" + projected.precondition_names[position] + "<" +
-                              *names + ">;";
+                if (!specialization) {
+                    std::string forced = "\n";
+                    forced += line_directive(verified.function_location.line, verified.function_location.file);
+                    forced += "[[maybe_unused]] auto " + options.generated_prefix + "force_" + suffix + " = &" +
+                              projected.postcondition_name + "<" + *names + ">;";
+                    for (std::size_t position = 0; position < projected.precondition_names.size(); ++position) {
+                        forced += " [[maybe_unused]] auto " + options.generated_prefix + "force_" + suffix + "_" +
+                                  std::to_string(position) + " = &" + projected.precondition_names[position] + "<" +
+                                  *names + ">;";
+                    }
+                    forced += "\n";
+                    forced += line_directive(verified.body_open_line, verified.keyword_location.file);
+                    forced.append(verified.body_open_column - 1, ' ');
+                    edits.push_back(Edit{source::ByteSpan{verified.body_open, 0}, std::move(forced)});
                 }
-                forced += "\n";
-                forced += line_directive(verified.body_open_line, verified.keyword_location.file);
-                forced.append(verified.body_open_column - 1, ' ');
-                edits.push_back(Edit{source::ByteSpan{verified.body_open, 0}, std::move(forced)});
             }
         }
         projection.contract_functions.push_back(std::move(projected));
     }
     template_header.clear();
+    template_parameters = false;
 
     // A loop's clauses are not C++ either. Each invariant becomes a `bool`
     // declaration at the start of the body, in the scope the loop head sees,

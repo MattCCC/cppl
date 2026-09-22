@@ -3810,13 +3810,22 @@ const Function* TranslationUnit::find_by_name(std::string_view name) const {
     return nullptr;
 }
 
+// The one function declared at `offset`, or nothing when two different
+// functions share it: an ambiguous declaration is not resolved by guessing.
+//
+// Two records of the *same* function are not two functions. An explicit
+// specialization is reached both as a declaration and as its definition, and
+// both carry one USR, so identity decides this rather than record count.
 const Function* TranslationUnit::find_at_offset(std::size_t offset) const {
     const Function* found = nullptr;
     for (const Function& function : functions) {
         if (function.analysis_offset == offset) {
-            if (found != nullptr)
+            if (found != nullptr && found->usr != function.usr)
                 return nullptr;
-            found = &function;
+            // Prefer the record carrying a body: the contract is discharged
+            // from the definition.
+            if (found == nullptr || (function.has_body && !found->has_body))
+                found = &function;
         }
     }
     return found;
@@ -4043,13 +4052,28 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
         if (const auto primary = specialized_template(cursor); primary.has_value()) {
             function.primary_usr = take(clang_getCursorUSR(*primary));
             function.template_arguments = template_arguments_of(cursor);
-            // An explicit specialization is written where the author put it,
-            // while an implicit one reports the primary's location. Both are
-            // keyed to the declaration the projector recorded, which is the
-            // primary's, so that the contract written once is found for every
-            // specialization of it.
-            function.analysis_offset = physical_offset(*primary);
-            function.location = presumed_location(clang_getCursorLocation(*primary));
+            // An implicit instantiation carries the contract written on the
+            // primary, so it is keyed to the primary's declaration: the
+            // contract written once is found for every specialization of it.
+            //
+            // An explicit specialization states its own contract at its own
+            // location, and the projector recorded that declaration rather
+            // than the primary's. Re-keying it to the primary would hand it a
+            // contract written for a different body and would collide with the
+            // primary's own declaration (SPEC.md TEMPLATE-001, TEMPLATE-003).
+            //
+            // An implicit instantiation reports the primary's own location,
+            // while an explicit specialization is written somewhere else and
+            // reports that. Comparing the two is what separates them: the C
+            // API exposes no specialization-kind predicate.
+            const bool states_own_contract =
+                physical_offset(cursor) != physical_offset(*primary) &&
+                std::ranges::find(request.selection.verified_offsets, physical_offset(cursor)) !=
+                    request.selection.verified_offsets.end();
+            if (!states_own_contract) {
+                function.analysis_offset = physical_offset(*primary);
+                function.location = presumed_location(clang_getCursorLocation(*primary));
+            }
         }
 
         // A refinement on a parameter or a result is verification-level identity

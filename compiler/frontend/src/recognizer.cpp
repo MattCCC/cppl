@@ -145,6 +145,30 @@ std::size_t matching_parenthesis(const std::vector<Token>& tokens, std::size_t o
     return tokens.size();
 }
 
+// The `>` closing the argument list opened at `open`.
+//
+// Angle brackets are not self-delimiting in C++, so this stops at a token that
+// cannot appear inside an argument list rather than scanning to end of file.
+// It is only ever used to find where a declarator's parameter list begins;
+// which specialization the arguments denote is Clang's to resolve.
+std::size_t matching_angle_bracket(const std::vector<Token>& tokens, std::size_t open) {
+    std::size_t depth = 0;
+    for (std::size_t index = open; index < tokens.size(); ++index) {
+        if (tokens[index].is_punctuator("<")) {
+            ++depth;
+        } else if (tokens[index].is_punctuator(">")) {
+            --depth;
+            if (depth == 0) {
+                return index;
+            }
+        } else if (tokens[index].is_punctuator(";") || tokens[index].is_punctuator("{") ||
+                   tokens[index].kind == TokenKind::EndOfFile) {
+            break;
+        }
+    }
+    return tokens.size();
+}
+
 std::size_t matching_bracket(const std::vector<Token>& tokens, std::size_t open) {
     std::size_t depth = 0;
     for (std::size_t index = open; index < tokens.size(); ++index) {
@@ -996,6 +1020,37 @@ bool specifier_introduces_declaration(const std::vector<Token>& tokens, std::siz
            after.is_punctuator("*") || after.is_punctuator("&") || after.is_punctuator("&&");
 }
 
+// The start of the template-argument list ending at `index`, which must hold a
+// `>`. An explicit specialization names its arguments in the declarator,
+// `pick<4u>(unsigned)`, so the declarator's name is not the token before `(`
+// (SPEC.md TEMPLATE-001).
+//
+// This is the same balanced scan `template_header_start` performs, in the same
+// direction, and it is equally textual: which specialization the name denotes
+// is Clang's to resolve, never this scan's.
+std::optional<std::size_t> template_arguments_start(const std::vector<Token>& tokens, std::size_t index) {
+    if (!tokens[index].is_punctuator(">")) {
+        return std::nullopt;
+    }
+    std::size_t depth = 0;
+    for (std::size_t scan = index;; --scan) {
+        if (tokens[scan].is_punctuator(">")) {
+            ++depth;
+        } else if (tokens[scan].is_punctuator("<")) {
+            --depth;
+            if (depth == 0) {
+                return scan;
+            }
+        } else if (tokens[scan].is_punctuator(";") || tokens[scan].is_punctuator("{") ||
+                   tokens[scan].is_punctuator(")")) {
+            return std::nullopt; // not an argument list: a comparison or worse
+        }
+        if (scan == 0) {
+            return std::nullopt;
+        }
+    }
+}
+
 std::optional<std::size_t> find_declarator_name(const std::vector<Token>& tokens, std::size_t index) {
     std::size_t depth = 0;
     for (std::size_t cursor = index + 1; cursor < tokens.size(); ++cursor) {
@@ -1007,6 +1062,15 @@ std::optional<std::size_t> find_declarator_name(const std::vector<Token>& tokens
             if (depth == 0 && cursor > index + 1 && tokens[cursor - 1].kind == TokenKind::Identifier &&
                 !is_type_keyword(tokens[cursor - 1])) {
                 return cursor - 1;
+            }
+            // An explicit specialization's declarator carries its arguments
+            // before the parameter list, so the name is what precedes them.
+            if (depth == 0 && cursor > index + 1 && tokens[cursor - 1].is_punctuator(">")) {
+                if (const auto open = template_arguments_start(tokens, cursor - 1);
+                    open.has_value() && *open > index + 1 && tokens[*open - 1].kind == TokenKind::Identifier &&
+                    !is_type_keyword(tokens[*open - 1])) {
+                    return *open - 1;
+                }
             }
             ++depth;
             continue;
@@ -1209,7 +1273,16 @@ bool try_verified(const TokenStream& stream, std::size_t index, diagnostics::Eng
         return false;
     }
 
-    const std::size_t open = *name + 1;
+    // An explicit specialization's declarator is `name<args>(...)`, so the
+    // parameter list opens after the arguments rather than after the name.
+    std::size_t open = *name + 1;
+    if (open < tokens.size() && tokens[open].is_punctuator("<")) {
+        const std::size_t arguments_close = matching_angle_bracket(tokens, open);
+        if (arguments_close >= tokens.size()) {
+            return false;
+        }
+        open = arguments_close + 1;
+    }
     if (open >= tokens.size() || !tokens[open].is_punctuator("(")) {
         return false;
     }
@@ -1285,6 +1358,11 @@ bool try_verified(const TokenStream& stream, std::size_t index, diagnostics::Eng
         header.has_value()) {
         verified.template_header = source::ByteSpan{tokens[*header].span.offset, tokens[declaration_start].span.offset -
                                                                                      tokens[*header].span.offset};
+        // `template <>` declares no parameters, so the `<` is immediately
+        // followed by its `>`: an explicit specialization rather than a
+        // template.
+        verified.explicit_specialization = *header + 2 < tokens.size() && tokens[*header + 1].is_punctuator("<") &&
+                                           tokens[*header + 2].is_punctuator(">");
     }
     verified.function_name = std::string(tokens[*name].text);
     verified.function_location = stream.location_of(tokens[*name]);

@@ -160,6 +160,13 @@ struct VerifiedFunction {
     // parameters, so the probe is emitted under this same header.
     source::ByteSpan template_header;
 
+    // Whether that header is `template <>`: an explicit specialization, which
+    // declares no parameters. Such a declaration is one concrete function whose
+    // arguments are already fixed, not a template awaiting instantiation, so it
+    // is checked directly and its probes are ordinary functions (SPEC.md
+    // TEMPLATE-001).
+    bool explicit_specialization = false;
+
     // The clauses, and the region of text they occupy between the parameter
     // list and the body. The region is removed from both projections: a
     // contract is not C++.

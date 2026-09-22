@@ -1145,8 +1145,11 @@ void elaborate_contract(const Request& request, const frontend::VerifiedFunction
     // the probe at this specialization's own template arguments (SPEC.md
     // TEMPLATE-001). For an ordinary function there are none and the lookup is
     // unchanged.
+    // An explicit specialization's probes are ordinary functions rather than
+    // instantiations, because its arguments are already fixed and the contract
+    // is written at them. It is matched like any other declaration.
     const std::vector<clangbridge::TemplateArgument>* arguments =
-        function.primary_usr.empty() ? nullptr : &function.template_arguments;
+        function.primary_usr.empty() || declaration.explicit_specialization ? nullptr : &function.template_arguments;
     std::optional<vir::Expr> ensured = convert_projected(
         request, projected.postcondition_name, postcondition_location, next_expression_id,
         "the postcondition of verified function '" + function.qualified_name + "'", engine, arguments);
