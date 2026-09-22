@@ -1311,7 +1311,7 @@ facts do not outlive what they describe
 
 TRUST.md states what is not inferred
 
-    Every provider carries a TRUST.md 41.6 correspondence block naming its
+    Every provider carries a TRUST.md 19 correspondence block naming its
     states, how exhaustiveness is derived, and what it does not infer. Report
     kernel-rule, axiom, assumption and TCB deltas accurately; do not claim
     zero TCB delta when the value model itself expanded.
@@ -1371,7 +1371,7 @@ generic on purpose: refinement types consume it and must never define it.
 - Storage, capabilities and versions are proof-only. They introduce no runtime
   check, tag, metadata, wrapper type, temporary or layout change.
 - Capability tracking lives in the correspondence layer and carries a stated
-  TCB delta (`TRUST.md` 41.2). Do not report it as zero, and do not move it
+  TCB delta (`TRUST.md` 15). Do not report it as zero, and do not move it
   into the kernel: it is a decidable flow analysis, and the kernel would grow
   without checking more.
 

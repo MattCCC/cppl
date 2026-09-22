@@ -53,7 +53,7 @@ the kernel only once every contract it supposes is established.
 
 No kernel rule and no logical assumption are added. The loop and call rules
 that decide _which_ conditions a body needs are applied in `compiler/obligations`
-and are correspondence trust (TRUST.md 41.2), as is the bridge's decision of
+and are correspondence trust (TRUST.md 15), as is the bridge's decision of
 which locals a loop carries; every iteration end checks that each uncarried
 local still holds its head version, so a write the scan missed rejects the body.
 Replacement path: with induction over a proof-only natural-number domain, loop

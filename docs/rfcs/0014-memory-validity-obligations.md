@@ -417,7 +417,7 @@ a logical derivation.
 ### What this costs, stated plainly
 
 This places capability tracking in the trusted correspondence layer
-(`TRUST.md` 41.2), alongside the existing rules that map C++ operations to core
+(`TRUST.md` 15), alongside the existing rules that map C++ operations to core
 terms. That is a **real TCB delta**, and I will not report it as zero.
 
 ```text
@@ -634,8 +634,8 @@ SPEC.md        new 12.10 storage and access; 12.9 retained and cross-referenced;
                32 updated so pointers/references point at the model
 FOUNDATIONS.md storage and capabilities placed against Hoare logic and
                weakest preconditions, where this model already belongs
-TRUST.md       41.2 gains the capability-tracking correspondence rule;
-               41.5 notes the delta; trust report gains trusted capabilities
+TRUST.md       15 gains the capability-tracking correspondence rule;
+               39 notes the delta; trust report gains trusted capabilities
 ARCHITECTURE.md the place/region/capability layer and where it sits
 AGENTS.md      memory invariants: capabilities are never inferred from
                nullness, aliasing is conservative, no provider states validity

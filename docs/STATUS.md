@@ -190,7 +190,7 @@ conditions, reported separately, and never admitted as a core definition, so no
 Law or specification can mention it and nontermination cannot reach the
 kernel. Termination is not proven; `decreases`, `do`/`while`, range-based `for`
 and `for` without a condition are rejected. Loops add no kernel rule; the loop
-rule is correspondence trust (`TRUST.md` 41.2).
+rule is correspondence trust (`TRUST.md` 15).
 
 Refinement types are `PROTOTYPE`: `type R = T where (P);` and its indexed form
 declare a verification-level type over an ordinary C++ base type, lower to the
@@ -221,7 +221,7 @@ provider implementations rather than six. Nesting composes generically in both
 directions. `std::expected` is gated on the C++23 library. Representations with
 no provider are still refused at the provider boundary by name, and arm syntax
 does not make a class a sum. See `SPEC.md` 20.5 for the boundary and resource
-limits, and `TRUST.md` 41.6 for what each provider does and does not state.
+limits, and `TRUST.md` 19 for what each provider does and does not state.
 
 `cases` and `decompose` appear only in proof bodies, which contain no mutation,
 so no case fact can go stale; they are not yet available over values that can
@@ -760,7 +760,7 @@ obligation layer carries capabilities as context hypotheses, structurally
 separated: `vir::Capability` is deliberately not a node of `Expr`, so there is
 no path from a capability to the kernel's proposition language. Capability
 tracking is a correspondence-layer responsibility and carries a stated TCB delta
-(`TRUST.md` 41.2); it adds no kernel rule, axiom or logical assumption.
+(`TRUST.md` 15); it adds no kernel rule, axiom or logical assumption.
 
 Bounds are the opposite case and are *proved*. A symbolic subscript forms a
 symbolic element place and owes `index < extent`. Both sides are terms, so the

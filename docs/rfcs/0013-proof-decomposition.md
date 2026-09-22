@@ -97,7 +97,7 @@ small generic trusted kernel
 
 Logical assumptions: 0. Axioms: 0. Trusted mechanisms: 0. The existing
 correspondence TCB gains the per-provider state mapping documented in TRUST.md
-41.6.
+19.
 
 ## Scoped enumerations, as a provider
 
@@ -158,7 +158,7 @@ go stale, and none can escape: a subject another object can write has reference
 type, and a reference type has no formal meaning, so no law or contract states a
 proposition about it. Mutation and aliasing are excluded structurally rather
 than by analysis. Admitting `cases` over values that can change is future work
-and is governed by SPEC.md 20.5.2.
+and is governed by SPEC.md 20.5.
 
 ## Validation
 

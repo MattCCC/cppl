@@ -276,7 +276,7 @@ What decomposition still does not do:
    a case fact cannot go stale today. Admitting decomposition where the subject
    can be assigned requires case facts to participate in the same mutation and
    alias invalidation framework as every other proof fact; a provider must never
-   be given an invalidation mechanism of its own (`SPEC.md` 20.5.2).
+   be given an invalidation mechanism of its own (`SPEC.md` 20.5).
 2. **Omitted impossible cases.** An arm that cannot occur must still be
    discharged by the ordinary proof system rather than guessed by a provider.
 
