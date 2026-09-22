@@ -308,7 +308,7 @@ A `law` is a proposition.
 
 It is not a unit test, assertion, comment, solver hint, or Boolean function that happens to return `true`.
 
-```cpp
+```cpp cppl-example
 pure unsigned identity(unsigned x)
 {
     return x;
@@ -338,7 +338,7 @@ Runtime functions remain runtime functions.
 
 C++L can attach preconditions and postconditions that are checked as formal obligations:
 
-```cpp
+```cpp cppl-example
 verified unsigned clamp(unsigned x)
     ensures (result <= 10u)
 {
@@ -369,9 +369,9 @@ for normal return values, entry-state values, and refinement candidates.
 
 C++L can define a verification-level type whose runtime representation is still an ordinary C++ representation:
 
-```cpp
+```cpp cppl-example
 type Percentage =
-    int where self >= 0 && self <= 100;
+    int where (self >= 0 && self <= 100);
 ```
 
 A value may cross into that refinement only when the predicate is established.
@@ -414,18 +414,16 @@ It can state propositions over entire domains.
 
 Universal quantification:
 
-```cpp
-forall (unsigned x) {
-    /* proposition about every machine unsigned value */
-}
+```cpp cppl-example
+law every_value_equals_itself()
+    proves (forall (unsigned x) { Eq<unsigned>(x, x) });
 ```
 
 Existential quantification:
 
-```cpp
-exists (T x) {
-    /* proposition requiring a witness */
-}
+```cpp cppl-planned
+law some_value_is_zero()
+    proves (exists (unsigned x) { x == 0u });
 ```
 
 These are proof-domain constructs.
@@ -465,7 +463,7 @@ induction
 
 For example:
 
-```cpp
+```cpp cppl-example
 pure unsigned identity(unsigned x)
 {
     return x;
@@ -543,7 +541,7 @@ total correctness
 
 A loop can carry an invariant:
 
-```cpp
+```cpp cppl-example
 verified unsigned count_to(unsigned n)
     ensures (result == n)
 {
@@ -561,12 +559,20 @@ verified unsigned count_to(unsigned n)
 
 When termination is part of the required property, a well-founded decreasing measure can be supplied:
 
-```cpp
-while (i < n)
-    invariant (i <= n)
-    decreases (n - i)
+```cpp cppl-example
+verified unsigned count_to(unsigned n)
+    ensures (result == n)
 {
-    ++i;
+    unsigned i = 0u;
+
+    while (i < n)
+        invariant (i <= n)
+        decreases (n - i)
+    {
+        ++i;
+    }
+
+    return i;
 }
 ```
 
@@ -580,7 +586,7 @@ This is a systems-language requirement, not a detail.
 
 C++L does **not** silently pretend that:
 
-```cpp
+```text
 unsigned
 int
 std::uint32_t
@@ -659,18 +665,21 @@ An enum proof must account for underlying values that do not correspond to a nam
 
 Conceptually:
 
-```cpp
-cases v {
-    alternative<0>(x) => {
-        // proof
-    }
+```cpp cppl-planned
+#include <variant>
 
-    alternative<1>(y) => {
-        // proof
-    }
+using V = std::variant<int, unsigned>;
 
-    valueless => {
-        // proof
+law every_alternative_is_covered(V v)
+    proves (Eq<V>(v, v));
+
+proof every_alternative_is_covered_holds(V v)
+    proves (every_alternative_is_covered(v))
+{
+    cases v {
+        alternative<0>(x) => { refl; }
+        alternative<1>(y) => { refl; }
+        valueless => { refl; }
     }
 }
 ```
@@ -685,7 +694,7 @@ It is proof decomposition over C++ semantics and erases completely.
 
 Some facts cannot be known at compile time:
 
-```cpp
+```text
 int raw = read_from_network();
 ```
 
@@ -974,7 +983,7 @@ Success by an untrusted search procedure is useful only when it produces evidenc
 
 Consider a function whose result must never exceed a limit:
 
-```cpp
+```cpp cppl-example
 verified unsigned clamp(unsigned x)
     ensures (result <= 10u)
 {
@@ -1009,7 +1018,7 @@ After erasure, the program does not need a theorem object or proof VM to execute
 
 Tests can show that selected executions behave as expected:
 
-```cpp
+```text
 assert(square(2) == 4);
 assert(square(3) == 9);
 ```
@@ -1263,7 +1272,7 @@ C++L verification metadata is additional compile-time information, not a replace
 
 Start with normal C++:
 
-```cpp
+```cpp cppl-example
 unsigned clamp(unsigned x)
 {
     return x <= 10u ? x : 10u;
@@ -1272,7 +1281,7 @@ unsigned clamp(unsigned x)
 
 Add the property that matters:
 
-```cpp
+```cpp cppl-example
 verified unsigned clamp(unsigned x)
     ensures (result <= 10u)
 {
