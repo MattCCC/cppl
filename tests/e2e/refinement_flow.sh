@@ -675,6 +675,59 @@ verified unsigned f(unsigned i) expects (i < 4u) ensures (result == result) {
 }
 CPP
 
+# A subscript through a sized capability owes `index < n` against the extent the
+# contract stated. The capability and the bound stay separate: `readable(a, n)`
+# permits reaching the region, and the refinement on the index is what proves
+# the element selected lies inside it (RFC 0014 §7, §10, SPEC.md VERIFIED-038).
+accept a_capability_extent_bounds_a_subscript <<'CPP'
+type Below4 = unsigned where (self < 4u);
+verified unsigned f(const unsigned* a, Below4 i)
+    expects (readable(a, 4u))
+    ensures (result == result)
+{
+    return a[i];
+}
+CPP
+
+# The extent is a term, not a count, so a region whose size is a runtime value
+# bounds its elements exactly as a constant one does. Nothing here is a literal:
+# `n` is a parameter, and the index is proved below it.
+accept a_symbolic_capability_extent_bounds_a_subscript <<'CPP'
+verified unsigned f(const unsigned* a, unsigned n, unsigned i)
+    expects (readable(a, n))
+    ensures (result == result)
+{
+    if (i < n) {
+        return a[i];
+    }
+    return 0u;
+}
+CPP
+
+# A write owes the same bound as a read, and `writable` is what permits it.
+accept a_capability_extent_bounds_an_element_write <<'CPP'
+type Below4 = unsigned where (self < 4u);
+verified void f(unsigned* a, Below4 i)
+    expects (writable(a, 4u))
+    ensures (true)
+{
+    a[i] = 7u;
+}
+CPP
+
+# An index bounded by a wider extent than the capability states is not bounded
+# by the capability: `i < 8` does not give `i < 4`, and the difference is
+# exactly the memory the extent exists to keep the access out of.
+refuse an_index_wider_than_the_stated_extent "element index' is not proven" <<'CPP'
+type Below8 = unsigned where (self < 8u);
+verified unsigned f(const unsigned* a, Below8 i)
+    expects (readable(a, 4u))
+    ensures (result == result)
+{
+    return a[i];
+}
+CPP
+
 # The capability is what permits the dereference; nothing about the pointer's
 # value supplies it, non-nullness least of all (SPEC.md VERIFIED-037).
 refuse a_dereference_without_a_capability "requires 'readable" <<'CPP'

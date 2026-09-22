@@ -176,10 +176,10 @@ std::string describe(const Expr& expr) {
                                                        describe(node.operands.front())
                                                  : "<malformed-mutation>";
             } else if constexpr (std::is_same_v<Node, ElementBound>) {
-                return node.operands.size() == 2 ? "bounded(" + describe(node.operands[0]) + " < " +
-                                                       std::to_string(node.extent) + ") in " +
-                                                       describe(node.operands[1])
-                                                 : "<malformed-bound>";
+                return node.operands.size() == 2 && node.extent.size() == 1
+                           ? "bounded(" + describe(node.operands[0]) + " < " + describe(node.extent.front()) + ") in " +
+                                 describe(node.operands[1])
+                           : "<malformed-bound>";
             } else if constexpr (std::is_same_v<Node, Iterate>) {
                 std::string text = "next#" + std::to_string(node.loop) + "(";
                 for (std::size_t index = 0; index < node.operands.size(); ++index) {

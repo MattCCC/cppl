@@ -212,8 +212,16 @@ struct Place {
 // A subscript index that must lie within its array's extent (SPEC.md 12.10).
 // Both sides are values, so the kernel proves it; only the capability part of
 // an access is tracked contextually (RFC 0014 §10).
+//
+// The extent is a term rather than a count. A constant extent canonicalizes to
+// a literal, but a dependent one -- `T(&)[N]` under a template, or the `n` of
+// `readable(p, n)` -- denotes a value no integer is available for until the
+// specialization exists, and enumerating elements to recover it is exactly what
+// a symbolic extent cannot do (SPEC.md STORAGE-005, TEMPLATE-001).
 struct ElementBound {
-    std::uint32_t extent = 0;
+    // One element count, empty only while malformed. A vector because `Expr` is
+    // incomplete here, the same reason `Capability::extent` is one.
+    std::vector<Expr> extent;
     std::vector<Expr> operands; // index, body
 };
 

@@ -205,31 +205,33 @@ CPP
 # (RFC 0014 §7, SPEC.md 12.10 VERIFIED-038).
 #
 # The sized form `readable(a, n)` states the region's extent, so an index into
-# it must be proved to lie within `n`. That obligation is not implemented, and
-# an unimplemented obligation must refuse the access rather than permit it: a
-# capability that silently admitted any index would make `readable` grant
-# unbounded access to memory past the region it names.
+# it owes `index < n`. The capability permits reaching the storage; it never
+# decides which element the subscript names. Here nothing relates `i` to `n`,
+# so the bound is unproven and the access is refused: were it admitted,
+# `readable` would grant access to memory past the region it names.
 # SPEC: VERIFIED-038, VERIFIED-043
-reject a_capability_does_not_bound_a_symbolic_index 'extent|element index|not implemented' <<'CPP'
+reject a_capability_does_not_bound_a_symbolic_index "element index' is not proven" <<'CPP'
 verified unsigned f(unsigned* a, unsigned n, unsigned i) expects (readable(a, n)) ensures (result == result) {
     return a[i];
 }
 CPP
 
-# The same holds for an index that is constant and plainly outside the stated
-# extent. Nothing relates `999` to `n`, so the access is refused for want of
-# the bound rather than accepted because the index happens to be a literal.
+# The same holds for an index that is constant. `999 < n` is not proven by `999`
+# being a literal, so the obligation is the one a variable index owes and it
+# fails the same way.
 # SPEC: VERIFIED-038
-reject a_capability_does_not_bound_a_constant_index 'extent|element index|not implemented' <<'CPP'
+reject a_capability_does_not_bound_a_constant_index "element index' is not proven" <<'CPP'
 verified unsigned f(unsigned* a, unsigned n) expects (readable(a, n)) ensures (result == result) {
     return a[999u];
 }
 CPP
 
-# The unsized form names a single object, so a subscript of it past element
-# zero reaches storage the capability never described.
-# SPEC: VERIFIED-038
-reject an_unsized_capability_does_not_cover_an_element 'extent|element index|not implemented' <<'CPP'
+# The unsized form names a single object, so it states no extent at all. There
+# is no bound to compare an index against, and an unstated extent is not an
+# unbounded one: the access fails closed rather than treating the absent extent
+# as permission to reach any element.
+# SPEC: VERIFIED-038, VERIFIED-043
+reject an_unsized_capability_does_not_cover_an_element 'the one-object form bounds no element' <<'CPP'
 verified unsigned f(unsigned* p, unsigned i) expects (readable(p)) ensures (result == result) {
     return p[i];
 }

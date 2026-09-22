@@ -351,7 +351,7 @@ class TermLowering {
         // value the body denotes. The obligation itself is emitted where the
         // path is walked, so lowering here is lowering the body.
         if (const auto* bounded = std::get_if<vir::ElementBound>(&expr.node)) {
-            if (bounded->operands.size() != 2) {
+            if (bounded->operands.size() != 2 || bounded->extent.size() != 1) {
                 return fail("malformed element bound", location);
             }
             return lower(bounded->operands[1]);

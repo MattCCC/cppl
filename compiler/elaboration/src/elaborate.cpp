@@ -286,7 +286,10 @@ class ExpressionElaborator {
         }
 
         if (const auto* bound = std::get_if<clangbridge::ElementBound>(&expr.node)) {
-            if (bound->operands.size() != 2)
+            if (bound->operands.size() != 2 || bound->extent.size() != 1)
+                return std::nullopt;
+            auto extent = convert(bound->extent.front());
+            if (!extent)
                 return std::nullopt;
             auto index = convert(bound->operands[0]);
             if (!index)
@@ -294,7 +297,7 @@ class ExpressionElaborator {
             auto body = convert(bound->operands[1]);
             if (!body)
                 return std::nullopt;
-            result.node = vir::ElementBound{bound->extent, {std::move(*index), std::move(*body)}};
+            result.node = vir::ElementBound{{std::move(*extent)}, {std::move(*index), std::move(*body)}};
             return result;
         }
 

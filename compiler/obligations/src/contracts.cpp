@@ -161,6 +161,10 @@ void collect_calls(const vir::Expr& expression, const Contracts& contracts, std:
         for (const auto& operand : bound->operands)
             collect_calls(operand, contracts, calls);
     } else if (const auto* bounded = std::get_if<vir::ElementBound>(&expression.node)) {
+        // The extent is a term of its own, so a call inside it is a call this
+        // body makes and must be collected with the rest.
+        for (const auto& extent : bounded->extent)
+            collect_calls(extent, contracts, calls);
         for (const auto& operand : bounded->operands)
             collect_calls(operand, contracts, calls);
     } else if (const auto* binary = std::get_if<vir::Binary>(&expression.node)) {
@@ -922,7 +926,7 @@ class Conditions {
         // this is an ordinary proposition the kernel proves with the existing
         // arithmetic rules: bounds safety is proved, not tracked (RFC 0014 §10).
         if (const auto* bounded = std::get_if<vir::ElementBound>(&expression.node)) {
-            if (bounded->operands.size() != 2) {
+            if (bounded->operands.size() != 2 || bounded->extent.size() != 1) {
                 return fail("malformed element bound", location);
             }
             if (auto evaluated = evaluate(bounded->operands[0], scope); !evaluated) {
@@ -936,12 +940,38 @@ class Conditions {
             if (!type || !type->is_integer()) {
                 return fail("an element index must be an integer this implementation models", location);
             }
+            // The extent is a term, so a dependent one -- the `N` of `T(&)[N]`
+            // or the `n` of `readable(p, n)` -- states the same obligation a
+            // constant one does, against a bound no integer is available for
+            // here (SPEC.md STORAGE-005, TEMPLATE-001).
+            const vir::Expr& stated = bounded->extent.front();
+            const std::optional<kernel::Type> extent_type = core_type(stated.type);
+            if (!extent_type || !extent_type->is_integer()) {
+                return fail("an element extent must be an integer this implementation models", location);
+            }
+            // The comparison is between two terms of one type, as every other
+            // modeled comparison is. A differing index and extent type is a
+            // conversion this implementation does not model, and inventing one
+            // here would decide the bound by a rule C++ did not state
+            // (SPEC.md VERIFIED-043).
+            if (!(*extent_type == *type)) {
+                return fail("this subscript compares an index of type '" + vir::describe(bounded->operands[0].type) +
+                                "' against an extent of type '" + vir::describe(stated.type) +
+                                "', and the conversion between them is not modeled",
+                            location);
+            }
+            if (auto evaluated = evaluate(stated, scope); !evaluated) {
+                return evaluated;
+            }
+            auto extent = lower(stated, scope);
+            if (!extent) {
+                return std::unexpected(extent.error());
+            }
             const kernel::IntType integer = type->integer_type();
-            auto extent = kernel::Term::literal(integer, kernel::Wide{bounded->extent});
             emit(scope, Origin::ElementBounds, function_.qualified_name + " element index",
                  bounded->operands[0].provenance.range,
                  kernel::predicate(
-                     kernel::Term::primitive(kernel::PrimOp::Less, integer, {*index, std::move(extent)}), true));
+                     kernel::Term::primitive(kernel::PrimOp::Less, integer, {*index, std::move(*extent)}), true));
             return walk(bounded->operands[1], std::move(scope), loops);
         }
 

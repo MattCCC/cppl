@@ -150,8 +150,14 @@ struct PlaceRef {
 // with the existing arithmetic rules. That is the deliberate split: bounds
 // safety is *proved*, while the capability permitting the access is tracked
 // contextually and never reaches the kernel (RFC 0014 §10).
+// The extent is a term, not a count: a constant one canonicalizes to a literal,
+// while a dependent one denotes a value that has no integer until its
+// specialization exists (SPEC.md STORAGE-005, TEMPLATE-001). Recovering an
+// extent by enumerating elements works only for the constant case, so it is not
+// how the extent is obtained.
 struct ElementBound {
-    std::uint32_t extent = 0;
+    // One element count. A vector because `Expr` is incomplete here.
+    std::vector<Expr> extent;
     std::vector<Expr> operands; // index, body
 
     friend bool operator==(const ElementBound&, const ElementBound&) = default;

@@ -480,11 +480,24 @@ struct Local {
     std::optional<std::size_t> pointer = std::nullopt;
     std::uint32_t pointer_version = 0;
 
-    // For a symbolic element place, the extent of the array it indexes and the
-    // index expression that selects it. The index owes `index < extent`, which
-    // is a proposition about values and so is proved by the kernel rather than
-    // tracked (RFC 0014 §7, §10). A non-zero extent marks the entry symbolic.
-    std::uint32_t extent = 0;
+    // Whether this entry is a symbolic element place: an element whose index is
+    // a term, so which element it selects is not decided here.
+    //
+    // This is its own flag rather than a property read off the extent. "Is this
+    // place symbolic" and "does an extent term exist for it" are different
+    // questions, and once the extent is a term the second can fail
+    // independently; a sentinel would make a failed extent indistinguishable
+    // from an ordinary element.
+    bool symbolic = false;
+
+    // For a symbolic element place, the extent of the array it indexes. The
+    // index owes `index < extent`, which is a proposition about values and so
+    // is proved by the kernel rather than tracked (RFC 0014 §7, §10).
+    //
+    // A term, not a count: `readable(p, n)` bounds a region by a value that is
+    // never a literal, and no enumeration of elements can recover it (SPEC.md
+    // 12.10, STORAGE-005).
+    std::vector<Expr> extent;
 
     // The index value, lowered where the place was formed so it denotes the
     // versions current there. A vector because `Expr` is incomplete here.
@@ -1591,7 +1604,14 @@ struct LoopFrame {
 struct StatedCapability {
     std::uint32_t parameter = 0;
     Capability::Kind kind = Capability::Kind::Readable;
-    bool sized = false;
+
+    // The element count of the sized form, `readable(p, n)`, as the term the
+    // contract stated. Empty for the one-object abbreviation `readable(p)`.
+    //
+    // The term is kept rather than a flag: a subscript through this capability
+    // owes `index < n`, and `n` is a value no literal is available for
+    // (SPEC.md 12.10, VERIFIED-038).
+    std::vector<Expr> extent;
 };
 
 // Lowers a resolved function body into the value it returns.
@@ -1643,7 +1663,7 @@ struct BodyLowering {
             // A symbolic element owes `index < extent` where it was formed. The
             // bound wraps the binding, so the obligation stands whether or not
             // the element's value is ever used.
-            if (entry.extent != 0 && !entry.index_value.empty()) {
+            if (entry.symbolic && !entry.index_value.empty() && !entry.extent.empty()) {
                 Expr bound;
                 bound.type = body.type;
                 bound.location = entry.index_value.front().location;
@@ -1666,13 +1686,18 @@ struct BodyLowering {
     // `parameter`. `writable` does not entail `readable` and `readable` does
     // not entail `writable`: an output buffer may be written and not read
     // (RFC 0014 §3).
-    [[nodiscard]] bool granted(std::uint32_t parameter, Capability::Kind kind) const {
+    [[nodiscard]] const StatedCapability* granted_capability(std::uint32_t parameter, Capability::Kind kind) const {
         if (capabilities == nullptr) {
-            return false;
+            return nullptr;
         }
-        return std::ranges::any_of(*capabilities, [&](const StatedCapability& stated) {
+        const auto at = std::ranges::find_if(*capabilities, [&](const StatedCapability& stated) {
             return stated.parameter == parameter && stated.kind == kind;
         });
+        return at == capabilities->end() ? nullptr : &*at;
+    }
+
+    [[nodiscard]] bool granted(std::uint32_t parameter, Capability::Kind kind) const {
+        return granted_capability(parameter, kind) != nullptr;
     }
 
     bool has_post_state() const {
@@ -1771,23 +1796,30 @@ struct BodyLowering {
             return std::nullopt;
         }
         // A capability permits reaching the pointer's storage; it does not say
-        // which element of that storage a subscript names. The index owes
-        // `index < extent` against the region's stated extent, and that
-        // obligation is not implemented for the sized form (RFC 0014 §7).
+        // which element of that storage a subscript names. The two are separate
+        // obligations and stay separate: the capability is tracked as a context
+        // hypothesis, while `index < extent` is a proposition about values that
+        // the kernel proves (RFC 0014 §7, §10, SPEC.md VERIFIED-038).
         //
-        // An unimplemented obligation refuses the access rather than permitting
-        // it. Admitting the subscript would let `readable(a, n)` grant access
-        // to every element the pointer could reach, including past `n`, which
-        // is precisely what the extent is there to bound (SPEC.md
-        // VERIFIED-038, VERIFIED-043).
-        if (std::ranges::any_of(access->path, [](const PlaceStep& step) {
-                return step.kind == PlaceStep::Kind::Element || step.kind == PlaceStep::Kind::SymbolicElement;
-            })) {
-            rejection = "subscripting '" + take(clang_getCursorSpelling(declaration)) +
-                        "' requires proving its index lies within the extent of the region '" +
-                        (required == Capability::Kind::Writable ? "writable" : "readable") +
-                        "' names, which is not implemented";
-            return std::nullopt;
+        // Only the sized form states an extent. `readable(p)` describes one
+        // object, so it reaches no element beyond the first and there is no
+        // bound to compare against; the access fails closed rather than
+        // treating an unstated extent as an unbounded one (VERIFIED-043).
+        const bool subscripted = std::ranges::any_of(access->path, [](const PlaceStep& step) {
+            return step.kind == PlaceStep::Kind::Element || step.kind == PlaceStep::Kind::SymbolicElement;
+        });
+        const StatedCapability* stated = granted_capability(index, required);
+        std::vector<Expr> element_extent;
+        if (subscripted) {
+            if (stated == nullptr || stated->extent.empty()) {
+                rejection = "subscripting '" + take(clang_getCursorSpelling(declaration)) + "' requires '" +
+                            (required == Capability::Kind::Writable ? "writable(" : "readable(") +
+                            take(clang_getCursorSpelling(declaration)) +
+                            ", n)' to state the extent its index must lie within; the one-object form bounds no "
+                            "element";
+                return std::nullopt;
+            }
+            element_extent = stated->extent;
         }
         // The pointee type is what the pointer points to, with its sugar kept
         // so a refinement named on the pointee is still known.
@@ -1817,6 +1849,31 @@ struct BodyLowering {
         entry.pointer = root;
         entry.pointer_version = version;
         entry.spelling = "*" + take(clang_getCursorSpelling(declaration));
+        // A subscript through a capability owes `index < n` against the extent
+        // the contract stated, whether the index is a term or a constant. The
+        // index is lowered here, where the place is formed, so it denotes the
+        // versions current at the access.
+        if (subscripted) {
+            const PlaceStep& last = access->path.back();
+            Expr selected;
+            if (last.kind == PlaceStep::Kind::SymbolicElement) {
+                if (access->symbolic_indices.empty()) {
+                    rejection = "this subscript has no index expression to bound";
+                    return std::nullopt;
+                }
+                selected = build_expression(access->symbolic_indices.back(), parameters, state, 0);
+            } else {
+                // A constant index states the same obligation: `a[999]` owes
+                // `999 < n` exactly as `a[i]` owes `i < n`. Nothing about a
+                // literal makes it within the extent.
+                selected.type = element_extent.front().type;
+                selected.location = element_extent.front().location;
+                selected.node = IntLiteral{static_cast<std::int64_t>(last.index)};
+            }
+            entry.symbolic = true;
+            entry.index_value.push_back(std::move(selected));
+            entry.extent = std::move(element_extent);
+        }
         state.push_back(std::move(entry));
         return state.size() - 1;
     }
@@ -1845,7 +1902,7 @@ struct BodyLowering {
         const Type* element = nullptr;
         for (const Local& candidate : state) {
             if (clang_equalCursors(candidate.declaration, declaration) == 0 ||
-                candidate.path.size() != prefix.size() + 1 || candidate.extent != 0 ||
+                candidate.path.size() != prefix.size() + 1 || candidate.symbolic ||
                 !std::equal(prefix.begin(), prefix.end(), candidate.path.begin()) ||
                 candidate.path.back().kind != PlaceStep::Kind::Element) {
                 continue;
@@ -1858,16 +1915,27 @@ struct BodyLowering {
                         "lie within is unknown";
             return std::nullopt;
         }
+        if (access.symbolic_indices.empty()) {
+            rejection = "this subscript has no index expression to bound";
+            return std::nullopt;
+        }
         Local entry;
         entry.declaration = declaration;
         entry.version = next_version++;
         entry.type = *element;
         entry.path = access.path;
         entry.spelling = take(clang_getCursorSpelling(declaration)) + "[?]";
-        entry.extent = extent;
-        if (!access.symbolic_indices.empty()) {
-            entry.index_value.push_back(build_expression(access.symbolic_indices.front(), parameters, state, 0));
-        }
+        entry.symbolic = true;
+        entry.index_value.push_back(build_expression(access.symbolic_indices.front(), parameters, state, 0));
+        // The obligation compares the index against the extent, so the extent
+        // is stated at the index's own type: this array's extent is a count
+        // Clang resolved, and it enters the comparison as the literal it is
+        // rather than as a separately typed quantity (SPEC.md STORAGE-005).
+        Expr count;
+        count.type = entry.index_value.front().type;
+        count.location = entry.index_value.front().location;
+        count.node = IntLiteral{static_cast<std::int64_t>(extent)};
+        entry.extent.push_back(std::move(count));
         state.push_back(std::move(entry));
         return state.size() - 1;
     }
@@ -1876,7 +1944,7 @@ struct BodyLowering {
                                                     const std::vector<PlaceStep>& path) {
         for (std::size_t index = locals.size(); index > 0; --index) {
             const Local& candidate = locals[index - 1];
-            if (candidate.extent != 0 && clang_equalCursors(candidate.declaration, declaration) != 0 &&
+            if (candidate.symbolic && clang_equalCursors(candidate.declaration, declaration) != 0 &&
                 candidate.path == path) {
                 return index - 1;
             }
@@ -2029,7 +2097,7 @@ struct BodyLowering {
             return std::nullopt;
         }
         for (std::size_t index = before; index < state.size(); ++index) {
-            if (state[index].is_deref() || state[index].extent != 0) {
+            if (state[index].is_deref() || state[index].symbolic) {
                 formed_derefs.push_back(state[index]);
             }
         }
@@ -2837,7 +2905,7 @@ struct BodyLowering {
                 return rejection.empty() ? reject("this subscript does not name tracked storage") : std::nullopt;
             }
             for (std::size_t index = before; index < locals.size(); ++index) {
-                if (locals[index].extent != 0) {
+                if (locals[index].symbolic) {
                     formed_derefs.push_back(locals[index]);
                 }
             }
@@ -3676,7 +3744,7 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
             StatedCapability stated;
             stated.parameter = capability.pointer.root.id;
             stated.kind = capability.kind;
-            stated.sized = !capability.extent.empty();
+            stated.extent = capability.extent;
             stated_capabilities[owner->function_offset].push_back(stated);
         }
     }
