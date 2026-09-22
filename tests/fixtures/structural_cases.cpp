@@ -431,7 +431,70 @@ proof splits_then_applies(std::optional<unsigned> o, unsigned x)
     }
 }
 
-// 32. None of this may reach the runtime.
+// 32. A subject is a value read from storage, never the storage itself
+// (SPEC.md CASE-008). These pin the read paths other than a bare parameter, so
+// the one-version property is not true merely because every subject above
+// happens to be an identifier. Each denotes the value that storage holds at
+// this step; a later write would create a new version through the ordinary
+// storage/effect model (SPEC.md 12.10) rather than changing this one.
+struct HasOptional {
+    std::optional<int> maybe;
+    int other;
+};
+
+// Through a member: the subject is a member access, resolved by Clang like
+// every other expression a proof mentions, and the decomposition is the
+// member's own.
+proof member_subject(HasOptional h)
+    proves (Eq<bool>(true, true))
+{
+    cases h.maybe {
+        some(payload) => {
+            refl;
+        }
+
+        none => {
+            refl;
+        }
+    }
+}
+
+// Through a member of a reference parameter: the storage is the caller's, so
+// another object may designate it. The subject is still the value that storage
+// holds here, which is why no aliasing exception is needed (SPEC.md CASE-009).
+proof aliased_member_subject(const HasOptional& h)
+    proves (Eq<bool>(true, true))
+{
+    cases h.maybe {
+        some(payload) => {
+            refl;
+        }
+
+        none => {
+            refl;
+        }
+    }
+}
+
+// Through an element of a built-in array taken by reference, so the storage is
+// the caller's rather than this body's. `std::array` is deliberately not used
+// here: its `operator[]` is a call, which this implementation refuses as a
+// subject rather than modeling.
+proof element_subject(std::optional<int> (&a)[2])
+    proves (Eq<bool>(true, true))
+{
+    cases a[0] {
+        some(payload) => {
+            refl;
+        }
+
+        none => {
+            refl;
+        }
+    }
+}
+
+// 33. None of this may reach the runtime.
 int main() {
     std::printf("%d\n", 7);
 }

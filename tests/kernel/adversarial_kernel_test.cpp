@@ -750,3 +750,95 @@ CPPL_TEST(u64_arithmetic_limited_by_int64_literal_range) {
     // But u64 with UINT64_MAX cannot be represented
     // This is expected and documented behavior, not a bug
 }
+
+// ============================================================================
+// EX FALSO: discharging a branch whose premises are contradictory
+// ============================================================================
+//
+// Omitting a case (SPEC.md CASE-004/005) and discharging an impossible path
+// (VERIFIED-023) both need one operation: from checked contradiction evidence
+// in the current context, close a goal of any shape. These tests fix how that
+// is expressed, because the wrong answer is to give the kernel a new rule.
+//
+// The proposition language has no falsity constant: `Eq` is its only atom
+// (proposition.hpp). So absurdity is `Eq(0, 1)` at a type where the kernel
+// knows those are distinct, and the elimination is the existing
+// `EqualityElimination`: transporting a goal along `0 = 1` turns a proof at
+// one literal into a proof at the other. Nothing is added to the trusted
+// surface.
+
+CPPL_TEST(a_contradictory_premise_closes_any_goal) {
+    // The derivation an omitted case will use. `0 = 1` is the premise, which a
+    // real omission gets from a checked refutation rather than by assumption;
+    // here it is introduced as a hypothesis so the test is about the
+    // elimination alone.
+    cppl::kernel::Context ctx;
+
+    // An arbitrary goal, unrelated to the premise: `7 = 7` is provable, so it
+    // proves nothing on its own. The point is the shape below.
+    const auto absurd = eq(0, 1);
+
+    // Motive `h. 7 = h`, transported along `0 = 1`: evidence at `0` becomes
+    // evidence at `1`, so `7 = 0` would yield `7 = 1`.
+    const auto motive = Proposition::equality(u32(), literal(7), var0());
+    const auto goal = Proposition::implication(absurd, Proposition::equality(u32(), literal(7), literal(1)));
+
+    // Inside, hypothesis 0 is `0 = 1`. Transport `7 = 0` along it. `7 = 0` is
+    // itself false, so this alone must NOT check: a contradiction lets you
+    // conclude anything only once you have actually derived the contradiction,
+    // not merely assumed a premise and ignored it.
+    const auto body = ProofTerm::equality_elimination(u32(), literal(0), literal(1), motive, ProofTerm::hypothesis({0}),
+                                                      ProofTerm::reflexivity());
+    const auto attempt = ProofTerm::implication_introduction(absurd, body);
+    const auto result = cppl::kernel::check(ctx, goal, attempt, {});
+
+    // Rejected: the transported evidence `7 = 0` was closed by reflexivity,
+    // and 7 does not reduce to 0. The premise being absurd does not excuse
+    // supplying false evidence under it.
+    CPPL_CHECK(!result.has_value());
+}
+
+CPPL_TEST(transport_along_a_contradiction_is_the_ex_falso_shape) {
+    // The same elimination used the way an omitted case really would: the
+    // goal's own term is what gets transported, so the branch closes without
+    // the arm proving anything about the subject.
+    cppl::kernel::Context ctx;
+
+    // Premise `0 = 1`. Motive `h. h = 1`. At `1` the goal is `1 = 1`, closed
+    // by reflexivity; transporting back along the premise yields `0 = 1`,
+    // which is the goal under this (contradictory) premise.
+    const auto absurd = eq(0, 1);
+    const auto motive = Proposition::equality(u32(), var0(), literal(1));
+    const auto evidence = ProofTerm::equality_elimination(u32(), literal(0), literal(1), motive,
+                                                          ProofTerm::hypothesis({0}), ProofTerm::reflexivity());
+    const auto goal = Proposition::implication(absurd, absurd);
+    const auto result = cppl::kernel::check(ctx, goal, ProofTerm::implication_introduction(absurd, evidence), {});
+
+    // Accepted: every step is an existing rule, and the conclusion is only
+    // reached under the absurd premise. This is the shape a discharged case
+    // must produce -- and it needs no new kernel rule.
+    CPPL_CHECK(result.has_value());
+}
+
+CPPL_TEST(a_case_cannot_be_omitted_without_evidence_of_its_impossibility) {
+    // The attack CASE-005 names: claim a case is impossible and close its
+    // branch, supplying no contradiction at all. Modeled here as closing an
+    // arbitrary goal with no premise in scope.
+    cppl::kernel::Context ctx;
+    const auto goal = eq(0, 1);
+    const auto result = cppl::kernel::check(ctx, goal, ProofTerm::reflexivity(), {});
+    CPPL_CHECK(!result.has_value());
+    CPPL_CHECK(result.error().kind == RejectionKind::NotDefinitionallyEqual);
+}
+
+CPPL_TEST(a_hypothesis_that_is_not_in_scope_cannot_supply_the_contradiction) {
+    // Naming a premise that no introduction placed in the context is the other
+    // way to fake an impossibility. The kernel holds the context itself.
+    cppl::kernel::Context ctx;
+    const auto motive = Proposition::equality(u32(), var0(), literal(1));
+    const auto forged = ProofTerm::equality_elimination(u32(), literal(0), literal(1), motive,
+                                                        ProofTerm::hypothesis({0}), ProofTerm::reflexivity());
+    const auto result = cppl::kernel::check(ctx, eq(0, 1), forged, {});
+    CPPL_CHECK(!result.has_value());
+    CPPL_CHECK(result.error().kind == RejectionKind::MalformedProofTerm);
+}

@@ -8,6 +8,8 @@
 #include "cppl/obligations/generate.hpp"
 #include "cppl/testing/test.hpp"
 
+#include <string>
+
 namespace {
 namespace v = cppl::vir;
 namespace k = cppl::kernel;
@@ -131,4 +133,78 @@ CPPL_TEST(the_kernel_rechecks_case_premises_types_and_capture) {
     rejected_mutation([](auto& branch) { branch.when_true = k::Term::variable(k::VarIndex{3}); });
     rejected_mutation(
         [](auto& branch) { branch.true_case = k::Box<k::ProofTerm>{k::ProofTerm::hypothesis(k::HypothesisIndex{0})}; });
+}
+
+// The correspondence between a C++ representation and its logical partition is
+// trust-sensitive: a bug there is a soundness bug even when the proof term it
+// produces is locally well typed (SPEC.md CASE-010). The tests above attack the
+// arms and the evidence, which the kernel rechecks. These attack the partition
+// itself, which the kernel cannot recheck because it never sees the C++ type --
+// so the engine has to refuse a representation that does not describe one.
+
+CPPL_TEST(a_representation_that_describes_no_state_cannot_be_split) {
+    // An enum whose model lists no enumerator has one residual state and
+    // nothing else. Splitting it would claim the subject has a named state the
+    // representation never described.
+    auto value = proof();
+    cases(value).subject.type.representation.enumerators.clear();
+    for (auto& parameter : value.parameters)
+        parameter.type.representation.enumerators.clear();
+
+    cppl::diagnostics::Engine engine;
+    const auto program = lower(std::move(value), engine);
+    CPPL_CHECK(engine.has_errors());
+    CPPL_CHECK(program.proofs.empty());
+    // The arm claims a named case the partition no longer has, rather than the
+    // split being allowed and answered against a partition of one state.
+    CPPL_CHECK(!engine.diagnostics().empty());
+    CPPL_CHECK(engine.diagnostics()[0].message.find("malformed case evidence") != std::string::npos);
+}
+
+CPPL_TEST(a_partition_that_contradicts_the_subjects_own_type_is_refused) {
+    // The arms are left alone, and the subject keeps a consistent type, so the
+    // only disagreement is between the partition and the arms: the
+    // representation now has a second named state that no arm claims. The
+    // engine asks the provider for the partition rather than trusting the
+    // arms, so this is a missing case rather than a silent answer about the
+    // wrong states.
+    auto value = proof();
+    cases(value).subject.type.representation.enumerators = {{"a", 1}, {"b", 2}};
+    for (auto& parameter : value.parameters)
+        parameter.type.representation.enumerators = {{"a", 1}, {"b", 2}};
+
+    cppl::diagnostics::Engine engine;
+    const auto program = lower(std::move(value), engine);
+    CPPL_CHECK(engine.has_errors());
+    CPPL_CHECK(program.proofs.empty());
+    // Refused for the reason claimed above, not for some unrelated mismatch a
+    // bare "it errored" assertion would also accept. This layer names the
+    // uncovered case generically; the arm-by-name wording belongs to
+    // elaboration, which a hand-built VIR proof does not go through.
+    CPPL_CHECK(engine.diagnostics()[0].message.find("incomplete case evidence") != std::string::npos);
+}
+
+CPPL_TEST(a_discriminator_naming_a_different_value_changes_which_case_is_proven) {
+    // The same number of states, but the named one is a different value. The
+    // arm still claims descriptor 0, so if the discriminator were taken on
+    // trust the proof would be accepted while meaning something else. The
+    // kernel sees the changed condition, so the evidence no longer closes the
+    // goal it is checked against.
+    cppl::diagnostics::Engine engine;
+    const auto honest = lower(proof(), engine);
+    CPPL_CHECK(!engine.has_errors());
+
+    auto value = proof();
+    cases(value).subject.type.representation.enumerators = {{"a", 9}};
+    for (auto& parameter : value.parameters)
+        parameter.type.representation.enumerators = {{"a", 9}};
+    cppl::diagnostics::Engine other;
+    const auto shifted = lower(std::move(value), other);
+
+    // The discriminator reaches the kernel, so changing it must change the
+    // evidence. The same proof term standing for both partitions would mean
+    // the named value never took part in what was checked.
+    CPPL_CHECK(!other.has_errors());
+    CPPL_CHECK_EQ(shifted.proofs.size(), std::size_t{1});
+    CPPL_CHECK(!(shifted.proofs[0].term == honest.proofs[0].term));
 }

@@ -160,6 +160,45 @@ proposition about it. Mutation and aliasing are excluded structurally rather
 than by analysis. Admitting `cases` over values that can change is future work
 and is governed by SPEC.md 20.5.
 
+When that work happens, the subject stays a logical value. A subject is an
+ordinary C++ expression Clang resolves, so mutable storage reaches a proof only
+along the existing read path:
+
+```text
+Place -> current PlaceVersion -> logical Value -> decomposition
+```
+
+Case facts are facts about that one version (CASE-008). A later write creates or
+havocs versions through the ordinary storage/effect model, so stale case facts
+cannot describe the new current value, and no aliasing exception is needed
+(CASE-009). `cases` must never take a `Place` as its subject or turn one into a
+proof term: a place is not a value, and the kernel's term language stays closed
+precisely because no address-typed term exists (RFC 0014). Making the case
+engine storage-aware would breach that, and is the wrong direction even though
+it looks like the shorter path to mutable subjects.
+
+## Omitting an impossible case
+
+CASE-004 allows a case to be accounted for by contradiction instead of by an
+arm, and CASE-005 requires that contradiction be checked evidence from the
+current proof context rather than a heuristic. VERIFIED-023 states the same
+requirement for discharging an unreachable runtime path. Both are uses of one
+operation: from contradictory premises in the current context, close a goal of
+any shape.
+
+The two should share that prover and keep separate obligation origins and
+diagnostics, because a proof-side omitted case and a runtime control-flow path
+are different claims about different things, and conflating their provenance
+would make a diagnostic name the wrong one.
+
+The elimination needs no new kernel rule. The proposition language has no
+falsity constant -- `Eq` is its only atom -- so absurdity is an equality the
+kernel knows to be false, and `EqualityElimination` transports a goal along it.
+`LinearArithmetic` deliberately cannot do this itself: it restricts its goal to
+an equality, so contradictory facts do not let it conclude an arbitrary
+proposition. Relaxing that restriction would be the wrong fix, growing the
+trusted surface to buy what the existing rules already derive.
+
 ## Validation
 
 Generic tests exercise arm matching, binder scope, nesting, goal propagation,
@@ -182,6 +221,17 @@ fallback, and representations with no provider. Adding an alternative or a
 product field invalidates a previously exhaustive proof. Unit tests
 corrupt VIR partitions and generated kernel evidence; the kernel remains the
 final authority. No test result is treated as proof of soundness.
+
+Because the representation-to-partition correspondence is trust-sensitive and
+the kernel never sees the C++ type, it is attacked separately from the arms:
+tests corrupt the subject's own model, so that the partition the provider
+reports describes no state, contradicts the arms, or names a different
+discriminator value. The last is accepted, as it must be -- it is a different
+but well-formed partition -- and is pinned to produce different evidence, which
+is what shows the discriminator reached the kernel rather than being trusted.
+Source tests cover the read paths a subject can arrive by, a member and a
+built-in array element as well as a parameter, so CASE-008 is not satisfied
+merely because every subject in the corpus is an identifier.
 
 ## Abstract observation signature
 
