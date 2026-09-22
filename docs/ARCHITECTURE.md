@@ -1,743 +1,786 @@
 # C++L Architecture
 
+**C++L — Production Compiler and Verification Architecture**
+
+Status: Target implementation architecture
+
 This document defines the implementation architecture of C++L.
 
-It describes:
+It describes the component boundaries, dependency direction, data flow,
+source-to-formal correspondence, verification pipeline, storage model,
+proof-checking boundary, erasure path, cross-translation-unit metadata,
+incremental verification, diagnostics, editor services, testing architecture,
+and release-facing compiler structure required to implement the language defined
+by `SPEC.md`.
 
-- compiler stages
-- component ownership
-- dependency direction
-- data flow
-- verification flow
-- C++ / Clang integration
-- proof-kernel boundaries
-- runtime lowering and proof erasure
-- diagnostics
-- incremental verification
-- caching
-- editor integration
-- concurrency
-- testing
-- CI
-- packaging
-- release architecture
+This document is authoritative for **project architecture**, but it is not a
+language specification and it does not redefine the Trusted Computing Base.
 
-It does **not** redefine language semantics or trust policy.
-
-Authoritative documents:
+The documentation responsibilities are:
 
 ```text
-docs/SPEC.md
-    language semantics
+SPEC.md
+    normative language meaning
 
-TRUST.md
-    Trusted Computing Base and trust boundaries
+GRAMMAR.md
+    normative concrete syntax
 
 FOUNDATIONS.md
-    mathematical foundations
+    formal calculus and mathematical foundations
 
-docs/DESIGN.md
-    design rationale
+TRUST.md
+    Trusted Computing Base, correspondence trust, assumption provenance
 
-COMPATIBILITY.md
-    C++ / ABI / ecosystem compatibility
-
-STATUS.md
-    implementation maturity
+DESIGN.md
+    non-normative design rationale
 
 ARCHITECTURE.md
-    implementation structure and data flow
+    compiler structure, ownership, dependency direction and data flow
+
+COMPATIBILITY.md
+    supported C++ modes, Clang/LLVM combinations, platforms and ABI
+
+STATUS.md
+    implementation coverage only
 ```
+
+When this document conflicts with `SPEC.md` on language meaning, `SPEC.md`
+wins. When it conflicts with `TRUST.md` on what must be trusted, `TRUST.md`
+wins. `STATUS.md` may report that a component is incomplete, but it MUST NOT be
+used to redefine the target architecture in this document.
+
+Implementation details that do not create durable architectural constraints
+belong in source code, RFCs, ADRs, or `STATUS.md`, not here.
 
 ---
 
 # 1. Architectural mission
 
-C++L is a source-compatible C++ superset that adds formal specification and machine-checkable proof while preserving the C++ runtime, ABI, ecosystem, and native toolchain.
+C++L adds formal specification and machine-checkable proof to C++ while
+preserving C++ as the runtime language and Clang/LLVM as the native compilation
+path.
 
 The architecture must support:
 
 ```text
 ordinary C++
 +
-C++L formal constructs
+C++L specification and proof syntax
 +
-machine-checkable proofs
+resolved real C++ semantics
 +
-incremental adoption
+formal verification
 +
-ordinary Clang / LLVM native output
+explicit trust boundaries
++
+semantics-preserving erasure
++
+ordinary native C++ ABI and code generation
 ```
 
-The compiler must not introduce a mandatory theorem runtime, VM, garbage collector, or alternative execution environment.
+The compiler must not require a theorem VM, proof garbage collector, alternate
+runtime, mandatory wrapper ABI, or second runtime implementation.
 
-The target system is:
+The core pipeline is:
 
 ```mermaid
 flowchart TD
-    S["C++ / C++L Source"]
-    F["C++L Frontend"]
-    C["Clang Semantic Analysis"]
-    E["Formal Elaboration"]
-    V["Verification IR"]
-    O["Proof Obligations"]
-    A["Automation / Solvers / Tactics"]
-    K["Trusted Proof Kernel"]
-    P["Verified Runtime Projection"]
-    L["Clang / LLVM Code Generation"]
-    B["Native Binary"]
+    SRC["C++ / C++L source"]
+    PP["Selected C++ preprocessing"]
+    REC["C++L recognition"]
+    PROJ["Canonical projection + semantic probes"]
+    CLANG["Clang semantic authority"]
+    ELAB["C++L elaboration"]
+    VIR["Verification IR"]
+    OBL["Obligation construction"]
+    AUTO["Automation / proof producers"]
+    CHECK["Independent checkers"]
+    POLICY["Build policy"]
+    RUNTIME["Canonical runtime projection"]
+    CODEGEN["Clang / LLVM"]
+    BIN["Native binary"]
 
-    S --> F
-    F --> C
-    F --> E
-    C --> E
-    E --> V
-    V --> O
-    O --> A
-    A --> K
-    K --> P
-    P --> L
-    L --> B
+    SRC --> PP
+    PP --> REC
+    REC --> PROJ
+    PROJ --> CLANG
+    REC --> ELAB
+    CLANG --> ELAB
+    ELAB --> VIR
+    VIR --> OBL
+    OBL --> AUTO
+    AUTO --> CHECK
+    OBL --> CHECK
+    CHECK --> POLICY
+    REC --> RUNTIME
+    PROJ --> RUNTIME
+    POLICY -->|accepted| CODEGEN
+    RUNTIME --> CODEGEN
+    CODEGEN --> BIN
 ```
 
-The architecture has one fundamental rule:
+The architecture is built around one principle:
 
-> Formal proof authority and native code generation are separate responsibilities.
+> C++L must prove properties of the C++ program that is actually compiled, not
+> of a simpler shadow program.
 
 ---
 
 # 2. Architectural invariants
 
-The following invariants are mandatory.
+The following invariants are non-negotiable project architecture requirements.
 
-## 2.1 One proof authority
+## 2.1 One C++ semantic authority
 
-The final authority for theorem validity is the trusted proof kernel.
+Ordinary C++ parsing and semantic questions are owned by the selected C++
+semantic authority, normally Clang for the production implementation.
 
-```text
-frontend       ─┐
-elaborator      │
-solver          ├── produce evidence
-tactics         │
-AI              │
-                 ↓
-              kernel
-                 ↓
-              accept
-               or
-              reject
-```
+C++L must not independently guess or reimplement, except where unavoidable and
+explicitly checked, such matters as:
 
-No other component may independently promote a proposition to `PROVEN`.
+- name lookup;
+- overload resolution;
+- template substitution and instantiation;
+- implicit conversions;
+- canonical C++ types;
+- access control;
+- value categories;
+- `constexpr` evaluation used as C++ semantics;
+- class hierarchy and virtual dispatch information;
+- object layout and ABI information;
+- selected language-mode semantics.
 
----
+C++L owns the additional formal meaning defined by `SPEC.md`.
 
-## 2.2 One runtime semantic path
+**[ARCH-INV-001]** There MUST NOT be two independent C++ semantic engines whose
+answers can both affect verification.
 
-The runtime program verified by C++L must be the same runtime program supplied to Clang/LLVM for native compilation.
+## 2.2 One runtime program
 
-Do not maintain:
+Verification and native compilation must refer to one authoritative runtime
+projection.
 
-```text
-verification implementation
-```
-
-and separately:
+The architecture must not maintain:
 
 ```text
-runtime implementation
+program A for verification
+program B for execution
 ```
 
-that can drift.
+with independently implemented lowering.
 
-The compiler must derive both from the same authoritative lowered representation.
+**[ARCH-INV-002]** Runtime projection MUST be produced canonically from the same
+recognized source model used for verification.
 
----
+**[ARCH-INV-003]** No post-verification pass may rewrite proof-relevant runtime
+semantics without invalidating or re-establishing the correspondence.
 
-## 2.3 C++ semantics are not reimplemented unnecessarily
+## 2.3 Proof production and proof authority are separate
 
-Clang remains authoritative for ordinary C++ semantics where practical.
+Frontends, tactics, solvers, AI, rewriters and proof search may produce
+candidate evidence.
 
-C++L should consume Clang semantic information for:
-
-- parsing ordinary C++
-- declarations
-- types
-- name lookup
-- overload resolution
-- template instantiation
-- concepts
-- conversions
-- constexpr
-- object layout
-- ABI information
-- source locations
-
-C++L adds formal semantics.
-
-It does not attempt to create a second independent implementation of C++.
-
----
-
-## 2.4 C++L-specific syntax is isolated
-
-C++L syntax must not contaminate ordinary C++ semantics.
-
-The frontend owns:
-
-- C++L contextual constructs
-- formal declarations
-- proof syntax
-- ghost syntax
-- C++L runtime extensions where defined
-
-Clang owns ordinary C++ semantics after C++L-specific syntax has been projected into valid ordinary C++.
-
----
-
-## 2.5 Proof-only information cannot affect runtime behavior
-
-Proof and ghost information may influence whether compilation succeeds.
-
-It must not silently influence runtime execution after erasure.
-
----
-
-## 2.6 Unsupported verification fails closed
-
-Unsupported formal semantics must result in:
+They do not define truth.
 
 ```text
-UNVERIFIED
-UNSAFE
-TRUSTED
-UNRESOLVED
+producer
+    ↓
+candidate evidence
+    ↓
+checker
+    ↓
+accepted or rejected
 ```
 
-as appropriate.
+The exact TCB is defined by `TRUST.md`.
 
-They must never silently become:
+**[ARCH-INV-004]** No proof producer may set `PROVEN` by returning a Boolean
+success flag that bypasses the relevant checker.
 
-```text
-PROVEN
-```
+## 2.4 Correspondence is first-class architecture
 
----
+A sound kernel can prove the wrong theorem if elaboration constructs the wrong
+obligation.
 
-## 2.7 Incremental adoption is architectural
+Therefore source-to-C++ semantics, C++ semantics-to-VIR, VIR-to-obligation, and
+runtime-projection correspondence are explicit architectural boundaries.
 
-An ordinary C++ project must not need wholesale migration to C++L.
+**[ARCH-INV-005]** Provenance MUST be preserved across every correspondence
+boundary.
 
-The architecture must support:
+## 2.5 Unsupported semantics fail closed
 
-```text
-ordinary C++
-    +
-verified C++L regions
-    +
-explicit boundaries
-```
+Unknown, ambiguous, unsupported, malformed, timed out, resource exhausted, or
+internally inconsistent verification state must never become `PROVEN`.
 
-inside the same application.
+**[ARCH-INV-006]** Failure handling MUST preserve the assurance distinctions
+defined by `SPEC.md` and `TRUST.md`.
 
----
+## 2.6 Proof-only information cannot change runtime behavior
 
-## 2.8 Determinism is designed in
+Proofs, Laws, proof-local binders, ghost state, mathematical domains and other
+proof-only structures may affect whether compilation succeeds.
 
-Semantic identities, proof results, cache keys, artifact formats, and kernel checking must not depend on unstable process state such as:
+They must not create hidden runtime state or control flow after erasure.
 
-- memory addresses
-- thread scheduling
-- filesystem iteration order
-- wall-clock time
-- non-recorded randomness
+**[ARCH-INV-007]** Any construct with runtime meaning must have that runtime
+meaning defined by `SPEC.md`; it may not acquire runtime behavior merely because
+an implementation technique finds that convenient.
+
+## 2.7 One common storage model
+
+Locals, members, nested members, reference referents, pointer pointees, array
+elements, captures, temporaries and other modeled storage must use one common
+place/version architecture.
+
+**[ARCH-INV-008]** A new access syntax MUST NOT introduce a second read/write,
+alias, lifetime, or refinement mechanism.
+
+## 2.8 Semantic determinism
+
+Stable semantic identity, proof acceptance, artifact hashes and deterministic
+output ordering must not depend on:
+
+- memory addresses;
+- thread scheduling;
+- unordered container iteration;
+- temporary file names;
+- wall-clock time;
+- unrecorded randomness.
+
+**[ARCH-INV-009]** Parallelism may change completion order, never theorem
+meaning.
+
+## 2.9 Status is not architecture
+
+The target architecture does not shrink when the current implementation lacks a
+feature.
+
+**[ARCH-INV-010]** Temporary implementation limitations belong in `STATUS.md` or
+an RFC and MUST NOT be turned into architectural prohibitions unless the project
+makes a deliberate architecture decision.
 
 ---
 
 # 3. System context
 
-C++L sits between existing developer tooling and the native C++ toolchain.
+C++L sits between normal developer/build tooling and the native C++ toolchain.
 
 ```mermaid
 flowchart LR
-    DEV["Developer / AI Agent"]
+    HUMAN["Developer / AI agent"]
     IDE["Editor / IDE"]
-    BUILD["CMake / Ninja / Build System"]
-    CPPL["C++L Toolchain"]
+    BUILD["CMake / Ninja / build system"]
+    CPPL["C++L compiler services"]
+    CLANGD["clangd"]
     CLANG["Clang / LLVM"]
-    LIBS["Existing C / C++ Libraries"]
-    BIN["Native Binary"]
+    DEPS["Existing C / C++ libraries"]
+    BIN["Native binary"]
 
-    DEV --> IDE
-    DEV --> BUILD
-
+    HUMAN --> IDE
+    HUMAN --> BUILD
     IDE --> CPPL
+    IDE --> CLANGD
     BUILD --> CPPL
-
     CPPL --> CLANG
-    CLANG --> LIBS
+    CLANG --> DEPS
     CLANG --> BIN
 ```
 
-C++L should integrate with existing build systems rather than replace them.
+C++L integrates with existing build systems; it does not require a proprietary
+project model.
+
+Ordinary C++ code remains first-class input. Verification is additive.
 
 ---
 
-# 4. Major components
+# 4. Component model
 
-The compiler is divided into components with explicit responsibilities.
+The production architecture is divided into explicit semantic components.
 
-```mermaid
-flowchart TD
-    DRIVER["Compiler Driver"]
-    SOURCE["Source Manager"]
-    EXT["C++L Extension Frontend"]
-    PROJ["Canonical C++ Projection"]
-    CLANG["Clang Bridge"]
-    ELAB["Formal Elaborator"]
-    VIR["Verification IR"]
-    VC["Obligation Generator"]
-    AUTO["Automation"]
-    KERNEL["Proof Kernel"]
-    ERASE["Erasure / Runtime Lowering"]
-    ART["Artifact / Cache System"]
-    DIAG["Diagnostics"]
-    CODEGEN["Clang / LLVM Codegen"]
+| Component               | Primary ownership                                          |
+| ----------------------- | ---------------------------------------------------------- |
+| Driver / orchestration  | command line, compilation policy, stage orchestration      |
+| Source system           | file/content identity, ranges, macro/projection provenance |
+| C++L recognizer         | contextual C++L syntax only                                |
+| Projection system       | analysis/runtime projection and analysis-only probes       |
+| Clang bridge            | resolved C++ semantic facts                                |
+| Formal elaboration      | C++L surface meaning, formal types and propositions        |
+| VIR                     | proof-relevant imperative C++ behavior                     |
+| Storage/effect analysis | Place/Region/Capability/Version, aliases, call effects     |
+| Decomposition providers | proof-visible structural state models                      |
+| Obligation builder      | verification conditions and crossing obligations           |
+| Automation              | candidate proof/evidence production                        |
+| Formal core             | kernel-facing terms, propositions, proof terms             |
+| Kernel/checkers         | independent evidence validation                            |
+| Erasure validation      | runtime correspondence checks                              |
+| Artifact/index service  | semantic metadata, summaries, caches                       |
+| Diagnostics             | structured diagnostics/provenance                          |
+| Compiler services       | reusable API for CLI/LSP/tools                             |
+| `cppl-lsp`              | C++L editor protocol surface                               |
 
-    DRIVER --> SOURCE
-    SOURCE --> EXT
-
-    EXT --> PROJ
-    PROJ --> CLANG
-
-    EXT --> ELAB
-    CLANG --> ELAB
-
-    ELAB --> VIR
-    VIR --> VC
-    VC --> AUTO
-    AUTO --> KERNEL
-
-    KERNEL --> ERASE
-    ERASE --> CODEGEN
-
-    ELAB --> DIAG
-    VIR --> DIAG
-    AUTO --> DIAG
-    KERNEL --> DIAG
-
-    VIR --> ART
-    KERNEL --> ART
-```
+No component should own semantics already assigned to another component merely
+for convenience.
 
 ---
 
-# 5. Compiler driver
+# 5. Driver and compilation policy
 
-The compiler driver is the user-facing orchestration layer.
+The driver is the user-facing orchestration layer.
 
-Target command:
+Its responsibilities include:
 
-```bash
-cppl main.cpp
-```
+- accepting Clang-compatible compilation inputs where supported;
+- selecting target and C++ mode;
+- selecting verification/build policy;
+- invoking preprocessing, recognition, projection, Clang analysis,
+  verification and code generation;
+- coordinating artifacts and diagnostics;
+- determining process exit status.
 
-The driver should behave as closely as practical to a Clang-compatible compiler driver.
+The driver is not a theorem authority.
 
-Responsibilities:
-
-- parse C++L-specific command-line options
-- preserve compatible Clang options
-- resolve target triple
-- resolve C++ standard mode
-- establish verification policy
-- construct compilation graph
-- invoke compiler stages
-- manage artifacts
-- coordinate diagnostics
-- invoke Clang/LLVM backend
-- determine final process exit status
-
-The driver is **not** a proof authority.
-
----
-
-# 6. Compilation modes
-
-Verification policy belongs in the driver/policy layer rather than being hard-coded into proof semantics.
-
-The architecture should support at least:
+Verification status and build policy are different concepts.
 
 ```text
-compatibility
 verification
-strict verification
+    produces structured assurance facts
+
+policy
+    decides whether those facts permit this build
 ```
 
-Conceptually:
+Strict CI policy must not change theorem semantics.
 
-```bash
-cppl main.cpp
-
-cppl --verify main.cpp
-
-cppl --require-fully-verified main.cpp
-```
-
-## Compatibility mode
-
-Ordinary supported C++ is allowed.
-
-Explicit C++L verification constructs are checked.
-
-Unverified ordinary regions may remain.
-
-## Verification mode
-
-All explicitly requested verification obligations must succeed.
-
-Ordinary unverified code may remain where policy permits.
-
-## Strict verification mode
-
-Configured non-proven statuses may cause the build to fail.
-
-For example:
-
-```text
-UNVERIFIED
-UNSAFE
-TRUSTED
-UNRESOLVED
-```
-
-The proof engine determines facts.
-
-The policy layer determines whether those facts permit the requested build.
+**[ARCH-DRV-001]** A policy layer MAY reject `TRUSTED`, `UNSAFE`, `UNVERIFIED` or
+`UNRESOLVED` code according to project policy, but MUST NOT relabel it `PROVEN`.
 
 ---
 
-# 7. Source manager
+# 6. Preprocessing and source ownership
 
-The source manager owns source identity and location mapping.
+C++L recognizes the semantic token stream produced according to the selected C++
+preprocessing rules.
 
-Responsibilities:
+This is necessary so that:
 
-- source files
-- include relationships
-- stable file identities
-- source ranges
-- macro provenance
-- generated-source mappings
-- C++L-to-C++ projection mappings
-- diagnostic locations
-- content hashing
+- formal constructs in included headers are visible;
+- macros expand before C++L interprets contextual forms;
+- conditional compilation selects the same program for verification and native
+  compilation;
+- compile flags remain part of semantic identity.
 
-No downstream component should invent independent source-location systems.
+The source system owns:
 
-The source manager must preserve enough provenance to map:
+- content-addressed source identities;
+- original and preprocessed ranges;
+- include and module provenance;
+- macro-expansion provenance;
+- generated analysis/runtime mappings;
+- semantic probe mappings;
+- diagnostic source ranges.
 
-```text
-kernel obligation
-    ↓
-VIR
-    ↓
-Clang semantic entity
-    ↓
-original C++L source
-```
+**[ARCH-SRC-001]** Downstream components MUST use source identities supplied by
+the source system rather than inventing parallel location models.
 
----
+**[ARCH-SRC-002]** Presumed file/line/column locations are diagnostic labels,
+not declaration identity.
 
-# 8. C++L extension frontend
-
-The C++L frontend parses only semantics that C++ itself does not already own.
-
-Examples may include:
-
-```text
-law
-proof
-ghost
-pure
-verified
-trusted
-unsafe
-refinement syntax
-C++L-specific type constructs
-C++L-specific pattern constructs
-```
-
-The exact grammar belongs to `SPEC.md`.
-
-The frontend must not become an independent C++ semantic engine.
-
-Its responsibilities are:
-
-- identify contextual C++L syntax
-- construct C++L extension AST
-- preserve original source locations
-- produce runtime C++ projection information
-- associate formal constructs with corresponding C++ entities
+**[ARCH-SRC-003]** Reuse keys MUST include every preprocessing input that can
+change semantic meaning.
 
 ---
 
-# 9. Contextual syntax architecture
+# 7. Contextual C++L recognition
 
-C++L-specific words should be recognized contextually.
+The C++L recognizer owns only syntax that C++ itself does not own.
 
-Example ordinary C++:
+It recognizes the contextual forms defined by `GRAMMAR.md` and `SPEC.md`, such
+as Laws, proofs, contracts, refinements, ghost constructs, formal proposition
+forms and proof statements.
+
+It must not become a second C++ parser for ordinary expressions.
+
+Example:
 
 ```cpp
-int law = 5;
+int law = 4;
 void proof();
 ```
 
-must remain ordinary C++ where the surrounding grammar does not identify a C++L construct.
+remains ordinary C++ unless the surrounding grammar establishes a C++L
+construct.
 
-The frontend should therefore operate from grammatical context rather than globally replacing tokens.
-
-Forbidden architecture:
-
-```text
-token == "law"
-    ↓
-always C++L keyword
-```
-
-Required architecture:
+The architecture is:
 
 ```text
-token + grammatical context
+token stream
++
+grammatical context
     ↓
-ordinary identifier
+ordinary C++ region
 or
-C++L construct
+C++L formal region
 ```
+
+not:
+
+```text
+token spelling == contextual word
+    ↓
+always C++L
+```
+
+**[ARCH-REC-001]** Formal recognition MUST record exact physical source spans and
+structural identities for later projection and diagnostics.
+
+**[ARCH-REC-002]** The recognizer MUST preserve ordinary C++ text byte-for-byte
+outside spans whose transformation is defined by the architecture and
+`SPEC.md`.
 
 ---
 
-# 10. Canonical C++ projection
+# 8. Projection architecture
 
-C++L source is projected into ordinary C++ for Clang semantic analysis and native compilation.
+C++L needs Clang to resolve ordinary C++ semantics that occur inside and around
+formal constructs.
 
-Conceptually:
-
-```mermaid
-flowchart LR
-    CPPL["C++L Source"]
-    FRONT["Extension Frontend"]
-    FORMAL["Formal Representation"]
-    CPP["Canonical C++ Runtime Projection"]
-
-    CPPL --> FRONT
-    FRONT --> FORMAL
-    FRONT --> CPP
-```
-
-The projection:
-
-- removes or lowers proof-only syntax
-- lowers runtime C++L extensions where necessary
-- preserves ordinary C++ source semantics
-- maintains source mappings
-- produces valid Clang input
-
-This projection is a critical architectural boundary.
-
-There must not be separate independently implemented:
+The projection system therefore produces two related views from one recognized
+source model:
 
 ```text
-analysis lowering
+analysis projection
+    valid C++ used to obtain C++ semantic answers
+
+runtime projection
+    ordinary C++ that will be compiled and executed
+```
+
+They are not independently authored translations.
+
+A single projection ledger records, for every transformed formal span:
+
+- source identity and range;
+- formal construct identity;
+- analysis replacement/probe identity;
+- runtime replacement kind;
+- source-to-generated mappings;
+- lexical/template scope required by the probe;
+- expected erasure class.
+
+**[ARCH-PROJ-001]** Analysis and runtime projections MUST be generated from the
+same recognition result and projection ledger.
+
+**[ARCH-PROJ-002]** The runtime projection MUST NOT depend on proof outcome except
+for whether code generation is permitted.
+
+**[ARCH-PROJ-003]** Analysis-only scaffolding MUST never enter the runtime
+projection.
+
+---
+
+# 9. Analysis-only semantic probes
+
+C++L must obtain C++ semantic information for expressions embedded in formal
+syntax without pretending those expressions have different C++ meaning.
+
+The projection system may therefore emit analysis-only **semantic probes**.
+
+A probe exists only to make Clang answer questions such as:
+
+- which declaration a name denotes;
+- which overload is selected;
+- what conversions are applied;
+- what canonical type an expression has;
+- what template arguments are substituted;
+- what value category or constant value Clang determines.
+
+A probe is never proof evidence.
+
+**[ARCH-PROBE-001]** Probe output MUST be linked back to the exact recognized
+formal construct that requested it.
+
+**[ARCH-PROBE-002]** Probe shape MUST be validated before its Clang result is
+consumed; arbitrary generated AST shapes MUST NOT be interpreted as formal
+meaning.
+
+**[ARCH-PROBE-003]** A probe MUST preserve every lexical and semantic context
+needed to resolve its C++ subexpressions correctly.
+
+This includes, where applicable:
+
+- namespace scope;
+- class scope;
+- function scope;
+- template parameter lists;
+- template constraints;
+- dependent context;
+- `this` context;
+- access control;
+- surrounding declarations required for lookup.
+
+This rule is particularly important for templates: analysis helpers for a
+template declaration must be generated in a context in which the same template
+parameters and constraints exist. Emitting a non-template probe that mentions a
+template parameter is an architectural defect.
+
+**[ARCH-PROBE-004]** Formal intrinsics such as `Eq`, quantifiers, logical
+connectives, mathematical-domain operations, `readable`, and `writable` MUST NOT
+be implemented as accidental user-visible runtime helper functions merely to
+make Clang accept a probe.
+
+The projector should expose only the C++ operands that require C++ resolution and
+retain the formal connective/intrinsic identity separately.
+
+---
+
+# 10. Runtime projection and erasure classes
+
+The runtime projection is produced according to the erasure/lowering classes
+defined by `SPEC.md`.
+
+Architecturally, source constructs fall into two broad groups:
+
+```text
+proof-only
+    removed/blanked while preserving source correspondence
+
+runtime-bearing C++L declaration
+    lowered canonically to the ordinary C++ representation defined by SPEC
+```
+
+Refinement declarations, for example, have a runtime representation because the
+program names the resulting C++ type alias even though the refinement predicate
+is proof-only.
+
+**[ARCH-ERASE-001]** Runtime-bearing lowering MUST be canonical and narrow; it is
+not a general-purpose source-to-source optimizer.
+
+**[ARCH-ERASE-002]** Erasure validation MUST independently verify that the
+runtime projection conforms to the recognized construct classes and canonical
+lowering rules.
+
+**[ARCH-ERASE-003]** The compiler MUST preserve source mapping through erasure so
+that diagnostics and debug information can still refer to user source.
+
+---
+
+# 11. Clang semantic bridge
+
+The Clang bridge is the sole project component that converts Clang-resolved C++
+semantics into stable C++L-owned semantic data.
+
+It provides, as required:
+
+- declaration identity;
+- canonical and sugared type information;
+- parameter passing mode;
+- value category;
+- selected overload/callee;
+- implicit and explicit conversions;
+- template specialization and substitution data;
+- class/base/member relationships;
+- access control;
+- constant values;
+- control-flow structure needed by VIR construction;
+- target properties;
+- ABI/layout information when relevant to a claim;
+- source mappings.
+
+The production bridge may use libclang or a deeper Clang API behind this boundary,
+but Clang implementation objects must not leak into the rest of the compiler as
+semantic identity.
+
+**[ARCH-CLANG-001]** Raw Clang pointers, allocation addresses and unstable AST
+object identity MUST NOT become persistent C++L semantic identifiers.
+
+**[ARCH-CLANG-002]** The bridge MUST expose the conversions Clang actually
+selected. Verification must not reason directly from the source spelling when
+C++ semantics inserted a conversion.
+
+**[ARCH-CLANG-003]** Overloaded operators MUST remain resolved calls unless Clang
+establishes that a built-in operator is the operation being modeled.
+
+**[ARCH-CLANG-004]** The Clang installation used for semantic analysis and the
+one used for runtime compilation MUST be compatibility-locked according to
+`COMPATIBILITY.md`.
+
+---
+
+# 12. Stable semantic identity
+
+Persistent verification cannot depend on process-local object identity.
+
+The architecture defines stable identities for at least:
+
+- source content/configuration;
+- C++ declarations;
+- template instantiations;
+- Laws;
+- proof declarations;
+- contracts;
+- formal types and indexed refinements;
+- VIR functions;
+- Places and regions within a semantic unit;
+- obligations;
+- imported summaries;
+- trusted assumptions.
+
+Identity may combine:
+
+- canonical declaration identity from the C++ semantic authority;
+- module/TU identity;
+- template arguments;
+- normalized formal content;
+- target/C++ mode where semantically relevant;
+- stable content hashes.
+
+**[ARCH-ID-001]** File paths alone MUST NOT identify semantic declarations.
+
+**[ARCH-ID-002]** Source line/column alone MUST NOT identify semantic declarations.
+
+**[ARCH-ID-003]** Semantic hashes MUST exclude presentation-only data and include
+every input whose change can affect the verified meaning.
+
+---
+
+# 13. C++L formal surface model
+
+Recognition produces a C++L-owned surface representation for formal constructs.
+
+This representation contains structure that Clang does not own, including:
+
+- Law declarations;
+- proof declarations and proof statements;
+- contract clauses;
+- refinement declarations;
+- ghost declarations;
+- proof-only `cases`, `decompose` and `induction` structure;
+- mathematical-domain types;
+- trusted declarations;
+- loop invariant/decreases clauses.
+
+Ordinary C++ subexpressions inside those constructs are represented by source/probe
+references until the Clang bridge supplies their resolved semantics.
+
+This avoids both extremes:
+
+```text
+reparse all C++ ourselves
 ```
 
 and:
 
 ```text
-production lowering
+encode every formal construct as fake runtime C++
 ```
 
-with potentially different behavior.
-
 ---
 
-# 11. Single-projection invariant
+# 14. Formal elaboration
 
-The C++ runtime representation consumed during semantic verification must correspond to the representation eventually compiled into native code.
-
-Preferred architecture:
-
-```mermaid
-flowchart TD
-    S["C++L Source"]
-    P["Canonical Runtime Projection"]
-    AST["Clang AST / Sema"]
-    VERIFY["Verification"]
-    GATE{"Policy satisfied?"}
-    CG["LLVM Codegen"]
-    FAIL["Compilation fails"]
-
-    S --> P
-    P --> AST
-    AST --> VERIFY
-    VERIFY --> GATE
-
-    GATE -->|yes| CG
-    GATE -->|no| FAIL
-```
-
-Code generation is gated by the verification policy.
-
-The compiler should not lower the program a second time after proof acceptance.
-
----
-
-# 12. Clang bridge
-
-The Clang bridge exposes resolved C++ semantics to C++L.
-
-Responsibilities include access to:
-
-- declarations
-- canonical types
-- template specializations
-- overload selections
-- resolved calls
-- constants
-- control-flow information
-- object layout
-- source mappings
-- ABI information
-- target properties
-
-The bridge translates relevant Clang semantics into stable C++L representations.
-
-It must not expose raw pointer identity as semantic identity.
-
----
-
-# 13. Stable semantic identity
-
-Compiler-internal memory addresses must never serve as persistent semantic identifiers.
-
-Stable identities should derive from appropriate combinations of:
-
-- Clang USRs where applicable
-- canonical declaration identities
-- source identity
-- qualified names
-- template arguments
-- semantic content hashes
-- stable generated IDs
-
-These identities are used for:
-
-- dependency graphs
-- caching
-- diagnostics
-- proof artifact references
-- LSP operations
-
----
-
-# 14. Formal elaborator
-
-The elaborator connects source-level C++L constructs to formal meaning.
-
-Inputs:
+Elaboration combines:
 
 ```text
-C++L extension AST
+recognized C++L structure
 +
-resolved Clang semantic information
+resolved C++ semantic facts
++
+formal context
 ```
 
-Output:
+and produces typed C++L semantic objects and VIR.
 
-```text
-formal core terms
-and/or
-typed Verification IR
-```
+Responsibilities include:
 
-Responsibilities:
+- resolving Law/proof references;
+- elaborating formal propositions;
+- constructing formal types;
+- inserting and validating formal binders;
+- classifying mathematical versus runtime values;
+- constructing refinement predicates and indexed applications;
+- binding `result`, `old` and `self` according to their normative contexts;
+- mapping runtime C++ conversions separately from refinement crossings;
+- establishing proof-only structural decomposition requests;
+- preserving provenance.
 
-- name resolution between Laws and C++ declarations
-- implicit argument insertion
-- type elaboration
-- proposition construction
-- refinement elaboration
-- effect/purity interpretation
-- verification-status propagation
-- provenance tracking
-- generation of formal identities
+Elaboration may be complex. It is not proof authority.
 
-The elaborator may be complex.
+**[ARCH-ELAB-001]** Elaboration MUST never create a trusted fact as an error
+recovery mechanism.
 
-It is not the final proof authority.
+**[ARCH-ELAB-002]** An unsupported conversion or semantic form MUST remain
+unsupported/fail closed rather than being approximated by a stronger formal
+operation.
 
 ---
 
 # 15. Formal core boundary
 
-The formal core represents the minimum logical language required for proof checking.
+The formal core is the checker-facing language of:
 
-Conceptually:
+- formal types;
+- formal terms;
+- propositions;
+- proof terms;
+- checked definitions;
+- proof contexts.
 
-```text
-surface C++L
-    ↓ elaborate
-formal core
-    ↓ check
-kernel
-```
+It intentionally excludes:
 
-The core should avoid:
+- source formatting;
+- editor metadata;
+- Clang AST objects;
+- diagnostics strings;
+- runtime storage locations unless represented by a formally specified abstract
+  value model;
+- solver-specific encodings.
 
-- source syntax accidents
-- editor-specific metadata
-- Clang AST implementation details
-- diagnostics-only structures
-- solver-specific encodings
+The formal core should be explicit, deterministic and serializable enough for
+independent checking and adversarial testing.
 
-The core representation must be sufficiently explicit for deterministic checking.
+The logical kernel operates on the formal core, not on C++ source.
 
 ---
 
-# 16. Verification IR
+# 16. Verification IR mission
 
-The Verification IR (VIR) models executable behavior relevant to proofs.
+The Verification IR (VIR) represents proof-relevant executable C++ behavior after
+C++ semantics have been resolved.
 
-It separates:
-
-```text
-C++ syntax
-```
-
-from:
+It is the boundary between:
 
 ```text
-proof-relevant operational meaning
+resolved C++ execution
 ```
 
-The VIR should model concepts such as:
+and:
 
-- values
-- control flow
-- state
-- reads
-- writes
-- calls
-- branches
-- loops
-- preconditions
-- postconditions
-- assertions
-- assumptions with provenance
-- machine arithmetic
-- lifetime events
-- ownership facts
-- exceptional flow where supported
+```text
+verification conditions
+```
+
+VIR owns semantic concepts such as:
+
+- runtime values;
+- control-flow structure;
+- Places and storage versions;
+- reads and writes;
+- calls and call effects;
+- object construction/destruction events relevant to proof;
+- lifetime transitions;
+- normal and exceptional exits;
+- contracts and call sites;
+- loop structure;
+- formal observations of runtime objects;
+- source provenance.
+
+VIR does not own:
+
+- C++ name lookup;
+- overload resolution;
+- final proof validity;
+- native code generation.
 
 ---
 
@@ -745,263 +788,1180 @@ The VIR should model concepts such as:
 
 VIR must be:
 
-- strongly typed
-- deterministic
-- explicit
-- provenance-preserving
-- serializable where useful
-- hashable
-- independent of irrelevant syntax
-- stable enough for incremental verification
-- suitable for VC generation
+- strongly typed;
+- explicit;
+- deterministic;
+- provenance-preserving;
+- structurally validated;
+- independent of raw Clang object identity;
+- suitable for semantic hashing;
+- suitable for obligation generation;
+- capable of representing every runtime distinction required by the claims being
+  verified.
 
-Avoid:
+VIR should avoid:
 
 ```text
 stringly typed semantics
-magic numeric tags
-raw AST pointer identity
-implicit hidden state
+magic integer tags
+implicit hidden mutation
+raw AST pointers
+source-spelling-based resolution
+feature-specific storage representations
 ```
+
+**[ARCH-VIR-001]** Malformed VIR MUST be rejectable independently of the frontend
+that produced it.
+
+**[ARCH-VIR-002]** Information may be omitted from VIR only when it cannot affect
+any verification claim made from that VIR.
 
 ---
 
-# 18. VIR ownership
+# 18. Values, places, regions, capabilities and versions
 
-The VIR owns proof-relevant imperative semantics.
+C++L uses one generic storage architecture.
 
-It does **not** own:
-
-- C++ parsing
-- C++ overload resolution
-- C++ template semantics
-- final proof validity
-- native code generation
-
-Those belong to:
+The conceptual model is:
 
 ```text
-Clang
-Clang
-Clang
-kernel
-Clang / LLVM
+Region
+    storage/lifetime/provenance/extent identity
+
+Place
+    a particular storage location within a Region
+
+Capability
+    permission/state fact required to access a Place
+
+PlaceVersion
+    the logical value currently associated with a Place at a program point
+
+Value
+    an immutable logical observation used in formal reasoning
 ```
 
-respectively.
+A Place is not a Value.
+
+Reading a Place yields a Value.
+
+Writing a Place establishes a new PlaceVersion.
+
+The Place itself never becomes an ordinary kernel term merely because runtime
+storage exists.
 
 ---
 
-# 19. Verification-condition generation
+# 19. Place structure
 
-The obligation generator transforms VIR and formal declarations into explicit proof obligations.
+A Place has a root and zero or more projections.
+
+Representative roots include:
+
+```text
+local storage
+reference-parameter referent
+object/temporary storage
+capture-owned storage
+pointee selected by a pointer value/version
+modeled external storage
+```
+
+Representative projections include:
+
+```text
+field/base subobject
+constant element
+symbolic element
+modeled tuple/product component
+```
+
+The exact C++L-owned data structure may evolve, but all access forms must lower to
+this common representation.
+
+Examples:
+
+```text
+s
+s.x
+s.x.y
+a[3]
+a[i]
+(*p).field
+```
+
+are Places or projections of Places, not independent semantic categories.
+
+**[ARCH-PLACE-001]** Member-of-member, element-of-member and member-of-element
+access MUST compose structurally rather than requiring dedicated rules.
+
+---
+
+# 20. Dereference architecture
+
+Dereference is the boundary from a pointer Value to a pointee Place.
 
 Conceptually:
 
-```mermaid
-flowchart LR
-    VIR["Verification IR"]
-    LAW["Laws / Contracts"]
-    VC["VC Generator"]
-    O1["Obligation A"]
-    O2["Obligation B"]
-    O3["Obligation C"]
-
-    VIR --> VC
-    LAW --> VC
-    VC --> O1
-    VC --> O2
-    VC --> O3
+```text
+pointer Value
++
+current pointer version
++
+region/capability evidence
+    ↓
+Deref Place
 ```
 
-Possible techniques include:
+A dereference place must be tied to the pointer value/version that selects it.
+Changing the pointer creates a different selection.
 
-- weakest preconditions
-- symbolic execution
-- path-condition generation
-- refinement obligations
-- lifetime obligations
-- arithmetic obligations
+All syntactic forms that imply dereference must route through the same resolver:
 
-The generated obligations must retain provenance back to their source.
+```text
+*p
+p->m
+p[i]
+```
+
+**[ARCH-DEREF-001]** Non-nullness MUST NOT bypass capability checks.
+
+**[ARCH-DEREF-002]** No access syntax may have a private dereference rule.
 
 ---
 
-# 20. Obligation model
+# 21. Symbolic elements and extent
 
-Every proof obligation should have stable metadata.
+Array and indexed storage must support both constant and symbolic element
+projections.
+
+Conceptually:
+
+```text
+Element(ConstantIndex)
+Element(SymbolicIndexTerm)
+```
+
+A Region or modeled aggregate provides the extent term against which bounds are
+proved.
+
+For symbolic `i` and `j`, the architecture must not assume distinctness merely
+because the expressions differ textually.
+
+```text
+i != j
+```
+
+must be established when disjointness depends on it.
+
+**[ARCH-ELEM-001]** Symbolic element identity MUST preserve the index term and its
+semantic dependencies.
+
+**[ARCH-ELEM-002]** Fully unrolling arrays into one component per element is not
+a sufficient general representation for symbolic indexing.
+
+---
+
+# 22. Central read and write operations
+
+All modeled storage reads route through one semantic read path.
+
+All modeled storage writes route through one semantic write path.
+
+A read performs, as applicable:
+
+1. resolve access to a Place;
+2. establish required capability/lifetime/initialization facts;
+3. obtain the current PlaceVersion;
+4. return the logical Value represented by that version;
+5. expose refinement facts valid for that current version.
+
+A write performs, as applicable:
+
+1. resolve target Place;
+2. establish writable/lifetime capability;
+3. elaborate the runtime value being stored;
+4. establish target semantic validity/refinement crossing;
+5. create a new PlaceVersion;
+6. invalidate/havoc every potentially aliased observation;
+7. update containing aggregate validity facts that depend on the written
+   subobject.
+
+**[ARCH-RW-001]** Declaration initialization, assignment, compound assignment,
+member writes, element writes, reference writes, pointer writes and call
+post-state writes MUST converge on the same semantic write machinery.
+
+---
+
+# 23. Alias analysis
+
+Alias analysis is deliberately conservative.
+
+The system may prove disjointness from semantic structure that the C++ authority
+has resolved, for example:
+
+- distinct independent locals;
+- distinct non-overlapping ordinary members when C++ object semantics justify it;
+- indices proven unequal within one indexed region;
+- distinct storage regions established by allocation/ownership semantics.
+
+It must not infer disjointness merely from source spelling or from a type-based
+shortcut whose validity presupposes the absence of undefined behavior being
+proved.
+
+Where disjointness is not established, mutation must conservatively invalidate
+possibly affected facts.
+
+**[ARCH-ALIAS-001]** Havoc MUST lose information; it must never strengthen the
+proof context.
+
+**[ARCH-ALIAS-002]** A possible alias write MUST NOT preserve a refinement or
+capability fact that depends on the previous value/state of the aliased Place.
+
+---
+
+# 24. Region and lifetime model
+
+A Region represents the storage/lifetime context shared by related Places.
+
+Depending on the storage kind, a Region may carry:
+
+- liveness state;
+- object lifetime identity;
+- extent;
+- allocation provenance;
+- ownership/borrowing metadata where modeled;
+- dynamic object identity where required;
+- relation to parent storage.
+
+Lifetime transitions are explicit semantic events.
+
+Examples include:
+
+- construction begins/ends;
+- object becomes initialized;
+- destruction;
+- deallocation;
+- move-related state transitions where relevant;
+- placement/reuse of storage where modeled.
+
+**[ARCH-REGION-001]** A Place may not retain access capabilities after the
+Region/lifetime event that invalidates them.
+
+---
+
+# 25. Capability channel
+
+Memory access capabilities are tracked separately from ordinary logical
+propositions when they represent stateful storage facts rather than value
+propositions.
+
+Representative capabilities include:
+
+```text
+readable
+writable
+initialized
+live
+```
+
+with extent/provenance information attached through the Region model as required.
+
+The architecture therefore has two proof-relevant channels:
+
+```text
+logical proposition context
+    values, equality, arithmetic, quantified propositions, refinements, Laws
+
+storage capability context
+    liveness/readability/writability/initialization/provenance facts
+```
+
+Both are correspondence-sensitive, but they need not be encoded in the same
+kernel language.
+
+**[ARCH-CAP-001]** A missing capability MUST create a failed/unsatisfied access
+obligation; it MUST NOT be inserted as a hypothesis merely because an operation
+needs it.
+
+**[ARCH-CAP-002]** Capability derivation MUST record provenance.
+
+**[ARCH-CAP-003]** Capability invalidation MUST participate in aliasing, calls,
+lifetime changes and exceptional flow.
+
+---
+
+# 26. Trusted capability admission
+
+The language has one explicit trusted source surface: `trusted law` as defined by
+`SPEC.md`.
+
+Architecture must not invent a parallel source syntax such as:
+
+```text
+trusted capability
+trusted pointer
+trusted block
+```
+
+When a trusted Law admits a storage-capability statement recognized by the
+language, elaboration routes that explicit assumption into the capability channel
+rather than converting it into an unrelated ordinary kernel proposition.
+
+The trust identity and source provenance remain attached to every derived use.
+
+**[ARCH-CAP-TRUST-001]** No capability may appear without either modeled semantic
+derivation or an explicit trusted assumption path permitted by `SPEC.md`.
+
+---
+
+# 27. Bounds are proved, not hidden inside capabilities
+
+Storage accessibility and arithmetic bounds are related but distinct.
+
+For a subscript:
+
+```text
+storage capability
++
+0 <= index < extent
+```
+
+may both be required.
+
+The bounds relation is an ordinary formal proposition when its values are
+representable in the formal model.
+
+It should be discharged through normal proof/automation rather than encoded as an
+opaque Boolean capability.
+
+This separation keeps arithmetic reasoning visible and reusable.
+
+---
+
+# 28. Refinement architecture
+
+Refinement types are implemented on top of the general value/storage model.
+
+There must not be a second refinement-specific state system.
+
+Architecturally, a refinement provides:
+
+- verification-level type identity;
+- a semantic validity predicate;
+- crossing obligations;
+- erasure to the base runtime representation.
+
+It does not provide:
+
+- a runtime wrapper;
+- hidden validator;
+- hidden constructor;
+- runtime tag;
+- separate ABI.
+
+---
+
+# 29. Recursive semantic validity
+
+The common elaboration notion `Valid(T, v)` is recursive through refinement-bearing
+subobjects as defined by `SPEC.md`.
+
+The architecture should implement semantic validity in one reusable operation used
+for:
+
+- local introduction;
+- argument crossing;
+- parameter entry premises;
+- return crossing;
+- member construction;
+- member writes;
+- element construction/writes;
+- dereference writes;
+- copy/move construction;
+- copy/move assignment;
+- aggregate construction;
+- verified call post-state.
+
+**[ARCH-REFINE-001]** A refined member MUST NOT require a separate member-only
+validity system.
+
+**[ARCH-REFINE-002]** Validity facts attach to logical values/current versions,
+not permanently to storage names.
+
+---
+
+# 30. Refinement crossings and C++ conversions
+
+The compiler must distinguish:
+
+```text
+C++ runtime conversion
+```
+
+from:
+
+```text
+verification-level refinement crossing
+```
+
+Clang resolves the C++ conversion.
+
+The refinement layer determines whether the resulting value may inhabit the
+requested semantic refinement.
+
+A cast does not manufacture proof.
+
+A conversion whose C++ runtime behavior is known but whose refinement obligation
+cannot be established may be valid ordinary C++ while remaining invalid as a
+verified refinement crossing.
+
+**[ARCH-REFINE-003]** Every crossing form MUST use the same validity obligation
+construction.
+
+---
+
+# 31. Indexed refinements
+
+Parameterized refinements reuse the normal formal type system plus C++-style type
+application.
+
+Their semantic identity includes:
+
+- refinement declaration identity;
+- elaborated index arguments;
+- dependent substitutions.
+
+Applications with distinct indices are distinct verification types even when they
+erase to the same C++ base type.
+
+The architecture must support indexed refinements in:
+
+- locals;
+- members;
+- parameters;
+- returns;
+- templates;
+- dependent contexts;
+- storage targets;
+- cross-TU metadata.
+
+Erasure identity and verification identity are deliberately separate.
+
+---
+
+# 32. `old` and snapshots
+
+`old(expr)` is implemented using explicit entry-state/snapshot semantics, not by
+performing a runtime copy unless `SPEC.md` says runtime behavior exists.
+
+For storage-based expressions, `old` must bind to the relevant entry
+PlaceVersions or entry observations before mutation occurs.
+
+**[ARCH-OLD-001]** `old` MUST NOT read the current PlaceVersion and merely label
+it historical.
+
+**[ARCH-OLD-002]** Snapshot dependencies MUST participate in obligation identity
+and invalidation.
+
+---
+
+# 33. Ghost-state architecture
+
+Ghost values live in a proof-only state channel.
+
+They may support proof bookkeeping and formal snapshots but must not become
+runtime Places that influence executable behavior.
+
+The ghost subsystem reuses formal values/types where possible while enforcing:
+
+- no runtime escape;
+- no runtime branch dependency;
+- no observable construction/destruction side effects;
+- deterministic erasure.
+
+Ghost access must not bypass normal proof typing or trust rules.
+
+---
+
+# 34. Call architecture
+
+A call has separate concerns:
+
+```text
+C++ call semantics
+formal precondition
+formal postcondition
+storage/capability effects
+exceptional effects
+trust dependencies
+```
+
+Clang owns which callable is invoked and how arguments are converted/passed.
+
+C++L owns the formal summary and proof obligations.
+
+At a verified call site:
+
+1. caller establishes the callee's entry requirements;
+2. argument/refinement/capability crossings are checked;
+3. runtime call remains unchanged;
+4. post-state facts are introduced only from an accepted callee summary;
+5. affected PlaceVersions/effects are updated;
+6. facts not preserved by the summary are invalidated.
+
+**[ARCH-CALL-001]** A callee body MUST NOT be inspected opportunistically to
+strengthen a public summary in a way callers could not rely on cross-TU.
+
+---
+
+# 35. Effect summaries
+
+Effect information is part of verification metadata.
+
+A summary may describe, as required:
+
+- places/regions read;
+- places/regions possibly written;
+- lifetime effects;
+- capability effects;
+- result/post-state relationships;
+- exceptional effects;
+- purity;
+- totality/partial correctness status.
+
+The source syntax for effects is defined only if `SPEC.md` defines one; the
+architecture does not invent a `modifies` clause on its own.
+
+Effects may be derived from verified bodies and exported as checked metadata.
+
+**[ARCH-EFFECT-001]** An unverified or insufficiently modeled call MUST
+conservatively havoc all mutable storage it may reach.
+
+This may include:
+
+- reference arguments;
+- pointer-reachable storage;
+- aliases reachable through by-value pointer-containing objects;
+- globals/statics;
+- callbacks;
+- virtual targets;
+- other modeled external effects.
+
+---
+
+# 36. Purity architecture
+
+`pure` is implemented as a checked effect property, not as a spelling that
+suppresses effect analysis.
+
+Purity analysis must account for:
+
+- direct writes;
+- writes through aliases;
+- calls;
+- volatile/atomic operations;
+- I/O or modeled external effects;
+- global state;
+- allocation/deallocation where relevant;
+- exceptional/lifetime effects defined by `SPEC.md`.
+
+**[ARCH-PURE-001]** A function may be used as pure only when the semantic model
+establishes the required purity, not because the declaration merely carries the
+word `pure` without verification.
+
+---
+
+# 37. Control-flow architecture
+
+VIR represents control flow explicitly enough to construct all required
+obligations.
+
+This includes:
+
+- sequential statements;
+- conditionals;
+- short-circuit evaluation;
+- returns;
+- loops;
+- `break` and `continue`;
+- calls in conditions;
+- exceptional edges where modeled;
+- object lifetime transitions.
+
+Path conditions must correspond to actual C++ evaluation order.
+
+A fact from one branch must not leak into a sibling branch unless a merge rule
+justifies it.
+
+**[ARCH-CFG-001]** Unsupported control flow MUST be rejected for the stronger
+verification claim; it must never be silently dropped from VIR.
+
+---
+
+# 38. Path-sensitive state and merges
+
+Every path carries its own storage versions and formal context.
+
+At control-flow joins, the architecture may use:
+
+- explicit conditional/select values;
+- phi-like logical versions;
+- quantified fresh versions plus path constraints;
+- another equivalent sound representation.
+
+The specific encoding is internal.
+
+The requirement is that no join may preserve a fact that holds only on one
+incoming path unless the merged representation carries the necessary condition.
+
+---
+
+# 39. Loops and invariants
+
+Loops are represented with explicit:
+
+- entry state;
+- loop-head state;
+- invariant context;
+- condition;
+- carried Places/values;
+- body effects;
+- iteration/preservation obligations;
+- exits.
+
+Invariant obligations include, as applicable:
+
+```text
+entry establishes invariant
+iteration preserves invariant
+continue preserves invariant before next iteration
+exit conditions justify post-loop facts
+call preconditions hold on every path where calls execute
+```
+
+The obligation builder, not a source transformation, owns these proof conditions.
+
+---
+
+# 40. Termination architecture
+
+Termination is modeled separately from partial-correctness invariants.
+
+When `decreases` or another normative totality requirement applies, the compiler
+constructs well-founded decrease obligations according to `SPEC.md` and
+`FOUNDATIONS.md`.
+
+Proof-producing computation must always be total according to the formal core's
+admission rules.
+
+Runtime functions may be verified for partial correctness when totality is not
+required by the language construct.
+
+**[ARCH-TERM-001]** Divergence MUST NOT become a way to manufacture proof
+because an unreachable postcondition is vacuously true in a context where the
+language requires total proof-producing computation.
+
+---
+
+# 41. Exception architecture
+
+Normal and exceptional exits are different semantic edges.
+
+Normal `ensures` facts attach only to normal return unless `SPEC.md` defines an
+exceptional guarantee.
+
+VIR/obligation generation must model, where a verified claim depends on it:
+
+- throwing expressions/calls;
+- state mutated before throw;
+- destructor execution during unwinding;
+- partially constructed objects;
+- `noexcept` behavior;
+- caught versus escaping exceptions.
+
+**[ARCH-EXCEPT-001]** An exception edge MUST NOT inherit normal-return
+postconditions.
+
+---
+
+# 42. Constructors, destructors and object validity
+
+Construction is not ordinary assignment to an already-valid object.
+
+The architecture must represent enough construction state to enforce:
+
+- refined-member initialization obligations;
+- base/member initialization order where relevant;
+- validity only after required subobjects are established;
+- failure/exception paths;
+- copy/move construction semantics;
+- destruction/lifetime invalidation.
+
+Object semantic validity composes from its required subobjects according to
+`SPEC.md`.
+
+**[ARCH-OBJ-001]** A record parameter entering a verified boundary may obtain the
+recursive semantic validity required by its type as an entry premise; local
+construction inside verified code must prove that validity rather than relying
+on declaration spelling alone.
+
+---
+
+# 43. Inheritance and virtual dispatch
+
+Class hierarchies require two separate models:
+
+- C++ dispatch/object semantics from Clang;
+- formal substitutability of contracts/effects.
+
+Override checking must ensure the relationship required by `SPEC.md`, including
+compatible preconditions, postconditions, effects, purity and totality where
+those properties participate in the interface.
+
+At a dynamic call, verification may use a base-interface summary only when every
+possible target satisfies the required substitutability relation.
+
+Otherwise effects/facts must be conservatively widened or the stronger claim
+rejected.
+
+---
+
+# 44. Templates and dependent C++ contexts
+
+Templates remain ordinary C++ templates.
+
+Verification operates on the semantic entity appropriate to the claim:
+
+- declaration-level theorem when the proof is valid generically;
+- instantiated semantic entity when proof depends on substituted types/values;
+- specialization-specific summary where applicable.
+
+Projection/probe generation must preserve template headers, constraints and
+scope.
+
+Artifact identity must distinguish semantically different instantiations.
+
+**[ARCH-TEMPLATE-001]** The compiler MUST NOT prove template text once and assume
+all instantiations inherit facts that depend on substitution unless a formal rule
+justifies that generalization.
+
+---
+
+# 45. Lambdas and captures
+
+Lambdas are ordinary C++ objects with closure state resolved by Clang.
+
+Verification maps captures into the common storage model:
+
+```text
+by-value capture
+    closure-owned subobject/place initialized from captured value
+
+by-reference capture
+    alias to external storage
+
+init-capture
+    ordinary initialization of closure-owned storage according to C++ semantics
+```
+
+Mutable lambdas may write closure-owned Places.
+
+By-reference captures participate in normal alias/effect invalidation.
+
+**[ARCH-LAMBDA-001]** Lambdas MUST NOT have a separate refinement or alias model.
+
+---
+
+# 46. Concurrency architecture
+
+Sequential PlaceVersion reasoning is not sufficient to prove concurrent safety.
+
+When a claimed property depends on concurrency, the architecture must represent
+or import the relevant C++ concurrency semantics, including as required:
+
+- threads;
+- atomics;
+- memory order;
+- synchronization/happens-before;
+- locks;
+- data-race definedness;
+- interference.
+
+Until the necessary semantics are available for a claim, the verifier must fail
+closed for that claim rather than treating concurrent code as sequential.
+
+Concurrency semantics should be isolated from the sequential storage engine but
+compose with Place/Region identity rather than introduce another object model.
+
+---
+
+# 47. Structural proof and decomposition providers
+
+Proof-side `cases` and `decompose` are implemented through a generic
+decomposition architecture.
+
+```text
+Clang-resolved semantic type
+    ↓
+representation provider
+    ↓
+SumDecomposition | ProductDecomposition | Unsupported
+    ↓
+generic proof decomposition engine
+    ↓
+ordinary formal obligations/evidence
+```
+
+A provider describes the proof-visible state space of a C++ representation.
+
+Representative providers include semantic models for:
+
+- scoped enums;
+- `std::variant`;
+- `std::optional`;
+- `std::expected`;
+- pointers;
+- records;
+- pairs/tuples;
+- arrays.
+
+**[ARCH-DECOMP-001]** Providers are correspondence-sensitive components. An
+incorrect provider can make the compiler reason about the wrong C++ state space
+and therefore belongs to the correspondence TCB described by `TRUST.md`.
+
+**[ARCH-DECOMP-002]** A provider MUST NOT invent runtime constructors, runtime
+pattern matching or runtime state that the C++ representation does not have.
+
+**[ARCH-DECOMP-003]** Adding support for a new representation should add a sound
+provider, not a new kernel inference rule, unless the formal calculus genuinely
+requires a new rule.
+
+---
+
+# 48. Decomposition state requirements
+
+A provider supplies, as applicable:
+
+- canonical representation identity;
+- complete state/alternative partition;
+- discriminator observations;
+- component/payload observations;
+- residual states;
+- binder types;
+- accessibility constraints;
+- feature availability constraints.
+
+Examples of residual states include:
+
+```text
+enum underlying value with no enumerator
+std::variant valueless state
+pointer non-null residual after null split
+```
+
+Exhaustiveness is checked against the provider's complete semantic partition.
+
+Provider selection uses canonical semantic identity, not type spelling.
+
+---
+
+# 49. Abstract observations
+
+Some proof-visible properties of C++ objects are best represented as abstract
+observations rather than executable member calls or layout access.
+
+Examples include:
+
+- variant alternative tag;
+- optional engagement;
+- expected value/error state;
+- payload observation associated with a structural case.
+
+The formal core may provide generic nominal abstract sorts/observations sufficient
+to type these values.
+
+The provider owns the source/runtime correspondence; the kernel owns only the
+formal typing and proof rules over the abstract values.
+
+**[ARCH-OBS-001]** Abstract observations MUST NOT imply private implementation
+layout of a standard-library type.
+
+---
+
+# 50. Mathematical-domain architecture
+
+`@N`, `@Z`, `@Seq`, `@Set`, `@Map` and other normative mathematical domains are
+proof-only formal types.
+
+They live in the formal/elaboration layer, not as runtime C++ containers.
+
+Operations over mathematical domains are either:
+
+- primitive formal operations checked by the core;
+- definitions admitted under the formal calculus;
+- derived proof operations.
+
+They do not acquire storage, lifetime, ABI or allocator semantics.
+
+Bridges from runtime structures to mathematical abstractions require explicit
+formal correspondence defined by `SPEC.md`/library models.
+
+---
+
+# 51. Obligation architecture
+
+The obligation builder consumes typed VIR, contracts, Laws, formal declarations,
+storage/effect information and trust provenance.
+
+It produces explicit obligations with stable identity.
+
+Representative obligation classes include:
+
+- function contract proof;
+- call precondition;
+- refinement introduction/crossing;
+- recursive object validity;
+- loop invariant entry/preservation;
+- termination/decrease;
+- arithmetic/definedness;
+- bounds;
+- proof declaration goal;
+- structural proof arm;
+- capability/access requirement;
+- override substitutability;
+- cross-TU summary validation.
+
+Not every obligation is necessarily represented by the same checker language.
+
+---
+
+# 52. Logical obligations versus structural obligations
+
+The architecture distinguishes at least:
+
+```text
+logical obligations
+    propositions checked through the formal core/kernel
+
+storage/capability obligations
+    correspondence/state facts checked by dedicated flow/capability machinery
+
+artifact/correspondence obligations
+    identity/version/mapping conditions checked by infrastructure
+```
+
+These channels may interact but must not silently convert into one another.
+
+For example:
+
+```text
+readable(place)
+```
+
+may be a capability fact, while:
+
+```text
+index < extent
+```
+
+is a logical arithmetic proposition.
+
+**[ARCH-OBL-001]** The checker used for an obligation class MUST be explicit in
+structured obligation metadata.
+
+---
+
+# 53. Obligation identity and provenance
+
+Every obligation carries enough information to support:
+
+- deterministic checking;
+- diagnostics;
+- caching;
+- trust reporting;
+- cross-TU reuse;
+- LSP presentation;
+- audit.
 
 Conceptually:
 
 ```text
 ObligationId
-LawId
-source range
-formal goal
+OriginKind
+source provenance
+semantic owner identity
+formal goal / capability requirement
 local context
-dependencies
-trusted assumptions
-target semantics
-verification mode
+PlaceVersion dependencies
+callee/summary dependencies
+trusted assumption dependencies
+target/C++ mode dependencies
+checker kind
 ```
 
-This allows the same obligation to support:
-
-- proof checking
-- caching
-- diagnostics
-- LSP presentation
-- trust reporting
-- CI reporting
+**[ARCH-OBL-002]** An obligation ID MUST change when any semantic dependency that
+can change its validity changes.
 
 ---
 
-# 21. Automation layer
+# 54. Automation architecture
 
-Automation helps produce proofs.
+Automation consumes explicit obligations and proposes evidence or decisions.
 
-Components may include:
+Possible producers include:
 
-- simplification
-- rewriting
-- induction tactics
-- arithmetic tactics
-- SMT
-- SAT
-- proof search
-- decision procedures
-- counterexample generation
+- definitional simplification;
+- rewriting;
+- arithmetic procedures;
+- induction tactics;
+- SMT/SAT;
+- proof search;
+- counterexample search;
+- AI-assisted proof generation.
 
-The automation layer should be architecturally replaceable.
+Automation should be modular and replaceable.
 
 ```mermaid
-flowchart TD
-    O["Proof Obligation"]
+flowchart LR
+    O["Obligation"]
     R["Rewriter"]
+    A["Arithmetic"]
+    S["SMT/SAT"]
     T["Tactics"]
-    S["SMT / SAT"]
-    E["Evidence / Certificate"]
-    K["Kernel"]
+    E["Evidence / certificate"]
+    K["Checker"]
 
     O --> R
-    O --> T
+    O --> A
     O --> S
-
+    O --> T
     R --> E
-    T --> E
+    A --> E
     S --> E
-
+    T --> E
     E --> K
 ```
 
-Automation may be complex and parallel.
+**[ARCH-AUTO-001]** Search strategy may evolve independently of formal proof
+meaning.
 
-The kernel remains the authority.
+**[ARCH-AUTO-002]** Producer resource exhaustion yields unresolved evidence, not
+acceptance.
 
 ---
 
-# 22. Solver isolation
+# 55. Solver isolation
 
-External solver integrations should be isolated behind narrow interfaces.
+External solvers should be isolated behind narrow adapters.
 
-Preferred architecture:
+Preferred shape:
 
 ```text
-verification obligation
+formal obligation
     ↓
-solver adapter
+translation owned by solver adapter
     ↓
-external solver process
+solver process
     ↓
-result / certificate / model
+certificate / model / result
+    ↓
+independent validation where supported
 ```
 
-Running third-party solvers out of process is preferred where practical because it provides:
+Out-of-process execution is preferred where practical for:
 
-- crash isolation
-- resource control
-- timeout enforcement
-- version isolation
-- easier replacement
+- crash isolation;
+- resource limits;
+- timeout enforcement;
+- version isolation;
+- replacement.
 
-A solver timeout, crash, `unknown`, malformed result, or unsupported theory must fail closed.
+If a solver is trusted directly rather than certificate-checked, that is a
+`TRUST.md` concern and must be reflected in trust reporting.
 
 ---
 
-# 23. Trusted proof kernel
+# 56. Formal kernel and checker boundary
 
-The kernel checks proof evidence against the formal core.
-
-It should have minimal dependencies.
-
-Preferred dependency direction:
-
-```mermaid
-flowchart TD
-    FRONT["Frontend"]
-    ELAB["Elaborator"]
-    VIR["VIR"]
-    AUTO["Automation"]
-    CORE["Formal Core"]
-    KERNEL["Kernel"]
-
-    FRONT --> ELAB
-    ELAB --> VIR
-    ELAB --> CORE
-    AUTO --> CORE
-    KERNEL --> CORE
-
-    AUTO --> KERNEL
-```
-
-The kernel must not depend on:
-
-- editor tooling
-- LSP
-- frontend recovery
-- solver APIs
-- CMake
-- Clang AST implementation details
-- diagnostics formatting
-- AI tooling
-
----
-
-# 24. Kernel API
-
-The kernel API should remain intentionally small.
+The logical kernel/checker API should be narrow, deterministic and explicit.
 
 Conceptually:
 
 ```cpp
 CheckResult check(
-    const Context& context,
-    const Proposition& proposition,
-    const ProofTerm& proof
+    const FormalContext& context,
+    const Proposition& goal,
+    const ProofTerm& evidence
 );
 ```
 
 Actual APIs may differ.
 
-The architectural principle is:
+The kernel should not depend on:
 
-```text
-explicit input
-→ deterministic validation
-→ explicit result
-```
+- Clang AST APIs;
+- editor/LSP code;
+- solver APIs;
+- diagnostics rendering;
+- build systems;
+- source recovery;
+- AI services;
+- runtime code generation.
 
-Avoid globally mutable proof state.
+The kernel may depend only on components included in the logical TCB as declared
+by `TRUST.md`.
 
 ---
 
-# 25. Verification status propagation
+# 57. Kernel/core versioning
 
-Verification status is data.
+Formal-core and kernel semantics have independent version identity from the
+compiler release.
 
-It must not be reconstructed heuristically by UI or diagnostics.
+A version change is required when accepted proof meaning changes in a way that
+can invalidate previously checked artifacts.
 
-Statuses such as:
+Artifact compatibility must therefore record at least:
+
+- core/calculus version;
+- checker version or semantic compatibility identity;
+- primitive semantic-model version where relevant.
+
+Version numbers and current values belong in release/status metadata, not this
+target architecture.
+
+---
+
+# 58. Trusted-law architecture
+
+`trusted law` is an explicit source boundary, not a proof producer fallback.
+
+Elaboration records:
+
+- declaration identity;
+- source location;
+- admitted logical/capability content;
+- scope;
+- dependency identity.
+
+Trust propagation is computed transitively according to `TRUST.md`.
+
+A trusted Law may feed the appropriate formal channel based on the kind of
+statement it admits, but all such admission remains one explicit source-level
+trust mechanism.
+
+**[ARCH-TRUST-001]** No internal compiler stage may synthesize a trusted Law to
+recover from unsupported verification.
+
+---
+
+# 59. Verification result model
+
+Verification status is structured data shared across CLI, reports and editors.
+
+The canonical status model comes from `SPEC.md`/`TRUST.md` and includes the
+required distinctions such as:
 
 ```text
 PROVEN
@@ -1012,2561 +1972,1255 @@ UNVERIFIED
 UNRESOLVED
 ```
 
-should flow through a single typed model.
+A result also carries:
 
-```mermaid
-flowchart LR
-    VERIFY["Verifier"]
-    STATUS["Verification Status"]
-    POLICY["Build Policy"]
-    DIAG["Diagnostics"]
-    LSP["LSP"]
-    REPORT["Trust Report"]
+- obligation identities;
+- trusted-assumption closure;
+- runtime-check dependencies where modeled;
+- unsafe dependencies;
+- unresolved reasons;
+- checker/tool provenance.
 
-    VERIFY --> STATUS
-    STATUS --> POLICY
-    STATUS --> DIAG
-    STATUS --> LSP
-    STATUS --> REPORT
-```
+**[ARCH-STATUS-001]** UI code MUST NOT reconstruct assurance status heuristically
+from diagnostic text.
 
 ---
 
-# 26. Proof erasure and runtime lowering
+# 60. Runtime validation architecture
 
-Proof-only structures must be absent from native execution unless explicitly represented as runtime data by language semantics.
+C++L does not require a special validation runtime or a built-in `validate<T>()`
+API.
 
-Erasure owns removal of:
+Runtime validation is ordinary runtime C++ control flow.
 
-- proof terms
-- ghost declarations
-- compile-time-only evidence
-- theorem-only indices
-- proof-search artifacts
-
-Runtime lowering owns C++L constructs that have executable meaning.
-
-These concerns may share infrastructure but must remain conceptually distinguishable:
+Example architecture:
 
 ```text
-erasure
-    removes non-runtime semantics
-
-runtime lowering
-    translates C++L runtime semantics into C++
-```
-
----
-
-# 27. Erasure equivalence target
-
-The architecture must make it possible to establish:
-
-```text
-observable_runtime_behavior(C++L)
-=
-observable_runtime_behavior(runtime_projection)
-```
-
-for the semantics claimed by C++L.
-
-No later stage may silently modify proof-relevant runtime meaning.
-
----
-
-# 28. Native code generation
-
-C++L does not implement its own optimizing native backend.
-
-Native code generation is delegated to Clang/LLVM.
-
-Responsibilities retained by existing toolchain:
-
-- LLVM IR generation
-- optimization
-- instruction selection
-- object generation
-- debug information
-- native ABI
-- linking
-- LTO where supported
-
-This reduces C++L's implementation and trust surface.
-
----
-
-# 29. Ordinary C++ fast path
-
-Ordinary C++ without C++L constructs should have a low-overhead path.
-
-Conceptually:
-
-```mermaid
-flowchart TD
-    SRC["Source"]
-    SCAN{"Contains C++L constructs?"}
-    CLANG["Clang Pipeline"]
-    CPPL["C++L Verification Pipeline"]
-
-    SRC --> SCAN
-    SCAN -->|no| CLANG
-    SCAN -->|yes| CPPL
-    CPPL --> CLANG
-```
-
-The exact implementation may still require lightweight source inspection.
-
-It must not perform expensive proof work when no proof work exists.
-
----
-
-# 30. Incremental verification architecture
-
-C++L must not re-verify the entire project after every edit.
-
-The architecture should maintain a semantic dependency graph.
-
-```mermaid
-flowchart TD
-    EDIT["Changed source"]
-    HASH["Semantic hash"]
-    GRAPH["Dependency graph"]
-    INVALID["Invalidated nodes"]
-    VERIFY["Reverify affected obligations"]
-    CACHE["Reuse unaffected proofs"]
-
-    EDIT --> HASH
-    HASH --> GRAPH
-    GRAPH --> INVALID
-    INVALID --> VERIFY
-    GRAPH --> CACHE
-```
-
-Target cost:
-
-```text
-changed semantic region
-+
-invalidated dependency closure
-+
-affected proof obligations
-```
-
-rather than:
-
-```text
-entire project × all Laws
-```
-
----
-
-# 31. Dependency graph
-
-The dependency graph should model relationships such as:
-
-```text
-function → type
-function → function
-Law → type
-Law → function
-proof → Law
-proof → theorem
-obligation → implementation
-obligation → assumption
-artifact → compiler semantics
-```
-
-Dependency edges must be semantic.
-
-Formatting-only edits should not invalidate unrelated proofs.
-
----
-
-# 32. Semantic hashing
-
-Proof cache keys should derive from semantically relevant content.
-
-Possible inputs include:
-
-- canonical Law representation
-- canonical implementation representation
-- imported formal definitions
-- imported proof identities
-- VIR
-- trusted assumptions
-- kernel version
-- formal-core version
-- target triple
-- machine model
-- relevant compiler flags
-- C++ standard mode
-- solver trust mode
-
-Do not use:
-
-```text
-file modification time
-memory address
-random process identity
-```
-
-as proof validity.
-
----
-
-# 33. Proof artifacts
-
-Proof artifacts should be:
-
-- immutable
-- versioned
-- content-addressed where practical
-- self-describing enough for validation
-- deterministic
-- safe to reject when incompatible
-
-Conceptual metadata:
-
-```text
-artifact version
-C++L version
-formal-core version
-kernel version
-target model
-Law identity
-proof identity
-dependency hashes
-trusted-assumption closure
-```
-
----
-
-# 34. Local artifact storage
-
-A project-local cache may use a structure such as:
-
-```text
-.cppl/
-├── cache/
-├── proofs/
-├── vir/
-├── reports/
-└── index/
-```
-
-The exact layout is non-normative.
-
-Generated artifacts must not become source-of-truth replacements for checked source.
-
----
-
-# 35. Remote cache architecture
-
-Enterprise builds may eventually use a remote proof cache.
-
-```mermaid
-flowchart LR
-    LOCAL["Local Build"]
-    KEY["Semantic Content Key"]
-    REMOTE["Remote Proof Cache"]
-    CHECK["Local Validation"]
-    KERNEL["Kernel"]
-
-    LOCAL --> KEY
-    KEY --> REMOTE
-    REMOTE --> CHECK
-    CHECK --> KERNEL
-```
-
-Remote cache contents must be treated as untrusted input.
-
-A remote artifact cannot bypass compatibility checks or kernel validation merely because it originated from trusted infrastructure.
-
----
-
-# 36. Parallel verification
-
-Independent proof obligations may be processed concurrently.
-
-Recommended parallelism:
-
-```text
-translation-unit level
-obligation level
-solver-worker level
-```
-
-The architecture must preserve deterministic final results.
-
-```mermaid
-flowchart TD
-    O["Obligation Set"]
-    Q["Deterministic Work Queue"]
-    W1["Worker 1"]
-    W2["Worker 2"]
-    W3["Worker 3"]
-    K["Kernel Validation"]
-    R["Stable Result Set"]
-
-    O --> Q
-    Q --> W1
-    Q --> W2
-    Q --> W3
-
-    W1 --> K
-    W2 --> K
-    W3 --> K
-
-    K --> R
-```
-
-Scheduling order must not alter theorem validity.
-
----
-
-# 37. Resource governance
-
-Compiler and solver execution should support explicit resource limits.
-
-Examples:
-
-```text
-solver timeout
-memory limit
-maximum proof-search depth
-maximum generated obligation size
-maximum parallel workers
-```
-
-Resource exhaustion should produce:
-
-```text
-UNRESOLVED
-resource-limit diagnostic
-```
-
-rather than unsound acceptance.
-
----
-
-# 38. Failure model
-
-Every compiler stage must fail explicitly.
-
-Broad failure classes should include:
-
-```text
-syntax error
-C++ semantic error
-C++L elaboration error
-unsupported semantics
-proof failure
-solver timeout
-solver unknown
-kernel rejection
-artifact corruption
-internal compiler error
-backend failure
-```
-
-Do not collapse all of these into:
-
-```text
-verification failed
-```
-
----
-
-# 39. Fail-closed behavior
-
-Critical verification infrastructure follows:
-
-```text
-unknown
-corrupt
-unsupported
-ambiguous
-timeout
-internal inconsistency
+external runtime value
     ↓
-not PROVEN
-```
-
-A compiler crash or infrastructure failure can never promote a proposition.
-
----
-
-# 40. Diagnostics architecture
-
-Diagnostics should be generated from structured data.
-
-```mermaid
-flowchart TD
-    CLANG["Clang Diagnostics"]
-    ELAB["Elaboration Diagnostics"]
-    VIR["VIR / Obligation Diagnostics"]
-    SOLVER["Solver Results"]
-    KERNEL["Kernel Results"]
-
-    MODEL["Unified Diagnostic Model"]
-
-    CLI["CLI Renderer"]
-    LSP["LSP Renderer"]
-    JSON["JSON"]
-    SARIF["SARIF / CI"]
-
-    CLANG --> MODEL
-    ELAB --> MODEL
-    VIR --> MODEL
-    SOLVER --> MODEL
-    KERNEL --> MODEL
-
-    MODEL --> CLI
-    MODEL --> LSP
-    MODEL --> JSON
-    MODEL --> SARIF
-```
-
-Human wording is presentation.
-
-Diagnostic category and semantic status are structured data.
-
----
-
-# 41. Diagnostic provenance
-
-A proof diagnostic should be able to trace:
-
-```text
-source expression
+ordinary C++ check
     ↓
-C++ declaration
+control-flow fact on success path
     ↓
-VIR statement
-    ↓
-proof obligation
-    ↓
-failed proof step
+refinement/contract reasoning
 ```
 
-This trace should not be reconstructed from textual guesses.
+The verifier observes and proves the path condition using the normal CFG and
+refinement machinery.
 
-Provenance must be carried through the pipeline.
+**[ARCH-RUNTIME-CHECK-001]** Runtime validation MUST remain in the runtime
+projection; erasure must not remove it merely because a later proof uses the
+resulting fact.
 
 ---
 
-# 42. Counterexamples
+# 61. Native code generation
 
-Counterexample generation belongs to automation/diagnostics.
+C++L does not provide a competing optimizing native backend.
 
-It does not belong to the proof kernel.
+The accepted runtime projection is compiled by the selected Clang/LLVM toolchain.
 
-A counterexample may demonstrate that a proposition is false.
+Clang/LLVM retain responsibility for:
 
-Failure to find one does not establish proof.
+- LLVM IR generation;
+- optimization;
+- code generation;
+- debug information;
+- object files;
+- native ABI;
+- linking/LTO where supported.
 
-The diagnostic system must preserve this distinction.
-
----
-
-# 43. Library architecture
-
-The compiler should be internally library-oriented.
-
-Conceptually:
-
-```text
-libcppl-source
-libcppl-frontend
-libcppl-clang
-libcppl-vir
-libcppl-verifier
-libcppl-kernel
-libcppl-diagnostics
-libcppl-artifacts
-```
-
-Actual build targets may use different names.
-
-The purpose is to prevent the CLI from becoming the implementation itself.
+The C++L compiler gates whether code generation is permitted; it does not replace
+native compilation semantics.
 
 ---
 
-# 44. Dependency direction
+# 62. Erasure validation and runtime correspondence
 
-Dependencies should flow downward toward smaller semantic authorities.
+Before native code generation, the toolchain validates that the runtime program
+is the canonical projection of the source whose formal constructs were checked.
 
-```mermaid
-flowchart TD
-    EDITORS["Editors"]
-    LSP["cppl-lsp"]
-    CLI["cppl CLI"]
-    COMP["Compiler Orchestration"]
-    FRONT["Frontend / Clang Bridge"]
-    VIR["VIR / Verification"]
-    DECOMP["Decomposition Providers"]
-    AUTO["Automation"]
-    KERNEL["Kernel"]
-    CORE["Formal Core"]
+Validation covers, as applicable:
 
-    EDITORS --> LSP
-    LSP --> COMP
-    CLI --> COMP
+- every recognized formal span;
+- allowed blanking/removal;
+- canonical lowering of runtime-bearing C++L declarations;
+- source/projection identity;
+- preprocessor/configuration identity;
+- absence of analysis-only probes;
+- line/source mappings required for diagnostics.
 
-    COMP --> FRONT
-    COMP --> VIR
-
-    FRONT --> VIR
-    VIR --> DECOMP
-    VIR --> AUTO
-    DECOMP --> AUTO
-    AUTO --> KERNEL
-    KERNEL --> CORE
-```
-
-Decomposition providers sit on top of the VIR and below proof obligations. They
-state what a C++ representation's proof-visible states are and know nothing
-about obligations, evidence or the kernel.
-
-Forbidden reverse dependencies include:
-
-```text
-kernel → solver
-kernel → LSP
-kernel → VS Code
-VIR → editor plugin
-formal core → Clang UI
-```
+**[ARCH-ERASE-004]** Erasure validation failure is an internal/correspondence
+failure, never a successful verification result.
 
 ---
 
-# 45. Repository architecture
+# 63. Cross-translation-unit metadata
 
-Target repository layout:
+Verification must compose across translation units without requiring downstream
+users to re-analyze every implementation body.
 
-```text
-cppl/
-├── compiler/
-│   ├── driver/
-│   ├── frontend/
-│   ├── decomposition/
-│   ├── elaboration/
-│   ├── obligations/
-│   ├── automation/
-│   ├── erasure/
-│   ├── diagnostics/
-│   └── artifacts/
-│
-├── kernel/
-│   ├── core/
-│   └── checker/
-│
-├── vir/
-│
-├── clang/
-│
-├── lsp/
-│   └── cppl-lsp/
-│
-├── editors/
-│   ├── vscode/
-│   ├── visual-studio/
-│   ├── neovim/
-│   └── jetbrains/
-│
-├── stdlib/
-│
-├── tests/
-│   ├── unit/
-│   ├── kernel/
-│   ├── soundness/
-│   ├── negative/
-│   ├── conformance/
-│   ├── integration/
-│   ├── e2e/
-│   ├── fuzz/
-│   └── performance/
-│
-├── docs/
-│   └── rfcs/
-│
-├── scripts/
-│
-├── .agents/
-│   └── skills/
-│
-├── AGENTS.md
-├── ARCHITECTURE.md
-├── COMPATIBILITY.md
-├── DESIGN.md
-├── FOUNDATIONS.md
-├── GUIDE.md
-├── ROADMAP.md
-├── SECURITY.md
-├── SPEC.md
-├── STATUS.md
-└── TRUST.md
-```
+A verified declaration may export a proof-facing summary containing, as needed:
 
-Directories should be introduced when their implementation exists rather than maintained as ceremonial empty structure.
+- declaration semantic identity;
+- public contract;
+- refinement semantic identity;
+- formal type/index information;
+- effect summary;
+- purity/totality information;
+- trusted-assumption closure;
+- accepted evidence identity;
+- target/C++ mode compatibility identity;
+- model versions required to consume the summary.
+
+This metadata is separate from the native ABI.
+
+**[ARCH-XTU-001]** A caller must not gain stronger facts merely because the
+callee definition happens to be visible in one build configuration and hidden in
+another.
 
 ---
 
-# 46. LSP architecture
+# 64. Summary authenticity and compatibility
 
-Editor intelligence belongs in `cppl-lsp`.
+Imported verification summaries are untrusted artifacts until their authenticity,
+semantic identity and compatibility have been checked.
 
-The compiler must not depend on the LSP.
+A consumer validates:
 
-```mermaid
-flowchart TD
-    VSC["VS Code"]
-    VS["Visual Studio"]
-    NV["Neovim"]
-    JB["JetBrains"]
+- artifact format;
+- declaration identity;
+- semantic hash;
+- core/kernel compatibility;
+- target/C++ mode compatibility;
+- dependency identities;
+- trust closure;
+- evidence/certificate validity as required by `TRUST.md`.
 
-    LSP["cppl-lsp"]
-
-    SERVICE["Compiler Services"]
-    CLANGD["Clang / clangd capabilities"]
-    VERIFY["C++L Verification Services"]
-
-    VSC --> LSP
-    VS --> LSP
-    NV --> LSP
-    JB --> LSP
-
-    LSP --> SERVICE
-    SERVICE --> CLANGD
-    SERVICE --> VERIFY
-```
-
-Editor plugins should remain thin adapters wherever possible.
+**[ARCH-XTU-002]** Missing or incompatible metadata fails closed for the stronger
+verification claim; it must not be replaced with guessed contracts.
 
 ---
 
-# 47. clangd integration
+# 65. Headers and modules
 
-C++L should avoid rebuilding mature C++ editor intelligence.
+Headers and C++ module interfaces are first-class formal interface locations.
 
-Where practical, ordinary C++ functionality should reuse or compose with clangd capabilities such as:
+Formal declarations must participate in the same semantic identity and summary
+system regardless of physical file organization.
 
-- completion
-- references
-- rename
-- navigation
-- ordinary C++ diagnostics
-- semantic tokens
+Header/module reuse must distinguish contexts that change semantics, including:
 
-C++L-specific capabilities can add:
+- preprocessor definitions;
+- language mode;
+- target;
+- template arguments;
+- imported module versions;
+- relevant compiler flags.
 
-- Law navigation
-- proof navigation
-- verification status
-- proof obligations
-- counterexamples
-- trust dependencies
-- proof dependency graphs
-- C++L semantic highlighting
-
----
-
-# 48. LSP compiler-service boundary
-
-`cppl-lsp` should consume stable compiler-service APIs rather than invoke internal implementation classes directly.
-
-Conceptually:
-
-```cpp
-class VerificationService {
-public:
-    VerificationResult verify(FileId);
-    std::vector<Obligation> obligations(SymbolId);
-    TrustInfo trust(SymbolId);
-};
-```
-
-Actual APIs may differ.
-
-The important rule is:
-
-> Editor tooling must consume semantic services, not duplicate compiler logic.
-
----
-
-# 49. No editor-specific semantics
-
-The following must produce the same formal result:
-
-```text
-CLI compilation
-VS Code verification
-Neovim verification
-JetBrains verification
-CI verification
-```
-
-Editor plugins may alter presentation.
-
-They may not alter theorem meaning.
-
----
-
-# 50. Build-system integration
-
-C++L should integrate with existing build systems through compiler-driver compatibility.
-
-Primary target:
-
-```bash
-cmake -DCMAKE_CXX_COMPILER=cppl ..
-```
-
-C++L should preserve relevant compiler arguments for:
-
-- includes
-- defines
-- optimization
-- warnings
-- target architecture
-- language mode
-- sanitizers
-- debug information
-- linking
-- LTO where compatible
-
-The C++L compiler should not require adoption of a proprietary build system.
-
----
-
-# 51. Compilation database integration
-
-The toolchain should support:
-
-```text
-compile_commands.json
-```
-
+Formal module boundaries should align with ordinary C++ library/module boundaries
 where practical.
 
-This supports:
+---
 
-- LSP
-- standalone verification
-- repository analysis
-- editor tooling
-- CI tooling
+# 66. Standard-library model architecture
 
-One canonical compile configuration should feed both native build semantics and verification semantics.
+Formal models of standard-library abstractions are semantic adapters between
+public C++ behavior and formal reasoning.
+
+A model may provide:
+
+- contracts;
+- effect summaries;
+- structural decomposition;
+- abstract observations;
+- mathematical abstraction relations.
+
+Models are selected by canonical C++ semantic identity, never by type-name text.
+
+They must not depend on private layout unless compatibility explicitly binds the
+model to that implementation layout.
+
+**[ARCH-STDLIB-001]** A library model is not, by itself, proof that the runtime
+library implementation satisfies that model. That correspondence belongs to
+`TRUST.md`.
 
 ---
 
-# 52. Header architecture
+# 67. Foreign-code boundaries
 
-Headers are first-class compiler input.
+Foreign code is integrated through explicit semantic boundaries.
 
-C++L must support formal constructs associated with declarations in:
+The architecture records, as available:
+
+- native signature/ABI;
+- formal contract;
+- refinement/capability entry requirements;
+- effects;
+- lifetime/ownership expectations;
+- trust classification;
+- runtime validation performed by ordinary C++ wrappers.
+
+Foreign code cannot inject proof evidence through ABI values.
+
+Trusted claims about foreign behavior must use the language's explicit trust
+mechanism and remain visible in trust reports.
+
+---
+
+# 68. Artifact architecture
+
+Persistent artifacts are derived data, never a second source of language truth.
+
+Artifact classes may include:
+
+- semantic indexes;
+- C++L declaration metadata;
+- VIR summaries;
+- obligation records;
+- checked proof artifacts;
+- cross-TU summaries;
+- trust reports;
+- performance data;
+- caches.
+
+Artifacts should be:
+
+- immutable where practical;
+- versioned;
+- content-addressed where practical;
+- deterministic;
+- independently validateable;
+- safe to discard and recompute.
+
+---
+
+# 69. Semantic dependency graph
+
+Incremental verification is driven by semantic dependencies.
+
+Representative edges include:
 
 ```text
-.h
-.hpp
-.hh
+function -> declaration/type
+function -> callee summary
+Law -> formal definition
+proof -> Law/proof
+obligation -> VIR fragment
+obligation -> trusted assumption
+summary -> target/model version
+refinement -> predicate/index argument
+Place fact -> write/effect/lifetime event
 ```
 
-where defined by the language.
+Formatting-only changes should not invalidate unrelated proofs.
 
-Changes to authoritative declarations must propagate through dependency analysis.
+Semantic changes must invalidate the complete affected closure.
 
-Header verification cannot rely only on textual file identity because one header may be instantiated under different:
-
-- templates
-- defines
-- target settings
-- language modes
+**[ARCH-INCR-001]** A cache hit is valid only when every dependency relevant to
+proof meaning is unchanged or independently revalidated.
 
 ---
 
-# 53. Template architecture
+# 70. Semantic hashing
 
-Template verification must operate on resolved semantic instantiations where proof relevance depends on instantiated types or values.
+Cache/artifact keys derive from canonical semantic content.
 
-Do not prove:
+Depending on artifact kind, inputs may include:
 
-```text
-template text
-```
+- canonical declaration identity;
+- normalized formal content;
+- VIR semantics;
+- imported summary hashes;
+- trust closure;
+- target machine model;
+- selected C++ standard;
+- semantically relevant flags;
+- core/kernel/model versions.
 
-and assume that every instantiation inherits the same runtime facts unless the formal rule justifies it.
+They must not use as semantic validity inputs:
 
-Template caching must distinguish semantically distinct instantiations.
-
----
-
-# 54. Standard-library models
-
-Formal models of standard-library facilities live under:
-
-```text
-stdlib/
-```
-
-They represent proof-facing contracts.
-
-They must remain conceptually separate from:
-
-```text
-libc++
-libstdc++
-MSVC STL
-```
-
-implementations.
-
-A model does not automatically prove the external runtime implementation.
-
-Trust implications belong in `TRUST.md`.
+- modification timestamps;
+- process IDs;
+- raw pointers;
+- nondeterministic iteration order.
 
 ---
 
-# 55. FFI architecture
+# 71. Proof artifact reuse
 
-Foreign code enters through explicit boundaries.
+A proof artifact may accelerate verification only if reusing it preserves the
+same assurance as rechecking from source/evidence under the relevant trust model.
 
-```mermaid
-flowchart LR
-    V["Verified C++L"]
-    B["FFI Boundary"]
-    F["Foreign Code"]
+Remote or local cache location does not create trust.
 
-    V --> B
-    B --> F
-```
+**[ARCH-CACHE-001]** A cached `PROVEN` bit without validated evidence,
+compatibility and dependency identity is never sufficient.
 
-The boundary owns:
-
-- formal contract
-- ownership expectations
-- lifetime assumptions
-- runtime validation
-- trust classification
-- mutation/effect declaration
-
-Foreign code must never construct proof evidence directly.
+**[ARCH-CACHE-002]** Corrupt or incompatible cache entries are misses/errors, not
+reasons to weaken proof requirements.
 
 ---
 
-# 56. Runtime validation architecture
+# 72. Parallel verification
 
-Dynamic external values enter verified regions through explicit validation.
+Independent obligations may be processed concurrently.
 
-```mermaid
-flowchart LR
-    U["Untrusted Runtime Value"]
-    V["Validator"]
-    R["Refined / Validated Value"]
-    C["Verified Code"]
+Parallelism is appropriate at:
 
-    U --> V
-    V -->|valid| R
-    V -->|invalid| E["Error"]
-    R --> C
-```
+- translation-unit level;
+- obligation level;
+- solver-worker level;
+- artifact-validation level.
 
-Validation code remains runtime code and must not be erased.
+Final semantic output is merged in deterministic order, for example by stable
+obligation/declaration identity rather than worker completion order.
+
+The kernel/checkers must remain thread-safe or isolated according to their API
+contract.
 
 ---
 
-# 57. Security boundaries
+# 73. Resource governance
 
-Security-sensitive boundaries include:
+Verification can be expensive and must have explicit resource governance.
 
-- proof artifact parsing
-- kernel input
-- solver output
-- FFI
-- serialized VIR
-- remote cache
-- compiler plugins
-- generated source
-- runtime-validation boundaries
+Possible limits include:
 
-External data must be treated as untrusted until validated.
+- solver wall/CPU time;
+- proof-search depth;
+- formal-term size;
+- memory;
+- number of parallel workers;
+- generated obligation size;
+- decomposition depth;
+- recursion/normalization budgets used as defense in depth.
 
----
+Resource exhaustion produces an unresolved/resource diagnostic, never successful
+proof.
 
-# 58. Plugin architecture
-
-Plugins must not silently extend proof authority.
-
-Any plugin system should live outside the kernel.
-
-Plugins may provide:
-
-- diagnostics
-- tactics
-- proof search
-- IDE integration
-- build integration
-
-A plugin wishing to introduce trusted propositions must use an explicit trust mechanism visible to trust reporting.
+Limits that affect successful proof availability must be included in reproducible
+build configuration when relevant.
 
 ---
 
-# 59. AI architecture
+# 74. Diagnostics architecture
 
-AI systems may interact with C++L through ordinary developer interfaces.
-
-```mermaid
-flowchart TD
-    HUMAN["Human"]
-    AI["AI Agent"]
-    SOURCE["C++L Source / Proof"]
-    COMP["C++L Compiler"]
-    KERNEL["Proof Kernel"]
-
-    HUMAN --> SOURCE
-    AI --> SOURCE
-    SOURCE --> COMP
-    COMP --> KERNEL
-```
-
-AI receives no privileged proof path.
-
-AI-generated code and proof evidence must pass the same compiler and kernel as human-written code.
-
----
-
-# 60. Agent-facing architecture
-
-Repository automation should provide:
-
-```text
-AGENTS.md
-    hard invariants
-
-.agents/skills/
-    task-specific procedures
-
-scripts/
-    canonical development commands
-
-CMakePresets.json
-    canonical build configurations
-
-GitHub Issues
-    task definition
-
-CI
-    independent enforcement
-```
-
-The repository itself should contain enough information for a capable coding agent to work without a vendor-specific master prompt.
-
----
-
-# 61. Testing architecture
-
-Testing is divided by responsibility.
+Diagnostics are structured semantic data rendered into multiple surfaces.
 
 ```mermaid
 flowchart TD
-    UNIT["Unit"]
-    KERNEL["Kernel"]
-    NEG["Negative"]
-    SOUND["Soundness"]
-    CONF["C++ Conformance"]
-    INT["Integration"]
-    E2E["End-to-End"]
-    FUZZ["Fuzz"]
-    PERF["Performance"]
+    C["Clang/C++ diagnostics"]
+    P["Projection/correspondence diagnostics"]
+    E["Elaboration diagnostics"]
+    V["VIR/storage/effect diagnostics"]
+    O["Obligation diagnostics"]
+    A["Automation/counterexamples"]
+    K["Checker diagnostics"]
+    D["Unified diagnostic model"]
+    CLI["CLI"]
+    LSP["LSP"]
+    JSON["JSON"]
+    SARIF["SARIF/CI"]
 
-    ALL["Release Confidence"]
-
-    UNIT --> ALL
-    KERNEL --> ALL
-    NEG --> ALL
-    SOUND --> ALL
-    CONF --> ALL
-    INT --> ALL
-    E2E --> ALL
-    FUZZ --> ALL
-    PERF --> ALL
+    C --> D
+    P --> D
+    E --> D
+    V --> D
+    O --> D
+    A --> D
+    K --> D
+    D --> CLI
+    D --> LSP
+    D --> JSON
+    D --> SARIF
 ```
 
-No single suite substitutes for another.
+Structured fields include, as applicable:
+
+- category/code;
+- assurance status;
+- source ranges;
+- obligation ID;
+- semantic symbol;
+- failed premise/capability;
+- trust dependency;
+- counterexample/model;
+- fix-it information;
+- internal provenance trace.
+
+Human wording is presentation, not semantic state.
 
 ---
 
-# 62. Unit tests
+# 75. Diagnostic provenance
 
-Unit tests cover isolated implementation behavior.
-
-Examples:
-
-- parser helpers
-- canonical hashing
-- source maps
-- VIR transformations
-- diagnostic rendering
-
-Unit tests alone do not establish proof-system soundness.
-
----
-
-# 63. Kernel tests
-
-Kernel tests directly test acceptance/rejection rules.
-
-Every proof rule requires:
+A verification diagnostic should be traceable through:
 
 ```text
-valid case
-invalid case
-malformed case
-boundary case
-```
-
-Kernel tests should avoid depending on the full frontend where possible.
-
----
-
-# 64. Negative tests
-
-Negative tests ensure invalid programs and proofs remain rejected.
-
-Examples:
-
-- false equality
-- forged proof
-- invalid induction
-- termination violation
-- refinement violation
-- hidden trust
-- ghost leakage
-- invalid FFI assumption
-
-Negative coverage is mandatory for proof features.
-
----
-
-# 65. Soundness regression suite
-
-Every discovered soundness bug receives a permanent regression.
-
-This suite has priority over superficial compatibility with formerly unsound behavior.
-
----
-
-# 66. C++ conformance suite
-
-A separate suite must verify:
-
-```text
-valid supported C++
-    remains
-valid C++L
-```
-
-It should cover:
-
-- declarations
-- templates
-- concepts
-- `requires`
-- macros
-- modules
-- constexpr
-- exceptions
-- RTTI
-- ABI-sensitive constructs
-- supported extensions
-- relevant standard modes
-
----
-
-# 67. Differential testing
-
-Where appropriate, ordinary C++ behavior should be compared against the configured Clang behavior.
-
-Conceptually:
-
-```text
-clang++ program.cpp
-cppl program.cpp
-```
-
-should produce equivalent C++ semantics for source that uses no C++L extensions.
-
-Differential testing is particularly valuable for source compatibility.
-
----
-
-# 68. Fuzzing
-
-High-priority fuzzing targets include:
-
-- C++L extension parser
-- proof deserialization
-- kernel
-- normalization
-- VIR serialization
-- solver certificate handling
-- artifact cache
-- source mapping
-- erasure
-
-Fuzzing must search for:
-
-```text
-crash
-nondeterminism
-incorrect acceptance
-incorrect rejection
-artifact corruption
-```
-
-not only parser crashes.
-
----
-
-# 69. Performance testing
-
-Performance tests should measure separately:
-
-```text
-ordinary C++ overhead
-frontend overhead
-elaboration
-VIR construction
-obligation generation
-solver time
-kernel checking
-cache hit/miss
-incremental edit latency
-LSP latency
-memory consumption
-```
-
-Avoid aggregate benchmarks that hide which stage regressed.
-
----
-
-# 70. Performance architecture target
-
-For ordinary C++:
-
-```text
-cppl cost
-≈
-Clang cost
-+
-small compatibility overhead
-```
-
-For verified code:
-
-```text
-cppl cost
-=
-Clang semantic work
-+
-formal elaboration
-+
-affected verification obligations
-```
-
-Incremental verification should avoid whole-project recomputation.
-
----
-
-# 71. CI architecture
-
-CI should call the same scripts developers and agents use locally.
-
-```mermaid
-flowchart LR
-    DEV["Developer"]
-    AGENT["Agent"]
-    CI["CI"]
-
-    SCRIPT["Canonical scripts/*"]
-
-    DEV --> SCRIPT
-    AGENT --> SCRIPT
-    CI --> SCRIPT
-```
-
-Avoid separate undocumented CI-only build logic.
-
----
-
-# 72. Canonical development commands
-
-Target scripts:
-
-```text
-scripts/bootstrap.sh
-scripts/format.sh
-scripts/build.sh
-scripts/test.sh
-scripts/verify.sh
-scripts/conformance.sh
-scripts/check.sh
-```
-
-Conceptually:
-
-```text
-check.sh
+user source
     ↓
-format check
-build
-unit tests
-negative tests
-soundness tests
-conformance
-verification
+recognized formal/C++ construct
+    ↓
+Clang semantic entity / semantic probe
+    ↓
+VIR / PlaceVersion
+    ↓
+obligation
+    ↓
+automation/checker result
 ```
+
+The system should carry this trace rather than reconstructing it from strings or
+source locations after failure.
+
+This provenance is also used by LSP navigation and trust reporting.
 
 ---
 
-# 73. CMake presets
+# 76. Counterexample architecture
 
-Stable presets should define reproducible build environments.
+Counterexample generation belongs to automation/diagnostics, not proof authority.
 
-Example target interface:
+A counterexample may refute a universal claim or explain a failed obligation.
 
-```bash
-cmake --preset dev
-cmake --build --preset dev
-ctest --preset dev
-```
+A counterexample object should record:
 
-Additional presets may include:
+- obligation identity;
+- modeled assignment/state;
+- solver/model provenance;
+- limitations of the model if relevant.
+
+Failure to produce a counterexample does not change proof status.
+
+---
+
+# 77. Compiler-service boundary
+
+CLI, LSP and future tools consume stable compiler services instead of linking
+against internal pass classes ad hoc.
+
+Representative services include:
 
 ```text
-release
-asan
-ubsan
-fuzz
-coverage
-kernel
+analyze translation unit
+verify semantic symbol
+list obligations
+resolve Law/proof symbol
+return assurance/trust information
+format C++L source
+produce semantic tokens
+produce diagnostics/fix-its
 ```
 
-Do not make developers or agents reconstruct required compiler flags manually.
+The exact API is implementation-defined, but the direction is fixed:
+
+```text
+UI/tooling
+    ↓
+compiler services
+    ↓
+shared semantic implementation
+```
+
+not duplicated editor semantics.
 
 ---
 
-# 74. Enterprise CI stages
+# 78. LSP architecture
 
-A mature pipeline may use:
+`cppl-lsp` owns C++L-specific language-server behavior for the whole source file
+while delegating ordinary C++ intelligence to Clang/clangd where practical.
 
 ```mermaid
-flowchart LR
-    LINT["Format / Static Checks"]
-    BUILD["Build"]
-    UNIT["Unit Tests"]
-    PROOF["Proof / Negative Tests"]
-    CONF["C++ Conformance"]
-    SAN["Sanitizers"]
-    FUZZ["Fuzz Smoke"]
-    PERF["Performance Guard"]
-    PKG["Package"]
-    SIGN["Sign / Provenance"]
+flowchart TD
+    EDITORS["VS Code / JetBrains / Neovim / other LSP clients"]
+    LSP["cppl-lsp"]
+    SERVICES["C++L compiler services"]
+    CLANGD["clangd / C++ services"]
+    VERIFY["C++L verification services"]
 
-    LINT --> BUILD
-    BUILD --> UNIT
-    UNIT --> PROOF
-    PROOF --> CONF
-    CONF --> SAN
-    SAN --> FUZZ
-    FUZZ --> PERF
-    PERF --> PKG
-    PKG --> SIGN
+    EDITORS --> LSP
+    LSP --> SERVICES
+    SERVICES --> CLANGD
+    SERVICES --> VERIFY
 ```
 
-Expensive jobs may run at different frequencies, but release gates must remain explicit.
+C++L-specific services include:
+
+- formal diagnostics;
+- Law/proof navigation;
+- assurance status;
+- trust dependencies;
+- obligation inspection;
+- counterexamples;
+- C++L semantic highlighting;
+- C++L-aware formatting/fix-its.
+
+**[ARCH-LSP-001]** Editor clients may change presentation, never theorem meaning.
 
 ---
 
-# 75. Reproducible builds
+# 79. Formatter architecture
 
-Where practical, release artifacts should record:
+Formatting is a tooling concern and must not have an independent parser/semantic
+model that can disagree with the compiler.
 
-- C++L version
-- source revision
-- kernel version
-- formal-core version
-- Clang/LLVM version
-- solver versions
-- target platform
-- build configuration
+The formatter should:
 
-Proof validity must not depend on undocumented environment state.
+1. use C++L recognition for formal spans;
+2. preserve formal structure while formatting C++L-specific clauses/statements;
+3. delegate ordinary C++ formatting to Clang/LibFormat or the canonical selected
+   C++ formatter integration;
+4. compose the result deterministically.
 
----
+A whole-document canonical formatter may serve document/range/on-type LSP
+requests, but editor protocol policy must not redefine canonical formatting.
 
-# 76. Supply-chain architecture
-
-Release engineering should support:
-
-- dependency pinning
-- dependency provenance
-- SBOM generation
-- artifact checksums
-- signed release artifacts
-- reproducible metadata
-- vulnerability scanning
-
-Supply-chain tooling does not become part of the proof kernel.
+**[ARCH-FMT-001]** Formatting output MUST preserve source semantics and formal
+span identity.
 
 ---
 
-# 77. Packaging
+# 80. Build-system integration
 
-Expected primary artifacts:
+C++L should behave as a compiler toolchain component, not require a proprietary
+build graph.
+
+It should support ordinary inputs such as:
+
+- CMake/Ninja;
+- direct compiler-driver invocation;
+- compilation databases;
+- include paths;
+- defines;
+- target options;
+- language standard selection;
+- sanitizer/debug flags;
+- linker inputs;
+- LTO where compatible.
+
+One canonical compile configuration must feed both semantic verification and the
+runtime compiler invocation.
+
+**[ARCH-BUILD-001]** Verification MUST NOT silently use different defines,
+headers, target or C++ mode from native code generation.
+
+---
+
+# 81. Ordinary C++ fast path
+
+A translation unit containing no C++L semantics should avoid unnecessary proof
+work.
+
+The fast path may perform lightweight preprocessing/recognition needed to know
+that no C++L constructs exist, then invoke the native C++ pipeline.
+
+```text
+source
+    ↓
+recognition
+    ├─ no C++L semantics -> ordinary C++ compilation
+    └─ C++L semantics    -> verification pipeline + same native compilation path
+```
+
+The fast path is an optimization only; it must preserve ordinary C++ semantics.
+
+---
+
+# 82. Testing architecture
+
+No single test layer is sufficient for a proof-oriented compiler.
+
+The architecture requires distinct suites for:
+
+- unit behavior;
+- formal kernel/checker rules;
+- correspondence/source mapping;
+- negative/rejection behavior;
+- soundness regressions;
+- C++ compatibility/conformance;
+- end-to-end verification;
+- cross-TU artifacts;
+- erasure/ABI equivalence;
+- property testing;
+- fuzzing;
+- performance/scalability.
+
+Every feature that can affect proof soundness needs both acceptance and rejection
+coverage.
+
+---
+
+# 83. Kernel and checker tests
+
+Primitive proof rules/checkers require at least:
+
+```text
+valid evidence
+invalid evidence
+malformed evidence
+boundary/capture case
+resource/size boundary where relevant
+```
+
+Kernel tests should avoid the frontend where possible so that proof acceptance is
+tested directly.
+
+Every discovered logical soundness defect receives a permanent adversarial
+regression.
+
+---
+
+# 84. Correspondence tests
+
+Correspondence tests verify that source meaning becomes the correct formal/storage
+meaning.
+
+High-priority classes include:
+
+- overloaded expressions;
+- implicit conversions;
+- template substitution;
+- macro/header origin;
+- path-sensitive control flow;
+- alias invalidation;
+- call effects;
+- refinement crossings;
+- member/element/deref Places;
+- symbolic indices;
+- structural decomposition state partitions;
+- exception/lifetime behavior;
+- runtime projection.
+
+A kernel test cannot replace these tests because the kernel may correctly check
+a proposition that the frontend constructed incorrectly.
+
+---
+
+# 85. Property and model-based tests
+
+Cross-component invariants should be tested generatively where practical.
+
+Examples:
+
+```text
+a write never preserves stale facts for that PlaceVersion
+
+havoc never strengthens knowledge
+
+possible aliasing preserves no more facts than proven disjointness
+
+refinement introduction never succeeds without Valid(T, v)
+
+erasure never introduces proof-only runtime state
+
+runtime projection of plain C++ remains behaviorally equivalent to Clang input
+
+cache reuse never survives a changed semantic dependency
+```
+
+Model-based receipt-style generation is not specific to C++L, but the same
+principle applies: generate semantic structures, mutate them adversarially, and
+assert architecture invariants rather than relying only on hand-authored fixtures.
+
+---
+
+# 86. Fuzzing architecture
+
+High-value fuzz targets include:
+
+- contextual recognizer;
+- projection/probe generator;
+- source mapping;
+- formal parser/elaborator;
+- VIR validators;
+- Place/alias/capability engine;
+- decomposition providers;
+- obligation serialization;
+- kernel/checkers;
+- proof artifact parsers;
+- erasure validator;
+- cache/index readers.
+
+Fuzzing must search for more than crashes:
+
+```text
+false acceptance
+stale proof reuse
+nondeterminism
+semantic drift
+incorrect source attachment
+trust loss
+capability/refinement fact leakage
+```
+
+---
+
+# 87. Differential testing
+
+For source that uses no C++L semantics, behavior should be compared against the
+selected native C++ toolchain where practical.
+
+For C++L runtime projection, differential tests should verify:
+
+- byte/layout/ABI equality where required;
+- runtime behavior equivalence;
+- no hidden validation;
+- no hidden proof state;
+- same calls/control flow except where `SPEC.md` explicitly defines runtime
+  lowering.
+
+Cross-version testing is required for every C++ mode declared supported by
+`COMPATIBILITY.md`.
+
+---
+
+# 88. Security boundaries
+
+Security-sensitive inputs include:
+
+- source from untrusted projects;
+- preprocessor output;
+- proof artifacts;
+- cross-TU metadata;
+- remote caches;
+- solver output/certificates;
+- serialized VIR/formal terms;
+- plugins;
+- generated source.
+
+Deserializers and artifact readers validate structure, versions, bounds and hashes
+before the data can influence proof status.
+
+No plugin, LSP client, cache server, CI service or AI integration receives a
+privileged proof path.
+
+---
+
+# 89. Plugin architecture
+
+Plugins may extend:
+
+- diagnostics;
+- proof search;
+- tactics;
+- visualization;
+- editor/build integration;
+- model providers when explicitly registered and trust-classified.
+
+Plugins do not silently extend proof authority.
+
+If a plugin contributes a correspondence model/provider, its trust implications
+must be classified according to `TRUST.md`.
+
+If a plugin proposes proof evidence, that evidence goes through the normal
+checker.
+
+---
+
+# 90. AI/agent architecture
+
+AI systems interact through ordinary source, compiler-service and diagnostic
+interfaces.
+
+```text
+human or AI
+    ↓
+source / proof / patch
+    ↓
+normal compiler pipeline
+    ↓
+normal proof and correspondence checks
+```
+
+Agents receive no API to:
+
+- mark obligations proven;
+- inject hidden assumptions;
+- bypass erasure validation;
+- mutate trusted metadata directly;
+- skip dependency validation.
+
+Agent-oriented documentation/task packets may improve productivity but remain
+outside proof authority.
+
+---
+
+# 91. Performance architecture
+
+Performance is measured by stage so optimization cannot hide soundness-sensitive
+costs.
+
+Useful measurements include:
+
+- preprocessing/recognition;
+- projection/probe generation;
+- Clang semantic analysis;
+- elaboration;
+- VIR/storage analysis;
+- obligation generation;
+- automation/solver time;
+- checker time;
+- artifact/cache validation;
+- incremental invalidation size;
+- LSP latency;
+- peak memory.
+
+For ordinary C++, overhead should approach native compilation cost plus small
+recognition/orchestration overhead.
+
+For verified code, cost should scale primarily with changed semantic dependency
+closure and generated obligations rather than whole-repository size.
+
+---
+
+# 92. Large-repository architecture
+
+C++L must scale without loading the entire repository into one monolithic
+verification process.
+
+The architecture therefore supports:
+
+- translation-unit analysis;
+- cross-TU summaries;
+- persistent semantic indexes;
+- content-addressed artifacts;
+- dependency-driven invalidation;
+- parallel verification;
+- remote cache as untrusted acceleration;
+- module/library formal interfaces.
+
+Whole-program analysis should be used only when a claim genuinely requires it.
+
+---
+
+# 93. Reproducibility
+
+A reproducible verification result records enough semantic configuration to
+reconstruct the claim, including as applicable:
+
+- C++L/compiler version;
+- formal-core/checker compatibility;
+- Clang/LLVM version;
+- selected C++ mode;
+- target triple/machine model;
+- solver versions/trust mode;
+- relevant flags;
+- imported summary hashes;
+- trusted-assumption closure;
+- proof artifact hashes.
+
+Temporary paths and scheduling order are not semantic inputs.
+
+---
+
+# 94. Release and packaging architecture
+
+Primary tooling artifacts may include:
 
 ```text
 cppl
 cppl-lsp
-C++L standard/formal models
+formal/standard-library models
 editor integrations
 documentation
 ```
 
-The native program produced by C++L should not require `cppl` to be installed at runtime.
+Programs compiled by C++L must not require the C++L compiler or proof checker at
+runtime solely because verification was used.
+
+Release engineering should support normal software supply-chain practices such
+as pinned dependencies, checksums, SBOMs, signed artifacts and vulnerability
+scanning, but these mechanisms do not replace proof checking.
 
 ---
 
-# 78. Version dimensions
+# 95. Component dependency direction
 
-C++L has several independently relevant versions:
+Dependencies flow from orchestration/UI toward semantic foundations, not the
+reverse.
 
-```text
-language version
-compiler version
-formal-core version
-kernel version
-artifact-format version
-stdlib-model version
+```mermaid
+flowchart TD
+    EDIT["Editors / integrations"]
+    LSP["cppl-lsp"]
+    CLI["Driver / CLI"]
+    SERVICES["Compiler services"]
+    SOURCE["Source + projection"]
+    CLANG["Clang bridge"]
+    ELAB["Elaboration"]
+    VIR["VIR + storage/effects"]
+    DECOMP["Decomposition providers"]
+    OBL["Obligations"]
+    AUTO["Automation"]
+    CORE["Formal core"]
+    KERNEL["Kernel/checkers"]
+
+    EDIT --> LSP
+    LSP --> SERVICES
+    CLI --> SERVICES
+    SERVICES --> SOURCE
+    SERVICES --> CLANG
+    SOURCE --> ELAB
+    CLANG --> ELAB
+    ELAB --> VIR
+    VIR --> DECOMP
+    VIR --> OBL
+    DECOMP --> OBL
+    OBL --> AUTO
+    OBL --> CORE
+    AUTO --> CORE
+    AUTO --> KERNEL
+    KERNEL --> CORE
 ```
 
-These should not be conflated blindly.
-
-A compiler release may preserve language syntax while invalidating old proof artifacts because kernel or core semantics changed.
-
----
-
-# 79. Compatibility dimensions
-
-Treat these separately:
+Forbidden reverse dependencies include:
 
 ```text
-source compatibility
-proof compatibility
-artifact compatibility
-ABI compatibility
-tooling compatibility
+formal core -> Clang UI
+kernel -> solver
+kernel -> LSP
+kernel -> editor plugin
+VIR -> VS Code/JetBrains APIs
+source semantic layer -> build-system-specific UI
 ```
 
-Example:
+The exact repository directories may evolve as long as this ownership/dependency
+direction remains clear.
+
+---
+
+# 96. Repository organization
+
+A production repository should make semantic ownership visible in its directory
+structure.
+
+A representative organization is:
 
 ```text
-source compatible
-but
-proof cache incompatible
+compiler/
+    driver/
+    source/
+    frontend/
+    projection/
+    elaboration/
+    obligations/
+    automation/
+    erasure/
+    diagnostics/
+    artifacts/
+
+clang/
+    semantic bridge
+
+vir/
+    verification IR, Place/Region/Version model
+
+kernel/
+    formal core and proof checkers
+
+lsp/
+    cppl-lsp
+
+editors/
+    thin editor adapters
+
+stdlib/
+    proof-facing standard-library models
+
+tests/
+    unit, kernel, correspondence, negative, soundness,
+    conformance, integration, e2e, fuzz, performance
+
+docs/
+    normative and architectural documentation, RFCs
 ```
 
-is a valid release state if reported accurately.
+Directory names are implementation details; ownership boundaries are the
+architectural requirement.
 
 ---
 
-# 80. Observability
+# 97. Architecture evolution
 
-Compiler observability should help diagnose engineering problems without changing semantics.
-
-Useful measurements include:
-
-- stage timings
-- cache hit rates
-- obligation counts
-- solver time
-- kernel-check time
-- peak memory
-- invalidation size
-- LSP request latency
-
-Source code and proof contents should not be uploaded by default merely for telemetry.
-
----
-
-# 81. Structured build report
-
-The compiler should eventually support a machine-readable report containing:
-
-```text
-files analyzed
-Laws discovered
-obligations generated
-proven
-trusted
-runtime-checked
-unsafe
-unverified
-unresolved
-cache hits
-cache misses
-solver usage
-kernel version
-```
-
-This supports:
-
-- CI
-- IDEs
-- dashboards
-- enterprise policy enforcement
-
----
-
-# 82. Recovery and internal compiler errors
-
-Compiler recovery must not compromise proof status.
-
-If an internal stage becomes inconsistent:
-
-```text
-verification result for affected obligation = invalid
-```
-
-The compiler may continue gathering unrelated diagnostics where safe.
-
-It must not continue using corrupted formal state as proof evidence.
-
----
-
-# 83. Crash containment
-
-External components such as solvers should be isolated so that failure does not corrupt compiler state.
-
-Where practical:
-
-```text
-main compiler process
-    ↓ IPC
-solver worker
-```
-
-is preferable to embedding unstable external engines inside the trusted process.
-
----
-
-# 84. Memory ownership
-
-Compiler internals should use explicit ownership boundaries.
-
-Preferred C++ patterns include:
-
-- RAII
-- value semantics where appropriate
-- immutable semantic nodes where practical
-- arena allocation only with explicit lifetime boundaries
-- typed IDs rather than raw cross-component pointers
-
-Persistent artifacts must never depend on in-process pointer identity.
-
----
-
-# 85. Thread safety
-
-Shared services must document thread-safety guarantees.
-
-Particular care is required for:
-
-- source manager
-- Clang instances
-- caches
-- diagnostic sinks
-- solver workers
-- artifact indexes
-
-Prefer immutable data and message passing across parallel verification workers where practical.
-
----
-
-# 86. Deterministic merge
-
-Parallel results must be merged in deterministic semantic order.
-
-For example:
-
-```text
-ObligationId
-SourceLocation
-StableSymbolId
-```
-
-rather than worker completion order.
-
-This ensures reproducible diagnostics and artifacts.
-
----
-
-# 87. Architecture for large repositories
-
-C++L must eventually support multi-million-line C++ codebases without requiring whole-program formal loading into one process.
-
-The architecture should permit:
-
-- translation-unit analysis
-- module-level summaries
-- persistent semantic indexes
-- proof summaries
-- distributed cache
-- dependency-based invalidation
-- parallel verification
-
-Whole-program reasoning should be performed only where a Law actually requires it.
-
----
-
-# 88. Proof summaries
-
-A verified component should eventually be able to expose a compact proof-facing interface.
-
-Conceptually:
-
-```text
-implementation
-    ↓ verified
-formal summary / contract
-    ↓
-downstream verification
-```
-
-Downstream users should not need to re-analyze every implementation detail when a stable verified interface is sufficient.
-
----
-
-# 89. Module boundaries
-
-Formal module boundaries should align with ordinary C++ module/library boundaries where practical.
-
-A module should expose:
-
-```text
-runtime API
-formal contract
-trusted assumptions
-verification status
-```
-
-without exposing unnecessary implementation internals.
-
----
-
-# 90. Architectural evolution
-
-Architecture changes should be made by moving toward:
+Architecture changes should move toward:
 
 ```text
 fewer semantic authorities
-smaller TCB
-stronger provenance
+stronger source/runtime correspondence
+smaller independently trusted components
+one common storage/effect model
+fewer feature-specific special cases
 more deterministic artifacts
+more independently checkable summaries/evidence
 better incremental verification
-less duplicated C++ behavior
 ```
 
-Avoid architecture changes that merely redistribute complexity without clarifying authority.
+An architecture change that merely redistributes complexity without clarifying
+semantic ownership should be viewed skeptically.
+
+Major changes require an RFC/ADR when they affect:
+
+- semantic authority;
+- TCB boundaries;
+- projection/erasure;
+- VIR meaning;
+- storage/effect representation;
+- proof/checker interfaces;
+- cross-TU artifact meaning;
+- cache validity;
+- C++ toolchain integration.
 
 ---
 
-# 91. Prohibited architectures
+# 98. Prohibited architectures
 
-The following are explicitly undesirable.
+The following architectures are explicitly rejected.
 
-## Independent C++ compiler frontend
+## 98.1 Independent second C++ frontend
 
 ```text
-C++ parser #1 = Clang
-C++ parser #2 = C++L
+Clang says one thing
+C++L C++ parser says another
 ```
 
-with duplicated language semantics.
+where both independently determine verification semantics.
 
-## Twin theorem authorities
+## 98.2 Twin theorem authorities
 
 ```text
 kernel accepts
 OR
-solver accepts
+solver says valid
 ```
 
-## Twin runtime implementations
+without independent evidence checking/trust classification.
+
+## 98.3 Twin runtime implementations
 
 ```text
-implementation verified in VIR
+VIR/shadow implementation verified
 but
-different implementation emitted to C++
+different runtime implementation emitted
 ```
 
-## Hidden fallback
+## 98.4 Hidden proof fallback
 
 ```text
-verification failed
+proof failed
     ↓
-compile anyway as PROVEN
+assume/trust/runtime-check automatically
+    ↓
+report proven
 ```
 
-## Proof runtime dependency
+## 98.5 Proof runtime requirement
 
 ```text
-native executable
-requires
-theorem VM
+native executable requires theorem VM only because C++L proofs were used
 ```
 
-## Editor-owned semantics
+## 98.6 Editor-owned semantics
 
 ```text
-VS Code extension
-implements different verification rules
+VS Code/LSP implements proof rules not shared with compiler services
 ```
 
-## Cache authority
+## 98.7 Cache authority
 
 ```text
-cached "PROVEN" bit
-bypasses
-kernel validation / compatibility checks
+cached PROVEN marker
+    ↓
+bypass evidence/dependency/compatibility validation
 ```
+
+## 98.8 Feature-specific storage islands
+
+```text
+members have one alias model
+arrays another
+pointers another
+refinements another
+```
+
+instead of the common Place/Region/Capability/Version model.
+
+## 98.9 Capability by need
+
+```text
+operation requires readable(p)
+therefore assume readable(p)
+```
+
+Capabilities must be derived or explicitly trusted, never invented by demand.
+
+## 98.10 Textual semantic identity
+
+```text
+same spelling / line number
+therefore same declaration or proof dependency
+```
+
+without canonical semantic identity.
 
 ---
 
-# 92. Architecture decision records
+# 99. Architecture review checklist
 
-Major architectural choices should be captured through RFCs or Architecture Decision Records if ADRs are introduced.
+A substantial architecture change should answer all of the following.
 
-Decisions worth recording include:
+### Semantic authority
 
-- frontend strategy
-- Clang integration strategy
-- formal-core representation
-- VIR semantics
-- kernel API
-- solver certificate model
-- artifact format
-- caching model
-- concurrency model
-- LSP integration
-- standard-library modeling strategy
+- Does this create another authority for ordinary C++ meaning?
+- Does this create another authority for proof acceptance?
+- Does this introduce a feature-specific semantic path where a common path exists?
 
-The reason for a decision matters as much as its implementation.
+### Correspondence
+
+- Can source meaning and formal meaning drift?
+- Can the analyzed runtime program and emitted runtime program drift?
+- Is every generated probe linked to its exact source construct?
+- Are template/macro/module contexts preserved?
+
+### Storage and effects
+
+- Does every access use the common Place model?
+- Does every write create/invalidate the correct PlaceVersions?
+- Are aliases treated conservatively?
+- Are lifetime/capability effects represented?
+- Can an unknown call preserve stale facts?
+
+### Proof
+
+- What checker validates the new obligation/evidence?
+- Does this enlarge a TCB layer?
+- Can automation bypass independent checking?
+- Can failure introduce trust implicitly?
+
+### Runtime
+
+- Does the change alter erasure or ABI?
+- Can proof-only state leak into runtime?
+- Does runtime validation remain runtime code?
+
+### Artifacts
+
+- Which semantic identities/hashes change?
+- Are cross-TU summaries still valid?
+- Can stale cache entries survive the change?
+- Is version compatibility explicit?
+
+### Tooling
+
+- Do CLI, LSP and CI consume the same compiler services?
+- Are diagnostics structured and provenance-preserving?
+- Does editor behavior remain presentation-only?
+
+### Documentation
+
+- Does `SPEC.md` need a semantic change?
+- Does `TRUST.md` need a TCB update?
+- Does `COMPATIBILITY.md` need a support-matrix update?
+- Does `STATUS.md` need a coverage update?
+- Is an RFC/ADR required?
 
 ---
 
-# 93. Architecture review checklist
+# 100. Architectural success criteria
 
-For a substantial architectural change, ask:
+The architecture is succeeding when all of the following can be true at once:
 
 ```text
-Does this create another semantic authority?
+ordinary supported C++ remains ordinary C++
 
-Does this duplicate C++ behavior already owned by Clang?
+C++ semantics have one authoritative source
 
-Does this enlarge the TCB?
+formal semantics have one canonical elaboration path
 
-Does this create a second runtime lowering path?
+proof evidence has an independently checkable acceptance path
 
-Can verification and native execution drift?
+source-to-proof correspondence is explicit and auditable
 
-Does this preserve provenance?
+storage uses one Place/Region/Capability/Version model
 
-Does this preserve deterministic checking?
+refinements compose with ordinary mutation and aliasing
 
-Does this invalidate proof artifacts?
+pointer access never derives safety from non-nullness alone
 
-Does incremental verification remain correct?
+structural proof models the real C++ state space
 
-Can unsupported behavior fail closed?
+proof-only data disappears from runtime
 
-Does editor behavior remain independent of theorem semantics?
+native ABI remains ordinary C++ where specified
 
-Does ARCHITECTURE.md need updating?
+runtime projection is the program that Clang/LLVM compiles
 
-Does TRUST.md need updating?
+cross-TU callers consume checked summaries rather than hidden bodies
 
-Does SPEC.md need updating?
-```
+caches accelerate checking but never become proof authority
 
----
+large repositories invalidate only affected semantic dependency closures
 
-# 94. Target mature architecture
+CLI, LSP and CI share compiler semantics
 
-The long-term architecture is:
-
-```mermaid
-flowchart TD
-    USER["Human / AI"]
-    SOURCE["C++ / C++L Source"]
-
-    DRIVER["cppl Driver"]
-    FRONT["C++L Extension Frontend"]
-    RUNTIME["Canonical C++ Runtime Projection"]
-    CLANG["Clang Sema / AST"]
-
-    ELAB["Formal Elaboration"]
-    CORE["Formal Core"]
-    VIR["Verification IR"]
-    VC["Verification Conditions"]
-
-    AUTO["Untrusted Automation"]
-    SMT["SMT / Decision Procedures"]
-    TACTIC["Tactics / Proof Search"]
-
-    KERNEL["Small Trusted Proof Kernel"]
-
-    POLICY["Verification Policy"]
-    CODEGEN["Clang / LLVM"]
-    BINARY["Native Binary"]
-
-    ART["Content-Addressed Proof Cache"]
-    DIAG["Structured Diagnostics"]
-    LSP["cppl-lsp"]
-
-    USER --> SOURCE
-    SOURCE --> DRIVER
-
-    DRIVER --> FRONT
-
-    FRONT --> RUNTIME
-    RUNTIME --> CLANG
-
-    FRONT --> ELAB
-    CLANG --> ELAB
-
-    ELAB --> CORE
-    ELAB --> VIR
-
-    VIR --> VC
-    VC --> AUTO
-
-    AUTO --> SMT
-    AUTO --> TACTIC
-
-    SMT --> AUTO
-    TACTIC --> AUTO
-
-    AUTO --> KERNEL
-    CORE --> KERNEL
-
-    KERNEL --> POLICY
-
-    POLICY -->|accepted| CODEGEN
-    RUNTIME --> CODEGEN
-    CODEGEN --> BINARY
-
-    VIR --> ART
-    KERNEL --> ART
-    ART --> KERNEL
-
-    ELAB --> DIAG
-    VC --> DIAG
-    AUTO --> DIAG
-    KERNEL --> DIAG
-
-    DIAG --> LSP
-    LSP --> USER
-```
-
----
-
-# 95. Architectural success criteria
-
-The architecture is succeeding when:
-
-```text
-existing supported C++ requires minimal or zero migration
-
-C++L semantics have one authoritative interpretation
-
-Clang remains the C++ semantic authority
-
-proof validity has one final authority
-
-proof-only information disappears from runtime
-
-native ABI remains ordinary C++ ABI
-
-verified runtime behavior corresponds to emitted runtime behavior
-
-large projects can verify incrementally
-
-cached proofs cannot bypass soundness
-
-editor tooling does not duplicate compiler semantics
-
-AI receives no privileged proof path
+AI and plugins have no privileged proof path
 
 unsupported semantics fail closed
 
-the TCB can shrink over time
+implementation progress never narrows the normative language
 ```
 
 ---
 
-# 96. Final architectural rule
+# 101. Final architecture
 
-Every part of C++L should fit into one of four roles:
-
-```text
-understand source
-derive formal meaning
-check formal evidence
-produce ordinary native C++
-```
-
-The boundaries between those roles must remain explicit.
-
-The architecture must always preserve this chain:
+Every production feature should fit into a clear chain:
 
 ```text
 C++ / C++L source
         ↓
-authoritative C++ semantics
+selected C++ preprocessing
+        ↓
+contextual C++L recognition
+        ↓
+canonical projection + analysis probes
+        ↓
+Clang-resolved C++ semantics
         +
-formal C++L semantics
+C++L formal elaboration
         ↓
-explicit proof obligations
+Verification IR
         ↓
-machine-checkable evidence
+Place / Region / Capability / Version state
         ↓
-small trusted kernel
+explicit obligations
         ↓
-verified runtime projection
+proof producers / decision procedures
+        ↓
+independent checkers
+        ↓
+structured assurance + trust closure
+        ↓
+build policy
+        ↓
+canonical runtime projection
         ↓
 Clang / LLVM
         ↓
 ordinary native binary
 ```
 
-No optimization, compatibility shortcut, solver integration, editor feature, cache, plugin, or AI system may bypass that chain.
+No solver, cache, optimization, editor, plugin, compatibility shortcut, AI agent,
+or implementation convenience may bypass that chain.
 
-**C++L adds proof to C++. It must not replace C++ with a second, drifting implementation of C++.**
-
----
-
-# 97. Implemented architecture
-
-This section records the structure that exists today, and the decisions taken
-while building it. Everything above describes the target architecture;
-`STATUS.md` records how much of it is implemented.
-
-## 97.1 Components
+The architecture exists to keep three things aligned:
 
 ```text
-compiler/source/        source identity, presumed locations, content digests
-kernel/                 the formal core and the proof checker
-vir/                    the Verification IR
-clang/                  the Clang semantic bridge
-compiler/diagnostics/   the structured diagnostic model
-compiler/frontend/      lexer, contextual recognizer, projection
-compiler/decomposition/ C++ representations -> proof-visible state partitions
-compiler/elaboration/   Clang semantics + C++L syntax -> VIR
-compiler/obligations/   VIR + Laws + contracts -> core definitions and goals
-compiler/automation/    evidence production
-compiler/erasure/       runtime program selection and its erasure check
-compiler/driver/        argument handling, orchestration, exit status
+what the programmer wrote
+what the verifier proved
+what the machine executes
 ```
 
-`compiler/source` is the source manager of section 7. It is a leaf: the VIR and
-the Clang bridge both depend on it, so no component invents its own notion of
-"where this came from".
-
-The kernel links nothing at all. `tests/architecture` enforces that by both
-inspecting its includes and checking that the built library resolves no symbol
-from any other component.
-
-## 97.2 Stage order as implemented
-
-```mermaid
-flowchart TD
-    SRC["Source file"]
-    PP["Clang preprocessing"]
-    LEX["Lexer + contextual recognizer"]
-    FAST{"Contains C++L syntax?"}
-    PROJ["Projection: analysis text + runtime text"]
-    BRIDGE["libclang parse of the analysis text"]
-    ELAB["Elaboration to VIR"]
-    OBL["Obligations + admitted definitions"]
-    AUTO["Evidence"]
-    KERNEL["Kernel"]
-    ERASE["Erasure check"]
-    CG["Clang code generation"]
-
-    SRC --> PP
-    PP --> LEX
-    LEX --> FAST
-    FAST -->|no| CG
-    FAST -->|yes| PROJ
-    PROJ --> BRIDGE
-    BRIDGE --> ELAB
-    ELAB --> OBL
-    OBL --> AUTO
-    AUTO --> KERNEL
-    KERNEL --> ERASE
-    ERASE --> CG
-```
-
-## 97.3 The frontend runs after preprocessing
-
-C++L syntax is recognized in the preprocessed translation unit, as `SPEC.md` 3.2
-requires. Two consequences are architectural rather than incidental:
-
-- a Law written in a header is verified in every unit that includes it, which a
-  scan of the unpreprocessed source would miss entirely;
-- macros are already expanded, so C++L never reinterprets a token the
-  preprocessor would have replaced.
-
-The cost is one additional Clang invocation per unit. A unit containing no C++L
-syntax then takes the ordinary path of section 29: the original file is handed
-to Clang untouched.
-
-## 97.4 One projector, two texts
-
-The projector emits both the text analysed and the text compiled, from the same
-spans in the same pass:
-
-- the **runtime text** is the preprocessed text with every proof-only span
-  blanked, preserving every byte position and every line, and every
-  runtime-bearing declaration replaced by the canonical C++ it means;
-- the **analysis text** is the same text with each Law replaced by an ordinary
-  C++ specification function, bracketed by `#line` directives so positions still
-  refer to the user's source.
-
-This keeps the single-projection invariant of section 11: there is one lowering,
-with one output selected for code generation. The relationship is checked rather
-than asserted - `compiler/erasure` verifies that the runtime text differs from
-the analysed text only by blanking inside recorded spans, that each lowering is
-exactly what its declaration means, and that line numbering is unchanged.
-
-The two classes are described in `TRUST.md` 10.1. Proof-only syntax adds nothing
-to the runtime program, so it cannot introduce a construct from a standard later
-than the one the user selected. The one runtime-bearing declaration today is the
-refinement type, which lowers to an alias:
-
-```text
-type R = T where (P);        ->  using R = T;
-type R(I i) = T where (P);   ->  template <I i> using R = T;
-```
-
-Erasure recomputes that text from the recognized declaration rather than trusting
-the projector, and the lowering carries one newline per newline of the
-declaration, so nothing below it moves.
-
-## 97.5 A Law is projected into a C++ specification function
-
-The proposition of a Law is a C++ expression (`SPEC.md` 6, 7.3). Rather than
-interpret it, C++L emits it as the body of a generated function in the position
-the Law occupies, and lets Clang resolve it: name lookup, overload resolution,
-implicit conversions and canonical types all come from Clang. The elaborator
-then reads the resolved expression. Nothing in C++L parses C++ expressions.
-
-The generated function carries the Law's own name, so a Law occupies a formal
-declaration namespace associated with its C++ scope (`GRAMMAR.md` 46). That is
-what lets a proof name a Law: `proves (L(x))` is an ordinary call, bound by
-Clang, and the elaborator meets the Law again through the symbol Clang
-resolved rather than through the spelling the author used.
-
-The projector records each Law's name-token offset in the physical analysis
-buffer. The Clang bridge selects and returns the declaration at that offset;
-elaboration uses that identity before reading its proposition. Presumed
-file/line/column are diagnostic labels, not declaration identities: namespaces,
-overloads, macro expansions, and `#line` can repeat them.
-
-Explicit `Eq<T>(a, b)` is a formal form, not an ordinary C++ expression.
-The projector preserves a declaration for lookup and emits a separate, uniquely
-identified analysis probe: an empty two-parameter lambda of type `T` invoked
-with the original argument list. Clang resolves that type and the arguments,
-including overloads and conversions. The bridge reads the resolved arguments;
-the lambda body is never logical evidence. The typed bridge and VIR carry a
-formal-equality node of proposition type, distinct from C++ `bool`, and lowering
-constructs the existing kernel equality. No `Eq` template, logical C++ type,
-or logical helper is inserted into a user namespace. The probe is linked by
-projection identity even when overloads share a presumed source location.
-Unsupported nested formal forms fail before C++ analysis.
-
-Universal quantification and implication are projected the same way, and by the
-same means: the projector records the shape of the formal form it emitted, and
-emits C++ that makes Clang resolve everything inside it. A `forall (T x) { P }`
-becomes a lambda taking those parameters and returning `P`, so Clang declares the
-binders, resolves their types, and binds every use of them in the body. A
-`P -> Q` becomes a lambda whose body is `P;` then `Q;`, so each side is resolved
-in the scope the author wrote it in. The bridge walks the recorded shape against
-the resolved lambda, refusing anything that is not the shape it emitted, and
-reads the binders Clang declared as the quantifier's binder types. The typed
-bridge and VIR carry quantifier and implication nodes of proposition type;
-lowering constructs the kernel's existing `Forall` and `Implies`. A binder is a
-parameter Clang scoped, so it shadows an outer name exactly as C++ does, and it
-becomes the innermost de Bruijn index of the lowered proposition. No C++
-declaration named `forall`, `exists` or `->` is inserted anywhere.
-
-Which spellings are formal is decided before C++ analysis, from syntax alone: a
-quantifier word is formal only in the complete parenthesized-and-braced form, and
-`->` is implication only outside all brackets. Everything else is left for Clang
-to resolve as the C++ it is.
-
-Because a proposition may now quantify over binders of its own, the number of
-binders enclosing a goal is no longer the number of parameters its declaration
-has. Proof lowering therefore carries that depth and states every term and
-assumed proposition against it, which is what makes a name in a statement denote
-the same variable however deeply the goal nests. Evidence instantiated at a term
-that mentions a variable means something only underneath the binders it was
-stated in, and is offered only there.
-
-## 97.5.1 A written proof is elaborated, never believed
-
-Conjunction needs no synthetic C++ declaration or extra projection. Clang's
-built-in `&&` node reaches typed VIR unchanged; proposition lowering recursively
-lifts its Boolean operands into a kernel `And`. No term-level short-circuit
-semantics are invented: value uses are refused in the verified fragment. The
-proof producer builds explicit introduction and elimination evidence, including
-when passing conjunctive facts to arithmetic automation. The kernel checks both
-sides or the selected projection. Proposition substitution, dependency traversal,
-and obligation hashing all recurse into both sides. RFC 0009 describes the
-boundary; SPEC.md 7.6 owns its meaning.
-
-When conjunction has formal operands, the single projector uses the same
-two-statement lambda shape as implication. Typed bridge/VIR connective nodes
-preserve those operands without pretending propositions are C++ Boolean values.
-Equivalence uses that projection too and lowers to `And(Implies(P,Q), Implies(Q,P))`.
-Only lowering expands the derived connective; the kernel keeps one logical
-representation. See RFC 0010.
-
-Disjunction takes the same path to a kernel `Or`, with one difference in the
-proof producer: a disjunctive goal has two shapes of evidence and a disjunctive
-premise is used by a case analysis rather than by projection. The producer offers
-the shapes - an introduction of either side, and a case analysis that proves the
-goal again under each side, splitting each premise once - and the kernel decides
-which, if any, holds. No strategy learns which side is true, and none is granted.
-See RFC 0011; SPEC.md 7.8 owns its meaning.
-
-A proof declaration is projected the same way. Its `proves` clause becomes the
-body of a generated function or an explicit-equality probe. Clang resolves
-the C++ parts; its statements are C++L and are never projected into C++ at all.
-A direct `proves (P)` has a proof obligation identified independently of any Law.
-It always requires its written evidence; failure never invokes automation.
-
-A statement may instantiate the proof it names, as in `exact q(t);`. Each `t`
-is an ordinary C++ expression, so each is projected too: one generated function
-per argument, returning that term with its type deduced from the expression, in
-the proof's own scope. Clang resolves them; the elaborator reads them back.
-That is why C++L still has no parser for C++ expressions, and why an argument's
-diagnostics carry the line and column the author wrote it at - the argument's
-bytes are copied into the generated function at the column they came from.
-
-A Law's `expects` clause is projected the same way, under a generated name
-rather than the Law's own: the Law's name states what the Law concludes. So is
-the proposition an `assume` statement names. Every specification expression in
-the language reaches Clang by the one mechanism.
-
-Elaboration resolves what the author wrote - which Law, at which arguments,
-using which other proof or assumed premise, instantiated at which terms - into
-typed VIR steps. A name an `exact` or `apply` uses is resolved against the
-premises the body has assumed before it is resolved against the unit's proof
-declarations, because a premise is the more local binding.
-
-`compiler/obligations` lowers those steps into kernel proof terms. The
-proposition a proof claims is the Law's proposition instantiated at the
-arguments of its `proves` clause and closed over the proof's own parameters; a
-Law that states a precondition claims the implication from it to the conclusion.
-`refl` becomes that proposition's quantifier and premise introductions followed
-by reflexivity; `exact` and `apply` become the named evidence wrapped in one
-universal elimination per argument. Steps are lowered in dependency order, so
-circular evidence never produces a term. A refused dependency is propagated as
-a refusal rather than diagnosed as a cycle. Definitionally convertible equality
-operands are connected by two explicit equality substitutions justified by
-reflexivity; this is derived evidence, not an additional kernel conversion rule.
-
-An instantiated statement is compared with the goal as it stands, and, failing
-that, with the goal underneath the quantifiers it leads with. Both are readings
-of one written statement, they are tried in that fixed order, and neither is a
-search: an argument may be a closed term, in which case the statement stands on
-its own, or it may mention the proof's parameters, in which case the goal is its
-closure.
-
-### The body is a sequence, and a premise is a goal
-
-A proof body is a statement sequence, walked once, in written order
-(`GRAMMAR.md` 4). Each statement acts on the goal standing at that point:
-
-- `refl` closes it by definitional equality;
-- `exact e` closes it with evidence for the goal itself;
-- `assume h : P` names the premise the goal supposes, introduces the
-  implication, and leaves the conclusion as the goal. A goal that supposes no
-  premise has none to name, and the statement is refused there;
-- `apply e` discharges the premises between `e`'s conclusion and the goal, each
-  of which becomes a goal that the statements after it close;
-- `rewrite e` transforms the goal with an equality and leaves what it
-  transformed it into as the goal.
-
-A rewrite is where this layer decides something the kernel deliberately does
-not: which occurrences of a term the goal's context abstracts. Every occurrence
-is the rule, and that is the whole rule - nothing is searched for and nothing is
-weighed. The context is then handed to the kernel as part of the proof term,
-and the kernel checks the equality, checks what is transported through the
-context, and derives the resulting proposition by its own substitution. A choice
-made here can therefore only fail to prove something; it can never prove the
-wrong thing.
-
-How many premises an application has to discharge is settled from the two
-propositions alone, before any statement is consumed for them, so the walk stays
-deterministic. A body that ends with a goal still open is refused; so is one
-with a statement left over after every goal is closed.
-
-The term then goes to the kernel like any other. No step is admitted because of
-what it is called, and a premise is never admitted at all: the hypothesis a
-proof uses exists only because an implication introduction the kernel checked
-placed it in the kernel's own context. A Law whose written proof was refused is
-left open, and so is a Law that written proofs name but none of them discharges:
-the compiler does not look for evidence the author did not ask for.
-
-### Verified-function contracts
-
-The driver selects each verified definition by its physical analysis-buffer
-offset, mapped from the original name token by the projector. Pure declarations
-use the same mapping. The
-projector preserves that definition and emits analysis-only clause functions
-in the same lexical scope. The postcondition has one additional parameter,
-`result`, of the declared return type. The runtime projection contains neither
-these helpers nor the contract syntax.
-
-Elaboration retains the actual Clang-resolved return expression or conditional tree in
-`vir::Function::returned_value` and the clauses in `vir::Contract`. Generation
-lowers that expression through the same term lowering used for pure definitions,
-substitutes it for the innermost postcondition binder, adds the optional
-implication, and quantifies over the function parameters. Function obligations
-have their own origin and no Law identity, so written Law proofs cannot discharge
-them accidentally. A missing or unsupported body fails compilation.
-The driver also rejects a unit if its formal declarations did not all produce
-verification obligations, even if no earlier stage reported an error.
-
-Automatic evidence reuses the occurrence abstraction used by written rewrites.
-It first tries definitional equality, then introduces binders, uses an identical
-hypothesis or rewrites once per available equality in reverse premise order,
-and offers reflexivity. Integer equality may be reversed using explicit symmetry
-evidence derived by equality elimination. The kernel remains the only proof
-authority. Written `refl` still performs only definitional equality.
-
-### Verified-call composition
-
-`compiler/obligations/src/contracts.cpp` orders verified definitions by their
-resolved call dependencies. It retains the body-derived obligation and builds a
-separate reasoning goal with one logical result binder per verified call. Calls
-are visited after their arguments. A call's precondition goal can use only the
-caller premise and earlier call postconditions; the final reasoning goal can
-use all justified postconditions. The actual call terms never replace these
-abstract results during candidate generation, including for `verified pure`
-callees. Cycles and unavailable definitions fail closed.
-
-`compiler/automation/src/composition.cpp` first checks evidence for the abstract
-goal. It then instantiates the result binders at the actual call terms and
-discharges the summary premises with previously accepted callee evidence. A
-failed callee or precondition leaves dependent obligations unresolved, even if
-the caller ignores its return value. There is no fallback to unfolding a
-verified callee to prove the caller's contract.
-
-Each callee exports `forall params. P -> Q[g(params)/result]` only after its
-body-derived contract passes the kernel. Existing equality elimination connects
-that theorem to `Q[R/result]`; reflexivity checks `g(params) == R` using a core
-definition lowered from the actual return expression. These definitions are
-available for proof linkage, while specification expressions retain their
-existing pure-definition admission rules. The fully assembled caller proof is
-checked against its original body-derived goal. No rule or axiom is added.
-
-Call-precondition obligations have their own origin, call-site provenance, and
-trust-report count. Caller identities include the abstract reasoning goal and
-callee obligation identities, so weakening a summary cannot reuse an identity
-based only on an unchanged executable body. Erasure adds nothing to a call and
-preserves every runtime call and argument.
-
-### Path-sensitive returns
-
-The bridge converts resolved blocks, `if` statements, and returns into a finite
-return tree. It threads subsequent statements through fallthrough arms, rejects
-missing returns and unsupported statements, and bounds expansion at 128 paths.
-`vir::Conditional` retains the typed condition and both return subtrees. This
-tree becomes a core `Select` term in the actual function definition.
-
-Obligation generation creates a `ReturnPath` plan for each leaf, with its ordered
-conditions and call occurrences. Every condition records how many calls preceded
-it. A call-precondition goal therefore sees only earlier conditions and summaries,
-including when the call occurs inside a guard. Actual and abstract condition
-propositions use the same lowering as contracts and Laws. Repeated logical copies
-of a shared guard do not duplicate runtime evaluation.
-
-Automation proves each path's abstract goal, links its call evidence, and checks
-its actual body goal. It then assembles the complete body proof using conditional
-elimination at each internal node, checking both arm implications. This is the
-one new kernel rule in this slice; no axiom is added. Only the complete accepted
-body can export the callee theorem. Per-path obligations and call obligations
-cannot inflate the count of verified declarations. Root identities include all
-path obligations, guards, abstract summaries, and callee dependencies.
-
-Comparisons lower to typed total boolean primitives. Their results are unsigned
-one-bit values; positive `==` remains ordinary propositional equality so existing
-rewrites retain their meaning. Negation reverses the required comparison result.
-Literal evaluation is exact, while symbolic order implications remain unavailable.
-
-### Locals and assignments
-
-The bridge takes a body's statements in program order, carrying the logical
-version of each local. A declaration or an assignment gives the local its next
-version and lowers the rest of the body under it; a read denotes the version
-current where it stands. Identity is the declaration Clang resolved, so
-shadowing and nested scopes need no rule of their own, and no name is looked up
-by spelling. A branch lowers what follows it once per arm, under the versions
-that arm established, which is what makes a local's value path-sensitive
-without a merge rule or a new kernel capability. `vir::PlaceVersion` and
-`vir::PlaceRef` carry this; the runtime statements are not rewritten.
-
-A version belongs to a place, not to a local (`vir::Place`, `SPEC.md` 12.10,
-RFC 0014 §1). A place is a root - a local, the referent a by-reference parameter
-designates, or the pointee a pointer designates - and a path of projections into
-it, so `s`, `s.x` and `s.x.y` are three places of one object and a member of a
-member needs no rule of its own. Identity is structural and follows Clang's
-resolution, never a spelling. A place is never a value: reading one yields a
-value, and the place itself never reaches the kernel as a term, which keeps the
-kernel's term language closed.
-
-A `Deref` root is identified by the pointer place and the version whose value it
-dereferences, so `*p` before and after a write to `p` are different places, and
-two dereferences of one unchanged pointer are the same place. Forming one
-requires a capability, which is why `*p`, `*p = e`, `p->m` and `p[i]` all route
-through one resolver: the obligation cannot be avoided by choosing a different
-syntax. An element step is either a constant index or a symbolic one; a symbolic
-element carries the index term that selects it and is never concluded disjoint
-from a sibling, because `i != j` must be proved rather than assumed.
-
-Obligation generation walks a path's steps in order. A guard contributes its
-condition; a version contributes the value it binds. Both contribute their calls
-where the body evaluates them, so a call written before a branch is proven
-without that branch's condition, and a call bound to a local that a path never
-reads is still proven on that path. A read of a local lowers to the term its
-version was given, so no local is an unknown and nothing about one is assumed.
-
-Versions are numbered in program order and are unique within a body, so a
-version's value reads only lower-numbered versions. Term lowering scopes each
-binding to the body beneath it and replays a read only below the version being
-replayed, so neither a sibling arm's version nor a cycle can be lowered, even
-from malformed VIR. The core has no sharing, so each read repeats the value in
-full: a lowered term is bounded at 16384 core nodes, and the bridge bounds a
-path at 128 nested or consecutive statements. Beyond either bound the body is
-rejected, never truncated.
-
-### Storage versions and call effects
-
-Clang-resolved parameter passing is separate from a parameter's logical value
-type (`source::ParameterPassing`). The bridge resolves every access form -
-a local, a member, an element, a member of one - through one resolver, reads
-through `read_place` and writes through `BodyLowering::write`, so no syntax has
-a read or write rule of its own. `PlaceVersion` carries an exact write;
-`UnknownVersion` carries a possible alias mutation with no inherited predicate,
-naming the place that went stale. Invalidation is proved only from Clang's
-resolution: distinct locals are disjoint, paths differing at a step are
-disjoint, an object and its members reach each other, and anything else may
-alias. No type-based aliasing argument is used.
-`CallEffect` identifies an argument's new logical version and declared target
-type. `ReturnState` carries the result and parameter observations at normal exit.
-All nodes retain source provenance and use the same version namespace.
-
-The existing partial-correctness condition builder consumes these nodes. It
-quantifies unknown versions, checks call preconditions before adding post-state,
-and applies the common membership function to local writes and call crossings.
-Callee dependency identities gate every exported postcondition. Stateful bodies
-never become total kernel definitions. Branch continuations keep their own state;
-loop carried-state discovery includes direct writes, reference aliases and calls.
-The shared driver analysis exposes these same obligations to cppl-lsp.
-
-Void contract projection uses Clang's canonical return type, with a bounded
-reprojection for aliases. Recovery extracts only type identity, and the final
-projection must parse successfully. No runtime output is changed by this step.
-
-### Machine arithmetic
-
-`kernel/src/arithmetic.cpp` owns the normal forms. Normalization reduces each
-primitive's operands first and then hands the primitive to
-`normalize_primitive`: wrapping `+`, `-`, `*` are read into a polynomial over
-opaque factors with coefficients modulo `2^width` and rendered canonically;
-comparisons, negation and selection are rewritten into canonical forms and
-folded where the machine type decides them. A total structural order on terms
-(`compare`) is the only source of arrangement, so normal forms depend on no
-address, hash or insertion order. Reading a rendered polynomial back yields the
-same polynomial, which makes normalization idempotent. Polynomial size and
-degree are bounded well inside the term-depth limit; beyond them normalization
-fails.
-
-`kernel/src/linear.cpp` owns the ninth rule. `arithmetic_system` states facts
-and a negated goal as integer linear constraints: monomials become bounded
-variables, and every polynomial that is not a single monomial carries a fresh
-wrap variable times `-2^width`, bounded by its type. `refutes` walks a
-certificate against the constraints standing at each node. Both functions are
-public so that producers can build the very system the kernel will check; the
-kernel never takes the system from them.
-
-`compiler/automation/src/arithmetic.cpp` is the producer. It eliminates
-variables Fourier-Motzkin style, recording for every derived row the
-nonnegative combination of original constraints it came from, so a derived
-contradiction is directly a Farkas sum. When the rational relaxation is
-feasible it splits disjunctions, then pins wrap variables value by value using
-the bounds the kernel recorded as hints. At the goal level it introduces
-quantifiers and premises and closes the equality underneath from all premises;
-failing that, it rewrites with the premises' equalities and with equalities
-between variables that arithmetic establishes (a loop counter equal to its
-bound at exit), then closes by reflexivity or arithmetic. `propose` tries
-definitional evidence, premise rewriting, arithmetic, and rewriting with
-arithmetic, in that order, and keeps the first candidate the kernel accepts.
-
-The lowering maps C++ `+`, `-`, `*` onto `add_wrap`, `sub_wrap`, `mul_wrap`
-only for unsigned operands of the expression's own modeled type, and refuses
-signed operands and every other arithmetic operator.
-
-### Loops and partial-correctness contracts
-
-The recognizer takes `invariant (...)` clauses between a `while` or `for` header
-and a block body inside a verified function. The projector blanks them from
-both texts and inserts, just inside the body's `{`, one generated `bool`
-declaration per invariant, so Clang resolves each invariant in the scope the
-loop head sees; `#line` directives return the body's own text to its line and
-column. The bridge reads those declarations back as the loop's invariants and
-never as statements; an unconsumed one rejects the body, and elaboration checks
-that every projected invariant of a function was consumed.
-
-The bridge lowers a loop into `vir::Loop` and `vir::Iterate`. It scans the loop
-for the locals it writes; each is carried and takes a fresh head version. The
-loop node holds the carried locals' entry values, the invariants read at the
-head, and a conditional on the loop condition whose true arm is one iteration
-and whose false arm is what follows the loop. An iteration ends in `Iterate`
-(after a `for` increment, and at `continue`), in a return, or at `break` in what
-follows the loop under the versions current there. Every `Iterate` checks that
-each uncarried local still has its head version, so a write the scan missed
-rejects the body.
-
-A body with a loop has no total core term, so its contract cannot be a theorem
-about a definition. `compiler/obligations` therefore states such a contract
-through verification conditions (`ContractVerification::partial`): walking the
-tree, it binds each verified call's result and each loop head as a fresh
-variable followed by the proposition supposed of it, and emits a loop-entry
-condition per invariant, a preservation condition per invariant at every
-`Iterate` (the invariant with the head values abstracted and then instantiated
-at the next values by the kernel's substitution), a precondition per call, and
-a postcondition per return. A caller of a partial contract is partial too.
-Partial functions are never admitted to the kernel context, so no specification
-or Law can mention one. `Composition` offers a condition to the kernel only once
-every contract it supposes is established, and establishes a partial contract
-once all its conditions are accepted.
-
-## 97.6 The Clang bridge is libclang, in process
-
-The bridge uses libclang, Clang's stable C API, and translates the facts C++L
-needs into C++L's own types. It is the only place in the project that includes a
-Clang header, and no Clang data structure or pointer leaves it.
-
-A transport based on `-ast-dump=json` was measured and rejected: a single unit
-including `<iostream>` produces roughly 490 MB of JSON. Consuming Clang's
-in-memory AST through a stable API is both cheaper and less brittle than parsing
-a debug format.
-
-The same Clang installation supplies both libclang and the `clang++` driver used
-for preprocessing and code generation, so the semantics C++L verifies and the
-semantics Clang compiles come from one toolchain.
-
-## 97.7 Termination in the current core
-
-The core admits no recursion. `Context::define` type-checks a definition against
-the context as it stands, so a definition can only call definitions already
-admitted and the definition graph is acyclic by construction. Normalization
-therefore terminates, and divergence cannot manufacture evidence. Polynomial
-normalization and certificate checking are structural recursions over finite
-input with explicit size bounds. A step budget and a depth limit are kept as
-defence in depth, and exhausting any bound rejects.
-
-When recursive definitions are admitted, this argument disappears and a
-termination checker becomes a prerequisite, not an improvement.
-
-Loops do not weaken it. A function whose body contains a loop, or calls one
-that does, is never admitted as a definition, so the kernel never normalizes a
-loop and never holds a theorem about a value a divergent loop would denote.
-Its contract is partial correctness, established from conditions each of which
-is an ordinary proposition over total terms.
-
-## 97.8 Intermediate artifacts
-
-Projections are written under the system temporary directory, in a directory
-named by a digest of the input's absolute path. They are inputs to Clang and
-diagnostics aids; nothing reads them back as a source of truth, and no proof
-result depends on them.
-
-## 97.9 Proof decomposition
-
-`cases` is implemented once, for every representation. `compiler/decomposition`
-holds the representation-independent decomposition model and one provider per
-C++ representation family; the rest of the pipeline is generic.
-
-```text
-Clang-resolved type
-    ↓  decomposition::decompose(subject)
-SumDecomposition | ProductDecomposition | Unsupported
-    ↓
-generic case engine (elaboration + obligations)
-    ↓
-existing VIR / kernel rules
-```
-
-**Supporting a new C++ representation for proof-side case reasoning requires a
-sound decomposition provider for that representation. Arm parsing, binder
-handling, exhaustiveness validation, proof-state splitting, evidence
-construction, dependency checking, diagnostics, erasure and kernel lowering are
-representation-independent and must not be reimplemented per type family.**
-
-**A representation provider models ordinary C++ states for verification
-purposes. It does not introduce a new C++L runtime type, runtime pattern
-matching, runtime destructuring, or runtime control flow.**
-
-The **frontend** recognizes a recursive tree of proof statements and arms
-without knowing what any subject is. It classifies a label only as a name a
-representation reserves or an expression for Clang to resolve, reading one
-shared vocabulary (`decomposition/labels.hpp`) so the parser and the engine
-agree. The projector emits probes for subjects, labels, arguments and
-assumptions, preserving source correspondence, and declares binders as
-analysis-only parameters. The runtime projection blanks the enclosing proof as
-before.
-
-The **Clang bridge** describes a type's resolved representation: its USR, its
-qualified name, its representation kind, and whatever the kind's states depend
-on — enumerator constants for an enumeration, and the ordered component list
-with each component's declaration and accessibility for a product or a tagged
-sum. A standard type's kind comes from the specialized template declaration in
-the canonical `std` namespace, skipping inline namespaces. Provider selection
-uses that identity, never a spelling.
-
-**VIR** retains the representation on the type and carries a `CasesStep` whose
-arms record which case each claims - never the representation's own notion of a
-state.
-
-**Elaboration** asks the provider for the partition, resolves each written label
-through it, checks binder arity against the case's bindings, checks
-exhaustiveness against the partition, and maps binder probe parameters back to
-the value the binding denotes, including under quantified propositions. Evidence
-names resolve in arm scope; nested proof references participate in the existing
-acyclic dependency traversal.
-
-**Binder type resolution** is a fixpoint, because a binder's type is only known
-once its subject is decomposed, and a nested arm's subject is itself a binder.
-Each pass reprojects and reparses, and the loop stops at the first pass that
-resolves nothing new, so the cost is proportional to decomposition **nesting
-depth**, not to a fixed pass count or to the number of arms. A translation unit
-with no decomposition parses once. The bound exists to fail closed on a
-pathological nesting depth, not as an expected cost. Parsing a translation
-unit's own standard-library headers dominates in practice, so no descriptor
-cache sits in this path; adding one would optimize what is not the bottleneck.
-
-**Obligation lowering** asks the provider again rather than trusting the arms,
-lowers each discriminator with the ordinary expression lowering, and builds a
-chain of conditional eliminations over them in partition order. Each case's
-branch checks its arm; the remaining branch combines the checked negations with
-conjunction introduction and checks the tail arm. The motive is the enclosing
-goal, shifted capture-safely under the existing rule's binder. Arm facts are
-real kernel hypotheses and can be named by `assume`.
-
-The kernel needs no case rule and no per-representation rule. A representation
-no provider models is refused at the provider boundary by name (`SPEC.md` 20.5).
-
-Two provider implementations cover every representation family. A **tagged sum**
-provider serves `std::variant`, `std::optional` and `std::expected`: one
-discriminating observation, one payload observation per state, and a residual
-state the engine derives. A **product** provider serves records, `std::pair`,
-`std::tuple`, `std::array` and built-in arrays: one state, no discriminator, and
-one logical projection per component. Pointers are the degenerate tagged sum.
-A new representation that fits either shape reuses it; adding a third shape, an
-arm label for an unmodeled state, or a per-representation rule anywhere in this
-pipeline is a design error, not an extension point.
-
-## 97.10 Storage, capabilities and effects
-
-Storage is modeled once, for every access form. `SPEC.md` 12.10 is the normative
-boundary and RFC 0014 the design. The model is generic: refinement types consume
-it, and nothing in it is refinement-specific.
-
-```text
-Clang-resolved lvalue
-    ↓
-Place          local | parameter | field | element | pointee | temporary
-    ↓
-Region         extent, liveness, provenance   (shared by a place's projections)
-    ↓
-Capability     readable | writable | initialized
-    ↓
-Version        which value is there now
-```
-
-**A place is not a value.** Reading a place yields a value; the place itself
-never becomes a kernel term, which is what keeps the kernel's term language
-closed. `Deref` is the one constructor crossing from a value to a place, and the
-only one whose formation requires a capability — so dereference is a projection
-in this model, not a special case with its own rules.
-
-**One read path and one write path.** Every access form — a local, a member, an
-element, a pointee, a capture, a temporary, a call result — resolves to a place
-and goes through the same read or write. A write proves the place writable,
-proves the value satisfies the target storage's refinement _before_ binding it,
-establishes a new version, and havocs every place that may alias the target.
-Adding a syntax-specific read or write is the design error this structure exists
-to prevent; it is what would produce five incompatible aliasing stories.
-
-**Aliasing fails safe.** Disjointness is proved from Clang-resolved structure —
-distinct locals, distinct members of one object, distinct proved indices — and
-never from type-based aliasing, whose validity presupposes the UB-freedom the
-proof has not established. Two arbitrary pointee places may alias. Where
-distinctness is unproved, facts are invalidated.
-
-**Capabilities are tracked, bounds are proved.** A capability is a context
-hypothesis the obligation layer carries, not a kernel proposition: validity is a
-property of the state rather than of any value, since `free(p)` destroys the
-validity of `*p` without changing `p`. Capability checking is a decidable flow
-analysis and lives in the correspondence layer with a stated TCB delta
-(`TRUST.md` 41.2). What reaches the kernel is what needs proof — refinement
-membership on every write, and `index < extent` on every subscript, both
-ordinary propositions discharged by existing rules. The kernel gains no storage
-rule, no memory rule and no capability rule.
-
-**Effects are derived, never assumed.** Parameter kinds and constness come from
-Clang; a verified callee has exactly its proven stated effects, and an
-unverified callee is never assumed pure. A fact an effect invalidated is
-re-established only by a proven postcondition.
-
-The escape hatch is `trusted`, and it is explicit: a capability introduced there
-is a recorded trust event naming the capability, the place, the location and the
-mechanism. A failed capability obligation is a diagnostic, never a silent
-downgrade to an assumption.
-
-The separation is structural rather than a convention to remember.
-`vir::Capability` is deliberately not a node of `vir::Expr`, so there is no path
-from a capability to the kernel's proposition language: the compiler rejects the
-mistake instead of a reviewer having to catch it. `readable` and `writable` are
-built-in specification propositions recognized contextually in a clause, never
-calls to user functions and never runtime calls, so ordinary C++ that already
-uses those names keeps its meaning. A contract states one `expects` clause, so
-several capabilities are joined by `&&`; a clause mixing a capability with an
-ordinary predicate is refused, because the two leave elaboration on different
-channels.
-
-### Abstract value boundary
-
-Core/kernel 0.6.0 carries nominal abstract sorts with finite typed observation
-signatures. The compiler supplies correspondence; the kernel validates every
-projection against its subject's complete domain signature. Abstract values
-cannot enter machine arithmetic. Projection terms participate in substitution,
-normalization, deterministic ordering, dependency traversal and obligation
-hashing. This is one generic value mechanism, independent of providers.
+C++L is successful only when all three refer to the same program and every gap
+between them is explicit.
