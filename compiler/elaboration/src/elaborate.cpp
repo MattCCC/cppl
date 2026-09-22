@@ -653,7 +653,7 @@ std::vector<vir::Capability> convert_capabilities(
 std::optional<std::vector<vir::ProofStep>> convert_statements(
     const Request& request, const frontend::ProofDeclaration& declaration, const frontend::ProofFunction& projected,
     const std::map<std::string, std::size_t>& declared, const std::vector<vir::Parameter>& parameters,
-    std::uint32_t& next_expression_id, diagnostics::Engine& engine) {
+    std::uint32_t& next_expression_id, diagnostics::Engine& engine, std::vector<SubjectStates>* subject_states) {
     const std::size_t parameter_count = parameters.size();
     std::vector<std::string> value_names;
     value_names.reserve(parameters.size());
@@ -741,6 +741,41 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
                            "proof decomposition is not defined for '" + unsupported->representation + "'",
                            unsupported->reason);
                     return std::nullopt;
+                }
+
+                // Record what the engine just decided, for editors. This is a
+                // read-only byproduct: nothing below consults it, so it cannot
+                // change which proofs are accepted.
+                if (subject_states != nullptr) {
+                    if (const decomposition::Provider* modeled = decomposition::provider_for(subject->type)) {
+                        SubjectStates record;
+                        record.location = statement.location;
+                        record.subject = statement.reference;
+                        record.representation = describe(subject->type);
+                        record.provider = std::string(modeled->name());
+                        if (const auto* product = std::get_if<decomposition::ProductDecomposition>(&decomposed)) {
+                            record.product = true;
+                            SubjectStates::State components{"components", {}, false};
+                            for (const auto& field : product->fields)
+                                components.binders.push_back(field.name);
+                            record.states.push_back(std::move(components));
+                        } else {
+                            const auto& sum = std::get<decomposition::SumDecomposition>(decomposed);
+                            for (const auto& described_case : sum.cases) {
+                                SubjectStates::State state{described_case.label.text, {}, false};
+                                for (const auto& binding : described_case.bindings)
+                                    state.binders.push_back(binding.name);
+                                record.states.push_back(std::move(state));
+                            }
+                            if (sum.exhaustiveness == decomposition::ExhaustivenessModel::ResidualRequired) {
+                                SubjectStates::State state{sum.residual.text, {}, true};
+                                for (const auto& binding : sum.residual_bindings)
+                                    state.binders.push_back(binding.name);
+                                record.states.push_back(std::move(state));
+                            }
+                        }
+                        subject_states->push_back(std::move(record));
+                    }
                 }
                 if (const auto* product = std::get_if<decomposition::ProductDecomposition>(&decomposed)) {
                     if (statement.kind != frontend::ProofStatementKind::Decompose || statement.arms.size() != 1 ||
@@ -1323,7 +1358,8 @@ void elaborate_proofs(const Request& request, const std::map<std::string, vir::L
         // their types; which proposition they state is worked out where the
         // law's own proposition is known, by instantiating it at them.
         std::optional<std::vector<vir::ProofStep>> steps =
-            convert_statements(request, declaration, projected, declared, *parameters, next_expression_id, engine);
+            convert_statements(request, declaration, projected, declared, *parameters, next_expression_id, engine,
+                               &result.subject_states);
         if (!steps.has_value()) {
             if (law)
                 result.laws_with_refused_proofs.push_back(*law);

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cppl/diagnostics/diagnostic.hpp"
+#include "cppl/elaboration/elaborate.hpp"
 #include "cppl/frontend/syntax.hpp"
 #include "cppl/frontend/token.hpp"
 
@@ -52,6 +53,13 @@ struct BufferCompileOutcome {
     // performed instead of re-lexing the buffer itself.
     std::unique_ptr<frontend::TokenStream> tokens;
     std::unique_ptr<frontend::Syntax> syntax;
+
+    // The states each `cases`/`decompose` subject was found to have, recorded
+    // by the one generic engine while it elaborated them. Empty when the
+    // pipeline stopped before elaboration, or when no statement's subject was
+    // modeled by a provider. An editor reads this to offer exactly the labels
+    // the compiler would accept; it never recomputes them.
+    std::vector<elaboration::SubjectStates> subject_states;
 };
 
 // Runs preprocess -> recognize -> project -> Clang parse -> elaborate ->

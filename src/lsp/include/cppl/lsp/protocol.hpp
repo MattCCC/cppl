@@ -91,4 +91,33 @@ struct FormattingOptions {
     bool insertSpaces = true;
 };
 
+// The subset of LSP `CompletionItemKind` this server produces. A case label is
+// an `EnumMember` when the representation spells it as one (a scoped
+// enumerator) and a `Keyword` when the representation reserves the spelling
+// (`valueless`, `none`, `unnamed`), which is the distinction
+// `decomposition::LabelKind` already draws.
+enum class CompletionItemKind : std::uint8_t {
+    Keyword = 14,
+    EnumMember = 20,
+};
+
+struct CompletionItem {
+    std::string label;
+    CompletionItemKind kind = CompletionItemKind::Keyword;
+    // Shown beside the label: which representation supplies this state.
+    std::string detail;
+    std::string documentation;
+    // What is inserted, when it differs from `label` (an arm skeleton with its
+    // binders). Empty means insert `label`.
+    std::string insertText;
+    // Orders provider states ahead of anything the editor merges in, and keeps
+    // the provider's own order (alternative<0> before alternative<1>) stable.
+    std::string sortText;
+};
+
+struct Hover {
+    std::string contents;
+    std::optional<Range> range;
+};
+
 } // namespace cppl::lsp

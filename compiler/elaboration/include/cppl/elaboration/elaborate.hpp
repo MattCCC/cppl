@@ -22,9 +22,45 @@ struct FunctionRejection {
     source::SourceLocation location;
 };
 
+// The states one `cases`/`decompose` subject was found to have.
+//
+// This is a *record* of what the generic engine already decided while
+// elaborating the statement, kept so that a non-compiling consumer -- the
+// language server -- can offer exactly the labels the compiler would accept
+// without running a decomposition of its own. Nothing reads it back into
+// elaboration, and a stale or missing entry can only cost an editor
+// suggestion: it is never proof-relevant (`AGENTS.md` 39, one engine).
+struct SubjectStates {
+    // Where the `cases`/`decompose` keyword was written.
+    source::SourceLocation location;
+    // The subject exactly as the author spelled it.
+    std::string subject;
+    // The resolved C++ type the provider recognized.
+    std::string representation;
+    // The provider that modeled it, for the editor to name its source.
+    std::string provider;
+    // True for a product (one `components(...)` arm), false for a sum.
+    bool product = false;
+
+    struct State {
+        std::string label;
+        // The provider's own binder names for this state, in order.
+        std::vector<std::string> binders;
+        // The state completing the partition, which the engine derives by
+        // negating the others rather than the provider supplying it.
+        bool residual = false;
+    };
+    std::vector<State> states;
+};
+
 struct Result {
     vir::Module module;
     std::vector<FunctionRejection> rejected_functions;
+
+    // One entry per `cases`/`decompose` statement whose subject a provider
+    // modeled, in source order. Statements the provider boundary refused are
+    // absent: there is nothing to suggest for a representation with no model.
+    std::vector<SubjectStates> subject_states;
 
     // Laws an author wrote a proof for, where that proof was refused.
     //

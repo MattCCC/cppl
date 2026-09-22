@@ -123,6 +123,7 @@ BufferCompileOutcome compile_buffer(const BufferCompileRequest& request, diagnos
     outcome.has_cppl = result.has_cppl;
     outcome.tokens = std::move(result.tokens);
     outcome.syntax = std::move(result.syntax);
+    outcome.subject_states = std::move(result.subject_states);
     return outcome;
 }
 

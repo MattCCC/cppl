@@ -15,6 +15,7 @@
 // installed and no other library includes it.
 
 #include "cppl/diagnostics/diagnostic.hpp"
+#include "cppl/elaboration/elaborate.hpp"
 #include "cppl/frontend/syntax.hpp"
 #include "cppl/frontend/token.hpp"
 
@@ -85,6 +86,11 @@ struct PipelineOutcome {
     // outlives the pipeline call.
     std::unique_ptr<frontend::TokenStream> tokens;
     std::unique_ptr<frontend::Syntax> syntax;
+
+    // What the generic case engine decided each `cases`/`decompose` subject's
+    // states were, for editors to offer. A byproduct of elaboration: no later
+    // stage reads it back.
+    std::vector<elaboration::SubjectStates> subject_states;
 
     // The runtime program's scratch path, when one was produced (has_cppl
     // and not failed before erasure). Empty otherwise.
