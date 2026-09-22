@@ -945,7 +945,7 @@ Expr build_expression(CXCursor cursor, const std::vector<CXCursor>& parameters, 
                       bool sequenced_call = false);
 
 // Observe one element of an array value at a symbolic index, with the bounds
-// obligation the subscript owes (FOUNDATIONS.md 45, SPEC.md STORAGE-011).
+// obligation the subscript owes (FOUNDATIONS.md 45, SPEC.md STORAGE-005).
 //
 // The extent is the resolved type's own component count, so it is available
 // before any element has been observed. The obligation is the same

@@ -143,7 +143,7 @@ struct Projection {
 // One element of an array value, selected at a term rather than a constant
 // (FOUNDATIONS.md 45). Forming it proves nothing about the index: the
 // `index < extent` obligation is owed separately, by the same `ElementBound` a
-// tracked subscript owes (SPEC.md STORAGE-011, STORAGE-012).
+// tracked subscript owes (SPEC.md STORAGE-005).
 struct Element {
     std::vector<Expr> operands; // subject, index
 };
