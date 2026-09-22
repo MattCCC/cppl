@@ -1,836 +1,1053 @@
 # C++L Trust Model
 
-This document defines the **Trusted Computing Base (TCB)** and trust boundaries of C++L.
+**C++L — Trusted Computing Base and Assurance Boundaries**
 
-It does **not** define C++L language semantics.
+Status: Normative trust specification
 
-Language syntax and semantics are defined in [SPEC.md](./SPEC.md).
+This document defines the **Trusted Computing Base (TCB)**, trusted-assumption model, correspondence obligations, runtime trust chain, artifact trust rules, and assurance-reporting requirements of C++L.
 
-The purpose of this document is to answer:
+It answers one question:
 
-> What must be trusted for a C++L claim marked `PROVEN` to mean what it claims to mean?
+> What must be correct, and what assumptions must be explicit, for a C++L result reported as `PROVEN` to mean what it claims to mean?
 
-The objective is not to eliminate all trust.
+This document is normative for trust classification and assurance boundaries. It does **not** redefine C++L source-language semantics, grammar, or the mathematics of the formal calculus.
 
-The objective is to make trust:
+Language syntax and semantics are defined by [SPEC.md](./SPEC.md). The formal calculus is defined by [FOUNDATIONS.md](./FOUNDATIONS.md). Implementation structure belongs in [ARCHITECTURE.md](./ARCHITECTURE.md) and [DESIGN.md](./DESIGN.md). Supported C++/toolchain combinations belong in [COMPATIBILITY.md](./COMPATIBILITY.md). Implementation maturity belongs in [STATUS.md](./STATUS.md).
 
-- minimal
-- explicit
-- auditable
-- reproducible
-- machine-visible
-- difficult to expand accidentally
+A conforming implementation MUST NOT use implementation limitations, architecture choices, status, or tooling convenience to weaken the trust requirements in this document.
 
 ---
 
-# 1. Scope
+# 1. Normative terminology and authority
 
-`SPEC.md` defines what C++L constructs mean.
+The words `MUST`, `MUST NOT`, `SHOULD`, `SHOULD NOT`, and `MAY` are normative requirements.
 
-This document defines which components must behave correctly for those meanings and proofs to remain valid.
-
-In particular, this document covers:
-
-- the Trusted Computing Base
-- proof-kernel trust
-- compiler/frontend trust
-- Clang/LLVM trust
-- solver trust
-- AI trust
-- FFI trust
-- trusted assumptions
-- trust propagation
-- erasure trust
-- proof-cache trust
-- reproducibility
-- verification status reporting
-
-This document intentionally does **not** redefine:
-
-- Laws
-- dependent types
-- refinement types
-- equality
-- induction
-- termination semantics
-- contracts
-- contextual keywords
-- language grammar
-
-Those belong in `SPEC.md`.
-
----
-
-# 2. Core trust principle
-
-A successful C++L build answers two different questions:
+The documentation authority is separated by subject:
 
 ```text
-Did the program compile?
+SPEC.md
+    language meaning and normative source semantics
 
-Did the claimed Laws follow from the stated assumptions?
+FOUNDATIONS.md
+    formal calculus and mathematical justification
+
+TRUST.md
+    TCB, assurance boundaries, assumption provenance and trust reporting
+
+GRAMMAR.md
+    concrete syntax
+
+ARCHITECTURE.md / DESIGN.md
+    implementation structure and engineering choices
+
+COMPATIBILITY.md
+    supported C++ modes, toolchains, platforms and ABI compatibility
+
+STATUS.md
+    implementation coverage only; never normative language or trust semantics
 ```
 
-These questions MUST remain distinct.
+If this document appears to redefine a C++L construct, `SPEC.md` governs the construct's meaning and this document governs only what must be trusted for that meaning to be preserved.
 
-Compilation success does not imply proof success.
+If this document appears to redefine a proof rule, `FOUNDATIONS.md` governs the proof rule and this document governs only which checker or correspondence component must be correct for its use to be trustworthy.
 
-Proof success does not imply absence of external trusted assumptions.
+**[TCB-AUTH-001]** `STATUS.md` MUST NOT weaken, narrow, reinterpret, or replace a requirement of this document.
+
+**[TCB-AUTH-002]** An implementation MAY reject a construct it cannot verify soundly, but MUST NOT accept it under a weaker hidden trust model.
+
+**[TCB-AUTH-003]** A trust requirement remains normative even when the corresponding feature is not implemented by a particular toolchain.
 
 ---
 
-# 3. Trusted Computing Base
+# 2. Terms
 
-The **Trusted Computing Base (TCB)** is the set of components whose incorrect behavior could cause C++L to accept a false proposition as proven.
+## 2.1 Trusted Computing Base
 
-The TCB SHOULD be minimized aggressively.
+The **Trusted Computing Base** is the set of components whose incorrect behavior can cause an assurance claim to be accepted or presented with stronger meaning than is justified.
 
-Target architecture:
+For C++L, the end-to-end TCB is intentionally decomposed rather than treated as one undifferentiated compiler.
 
-```text
-┌───────────────────────────────────────┐
-│ Untrusted / independently checked     │
-│                                       │
-│ parser                                │
-│ elaborator                            │
-│ tactics                               │
-│ proof search                          │
-│ AI-generated code                     │
-│ AI-generated proofs                   │
-│ SMT automation                        │
-│ optimizers                            │
-└──────────────────┬────────────────────┘
-                   │
-                   │ proof evidence
-                   ▼
-┌───────────────────────────────────────┐
-│ Trusted proof boundary                │
-│                                       │
-│ small proof kernel                    │
-│ primitive formal semantics            │
-│ explicitly declared axioms            │
-└──────────────────┬────────────────────┘
-                   │
-                   ▼
-                PROVEN
-```
+## 2.2 Logical TCB
 
-The project SHOULD prefer:
+The **logical TCB** contains the components whose correctness is required for a core proof judgment to be sound.
 
-```text
-large untrusted producer
-+
-small trusted checker
-```
+A fault in the logical TCB can cause invalid evidence to be accepted for the core proposition actually presented to the checker.
 
-over:
+## 2.3 Correspondence TCB
 
-```text
-large trusted verifier
-```
+The **correspondence TCB** contains the components whose correctness is required for a core proposition, storage obligation, effect fact, or proof obligation to mean what the corresponding C++L/C++ source means.
 
-where practical.
+A fault in the correspondence TCB can ask a perfectly sound kernel to prove the wrong proposition.
 
----
+## 2.4 Runtime TCB
 
-# 4. Proof kernel
+The **runtime TCB** contains the components whose correctness is required for the native executable to preserve the runtime semantics about which verification reasoned.
 
-The proof kernel is the final authority for logical proof validity.
+## 2.5 Artifact and reuse TCB
 
-It SHOULD be:
+The **artifact and reuse TCB** contains any component whose correctness is required when a prior verification result, imported proof artifact, metadata summary, cache entry, or pre-checked interface is reused without reconstructing and independently checking all relevant evidence from source.
 
-- small
-- deterministic
-- dependency-light
-- auditable
-- fuzzable
-- heavily negatively tested
-- formally specified
-- isolated from unrelated compiler functionality
+## 2.6 Reporting TCB
 
-The kernel MUST reject invalid or malformed proof evidence.
+The **reporting TCB** contains the components whose correctness is required to present assurance status and trust dependencies accurately to a user or machine consumer.
 
-The kernel SHOULD contain only the minimum logic required by the formal core defined in `SPEC.md`.
+A reporting defect does not necessarily make a mathematical proof false, but it can falsely present `TRUSTED`, `UNSAFE`, `UNVERIFIED`, or `UNRESOLVED` material as `PROVEN`; therefore it is security-sensitive.
+
+## 2.7 Trusted assumption
+
+A **trusted assumption** is an explicit proposition admitted through the C++L trusted surface defined by `SPEC.md` rather than derived from proof evidence.
+
+A trusted assumption is not a software component and is not itself a TCB bug. It is an explicit premise of the assurance claim.
+
+## 2.8 Trust closure
+
+The **trust closure** of an assurance claim is the transitive set of trusted assumptions on which its accepted evidence depends.
+
+## 2.9 Correspondence assumption
+
+A **correspondence assumption** is an explicit dependency on an external semantic authority or model, such as the selected C++ implementation, standard-library specification, operating system guarantee, ABI contract, or hardware behavior.
+
+Correspondence assumptions MUST be classified and reportable where they materially affect an assurance claim.
+
+## 2.10 Fail closed
+
+To **fail closed** means to refuse the stronger assurance claim when required semantics, evidence, provenance, identity, capability, or dependency information is unavailable or cannot be validated.
+
+Failing closed MUST NOT be implemented by silently replacing static proof with trust, runtime validation, `unsafe`, or a weaker theorem.
 
 ---
 
-# 5. Kernel trust boundary
+# 3. End-to-end assurance model
 
-The kernel MUST NOT depend on the correctness of:
+C++L distinguishes the validity of a formal derivation from the correctness of its connection to source and runtime behavior.
 
-- AI reasoning
-- tactic heuristics
-- solver heuristics
-- IDE features
-- source formatting
-- diagnostics
-- optimization strategies
-- proof search order
-
-Those systems may generate candidate evidence.
-
-The kernel decides whether that evidence is valid.
-
-Conceptually:
+An end-to-end verified claim has four separable obligations:
 
 ```text
-complex producer
-    ↓
-candidate proof
-    ↓
-kernel
-    ├── valid   → accept
-    └── invalid → reject
+SOURCE MEANING
+    the source construct is interpreted according to SPEC.md
+
+CORRESPONDENCE
+    source meaning is translated to the correct formal/storage obligations
+
+PROOF / CHECKING
+    those obligations are discharged by valid evidence under explicit premises
+
+RUNTIME PRESERVATION
+    when the claim concerns execution, the compiled program preserves the verified runtime semantics
 ```
+
+A small proof kernel addresses only the third obligation unless it independently checks certificates for the other obligations as well.
+
+**[TCB-END2END-001]** A conforming implementation MUST NOT describe the proof kernel alone as the entire TCB for a source-level or executable-level claim unless all source-to-core and runtime-preservation correspondence required by that claim is independently checked outside the trusted boundary.
+
+**[TCB-END2END-002]** A component that can cause the checker to verify a proposition different from the proposition denoted by the source is part of the correspondence TCB unless an independent checker validates that mapping.
+
+**[TCB-END2END-003]** A component that can cause a different runtime program to execute than the runtime program whose semantics were verified is part of the runtime TCB unless an independent equivalence checker validates that mapping.
+
+**[TCB-END2END-004]** Explicit trusted assumptions MUST remain premises of the assurance claim. Proof derived from them does not erase their presence.
+
+## 3.1 Assurance claim model
+
+For trust purposes, an accepted theorem can be viewed as:
+
+```text
+Claim = (P, A, C, R)
+```
+
+where:
+
+```text
+P   proposition established
+A   transitive trusted-assumption closure
+C   source/formal correspondence on which P depends
+R   runtime correspondence required if P is about executable behavior
+```
+
+`PROVEN` means that valid evidence establishes `P` under the explicit premises and trust closure required by the claim. It does not mean that `A` is empty.
+
+## 3.2 Unconditional and assumption-relative confidence
+
+A theorem with an empty trusted-assumption closure and one with a non-empty trusted-assumption closure MAY both have language status `PROVEN` as defined by `SPEC.md`, but tooling MUST expose the difference.
+
+The following presentations are forbidden when they hide a non-empty trust closure:
+
+```text
+fully verified
+assumption free
+proved without trust
+zero trust
+```
+
+unless those descriptions are actually true for the claim being reported.
 
 ---
 
-# 6. Frontend and elaborator
+# 4. TCB decomposition
 
-The C++L frontend and elaborator are complex components and SHOULD NOT automatically belong to the logical TCB.
+A conforming implementation MUST classify assurance dependencies into the following layers.
+
+| Layer              | What it protects                                  | Typical failure if wrong                    |
+| ------------------ | ------------------------------------------------- | ------------------------------------------- |
+| Logical TCB        | validity of formal derivations                    | false core theorem accepted                 |
+| Correspondence TCB | source/storage semantics to formal obligations    | correct proof of the wrong source claim     |
+| Runtime TCB        | preservation into executable behavior             | verified source and executed binary diverge |
+| Artifact/reuse TCB | safe reuse/import of prior evidence and summaries | stale/forged result accepted                |
+| Reporting TCB      | truthful assurance status and provenance          | trusted/unsafe result shown as proven       |
+
+**[TCB-LAYERS-001]** These layers MUST be distinguished in trust documentation and machine-readable reports.
+
+**[TCB-LAYERS-002]** Moving functionality out of the logical kernel does not remove it from the end-to-end TCB when its failure can still make a source-level claim unsound.
+
+**[TCB-LAYERS-003]** A component MAY be removed from a trust layer only when another independently trusted mechanism checks all properties that previously required trusting that component.
+
+**[TCB-LAYERS-004]** Tests, fuzzing, code review, static analysis and formal verification can reduce confidence risk, but do not by themselves remove a component from the TCB. Removal requires an actual independently checked boundary.
+
+---
+
+# 5. Logical proof TCB
+
+## 5.1 Proof checker
+
+The proof checker is the final authority for the validity of core proof evidence.
+
+**[TCB-CORE-001]** The checker MUST reject malformed, ill-typed, out-of-scope, capture-invalid, or logically invalid proof evidence.
+
+**[TCB-CORE-002]** The checker MUST derive conclusions from the formal rules defined by `FOUNDATIONS.md`; it MUST NOT accept a proposition merely because a frontend, tactic, solver, AI system, or optimization pass labels it true.
+
+**[TCB-CORE-003]** Any primitive logical rule implemented directly by the checker is part of the logical TCB.
+
+**[TCB-CORE-004]** Any normalization or definitional-equality procedure whose result can close a proof obligation is part of the logical TCB.
+
+**[TCB-CORE-005]** Any substitution, binder shifting, alpha/capture handling, universe/type checking, or term typing used to validate evidence is part of the logical TCB.
+
+**[TCB-CORE-006]** Any built-in decision procedure whose output the checker accepts without an independently checked certificate is part of the logical TCB.
+
+**[TCB-CORE-007]** The checker MUST fail closed on malformed or resource-exhausting evidence; resource failure MUST NOT be interpreted as success.
+
+## 5.2 Primitive formal semantics
+
+Primitive formal operations used by the checker must correspond exactly to their definitions in `FOUNDATIONS.md` and, where they model C++ operations, to the C++ semantics admitted by `SPEC.md`.
+
+This includes, where applicable:
+
+```text
+machine integer constants and widths
+wrapping arithmetic primitives
+comparisons
+Boolean representation used by the core
+equality and substitution
+quantifier binding
+logical connectives
+abstract observation terms
+mathematical-domain operations
+termination/well-foundedness primitives admitted by the core
+```
+
+**[TCB-CORE-008]** The checker MUST NOT use host-language overflow, undefined behavior, locale, address identity, pointer identity, floating host arithmetic, or nondeterministic container order as hidden semantics for formal terms unless those semantics are explicitly part of the formal model.
+
+**[TCB-CORE-009]** Exact arithmetic used to check proof certificates MUST detect and reject implementation overflow rather than wrap silently.
+
+## 5.3 Axioms and primitive assumptions
+
+C++L distinguishes primitive logical rules from trusted user assumptions.
+
+**[TCB-CORE-010]** The logical checker MUST have no hidden axiom-admission path.
+
+**[TCB-CORE-011]** Any primitive axiom required by the formal calculus MUST be enumerated by `FOUNDATIONS.md` and represented in trust metadata as part of the calculus definition.
+
+**[TCB-CORE-012]** User-authored `trusted law` declarations MUST NOT be silently compiled into ordinary kernel rules or hidden global axioms. Their identity and provenance MUST remain explicit.
+
+## 5.4 Checker size and dependencies
+
+Smallness is a design objective, not a semantic claim.
+
+**[TCB-CORE-013]** The logical checker SHOULD minimize dependencies and mutable global state.
+
+**[TCB-CORE-014]** Dependencies whose incorrect behavior can cause invalid evidence to be accepted are themselves part of the logical TCB and MUST be counted as such.
+
+**[TCB-CORE-015]** A claim that the kernel is "small" MUST NOT exclude linked libraries or generated tables that participate in proof acceptance.
+
+---
+
+# 6. Untrusted proof producers
+
+The following components SHOULD be treated as untrusted proof producers whenever all output they produce is independently validated before it contributes to `PROVEN`:
+
+```text
+tactics
+proof search
+rewriters
+simplifiers
+automation
+SMT/SAT model search
+AI-generated proofs
+AI-generated code
+proof repair tools
+IDE quick fixes
+counterexample generators
+optimization of proof terms
+```
+
+**[TCB-PRODUCER-001]** A proof producer MAY be outside the logical TCB only if every artifact capable of establishing a proposition is checked by the logical TCB or another explicitly trusted checker before use.
+
+**[TCB-PRODUCER-002]** A proof producer MUST NOT be able to mark an obligation discharged by returning a Boolean success flag that bypasses evidence checking.
+
+**[TCB-PRODUCER-003]** If an automation engine is trusted directly, it becomes part of the appropriate TCB and that direct trust MUST appear in the trust report.
+
+## 6.1 SMT and SAT solvers
 
 Preferred architecture:
 
 ```text
-source syntax
+obligation
     ↓
-frontend
+solver
     ↓
-explicit core representation
-    ↓
-kernel validation
-```
-
-The frontend may be wrong.
-
-The elaborator may be wrong.
-
-Their output MUST still satisfy the kernel.
-
-Where frontend correctness cannot yet be independently checked, that dependency MUST be documented explicitly.
-
----
-
-# 7. Separation of logical trust and runtime trust
-
-C++L has two distinct trust layers.
-
-## Logical trust
-
-Logical trust determines:
-
-```text
-Is this proposition actually established?
-```
-
-This is primarily the responsibility of the C++L proof system and kernel.
-
-## Runtime trust
-
-Runtime trust determines:
-
-```text
-Does the executable preserve the behavior that was reasoned about?
-```
-
-This includes lowering, erasure, C++ compilation, ABI behavior, and execution.
-
-These two forms of trust MUST NOT be conflated.
-
----
-
-# 8. Clang and LLVM
-
-C++L relies on Clang and LLVM for ordinary C++ compilation and native code generation.
-
-They are not intended to define theorem validity.
-
-Conceptually:
-
-```text
-C++L kernel
-    decides logical validity
-
-Clang / LLVM
-    compile runtime semantics
-```
-
-Clang/LLVM therefore belong primarily to the **runtime trust chain**, not the logical proof kernel.
-
-Any guarantee about the final executable depends on the backend preserving the semantics of the generated C++.
-
----
-
-# 9. C++ semantic dependency
-
-C++L proofs about executable behavior depend on the C++ semantic model used by the verifier corresponding to actual runtime behavior.
-
-The project MUST document which parts of C++ semantics are modeled sufficiently for verified claims.
-
-Where runtime semantics are not modeled, the relevant code MUST remain:
-
-```text
-UNVERIFIED
-```
-
-or:
-
-```text
-UNSAFE
-```
-
-or depend on an explicit:
-
-```text
-TRUSTED
-```
-
-boundary.
-
-The verifier MUST NOT silently claim semantics it does not model.
-
----
-
-# 10. Erasure trust
-
-Proof erasure is correctness-critical.
-
-Conceptually:
-
-```text
-verified C++L
-    ↓
-proof / ghost erasure
-    ↓
-ordinary C++
-```
-
-The erasure implementation must preserve the runtime behavior defined by the verified program.
-
-## 10.1 Two classes of C++L syntax
-
-C++L syntax falls into two classes, and erasure treats them differently. The
-distinction is checked, not assumed:
-
-```text
-proof-only syntax
-    -> blanked: every byte becomes a space, so nothing is added or altered
-
-runtime-bearing declarations
-    -> replaced by the canonical C++ the declaration means
-```
-
-Laws, proofs, contracts, loop invariants and the `verified` and `pure` specifiers
-are proof-only. Every byte position and line of the surrounding program is
-preserved, so a construct from a later standard can never appear in the runtime
-program because nothing appears there at all.
-
-A refinement type declaration is runtime-bearing, because a refinement has the
-runtime representation of its base type (`SPEC.md` 17.4) and the program names it:
-
-```text
-erase(type R = T where (P);)        =  using R = T;
-erase(type R(I i) = T where (P);)   =  template <I i> using R = T;
-```
-
-The lowering is deterministic and derived from the declaration alone. The erasure
-check recomputes it from the recognized declaration and compares, so the projector
-cannot put anything else in a declaration's place, and it carries one newline per
-newline in the declaration, so no line of the program moves. What is introduced is
-an alias, which every standard C++L targets already has; no wrapper type,
-constructor, predicate, runtime check or ABI-visible state is generated.
-
-This class is deliberately narrow. It exists for declarations whose C++ runtime
-representation must remain present, and it is not a general source-to-source
-rewrite: Clang remains the authority for ordinary C++ syntax and semantics.
-
-Refinement membership is part of obligation-construction correspondence: both
-the total return-tree path and the partial-correctness path check every modeled
-local initialization and write. Loop heads use fresh logical versions constrained
-by their invariants. Unknown refinement predicates and unresolved index arguments
-fail closed. These checks introduce no kernel rules, logical assumptions, axioms,
-or trusted mechanisms; the existing obligation builder remains responsible for
-enumerating the crossings whose evidence the kernel checks.
-
-Alias-to-predicate correspondence uses the generated alias's physical identity
-and Clang's resolved declaration chain. Unqualified spelling and `#line` locations
-are not semantic identity. Ordinary aliases preserve predicates; unresolved
-indexed alias applications are rejected. This is frontend correspondence, not a
-new logical rule or an additional trusted user boundary.
-
-Reference storage and call post-state extend the existing frontend and obligation
-correspondence responsibility (SPEC.md 12.9). This is a TCB expansion: the bridge
-must identify storage, possible aliases, writes and call effects correctly, and
-the condition builder must state contracts over the correct versions. The kernel
-checks the generated propositions; it does not independently check Clang memory
-correspondence. No new trusted user mechanism, kernel rule, logical assumption,
-or axiom is introduced.
-
-Boolean condition elaboration and path/value-provenance resolution are part of
-this same correspondence responsibility, and expand no trust boundary beyond it.
-`&&`, `||` and `!` in a verified condition are elaborated into the routes they
-select between (SPEC.md 12.7), and a route's split follows what a bound value
-denotes, resolving reads of locals transitively (SPEC.md 12.8). Both are
-structural: they place existing subexpressions of the body on the routes where
-C++ evaluates them, and state no proposition of their own. The bridge is trusted
-to reproduce C++ short-circuit order, and the obligation builder to keep a
-route's conditions in step with the `select` nesting the proof is composed over;
-where it cannot, the body is refused. A defect can place an operand on a route
-that does not evaluate it, which is a correspondence defect of the same kind as
-any other in this layer, and is covered by positive and negative source tests
-that pin both the proven crossings and the routes that must establish nothing.
-No new kernel rule, logical assumption, axiom, or trusted user mechanism is
-introduced.
-
-A resolved local reference identifies one tracked storage. Reference parameters
-are conservatively allowed to alias other reference parameters of the same
-modeled type, including const references. A write versions its target and
-invalidates possible aliases with universally quantified fresh values. It never
-supposes a declared refinement of an unknown new value. Writes and call effects
-owe the common membership predicate. Repeated call arguments share a post-state
-version, and post-call facts depend on successful callee verification. Loop
-mutation scans include calls and possible aliases.
-
-Void completion uses a fixed logical token outside the executable program.
-Alias return types are recovered only as canonical Clang void identities from an
-erroneous projection, and require a fresh successful Clang parse before any proof
-is generated. No body or fact from a recovery AST is accepted as evidence.
-Reference/pointer return lifetimes, pointer dereference validity, general object
-mutation and exceptional post-state are not inferred by this model.
-
-Refined members are refused for the same reason, and the refusal is
-load-bearing. A record enters a verified body as a parameter, so unverified code
-constructs it. Treating a refined field's predicate as a fact available on read
-would let ordinary C++ manufacture refinement evidence, which section 18 of
-`AGENTS.md` forbids: an aggregate `S{-5}` would establish `self > 0` with no
-proof anywhere. Member reads therefore carry no component predicate, and
-refined field declarations are rejected at the boundary until obligations exist
-on every construction and mutation path (`SPEC.md` 17.2). The implementation
-order is construction and write obligations first, then projection and
-membership reasoning — never the reverse.
-
-Pointer dereference validity is an absent obligation, not a trusted assumption.
-No dereference is modeled, so nothing in the trusted base depends on one being
-valid. This is deliberate: `p != nullptr` is necessary and insufficient for a
-valid dereference, and admitting `*p` on that basis would install
-`non-null implies dereferenceable` as a global assumption the kernel never
-checks. The pointer provider continues to state `null` and `non_null` only, and
-never lifetime, provenance, dereferenceability, bounds, initialization,
-ownership or uniqueness. RFC 0014 specifies the storage, region and capability
-model that supplies the difference, normatively stated in `SPEC.md` 12.10, with
-`trusted` as an explicit escape hatch that records a trust event rather than
-assuming validity everywhere. Until a given access form is implemented against
-that model, it is refused. This paragraph adds no kernel rule, axiom, assumption
-or TCB delta; the correspondence delta the model itself carries is stated in
-section 41.2.
-
-An ordinary refined-return declaration is not a trusted contract. The bridge
-checks declarations outside the selected proof bodies as well as definitions:
-only a verified definition of the same Clang callable can establish that return
-boundary. Merely `pure` declarations, refined ordinary storage, and refined
-fields outside the modeled object-flow subset cannot manufacture evidence.
-Omitting `ensures` on a verified refined return supplies only an empty explicit
-postcondition; obligation generation still requires the full refinement.
-
-The erasure pass MUST NOT silently:
-
-- remove required runtime validation
-- introduce undefined behavior
-- alter runtime values
-- change observable control flow
-- invalidate lifetime assumptions
-- change promised ABI behavior
-- make ghost state observable
-
-Erasure SHOULD eventually have independent equivalence validation.
-
----
-
-# 11. Erasure verification goal
-
-The long-term target is to establish a property of the form:
-
-```text
-runtime_behavior(C++L_program)
-=
-runtime_behavior(erased_C++_program)
-```
-
-for the executable semantics relevant to the verified program.
-
-The exact formal statement belongs in the formal semantics and erasure documentation, not in this trust document.
-
-This document only establishes that **erasure correctness is part of the runtime trust chain**.
-
----
-
-# 12. SMT solvers
-
-SMT solvers are automation engines.
-
-They SHOULD NOT automatically define mathematical truth.
-
-Preferred model:
-
-```text
-proof obligation
-    ↓
-SMT solver
-    ↓
-proof / certificate
+certificate / proof evidence
     ↓
 independent checker
     ↓
-kernel
+accepted evidence
 ```
 
-If a solver result must be trusted directly because independently checkable evidence is unavailable, that fact MUST appear in the trust report.
+**[TCB-SOLVER-001]** Solver search heuristics are not trusted when the solver produces independently checkable evidence whose complete semantic content is checked.
 
-Example:
+**[TCB-SOLVER-002]** If a solver result is accepted without independently checkable evidence, the solver, its relevant configuration, and any translation into its input language are part of the TCB for that result.
+
+**[TCB-SOLVER-003]** A solver timeout, `unknown`, crash, unsupported result, malformed certificate, or incomplete certificate MUST NOT be promoted to proof or trust automatically.
+
+## 6.2 AI systems
+
+**[TCB-AI-001]** AI systems are never formal authorities by virtue of being AI systems.
+
+**[TCB-AI-002]** AI-generated source, specifications, Laws, proofs, trusted declarations, patches and refactorings MUST be treated exactly like human-authored candidate input.
+
+**[TCB-AI-003]** An AI explanation, confidence value, chain of reasoning, majority vote, or self-review MUST NOT substitute for formal evidence or explicit trust.
+
+**[TCB-AI-004]** An AI system MAY modify trusted declarations only as ordinary source editing; the resulting trust expansion MUST remain explicit in source and reports.
+
+---
+
+# 7. Source-to-core correspondence TCB
+
+The proof kernel proves propositions. It does not, by itself, establish that those propositions correspond to the user's C++L source.
+
+The source-to-core correspondence boundary therefore includes every mechanism that can change:
 
 ```text
-Trusted automation:
-  cvc5: yes
-  Z3: no
+which source construct is being verified
+which C++ entity a name denotes
+which runtime value a formal term denotes
+which path or state is represented
+which precondition/postcondition is associated with which function
+which write affects which storage
+which effect summary applies to which call
+which proposition is submitted for which source obligation
 ```
 
-The long-term direction SHOULD be to reduce direct solver trust where practical.
+**[TCB-CORR-001]** A frontend/elaborator is outside the end-to-end TCB only to the extent that an independent checker validates its source-to-core mapping.
+
+**[TCB-CORR-002]** Kernel validation of a proof term does not validate a frontend's choice of proposition unless the kernel receives and validates enough certified source-semantic information to reconstruct that proposition independently.
+
+**[TCB-CORR-003]** Source locations, generated helper names, textual spellings, presumed line directives, or unstable addresses MUST NOT be used as semantic identity when Clang/C++ semantic identity is required.
+
+**[TCB-CORR-004]** Ambiguous correspondence MUST fail closed.
 
 ---
 
-# 13. Tactics
+# 8. Preprocessing, recognition and source ownership
 
-Proof tactics SHOULD be treated as untrusted proof producers.
+C++ preprocessing occurs according to the selected C++ mode before C++L contextual interpretation as specified by `SPEC.md`.
 
-Examples:
+The recognition layer decides which token sequences are ordinary C++ and which are C++L constructs. That decision is trust-sensitive.
+
+**[TCB-SOURCE-001]** The recognizer MUST preserve ordinary C++ token meaning outside valid C++L grammatical contexts.
+
+**[TCB-SOURCE-002]** A recognition defect that can reinterpret ordinary C++ as proof-only syntax, erase runtime-bearing text, attach a contract to the wrong declaration, or change a C++ expression into a different formal proposition is a correspondence-TCB defect.
+
+**[TCB-SOURCE-003]** Macro expansion, conditional compilation, included source, module imports and generated source participating in verification MUST be bound to the exact analyzed token stream.
+
+**[TCB-SOURCE-004]** Verification results MUST NOT be reused for a semantically different preprocessed program merely because original filenames and source line numbers match.
+
+## 8.1 Analysis text and runtime text
+
+If an implementation creates a transformed analysis view and a distinct runtime view, the mapping between them is trust-critical.
+
+**[TCB-SOURCE-005]** The toolchain MUST establish that ordinary runtime-bearing C++ semantics are preserved between the analyzed program and the runtime program.
+
+**[TCB-SOURCE-006]** Proof-only source MAY be erased only where `SPEC.md` defines it as proof-only.
+
+**[TCB-SOURCE-007]** Runtime-bearing lowering, such as refinement aliases, MUST be canonical and semantically constrained by `SPEC.md`; arbitrary source rewriting MUST NOT hide behind the term "erasure".
+
+---
+
+# 9. Clang and C++ semantic authority
+
+C++L delegates ordinary C++ parsing, name lookup, overload resolution, type identity, template substitution, access control, object-model semantics and other supported C++ semantic questions to the selected C++ semantic authority.
+
+For implementations using Clang, this makes Clang part of the correspondence and runtime trust chains for claims that depend on those answers.
+
+**[TCB-CLANG-001]** C++L MUST NOT independently guess a C++ semantic fact when the selected C++ authority resolves it differently.
+
+**[TCB-CLANG-002]** Formal lowering of a C++ expression MUST use the resolved operation, conversions, type, value category, declaration identity and template instantiation selected by C++, not merely its textual spelling.
+
+**[TCB-CLANG-003]** Overloaded operators MUST NOT be lowered as built-in operators unless the selected C++ semantics establish that the built-in operation is the operation invoked.
+
+**[TCB-CLANG-004]** A C++ conversion MUST NOT be ignored merely because source and destination have similar textual types.
+
+**[TCB-CLANG-005]** If the implementation cannot obtain enough C++ semantic information to model a construct soundly, verification MUST fail closed for the stronger claim.
+
+## 9.1 Compiler bugs
+
+A bug in Clang or another selected C++ semantic authority can invalidate a C++L source-level or executable-level claim whose correctness depends on that semantic answer.
+
+Such dependence MUST NOT be described as logical-kernel trust; it is correspondence/runtime trust.
+
+---
+
+# 10. VIR and elaboration correspondence
+
+Verification IR is a semantic boundary between resolved C++ and formal obligation construction.
+
+**[TCB-VIR-001]** Each VIR value, place, type, control-flow edge, call, effect, lifetime event and formal proposition MUST correspond to the resolved source construct it represents.
+
+**[TCB-VIR-002]** Unsupported or partially representable source semantics MUST NOT be approximated by a stronger or simpler VIR node that changes proof meaning.
+
+**[TCB-VIR-003]** Information discarded from VIR MUST be irrelevant to every proof obligation derived from that VIR; otherwise discarding it is a correspondence defect.
+
+**[TCB-VIR-004]** Malformed VIR received from an untrusted producer MUST be rejected before it can create an accepted assurance claim.
+
+**[TCB-VIR-005]** If VIR is serialized or imported, semantic identities and trust dependencies MUST survive serialization without collision or ambiguity.
+
+---
+
+# 11. Obligation construction
+
+Obligation construction is part of the correspondence TCB whenever the kernel does not independently derive the same obligations from certified source semantics.
+
+**[TCB-OBL-001]** Every language rule that requires proof MUST generate all corresponding obligations on all relevant paths.
+
+**[TCB-OBL-002]** Missing an obligation is a soundness defect even when every generated obligation is kernel-checked correctly.
+
+**[TCB-OBL-003]** Generating an extra obligation may cause incompleteness but does not by itself create unsoundness; implementations SHOULD prefer conservative refusal to omitted obligations.
+
+**[TCB-OBL-004]** An obligation MUST be associated with the exact source entity, logical value version, trust context, and semantic dependencies from which it was derived.
+
+**[TCB-OBL-005]** A successful proof of one obligation MUST NOT discharge another obligation merely because their diagnostics, source text, or pretty-printed propositions are equal.
+
+**[TCB-OBL-006]** Obligation identity MUST include semantic dependencies sufficient to prevent stale or cross-entity reuse.
+
+---
+
+# 12. Control-flow correspondence
+
+Verified path reasoning depends on correct modeling of the C++ control-flow graph and evaluation order.
+
+**[TCB-CFG-001]** Every reachable normal path relevant to a verified postcondition MUST be represented or conservatively rejected.
+
+**[TCB-CFG-002]** Conditions supplied to a path MUST correspond to conditions actually established on that path under C++ evaluation semantics.
+
+**[TCB-CFG-003]** Short-circuit evaluation, sequencing, temporary lifetime, branch polarity, fallthrough, early return, `break`, `continue`, and exceptional edges MUST NOT be approximated in a way that grants facts on paths where C++ does not establish them.
+
+**[TCB-CFG-004]** A call in a condition MUST satisfy its own preconditions before facts derived from its result are made available.
+
+**[TCB-CFG-005]** Facts from one mutually exclusive path MUST NOT leak into another path unless a valid join rule establishes them.
+
+## 12.1 Loops
+
+When loop correctness is established through generated verification conditions rather than a kernel-native loop theorem, the loop-rule implementation is correspondence TCB.
+
+**[TCB-LOOP-001]** The implementation MUST generate entry, preservation and exit obligations required by `SPEC.md`.
+
+**[TCB-LOOP-002]** Every mutation capable of affecting an invariant or post-loop fact MUST be reflected in the loop's carried state or conservative havoc set.
+
+**[TCB-LOOP-003]** `continue`, `break`, return, exceptions and loop-step semantics MUST be accounted for according to the loop form.
+
+**[TCB-LOOP-004]** A partial-correctness loop MUST NOT be used to establish a total-correctness theorem about a value that requires termination.
+
+**[TCB-LOOP-005]** A `decreases` proof MUST be checked on every continuing recursive/iterative path required by `SPEC.md`.
+
+---
+
+# 13. Function contracts and calls
+
+Function-contract composition is trust-sensitive because callers reason from summaries rather than re-proving callees at every call.
+
+**[TCB-CALL-001]** A contract MUST be bound to the exact C++ callable entity to which it belongs.
+
+**[TCB-CALL-002]** A verified definition MUST discharge its own contract before that contract may be used as proven call evidence, unless an explicit trusted Law supplies the relevant proposition.
+
+**[TCB-CALL-003]** A caller MUST prove every applicable callee precondition at the call site.
+
+**[TCB-CALL-004]** A callee postcondition may be assumed only for normal-return paths to which that postcondition applies.
+
+**[TCB-CALL-005]** Call argument substitution MUST preserve C++ parameter binding, conversions, aliases, reference collapsing, object identity and value categories relevant to proof.
+
+**[TCB-CALL-006]** Recursion, mutual recursion and call cycles MUST NOT create proof by circular use of an unestablished contract.
+
+**[TCB-CALL-007]** A call through virtual dispatch, function pointer, callback, generic callable or other dynamic target set MUST use only guarantees common to every target permitted by the verified dispatch model, unless the dynamic target is itself proven.
+
+---
+
+# 14. Storage, places, regions and logical versions
+
+C++L's storage model is a major correspondence boundary.
+
+A **place** identifies proof-relevant C++ storage. A **logical version** identifies the value of that place after a particular sequence of writes/effects. A **region** identifies the live object/allocation whose storage and lifetime constrain accesses.
+
+**[TCB-MEM-001]** Place identity MUST follow C++ object/subobject identity and MUST NOT be guessed from source spelling alone.
+
+**[TCB-MEM-002]** Every proof-relevant write MUST create or select the correct new logical version.
+
+**[TCB-MEM-003]** Reads MUST observe the logical version current on the corresponding execution path.
+
+**[TCB-MEM-004]** A fact about an earlier logical version MUST NOT be reused for a later version unless a valid preservation argument exists.
+
+**[TCB-MEM-005]** The implementation MUST conservatively account for mutation through references, pointers, captured aliases, globals/statics, callbacks, virtual dispatch, escaped addresses, contained pointer/reference members, foreign code and other C++ access paths.
+
+## 14.1 Aliasing and disjointness
+
+**[TCB-ALIAS-001]** Two places MUST be treated as potentially aliasing unless C++ semantics and checked evidence establish disjointness.
+
+**[TCB-ALIAS-002]** Type-based alias assumptions MUST NOT be used to establish disjointness where doing so presupposes the absence of undefined behavior that verification is itself required to prove.
+
+**[TCB-ALIAS-003]** Distinct member names do not universally imply disjoint storage. Unions, potentially-overlapping subobjects, base subobjects, `[[no_unique_address]]`, bit-fields and implementation-defined layout require the actual C++ object model.
+
+**[TCB-ALIAS-004]** A write MUST invalidate every proof fact whose place may alias the target unless the write semantics re-establish that fact for the resulting version.
+
+**[TCB-ALIAS-005]** Repeated actual arguments that alias the same storage MUST share one post-state model.
+
+## 14.2 Effects
+
+**[TCB-EFFECT-001]** A verified effect summary MUST be derived from checked semantics and bound to the exact callable identity.
+
+**[TCB-EFFECT-002]** A call without a sufficient checked effect summary MUST conservatively invalidate every mutable place it may affect.
+
+**[TCB-EFFECT-003]** By-value passing of a pointer, reference-containing object, view, iterator, callback or handle MUST NOT be interpreted as proving that caller storage is unaffected.
+
+**[TCB-EFFECT-004]** `const` restricts particular C++ access paths; it MUST NOT be treated as a global frame condition.
+
+---
+
+# 15. Memory capabilities
+
+C++L memory propositions such as `readable(...)` and `writable(...)` describe proof-relevant access validity defined by `SPEC.md`.
+
+The implementation MAY check these through a dedicated capability calculus rather than the general logical kernel, but that does not make them untrusted implementation detail.
+
+**[TCB-CAP-001]** Any checker or flow analysis whose incorrect behavior can grant an invalid memory capability is part of the end-to-end TCB for memory-safety claims.
+
+**[TCB-CAP-002]** A capability MUST arise only from semantics that establish it, from checked proof/contract evidence, or from an explicit trusted assumption permitted by `SPEC.md`.
+
+**[TCB-CAP-003]** "Needed by the operation" is not evidence. The verifier MUST NOT insert a capability hypothesis merely because a dereference or write requires one.
+
+**[TCB-CAP-004]** Non-nullness MUST NOT imply lifetime, provenance, bounds, alignment, initialization, readability, writability, ownership or uniqueness.
+
+**[TCB-CAP-005]** Capability state MUST be invalidated or updated when lifetime transitions, may-alias writes, unknown effects, deallocation, object replacement or other relevant C++ events can invalidate it.
+
+**[TCB-CAP-006]** Pointer dereference and subscript checking MUST consume the capability/bounds/lifetime facts required by `SPEC.md`; omission of such a check is a correspondence-TCB defect.
+
+**[TCB-CAP-007]** Bounds proofs that are represented as formal arithmetic propositions MUST still be checked by the formal proof machinery; capability tracking MUST NOT silently decide arithmetic facts it is not specified to decide.
+
+**[TCB-CAP-008]** A `trusted law` that admits a memory proposition expands the trusted-assumption closure; it does not change runtime memory or create a runtime validation.
+
+---
+
+# 16. Refinement correspondence
+
+Refinement types have verification identity but erase to their base representation. Soundness therefore depends on checking semantic validity at every crossing and mutation point required by `SPEC.md`.
+
+**[TCB-REFINE-001]** Every base-to-refinement introduction MUST generate the complete semantic-validity obligation for the destination refinement.
+
+**[TCB-REFINE-002]** Recursive semantic validity of refinement-bearing members, elements and bases MUST be propagated exactly as specified by `SPEC.md`.
+
+**[TCB-REFINE-003]** A refined parameter's entry validity is an entry premise of the verified claim; unverified construction history MUST NOT be treated as proof of invalidity or validity beyond the boundary rule defined by `SPEC.md`.
+
+**[TCB-REFINE-004]** A mutation affecting a refinement-bearing place MUST invalidate stale membership facts and establish the destination validity required for the new logical value.
+
+**[TCB-REFINE-005]** Equal erased representation MUST NOT manufacture refinement evidence.
+
+**[TCB-REFINE-006]** Indexed-refinement identity and argument substitution MUST use resolved semantic identity, not textual spelling.
+
+**[TCB-REFINE-007]** Erasure of refinements MUST preserve the base representation and MUST NOT add hidden validation or runtime tags.
+
+**[TCB-REFINE-008]** A declaration collision caused by refinement erasure MUST be diagnosed rather than relying on an ABI distinction that does not exist.
+
+---
+
+# 17. Arithmetic, conversions and undefined behavior
+
+A proof about C++ execution is meaningful only when the formal model matches the selected C++ semantics on the admitted domain.
+
+**[TCB-ARITH-001]** Machine-integer operations MUST be lowered only to formal primitives whose semantics match the resolved C++ operation for every admitted operand.
+
+**[TCB-ARITH-002]** Signed overflow, invalid division, invalid shifts, invalid conversions and other undefined/erroneous behavior MUST NOT be replaced by mathematical-integer semantics merely to make a proof succeed.
+
+**[TCB-ARITH-003]** If a C++ operation is partial because some executions have undefined behavior, verification MUST establish the definedness precondition before using a total formal operation to model that execution.
+
+**[TCB-ARITH-004]** Integer promotions and usual arithmetic conversions MUST be modeled according to the selected C++ semantics.
+
+**[TCB-ARITH-005]** Floating-point reasoning MUST account for the floating representation and operations promised by `SPEC.md`; mathematical real arithmetic MUST NOT silently replace IEEE/C++ floating semantics.
+
+**[TCB-UB-001]** Undefined behavior MUST NOT be used as a proof principle.
+
+**[TCB-UB-002]** The absence of an observed runtime failure does not establish defined behavior.
+
+**[TCB-UB-003]** A verifier may reject semantics it cannot model, but MUST NOT silently assume the undefined-behavior precondition.
+
+---
+
+# 18. Equality, logical connectives and quantifiers
+
+Formal equality and logical connectives are checked by the logical TCB, while their correspondence to source specification syntax is handled by the correspondence TCB.
+
+**[TCB-LOGIC-001]** The recognizer/elaborator MUST distinguish formal `Eq<T>(a,b)` from ordinary C++ names according to `SPEC.md`.
+
+**[TCB-LOGIC-002]** `&&`, `||`, implication and equivalence in specification context MUST lower according to their formal semantics and precedence, not according to an approximate textual parser.
+
+**[TCB-LOGIC-003]** C++ short-circuit behavior relevant to definedness of lifted operands MUST be represented exactly where `SPEC.md` requires C++ evaluation semantics.
+
+**[TCB-LOGIC-004]** Universal/existential binder scope and substitution MUST be capture-safe.
+
+**[TCB-LOGIC-005]** `assume` MUST name context-supplied evidence only; it MUST NOT create a new proposition.
+
+**[TCB-LOGIC-006]** `exact`, `apply`, `rewrite`, `cases`, `decompose`, `induction` and automation MUST ultimately produce evidence checked against the intended goal or invoke another explicitly trusted checker defined by this trust model.
+
+---
+
+# 19. Case analysis, decomposition and representation models
+
+Structural proof features can be logically sound while still depending on a representation correspondence that is wrong. This correspondence is TCB.
+
+**[TCB-DECOMP-001]** A representation model/provider that defines the state partition of a C++ type is part of the correspondence TCB unless an independent checker derives the partition from authoritative semantics.
+
+**[TCB-DECOMP-002]** A provider defect that omits, merges, invents, or mischaracterizes a C++ state can be a soundness defect when generated case assumptions no longer correspond to runtime states. It MUST NOT be claimed that a bad provider can only cause incompleteness.
+
+**[TCB-DECOMP-003]** Exhaustiveness MUST cover every state required by `SPEC.md`, including residual states such as unnamed enumeration values and `std::variant` valueless state where applicable.
+
+**[TCB-DECOMP-004]** Payload bindings MUST denote the actual logical subobject/observation represented by the arm; they MUST NOT be invented values.
+
+**[TCB-DECOMP-005]** Pointer case decomposition MUST establish only null/non-null state unless additional capability/lifetime facts are independently available.
+
+## 19.1 Standard representation obligations
+
+For each modeled standard representation, the correspondence TCB must correctly identify semantic identity and public state space. At minimum:
 
 ```text
-simplifier
-rewriter
-arithmetic tactic
-induction tactic
-proof search
+scoped enum
+    every underlying-domain value, named distinct values, unnamed residual
+
+std::variant
+    one state per alternative index plus valueless state
+
+std::optional
+    some / none
+
+std::expected
+    value / error
+
+pointer
+    null / non_null only
+
+product decomposition
+    existing component subobjects in specified order; no invented alternative states
 ```
 
-A bug in a tactic should ideally produce:
+Recognition by spelling alone is insufficient where aliases, namespaces, templates or substitution can change semantic identity.
+
+---
+
+# 20. Induction and termination trust
+
+**[TCB-TERM-001]** A proof computation whose soundness relies on termination MUST not be admitted through an unchecked recursive evaluator.
+
+**[TCB-TERM-002]** Termination measures MUST be interpreted under the well-founded ordering specified by `FOUNDATIONS.md`/`SPEC.md`.
+
+**[TCB-TERM-003]** Recursive call decreases obligations MUST cover every recursive edge in the relevant strongly connected recursion set.
+
+**[TCB-TERM-004]** Lexicographic measures MUST preserve component order and strictness as specified; dropping components or comparing in a different order is a trust defect.
+
+**[TCB-INDUCT-001]** Induction principles are part of the formal calculus or correspondence model defined by the governing documents; their base cases, predecessor relation, range premises and induction hypotheses MUST be generated exactly.
+
+**[TCB-INDUCT-002]** `decreases` is not itself induction evidence and induction is not itself runtime termination evidence.
+
+---
+
+# 21. Objects, classes, construction and destruction
+
+**[TCB-OBJ-001]** Construction reasoning MUST follow C++ initialization order, base/member lifetime rules and selected constructor semantics.
+
+**[TCB-OBJ-002]** A refined member or base MUST satisfy its semantic validity obligation on every construction path that creates the corresponding live subobject.
+
+**[TCB-OBJ-003]** Default member initializers, aggregate initialization, delegating constructors, copy/move operations and temporary materialization MUST NOT bypass refinement or lifetime obligations.
+
+**[TCB-OBJ-004]** Destruction and lifetime end MUST invalidate capabilities and value facts that depend on the destroyed object.
+
+**[TCB-OBJ-005]** `const` member functions and cv-qualification MUST follow C++ alias/mutation semantics; they MUST NOT create global immutability facts.
+
+## 21.1 Virtual dispatch
+
+**[TCB-VIRTUAL-001]** Override checking MUST preserve the substitutability rules defined by `SPEC.md`.
+
+**[TCB-VIRTUAL-002]** A virtual call may rely only on pre/post/effect guarantees valid for the dynamic target set admitted by the call.
+
+**[TCB-VIRTUAL-003]** Devirtualization used for proof MUST be justified by the same dynamic-type facts required by C++ execution semantics.
+
+---
+
+# 22. Templates, constexpr and compile-time C++
+
+Templates are ordinary C++ mechanisms whose instantiated semantics are resolved by the selected C++ authority.
+
+**[TCB-TEMPLATE-001]** Verification MUST be performed against the semantically instantiated entity, including substitutions that affect contracts, refinements, effects and proof expressions.
+
+**[TCB-TEMPLATE-002]** A proof for one instantiation MUST NOT be reused for another instantiation unless semantic identity and all relevant dependencies are identical or a generic proof establishes the required theorem.
+
+**[TCB-TEMPLATE-003]** Template constraints/concepts MUST NOT be promoted to formal proof facts unless `SPEC.md` explicitly gives them that meaning or a checked correspondence establishes the fact.
+
+**[TCB-TEMPLATE-004]** Explicit instantiation and cross-TU template use MUST preserve the same verification metadata and trust dependencies as ordinary definitions.
+
+**[TCB-CONSTEXPR-001]** A C++ compile-time result may be used as formal evidence only when the trust model explicitly relies on the selected C++ constant-evaluation semantics and the expression is within the modeled domain.
+
+**[TCB-CONSTEXPR-002]** Compiler constant folding is not, by itself, proof evidence for an arbitrary formal proposition.
+
+---
+
+# 23. Exceptions and abnormal exits
+
+**[TCB-EXCEPT-001]** Normal-return postconditions MUST NOT be assumed on exceptional exits.
+
+**[TCB-EXCEPT-002]** If a proof depends on exception freedom, that property MUST be established by checked semantics or an explicit trusted assumption; it MUST NOT be inferred from the absence of an exception specification.
+
+**[TCB-EXCEPT-003]** Stack unwinding, destructor execution and mutation occurring on exceptional paths MUST be included when they can affect facts used by a subsequent verified claim.
+
+**[TCB-EXCEPT-004]** `noexcept` and exception specifications MUST be interpreted according to C++ semantics; they do not mean that the underlying code has been formally proved not to encounter every abnormal condition unless that is what the semantic rule establishes.
+
+---
+
+# 24. Concurrency and atomics
+
+Concurrency creates behaviors not captured by purely sequential reasoning.
+
+**[TCB-CONCUR-001]** A verified concurrent claim MUST use a concurrency model sufficient for the C++ memory-order, synchronization and interference properties on which the claim depends.
+
+**[TCB-CONCUR-002]** Sequential value/version facts MUST NOT survive possible concurrent interference unless synchronization or ownership evidence justifies preservation.
+
+**[TCB-CONCUR-003]** Data-race freedom MUST NOT be assumed merely because a sequential proof succeeds.
+
+**[TCB-CONCUR-004]** Atomic operations MUST be modeled with their selected memory orders and permitted observations when those details affect the theorem.
+
+**[TCB-CONCUR-005]** Unsupported concurrency semantics MUST fail closed for the stronger concurrent assurance claim; `unsafe` may mark runtime execution without creating proof facts.
+
+---
+
+# 25. Trusted Laws and explicit assumptions
+
+`trusted law` is the production trusted proposition-admission surface defined by `SPEC.md`.
+
+**[TCB-TRUST-001]** A trusted Law MUST be explicit in source or in an equivalently explicit imported trusted interface artifact.
+
+**[TCB-TRUST-002]** A trusted Law MUST be reported as `TRUSTED`, never as independently `PROVEN`.
+
+**[TCB-TRUST-003]** A theorem derived from a trusted Law MAY be `PROVEN` relative to that premise, but its trust closure MUST include the trusted Law transitively.
+
+**[TCB-TRUST-004]** Unsupported semantics, proof failure, timeout, solver `unknown`, unverified code, unsafe code, compiler crash or missing metadata MUST NOT create a trusted assumption automatically.
+
+**[TCB-TRUST-005]** Trusted assumptions MUST be identified by stable semantic identity and source/import provenance, not only by display name.
+
+**[TCB-TRUST-006]** Changing the proposition, premise, parameters or semantic identity of a trusted Law MUST invalidate every cached/imported claim whose trust closure depends on the previous assumption.
+
+**[TCB-TRUST-007]** A trusted memory proposition such as `readable(...)` or `writable(...)` is an explicit assumption about the modeled storage relation; it does not perform runtime checking or mutate storage.
+
+## 25.1 No hidden assumptions
+
+The following are forbidden as hidden assumption sources:
 
 ```text
-invalid proof
-    ↓
-kernel rejects
+foreign binding annotations not reported as trust
+compiler intrinsics silently treated as theorems
+solver answers accepted without declared trust/certificates
+standard-library models silently assumed exact
+platform documentation silently treated as proof
+runtime assertions silently promoted to static evidence
+optimization facts silently promoted to contracts
+unverified function declarations silently treated as verified summaries
 ```
 
-rather than:
+**[TCB-TRUST-008]** Every proposition admitted without derivation MUST be traceable to an explicit trusted source or an explicitly enumerated primitive calculus rule.
+
+---
+
+# 26. `unsafe`, unverified code and runtime validation
+
+`unsafe`, `UNVERIFIED`, `RUNTIME-CHECKED`, and `TRUSTED` are distinct assurance concepts.
+
+## 26.1 Unsafe
+
+**[TCB-UNSAFE-001]** `unsafe` permits runtime execution across a boundary where C++L does not establish its strongest static guarantees; it MUST NOT create proof evidence.
+
+**[TCB-UNSAFE-002]** Effects of unsafe code on verified storage MUST be modeled conservatively unless a checked contract or trusted Law supplies the relevant facts.
+
+**[TCB-UNSAFE-003]** An unsafe result MUST NOT acquire refinement membership, capability, range, lifetime, provenance or other formal facts merely because it crossed an unsafe marker.
+
+## 26.2 Unverified code
+
+**[TCB-UNVERIFIED-001]** Ordinary unverified C++ may execute normally but cannot contribute formal facts unless those facts are established by an explicit boundary mechanism defined by `SPEC.md`.
+
+**[TCB-UNVERIFIED-002]** An unverified callee without a checked effect summary MUST be conservatively modeled for mutation and other proof-relevant effects.
+
+## 26.3 Runtime validation
+
+**[TCB-RUNTIMECHK-001]** Runtime validation is ordinary runtime behavior, not proof-kernel execution.
+
+**[TCB-RUNTIMECHK-002]** A fact derived after a successful runtime guard is valid only on executions/paths where that guard has succeeded according to C++ semantics.
+
+**[TCB-RUNTIMECHK-003]** The runtime check itself remains part of the executable; erasure MUST NOT remove it merely because proof facts were derived from its successful branch.
+
+**[TCB-RUNTIMECHK-004]** A runtime assertion that may terminate the program is not automatically a universal theorem.
+
+---
+
+# 27. Foreign code and external systems
+
+Foreign code includes C, C++, Objective-C++, assembly, JNI, N-API, OS APIs, device drivers, GPU APIs, dynamically loaded code and any component whose semantics are not internally established by C++L verification.
+
+**[TCB-FFI-001]** Foreign code MUST NOT be treated as verified merely because it has a C++ declaration.
+
+**[TCB-FFI-002]** Formal facts about foreign behavior require one of:
 
 ```text
-invalid proof
-    ↓
-false theorem accepted
+checked verification of the foreign implementation under an accepted model
+explicit trusted Law / trusted interface assumption
+ordinary runtime validation that establishes a path-local fact
+another independently validated proof artifact
 ```
+
+**[TCB-FFI-003]** A verified wrapper does not prove the wrapped foreign implementation correct. If the wrapper relies on an unverified external contract, that contract remains in the trust closure.
+
+**[TCB-FFI-004]** ABI, calling convention, ownership, lifetime, thread-safety, callback and error/exception behavior required by a foreign interface are part of the correspondence/runtime trust chain.
+
+## 27.1 Environment assumptions
+
+Operating-system, hardware, device, protocol and deployment guarantees MAY appear as explicit trusted assumptions or compatibility/environment assumptions, but MUST NOT disappear from auditability when a theorem depends on them.
 
 ---
 
-# 14. AI systems
+# 28. Standard library and modeled libraries
 
-AI systems are never formal authorities.
+A formal model of a library abstraction is a correspondence claim between public library semantics and the runtime implementation used by the executable.
 
-AI-generated:
+**[TCB-LIB-001]** A library model MUST identify the semantic entity it models by resolved identity, not merely by textual type or function name.
 
-- code
-- proofs
-- specifications
-- refactorings
-- proof repairs
-- explanations
+**[TCB-LIB-002]** A model MUST NOT depend on private object layout or implementation details unless those details are explicitly part of the selected compatibility contract.
 
-must be treated as candidate input.
+**[TCB-LIB-003]** If correctness of the model-to-runtime correspondence is assumed rather than verified, that dependency is part of the runtime/correspondence trust chain and MUST be reportable at the appropriate granularity.
 
-Conceptually:
+**[TCB-LIB-004]** Library version/configuration differences that can change modeled semantics MUST participate in artifact/cache identity and compatibility checks.
+
+**[TCB-LIB-005]** A library abstraction that performs hidden allocation, invalidation, aliasing, synchronization, exception propagation or callback execution MUST expose those proof-relevant effects through its model.
+
+---
+
+# 29. Erasure and lowering trust
+
+Erasure/lowering connects verified C++L source to ordinary C++ runtime source. It is correctness-critical.
+
+The governing semantic requirement is defined by `SPEC.md`:
 
 ```text
-AI output
-    ↓
-C++L checker
-    ↓
-kernel
-    ↓
-accepted / rejected
+Sem_runtime(p) = Sem_runtime(erase(p))
 ```
 
-An AI's confidence or explanation has no bearing on proof validity.
+for every accepted program within the supported semantics.
 
-This separation is a core design requirement of C++L.
+**[TCB-ERASE-001]** Proof-only constructs MUST erase without adding, removing or changing observable runtime behavior.
+
+**[TCB-ERASE-002]** Runtime-bearing C++L constructs whose runtime representation is defined by `SPEC.md` MUST lower only to that representation.
+
+**[TCB-ERASE-003]** Erasure MUST NOT remove explicit runtime validation, runtime branches, runtime side effects, required destruction, volatile/atomic operations, lifetime operations or other ordinary C++ behavior.
+
+**[TCB-ERASE-004]** Erasure MUST NOT add hidden assertions, validators, proof interpreters, tags, fields, constructors, dispatch, branches, loops or changed calling conventions.
+
+**[TCB-ERASE-005]** Ghost initialization/destruction may be erased only when the source semantics guarantee that no observable runtime behavior depends on them.
+
+**[TCB-ERASE-006]** A mismatch between the analyzed program and the runtime program MUST be an internal verification failure, never a successful weaker assurance result.
+
+## 29.1 Refinement lowering
+
+**[TCB-ERASE-007]** A non-indexed refinement lowers to an ordinary representation equivalent to its base type as required by `SPEC.md`.
+
+**[TCB-ERASE-008]** An indexed refinement lowers without runtime index metadata; proof-only indices MUST NOT become hidden runtime state.
+
+**[TCB-ERASE-009]** Lowering MUST diagnose erased-signature collisions rather than relying on refinement identity at native ABI level.
+
+## 29.2 Independent erasure validation
+
+An implementation SHOULD independently validate erasure/lowering where practical.
+
+Such validation can reduce the trusted erasure implementation only to the extent that the validator checks the complete semantic property needed for runtime preservation.
 
 ---
 
-# 15. User-declared trusted assumptions
+# 30. Native compiler, linker, ABI and execution trust
 
-C++L may permit explicit assumptions that cannot or should not be proven internally.
+The final executable depends on ordinary compiler/toolchain correctness.
 
-These assumptions extend the TCB of the program using them.
+**[TCB-RUNTIME-001]** Claims about the native executable depend on the selected C++ compiler correctly implementing the supported C++ semantics used by the verified program.
 
-A trusted assumption MUST be distinguishable from a proven proposition.
+**[TCB-RUNTIME-002]** Linker symbol resolution, LTO, ABI lowering, calling conventions, object layout and runtime-library selection are part of the runtime trust chain when they can affect the verified behavior.
 
-Tooling MUST NOT display both simply as:
+**[TCB-RUNTIME-003]** Compiler optimization is outside the logical TCB but inside the runtime trust chain for executable-level guarantees.
+
+**[TCB-RUNTIME-004]** Miscompilation must not be described as a failure of the proof kernel; trust reports SHOULD distinguish proof validity from compiler/runtime preservation.
+
+**[TCB-RUNTIME-005]** Hardware and execution-environment behavior required by the theorem is part of the runtime/environment trust chain unless independently verified or constrained by the theorem's scope.
+
+## 30.1 ABI promises
+
+**[TCB-ABI-001]** Where `SPEC.md` promises that verification metadata does not alter native ABI, the lowering and native interface emitted by C++L are runtime-TCB responsibilities.
+
+**[TCB-ABI-002]** Cross-language/foreign ABI assumptions MUST be explicit in compatibility/trust metadata where they affect verified behavior.
+
+---
+
+# 31. Translation units, modules and verification metadata
+
+Native ABI does not carry all proof metadata. Sound modular verification therefore depends on trustworthy verification interfaces.
+
+**[TCB-XTU-001]** Imported metadata MUST be bound to the exact semantic declaration/entity it describes.
+
+**[TCB-XTU-002]** Imported contracts, refinements, effect summaries, proof evidence, purity/termination guarantees and trust closures MUST preserve semantic identity across translation units/modules.
+
+**[TCB-XTU-003]** Missing metadata MUST cause the dependent verification step to fail closed; it MUST NOT be reconstructed by guessing from native signatures.
+
+**[TCB-XTU-004]** Stale metadata MUST NOT remain valid after a semantically relevant declaration, definition, compiler semantic mode, trust assumption or model changes.
+
+**[TCB-XTU-005]** A metadata transport format MAY be implementation-specific, but its correctness is part of the artifact/correspondence TCB unless every imported claim is independently reconstructed and rechecked.
+
+**[TCB-XTU-006]** Interface identity MUST resist accidental collision across overloads, templates, namespaces, modules, generated names and source remapping.
+
+---
+
+# 32. Proof artifacts, caches and incremental verification
+
+Caching is a performance feature, never an additional proof principle.
+
+## 32.1 Preferred zero-trust reuse
+
+The preferred design stores proof evidence plus complete semantic dependency identity and rechecks that evidence before use.
+
+**[TCB-CACHE-001]** A cache that stores only a prior Boolean verdict and reuses it without independent validation is part of the artifact/reuse TCB.
+
+**[TCB-CACHE-002]** A cache MAY be outside the proof TCB only when corruption/staleness can at worst cause a cache miss or invalid evidence that a trusted checker rejects.
+
+**[TCB-CACHE-003]** Cache keys/dependency manifests MUST include every semantically relevant input needed to distinguish proof validity.
+
+At minimum where relevant:
 
 ```text
-verified
+formal proposition / obligation identity
+resolved C++ entity identity
+source/preprocessed semantic hash
+formal type and refinement definitions
+called contracts/effect summaries
+imported Laws and proof artifacts
+trusted-assumption identities and contents
+core calculus version
+checker/kernel version
+semantic-model version
+selected C++ language mode
+target/ABI properties used by the proof
+library models and versions
+solver/certificate format versions
+verification configuration affecting meaning
 ```
 
-without exposing the distinction.
+**[TCB-CACHE-004]** A missing dependency MUST invalidate reuse rather than default to compatibility.
+
+**[TCB-CACHE-005]** Incremental invalidation MUST be monotone with respect to uncertainty: uncertainty causes recomputation/refusal, not reuse.
+
+## 32.2 Artifact authenticity
+
+**[TCB-ARTIFACT-001]** Imported proof artifacts MUST be syntactically and semantically validated before use.
+
+**[TCB-ARTIFACT-002]** If artifact authenticity or provenance affects whether evidence is accepted, the authenticity mechanism is part of the artifact TCB.
+
+**[TCB-ARTIFACT-003]** Cryptographic integrity can establish artifact identity/integrity but does not establish theorem validity; proof evidence still requires semantic checking.
 
 ---
 
-# 16. No hidden axioms
+# 33. Versioning
 
-Hidden axioms are forbidden.
+Proof validity can depend on the meaning of the formal calculus and semantic correspondence rules.
 
-Any mechanism that introduces logical truth without kernel-derived proof MUST be machine-visible.
+**[TCB-VERSION-001]** Proof artifacts MUST identify the formal calculus version against which they are checked.
 
-This includes assumptions introduced by:
+**[TCB-VERSION-002]** Checker/kernel changes that alter proof acceptance semantics MUST invalidate incompatible artifacts.
 
-- foreign bindings
-- compiler intrinsics
-- solver shortcuts
-- runtime contracts
-- plugins
-- platform APIs
-- external specifications
+**[TCB-VERSION-003]** Changes to C++ correspondence, memory semantics, erasure rules, effect semantics, standard-library models or other proof-relevant semantic translations MUST participate in verification-artifact compatibility.
 
-If an assumption exists, the trust system MUST be capable of reporting it.
+**[TCB-VERSION-004]** Version numbers alone are insufficient if two builds with the same nominal version can contain semantically different trust-critical code; reproducible identity SHOULD include content/build provenance sufficient for auditing.
 
 ---
 
-# 17. Trust propagation
+# 34. Determinism and reproducibility
 
-Trust is transitive.
+**[TCB-DETERMINISM-001]** Given identical formal evidence, checker semantics and configuration, proof checking SHOULD produce the same accept/reject result.
 
-If:
+**[TCB-DETERMINISM-002]** Nondeterministic proof search MAY change which proof is found, but MUST NOT change what invalid evidence the checker accepts.
+
+**[TCB-REPRO-001]** A release verification record SHOULD contain enough information to reproduce or independently audit the assurance decision.
+
+Relevant information includes, as applicable:
 
 ```text
-Law A
-    ↓ depends on
-Law B
+C++L compiler identity
+proof checker identity
+formal calculus identity
+selected C++ standard/mode
+target and ABI
+semantic-model versions
+solver versions when relevant
+trusted-assumption closure
+imported artifact identities
+verification configuration
+proof/certificate hashes
+runtime compiler/linker identities when claiming executable preservation
 ```
 
-and `Law B` depends on trusted assumption `X`, then `Law A` also depends on `X`.
-
-Example:
-
-```text
-Law:
-  payment_conservation
-
-Status:
-  PROVEN
-
-Depends on trusted:
-  bank_api_atomicity
-```
-
-A theorem being proven does not remove the assumptions from which it was derived.
+**[TCB-REPRO-002]** Reproducibility metadata MUST NOT be mistaken for proof evidence; it supports auditability of the evidence and trust chain.
 
 ---
 
-# 18. Assumption closure
+# 35. Trust propagation and provenance
 
-Tooling SHOULD compute the transitive assumption closure of every Law.
+Trust is transitive through proof dependencies.
 
-Conceptually:
+If theorem `A` depends on theorem `B`, and `B` depends on trusted assumption `X`, then `X` belongs to the trust closure of `A` unless the dependency is eliminated by a proof independent of `X`.
 
-```text
-Law
-    ↓
-proof dependencies
-    ↓
-proof dependencies
-    ↓
-trusted assumptions
-```
+**[TCB-PROV-001]** Trust dependency propagation MUST follow the actual evidence/dependency graph, not source proximity or module boundaries.
 
-For any Law, users should eventually be able to ask:
+**[TCB-PROV-002]** Re-proving a theorem without a trusted dependency MAY remove that dependency only when the accepted evidence no longer references it transitively.
 
-```bash
-cppl trust-report <law>
-```
+**[TCB-PROV-003]** Renaming, moving or reformatting source MUST NOT accidentally sever a trust dependency if semantic identity is unchanged.
 
-and see every trust dependency reachable from it.
+**[TCB-PROV-004]** Reusing a theorem through an alias/import/re-export MUST preserve its trust closure.
+
+**[TCB-PROV-005]** Trust closure computation MUST be cycle-safe and deterministic.
+
+## 35.1 Trust identity
+
+Trusted dependencies SHOULD have stable machine identities derived from semantic declaration identity and proposition content sufficient to distinguish materially different assumptions.
 
 ---
 
-# 19. Foreign code
+# 36. Assurance statuses and reporting integrity
 
-Foreign code is not automatically verified.
+Language statuses are defined by `SPEC.md`. This document defines reporting requirements.
 
-Examples include:
-
-- C libraries
-- Objective-C++
-- JNI
-- N-API
-- operating-system APIs
-- device drivers
-- GPU APIs
-- inline assembly
-- external native libraries
-
-Foreign interfaces MUST have an explicit trust classification.
-
-Possible classifications include:
-
-```text
-VERIFIED
-TRUSTED
-RUNTIME-CHECKED
-UNSAFE
-UNVERIFIED
-```
-
-The exact semantics of those classifications belong in `SPEC.md`.
-
-This document requires that the classification remain visible.
-
----
-
-# 20. Verified wrappers
-
-An external implementation may be exposed through a formally specified wrapper.
-
-Conceptually:
-
-```text
-external implementation
-        ↓
-formal contract
-        ↓
-verified wrapper
-        ↓
-verified C++L
-```
-
-A wrapper does not prove the external implementation correct.
-
-Its contract defines the trust boundary unless the implementation itself has been independently verified.
-
----
-
-# 21. Standard library trust
-
-Using the C++ standard library does not imply that its implementation is formally verified.
-
-C++L may provide formal specifications for library abstractions while relying on an external implementation.
-
-Such a model introduces a relationship:
-
-```text
-formal specification
-    ↕ assumed correspondence
-runtime library implementation
-```
-
-Any required assumption MUST remain visible in the trust model.
-
----
-
-# 22. Runtime validation
-
-Runtime validation is not proof-kernel execution.
-
-A dynamic check can establish a fact about a runtime value.
-
-Example:
-
-```text
-external input
-    ↓
-runtime validation
-    ↓
-value admitted into verified domain
-```
-
-The correctness of that validation mechanism is part of the runtime trust chain.
-
-Runtime validation sites SHOULD be reportable separately from purely static proofs.
-
----
-
-# 23. Proof cache
-
-Proof caching is trust-sensitive.
-
-A stale proof must never remain accepted after a semantically relevant dependency changes.
-
-Cache invalidation MUST account for all inputs relevant to proof validity.
-
-Examples include:
-
-- proposition
-- implementation
-- imported proofs
-- imported Laws
-- formal type definitions
-- compiler semantics
-- kernel version
-- trusted assumptions
-- relevant target semantics
-- solver assumptions
-
-Content-addressed proof artifacts are preferred.
-
----
-
-# 24. Incremental verification
-
-Incremental checking MAY reuse previous proof results only when semantic dependencies remain valid.
-
-Performance optimization MUST NOT weaken proof dependency tracking.
-
-If dependency validity cannot be established confidently, the proof MUST be recomputed.
-
----
-
-# 25. Determinism
-
-Kernel checking SHOULD be deterministic.
-
-Given identical:
-
-```text
-formal input
-kernel version
-configuration
-```
-
-the kernel should produce the same accept/reject result.
-
-Automation MAY use nondeterministic search internally, but accepted proof evidence must validate deterministically.
-
----
-
-# 26. Reproducibility
-
-Verification SHOULD be reproducible.
-
-A verification artifact SHOULD eventually record enough information to recreate the result, including:
-
-- C++L compiler version
-- proof-kernel version
-- target architecture
-- selected C++ standard
-- solver versions
-- trusted assumptions
-- verification configuration
-- proof artifact hashes
-
-Reproducibility is important for auditing old releases.
-
----
-
-# 27. Build statuses
-
-C++L tooling MUST distinguish different levels of assurance.
-
-At minimum:
+At minimum, tooling must preserve the distinction among:
 
 ```text
 PROVEN
@@ -841,1069 +1058,742 @@ UNVERIFIED
 UNRESOLVED
 ```
 
-These states MUST NOT be silently collapsed into a generic:
+**[TCB-REPORT-001]** Tooling MUST NOT collapse these statuses into a generic `verified` indicator when doing so hides material assurance differences.
+
+**[TCB-REPORT-002]** A `PROVEN` theorem with non-empty trusted closure MUST report that closure or an unambiguous indication that trusted dependencies exist.
+
+**[TCB-REPORT-003]** A trusted Law MUST NOT be counted as a proven Law.
+
+**[TCB-REPORT-004]** A runtime-checked fact MUST NOT be displayed as a universal static proof.
+
+**[TCB-REPORT-005]** An unsafe/unverified dependency MUST NOT disappear from an assurance report merely because a higher-level function also has some proven properties.
+
+**[TCB-REPORT-006]** Reporting code that can turn a weaker assurance state into a stronger displayed state is part of the reporting TCB.
+
+## 36.1 Per-claim report
+
+For each reportable theorem/contract, the trust system MUST be capable of representing:
 
 ```text
-verified
+semantic claim identity
+status
+formal proposition identity/hash
+proof/evidence identity when applicable
+trusted-assumption closure
+runtime-check dependencies
+unsafe/unverified dependencies relevant to the claim
+external/library/environment assumptions
+checker/calculus identity
+source/entity identity
+verification metadata identity
 ```
 
-The exact language semantics of each category belong in `SPEC.md`.
+## 36.2 Build-level report
 
-The trust layer is responsible for reporting them accurately.
+A build-level report MUST aggregate without losing per-claim provenance. Counts alone are insufficient when trusted assumptions exist; each assumption must be enumerable.
 
 ---
 
-# 28. Strict verification mode
+# 37. Strict assurance policies
 
-The toolchain SHOULD eventually provide a strict mode.
+A toolchain MAY provide policy modes that reject otherwise valid programs because their trust posture does not satisfy a deployment policy.
 
-Example:
+Examples include policies requiring:
 
-```bash
-cppl build --require-fully-verified
+```text
+empty trusted-assumption closure
+no unsafe regions reachable from selected claims
+no unverified foreign dependencies
+no directly trusted solver results
+no unresolved obligations
+reproducible proof artifacts
+specified compiler/toolchain identities
 ```
 
-Such a mode may reject builds containing:
+**[TCB-POLICY-001]** Policy rejection MUST NOT change theorem semantics.
 
-- trusted assumptions
-- unsafe regions
-- unverified FFI
-- directly trusted solver results
-- unresolved obligations
+**[TCB-POLICY-002]** A policy mode MUST NOT relabel `TRUSTED` as `PROVEN`; it may only accept/reject based on the existing trust graph.
 
-Strict policy is a tooling decision.
-
-It does not change theorem semantics.
+**[TCB-POLICY-003]** Policy configuration affecting acceptance MUST be included in audit/reproducibility metadata.
 
 ---
 
-# 29. Trust report
+# 38. Security-sensitive trust failures
 
-C++L MUST eventually provide a machine-readable and human-readable trust report.
-
-Example:
+A defect is trust/security-sensitive when it can cause any of the following:
 
 ```text
-C++L Trust Report
-
-Laws:
-  proven:                      241
-  trusted:                       0
-  unresolved:                    0
-
-Boundaries:
-  unsafe regions:                3
-  runtime validation sites:      7
-  unverified FFI:                0
-
-Trusted components:
-  external axioms:               0
-  direct solver trust:           0
-
-Kernel:
-  version: ...
-
-Compiler:
-  version: ...
-
-Target:
-  arm64
-
-C++ mode:
-  c++23
+invalid core evidence accepted
+wrong source proposition proven as though it were the intended one
+required obligation omitted
+stale logical version reused after mutation
+invalid memory capability granted
+incorrect alias disjointness assumed
+trusted assumption hidden or dropped from closure
+trusted result displayed as independently proven
+unsafe/unverified behavior displayed as verified
+invalid proof artifact/cache entry reused
+proof certificate accepted without required checks
+runtime validation erased or bypassed
+proof-only state affects runtime behavior
+runtime-bearing source erased incorrectly
+verified source and compiled runtime source diverge
+native ABI differs from the guaranteed erased ABI
+wrong cross-TU metadata bound to a declaration
+wrong representation state partition used in proof
+compiler/library/environment assumption hidden from an executable-level claim
 ```
+
+**[TCB-SEC-001]** Such defects MUST be handled under the project's security policy when they can cause a false assurance claim or materially hide its trust dependencies.
+
+**[TCB-SEC-002]** Denial of service, poor diagnostics or proof incompleteness are not automatically soundness bugs, but MAY still be security bugs under `SECURITY.md`.
+
+**[TCB-SEC-003]** A change that turns a fail-closed case into acceptance without adding sufficient checked semantics requires trust review.
 
 ---
 
-# 30. Per-Law trust report
+# 39. TCB growth and change policy
 
-Users should eventually be able to inspect a single theorem.
+Trust expansion is a first-class design change.
 
-Example:
+**[TCB-CHANGE-001]** Any change that adds a component, rule, assumption source, direct solver dependency, cache-trust mechanism, semantic shortcut, representation model or runtime equivalence dependency to the TCB MUST be explicitly identified in review.
 
-```text
-Law:
-  settlement_closes
-
-Status:
-  PROVEN
-
-Proof dependencies:
-  arithmetic_conservation        PROVEN
-  item_partition                 PROVEN
-  payment_provider_contract      TRUSTED
-
-Runtime checks:
-  0
-
-Unsafe dependencies:
-  0
-
-Trusted closure:
-  payment_provider_contract
-```
-
-This is more useful than:
+**[TCB-CHANGE-002]** The preferred direction is:
 
 ```text
-✓ verified
-```
-
----
-
-# 31. Kernel versioning
-
-Proof validity may depend on kernel semantics.
-
-Proof artifacts SHOULD therefore identify the kernel version under which they were accepted.
-
-A kernel change that alters proof semantics MUST invalidate incompatible cached proof artifacts.
-
----
-
-# 32. Core calculus versioning
-
-If the formal core calculus changes, proof artifacts MUST record the relevant calculus version.
-
-A proof accepted under one calculus MUST NOT automatically be assumed valid under a semantically different one.
-
----
-
-# 33. Mechanized meta-theory
-
-The long-term goal SHOULD include mechanized reasoning about the C++L formal core.
-
-This may establish properties such as:
-
-- consistency
-- substitution
-- preservation
-- normalization of proof-relevant fragments
-- termination
-- soundness of erasure
-
-The specific mathematics belongs in `FOUNDATIONS.md`, `SPEC.md`, or dedicated formal-semantics documents.
-
-Its relevance here is:
-
-> Mechanization can reduce the amount of core semantics that must be trusted informally.
-
----
-
-# 34. Compiler verification
-
-A fully verified compiler is not required for C++L to provide value.
-
-However, compiler trust SHOULD be reduced progressively.
-
-Possible progression:
-
-```text
-Stage 1
-small trusted kernel
-
-Stage 2
-mechanized kernel semantics
-
-Stage 3
-verified erasure
-
-Stage 4
-verified critical lowering passes
-
-Stage 5
-stronger end-to-end compiler refinement
-```
-
-Each stage reduces the gap between:
-
-```text
-source theorem
-```
-
-and:
-
-```text
-runtime behavior
-```
-
----
-
-# 35. Security-sensitive trust failures
-
-A bug is security-sensitive if it causes C++L to:
-
-- accept invalid proof evidence
-- hide a trusted assumption
-- incorrectly classify unsafe code as proven
-- reuse an invalid cached proof
-- accept malformed proof certificates
-- remove required runtime checks during erasure
-- misreport theorem trust status
-- allow backend behavior to invalidate a claimed guarantee without disclosure
-
-Such bugs belong under the policy in `SECURITY.md`.
-
----
-
-# 36. TCB growth policy
-
-Any change that enlarges the Trusted Computing Base SHOULD require explicit review.
-
-A change from:
-
-```text
-independently checked
-```
-
-to:
-
-```text
-trusted
-```
-
-must be justified.
-
-The preferred direction is always:
-
-```text
-trusted
+trusted implementation
     ↓
-independently checked
+independently checked evidence/certificate
 ```
 
 not the reverse.
 
----
+**[TCB-CHANGE-003]** Moving logic from the proof kernel into correspondence code is not automatically a TCB reduction; if the correspondence code remains unchecked and can create unsound source claims, trust has only moved.
 
-# 37. Target mature architecture
+**[TCB-CHANGE-004]** Adding an independently checked certificate format MAY reduce trust only after the checker validates every semantic fact formerly trusted.
 
-The intended mature trust architecture is:
+**[TCB-CHANGE-005]** A new `trusted` source form is a language-semantic change and requires corresponding `SPEC.md` authority; TRUST.md alone MUST NOT create one.
 
-```text
-Human / AI source
-        ↓
-┌─────────────────────────────┐
-│ C++L frontend               │
-│ elaborator                  │
-│ tactics                     │
-│ SMT                         │
-│ proof search                │
-│ AI proof generation         │
-└─────────────┬───────────────┘
-              │
-              │ proof evidence
-              ▼
-┌─────────────────────────────┐
-│ Small trusted proof kernel  │
-└─────────────┬───────────────┘
-              │
-              ▼
-            PROVEN
-              │
-              ▼
-┌─────────────────────────────┐
-│ Verified / trusted erasure  │
-└─────────────┬───────────────┘
-              │
-              ▼
-        ordinary C++
-              │
-              ▼
-        Clang / LLVM
-              │
-              ▼
-      native executable
-```
-
-The upper trust chain answers:
-
-```text
-Is the proposition logically established?
-```
-
-The lower trust chain answers:
-
-```text
-Does the native executable preserve the semantics that were established?
-```
-
-Both are necessary.
+**[TCB-CHANGE-006]** A new proof-relevant feature MUST document which existing trust layers it uses and any new trust obligations it introduces before it may be reported as fully conforming.
 
 ---
 
-# 38. Relationship to other documents
+# 40. Verification of the TCB
 
-The documentation responsibilities are intentionally separated.
+The TCB SHOULD receive stronger assurance than ordinary compiler convenience code.
+
+Recommended assurance techniques include:
 
 ```text
-SPEC.md
-    what the language means
-
-TRUST.md
-    what must be trusted
-
-FOUNDATIONS.md
-    mathematical basis
-
-DESIGN.md
-    language/compiler design decisions
-
-ARCHITECTURE.md
-    implementation components and data flow
-
-COMPATIBILITY.md
-    C++ / ABI / toolchain compatibility
-
-SECURITY.md
-    vulnerability and disclosure policy
-
-STATUS.md
-    what actually exists today
+small interfaces
+negative/adversarial unit tests
+property tests
+fuzzing
+mutation testing
+differential testing against independent semantics
+sanitizers
+reproducible builds
+code review requiring trust-impact analysis
+formal specification
+mechanized meta-theory
+formal verification of critical checkers/lowering
+independent implementations for cross-checking
 ```
 
-This separation is intentional.
+These techniques improve confidence but do not alter the trust classification unless they establish an independently checked boundary.
 
-`TRUST.md` SHOULD reference these documents instead of duplicating their contents.
+## 40.1 Kernel testing
+
+**[TCB-TEST-001]** The logical checker MUST have negative tests for malformed evidence, wrong types, wrong binders, forged hypotheses, substitution capture, invalid certificates and every primitive inference rule.
+
+## 40.2 Correspondence testing
+
+**[TCB-TEST-002]** Each correspondence rule MUST have positive and negative source-level tests demonstrating both the intended accepted case and the nearest unsound case that must be rejected.
+
+**[TCB-TEST-003]** Cross-feature tests MUST cover interactions capable of invalidating facts, especially aliasing, calls, loops, exceptions, templates, virtual dispatch, concurrency, refinements and memory capabilities.
+
+## 40.3 Erasure/runtime testing
+
+**[TCB-TEST-004]** Erasure/lowering MUST have tests that compare runtime representation/behavior where `SPEC.md` promises preservation.
+
+**[TCB-TEST-005]** ABI-sensitive features MUST have ABI/codegen conformance tests across supported toolchain modes as defined by `COMPATIBILITY.md`.
+
+## 40.4 Trust-report testing
+
+**[TCB-TEST-006]** Trust reporting MUST have tests proving that transitive assumptions are neither lost nor incorrectly added, including cross-TU/imported evidence.
 
 ---
 
-# 39. Fundamental question
+# 41. Formal verification and mechanized meta-theory
 
-For every Law reported as proven, C++L should eventually be able to answer:
+Mechanized meta-theory can reduce informal trust in the formal core, but only to the extent of the mechanized statement and the trusted theorem-prover/checker chain used to establish it.
 
-> Why should I believe this?
-
-The answer should reduce to:
+Potential properties include:
 
 ```text
-formal proposition
-+
-explicit assumptions
-+
-kernel-checked proof evidence
-+
-known trust boundary
-+
-sound connection to runtime execution
+consistency relative to stated assumptions
+substitution
+preservation/progress for proof terms
+normalization of proof-relevant fragments
+soundness of arithmetic certificate checking
+soundness of induction/termination rules
+erasure preservation
+refinement validity preservation
+memory capability calculus soundness
 ```
 
-and never merely:
+**[TCB-META-001]** Mechanized proofs MUST identify the formal model/version to which they apply.
+
+**[TCB-META-002]** A mechanized theorem about an abstract compiler pass does not remove trust from the production implementation unless a verified correspondence connects the implementation to that model.
+
+**[TCB-META-003]** External proof assistants/toolchains used to certify meta-theory have their own trust bases; those dependencies SHOULD be documented when claims rely on them.
+
+---
+
+# 42. Relationship between proof trust and runtime trust
+
+C++L deliberately distinguishes these questions:
+
+```text
+1. Is the formal proposition established?
+2. Is that proposition the correct formalization of the C++L source?
+3. Does the compiled executable preserve the verified source behavior?
+```
+
+A `PROVEN` formal proposition can be mathematically correct while an executable-level claim is invalid because correspondence, erasure or native compilation is wrong.
+
+Conversely, a program may execute correctly even when no formal proof exists.
+
+**[TCB-SEPARATION-001]** Tooling and documentation MUST NOT conflate these three assurance questions.
+
+**[TCB-SEPARATION-002]** Reports SHOULD allow users to distinguish at least proof validity, source correspondence and runtime preservation dependencies.
+
+---
+
+# 43. Conformance requirements
+
+A complete conforming C++L implementation MUST satisfy all applicable requirements of this document.
+
+In particular it MUST:
+
+1. identify the logical, correspondence, runtime, artifact/reuse and reporting trust layers;
+2. reject invalid formal evidence;
+3. preserve explicit trusted-assumption provenance transitively;
+4. prevent hidden assumptions from entering accepted proof;
+5. prevent unsupported semantics from being promoted to proof or trust automatically;
+6. ensure source-to-core correspondence for every accepted verified construct;
+7. generate every proof obligation required by `SPEC.md`;
+8. model control flow without leaking path facts;
+9. model calls, effects, aliases, places and logical versions conservatively;
+10. check memory capabilities and bounds according to `SPEC.md`;
+11. enforce recursive refinement validity across construction, mutation and boundaries;
+12. model C++ arithmetic and undefined-behavior preconditions without mathematical substitution that changes semantics;
+13. treat representation/decomposition models as correspondence-TCB responsibilities;
+14. preserve termination/partial-correctness distinctions;
+15. preserve class, constructor, destructor, virtual, template, exception and concurrency trust obligations;
+16. preserve foreign/library/environment trust dependencies;
+17. erase/lower C++L constructs without changing required runtime semantics;
+18. preserve promised ABI behavior;
+19. bind cross-TU/module verification metadata to exact semantic entities;
+20. reuse caches/artifacts only with sufficient semantic dependency validation;
+21. report assurance statuses and trusted closures accurately;
+22. treat trust expansion as an explicit reviewed change; and
+23. fail closed whenever required trust-critical information cannot be established.
+
+A toolchain that omits a language feature MAY be incomplete, but it MUST NOT claim conformance for that feature by accepting a weaker trust interpretation.
+
+---
+
+# 44. Non-goals of this document
+
+This document does not specify:
+
+```text
+concrete parser architecture
+VIR class layouts
+source file paths
+solver search algorithms
+cache database schema
+CLI command names
+IDE UX
+release schedule
+implementation maturity
+current test counts
+current kernel version numbers
+current unsupported features
+roadmap ordering
+```
+
+Those belong to implementation/status/tooling documents.
+
+This document also does not require zero trust. Native execution necessarily depends on some implementation and environment unless the entire stack is independently verified.
+
+The objective is **explicit, minimal, auditable, reducible trust**.
+
+---
+
+# 45. Fundamental trust rule
+
+For every claim reported as `PROVEN`, C++L MUST be able to account for:
+
+```text
+what proposition was established
+what source/runtime semantics that proposition represents
+what evidence established it
+what checker accepted the evidence
+what explicit trusted assumptions it depends on
+what correspondence components must be correct
+what runtime components must be correct for executable-level meaning
+what imported artifacts/models it depends on
+```
+
+The acceptable answer is never merely:
 
 ```text
 because the compiler said so
 ```
 
----
+The governing principle is:
 
-# 40. Trust philosophy
-
-C++L does not pursue zero trust.
-
-C++L pursues **explicit, minimal trust**.
-
-Over time:
-
-```text
-trusted core
-    should shrink
-
-visible assumptions
-    should become more precise
-
-automation
-    should become more independently checked
-
-runtime semantics
-    should become more formally connected
-
-verified C++ coverage
-    should grow
-```
-
-But the meaning of:
-
-```text
-PROVEN
-```
-
-must never be weakened to make implementation easier.
+> **Proof authority should be small; correspondence trust should be explicit; runtime trust should be separated; assumptions should be visible; and every uncheckable gap should fail closed rather than silently become truth.**
 
 ---
 
-# 41. Trusted Computing Base as implemented
+# Annex A (normative) — Trust classification matrix
 
-This section states what must currently behave correctly for a C++L `PROVEN`
-result to mean what it claims. It describes the implementation that exists, not
-the target; `STATUS.md` records maturity.
+This annex is normative.
 
-## 41.1 Logical trust
+The table classifies common components by default. A concrete implementation MAY reduce trust through independent checking, but MUST document the checker and the exact property it validates.
 
-For a false proposition to be accepted, one of these would have to be wrong:
+| Component / responsibility                           |                             Logical TCB |                 Correspondence TCB |                    Runtime TCB |            Artifact/reporting TCB | Notes                                            |
+| ---------------------------------------------------- | --------------------------------------: | ---------------------------------: | -----------------------------: | --------------------------------: | ------------------------------------------------ |
+| core proof checker                                   |                                     yes |                                 no |                             no |                                no | validates formal evidence                        |
+| definitional equality / normalization used by kernel |                                     yes |                                 no |                             no |                                no | acceptance-critical                              |
+| kernel type/binder/substitution checker              |                                     yes |                                 no |                             no |                                no | acceptance-critical                              |
+| independently checked proof search                   |                                      no |                                 no |                             no |                                no | producer only                                    |
+| solver with checked certificate                      |                                      no |           translation may be corr. |                             no |                                no | certificate checker may be logical TCB           |
+| directly trusted solver                              |                           yes/auxiliary |                        translation |                             no |                            report | must be disclosed                                |
+| C++L recognizer/parser                               | only if proof checking depends directly |                                yes |           possibly via erasure |                                no | source interpretation                            |
+| Clang semantic analysis                              |                                      no |                                yes |                            yes |                                no | ordinary C++ authority                           |
+| VIR construction                                     |                                      no |                                yes |                             no |  imported VIR may be artifact TCB | source correspondence                            |
+| obligation generation                                |                                      no |                                yes |                             no |                                no | omitted obligations are unsound                  |
+| path/CFG lowering                                    |                                      no |                                yes |                             no |                                no | path facts                                       |
+| call-summary binding                                 |                                      no |                                yes |                             no |                metadata transport | exact entity required                            |
+| Place/PlaceVersion mapping                           |                                      no |                                yes |                             no |                                no | storage identity/versioning                      |
+| alias/effect analysis                                |                                      no |                                yes |                             no |                                no | must be conservative                             |
+| memory capability checker                            |       if implemented as core logic, yes |                      otherwise yes |                             no |                                no | invalid capability can make source claim unsound |
+| refinement-crossing generator                        |                                      no |                                yes |                             no |                                no | complete `Valid` obligations                     |
+| representation/decomposition provider                |                                      no |                                yes |                             no |                                no | wrong partition can be unsound                   |
+| loop VC generator                                    |                                      no |                                yes |                             no |                                no | if loop rule not kernel-native                   |
+| termination checker outside kernel                   |                                 depends |                                yes |                             no |                                no | checker must be trusted/independently checked    |
+| standard-library semantic model                      |                                      no |                                yes | yes for runtime correspondence |                  version metadata | public semantics mapping                         |
+| FFI contract                                         |                                      no |                   assumption/corr. |                            yes |                            report | explicit trust unless verified                   |
+| `trusted law` proposition                            |                         not a component |                explicit assumption |         maybe external runtime |                            report | remains in trust closure                         |
+| `unsafe` marker                                      |                                      no |                    effect boundary |          runtime code executes |                            report | supplies no facts                                |
+| erasure/lowering                                     |                                      no |              source/runtime bridge |                            yes |                                no | correctness-critical                             |
+| native C++ compiler optimizer/codegen                |                                      no | may affect source semantic answers |                            yes |                                no | executable-level guarantee                       |
+| linker/LTO                                           |                                      no |                                 no |                            yes |                                no | symbol/ABI behavior                              |
+| proof cache storing evidence then rechecking         |                                      no |                                 no |                             no | usually no trust beyond integrity | corruption causes rejection/miss                 |
+| verdict-only proof cache                             |                                      no |                                 no |                             no |                               yes | reuse logic is trusted                           |
+| cross-TU verification metadata                       |                                      no |                                yes |                             no |                               yes | binding/invalidation critical                    |
+| diagnostics text                                     |                                      no |                                 no |                             no |                        usually no | unless used as machine authority                 |
+| assurance status/report generator                    |                                      no |                                 no |                             no |                               yes | must not overstate assurance                     |
+| AI assistant                                         |                                      no |                                 no |                             no |                                no | candidate producer only                          |
 
-```text
-kernel/   the proof checker, the normalizer (including the polynomial normal
-          form of machine arithmetic and the canonical comparisons), the type
-          checker of core terms, the capture-safe substitution used by
-          universal elimination, by equality substitution and by the hypothesis
-          context, the admission rules of the definition context, and the
-          linear-arithmetic constraint builder and certificate checker
-```
+---
 
-That is the whole logical TCB. It links no other component, includes no header
-outside itself, and holds no global state. `tests/architecture` checks both
-properties on every run.
+# Annex B (normative) — Correspondence obligations by feature
 
-The core has thirteen rules:
+This annex is normative. It summarizes the minimum trust-sensitive correspondence that an implementation must preserve for each language family. It does not replace the detailed semantics in `SPEC.md`.
 
-```text
-1. Reflexivity
-2. Equality substitution
-3. Universal introduction
-4. Universal elimination
-5. Implication introduction
-6. Implication elimination
-7. Hypothesis use
-8. Conditional elimination
-9. Linear arithmetic
-10. Conjunction introduction
-11. Conjunction elimination (left or right)
-12. Disjunction introduction (left or right)
-13. Disjunction elimination (cases over both sides)
-```
+## B.1 Laws and proofs
 
-Each is a capability, not an assumption.
-
-**Conjunction** (`SPEC.md` 7.6; RFC 0009) explicitly adds two rules to the
-logical TCB and moves the kernel/core versions to 0.4.0. Introduction checks both
-pieces of evidence against the two sides of the goal. Elimination validates the
-restated conjunction, checks its evidence, and requires the selected side to
-equal the goal. Shifting and substitution recurse into both sides without adding
-a binder. Negative tests cover a false side, forged or mismatched evidence,
-ill-typed and unbound propositions, and binder capture; generated propositions
-and proofs also include conjunctions. There are no new assumptions, axioms,
-trusted mechanisms, or external dependencies. Obligation identities include
-both ordered sides, their reachable definitions, and the new version stamps.
-
-Formal conjunction composition and equivalence (RFC 0010) add no kernel rule,
-axiom, or trusted mechanism. The bridge reads a recorded two-operand projection;
-lowering expands equivalence to a conjunction of opposite implications. Clang
-still resolves every C++ leaf. Correct connective shape and operator precedence
-remain correspondence trust, covered by positive and negative source tests.
-
-**Disjunction** (`SPEC.md` 7.8; RFC 0011) explicitly adds two further rules and
-moves the kernel/core versions to 0.5.0. Introduction checks the evidence against
-the side of the goal it selects. Elimination validates the restated disjunction,
-checks its evidence, and then checks each case against an implication from its
-own side, so no new hypothesis mechanism is trusted. Nothing grants that one side
-of a disjunction holds: there is no excluded middle in the core, and a goal
-needing it is unproven. Automation may shape an introduction or a case analysis,
-and the kernel checks whichever it submits. Negative tests cover a false
-disjunction, excluded middle, a side wrongly taken from a disjunctive premise, a
-case that covers the wrong side, invented evidence, malformed operands, binder
-capture and hypothesis indices inside a case. There are no new assumptions,
-axioms, trusted mechanisms, or external dependencies. Obligation identities
-distinguish a disjunction from a conjunction of the same ordered sides.
-
-Automation may also close a disjunction that enumerates a domain the core can
-exhaust: the order of one pair of terms, or the values of a machine type narrow
-enough to list side by side. It does so by splitting on a comparison the machine
-decides, which is the decidability principle `SPEC.md` 7.8 allows, and it builds
-the split from the rules already listed here: a conditional elimination over the
-comparison, with a disjunction introduction inside each branch. This adds no
-kernel rule and no axiom, and the kernel checks every step as it does any other.
-The principle is deliberately narrow, because a decidable split must not become
-excluded middle: a disjunction of two complementary propositions over an
-unbounded domain enumerates nothing and is still unproven, which the negative
-test for excluded middle continues to cover.
-
-**Machine arithmetic** (`SPEC.md` 7.1.1, 7.5; RFC 0006) enlarges the logical
-TCB explicitly, and moved the kernel and core versions to 0.3.0. Two parts must be
-right for a `PROVEN` result to mean what it says:
-
-- _The polynomial normal form._ Wrapping addition, subtraction and
-  multiplication are read as polynomials modulo `2^width` and rendered in one
-  canonical form, and comparisons are rewritten only by identities of the
-  machine type. An error here would make reflexivity accept an equality that
-  some assignment falsifies. It is checked by a differential test that
-  evaluates random terms and their normal forms with an evaluator written
-  independently of the kernel, over every assignment of small types and at the
-  edges of 64-bit ones.
-- _The linear-arithmetic rule._ The kernel checks each fact's evidence, states
-  the facts and the goal's negation as integer constraints itself - each
-  wrapped value as its polynomial minus a fresh multiple of `2^width`, bounded
-  by its type - and checks a certificate of Farkas sums, integer splits and
-  case splits against them with overflow-checked 128-bit arithmetic. The
-  producer supplies neither the translation nor any bound. An error in the
-  translation would let a certificate refute a system that does not say what
-  the machine does; negative tests cover wrapping at 32 and 64 bits, overflow,
-  misapplied, one-sided and malformed certificates, and unchecked facts.
-
-Certificates are found by Fourier-Motzkin elimination with case splitting in
-`compiler/automation`, outside the TCB. The rule adds no axiom: it derives
-nothing a model of machine integers does not satisfy.
-
-A literal holds its value in the same 128-bit integer the arithmetic procedures
-use, so every value of every supported type is denotable: a `u64` ranges to
-`2^64-1`, which an `int64_t` cannot hold. Before this, the core's stated range
-for a 64-bit unsigned type disagreed with the machine's, and a literal in the
-upper half of that range had to be written as an expression to be expressed at
-all. Widening the representation narrows what the core accepts rather than
-widening it: a literal outside its type's range is malformed and is refused when
-it is typed, the unsigned case included, which is covered by a negative test.
-
-Conditional elimination was added in the path slice. It combines checked cases into a
-proposition about `select(condition, true_value, false_value)`. The kernel
-type-checks the complete conditional and the proposition context, derives each
-arm's required predicate from the condition, checks both implications, and
-computes the resulting proposition by capture-safe substitution. Producers
-cannot supply their own branch premises or omit a case. Comparisons are typed
-total primitives; concrete evaluation respects integer width and signedness.
-Boolean terms use unsigned one-bit integers, and a declared `bool` is modeled as
-that type: its value set is the same, and every promotion out of it is a
-conversion the bridge refuses. These computations and that rule enlarged the
-logical TCB explicitly and moved the kernel/core versions to 0.2.0. Symbolic
-order reasoning came later, with the linear-arithmetic rule above; no logical
-assumption was added by either.
-
-Equality substitution is a distinct logical
-capability rather than sugar over the others: without it, evidence for `a = b`
-can close a goal that already is `a = b` and can do nothing else. It transports
-evidence through a proposition context, and **the kernel performs the
-substitution itself**. The context is given to it as part of the proof term,
-with its hole type-checked against the type the equality is stated at; the
-kernel checks the equality, checks what is transported, and derives the result
-by its own capture-safe substitution. The elaborator decides which occurrences
-a context abstracts, and may not manufacture the resulting proposition and ask
-the kernel to accept it. A mistaken choice of occurrences can therefore only
-fail to prove something.
-
-Symmetry needs no rule of its own: it is equality substitution at the context
-`b = -`, whose transported case is `b = b`. Rewriting in the other direction is
-derivable the same way, and is never inferred.
-
-Eliminating a quantifier requires evidence for a proposition the kernel checks
-for itself, an argument whose type the kernel derives for itself, and a
-resulting proposition the kernel obtains by substituting for itself. The proof
-term it is given restates the proposition being eliminated from, and that
-restatement is checked, never believed: evidence for a false statement is
-refused before any instance of it can be taken. Discharging a premise works the
-same way - the implication is restated, checked, and the conclusion is the
-kernel's own.
-
-**A premise is supposed, never granted.** `expects (P) ensures (Q)` does not mean
-that `P` is trusted; it means that `Q` is to be proved under the supposition
-`P`, and what is established is `P -> Q`. The hypothesis exists for exactly as
-long as the implication introduction that placed it in the context, the kernel
-holds that context itself, and evidence can never name a premise that is not
-standing in it. Nothing anywhere admits `P` on its own.
-
-There are **no axioms**. The core has no rule that introduces a proposition
-without evidence, and no `trusted` mechanism is implemented, so no proposition
-can currently enter the system as an assumption. A declaration that would state
-one, `trusted law`, is refused rather than accepted (`SPEC.md` 27, 52).
-
-## 41.2 Correspondence trust
-
-A kernel-checked proof is a proof about the proposition it was given. That the
-proposition says what the C++ program means is a separate question, and the
-components that answer it are trusted for that correspondence:
+The implementation must correctly preserve:
 
 ```text
-compiler/frontend/      which spans are formal syntax and where they came from
-clang/                  the resolved C++ semantics C++L reads from Clang
-compiler/elaboration/   the VIR built from those semantics
-compiler/obligations/   the lowering of VIR into core terms and propositions
+Law declaration identity
+parameter quantification
+expects premise
+proves conclusion
+proof-body goal
+trusted vs proved declaration status
+proof reference instantiation
+binder scope
+trust closure
 ```
 
-Declaration linkage uses physical offsets in the analysis buffer. The projector
-records the generated Law name tokens and maps retained pure/verified name
-tokens; the Clang bridge obtains their offsets from libclang. Repeated presumed
-file/line/column labels cannot select another declaration. Ambiguous generated
-helper lookups fail closed, and a unit missing declaration obligations is
-rejected. These checks harden the existing correspondence boundary; they add no
-logical rule or trusted mechanism.
+It must never turn declaration presence into proof evidence.
 
-Written proof declarations are part of this layer and **do not enlarge the
-logical TCB**. A proof statement is surface syntax that elaboration turns into a
-kernel proof term; the kernel then checks that term against the goal exactly as
-it checks any other. `exact` and `apply` reuse a term that was itself checked
-against its own goal, and neither admits a proposition on the strength of the
-author's word. A defect in this lowering can only produce a term the kernel
-refuses, or a term for a goal that is not the one the Law states - and the
-second is caught separately, because `Verdict::proven` compares the proposition
-the kernel accepted with the proposition of the obligation being discharged.
+## B.2 Function contracts
 
-A defect here cannot make the kernel accept an invalid derivation. It can make
-the kernel check the wrong statement. The lowering rules that carry the most
-weight are deliberately few and are stated explicitly in the implementation:
-
-- a C++ equality between two built-in integer values of the same type denotes
-  propositional equality of those values (`SPEC.md` 7.3);
-- Clang-resolved built-in `&&` between modeled, pure Boolean specification
-  expressions denotes conjunction (`SPEC.md` 7.6). Both operands must lower
-  successfully, even if C++ would short-circuit. No overloaded operator,
-  side effect, or unsupported conversion receives this correspondence;
-- C++ `+`, `-` and `*` are lowered onto the core's wrapping primitives **only**
-  for unsigned operands of one modeled type, where C++ arithmetic is modular
-  and the two agree exactly. Operands narrower than `int` reach the bridge as a
-  promotion to `int`, which it refuses as a conversion. Signed arithmetic is
-  refused, because C++ leaves its overflow undefined;
-- specification expressions may unfold admitted `pure` definitions whose
-  bodies satisfy the purity rules; verified-function definitions additionally
-  support the kernel-checked link between a proven contract and its actual body;
-- a `proves` clause names a Law at arguments, and the proposition it claims is
-  that Law's proposition instantiated at them and closed over the proof's own
-  parameters. The claim is a statement to be proved, never a licence: a proof
-  discharges the Law itself only when the two propositions coincide, and a
-  proof of one instance discharges nothing;
-- the terms a proof reference is instantiated at are ordinary C++ expressions,
-  resolved by Clang from the projected text like every other expression, and
-  lowered by the same rules as any other value;
-- a Law's `expects` clause is its premise and its `ensures` clause its
-  conclusion, and the Law is the implication from the one to the other, under
-  its parameters. A precondition asserts nothing on its own, and a Law that
-  states one is proven only when that implication is;
-- `assume h : P;` names a premise the goal already supposes. It introduces
-  nothing: the proposition written there is compared with the goal's own
-  premise, and the hypothesis the kernel then holds is the goal's premise, not
-  the written text. A goal that supposes no premise has none to name, and the
-  statement is refused there;
-- a statement `x += e`, `x -= e` or `x *= e`, or an increment or decrement of
-  `x`, is lowered as the assignment it abbreviates, only for a local whose type
-  C++ does not promote before arithmetic; the value is then lowered by the rule
-  for `+`, `-` and `*` above, so signed updates are refused;
-- `rewrite e;` chooses which occurrences of a term the goal's context
-  abstracts. That choice is this layer's, and it is all this layer does: the
-  context goes to the kernel, which checks the equality, checks what is
-  transported through it, and derives the resulting proposition itself;
-- `forall (T x, ...) { P }` is the core's universal quantifier over those binder
-  types, outermost binder first, and `P -> Q` is the core's implication. The
-  binders are parameters Clang declared and scoped, so a name in the body denotes
-  what C++ says it denotes, and the innermost binder is de Bruijn index zero.
-  Which spellings are formal at all is decided from syntax before Clang runs:
-  a quantifier word only in its complete form, an `->` only outside all brackets.
-  Both forms only construct propositions the kernel already had, so neither adds
-  a rule, an axiom or an assumption;
-- a statement in a proof body is stated against the number of binders enclosing
-  the goal it is written for, which a proposition's own quantifiers add to. A
-  defect there can only state a term at the wrong depth, which the kernel refuses
-  as out of scope or as a proposition that is not the goal.
-
-Anything outside those rules is reported as unsupported and yields no
-obligation. No construct is approximated.
-
-A Law that an author wrote a proof for is never closed by the compiler's own
-strategy if that proof was refused, nor if the proofs that name it establish
-only instances of it. Writing a proof narrows how a Law may be established; it
-can never widen it.
-
-Every written proof reaches the kernel. The one that discharges a Law is
-submitted as that Law's evidence and checked there; a proof of an instance has
-no obligation of its own and is checked against its own claim where it is
-lowered. Neither is left standing on the author's word.
-
-A premise an `apply` leaves behind is a goal like any other. It is closed by the
-statements that follow, by evidence the kernel checks; a body that ends with one
-still open is refused, and no strategy of the compiler's own is offered for it.
-
-Single-return verified-function contracts add no kernel rule, axiom, or logical authority.
-The correspondence layer now substitutes the actual elaborated return term
-for the postcondition's specification-only `result` binder and closes the goal
-over the parameters and optional precondition. A defect in body selection or
-substitution could state the wrong obligation; body-change, parameter-capture,
-unsupported-body, and erasure regressions exercise this boundary.
-
-The body must lower even when its result is absent from the postcondition.
-Every verified call must discharge its instantiated precondition, even when its
-result is ignored. Abstract caller reasoning binds fresh call results and uses
-only the caller's premise and preceding, proven callee postconditions. A callee
-cannot justify its own precondition, and a weak summary cannot be strengthened
-by inspecting its body. The same restriction applies to `verified pure` calls.
-
-Core definitions lower the actual verified bodies and are used to connect each
-callee's body-derived proof to its exported call theorem. Universal elimination,
-implication elimination, and equality elimination compose those proofs; the
-kernel checks the resulting proof against the caller's original obligation.
-The definitions add executable meanings, not assumed postconditions. Definitions
-with preconditions remain unavailable for unrestricted use in specifications.
-
-Call collection, argument substitution, and summary selection are correspondence
-responsibilities. Regressions cover nested calls, failed and irrelevant-result
-preconditions, weak contracts, overloads, capture, cycles, forged summaries, and
-detached body linkage. Automatic premise rewriting still produces ordinary
-proof terms; forged hypotheses remain kernel rejections. Function contracts and
-call preconditions have separate counts from Laws. This slice adds zero kernel
-rules, zero logical assumptions, and zero runtime checks.
-
-Locals and assignments add no kernel rule, no logical assumption, and no
-runtime check. A local is not a new kind of value: each write is a logical
-version, and a read lowers to the term that version was given, so the kernel
-sees the same goals it saw before and decides them the same way. What this
-slice trusts is the bridge's account of the body: which declaration each read
-resolves to, which version is current there, and where each call is evaluated.
-A defect there can misstate the program, but it cannot grant the kernel a
-proposition. Anchoring is what keeps a local from moving a call: a call bound
-to a local is proven where the body makes it, under the conditions in force
-there, and on every path that reaches it. The kernel and core versions do not
-change, because the accepted calculus does not. Every version's value is
-lowered where it is established, read or not, so a value the core cannot
-state - an unread signed overflow, for instance - rejects the body instead of
-vanishing from the model.
-
-Path-sensitive verification additionally trusts the Clang bridge and lowering
-to preserve every branch, fallthrough edge, condition polarity, and return.
-Each return has its own implication goal. Calls in guards are checked before
-their guard evidence becomes available; calls on other paths supply no evidence.
-The kernel's conditional-elimination rule then checks the assembled body proof
-before its call theorem can be exported. A frontend defect can misstate the
-program but cannot grant a path proposition to the kernel. Kernel adversarial
-tests cover altered conditions, false/missing arms, malformed types, and motive
-capture; compiler regressions cover path leakage and failed branch dependencies.
-There are zero new logical assumptions and zero inserted runtime checks.
-
-Loops add no kernel rule and no logical assumption, and they **enlarge
-correspondence trust explicitly**. A loop has no total core term, so the
-kernel cannot check a theorem about a loop's value; it checks instead each
-verification condition a body with a loop generates (`SPEC.md` 24.3): every
-invariant on entry, every invariant at the end of every iteration path, each
-call precondition, and each return, each an ordinary proposition over total
-terms. That these conditions together establish the contract is the partial-
-correctness loop rule and call rule, applied by `compiler/obligations`, not by
-the kernel. What that layer must get right, and what covers it:
-
-- _which locals a loop carries._ The bridge scans for writes; every iteration
-  end checks that each local it did not carry still holds its head version, so
-  a missed write rejects the body instead of letting a stale value pass the
-  loop. Carrying a local the loop does not write only loses information.
-- _what the head supposes._ Only the invariants and the loop condition; entry
-  values are never visible past the head, and the exit supposes the negated
-  condition. Negative tests cover head- and entry-value leaks, a false
-  condition after exit, weak invariants, `break`, `continue`, returns inside
-  the body, calls in the condition and in the body, and nested loops.
-- _every iteration path._ Each `Iterate`, including `continue` and the path
-  through the `for` step, yields preservation conditions; an iteration ending
-  outside its loop, a rebound version and a head read before its loop are
-  refused even from malformed VIR.
-
-A function with a loop, or that calls one, is never admitted as a core
-definition, so the kernel never normalizes a loop and never holds a theorem
-about a value a divergent loop would denote: a nonterminating loop whose
-contract is vacuously true cannot reach a Law or a specification, and regression
-tests check exactly that. Its contract is reported as partial correctness only.
-Replacement path: once induction over a proof-only natural-number domain exists
-(ROADMAP Phase 7), loop partial correctness can be stated with an iteration term
-and the loop rule derived inside the kernel, removing it from this layer.
-
-Explicit formal equality adds correspondence code, not a kernel rule. Its
-projection metadata selects an analysis-only probe whose two converted operands
-and canonical C++ type are read from Clang. The empty probe body is never a
-proposition or evidence. This mapping and the separate VIR proposition type must
-be correct; malformed shapes, unmodeled operand types and conversions are
-refused. Tests cover false equalities, wrong evidence, scope escape, repeated
-presumed locations, and attempts to use a C++ `Eq` helper for unsupported nested
-formal syntax. Direct proof declarations receive their own obligations with no
-automation fallback. Equality conversion produces existing substitution and
-reflexivity terms; the kernel checks both conversions independently. No axiom,
-logical assumption, trusted mechanism, or kernel rule is added.
-
-Storage capability tracking is a correspondence responsibility, and it is a
-real addition to this layer (RFC 0014, `SPEC.md` 12.10). It is stated here
-rather than reported as a zero delta, because the value model itself expands.
-
-A capability — `readable`, `writable`, `initialized` at a place — is carried as
-a context hypothesis by the obligation layer, not as a proposition the kernel
-reasons about. The kernel's proposition language bottoms out in equality over
-terms, and its context admits no uninterpreted symbol, so a capability is not
-expressible as a kernel proposition without a new term former or a new
-proposition former. Both were rejected: the first invites a capability to be
-discharged by evaluation, and the second is a representation-specific kernel
-rule in all but name (`AGENTS.md` 38). Capability checking is instead a
-decidable flow analysis — no search, no induction, no quantifier reasoning —
-which is why it belongs beside the other rules that map C++ semantics onto
-logic rather than inside the kernel, where it would grow the trusted core
-without making it check more.
-
-What still reaches the kernel is everything that requires proof rather than
-tracking: refinement membership on every write, and a subscript's
-`index < extent` obligation, which is an ordinary proposition over terms
-discharged by the existing linear-arithmetic rule. Bounds safety is proved, not
-tracked.
-
-A defect in capability tracking can cause the kernel to check the wrong
-statement, which is the failure class every correspondence rule shares; it
-cannot make the kernel accept an invalid derivation. The specific claims this
-layer must get right are: that a place's capability is dropped when any
-may-aliasing write or unknown call effect occurs; that disjointness is only ever
-concluded from Clang-resolved distinctness, never from type-based aliasing; and
-that a `trusted` boundary is the only way a capability appears without being
-established, with every such introduction named in the trust report.
+The implementation must correctly preserve:
 
 ```text
-kernel rules added          0
-axioms added                0
-logical assumptions added   0
-core/kernel version         unchanged
-correspondence rules added  capability tracking and access checking
+callable identity
+entry values
+normal-return state
+result binding
+old(...) entry snapshots
+reference/pointer post-state
+callee precondition obligations
+postcondition availability only after successful verified normal return
+effect summary application
 ```
 
-## 41.3 Runtime trust
+## B.3 Refinements
 
-Each compiler invocation owns a fresh temporary directory until native compilation
-finishes. Concurrent invocations cannot overwrite another invocation's analyzed
-or emitted program. Temporary paths do not enter obligation identities.
+The implementation must correctly preserve:
 
 ```text
-Clang / LLVM    preprocessing, C++ semantics, code generation, linking
-compiler/erasure and the projector    that the program verified is the program compiled
+refinement declaration identity
+base type
+index parameters
+predicate
+recursive Valid(T,v)
+logical version on which validity is known
+all construction/write/call/return crossings
+erasure identity
 ```
 
-Clang is trusted to implement C++ and to compile the program it is given; that
-trust is the same trust any C++ project places in its compiler, and it is not
-proof trust. Clang never decides whether a theorem holds.
+## B.4 Storage and memory
 
-The projector produces the analysed text and the runtime text in one pass, and
-the erasure check verifies that the runtime text differs only by blanking inside
-recorded formal spans, with line numbering unchanged. That check is what
-connects the verified program to the compiled one; it runs on every unit that
-contains C++L syntax, and a failure is an internal error, never a verification
-result.
-
-## 41.4 Not yet trusted, because not yet present
+The implementation must correctly preserve:
 
 ```text
-solvers                 none are integrated; none are trusted
-proof caches            no proof result is stored or reused
-proof artifacts         no serialized proof format exists
-AI systems              no privileged path exists
-FFI contracts           none can be declared
+place identity
+projection path
+region/lifetime
+logical version
+may-alias relation
+read/write capability
+initialization
+provenance
+extent/bounds
+effect invalidation
 ```
 
-A trust report therefore shows zero trusted solvers, and says so because it is
-true, not because the field is unfilled. Unverified FFI boundaries are reported
-as _not analysed_ rather than as zero: C++L does not yet look for them.
+A false negative may reject valid code. A false positive that grants access or preserves stale facts can be unsound.
 
-Trusted external axioms are no longer always zero. A `trusted law` (`SPEC.md` 27) is an explicit assumption: its proposition is stated to the formal core and
-admitted without proof. This is the one mechanism by which a proposition becomes
-usable without evidence, and it exists so that a fact C++L cannot establish - an
-external API contract, an OS guarantee - is recorded where it can be audited
-rather than closed silently.
+## B.5 Control flow
 
-Its discipline is what keeps it from being a hole:
-
-- it is written by the author, never inferred, and never a fallback for a failed
-  proof (`AGENTS.md` 23; `SPEC.md` 27.3 forbids converting unsupported, unknown,
-  timeout, unverified or unsafe into trusted);
-- its status is `TRUSTED`, never `PROVEN`, and it is not counted among proven
-  laws;
-- every one is named in the trust report with its source location, so the
-  assumption set of a build is enumerable rather than merely counted;
-- declaring a law trusted and also writing a proof for it is refused: the
-  declaration would be asking both to assume and to prove the same proposition.
-
-A trusted law may state something false. That is the author's explicit choice,
-and recording it is the point; a theorem derived from it has valid evidence only
-relative to that assumption (`SPEC.md` 27.2).
-
-## 41.5 What would enlarge the TCB
-
-Each of these requires an explicit update to this document before it is merged:
-
-- admitting recursive definitions (the termination argument in
-  `docs/ARCHITECTURE.md` 97.7 would no longer hold);
-- admitting a function with a partial-correctness contract as a core
-  definition, or stating its contract as a theorem about its value;
-- any axiom or assumed contract. A `trusted law` is the one implemented form of
-  this, and each one enlarges the assumption set of the build that contains it;
-  the trust report names them individually for exactly that reason (section
-  41.4);
-- trusting a solver result that is not independently checked;
-- reusing a cached proof result;
-- any lowering rule that equates a C++ operation with a core primitive whose
-  behaviour differs on some input;
-- concluding that two places are disjoint from anything other than
-  Clang-resolved distinctness, type-based aliasing in particular;
-- allowing a storage capability to be established by any mechanism other than a
-  proven obligation or a recorded `trusted` boundary.
-
-## 41.6 Proof decomposition
-
-`SPEC.md` 20.5 and RFC 0013 add no logical kernel rule, axiom, logical
-assumption, trusted solver, dependency, or proof acceptance mechanism.
-Kernel/core versions remain 0.5.0. Written proof failure still has no automation
-fallback.
+The implementation must correctly preserve:
 
 ```text
-logical assumptions introduced by case decomposition:  0
-axioms introduced by case decomposition:               0
-kernel rules introduced by case decomposition:         0
+evaluation order
+condition polarity
+short-circuit behavior
+branch reachability
+join facts
+returns
+break/continue
+loop iteration edges
+exceptional exits
 ```
 
-### What a representation provider is
+## B.6 Arithmetic and conversions
 
-A decomposition provider is a **correspondence mechanism**, not an axiom. It
-states what Clang already resolved about one C++ representation in the form the
-generic case engine consumes. Every proposition it produces is an ordinary
-modeled comparison, and the kernel rechecks all of it.
-
-A provider cannot make a false proposition acceptable. It describes a partition
-as discriminator conditions; the engine splits the goal on them with existing
-conditional elimination, and the kernel checks both branches of every split
-independently. A provider that described the **wrong** partition can only fail
-to produce a proof.
-
-What a provider **can** affect is the language requirement that a new state be
-revisited. A provider that omitted a state would leave that state absorbed into
-the residual branch rather than reported as a missing case. That branch is still
-proven, so nothing unsound is admitted, but the author is not told to revisit it.
-This is a correspondence obligation, pinned separately by source tests; it is not
-a kernel property, and the boundary is exactly here.
-
-### Per-provider correspondence
-
-**Scoped enumerations.**
+The implementation must correctly preserve:
 
 ```text
-C++ states           every value of the fixed underlying integer type
-                     ([dcl.enum]), not only the enumerated ones
-proof propositions   one discriminator `subject == c` per distinct enumerator
-                     value c, in declaration order
-exhaustiveness       machine comparison is total, so each value either equals c
-                     or does not; splitting on each discriminator in turn leaves
-                     one branch, which is the residual case
-residual state       `unnamed`: underlying values equal to no enumerator
-bindings             `unnamed(value)` aliases the subject at its underlying
-                     type - the same value, no object, copy or conversion
-not inferred         nothing about provenance, storage, or which enumerators a
-                     program actually produces; enumerators sharing a value are
-                     one case, never several
+resolved operator
+operand/result types
+promotions/conversions
+width/signedness
+overflow/definedness conditions
+comparison semantics
+cast category
 ```
 
-Clang must supply the correct nominal declaration, fixed underlying integer
-type, and enumerator constants. Exact underlying-type casts preserve values.
-Nominal identity is retained through VIR and proof-argument checks, then
-represented by the existing machine-integer core. The kernel knows no Clang enum
-declaration.
+## B.7 Cases/decomposition
 
-**`std::variant`.**
+The implementation must correctly preserve:
 
 ```text
-C++ states           one state per alternative index, plus the valueless state
-                     ([variant.variant]); repeated and aliased alternative types
-                     are distinct states because an index distinguishes them
-proof propositions   one discriminator `tag == i` per alternative index i, over
-                     the abstract tag observation
-exhaustiveness       the tag comparison is total; splitting on each index in
-                     turn leaves one branch, which is `valueless`
-residual state       `valueless`: never omitted, because a valueless variant is
-                     reachable and is not any alternative
-bindings             `alternative<i>(name)` aliases the i-th payload
-                     observation - no `std::get`, no `std::visit`, no `.index()`
-                     call is emitted or relied on
-not inferred         nothing about which alternative a program actually holds,
-                     about storage, or about whether valueless is reachable in a
-                     particular program
+representation identity
+complete state partition
+residual states
+payload/component identity
+arm binder scope
+impossible-state proof
 ```
 
-**`std::optional`.**
+## B.8 Induction and termination
+
+The implementation must correctly preserve:
 
 ```text
-C++ states           engaged and disengaged ([optional.optional])
-proof propositions   one discriminator over the abstract engagement observation
-exhaustiveness       the observation is boolean and total
-residual state       `none`
-bindings             `some(name)` aliases the payload observation; `none` binds
-                     nothing, so no disengaged payload can be named. No
-                     `has_value()` call and no dereference is emitted.
-not inferred         nothing about whether a given optional is engaged
+induction domain
+base/successor/structural cases
+predecessor relation
+induction-hypothesis proposition
+well-founded measure
+recursive/continuing edges
+decrease comparison
 ```
 
-**`std::expected`.**
+## B.9 Classes and virtual dispatch
+
+The implementation must correctly preserve:
 
 ```text
-C++ states           value and error ([expected.expected])
-proof propositions   one discriminator over the abstract has-value observation
-exhaustiveness       the observation is boolean and total
-residual state       `error`, which carries its own payload binding
-bindings             `value(name)` and `error(name)` alias their respective
-                     payload observations
-not inferred         nothing about which state holds, and nothing about how any
-                     standard library lays the type out: only the public
-                     semantics of the two states are modeled
-availability         feature-gated on the C++23 library; where the header is
-                     absent the provider is simply not exercised
+this/object identity
+base/member construction order
+lifetime
+refined subobject validity
+override relation
+base/derived contract substitutability
+dynamic target set
+virtual effect guarantees
 ```
 
-**Pointers.**
+## B.10 Templates
+
+The implementation must correctly preserve:
 
 ```text
-C++ states           null and non-null, and nothing else
-proof propositions   one discriminator comparing the subject against nullptr
-exhaustiveness       the comparison is total
-residual state       `non_null`, which binds nothing
-bindings             none in either arm
-not inferred         nothing about lifetime, provenance, dereferenceability,
-                     bounds, initialization, ownership, uniqueness or dynamic
-                     type. A non-null pointer is not assumed to point at a live,
-                     initialized or in-bounds object, and the pointee is not
-                     projectable through this provider.
+template declaration identity
+concrete substitution
+instantiation-specific contracts/refinements
+NTTP values
+specialization selection
+verification metadata visibility
 ```
 
-**Products (records, `std::pair`, `std::tuple`, `std::array`, built-in arrays).**
+## B.11 Exceptions
+
+The implementation must correctly preserve:
 
 ```text
-C++ states           one; a product has no alternatives to choose between
-proof propositions   none - a product decomposition is not a case split and
-                     generates no discriminator
-exhaustiveness       vacuous: the single `components` arm covers the only state
-bindings             one logical projection per component, in declaration order
-                     for a record and in index order for an array or tuple. A
-                     binding denotes the existing subobject: no structured
-                     binding, copy, move or temporary is emitted.
-access control       a component Clang reports as inaccessible is refused by
-                     name; a private member is never projected
-not inferred         nothing about representation, padding, layout or any
-                     private implementation detail of a standard type
+normal vs exceptional exits
+unwinding/destruction effects
+exception specifications
+postconditions that do/do not apply
 ```
 
-Clang must supply, for each of these, the correct canonical type identity after
-substitution, the component or alternative list with its order and types, and
-the access of each component. Standard types are recognized by semantic identity
-through the specialized template declaration and the canonical `std` namespace,
-never by spelling, so a user type named `std::optional` in another namespace is
-not recognized and a recognized type reached through an alias or a dependent
-name is.
+## B.12 Concurrency
 
-### Provider-independent obligations
+The implementation must correctly preserve:
 
-The projector gives proof binders analysis-only parameters so Clang types and
-looks up expressions that mention them. Elaboration maps them back to the value
-the binding denotes, adjusting quantified references without capture. That
-mapping, and correct arm scoping, are correspondence obligations of the engine
-rather than of any provider, so they are discharged once. Tests cover nested
-scopes, forged premises, wrong representation types, leaking values and
-evidence, false residual goals, omitted, newly added and aliased cases, and
-tampered generated kernel evidence.
+```text
+thread interference
+atomic operations
+memory order
+synchronization/happens-before
+ownership transfer
+facts invalidated by interference
+```
 
-Representations with no provider are refused at the provider boundary by name.
-Nothing about their states is assumed, and arm syntax does not make a class a
-sum.
+## B.13 Erasure
 
-Proof declarations use the existing blanking erasure. No runtime program text,
-ABI, memory semantics, or dynamic validation changes. C++17/20/23 end-to-end
-tests compile the erased projection independently and compare behavior,
-including an unnamed runtime value. Verification still reruns from source; no
-cached proof acceptance or serialized artifact format is introduced.
+The implementation must correctly preserve:
 
-### Abstract value extension (core/kernel 0.6.0)
+```text
+which source is proof-only
+which source remains runtime-bearing
+canonical refinement lowering
+runtime validation
+runtime side effects
+ABI/calling convention
+object lifetime/destruction
+```
 
-Abstract nominal sorts carry finite typed observation signatures. The kernel
-checks the entire domain signature, projection index, argument arity and subject
-type; substitution traverses the subject and normalization does not invent
-projection values. Signature identity participates in obligation hashing.
+---
 
-This expands the core typing and normalization TCB. It adds one generic term
-form and one generic type form, zero proof inference rules, zero axioms and zero
-logical assumptions. No representation-specific rule or independent acceptance
-mechanism is added. Corruption tests cover domains, signatures, indices, result
-types, arity, binder substitution and attempts to invent observation values.
+# Annex C (normative) — Trust report semantic schema
+
+This annex is normative for the semantic information exposed by machine-readable trust reporting. It does not mandate a concrete file format.
+
+## C.1 Build record
+
+A build-level record must be able to represent:
+
+```text
+build identity
+C++L compiler identity
+formal calculus identity
+proof checker identity
+selected C++ mode
+target/ABI identity
+runtime compiler/linker identity when executable assurance is claimed
+verification configuration
+set of reportable claims
+set of trusted assumptions
+set of unsafe/unverified/runtime-checked boundaries relevant to selected claims
+external/library/environment assumption classes
+imported artifact identities
+```
+
+## C.2 Claim record
+
+Each reportable claim must be able to represent:
+
+```text
+claim semantic identity
+source entity/location provenance
+status
+proposition/evidence identity
+trusted-assumption closure
+proof dependencies
+runtime-check dependencies
+unsafe dependencies
+unverified dependencies
+external model dependencies
+cross-TU/imported metadata dependencies
+checker/calculus version
+```
+
+## C.3 Trusted-assumption record
+
+Each trusted assumption must be enumerable with:
+
+```text
+semantic identity
+declaration/import provenance
+proposition identity
+premise/parameters
+source package/module if imported
+dependents or reverse-dependency discoverability
+```
+
+## C.4 Directly trusted automation
+
+If any solver, plugin, external checker or generated summary is trusted without independently checkable evidence, the report must identify:
+
+```text
+component identity/version
+scope of claims affected
+reason direct trust is required
+configuration affecting semantics
+```
+
+## C.5 Status integrity
+
+A report consumer must be able to determine whether a `PROVEN` claim has a non-empty trusted closure without parsing human prose.
+
+---
+
+# Annex D (normative) — TCB change review checklist
+
+Every change affecting verification semantics or assurance reporting MUST be evaluated against this checklist.
+
+## D.1 Logical core
+
+- Does the change add a proof rule?
+- Does it change definitional equality or normalization?
+- Does it change term typing, substitution or binders?
+- Does it trust a new decision procedure directly?
+- Does it change certificate checking?
+- Does it introduce an axiom or primitive assumption?
+
+If yes, the logical TCB and calculus/version compatibility must be reviewed.
+
+## D.2 Correspondence
+
+- Does the change recognize new source syntax?
+- Does it map a new C++ construct into formal terms?
+- Does it create new obligations?
+- Can it omit an obligation?
+- Does it alter CFG/path conditions?
+- Does it alter place/alias/effect semantics?
+- Does it alter representation decomposition?
+- Does it alter refinement validity/crossings?
+- Does it alter template/virtual/exception/concurrency reasoning?
+
+If yes, correspondence-TCB obligations and adversarial tests must be updated.
+
+## D.3 Runtime
+
+- Does it change erasure/lowering?
+- Does it change emitted C++?
+- Does it change ABI or calling convention?
+- Does it remove or alter runtime validation?
+- Does it change linked libraries/toolchain assumptions?
+
+If yes, runtime-TCB analysis and preservation tests must be updated.
+
+## D.4 Reuse/artifacts
+
+- Does it change proof or metadata serialization?
+- Does it change cache keys or dependency invalidation?
+- Does it import new metadata across TUs/modules?
+- Does it trust a stored verdict instead of rechecking evidence?
+
+If yes, artifact/reuse TCB must be reviewed.
+
+## D.5 Reporting
+
+- Does it introduce a new assurance status?
+- Can it hide a trusted/unsafe/unverified dependency?
+- Does it change trust-closure propagation?
+- Does it change machine-readable report fields?
+
+If yes, reporting TCB and compatibility must be reviewed.
+
+## D.6 Trust expansion decision
+
+A review MUST explicitly record one of:
+
+```text
+TCB unchanged
+TCB reduced by independent checking
+TCB expanded: <new trusted responsibility>
+trusted-assumption surface expanded: requires SPEC change
+runtime/environment assumption changed
+```
+
+Silence is not an acceptable trust-impact assessment for a trust-sensitive change.
+
+---
+
+# Annex E (informative) — Mental model
+
+This annex is informative.
+
+A useful mental model is:
+
+```text
+C++L source
+    │
+    ├── ordinary C++ meaning -----------------------------┐
+    │                                                     │
+    └── C++L specification meaning                        │
+            ↓                                             │
+      correspondence TCB                                  │
+            ↓                                             │
+      formal obligations + storage/capability obligations │
+            ↓                                             │
+      proof producers (untrusted when independently checked)
+            ↓
+      logical/capability checkers                         │
+            ↓                                             │
+      PROVEN under explicit trust closure                 │
+            │                                             │
+            └── erasure/lowering → C++ compiler → binary ─┘
+                          runtime TCB
+```
+
+The proof checker answers:
+
+```text
+Does this evidence establish this formal goal?
+```
+
+The correspondence TCB answers:
+
+```text
+Is this the right formal goal for this source program?
+```
+
+The runtime TCB answers:
+
+```text
+Does the executable preserve the runtime behavior that was verified?
+```
+
+The trust graph answers:
+
+```text
+Which explicit assumptions remain underneath the claim?
+```
+
+A mature assurance story requires all four answers.
