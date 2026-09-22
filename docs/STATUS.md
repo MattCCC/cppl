@@ -483,7 +483,7 @@ Written proof declarations added no rule of their own: `refl`, `exact`,
 | Source mapping                           | `PROTOTYPE` |
 | C++ name lookup reuse                    | `PROTOTYPE` |
 | C++ overload-resolution reuse            | `PROTOTYPE` |
-| C++ template interoperability            | `SPECIFIED` |
+| C++ template interoperability            | `PROTOTYPE` |
 | C++ `constexpr` interoperability         | `SPECIFIED` |
 | C++ exceptions model                     | `SPECIFIED` |
 | C++ RTTI model                           | `SPECIFIED` |
@@ -639,12 +639,35 @@ over mutable state, and dependent object flows remain unimplemented.
 
 A contract may name types a template supplies, including dependent names
 spelled through one, because each clause is projected under the header its
-declaration stands under. A contract on a template itself is a different claim:
-it is parameterized by the template's own parameters and is interpreted per
-specialization after substitution, and evidence for one specialization is not
-evidence for another. Checking it once against dependent types would report a
-result no specialization proved, so a verified function template is refused by
-name rather than verified.
+declaration stands under. A contract on a template itself is parameterized by
+the template's own parameters and means what it means after substitution, so it
+is checked per specialization (`SPEC.md` 42 TEMPLATE-001).
+
+Clang performs the substitution and selects the specialization; what is checked
+is each specialization it produced. A specialization is reached from the uses
+that instantiated it, because an implicit instantiation is not a declaration of
+the translation unit. Each carries its own instantiated contract: the clause
+probes are declared under the same header, and the body names them at its own
+template arguments, so C++ instantiates a function's contract alongside the
+function at exactly the arguments Clang substituted. A non-type parameter inside
+a clause is the value the specialization was instantiated at, read back from
+Clang rather than substituted here.
+
+Proof identity separates the specializations structurally rather than by a rule
+of its own: obligations are keyed by Clang's USR, which already distinguishes
+`f<4>` from `f<5>`, so evidence for one specialization cannot discharge another
+(TEMPLATE-003). A contract that is true at one argument and false at another
+fails only where it is false. A template nothing instantiates has no
+specialization to check, so it is refused rather than reported as verified: an
+uninstantiated contract states nothing this unit discharged.
+
+A C++ constraint remains a C++ constraint. It controls which specialization
+Clang selects and never becomes a formal premise (TEMPLATE-002).
+
+Verified function templates are `PROTOTYPE`. Explicit specialization and
+explicit instantiation of a verified template are not recognized, and a
+specialization consumed across translation units carries no exported
+verification metadata, so a use in another unit is not verified there.
 
 A lambda is a closure object with its own call operator, and it is refused on
 every route into a verified body: bound to a local, called without ever
@@ -740,21 +763,34 @@ tracking is a correspondence-layer responsibility and carries a stated TCB delta
 (`TRUST.md` 41.2); it adds no kernel rule, axiom or logical assumption.
 
 Bounds are the opposite case and are *proved*. A symbolic subscript forms a
-symbolic element place and owes `index < extent`, where the extent is the
-array's own resolved layout. Both sides are terms, so the kernel checks it with
-the existing arithmetic rules. Two symbolic elements are disjoint only when
-their indices are proved unequal: a write at `a[j]` invalidates what was read at
-`a[i]` unless `i != j` is established, and a false rejection is preferred to a
-stale fact. Refined elements owe their predicate at every write, symbolic or
-not.
+symbolic element place and owes `index < extent`. Both sides are terms, so the
+kernel checks it with the existing arithmetic rules. Two symbolic elements are
+disjoint only when their indices are proved unequal: a write at `a[j]`
+invalidates what was read at `a[i]` unless `i != j` is established, and a false
+rejection is preferred to a stale fact. Refined elements owe their predicate at
+every write, symbolic or not.
 
-That obligation is available where the extent comes from a resolved array
-layout. It is not available for the region a capability names: `readable(a, n)`
-states an extent, but relating an index to `n` is not implemented, so a
-subscript through a capability-held pointer is refused rather than admitted.
-Admitting it would let a capability grant access to every element its pointer
-could reach, past the extent the capability itself states. The sized form is
-accepted and its extent carried; any subscript under it fails closed.
+The extent is a term rather than a count. A constant extent canonicalizes to a
+literal, and the extent a capability states does not: `readable(a, n)` bounds a
+region by a runtime value that no enumeration of elements can recover. A
+subscript through a capability-held pointer therefore owes `index < n` against
+that term, and the bound is proved the same way an array's is. The capability
+and the bound stay on their separate channels: the capability permits reaching
+the region, and the arithmetic decides which element was named.
+
+The one-object form states no extent at all, so it bounds no element and a
+subscript under it fails closed. An unstated extent is not an unbounded one.
+An index and an extent of different integer types are refused rather than
+converted, because the conversion between them is not modeled.
+
+The obligation is generated wherever the index is a term and the array is
+tracked storage of the body. An array reached only as a value -- an array
+reference parameter, `const T (&a)[N]` among them -- supports a constant
+subscript and refuses a symbolic one: selecting a component of a value at a
+term index has no representation in the kernel's term language, whose
+projection index is a constant. That is a missing term former, not a missing
+obligation, and it is why `PART 2.6`-style dependent-extent parameters are not
+yet verified.
 
 A capability names the pointer whose storage it describes, `readable(p)`, as
 `SPEC.md` 12.10 states it. RFC 0014 §12 writes the same capability over the
