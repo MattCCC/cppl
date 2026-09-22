@@ -968,6 +968,74 @@ semantic dependencies.
 **[ARCH-ELEM-002]** Fully unrolling arrays into one component per element is not
 a sufficient general representation for symbolic indexing.
 
+An indexed array may participate in verification through two semantically
+distinct routes:
+
+```text
+tracked storage
+    -> Place + Element(index_term)
+    -> capability / bounds
+    -> read or write
+    -> PlaceVersion / aliasing / effects
+
+modeled value
+    -> indexed observation(value, index_term)
+    -> bounds
+    -> element value
+```
+
+These are different questions rather than two implementations of one question.
+
+The storage route applies when the C++ expression denotes storage, including
+locals, array objects, reference parameters, pointees, members, and other
+glvalues represented by the Place model. It owns all state-sensitive semantics:
+
+```text
+lifetime
+capability
+current PlaceVersion
+writes
+aliasing
+havoc
+effects
+```
+
+The value route applies when verification already has an aggregate/array as a
+formal value rather than as current mutable storage. Examples include snapshots,
+formal values produced by other expressions, proof/model values, and other
+contexts in which the operation observes an existing value without designating a
+writable Place.
+
+It is a pure indexed observation and has no PlaceVersion of its own.
+
+Both routes must use the same formal representation of the source index and must
+establish the bounds required by the same C++ array semantics.
+
+**[ARCH-ELEM-003]** The value route MUST lower through the ordinary expression
+and VIR path onto the indexed observation defined by `FOUNDATIONS.md`. A separate
+array-expression verifier, a second symbolic-index representation, or a bespoke
+bounds checker for this route is a regression.
+
+**[ARCH-ELEM-004]** For one source access, storage and value reasoning MUST use
+the same formal index term. The applicable extent MUST be derived from the same
+resolved C++ array semantics. One subsystem MUST NOT stringify, reconstruct,
+renormalize, or otherwise create an independently identified index expression.
+
+For a built-in array or array reference whose extent is part of its resolved
+type, that extent is the corresponding formal bound. Storage forms whose extent
+comes from another normative source, such as a checked capability, retain that
+source rather than pretending the extent is encoded in the pointer type.
+
+**[ARCH-ELEM-005]** Indexed observation of a modeled value is read-only. A C++
+element write MUST use the storage route, because writes operate on Places and
+therefore require capability checking, creation of a new logical version, and
+alias/effect invalidation.
+
+**[ARCH-ELEM-006]** A C++ glvalue MUST NOT be routed through value observation
+merely because the current implementation failed to construct its Place. Missing
+Place lowering is an implementation gap and MUST fail closed rather than silently
+discard storage semantics.
+
 ---
 
 # 22. Central read and write operations

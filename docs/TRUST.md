@@ -240,9 +240,14 @@ equality and substitution
 quantifier binding
 logical connectives
 abstract observation terms
+indexed observation terms
 mathematical-domain operations
 termination/well-foundedness primitives admitted by the core
 ```
+
+Indexed observation (`FOUNDATIONS.md` §45) places its typing, substitution, congruence and structural identity in the logical TCB. It introduces no axiom and no reduction rule: the observation is uninterpreted, so it admits no proposition congruence does not already justify.
+
+**[TCB-CORE-016]** The checker MUST NOT admit injectivity or extensionality for an indexed observation. Equal observations MUST NOT prove equal indices, and equality at every index MUST NOT prove equal subjects, unless the formal model explicitly introduces such a principle.
 
 **[TCB-CORE-008]** The checker MUST NOT use host-language overflow, undefined behavior, locale, address identity, pointer identity, floating host arithmetic, or nondeterministic container order as hidden semantics for formal terms unless those semantics are explicitly part of the formal model.
 
@@ -527,6 +532,20 @@ A **place** identifies proof-relevant C++ storage. A **logical version** identif
 **[TCB-EFFECT-003]** By-value passing of a pointer, reference-containing object, view, iterator, callback or handle MUST NOT be interpreted as proving that caller storage is unaffected.
 
 **[TCB-EFFECT-004]** `const` restricts particular C++ access paths; it MUST NOT be treated as a global frame condition.
+
+## 14.3 Element observation
+
+An array element read at a symbolic index is modeled by the indexed observation defined in `FOUNDATIONS.md` §45. The formal observation is total, so the correspondence between it and the C++ subscript carries the definedness requirement.
+
+**[TCB-ELEM-001]** The claim that a C++ subscript expression denotes the element observation of that array's modeled value at that index term is a correspondence assumption. Selecting the wrong subject, the wrong index term or the wrong element type is a correspondence-TCB defect.
+
+**[TCB-ELEM-002]** The extent used in the bounds obligation MUST be the extent of the accessed array's own C++ type, including when that extent is symbolic under a template. An extent taken from another array, another specialization or a capability MUST NOT be substituted for it.
+
+**[TCB-ELEM-003]** The index term used in the bounds obligation MUST be the same formal term the observation is formed at. Reconstructing, renormalizing or re-deriving the index separately for the two uses is a correspondence-TCB defect, because a proof would then bound a term the read does not use.
+
+**[TCB-ELEM-004]** Forming an element observation MUST NOT contribute bounds, liveness, initialization, readability or writability evidence. Totality of the formal observation is a typing property only, and MUST NOT be reported as definedness of the C++ access.
+
+**[TCB-ELEM-005]** Element observation is a read model. It MUST NOT be used to write an element or to create a logical version; writes remain governed by §14.
 
 ---
 

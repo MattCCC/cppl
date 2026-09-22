@@ -1473,7 +1473,96 @@ exposed observations happen to match.
 
 ---
 
-# 45. Partial observations
+# 45. Indexed observation
+
+Some modeled values expose a homogeneous family of observations selected by an
+index that is itself a formal term, rather than the fixed finite signature of
+§44.
+
+Such a value has an indexed domain:
+
+```text
+IndexedValue(T, n)
+```
+
+where `T` is the observed element type and `n` is the extent fixed at type
+formation. The extent is part of type identity: `IndexedValue(T, 4)` and
+`IndexedValue(T, 8)` are different formal types.
+
+The observation is written:
+
+```text
+Element(a, i)
+```
+
+with the typing rule:
+
+```text
+Gamma |- a : IndexedValue(T, n)
+Gamma |- i : I            I an integer type
+-------------------------------------------
+Gamma |- Element(a, i) : T
+```
+
+`Element` is an uninterpreted total observation in the formal domain, exactly as
+`pi_k` is in §44. It differs only in that its position is a term, so one former
+covers a family the fixed signature cannot express.
+
+Bounds are **not** a premise of term formation.
+
+The formal observation is total, and §46 governs the C++ fact obtained from it:
+the corresponding C++ subscript is usable only under the premise that it is
+defined, which for an array element is
+
+```text
+i < n
+```
+
+This keeps the core term total and decidably typed while leaving the definedness
+boundary exactly where every other partial C++ observer leaves it. In
+particular:
+
+```text
+Element(a, i)
+```
+
+does **not** establish:
+
+```text
+i < n
+```
+
+No rule derives one from the other in either direction.
+
+Congruence applies:
+
+```text
+a == b, i == j   |-   Element(a, i) == Element(b, j)
+```
+
+The converse principles are not admitted. Indexed observation implies neither
+injectivity:
+
+```text
+Element(a,i) == Element(a,j)   =/=>   i == j
+```
+
+nor extensionality:
+
+```text
+(forall i. Element(a,i) == Element(b,i))   =/=>   a == b
+```
+
+An extensional principle for an indexed domain, if ever wanted, must be
+introduced explicitly by the formal model and may not be inferred from the
+existence of the observation.
+
+`Element` binds nothing, admits no reduction rule, and is not a recursor, so it
+affects neither normalization nor termination.
+
+---
+
+# 46. Partial observations
 
 A C++ observer may only be defined in some runtime states.
 
@@ -1486,7 +1575,7 @@ preserving the runtime definedness boundary.
 
 ---
 
-# 46. Program states
+# 47. Program states
 
 For program reasoning, let `Σ` denote an abstract verified state.
 
@@ -1506,7 +1595,7 @@ It is not a runtime object inserted into the executable.
 
 ---
 
-# 47. Places
+# 48. Places
 
 A Place is a proof-level designation of C++ storage.
 
@@ -1539,7 +1628,7 @@ Writing a Place creates a new logical version.
 
 ---
 
-# 48. Regions
+# 49. Regions
 
 A Region represents the live C++ object/allocation context to which storage
 belongs.
@@ -1558,7 +1647,7 @@ C++ abstraction supplies such a property.
 
 ---
 
-# 49. Logical value versions
+# 50. Logical value versions
 
 For a Place `l`, verification reasons about versions:
 
@@ -1589,7 +1678,7 @@ No runtime copy or version object is required.
 
 ---
 
-# 50. Read judgment
+# 51. Read judgment
 
 A read is permitted only when the selected C++ operation is defined and the
 current state establishes the necessary access facts.
@@ -1610,7 +1699,7 @@ Non-nullness alone is insufficient.
 
 ---
 
-# 51. Write judgment
+# 52. Write judgment
 
 A write to Place `l` with value `v` conceptually requires:
 
@@ -1638,7 +1727,7 @@ where:
 
 ---
 
-# 52. Capabilities
+# 53. Capabilities
 
 Capabilities are state-sensitive judgments.
 
@@ -1667,7 +1756,7 @@ A capability must never be inserted merely because an operation needs it.
 
 ---
 
-# 53. Readability
+# 54. Readability
 
 The source proposition:
 
@@ -1695,7 +1784,7 @@ p != nullptr
 
 ---
 
-# 54. Writability
+# 55. Writability
 
 The source proposition:
 
@@ -1713,7 +1802,7 @@ operation and semantic target type.
 
 ---
 
-# 55. Aliasing
+# 56. Aliasing
 
 The safe frame principle is:
 
@@ -1742,7 +1831,7 @@ Disjointness must come from modeled C++ semantics or checked evidence.
 
 ---
 
-# 56. The frame rule
+# 57. The frame rule
 
 In classical Hoare-style notation:
 
@@ -1761,7 +1850,7 @@ named fields or pointers.
 
 ---
 
-# 57. Call effects
+# 58. Call effects
 
 A function summary separates:
 
@@ -1785,7 +1874,7 @@ An unverified call cannot contribute arbitrary postconditions.
 
 ---
 
-# 58. Hoare-style partial correctness
+# 59. Hoare-style partial correctness
 
 A partial-correctness judgment is conceptually:
 
@@ -1805,7 +1894,7 @@ It does not imply absence of exceptions unless those are separately established.
 
 ---
 
-# 59. Function contracts
+# 60. Function contracts
 
 A verified function:
 
@@ -1843,7 +1932,7 @@ The key points are:
 
 ---
 
-# 60. Normal-return result
+# 61. Normal-return result
 
 For a non-void function, `result` in the postcondition denotes the value returned
 on the normal-return path.
@@ -1857,7 +1946,7 @@ resulting normal post-state.
 
 ---
 
-# 61. `old`
+# 62. `old`
 
 Within the source context permitted by `SPEC.md`, `old(e)` denotes the semantic
 value of `e` in the function entry state.
@@ -1883,7 +1972,7 @@ value symbolically.
 
 ---
 
-# 62. Total correctness
+# 63. Total correctness
 
 Total correctness extends partial correctness with termination:
 
@@ -1907,7 +1996,7 @@ Totality must be requested or required according to `SPEC.md`.
 
 ---
 
-# 63. Weakest-precondition view
+# 64. Weakest-precondition view
 
 For a command `C` and desired postcondition `Q`, a weakest-precondition semantics
 may be viewed conceptually as:
@@ -1932,7 +2021,7 @@ or another method may be used if it creates equivalent obligations.
 
 ---
 
-# 64. Assignment rule
+# 65. Assignment rule
 
 For a pure logical assignment model:
 
@@ -1964,7 +2053,7 @@ model.
 
 ---
 
-# 65. Branches
+# 66. Branches
 
 For runtime condition `c`, verification splits paths according to the semantics
 of C++ evaluation.
@@ -1986,7 +2075,7 @@ sound merge representation preserves path dependence explicitly.
 
 ---
 
-# 66. Runtime short-circuit versus logical connectives
+# 67. Runtime short-circuit versus logical connectives
 
 Runtime C++:
 
@@ -2011,7 +2100,7 @@ The same distinction applies to `||`.
 
 ---
 
-# 67. Loops and invariants
+# 68. Loops and invariants
 
 A loop invariant `I` has three fundamental obligations.
 
@@ -2044,7 +2133,7 @@ plus the false condition at the point defined by the C++ loop semantics.
 
 ---
 
-# 68. Loop-carried state
+# 69. Loop-carried state
 
 Every Place that may be modified by:
 
@@ -2063,7 +2152,7 @@ This is a fixed-point principle over program states.
 
 ---
 
-# 69. Termination measures
+# 70. Termination measures
 
 A `decreases` tuple:
 
@@ -2086,7 +2175,7 @@ part of the formal environment.
 
 ---
 
-# 70. Well-founded relations
+# 71. Well-founded relations
 
 A relation `<_W` on domain `W` is well-founded when there is no infinite
 descending chain:
@@ -2108,7 +2197,7 @@ Custom well-founded orders require formal justification.
 
 ---
 
-# 71. Recursion
+# 72. Recursion
 
 A recursive proof-relevant function is admissible for normalization only when its
 recursive calls are proven to descend under an accepted well-founded measure.
@@ -2121,7 +2210,7 @@ automatically a total formal definition.
 
 ---
 
-# 72. Induction over `@N`
+# 73. Induction over `@N`
 
 The induction principle is:
 
@@ -2142,7 +2231,7 @@ It is not obtained by recursively calling the proof declaration.
 
 ---
 
-# 73. Induction over unsigned machine integers
+# 74. Induction over unsigned machine integers
 
 For unsigned machine type `T` with maximum `max(T)`:
 
@@ -2166,7 +2255,7 @@ the intended well-founded successor relation.
 
 ---
 
-# 74. No generic pointer induction
+# 75. No generic pointer induction
 
 A raw pointer does not imply:
 
@@ -2184,7 +2273,7 @@ domain/abstraction allowed by `SPEC.md`.
 
 ---
 
-# 75. Structural case analysis
+# 76. Structural case analysis
 
 A case split is valid only relative to a complete formal partition of the
 modeled value domain.
@@ -2214,7 +2303,7 @@ merely by the logical case rule; it is a correspondence obligation described by
 
 ---
 
-# 76. Derived case evidence
+# 77. Derived case evidence
 
 Case analysis need not introduce a representation-specific kernel rule.
 
@@ -2237,7 +2326,7 @@ The kernel checks each branch according to ordinary evidence rules.
 
 ---
 
-# 77. Scoped enumeration partition
+# 78. Scoped enumeration partition
 
 A scoped enum's logical state domain is the complete value set permitted by its
 fixed underlying integer type.
@@ -2257,7 +2346,7 @@ two distinct runtime states.
 
 ---
 
-# 78. Variant partition
+# 79. Variant partition
 
 A modeled `std::variant<Ts...>` has logical cases:
 
@@ -2276,7 +2365,7 @@ Repeated alternative types remain distinct states.
 
 ---
 
-# 79. Optional partition
+# 80. Optional partition
 
 A modeled `std::optional<T>` has:
 
@@ -2291,7 +2380,7 @@ No runtime dereference call is inserted merely for proof decomposition.
 
 ---
 
-# 80. Expected partition
+# 81. Expected partition
 
 A modeled `std::expected<T,E>` has:
 
@@ -2306,7 +2395,7 @@ The formal partition models public semantic states, not private layout.
 
 ---
 
-# 81. Pointer partition
+# 82. Pointer partition
 
 A pointer case split provides only:
 
@@ -2332,7 +2421,7 @@ uniqueness
 
 ---
 
-# 82. Product decomposition
+# 83. Product decomposition
 
 A product decomposition exposes modeled components of one existing logical value.
 
@@ -2353,7 +2442,7 @@ runtime copies.
 
 ---
 
-# 83. Refinement types
+# 84. Refinement types
 
 A refinement:
 
@@ -2374,7 +2463,7 @@ construction.
 
 ---
 
-# 84. Semantic validity
+# 85. Semantic validity
 
 The conceptual predicate:
 
@@ -2411,7 +2500,7 @@ This formulation is recursive.
 
 ---
 
-# 85. Recursive object validity
+# 86. Recursive object validity
 
 For an object value `o` of object type `C`, semantic validity includes validity of
 the live refinement-bearing subobjects required by the normative type semantics.
@@ -2439,7 +2528,7 @@ Pointer access remains governed by lifetime/capability rules.
 
 ---
 
-# 86. Refinement introduction
+# 87. Refinement introduction
 
 To introduce `v` into refinement `R`:
 
@@ -2457,7 +2546,7 @@ No hidden runtime validation is implied.
 
 ---
 
-# 87. Refinement elimination
+# 88. Refinement elimination
 
 A valid refined value may be used as its base value:
 
@@ -2474,7 +2563,7 @@ The runtime value is the same representation.
 
 ---
 
-# 88. Refinement-to-refinement crossing
+# 89. Refinement-to-refinement crossing
 
 For:
 
@@ -2497,7 +2586,7 @@ is sufficient but not required if a stronger path-specific fact already proves
 
 ---
 
-# 89. Versioned refinement validity
+# 90. Versioned refinement validity
 
 If:
 
@@ -2525,7 +2614,7 @@ merely because the storage identity is unchanged.
 
 ---
 
-# 90. Verified-parameter validity
+# 91. Verified-parameter validity
 
 At a verified boundary, a parameter of semantic type `T` supplies:
 
@@ -2544,7 +2633,7 @@ that execution, the verified theorem's premise is not satisfied.
 
 ---
 
-# 91. Mutation and validity
+# 92. Mutation and validity
 
 A write that creates a new logical value must establish the validity required by
 the target semantic type.
@@ -2558,7 +2647,7 @@ logical value is already established valid.
 
 ---
 
-# 92. Indexed refinements
+# 93. Indexed refinements
 
 A parameterized refinement may be modeled as a family:
 
@@ -2587,7 +2676,7 @@ Native overload identity still follows the erased C++ type rules in `SPEC.md`.
 
 ---
 
-# 93. Dependent types
+# 94. Dependent types
 
 A dependent formal type is a type whose verification meaning depends on a value.
 
@@ -2611,7 +2700,7 @@ The runtime/verification distinction remains explicit.
 
 ---
 
-# 94. Runtime validation
+# 95. Runtime validation
 
 Runtime validation is ordinary C++ execution that establishes a path fact.
 
@@ -2641,7 +2730,7 @@ without a checked runtime branch or another established premise.
 
 ---
 
-# 95. Ghost state
+# 96. Ghost state
 
 Ghost locals are proof-only state.
 
@@ -2659,7 +2748,7 @@ The grammar restriction to ghost locals is defined by `SPEC.md`.
 
 ---
 
-# 96. Unsafe boundaries
+# 97. Unsafe boundaries
 
 `unsafe` marks runtime behavior for which the strongest verified guarantee is not
 claimed.
@@ -2685,7 +2774,7 @@ Any fact needed after the boundary must come from:
 
 ---
 
-# 97. Trusted Laws
+# 98. Trusted Laws
 
 A `trusted law` explicitly admits its proposition relative to its declared
 premises.
@@ -2712,7 +2801,7 @@ is defined by `SPEC.md`.
 
 ---
 
-# 98. Trusted memory propositions
+# 99. Trusted memory propositions
 
 A trusted Law may admit a specification proposition such as:
 
@@ -2749,7 +2838,7 @@ runtime memory check
 
 ---
 
-# 99. Exceptions
+# 100. Exceptions
 
 Normal postconditions concern normal return.
 
@@ -2771,7 +2860,7 @@ meaning must be added normatively before the calculus assumes them.
 
 ---
 
-# 100. `noexcept`
+# 101. `noexcept`
 
 C++ `noexcept` is runtime C++ semantics.
 
@@ -2795,7 +2884,7 @@ throwing terminates the program
 
 ---
 
-# 101. Construction and destruction
+# 102. Construction and destruction
 
 Construction and destruction affect:
 
@@ -2818,7 +2907,7 @@ Proof erasure cannot reorder these operations.
 
 ---
 
-# 102. Moves
+# 103. Moves
 
 A move is modeled according to the actual C++ operation selected.
 
@@ -2840,7 +2929,7 @@ Refinement facts survive only when justified for the resulting logical versions.
 
 ---
 
-# 103. Virtual dispatch
+# 104. Virtual dispatch
 
 For a virtual call verified against a base contract, the formal call rule relies
 on that base interface.
@@ -2868,7 +2957,7 @@ A caller does not gain facts merely from guessing the dynamic override.
 
 ---
 
-# 104. Templates
+# 105. Templates
 
 Template semantics remain C++ semantics.
 
@@ -2890,7 +2979,7 @@ Template constraints are not automatically theorem evidence.
 
 ---
 
-# 105. Lambdas
+# 106. Lambdas
 
 A lambda is a C++ object with capture semantics determined by C++.
 
@@ -2906,7 +2995,7 @@ There is no lambda-specific escape from the Place/version model.
 
 ---
 
-# 106. Concurrency
+# 107. Concurrency
 
 Sequential reasoning is sound only when concurrent interference is excluded or
 accounted for.
@@ -2922,7 +3011,7 @@ model.
 
 ---
 
-# 107. Data races and undefined behavior
+# 108. Data races and undefined behavior
 
 A reachable C++ data race that is undefined under the selected C++ model cannot
 be treated as a nondeterministic but otherwise valid execution for a fully
@@ -2934,7 +3023,7 @@ This is one instance of the general UB rule.
 
 ---
 
-# 108. Undefined behavior
+# 109. Undefined behavior
 
 For a verified runtime operation `op`, the proof system requires the
 defined-behavior preconditions applicable to that operation.
@@ -2953,7 +3042,7 @@ If definedness cannot be established, the stronger verified claim fails closed.
 
 ---
 
-# 109. Floating point
+# 110. Floating point
 
 Floating-point values are modeled according to the selected C++/target semantics
 required by the claim.
@@ -2967,7 +3056,7 @@ No such relation may be assumed merely from similar notation.
 
 ---
 
-# 110. Formal state partitions and correspondence
+# 111. Formal state partitions and correspondence
 
 A representation provider may describe a C++ value through a formal partition and
 observations.
@@ -2995,7 +3084,7 @@ are distinct obligations.
 
 ---
 
-# 111. Standard-library models
+# 112. Standard-library models
 
 A formal model for a standard-library type defines only the abstract behavior
 claimed by that model.
@@ -3011,7 +3100,7 @@ correspondence, not a logical theorem arising from the model's existence.
 
 ---
 
-# 112. Foreign code
+# 113. Foreign code
 
 Foreign code has no special proof privilege.
 
@@ -3027,7 +3116,7 @@ refined or suggestive type spelling.
 
 ---
 
-# 113. Cross-translation-unit proof composition
+# 114. Cross-translation-unit proof composition
 
 A separately compiled verified interface must preserve the semantic information
 needed to reconstruct the same theorem at the caller.
@@ -3054,7 +3143,7 @@ evidence that was checked in its defining environment.
 
 ---
 
-# 114. Erasure
+# 115. Erasure
 
 Let:
 
@@ -3081,7 +3170,7 @@ The logical calculus alone does not prove the implementation's erasure correct.
 
 ---
 
-# 115. Erasure of proof evidence
+# 116. Erasure of proof evidence
 
 Proof declarations, proof statements, Law proof machinery, quantifier binders,
 case proofs, induction proofs, and other proof-only evidence have no runtime
@@ -3105,7 +3194,7 @@ unless the branch already exists as ordinary runtime C++.
 
 ---
 
-# 116. Refinement erasure
+# 117. Refinement erasure
 
 A refinement erases to its ultimate ordinary C++ base representation according to
 `SPEC.md`.
@@ -3129,7 +3218,7 @@ without an explicit ABI-changing language feature.
 
 ---
 
-# 117. Ghost erasure
+# 118. Ghost erasure
 
 Ghost locals erase completely.
 
@@ -3141,7 +3230,7 @@ than executed and then erased.
 
 ---
 
-# 118. Runtime validation and erasure
+# 119. Runtime validation and erasure
 
 A runtime `if`, comparison, parser, length check, bounds check, or other ordinary
 C++ validation remains runtime code.
@@ -3152,7 +3241,7 @@ Thus erasure removes no runtime validation that the programmer actually wrote.
 
 ---
 
-# 119. Trusted assumptions and erasure
+# 120. Trusted assumptions and erasure
 
 A trusted Law erases from runtime just as an ordinary proof declaration does.
 
@@ -3167,7 +3256,7 @@ They are orthogonal.
 
 ---
 
-# 120. Soundness theorem schema
+# 121. Soundness theorem schema
 
 The desired logical soundness property has the form:
 
@@ -3187,7 +3276,7 @@ source/runtime correspondence assumptions defined in `TRUST.md`.
 
 ---
 
-# 121. Type preservation
+# 122. Type preservation
 
 A foundational meta-property is:
 
@@ -3208,7 +3297,7 @@ This property is required for trustworthy normalization.
 
 ---
 
-# 122. Substitution lemma
+# 123. Substitution lemma
 
 A core meta-property is:
 
@@ -3225,7 +3314,7 @@ Capture-avoiding substitution must preserve well-formedness.
 
 ---
 
-# 123. Progress is not a universal runtime theorem
+# 124. Progress is not a universal runtime theorem
 
 Traditional type-safety metatheory often states progress.
 
@@ -3246,7 +3335,7 @@ memory-safe by syntax alone.
 
 ---
 
-# 124. Consistency objective
+# 125. Consistency objective
 
 The proof calculus must not admit evidence for contradiction from an empty,
 consistent formal environment.
@@ -3266,7 +3355,7 @@ set and trust reporting must expose the dependency.
 
 ---
 
-# 125. Normalization objective
+# 126. Normalization objective
 
 Proof-relevant definitional reduction should be strongly normalizing for the
 fragment admitted into normalization.
@@ -3278,7 +3367,7 @@ definitions.
 
 ---
 
-# 126. Determinism objective
+# 127. Determinism objective
 
 Given identical formal inputs and semantic configuration, core checking should
 produce the same validity result.
@@ -3290,7 +3379,7 @@ semantics.
 
 ---
 
-# 127. Decidability boundary
+# 128. Decidability boundary
 
 Not every proposition C++L can state must have an automatically decidable proof
 search procedure.
@@ -3319,7 +3408,7 @@ assume proposition
 
 ---
 
-# 128. Automation completeness is not logical completeness
+# 129. Automation completeness is not logical completeness
 
 An arithmetic solver, simplifier, or tactic may support only a subset of the
 logic.
@@ -3331,7 +3420,7 @@ This permits automation to evolve without changing theorem meaning.
 
 ---
 
-# 129. Trust-relative theorem validity
+# 130. Trust-relative theorem validity
 
 Let:
 
@@ -3354,7 +3443,7 @@ Tooling may still classify the resulting theorem according to the status model i
 
 ---
 
-# 130. Runtime correspondence theorem schema
+# 131. Runtime correspondence theorem schema
 
 For a verified source claim about executable behavior, the end-to-end statement
 has the shape:
@@ -3379,7 +3468,7 @@ A perfect theorem about source does not guarantee a different emitted program.
 
 ---
 
-# 131. Refinement soundness schema
+# 132. Refinement soundness schema
 
 For a refined semantic type `R`, soundness requires:
 
@@ -3408,7 +3497,7 @@ These three pieces correspond to:
 
 ---
 
-# 132. Storage soundness schema
+# 133. Storage soundness schema
 
 For a verified memory access, soundness requires:
 
@@ -3429,7 +3518,7 @@ But whatever checker grants those facts belongs to the appropriate TCB layer.
 
 ---
 
-# 133. Loop soundness schema
+# 134. Loop soundness schema
 
 For a partial-correctness loop proof, soundness requires:
 
@@ -3456,7 +3545,7 @@ a correspondence error, not a permissible simplification.
 
 ---
 
-# 134. Case-analysis soundness schema
+# 135. Case-analysis soundness schema
 
 For structural case proof:
 
@@ -3474,7 +3563,7 @@ The partition correspondence remains separately trust-sensitive.
 
 ---
 
-# 135. Induction soundness schema
+# 136. Induction soundness schema
 
 For an induction principle over well-founded domain `W`:
 
@@ -3493,7 +3582,7 @@ The system does not infer well-foundedness from arbitrary recursive C++ shape.
 
 ---
 
-# 136. Relationship to TRUST.md
+# 137. Relationship to TRUST.md
 
 This document defines what the formal rules are intended to mean.
 
@@ -3517,7 +3606,7 @@ Foundational soundness and implementation trust are complementary.
 
 ---
 
-# 137. Relationship to ARCHITECTURE.md
+# 138. Relationship to ARCHITECTURE.md
 
 This document does not require a particular compiler pipeline.
 
@@ -3537,7 +3626,7 @@ It must preserve the judgments and source semantics defined here and in
 
 ---
 
-# 138. Relationship to DESIGN.md
+# 139. Relationship to DESIGN.md
 
 `DESIGN.md` explains why C++L chose:
 
@@ -3555,7 +3644,7 @@ It does not repeat their product rationale.
 
 ---
 
-# 139. Relationship to STATUS.md
+# 140. Relationship to STATUS.md
 
 Implementation coverage is not part of the mathematical foundation.
 
@@ -3568,7 +3657,7 @@ not change the formal rules.
 
 ---
 
-# 140. Formal non-goals
+# 141. Formal non-goals
 
 This foundation intentionally does not claim that:
 
@@ -3587,7 +3676,7 @@ This foundation intentionally does not claim that:
 
 ---
 
-# 141. Foundational acceptance criteria
+# 142. Foundational acceptance criteria
 
 The formal foundation is adequate for C++L only if it supports all of the
 following without semantic contradiction:
@@ -3640,7 +3729,7 @@ cross-TU theorem reuse preserves semantic identity and dependencies
 
 ---
 
-# 142. Fundamental formal rule
+# 143. Fundamental formal rule
 
 The core principle can be stated as:
 
