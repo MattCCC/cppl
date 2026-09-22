@@ -646,6 +646,15 @@ evidence for another. Checking it once against dependent types would report a
 result no specialization proved, so a verified function template is refused by
 name rather than verified.
 
+A lambda is a closure object with its own call operator, and it is refused on
+every route into a verified body: bound to a local, called without ever
+becoming one, and written inside a clause. A by-reference capture is why this
+has to be closed rather than merely unimplemented, since one can write a
+refined local after its fact was established; regression tests pin each route.
+A lambda spelled to resemble the text a capability probe is projected to grants
+no capability either, because a capability comes from the recognized
+`readable`/`writable` form and never from what the projection happens to emit.
+
 Binding a conditional to a local splits the route on its condition, so each arm
 is proved under what its own path supposes rather than as one opaque `select`
 term. An arm that is itself a conditional splits again, and a refinement

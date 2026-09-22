@@ -110,7 +110,7 @@ reject comma_assignments 'only if/else' \
     'verified unsigned f(unsigned x) ensures (result == 2u) { unsigned y = 0u; y = 1u, y = 2u; return y; }'
 reject forwarding_reference 'does not satisfy its contract' \
     'verified unsigned f(unsigned x) ensures (result == x) { unsigned y = x; auto&& r = y; r = 0u; return y; }'
-reject lambda_capture 'not modeled' \
+reject lambda_capture "local 'g' has type .*lambda.*which is not modeled" \
     'verified unsigned f(unsigned x) ensures (result == x) { unsigned y = x; auto g = [&] { y = 0u; }; g(); return y; }'
 reject structured_binding 'only variable declarations' \
     'struct P { unsigned a, b; }; verified unsigned f(unsigned x) ensures (result == x) { auto [a, b] = P{x, x}; return a; }'

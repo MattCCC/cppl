@@ -151,3 +151,18 @@ verified int f(int* p, int* q) expects (readable(p) && writable(q)) ensures (res
     return seen > 0 ? *p : 1;
 }
 CPP
+
+# A capability comes from the recognized `readable`/`writable` form, never from
+# text that resembles what the projection emits for one. The probe happens to be
+# a lambda over the pointer, so writing that shape by hand is the obvious
+# forgery to try: it must grant nothing, and the dereference must still owe its
+# capability (SPEC.md 12.10 VERIFIED-043, TRUST.md TCB-CAP-003).
+# SPEC: VERIFIED-043
+reject a_lambda_shaped_like_a_probe_grants_no_capability "requires 'readable" <<'CPP'
+verified unsigned f(unsigned* p)
+    expects (([](auto&& cppl_place) { return true; })(p))
+    ensures (result == result)
+{
+    return *p;
+}
+CPP

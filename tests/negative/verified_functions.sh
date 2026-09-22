@@ -127,5 +127,20 @@ reject verified_function_template 'verified function template .* is not verified
 # `verified` keyword, so this is refused for the same stated reason.
 reject specified_function_template 'verified function template .* is not verified by this implementation' \
     'template <typename T> inline verified T id(T x) ensures (result == x) { return x; }'
+# A lambda is a closure object with its own call operator, which this
+# implementation does not model. Every route one can take into a verified body
+# is refused, so none of them silently becomes verified: a named local holding
+# one, a call of one that never becomes a local, and one written in a clause.
+# The capture case matters most: a by-reference capture can write a refined
+# local after its fact was established, so accepting it would report a
+# refinement the program does not maintain.
+reject lambda_local "local 'f' has type .*lambda.*which is not modeled" \
+    'verified int f(int x) expects (x > 0) ensures (result > 0) { auto f = [](int v) { return v; }; return f(x); }'
+reject lambda_reference_capture "local 'clobber' has type .*lambda.*which is not modeled" \
+    'type Positive = int where (self > 0); verified int f(int x) expects (x > 0) ensures (result > 0) { Positive p = x; auto clobber = [&p] { p = 0; }; clobber(); return p; }'
+reject immediately_invoked_lambda 'call does not resolve to an ordinary function' \
+    'verified int f(int x) expects (x > 0) ensures (result > 0) { return [](int v) { return v; }(x); }'
+reject lambda_in_clause 'call does not resolve to an ordinary function' \
+    'verified int f(int x) ensures ([](int v) { return v > 0; }(x)) { return x; }'
 
 echo 'false contracts and unsupported verified bodies fail closed'
