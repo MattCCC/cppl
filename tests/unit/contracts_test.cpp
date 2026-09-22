@@ -1,3 +1,4 @@
+#include "composition.hpp"
 #include "cppl/automation/evidence.hpp"
 #include "cppl/kernel/check.hpp"
 #include "cppl/obligations/generate.hpp"
@@ -373,15 +374,12 @@ CPPL_TEST(exported_contract_must_be_linked_to_the_actual_definition) {
     CPPL_CHECK(results.back().verdict.reason().find("callee") != std::string::npos);
 }
 
-// The call-site precondition is what the caller owes the callee. A caller that
-// does not establish it must not be able to use the callee's postcondition,
-// because that postcondition only holds where the precondition did.
+// Call precondition safety: unproven premises cannot authorize a callee
+// summary.
 //
-// This is asserted here, over the scheduler alone, rather than only through a
-// compiled fixture: the gate is also what stops a stage being attempted before
-// its precondition is proven, so removing it does not produce a wrong answer,
-// it stops the search converging. A compile then hangs instead of failing, and
-// a test that times out states nothing.
+// The call-site precondition is what the caller owes the callee, and the
+// callee's postcondition holds only where that precondition did. A caller that
+// does not establish it must not be able to reason from the summary.
 CPPL_TEST(a_caller_that_does_not_establish_a_precondition_cannot_use_the_summary) {
     auto program = composed();
     // The caller's own precondition is what discharges the one it owes the
@@ -392,6 +390,50 @@ CPPL_TEST(a_caller_that_does_not_establish_a_precondition_cannot_use_the_summary
     const auto results = cppl::automation::verify(program, engine);
     CPPL_CHECK(!results.back().verdict.is_proven());
     CPPL_CHECK(results.back().verdict.reason().find("required premise") != std::string::npos);
+}
+
+// Call precondition progress: an unproven precondition cannot cause the search
+// to revisit the same unresolved state indefinitely.
+//
+// Safety and progress are separate requirements, and both are stated here. The
+// test above says an unproven premise cannot authorize a summary; this one says
+// that reaching for one cannot cost unbounded work. It is measured in search
+// transitions rather than seconds, so the bound means the same thing on every
+// machine: a valid program resolves well inside a budget derived from its own
+// size, and never approaches it.
+CPPL_TEST(composing_a_valid_program_completes_well_inside_its_transition_budget) {
+    const auto program = composed();
+    std::size_t transitions = 0;
+    cppl::diagnostics::Engine engine;
+    const auto results = cppl::automation::verify(program, engine, &transitions);
+    for (const auto& result : results) {
+        CPPL_CHECK(result.verdict.is_proven());
+    }
+    CPPL_CHECK(!engine.has_errors());
+    CPPL_CHECK(transitions > 0);
+    CPPL_CHECK(transitions < cppl::automation::Composition::budget_for(program));
+    // Far below the bound, not merely under it: the budget exists to stop a
+    // search that is not progressing, never to constrain one that is.
+    CPPL_CHECK(transitions < 64);
+}
+
+// The dependency invariant, at the boundary that enforces it. A transition is
+// charged against the dependency whose evidence it is about to read, so an
+// unproven one stops the search there rather than reading evidence that was
+// never established. This is what makes removing every enforcement of the
+// invariant -- not only the gate above it -- a caught mutation.
+CPPL_TEST(an_unproven_dependency_is_refused_before_its_evidence_is_read) {
+    const auto program = composed();
+    const cppl::automation::Composition composition(program);
+    // Nothing has been accepted, so no obligation is proven yet. Charging a
+    // transition against one must refuse rather than admit the read.
+    const auto refused = composition.spend(program.obligations.size() - 1);
+    CPPL_CHECK(!refused.has_value());
+    CPPL_CHECK(refused.error().find("not proven") != std::string::npos);
+
+    // A transition that names no dependency is ordinary progress, and is spent
+    // without complaint until the budget itself runs out.
+    CPPL_CHECK(composition.spend().has_value());
 }
 
 CPPL_TEST(caller_identity_includes_summary_changes_when_the_body_goal_is_unchanged) {

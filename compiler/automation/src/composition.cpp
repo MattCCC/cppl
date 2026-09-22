@@ -121,7 +121,39 @@ std::expected<kernel::ProofTerm, std::string> assemble(const obligations::Progra
 
 } // namespace
 
-Composition::Composition(const obligations::Program& program) : program_(program) {
+// Composing one obligation's evidence charges a transition per dependency it
+// consumes, so a well-formed program's whole search costs at most one
+// transition per (obligation, call) pair. The factor above that is slack: a
+// valid program never approaches the bound, so it never has to be tuned as
+// programs grow. The constant floor covers programs with no calls at all.
+std::size_t Composition::budget_for(const obligations::Program& program) {
+    std::size_t calls = 0;
+    for (const auto& contract : program.contracts) {
+        for (const auto& path : contract.paths) {
+            calls += path.calls.size() + 1;
+        }
+    }
+    return 64 + 64 * (program.obligations.size() + calls);
+}
+
+std::expected<void, std::string> Composition::spend(std::optional<std::size_t> dependency) const {
+    if (++transitions_ > budget_) {
+        return std::unexpected("the search for evidence exceeded its budget of " + std::to_string(budget_) +
+                               " transitions without resolving this obligation");
+    }
+    // Reaching a dependency that is not proven means the search advanced into a
+    // state it had no evidence to enter. Left alone it would revisit that state
+    // for as long as it is allowed to, and would read evidence that does not
+    // exist. It stops here instead, and says which obligation was missing.
+    if (dependency.has_value() && !proven_.contains(*dependency)) {
+        return std::unexpected("obligation " + std::to_string(*dependency) +
+                               " is not proven, so the search cannot make progress from here");
+    }
+    return {};
+}
+
+Composition::Composition(const obligations::Program& program)
+    : program_(program), budget_(budget_for(program)) {
     for (std::size_t index = 0; index < program.contracts.size(); ++index) {
         const auto& function = program.contracts[index];
         if (function.partial) {
@@ -238,12 +270,20 @@ std::expected<Evidence, std::string> Composition::propose(std::size_t obligation
     }
 
     for (std::size_t index = 0; index < stage.prefix; ++index) {
+        if (auto fuel = spend(); !fuel) {
+            return std::unexpected(fuel.error());
+        }
         const auto& call = path.calls[index];
         const auto& theorem = callees_.at(call.callee.value);
         auto postcondition = instantiate(Step{theorem.goal, theorem.proof}, call.arguments);
         for (const auto& required : call.preconditions) {
             if (!postcondition) {
                 break;
+            }
+            // Charged against the dependency whose evidence is read on the very
+            // next line, so an unproven one stops the search before that read.
+            if (auto fuel = spend(required.obligation); !fuel) {
+                return std::unexpected(fuel.error());
             }
             auto precondition =
                 under_caller(Step{program_.obligations[required.obligation].goal, proven_.at(required.obligation)},

@@ -41,6 +41,7 @@ verdict-goal-identity	compiler/obligations/src/status.cpp	!(acceptance.propositi
 conjunction-side-identity	kernel/src/check.cpp	!(side == proposition)	false && (!(side == proposition))	^kernel_
 conjunction-shape	kernel/src/check.cpp	const auto* conjunction = std::get_if<And>(&taken->conjunction->node);	const auto* conjunction = std::get_if<And>(&taken->conjunction->node); if (conjunction == nullptr) { return {}; }	^kernel_
 disjunction-shape	kernel/src/check.cpp	const auto* disjunction = std::get_if<Or>(&cases->disjunction->node);	const auto* disjunction = std::get_if<Or>(&cases->disjunction->node); if (disjunction == nullptr) { return {}; }	^kernel_
+spend-dependency-proven	compiler/automation/src/composition.cpp	dependency.has_value() && !proven_.contains(*dependency)	false && (dependency.has_value() && !proven_.contains(*dependency))	^unit_contracts_test$
 MUTATIONS
 )
 
@@ -63,18 +64,38 @@ multiline_file() {
 multiline_tests() {
     case "$1" in
         callee-body-linkage) echo '^unit_contracts_test$' ;;
-        # A known survivor, kept because the reason is worth stating. This is a
-        # scheduling guard, not a check whose removal yields a wrong answer: it
-        # is what makes the `proven_.at(...)` below it safe, by refusing a stage
-        # whose call-site precondition is not proven yet. Remove it and the
-        # search stops converging, so every fixture that compiles a call times
-        # out rather than failing, and a timeout states nothing. Soundness here
-        # is covered elsewhere -- the kernel still refuses the premise, which
-        # `a_caller_that_does_not_establish_a_precondition_cannot_use_the_summary`
-        # asserts -- so what survives is the liveness property, which this
-        # harness cannot express as a failing test.
-        call-precondition-gate) echo '^unit_contracts_test$' ;;
+        call-precondition-gate) echo '^unit_contracts_test$|^negative_verified_calls$|^negative_verified_paths$' ;;
         *) echo '^kernel_' ;;
+    esac
+}
+
+# A mutation whose removal leaves externally observable behavior
+# indistinguishable: the same refusal, the same termination, no crash, and no
+# proof that was not there before.
+#
+# This is a claim about the program, justified by naming the enforcement that
+# still holds the invariant. It is never a way to record that this harness
+# cannot observe a difference -- a search that stops terminating, or that
+# crashes, has observably different behavior and is killed, not equivalent.
+#
+# Each entry names the tests that state the invariant directly, so removing
+# every enforcement of it is still caught.
+equivalent_justification() {
+    case "$1" in
+        # `Composition::spend` is charged against the dependency whose evidence
+        # is read on the next line, and refuses an unproven one there. The gate
+        # refuses the same stage earlier. With both present, removing the gate
+        # changes when the search stops, never whether it stops or what it
+        # concludes: it refuses, terminates, and builds no proof either way.
+        #
+        # Stated directly in tests/unit/contracts_test.cpp by
+        # an_unproven_dependency_is_refused_before_its_evidence_is_read, so
+        # removing spend's check -- the enforcement that remains -- fails that
+        # test rather than going unnoticed.
+        call-precondition-gate)
+            echo "Composition::spend refuses the same unproven dependency before reading its evidence;" \
+                 "that enforcement is itself mutated as 'spend-dependency-proven', which is caught" ;;
+        *) return 1 ;;
     esac
 }
 
@@ -160,6 +181,12 @@ multiline_after() {
 
 only=()
 jobs=4
+# A hard backstop only. The in-process transition budget is what should stop a
+# search that cannot make progress, and it reports an ordinary failure when it
+# does. This exists so a path nothing budgets still ends the run on CI instead
+# of hanging it, and so such a path is visible as 'killed (nontermination)'
+# rather than passing silently.
+ctest_timeout=120
 list_only=0
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -286,21 +313,10 @@ cmake --build "$build" -j "$jobs" > "$run/build.log" 2>&1 ||
 ctest --test-dir "$build" --output-on-failure -j "$jobs" > "$run/baseline.log" 2>&1 ||
     { echo "Control baseline failed; see $run/baseline.log" >&2; exit 1; }
 
-# A mutation whose removal costs termination rather than soundness. The tests
-# that exercise it then hang instead of failing, so it cannot be caught here.
-# Each one is commented at its entry in multiline_tests with what covers the
-# soundness property instead.
-expected_survivor() {
-    case "$1" in
-        call-precondition-gate) return 0 ;;
-        *) return 1 ;;
-    esac
-}
-
 caught=0
 total=0
 survivors=""
-expected=""
+equivalents=""
 while IFS= read -r name <&3; do
     [ -n "$name" ] || continue
     total=$((total + 1))
@@ -321,14 +337,30 @@ while IFS= read -r name <&3; do
         outcome="build-error"
     else
         status=0
-        ctest --test-dir "$build" --output-on-failure --timeout 300 \
+        ctest --test-dir "$build" --output-on-failure --timeout "$ctest_timeout" \
               -R "$(spec_tests "$name")" > "$log_dir/tests.log" 2>&1 < /dev/null || status=$?
-        # CTest uses 8 for ordinary test failures. A crash, a timeout, or an
-        # empty selection is an error in the experiment, not a detection.
-        if [ "$status" -eq 0 ] && ! grep -q "No tests were found" "$log_dir/tests.log"; then
-            outcome="survived"
+        justification=""
+        # CTest uses 8 for ordinary test failures. An empty selection tests
+        # nothing, so it is an error in the experiment rather than a result.
+        if grep -qE '\*\*\*(Timeout|Exception)' "$log_dir/tests.log"; then
+            # Turning a terminating program into one that does not terminate,
+            # or into one that crashes, is a change in required behavior. It
+            # kills the mutation. The in-process budget should reach this first
+            # and report an ordinary failure; arriving here instead means some
+            # path is still unbudgeted, which is worth seeing rather than
+            # hiding.
+            outcome="killed (nontermination)"
+        elif [ "$status" -eq 0 ] && ! grep -q "No tests were found" "$log_dir/tests.log"; then
+            # Passing under mutation is only acceptable where the mutated
+            # program's required behavior is genuinely indistinguishable, and
+            # the justification has to name what still enforces the invariant.
+            if justification=$(equivalent_justification "$name"); then
+                outcome="equivalent"
+            else
+                outcome="survived"
+            fi
         elif [ "$status" -eq 8 ] && grep -q '\*\*\*Failed' "$log_dir/tests.log" &&
-             ! grep -qE '\*\*\*(Exception|Timeout|Not Run)' "$log_dir/tests.log"; then
+             ! grep -q '\*\*\*Not Run' "$log_dir/tests.log"; then
             outcome="caught"
         else
             outcome="test-error"
@@ -336,18 +368,17 @@ while IFS= read -r name <&3; do
     fi
 
     cp "$log_dir/original" "$target"
-    if [ "$outcome" = "caught" ]; then
-        caught=$((caught + 1))
-    elif expected_survivor "$name"; then
-        # Recorded above with the reason. Listed, never counted as caught, and
-        # never a reason for the run to fail: a guard whose removal costs
-        # termination rather than soundness cannot be stated as a failing test.
-        expected="$expected $name"
-        outcome="$outcome (expected)"
-    else
-        survivors="$survivors $name($outcome)"
-    fi
-    echo "$name: $outcome"
+    case "$outcome" in
+        caught|killed*)
+            caught=$((caught + 1))
+            echo "$name: $outcome" ;;
+        equivalent)
+            equivalents="$equivalents $name"
+            echo "$name: equivalent -- $justification" ;;
+        *)
+            survivors="$survivors $name($outcome)"
+            echo "$name: $outcome" ;;
+    esac
 done 3<<< "$names"
 
 # Leaves no runnable mutated compiler behind.
@@ -355,10 +386,13 @@ cmake --build "$build" -j "$jobs" > "$run/restored-build.log" 2>&1 ||
     { echo "Restoring the unmutated build failed; see $run/restored-build.log" >&2; exit 1; }
 
 echo "$caught/$total mutations caught"
-if [ -n "$expected" ]; then
-    echo "expected survivors (see multiline_tests for what covers each):$expected"
+if [ -n "$equivalents" ]; then
+    echo "equivalent (justified at equivalent_justification):$equivalents"
 fi
 if [ -n "$survivors" ]; then
+    # Every mutation ends in exactly one of: caught, killed (nontermination), or
+    # equivalent. A survivor is none of those, and means some rule of the proof
+    # system is going untested.
     echo "not caught:$survivors" >&2
     exit 1
 fi

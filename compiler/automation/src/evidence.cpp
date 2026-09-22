@@ -44,7 +44,8 @@ std::optional<Evidence> propose(const kernel::Context& context, const kernel::Pr
     return Evidence{std::move(rewritten), "premise-and-definitional-equality"};
 }
 
-std::vector<obligations::ObligationResult> verify(const obligations::Program& program, diagnostics::Engine& engine) {
+std::vector<obligations::ObligationResult> verify(const obligations::Program& program, diagnostics::Engine& engine,
+                                                  std::size_t* transitions) {
     std::vector<obligations::ObligationResult> results;
     results.reserve(program.obligations.size());
     Composition composition(program);
@@ -176,6 +177,9 @@ std::vector<obligations::ObligationResult> verify(const obligations::Program& pr
         results.push_back(obligations::ObligationResult{obligation, std::move(verdict), std::move(strategy)});
     }
 
+    if (transitions != nullptr) {
+        *transitions = composition.transitions();
+    }
     return results;
 }
 
