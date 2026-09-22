@@ -55,6 +55,21 @@ class Server {
     [[nodiscard]] std::optional<std::vector<TextEdit>> text_document_on_type_formatting(
         const TextDocumentIdentifier& id, const Position& position, const std::string& trigger_character);
 
+    // Proof-decomposition assistance.
+    //
+    // Both answer from the states the compiler's own case engine recorded for
+    // this buffer (`Document::subject_states`), never from a decomposition
+    // this server performed: there is one case engine and it is the
+    // compiler's (`AGENTS.md` 39). Where the compiler has not confirmed a
+    // subject's states -- it could not reach elaboration, or no provider
+    // models the type -- these return nothing rather than guess.
+    //
+    // Ordinary C++ completion and hover are not attempted here; that is
+    // clangd's job (`tools/cppl-lsp/README.md`).
+    [[nodiscard]] std::vector<CompletionItem> text_document_completion(const TextDocumentIdentifier& id,
+                                                                       const Position& position);
+    [[nodiscard]] std::optional<Hover> text_document_hover(const TextDocumentIdentifier& id, const Position& position);
+
     // Diagnostics
     using DiagnosticPublisher = std::function<void(const std::string& uri, std::vector<Diagnostic>)>;
     void set_diagnostic_publisher(DiagnosticPublisher publisher) {

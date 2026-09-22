@@ -111,3 +111,33 @@ CPPL_TEST(server_document_close_clears_diagnostics) {
     CPPL_CHECK_EQ(last_uri, "file:///test.cpp");
     CPPL_CHECK(last_diagnostics.empty());
 }
+
+CPPL_TEST(completion_and_hover_do_not_require_a_diagnostic_publisher) {
+    // Opening a document runs the compile that records its decomposition
+    // states. That compile must not be skipped when no publisher is
+    // installed, or completion would offer nothing for a reason unrelated to
+    // the document, and an empty answer would stop meaning "the compiler
+    // confirmed no states here".
+    Server server;
+
+    TextDocumentItem item;
+    item.uri = "file:///nopublisher.cpp";
+    item.text = "int main() { return 0; }";
+    item.version = 1;
+    server.text_document_did_open(item);
+
+    // Ordinary C++ with no `cases` in it: both answer emptily, and neither
+    // faults on a document whose compile ran with no publisher attached.
+    TextDocumentIdentifier id;
+    id.uri = "file:///nopublisher.cpp";
+    CPPL_CHECK(server.text_document_completion(id, Position{0, 4}).empty());
+    CPPL_CHECK(!server.text_document_hover(id, Position{0, 4}).has_value());
+}
+
+CPPL_TEST(completion_on_an_unknown_document_is_empty) {
+    Server server;
+    TextDocumentIdentifier id;
+    id.uri = "file:///never-opened.cpp";
+    CPPL_CHECK(server.text_document_completion(id, Position{0, 0}).empty());
+    CPPL_CHECK(!server.text_document_hover(id, Position{0, 0}).has_value());
+}

@@ -95,14 +95,82 @@ CPPL_TEST(requests_after_shutdown_are_rejected) {
 }
 
 CPPL_TEST(unknown_method_gets_method_not_found_error) {
+    // `textDocument/rename` stands for a method this server does not
+    // implement. It must stay one the server does not handle: this test
+    // previously used `textDocument/hover` and went stale the moment hover
+    // was implemented.
     Server server;
-    std::istringstream input(framed(R"({"jsonrpc":"2.0","id":5,"method":"textDocument/hover","params":{}})") +
+    std::istringstream input(framed(R"({"jsonrpc":"2.0","id":5,"method":"textDocument/rename","params":{}})") +
                              framed(R"({"jsonrpc":"2.0","method":"exit"})"));
     std::ostringstream output;
     std::ostringstream log;
 
     [[maybe_unused]] const int exit_code = run_transport(server, input, output, log);
     CPPL_CHECK(output.str().find("-32601") != std::string::npos);
+}
+
+CPPL_TEST(initialize_advertises_completion_and_hover) {
+    Server server;
+    std::istringstream input(framed(R"({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}})") +
+                             framed(R"({"jsonrpc":"2.0","method":"exit"})"));
+    std::ostringstream output;
+    std::ostringstream log;
+
+    [[maybe_unused]] const int exit_code = run_transport(server, input, output, log);
+    // An editor is told what the server can do; both are implemented, so both
+    // are advertised (tools/cppl-lsp/README.md).
+    CPPL_CHECK(output.str().find("completionProvider") != std::string::npos);
+    CPPL_CHECK(output.str().find("hoverProvider") != std::string::npos);
+}
+
+CPPL_TEST(hover_outside_a_case_block_is_answered_not_rejected) {
+    // A position with no decomposition under it is an ordinary answer, not a
+    // failure: ordinary C++ hover belongs to clangd.
+    Server server;
+    std::istringstream input(
+        framed(R"({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}})") +
+        framed(R"({"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":)"
+               R"({"uri":"file:///hover.cpp","languageId":"cpp","version":1,"text":"int main() { return 0; }"}}})") +
+        framed(R"({"jsonrpc":"2.0","id":2,"method":"textDocument/hover","params":{"textDocument":)"
+               R"({"uri":"file:///hover.cpp"},"position":{"line":0,"character":4}}})") +
+        framed(R"({"jsonrpc":"2.0","method":"exit"})"));
+    std::ostringstream output;
+    std::ostringstream log;
+
+    [[maybe_unused]] const int exit_code = run_transport(server, input, output, log);
+    CPPL_CHECK(output.str().find("-32601") == std::string::npos);
+    CPPL_CHECK(output.str().find("-32602") == std::string::npos);
+}
+
+CPPL_TEST(a_negative_position_is_rejected_not_wrapped) {
+    // Positions arrive as JSON doubles from an untrusted client. Narrowing a
+    // negative one to the unsigned position type is undefined behavior, and
+    // clamping it would answer for a position nobody asked about.
+    Server server;
+    std::istringstream input(
+        framed(R"({"jsonrpc":"2.0","id":1,"method":"textDocument/hover","params":{"textDocument":)"
+               R"({"uri":"file:///neg.cpp"},"position":{"line":-1,"character":0}}})") +
+        framed(R"({"jsonrpc":"2.0","method":"exit"})"));
+    std::ostringstream output;
+    std::ostringstream log;
+
+    [[maybe_unused]] const int exit_code = run_transport(server, input, output, log);
+    CPPL_CHECK(output.str().find("-32602") != std::string::npos);
+}
+
+CPPL_TEST(completion_without_a_position_is_an_invalid_params_error) {
+    // A malformed request is rejected rather than answered with an empty
+    // list, which would be indistinguishable from "nothing to suggest".
+    Server server;
+    std::istringstream input(
+        framed(R"({"jsonrpc":"2.0","id":1,"method":"textDocument/completion","params":{"textDocument":)"
+               R"({"uri":"file:///none.cpp"}}})") +
+        framed(R"({"jsonrpc":"2.0","method":"exit"})"));
+    std::ostringstream output;
+    std::ostringstream log;
+
+    [[maybe_unused]] const int exit_code = run_transport(server, input, output, log);
+    CPPL_CHECK(output.str().find("-32602") != std::string::npos);
 }
 
 CPPL_TEST(unknown_notification_is_silently_ignored) {

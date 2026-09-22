@@ -148,6 +148,76 @@ CPPL_TEST(valid_structural_cases_produces_no_cpp_semantic_diagnostics) {
     CPPL_CHECK_EQ(count_category(engine, diagnostics::Category::CppSemantic), 0u);
 }
 
+// The states the compiler recorded are what completion and hover answer from,
+// so the record has to come from the real pipeline rather than a fixture of
+// its own. These check the record the compiler actually produced;
+// lsp_decomposition_view_test covers how a record becomes completion items.
+CPPL_TEST(structural_cases_records_provider_states_for_editors) {
+    diagnostics::Engine engine;
+    const auto outcome = compile_fixture("structural_cases.cpp", engine);
+    CPPL_CHECK(outcome.ok);
+    CPPL_CHECK(!outcome.subject_states.empty());
+
+    // A record with no states would silently offer nothing; that is a bug, not
+    // an empty answer.
+    for (const auto& record : outcome.subject_states) {
+        CPPL_CHECK(!record.provider.empty());
+        CPPL_CHECK(!record.representation.empty());
+        CPPL_CHECK(!record.states.empty());
+    }
+
+    // The residual states must be present and marked. A provider that dropped
+    // one would make a proof exhaustive that omits a real runtime state
+    // (SPEC.md CASE-004).
+    bool saw_valueless = false;
+    bool saw_none = false;
+    for (const auto& record : outcome.subject_states) {
+        for (const auto& state : record.states) {
+            if (state.label == "valueless") {
+                CPPL_CHECK(state.residual);
+                saw_valueless = true;
+            }
+            if (state.label == "none") {
+                CPPL_CHECK(state.residual);
+                saw_none = true;
+            }
+        }
+    }
+    CPPL_CHECK(saw_valueless);
+    CPPL_CHECK(saw_none);
+
+    // Records are looked up by source location, so two statements sharing one
+    // would make completion answer for the wrong subject. The fixture nests
+    // `cases` four deep, which is where a collision would show up first.
+    for (std::size_t i = 0; i < outcome.subject_states.size(); ++i) {
+        for (std::size_t j = i + 1; j < outcome.subject_states.size(); ++j) {
+            CPPL_CHECK(!(outcome.subject_states[i].location == outcome.subject_states[j].location));
+        }
+    }
+}
+
+CPPL_TEST(product_subjects_record_components_not_alternatives) {
+    diagnostics::Engine engine;
+    const auto outcome = compile_fixture("structural_cases.cpp", engine);
+    CPPL_CHECK(outcome.ok);
+
+    // A product has exactly one `components` state and no residual: it is not
+    // a sum and must never be presented as a partition of alternatives
+    // (AGENTS.md 39).
+    bool saw_product = false;
+    for (const auto& record : outcome.subject_states) {
+        if (!record.product) {
+            continue;
+        }
+        saw_product = true;
+        CPPL_CHECK_EQ(record.states.size(), 1u);
+        CPPL_CHECK(record.states[0].label == "components");
+        CPPL_CHECK(!record.states[0].residual);
+        CPPL_CHECK(!record.states[0].binders.empty());
+    }
+    CPPL_CHECK(saw_product);
+}
+
 // std::expected is only available from C++23 onward; probe for it first
 // exactly as tests/e2e/structural_cases.sh does, rather than hardcoding
 // availability by toolchain or standard-library vendor.

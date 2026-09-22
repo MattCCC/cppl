@@ -28,6 +28,8 @@ textDocument/publishDiagnostics             from the real compile pipeline
 textDocument/formatting                     canonical C++L clause placement
 textDocument/rangeFormatting                scoped to the requested range
 textDocument/onTypeFormatting               scoped to the smallest safe unit
+textDocument/completion                     case labels a subject still owes
+textDocument/hover                          a case subject's state partition
 ```
 
 Diagnostics come from `driver::compile_buffer` over the live buffer — the same
@@ -39,12 +41,35 @@ violations (severity `Warning`, category `Style`) from the same formatter
 engine used to fix them, so an editor sees a clause-placement problem before
 the user ever asks to format.
 
+Completion and hover follow the same rule, and it is the important one: they
+answer from the states the compiler's own case engine recorded while
+elaborating this buffer (`elaboration::SubjectStates`), never from a
+decomposition the server performed. There is exactly one case engine and it is
+the compiler's (`AGENTS.md` 39). Where the compiler has not confirmed a
+subject's states — the pipeline could not reach elaboration, or no provider
+models the type — the server offers nothing rather than guessing, because a
+suggested label that the compiler would reject is worse than no suggestion.
+
+One consequence is worth stating plainly: recognition reruns on every edit, but
+elaboration runs only where the server already pays for it, on publish. So the
+offered labels can lag the buffer by an edit. The alternative is a Clang round
+trip per keystroke or a second decomposition engine, and the second is
+forbidden.
+
+Completion offers each state the subject's provider lists and this statement
+has no arm for yet, including the residual one — a residual state is a real
+semantic state, not a catch-all, so it is offered like any other (`AGENTS.md`
+39, no wildcard). Each item inserts an arm skeleton carrying the provider's own
+binder names, so an accepted completion already has the right binder count for
+that state's payload. Hover names the subject's resolved representation, which
+provider modeled it, and the full partition with the written arms checked off.
+
 The server advertises `textDocumentSync`, `documentFormattingProvider`,
-`documentRangeFormattingProvider`, and `documentOnTypeFormattingProvider`.
-**Hover, navigation, completion, and semantic tokens are specified below but
-not implemented**, and are deliberately not advertised as capabilities: an
-editor is told what the server can do, never what it intends to do. `STATUS.md`
-tracks this.
+`documentRangeFormattingProvider`, `documentOnTypeFormattingProvider`,
+`completionProvider` and `hoverProvider`. **Navigation and semantic tokens are
+specified below but not implemented**, and are deliberately not advertised as
+capabilities: an editor is told what the server can do, never what it intends
+to do. `docs/STATUS.md` tracks this.
 
 ---
 
@@ -1113,19 +1138,22 @@ reference. Detailed pointer-state and effect hovers are not implemented.
 
 ## Currently unsupported
 
-This is a first production-quality vertical slice: transport, document
-synchronization, diagnostics, and canonical C++L formatting. The following are
+Transport, document synchronization, diagnostics, canonical C++L formatting,
+and proof-decomposition completion and hover are implemented. The following are
 explicitly out of scope for this milestone and are not implemented:
 
 ```text
-hover
-completion
 go-to-definition / references
 rename
 semantic tokens
 proof search / interactive proof state
 incremental (as opposed to full) text document sync
 ```
+
+Completion and hover cover C++L's own syntax: what states a `cases` subject
+has and which arms it still owes. Ordinary C++ completion and hover are
+clangd's, and this server does not try to duplicate them — it claims no
+trigger character that would pull it into ordinary member access.
 
 `textDocument/didChange` is handled under full document sync
 (`TextDocumentSyncKind.Full`): the client resends the whole document on every

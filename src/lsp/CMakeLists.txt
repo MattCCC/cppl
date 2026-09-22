@@ -1,4 +1,5 @@
 add_library(cppl_lsp STATIC
+    src/decomposition_view.cpp
     src/document.cpp
     src/json.cpp
     src/linter.cpp
@@ -6,6 +7,7 @@ add_library(cppl_lsp STATIC
     src/server.cpp
     src/transport.cpp
     src/uri.cpp
+    include/cppl/lsp/decomposition_view.hpp
     include/cppl/lsp/diagnostic_codes.hpp
     include/cppl/lsp/document.hpp
     include/cppl/lsp/json.hpp

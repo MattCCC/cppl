@@ -2,6 +2,7 @@
 
 #include "cppl/driver/buffer_compile.hpp"
 #include "cppl/formatter/format.hpp"
+#include "cppl/lsp/decomposition_view.hpp"
 #include "cppl/lsp/position.hpp"
 
 #include <utility>
@@ -154,10 +155,42 @@ std::optional<std::vector<TextEdit>> Server::text_document_on_type_formatting(co
     return to_text_edits(doc->text(), result.edits);
 }
 
-void Server::publish_diagnostics(const Document& doc) {
-    if (!diagnostic_publisher_) {
-        return;
+std::vector<CompletionItem> Server::text_document_completion(const TextDocumentIdentifier& id,
+                                                             const Position& position) {
+    const Document* doc = documents_.get(id.uri);
+    if (doc == nullptr || doc->syntax() == nullptr) {
+        return {};
     }
+    const PositionMapper mapper(doc->text());
+    const std::optional<CaseSite> site =
+        enclosing_case_site(*doc->syntax(), doc->subject_states(), mapper.position_to_byte_offset(position));
+    if (!site) {
+        return {};
+    }
+    return missing_case_completions(*site);
+}
+
+std::optional<Hover> Server::text_document_hover(const TextDocumentIdentifier& id, const Position& position) {
+    const Document* doc = documents_.get(id.uri);
+    if (doc == nullptr || doc->syntax() == nullptr) {
+        return std::nullopt;
+    }
+    const PositionMapper mapper(doc->text());
+    const std::optional<CaseSite> site =
+        enclosing_case_site(*doc->syntax(), doc->subject_states(), mapper.position_to_byte_offset(position));
+    if (!site) {
+        return std::nullopt;
+    }
+    return case_site_hover(*site);
+}
+
+void Server::publish_diagnostics(const Document& doc) {
+    // This runs the compile that also records the document's decomposition
+    // states, which completion and hover answer from. Returning early when no
+    // publisher is installed would leave those states empty and make
+    // completion silently offer nothing, so the compile happens either way and
+    // only the delivery at the end is conditional.
+    Document* mutable_doc = documents_.get(doc.uri());
 
     PositionMapper mapper(doc.text());
 
@@ -176,7 +209,10 @@ void Server::publish_diagnostics(const Document& doc) {
     request.clang_arguments = clang_arguments_;
 
     diagnostics::Engine engine;
-    const driver::BufferCompileOutcome outcome = driver::compile_buffer(request, engine);
+    driver::BufferCompileOutcome outcome = driver::compile_buffer(request, engine);
+    if (mutable_doc != nullptr) {
+        mutable_doc->set_subject_states(std::move(outcome.subject_states));
+    }
 
     std::vector<Diagnostic> lsp_diagnostics;
 
@@ -224,7 +260,9 @@ void Server::publish_diagnostics(const Document& doc) {
         }
     }
 
-    diagnostic_publisher_(doc.uri(), std::move(lsp_diagnostics));
+    if (diagnostic_publisher_) {
+        diagnostic_publisher_(doc.uri(), std::move(lsp_diagnostics));
+    }
 }
 
 } // namespace cppl::lsp

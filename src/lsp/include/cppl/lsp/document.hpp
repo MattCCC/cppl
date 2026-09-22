@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cppl/diagnostics/diagnostic.hpp"
+#include "cppl/elaboration/elaborate.hpp"
 #include "cppl/frontend/syntax.hpp"
 #include "cppl/frontend/token.hpp"
 #include "cppl/lsp/protocol.hpp"
@@ -51,6 +52,23 @@ class Document {
         return diagnostics_;
     }
 
+    // What the generic case engine decided each `cases`/`decompose` subject's
+    // states were, as of the last full compile of this buffer.
+    //
+    // Recognition (`reparse`) is cheap and runs on every edit; elaboration is
+    // not, and runs only where the server already pays for it, on publish. So
+    // these states can lag the text by one edit: a label offered here was
+    // confirmed by the compiler for a slightly older version of the buffer.
+    // That is the right trade for completion -- the alternative is either a
+    // Clang round trip per keystroke or a second decomposition engine, and
+    // `AGENTS.md` 39 forbids the second.
+    [[nodiscard]] const std::vector<elaboration::SubjectStates>& subject_states() const noexcept {
+        return subject_states_;
+    }
+    void set_subject_states(std::vector<elaboration::SubjectStates> states) {
+        subject_states_ = std::move(states);
+    }
+
   private:
     std::string uri_;
     std::string path_;
@@ -61,6 +79,7 @@ class Document {
     std::unique_ptr<frontend::TokenStream> tokens_;
     std::unique_ptr<frontend::Syntax> syntax_;
     std::vector<diagnostics::Diagnostic> diagnostics_;
+    std::vector<elaboration::SubjectStates> subject_states_;
 };
 
 // Manages all open documents

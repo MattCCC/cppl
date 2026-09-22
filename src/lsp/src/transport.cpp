@@ -102,6 +102,32 @@ json::Value diagnostic_to_json(const Diagnostic& diagnostic) {
     return out;
 }
 
+// An LSP position is a pair of non-negative UTF-16 offsets. They arrive from an
+// untrusted client as JSON doubles, and narrowing a negative or out-of-range
+// double to `std::uint32_t` is undefined behavior, so the range is checked
+// before the conversion rather than after it.
+std::optional<Position> parse_position(const json::Value& value) {
+    const auto line = value.find_number("line");
+    const auto character = value.find_number("character");
+    if (!line || !character) {
+        return std::nullopt;
+    }
+    constexpr double limit = 4294967295.0; // std::uint32_t's maximum, exactly representable
+    const auto in_range = [](double number) {
+        // NaN fails every comparison, so it is out of range here too.
+        return number >= 0.0 && number <= limit;
+    };
+    if (!in_range(*line) || !in_range(*character)) {
+        // Rejected as malformed params rather than clamped, which would answer
+        // for a position the client never asked about.
+        return std::nullopt;
+    }
+    Position position;
+    position.line = static_cast<std::uint32_t>(*line);
+    position.character = static_cast<std::uint32_t>(*character);
+    return position;
+}
+
 std::optional<Range> parse_range(const json::Value& value) {
     const json::Value* start = value.find("start");
     const json::Value* end = value.find("end");
@@ -187,6 +213,10 @@ class Dispatcher {
             handle_range_formatting(id_value, params);
         } else if (method == "textDocument/onTypeFormatting") {
             handle_on_type_formatting(id_value, params);
+        } else if (method == "textDocument/completion") {
+            handle_completion(id_value, params);
+        } else if (method == "textDocument/hover") {
+            handle_hover(id_value, params);
         } else if (is_request) {
             respond_error(*id_value, kMethodNotFound, "method not found: " + method);
         } else {
@@ -248,6 +278,17 @@ class Dispatcher {
         more_trigger_characters.push_back(json::Value(std::string(";")));
         on_type_formatting.set("moreTriggerCharacter", more_trigger_characters);
         capabilities.set("documentOnTypeFormattingProvider", on_type_formatting);
+
+        // Proof-decomposition completion and hover. These cover C++L's own
+        // syntax only: inside a `cases`/`decompose` arm block. Ordinary C++
+        // completion and hover stay with clangd, so no trigger character is
+        // claimed that would pull this server into ordinary member access.
+        json::Value completion = json::Value::object();
+        json::Value trigger_characters = json::Value::array();
+        trigger_characters.push_back(json::Value(std::string("{")));
+        completion.set("triggerCharacters", std::move(trigger_characters));
+        capabilities.set("completionProvider", std::move(completion));
+        capabilities.set("hoverProvider", json::Value(true));
 
         json::Value server_info = json::Value::object();
         server_info.set("name", json::Value("cppl-lsp"));
@@ -387,6 +428,84 @@ class Dispatcher {
         TextDocumentIdentifier document_id;
         document_id.uri = *uri;
         respond_edits(*id, server_.text_document_formatting(document_id));
+    }
+
+    // Both of these answer from what the compiler's case engine recorded for
+    // this buffer. An empty completion list and a null hover are ordinary
+    // answers: the cursor is not in a `cases` block, or the compiler has not
+    // confirmed that subject's states. Neither is an error, and neither is a
+    // reason to guess (`AGENTS.md` 39).
+    void handle_completion(const json::Value* id, const json::Value* params) {
+        if (id == nullptr) {
+            return;
+        }
+        const json::Value* document = params != nullptr ? params->find("textDocument") : nullptr;
+        const json::Value* position_value = params != nullptr ? params->find("position") : nullptr;
+        const auto uri = document != nullptr ? document->find_string("uri") : std::nullopt;
+        const std::optional<Position> position =
+            position_value != nullptr ? parse_position(*position_value) : std::nullopt;
+        if (!uri || !position.has_value()) {
+            respond_error(*id, kInvalidParams, "textDocument/completion missing 'textDocument.uri' or 'position'");
+            return;
+        }
+        TextDocumentIdentifier document_id;
+        document_id.uri = *uri;
+
+        json::Value items = json::Value::array();
+        for (const CompletionItem& item : server_.text_document_completion(document_id, *position)) {
+            json::Value entry = json::Value::object();
+            entry.set("label", json::Value(item.label));
+            entry.set("kind", json::Value(static_cast<int>(item.kind)));
+            if (!item.detail.empty()) {
+                entry.set("detail", json::Value(item.detail));
+            }
+            if (!item.documentation.empty()) {
+                entry.set("documentation", json::Value(item.documentation));
+            }
+            if (!item.insertText.empty()) {
+                entry.set("insertText", json::Value(item.insertText));
+            }
+            if (!item.sortText.empty()) {
+                entry.set("sortText", json::Value(item.sortText));
+            }
+            items.push_back(std::move(entry));
+        }
+        // `isIncomplete: false`: this list is the provider's complete set of
+        // still-unwritten states, so the editor may filter it client-side
+        // rather than asking again on every character.
+        json::Value list = json::Value::object();
+        list.set("isIncomplete", json::Value(false));
+        list.set("items", std::move(items));
+        respond_result(*id, std::move(list));
+    }
+
+    void handle_hover(const json::Value* id, const json::Value* params) {
+        if (id == nullptr) {
+            return;
+        }
+        const json::Value* document = params != nullptr ? params->find("textDocument") : nullptr;
+        const json::Value* position_value = params != nullptr ? params->find("position") : nullptr;
+        const auto uri = document != nullptr ? document->find_string("uri") : std::nullopt;
+        const std::optional<Position> position =
+            position_value != nullptr ? parse_position(*position_value) : std::nullopt;
+        if (!uri || !position.has_value()) {
+            respond_error(*id, kInvalidParams, "textDocument/hover missing 'textDocument.uri' or 'position'");
+            return;
+        }
+        TextDocumentIdentifier document_id;
+        document_id.uri = *uri;
+
+        const std::optional<Hover> hover = server_.text_document_hover(document_id, *position);
+        if (!hover.has_value()) {
+            respond_result(*id, json::Value(nullptr));
+            return;
+        }
+        json::Value contents = json::Value::object();
+        contents.set("kind", json::Value(std::string("markdown")));
+        contents.set("value", json::Value(hover->contents));
+        json::Value result = json::Value::object();
+        result.set("contents", std::move(contents));
+        respond_result(*id, std::move(result));
     }
 
     void handle_range_formatting(const json::Value* id, const json::Value* params) {

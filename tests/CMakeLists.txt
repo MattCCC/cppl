@@ -122,6 +122,9 @@ target_link_libraries(unit_scoped_enum_provider_test PRIVATE cppl_decomposition)
 cppl_add_unit_test(lsp_document_test unit/lsp_document_test.cpp)
 target_link_libraries(lsp_document_test PRIVATE cppl_lsp)
 
+cppl_add_unit_test(lsp_decomposition_view_test unit/lsp_decomposition_view_test.cpp)
+target_link_libraries(lsp_decomposition_view_test PRIVATE cppl_lsp)
+
 cppl_add_unit_test(lsp_linter_test unit/lsp_linter_test.cpp)
 target_link_libraries(lsp_linter_test PRIVATE cppl_lsp)
 

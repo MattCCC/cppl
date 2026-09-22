@@ -1145,7 +1145,8 @@ AI output must always be independently verified.
 | `cppl trust-report`                  | `PARTIAL`     |
 | LSP: sync and diagnostics            | `PARTIAL`     |
 | LSP/CLI: canonical clause formatting | `PROTOTYPE`   |
-| LSP: hover, definition, completion   | `NOT STARTED` |
+| LSP: case completion and hover       | `PROTOTYPE`   |
+| LSP: definition, semantic tokens     | `NOT STARTED` |
 | IDE proof goals                      | `NOT STARTED` |
 | Proof navigation                     | `NOT STARTED` |
 | Counterexample UI                    | `NOT STARTED` |
@@ -1170,9 +1171,24 @@ engine that also backs the standalone `cppl-format` CLI: `expects`, `ensures`,
 `invariant` and `proves` clauses are relocated onto their own canonically
 indented line, ordinary C++ layout is delegated to `clang-format`, and a
 `check_style` pass reuses the same clause-placement rule to add style warnings
-to `publishDiagnostics`. Hover, go-to-definition, completion and incremental
-sync are designed in `tools/cppl-lsp/README.md` but not implemented, and are
-deliberately not advertised as capabilities.
+to `publishDiagnostics`.
+
+`completionProvider` and `hoverProvider` are advertised and serve C++L's own
+syntax: inside a `cases`/`decompose` arm block, completion offers each state
+the subject's provider lists that the statement has no arm for yet — the
+residual state included, since it is a real semantic state and not a catch-all
+— and each item inserts an arm carrying the provider's own binder names. Hover
+names the subject's resolved representation, its provider, and the full
+partition with written arms marked. Both read the states the compiler's case
+engine recorded while elaborating the buffer (`elaboration::SubjectStates`),
+so the server still has no decomposition or exhaustiveness engine of its own;
+where the compiler has not confirmed a subject's states, they offer nothing
+rather than guess. Elaboration runs on publish rather than per keystroke, so
+offered labels may lag the buffer by one edit.
+
+Go-to-definition, semantic tokens and incremental sync are designed in
+`tools/cppl-lsp/README.md` but not implemented, and are deliberately not
+advertised as capabilities.
 
 ---
 
