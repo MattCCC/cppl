@@ -140,5 +140,27 @@ grep -q "does not begin a proof statement" "$run/unsupported_proof_body.log"
 refuse cyclic_proofs
 grep -q "depends on itself" "$run/cyclic_proofs.log"
 
+# A construct has at most one clause of each kind (SPEC.md CONTRACT-003). A
+# repeated clause is refused where it was written rather than being silently
+# conjoined, overwritten or dropped, and the diagnostic says what replaces it.
+refuse repeated_clauses
+grep -q "use one 'expects' clause; combine conjoined predicates with '&&'" \
+    "$run/repeated_clauses.log"
+grep -q "use one 'ensures' clause; combine conjoined predicates with '&&'" \
+    "$run/repeated_clauses.log"
+grep -q "use one 'invariant' clause; combine conjoined predicates with '&&'" \
+    "$run/repeated_clauses.log"
+grep -q "verified function 'two_postconditions' has 2 ensures clauses" \
+    "$run/repeated_clauses.log"
+
+# 'expects' states what the caller owes, so it precedes the conclusion clause.
+grep -q "'expects' must precede the conclusion clause" "$run/repeated_clauses.log"
+
+# A measure list is lexicographic, so a second 'decreases' is refused too: the
+# parts of one measure are separated by ',', never conjoined across clauses.
+grep -q "a loop states one 'decreases' clause" "$run/repeated_clauses.log"
+grep -q "a lexicographic measure is one clause with its parts separated by ','" \
+    "$run/repeated_clauses.log"
+
 echo "written proofs fail closed: false, mismatched, mis-instantiated, unknown," \
-     "unsupported and circular"
+     "unsupported, circular and repeated-clause"

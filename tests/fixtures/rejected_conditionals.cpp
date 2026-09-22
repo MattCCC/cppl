@@ -101,7 +101,9 @@ proof already_closed_holds(unsigned x)
     refl;
 }
 
-// Multiple Law preconditions are still refused; use one explicit conjunction.
+// One conjunction where two preconditions were meant (SPEC.md CONTRACT-003).
+// Repeating a clause is refused in its own fixture, because a syntax error
+// stops the pipeline before the proof checking these other cases exercise.
 law two_preconditions(unsigned x)
     expects ((identity(x) == x) && (add_one(x) == add_one(x)))
     proves (identity(x) == x);
