@@ -275,4 +275,52 @@ verified unsigned bounded(unsigned x) ensures (result < 10u) {
 int main() { return static_cast<int>(bounded<int>(3u)); }
 CPP
 
+# An explicit specialization is one concrete function with its own body and its
+# own contract, not an instantiation of the primary's. It is checked directly:
+# its arguments are already fixed, so its probes are ordinary functions and
+# nothing has to be instantiated to reach them.
+# SPEC: TEMPLATE-001
+accept an_explicit_specialization_is_checked 1 <<'CPP'
+template <unsigned N>
+unsigned pick(unsigned x) { return x; }
+
+template <>
+verified unsigned pick<4u>(unsigned x) expects (x < 4u) ensures (result < 4u) {
+    return x;
+}
+int main() { return static_cast<int>(pick<4u>(0u)); }
+CPP
+
+# The primary's proof does not cover a specialization that replaces its body.
+# This one promises `result < 4` and returns 9, and must be refused by name
+# rather than passing because the primary verifies (TEMPLATE-003).
+# SPEC: TEMPLATE-003
+refuse an_explicit_specialization_owes_its_own_contract 'does not satisfy its contract' <<'CPP'
+template <unsigned N>
+unsigned pick(unsigned x) { return x; }
+
+template <>
+verified unsigned pick<4u>(unsigned x) expects (x < 4u) ensures (result < 4u) {
+    return 9u;
+}
+int main() { return static_cast<int>(pick<4u>(0u)); }
+CPP
+
+# A verified primary and a verified explicit specialization of it coexist: the
+# specialization claims its own argument, and the primary is checked at the
+# arguments left to it. Two contracts, proved separately.
+# SPEC: TEMPLATE-001, TEMPLATE-003
+accept a_specialization_and_its_primary_are_both_checked 2 <<'CPP'
+template <unsigned N>
+verified unsigned pick(unsigned x) expects (x < N) ensures (result < N) {
+    return x;
+}
+
+template <>
+verified unsigned pick<4u>(unsigned x) expects (x < 4u) ensures (result < 4u) {
+    return x;
+}
+int main() { return static_cast<int>(pick<4u>(0u) + pick<8u>(1u)); }
+CPP
+
 echo 'verified templates are checked per specialization'
