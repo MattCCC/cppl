@@ -663,6 +663,11 @@ This representation contains structure that Clang does not own, including:
 Ordinary C++ subexpressions inside those constructs are represented by source/probe
 references until the Clang bridge supplies their resolved semantics.
 
+The formal surface model does not define a second runtime datatype language:
+`data` and runtime `match` are not extension points. Proof-side `cases`,
+`decompose` and `induction` operate over the normative C++/mathematical domains
+defined by `SPEC.md`.
+
 This avoids both extremes:
 
 ```text
@@ -721,10 +726,13 @@ The formal core is the checker-facing language of:
 
 - formal types;
 - formal terms;
-- propositions;
+- propositions and constructive logical connectives;
+- universal and existential binders;
+- formal equality and substitution;
 - proof terms;
-- checked definitions;
-- proof contexts.
+- checked total definitions;
+- proof contexts;
+- the mathematical domains/abstract observations required by `FOUNDATIONS.md`.
 
 It intentionally excludes:
 
@@ -1052,33 +1060,39 @@ Region/lifetime event that invalidates them.
 
 # 25. Capability channel
 
-Memory access capabilities are tracked separately from ordinary logical
-propositions when they represent stateful storage facts rather than value
-propositions.
+`SPEC.md` defines `readable(...)` and `writable(...)` as built-in
+**specification-domain propositions**. Their source-level status as propositions
+must be preserved.
 
-Representative capabilities include:
+Internally, the implementation may discharge state-sensitive memory propositions
+through a dedicated storage/capability checker rather than encode liveness,
+initialization, provenance, extent, readability and writability as ordinary value
+predicates in the logical kernel.
+
+Representative internal state facts include:
 
 ```text
+live
+initialized
 readable
 writable
-initialized
-live
+region extent / provenance relation
 ```
 
-with extent/provenance information attached through the Region model as required.
-
-The architecture therefore has two proof-relevant channels:
+The architecture therefore distinguishes two checker-facing channels while
+preserving one source-level proposition semantics:
 
 ```text
-logical proposition context
-    values, equality, arithmetic, quantified propositions, refinements, Laws
+logical proposition obligations
+    equality, arithmetic, connectives, quantifiers, refinement predicates, Laws
 
-storage capability context
-    liveness/readability/writability/initialization/provenance facts
+storage/capability obligations
+    liveness, initialization, readable/writable state, provenance/region facts
 ```
 
-Both are correspondence-sensitive, but they need not be encoded in the same
-kernel language.
+A source conjunction may require obligations from both channels. Splitting that
+work is an implementation technique; it must preserve the conjunction,
+implication and trust semantics defined by `SPEC.md` and `FOUNDATIONS.md`.
 
 **[ARCH-CAP-001]** A missing capability MUST create a failed/unsatisfied access
 obligation; it MUST NOT be inserted as a hypothesis merely because an operation
@@ -1089,9 +1103,13 @@ needs it.
 **[ARCH-CAP-003]** Capability invalidation MUST participate in aliasing, calls,
 lifetime changes and exceptional flow.
 
+**[ARCH-CAP-004]** Internal separation of capability checking from the logical
+kernel MUST NOT cause `readable(...)` or `writable(...)` to lose their
+source-level proposition meaning.
+
 ---
 
-# 26. Trusted capability admission
+# 26. Trusted Laws and memory propositions
 
 The language has one explicit trusted source surface: `trusted law` as defined by
 `SPEC.md`.
@@ -1104,14 +1122,18 @@ trusted pointer
 trusted block
 ```
 
-When a trusted Law admits a storage-capability statement recognized by the
-language, elaboration routes that explicit assumption into the capability channel
-rather than converting it into an unrelated ordinary kernel proposition.
+A trusted Law may admit a built-in memory proposition such as
+`readable(p, n)` or `writable(p, n)` exactly as `SPEC.md` permits.
 
-The trust identity and source provenance remain attached to every derived use.
+Elaboration records the proposition as an explicit trusted assumption and routes
+the state-sensitive part to the checker/channel responsible for capability
+semantics. It must not disguise that assumption as a derived capability.
+
+The trusted-Law identity and source provenance remain attached transitively to
+every result that depends on it.
 
 **[ARCH-CAP-TRUST-001]** No capability may appear without either modeled semantic
-derivation or an explicit trusted assumption path permitted by `SPEC.md`.
+derivation or an explicit trusted-Law assumption path permitted by `SPEC.md`.
 
 ---
 
@@ -1164,30 +1186,70 @@ It does not provide:
 
 # 29. Recursive semantic validity
 
-The common elaboration notion `Valid(T, v)` is recursive through refinement-bearing
-subobjects as defined by `SPEC.md`.
+The common elaboration notion `Valid(T, v)` implements the semantic-validity rules
+of `SPEC.md` §17, including the approved recursive-validity model for
+refinement-bearing subobjects.
 
-The architecture should implement semantic validity in one reusable operation used
+At minimum:
+
+```text
+ordinary modeled T with no refinement-bearing subobjects
+    Valid(T,v) adds no refinement predicate
+
+type R = T where (P)
+    Valid(R,v) = Valid(T,v) && P[v/self]
+
+object / aggregate
+    validity recursively includes each live refinement-bearing subobject
+
+array
+    validity recursively includes each live element
+
+union
+    only the active member contributes
+
+reference
+    validity applies to the referred current logical version
+
+pointer
+    pointer validity does not recursively imply pointee validity or capability
+```
+
+A verified parameter of semantic type `T` receives `Valid(T, parameter)` as an
+entry premise. That premise is recursive for aggregates/classes/arrays containing
+refinement-bearing subobjects. It is a formal precondition, not a hidden runtime
+check.
+
+The architecture must implement semantic validity in one reusable operation used
 for:
 
 - local introduction;
 - argument crossing;
 - parameter entry premises;
 - return crossing;
-- member construction;
-- member writes;
+- member/base construction;
+- member/base writes;
 - element construction/writes;
 - dereference writes;
 - copy/move construction;
 - copy/move assignment;
 - aggregate construction;
+- temporary construction;
 - verified call post-state.
+
+Current semantic validity is about the current logical value/version. A verified
+boundary does not require proof of every historical construction path merely to
+use validity already supplied by the boundary; later writes/havoc invalidate the
+affected current-version facts.
 
 **[ARCH-REFINE-001]** A refined member MUST NOT require a separate member-only
 validity system.
 
 **[ARCH-REFINE-002]** Validity facts attach to logical values/current versions,
 not permanently to storage names.
+
+**[ARCH-REFINE-003]** Pointer validity MUST NOT recursively manufacture pointee
+validity, readability or writability.
 
 ---
 
@@ -1216,7 +1278,7 @@ A conversion whose C++ runtime behavior is known but whose refinement obligation
 cannot be established may be valid ordinary C++ while remaining invalid as a
 verified refinement crossing.
 
-**[ARCH-REFINE-003]** Every crossing form MUST use the same validity obligation
+**[ARCH-REFINE-004]** Every crossing form MUST use the same validity obligation
 construction.
 
 ---
@@ -1252,11 +1314,17 @@ Erasure identity and verification identity are deliberately separate.
 
 # 32. `old` and snapshots
 
-`old(expr)` is implemented using explicit entry-state/snapshot semantics, not by
-performing a runtime copy unless `SPEC.md` says runtime behavior exists.
+`old(expr)` exists only in the function-postcondition context permitted by
+`SPEC.md`. The architecture must not generalize it into an arbitrary proof
+expression, statement, ghost operator or runtime API.
 
-For storage-based expressions, `old` must bind to the relevant entry
-PlaceVersions or entry observations before mutation occurs.
+It is implemented using explicit entry-state/snapshot semantics, not by
+performing a runtime copy.
+
+For storage-based expressions, `old` binds to the relevant entry PlaceVersions or
+entry observations before mutation occurs. The snapshot expression itself must be
+well-defined in the entry state and obey the `SPEC.md` restrictions, including no
+nested `old` and no `result` inside `old`.
 
 **[ARCH-OLD-001]** `old` MUST NOT read the current PlaceVersion and merely label
 it historical.
@@ -1264,9 +1332,16 @@ it historical.
 **[ARCH-OLD-002]** Snapshot dependencies MUST participate in obligation identity
 and invalidation.
 
+**[ARCH-OLD-003]** No runtime snapshot object may be inserted merely to implement
+the proof meaning of `old`.
+
 ---
 
 # 33. Ghost-state architecture
+
+The current language surface defines `ghost` only for local simple declarations
+inside verification-enabled blocks. Ghost parameters, members and globals are
+not architecture extension points unless `SPEC.md` is changed first.
 
 Ghost values live in a proof-only state channel.
 
@@ -1277,10 +1352,15 @@ The ghost subsystem reuses formal values/types where possible while enforcing:
 
 - no runtime escape;
 - no runtime branch dependency;
+- no runtime return-value dependency;
 - no observable construction/destruction side effects;
+- no runtime FFI escape;
 - deterministic erasure.
 
 Ghost access must not bypass normal proof typing or trust rules.
+
+**[ARCH-GHOST-001]** Architecture MUST NOT add new ghost storage classes merely
+because the internal representation could support them.
 
 ---
 
@@ -1615,16 +1695,24 @@ ordinary formal obligations/evidence
 
 A provider describes the proof-visible state space of a C++ representation.
 
-Representative providers include semantic models for:
+The core provider set must implement exactly the representation families whose
+proof-side partitions/decompositions are defined by `SPEC.md`, including:
 
 - scoped enums;
 - `std::variant`;
 - `std::optional`;
 - `std::expected`;
 - pointers;
-- records;
-- pairs/tuples;
-- arrays.
+- complete modeled non-union records for product decomposition;
+- `std::pair`;
+- `std::tuple`;
+- `std::array`;
+- built-in arrays.
+
+Adding another provider is not merely an implementation extension when it creates
+a new source-visible `cases`/`decompose` domain. The representation must first be
+defined by the normative language specification (or another normative C++L
+standard section).
 
 **[ARCH-DECOMP-001]** Providers are correspondence-sensitive components. An
 incorrect provider can make the compiler reason about the wrong C++ state space
@@ -1691,8 +1779,8 @@ layout of a standard-library type.
 
 # 50. Mathematical-domain architecture
 
-`@N`, `@Z`, `@Seq`, `@Set`, `@Map` and other normative mathematical domains are
-proof-only formal types.
+`@N`, `@Z`, `@Seq`, `@Set` and `@Map` are the closed core set of proof-only
+mathematical domains defined by the current `SPEC.md`.
 
 They live in the formal/elaboration layer, not as runtime C++ containers.
 
@@ -1753,19 +1841,23 @@ artifact/correspondence obligations
 
 These channels may interact but must not silently convert into one another.
 
-For example:
+For example, the source proposition:
 
 ```text
-readable(place)
+readable(p)
 ```
 
-may be a capability fact, while:
+may elaborate to a storage/capability requirement for the Region/Place reached
+through `p`, while:
 
 ```text
 index < extent
 ```
 
 is a logical arithmetic proposition.
+
+Both remain obligations induced by one C++L specification semantics; their
+different internal checkers do not create different source logics.
 
 **[ARCH-OBL-001]** The checker used for an obligation class MUST be explicit in
 structured obligation metadata.
@@ -1953,6 +2045,35 @@ trust mechanism.
 
 **[ARCH-TRUST-001]** No internal compiler stage may synthesize a trusted Law to
 recover from unsupported verification.
+
+## 58.1 Unsafe-boundary architecture
+
+`unsafe` is a runtime verification boundary, not a trust-admission mechanism.
+
+The architecture must preserve the source forms defined by `SPEC.md`:
+
+- unsafe block;
+- unsafe function declaration in the permitted declaration position.
+
+It must not invent an unsafe expression form or allow `unsafe` to waive
+`verified`/`pure` obligations in combinations the language forbids.
+
+Crossing unsafe code may invalidate storage/effect facts conservatively, but it
+does not create:
+
+```text
+logical hypotheses
+trusted assumptions
+refinement validity
+memory capabilities
+```
+
+without an independent checked/runtime-validated/trusted basis.
+
+**[ARCH-UNSAFE-001]** `unsafe` MUST NOT feed the trusted-assumption channel.
+
+**[ARCH-UNSAFE-002]** Effects of unsafe runtime code MUST be conservative enough
+that surrounding verified code cannot retain stale state facts.
 
 ---
 
@@ -3224,3 +3345,55 @@ what the machine executes
 
 C++L is successful only when all three refer to the same program and every gap
 between them is explicit.
+
+---
+
+# Appendix A — SPEC-to-architecture ownership map
+
+This appendix is an architecture completeness map. It does not restate language
+semantics. Every row means that the listed architectural subsystem must implement
+the corresponding normative `SPEC.md` area without weakening it.
+
+| `SPEC.md` area                                                           | Primary architectural owner                                                 |
+| ------------------------------------------------------------------------ | --------------------------------------------------------------------------- |
+| §§2–3 C++ relationship, contextual syntax, preprocessing                 | source ownership, recognizer, projection, Clang bridge                      |
+| §§4–9 semantic domains, propositions, equality, connectives, quantifiers | formal surface, elaboration, formal core/checkers                           |
+| §10 Laws                                                                 | formal surface, elaboration, obligations, evidence/checker pipeline         |
+| §11 contracts, `result`, `old`, virtual contracts                        | elaboration, snapshots, calls/effects, class/virtual architecture           |
+| §12 `verified`, paths, versions, storage/capabilities/effects            | VIR, Place/Region/Capability/Version, obligations                           |
+| §13 `pure`                                                               | purity/effect architecture                                                  |
+| §14 specification expressions                                            | projection/probes, Clang bridge, elaboration                                |
+| §§15–16 proofs/reflexivity                                               | proof elaboration, formal core, automation/checkers                         |
+| §17 refinements                                                          | recursive `Valid`, crossing engine, PlaceVersion writes, erasure            |
+| §18 indexed/dependent formal types                                       | elaboration, indexed-refinement identity, templates, metadata               |
+| §19 mathematical domains/abstract models                                 | formal core, mathematical-domain layer, stdlib/model adapters               |
+| §20 `cases`/`decompose`                                                  | decomposition providers + generic structural proof engine                   |
+| §§21–24 induction, termination, partial/total correctness, loops         | proof engine, CFG/VIR, invariant/decreases obligations                      |
+| §25 ghost                                                                | proof-only ghost state + erasure                                            |
+| §26 unsafe                                                               | unsafe boundary/effects; never trust admission                              |
+| §27 trusted                                                              | trusted-Law admission + trust provenance only                               |
+| §28 runtime validation                                                   | ordinary C++ CFG/path facts; runtime code preserved                         |
+| §§29–31 arithmetic, floating point, UB                                   | Clang semantics, definedness obligations, arithmetic/formal checkers        |
+| §§32–34 object model, exceptions, concurrency                            | storage/lifetime model, exceptional CFG, concurrency models                 |
+| §35 foreign/unverified code                                              | FFI boundary, effects, runtime validation/trust bridge                      |
+| §§36–37 erasure and ABI                                                  | runtime projection, erasure checker, Clang/LLVM backend                     |
+| §§38–41 statuses and verification boundaries/calls                       | result model, policy, call summaries/effects                                |
+| §42 templates                                                            | template-safe probes, specialization-aware metadata/obligations             |
+| §§43–45 scope, TUs, modules                                              | semantic identity, cross-TU summaries, module metadata                      |
+| §§46–65 compatibility/soundness principles                               | driver/policy, diagnostics, tests, fail-closed architecture                 |
+| Annex B expressions                                                      | Clang bridge + VIR expression lowering + definedness/capability obligations |
+| Annex C statements/control flow                                          | CFG/VIR + path-state + loop/exception machinery                             |
+| Annex D declarations/linkage                                             | entity identity + contract/refinement metadata + ODR/redeclaration checks   |
+| Annex E storage/lifetime/alias/effects                                   | Place/Region/Capability/Version + effects + alias invalidation              |
+
+**[ARCH-SPEC-MAP-001]** A new normative `SPEC.md` section that creates executable
+or verification semantics MUST acquire an architectural owner before the feature
+is considered production-complete.
+
+**[ARCH-SPEC-MAP-002]** An architectural subsystem may support fewer features in
+a particular build, as recorded by `STATUS.md`, but the target architecture MUST
+NOT reinterpret an unmapped normative feature as optional.
+
+**[ARCH-SPEC-MAP-003]** If a future `SPEC.md` change invalidates an ownership row,
+this appendix and the affected architecture section MUST be updated in the same
+semantic change set.
