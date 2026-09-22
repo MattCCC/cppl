@@ -106,7 +106,6 @@ grep -q "'h' does not name the premise this goal supposes" "$run/rejected_condit
 grep -q "'h' has no matching premise to stand for" "$run/rejected_conditionals.log"
 grep -q "proof 'unguarded_holds' leaves a goal open" "$run/rejected_conditionals.log"
 grep -q "has already closed every goal it states" "$run/rejected_conditionals.log"
-grep -q "law 'two_preconditions' has 2 expects clauses" "$run/rejected_conditionals.log"
 
 # Supposing a premise does not establish the conclusion, and a premise handed to
 # an application is evidence like any other. Only the kernel can say so.

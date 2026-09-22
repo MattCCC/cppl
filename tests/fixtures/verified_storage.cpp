@@ -88,8 +88,8 @@ verified void call_noop()
     noop();
 }
 verified void by_value_does_not_mutate(int x)
-    ensures (x == 2)
     expects (x == 2)
+    ensures (x == 2)
 {
     x = 1;
 }

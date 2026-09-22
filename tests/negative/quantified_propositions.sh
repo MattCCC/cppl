@@ -187,10 +187,13 @@ verified unsigned wrong(unsigned x) ensures (result == 0u) {
     return x;
 }
 CPP
-reject conjunction_in_invariant <<'CPP'
-verified unsigned wrong(unsigned x) ensures (result == x) {
-    while (x != x) invariant (x == x && x == x) { }
-    return x;
+# A conjunctive invariant is each conjunct's own entry and preservation
+# obligation, so every conjunct must hold. Here the second does not on entry.
+reject false_conjunct_in_invariant <<'CPP'
+verified unsigned wrong(unsigned n) ensures (result == n) {
+    unsigned i = 0u;
+    while (i < n) invariant (i <= n && i == 1u) { ++i; }
+    return i;
 }
 CPP
 

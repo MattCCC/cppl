@@ -57,17 +57,17 @@ reject no_ensures 'ensures clause' \
 reject duplicate_ensures 'ensures clause' \
     'verified unsigned f(unsigned x) ensures (result == x) ensures (result == 0u) { return x; }'
 reject second_expects_needed 'does not satisfy its contract' \
-    'verified unsigned f(unsigned x, unsigned y) expects (x == 1u) expects (y == 2u) ensures (result == 4u) { return x + y; }'
+    'verified unsigned f(unsigned x, unsigned y) expects (x == 1u && y == 2u) ensures (result == 4u) { return x + y; }'
 reject first_expects_unestablished 'call.site precondition' \
-    'verified unsigned g(unsigned x, unsigned y) expects (x == 1u) expects (y == 2u) ensures (result == 3u) { return x + y; } verified unsigned f(unsigned y) expects (y == 2u) ensures (result == 3u) { return g(y, y); }'
+    'verified unsigned g(unsigned x, unsigned y) expects (x == 1u && y == 2u) ensures (result == 3u) { return x + y; } verified unsigned f(unsigned y) expects (y == 2u) ensures (result == 3u) { return g(y, y); }'
 reject second_expects_unestablished 'call.site precondition' \
-    'verified unsigned g(unsigned x, unsigned y) expects (x == 1u) expects (y == 2u) ensures (result == 3u) { return x + y; } verified unsigned f(unsigned x) expects (x == 1u) ensures (result == 3u) { return g(x, x); }'
+    'verified unsigned g(unsigned x, unsigned y) expects (x == 1u && y == 2u) ensures (result == 3u) { return x + y; } verified unsigned f(unsigned x) expects (x == 1u) ensures (result == 3u) { return g(x, x); }'
 # Clang's own error, reported rather than crashing on its recovery expressions.
 reject malformed_law_proposition 'error \[cpp-semantic\]' \
     'law l(unsigned x) proves (exists(unsigned y) y == x);'
 reject malformed_contract 'error \[cpp-semantic\]' \
     'verified unsigned f(unsigned x) ensures (foo(unsigned y) y == x) { return x; }'
-reject declaration_only 'not defined here' \
+reject declaration_only 'not defined in this translation unit' \
     'verified unsigned f(unsigned x) ensures (result == x);'
 reject runtime_result 'undeclared identifier.*result' \
     'verified unsigned f(unsigned x) ensures (result == x) { return result; }'
