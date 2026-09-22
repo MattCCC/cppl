@@ -1,0 +1,97 @@
+{
+  "name": "cppl",
+  "displayName": "C++L",
+  "description": "C++L language support: diagnostics, canonical formatting, and syntax highlighting via cppl-lsp.",
+  "version": "0.0.1",
+  "publisher": "cppl",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cppl-lang/cppl.git",
+    "directory": "editors/vscode"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Programming Languages", "Linters", "Formatters"],
+  "keywords": ["cppl", "c++", "verification", "proofs"],
+  "activationEvents": ["onLanguage:cppl"],
+  "main": "./src/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "cppl",
+        "aliases": ["C++L", "cppl"],
+        "extensions": [".cppl"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "cppl",
+        "scopeName": "source.cppl",
+        "path": "./syntaxes/cppl.tmLanguage.json",
+        "embeddedLanguages": {
+          "source.cpp": "cpp"
+        }
+      }
+    ],
+    "commands": [
+      {
+        "command": "cppl.restartServer",
+        "title": "C++L: Restart Language Server"
+      },
+      {
+        "command": "cppl.showOutput",
+        "title": "C++L: Show Language Server Output"
+      }
+    ],
+    "configuration": {
+      "title": "C++L",
+      "properties": {
+        "cppl.serverPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the cppl-lsp executable. Defaults to build/dev/bin/cppl-lsp relative to the workspace root, then to cppl-lsp on PATH."
+        },
+        "cppl.clangPath": {
+          "type": "string",
+          "default": "",
+          "description": "Clang driver executable cppl-lsp uses to preprocess and semantically check documents (forwarded as cppl-lsp --clang). Defaults to cppl-lsp's own default."
+        },
+        "cppl.clangArguments": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Extra arguments forwarded to Clang for every document (include paths, defines, -std=), forwarded as repeated cppl-lsp --clang-arg."
+        },
+        "cppl.trace.server": {
+          "type": "string",
+          "enum": ["off", "messages", "verbose"],
+          "default": "off",
+          "description": "Trace the JSON-RPC traffic between VS Code and cppl-lsp."
+        }
+      }
+    },
+    "configurationDefaults": {
+      "[cppl]": {
+        "editor.formatOnSave": true,
+        "editor.formatOnType": true
+      }
+    }
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@vscode/vsce": "^3.2.1",
+    "ovsx": "^0.10.1"
+  },
+  "scripts": {
+    "sync-grammar": "node ./scripts/sync-grammar.js",
+    "prepackage": "npm run sync-grammar",
+    "package": "vsce package --no-dependencies --out cppl.vsix",
+    "publish:vsce": "vsce publish --no-dependencies --packagePath cppl.vsix",
+    "publish:ovsx": "ovsx publish cppl.vsix"
+  }
+}

@@ -590,8 +590,8 @@ Editor extensions should remain thin.
 For VS Code:
 
 ```text
-vscode/
-└── cppl-vscode/
+editors/
+└── vscode/
 ```
 
 The extension is responsible for:
@@ -619,7 +619,7 @@ VS Code extension
 
 Therefore:
 
-> `cppl-vscode` is a client.
+> the VS Code extension is a client.
 
 > `cppl-lsp` is the language server.
 
@@ -648,8 +648,12 @@ tools/
 └── cppl-lsp/
     └── main.*
 
-vscode/
-└── cppl-vscode/
+editors/
+├── shared/          TextMate grammar shared by every client
+├── vscode/
+├── jetbrains/
+├── visual-studio/
+└── neovim/
 ```
 
 The executable under `tools/cppl-lsp/` should remain thin.
@@ -1075,7 +1079,7 @@ pipeline.
 
 ## How to launch it from VS Code
 
-A thin client extension lives at `vscode/cppl-vscode/`. It starts
+A thin client extension lives at `editors/vscode/`. It starts
 `build/dev/bin/cppl-lsp` as a child process and registers it for the `cppl`
 language ID only — it never takes over ordinary `.cpp` files.
 
@@ -1091,8 +1095,9 @@ To try it against the repository's own fixtures:
    so these files activate `cppl-lsp` instead of the ordinary C++ tooling.
    Every other `.cpp` file in the repository keeps using normal C++ tooling.
 
-See `vscode/cppl-vscode/README.md` for extension-specific configuration
-(pointing it at a non-default `cppl-lsp` binary or Clang installation).
+See `editors/vscode/README.md` for extension-specific configuration (pointing
+it at a non-default `cppl-lsp` binary or Clang installation), and
+`editors/README.md` for the other editors and the publishing process.
 
 ---
 
