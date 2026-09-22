@@ -45,6 +45,18 @@ See [STATUS.md](docs/STATUS.md) for implementation coverage and [SPEC.md](docs/S
 
 ---
 
+## Motivation
+
+The project started from a simple chain of thought:
+
+> If a human or AI state precise intent, can the compiler mechanically prove the implementation satisfies it, and can the proof layer erase to fast native C++ without any runtime addition?
+> Humans and AIs need an ambiguity-free language for specifying what software must do, a mechanically checkable way to prove that an implementation satisfies that intent, and a path to high-performance native execution. Can we do that without creating entirely new language and work with existing tooling?
+> What if these requirements could be part of the C++ language itself rather than remaining in tests, comments, fixtures, and engineering conventions?
+
+C++L is an attempt to answer that question while preserving the C++ runtime, ABI, ecosystem, and Clang/LLVM toolchain. The project was initiated by Mateusz Czapliński equipped with AI, steming from this practical need. The goal is to make a Provable C++.
+
+---
+
 # Why C++L?
 
 C++ already gives developers exceptional control over memory, layout, performance, platforms, ABIs, and hardware.
