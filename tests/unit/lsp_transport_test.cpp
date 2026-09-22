@@ -147,10 +147,9 @@ CPPL_TEST(a_negative_position_is_rejected_not_wrapped) {
     // negative one to the unsigned position type is undefined behavior, and
     // clamping it would answer for a position nobody asked about.
     Server server;
-    std::istringstream input(
-        framed(R"({"jsonrpc":"2.0","id":1,"method":"textDocument/hover","params":{"textDocument":)"
-               R"({"uri":"file:///neg.cpp"},"position":{"line":-1,"character":0}}})") +
-        framed(R"({"jsonrpc":"2.0","method":"exit"})"));
+    std::istringstream input(framed(R"({"jsonrpc":"2.0","id":1,"method":"textDocument/hover","params":{"textDocument":)"
+                                    R"({"uri":"file:///neg.cpp"},"position":{"line":-1,"character":0}}})") +
+                             framed(R"({"jsonrpc":"2.0","method":"exit"})"));
     std::ostringstream output;
     std::ostringstream log;
 
