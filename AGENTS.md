@@ -803,6 +803,15 @@ For proof features, both positive and negative tests are mandatory.
 
 Every soundness regression must receive a permanent regression test.
 
+A passing suite is not evidence that the suite would notice a broken kernel.
+`make test-mutations` disables one soundness check at a time in a disposable
+copy of the tree and reports any mutation the tests fail to catch. A survivor
+names a rule of the proof system that nothing is testing.
+
+Its anchors are exact source strings. Reformatting the code one names stops
+that check from being tested, so the run refuses to start on a stale anchor
+rather than reporting it as a pass.
+
 ---
 
 # 25. Concurrency and exceptions

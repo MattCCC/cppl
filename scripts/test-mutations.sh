@@ -208,24 +208,24 @@ spec_after() {
     if field "$1" 4 | grep -q .; then field "$1" 4; else multiline_after "$1"; fi
 }
 
-# Substitutes the single occurrence of "$2" with "$3" in the file "$1". Both
-# strings are taken literally: no part of either is read as a pattern.
+# Substitutes the single occurrence of "$2" with "$3" in the file "$1", writing
+# the result to stdout. Both strings are taken literally: \Q..\E keeps every
+# character of an anchor (which is C++, full of regex metacharacters) from being
+# read as a pattern. -0777 reads the whole file, so an anchor may span lines.
 substitute() {
-    BEFORE="$2" AFTER="$3" awk '
-        BEGIN { RS = "\0"; before = ENVIRON["BEFORE"]; after = ENVIRON["AFTER"] }
-        { at = index($0, before)
-          if (at == 0) { exit 1 }
-          printf "%s%s%s", substr($0, 1, at - 1), after, substr($0, at + length(before)) }
+    BEFORE="$2" AFTER="$3" perl -0777 -pe '
+        BEGIN { $b = $ENV{BEFORE}; $a = $ENV{AFTER} }
+        $n = ($_ =~ s/\Q$b\E/$a/);
+        END { exit($n == 1 ? 0 : 1) }
     ' "$1"
 }
 
 # Counts occurrences of "$2" in the file "$1" as a literal string.
 occurrences() {
-    BEFORE="$2" awk '
-        BEGIN { RS = "\0"; before = ENVIRON["BEFORE"]; n = 0 }
-        { rest = $0
-          while ((at = index(rest, before)) > 0) { n++; rest = substr(rest, at + length(before)) } }
-        END { print n }
+    BEFORE="$2" perl -0777 -ne '
+        BEGIN { $b = $ENV{BEFORE} }
+        my $n = () = /\Q$b\E/g;
+        print "$n\n";
     ' "$1"
 }
 
@@ -279,7 +279,7 @@ ctest --test-dir "$build" --output-on-failure -j "$jobs" > "$run/baseline.log" 2
 caught=0
 total=0
 survivors=""
-while IFS= read -r name; do
+while IFS= read -r name <&3; do
     [ -n "$name" ] || continue
     total=$((total + 1))
     file=$(spec_file "$name")
@@ -292,13 +292,15 @@ while IFS= read -r name; do
     diff -u "$log_dir/original" "$log_dir/mutated" > "$log_dir/mutation.diff" || true
     cp "$log_dir/mutated" "$target"
 
+    # stdin is redirected away from these because the loop reads the remaining
+    # mutation names from it, and a child that consumes it ends the run early.
     outcome="unknown"
-    if ! cmake --build "$build" -j "$jobs" > "$log_dir/build.log" 2>&1; then
+    if ! cmake --build "$build" -j "$jobs" > "$log_dir/build.log" 2>&1 < /dev/null; then
         outcome="build-error"
     else
         status=0
         ctest --test-dir "$build" --output-on-failure --timeout 300 \
-              -R "$(spec_tests "$name")" > "$log_dir/tests.log" 2>&1 || status=$?
+              -R "$(spec_tests "$name")" > "$log_dir/tests.log" 2>&1 < /dev/null || status=$?
         # CTest uses 8 for ordinary test failures. A crash, a timeout, or an
         # empty selection is an error in the experiment, not a detection.
         if [ "$status" -eq 0 ] && ! grep -q "No tests were found" "$log_dir/tests.log"; then
@@ -314,7 +316,7 @@ while IFS= read -r name; do
     cp "$log_dir/original" "$target"
     [ "$outcome" = "caught" ] && caught=$((caught + 1)) || survivors="$survivors $name($outcome)"
     echo "$name: $outcome"
-done <<< "$names"
+done 3<<< "$names"
 
 # Leaves no runnable mutated compiler behind.
 cmake --build "$build" -j "$jobs" > "$run/restored-build.log" 2>&1 ||
