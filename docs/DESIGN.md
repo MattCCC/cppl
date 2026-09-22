@@ -1,829 +1,364 @@
 # C++L Design
 
-**C++L - C++ with Laws**
+**C++L — C++ with Laws**
 
-Status: Draft design rationale
+Status: Non-normative design rationale
 
-This document explains the reasoning behind the major design choices of C++L.
+This document records the design rationale of C++L: the problems the language is
+trying to solve, the principles that constrain the solution, the major choices
+that have been made, the alternatives that were rejected, and the tradeoffs that
+future proposals should preserve.
 
-It is **non-normative**.
+This document is intentionally **non-normative**.
 
-It answers questions such as:
+It does not define legal syntax, language semantics, proof rules, trust
+classification, supported C++ modes, implementation status, or compiler topology.
+Those responsibilities belong to other documents.
 
-- Why is C++L a C++ superset rather than a separate language?
-- Why are Laws part of the language?
-- Why are proofs distinct from tests, assertions, and trust?
-- Why is verification incremental?
-- Why is proof machinery intended to disappear before runtime?
-- Why is C++ semantic infrastructure reused rather than recreated?
-- Why are particular alternatives rejected?
+The purpose of this document is to answer questions such as:
 
-It does **not** define legal syntax, language semantics, verification rules, compatibility guarantees, trust propagation, or compiler topology.
+- Why extend C++ rather than replace it?
+- Why are Laws language constructs rather than comments or test conventions?
+- Why are proofs, assumptions, runtime checks, and unsafe code kept distinct?
+- Why does C++L reason about the real C++ object and execution model?
+- Why do refinements erase to their base representation?
+- Why are mathematical domains visibly separate from machine types?
+- Why does structural proof reason over existing C++ types instead of introducing
+  a second runtime data model?
+- Why is semantic fidelity preferred over permissive but approximate verification?
+- Why is a small proof checker desirable but not sufficient to describe the whole
+  end-to-end Trusted Computing Base?
+- Why is the language designed to work well with automated and AI-generated code
+  without trusting automation as an authority?
 
-Those are defined elsewhere.
-
-## Document boundaries
-
-| Document                               | Responsibility                                              |
-| -------------------------------------- | ----------------------------------------------------------- |
-| [SPEC.md](./SPEC.md)                   | Normative language semantics                                |
-| [GRAMMAR.md](./GRAMMAR.md)             | Normative concrete syntax and grammar                       |
-| [COMPATIBILITY.md](./COMPATIBILITY.md) | C++ source, ABI, standard, and toolchain compatibility      |
-| [TRUST.md](./TRUST.md)                 | Trusted Computing Base, assumptions, and trust boundaries   |
-| [ARCHITECTURE.md](./ARCHITECTURE.md)   | Compiler structure, components, dependencies, and data flow |
-| [FOUNDATIONS.md](./FOUNDATIONS.md)     | Mathematical foundations and intellectual lineage           |
-| [STATUS.md](./STATUS.md)               | Actual implementation maturity                              |
-| [ROADMAP.md](./ROADMAP.md)             | Planned implementation sequence                             |
-
-When this document discusses a language feature, it explains the **reason for the feature** rather than defining its exact semantics.
-
-If this document conflicts with a normative document, the normative document takes precedence.
+When this document gives code, the code illustrates a design decision. The
+authoritative syntax is defined by `GRAMMAR.md`, and the authoritative meaning is
+defined by `SPEC.md`.
 
 ---
 
-# 1. Problem
+# 1. Document boundaries and authority
 
-C++ provides extremely strong control over:
+C++L deliberately separates specification, rationale, trust, mathematics,
+architecture, compatibility, and implementation status.
 
-- native execution;
-- memory representation;
-- resource ownership;
-- interoperability;
-- performance;
-- hardware;
-- operating-system APIs;
-- existing libraries;
-- large mature codebases.
+| Document                               | Responsibility                                                  |
+| -------------------------------------- | --------------------------------------------------------------- |
+| [SPEC.md](./SPEC.md)                   | Normative language semantics                                    |
+| [GRAMMAR.md](./GRAMMAR.md)             | Normative concrete syntax                                       |
+| [FOUNDATIONS.md](./FOUNDATIONS.md)     | Formal calculus and mathematical basis                          |
+| [TRUST.md](./TRUST.md)                 | Trusted Computing Base and assurance boundaries                 |
+| [COMPATIBILITY.md](./COMPATIBILITY.md) | Supported C++ modes, toolchains, ABI and platform compatibility |
+| [ARCHITECTURE.md](./ARCHITECTURE.md)   | Compiler structure and implementation data flow                 |
+| [STATUS.md](./STATUS.md)               | Actual implementation coverage                                  |
+| [ROADMAP.md](./ROADMAP.md)             | Implementation sequencing, when present                         |
+| `DESIGN.md`                            | Why the project chose its present direction                     |
 
-It is much weaker at expressing and mechanically establishing higher-level intent.
+The distinction matters.
 
-Important correctness requirements are commonly represented today through combinations of:
+A design rationale may explain why a rule is desirable, but it cannot weaken,
+extend, or reinterpret that rule. A historical implementation limitation is not a
+design principle. A convenient compiler architecture is not a language semantic.
+A test that happens to pass is not an authority over the specification.
+
+If this document conflicts with a normative document, the normative document
+wins.
+
+---
+
+# 2. The problem C++L is solving
+
+C++ is exceptionally strong at expressing how software executes.
+
+It provides direct control over:
+
+- representation;
+- object lifetime;
+- allocation;
+- ownership;
+- native calling conventions;
+- hardware interaction;
+- operating-system interfaces;
+- templates and generic programming;
+- deterministic destruction;
+- low-level performance;
+- interoperability with enormous existing ecosystems.
+
+What ordinary C++ does not provide as a first-class language layer is a general
+way to state and mechanically establish reusable propositions about that
+execution.
+
+Important program requirements are therefore often spread across:
 
 - prose;
 - comments;
-- tests;
-- assertions;
 - code review;
-- static analysis;
+- unit tests;
+- property tests;
+- runtime assertions;
+- static analyzers;
 - conventions;
-- developer knowledge.
+- type encodings;
+- institutional knowledge.
 
-Those mechanisms remain useful, but they do not provide a general way to express a statement such as:
+All of those mechanisms remain useful. The missing capability is different.
+
+A project may want to state something like:
 
 ```text
-For every valid input satisfying these assumptions,
-this implementation preserves this invariant.
+for every input satisfying these assumptions,
+this operation preserves this invariant
 ```
 
-and mechanically establish that statement.
+and then have the toolchain establish that claim compositionally rather than
+merely exercise examples of it.
 
-C++L exists to explore that missing layer.
+C++L exists to add that layer without discarding C++ as the execution language.
 
 ---
 
-# 2. Central design idea
+# 3. The central thesis: Provable C++
 
-The central idea is:
+The shortest description of the project is:
 
-```text
-keep C++ as the execution language
-+
-add a language for precise intent and proof
-```
-
-Rather than replacing the systems-programming model developers already depend on, C++L adds a formal layer around it.
+> C++L is an attempt to make important properties of C++ programs stateable and
+> mechanically provable while retaining C++ as the runtime language.
 
 Conceptually:
 
 ```text
-C++ program
-    +
+C++ runtime program
++
 formal intent
-    +
++
 machine-checkable evidence
 ```
 
-The formal layer exists to make important claims explicit and mechanically checkable.
+The runtime program remains the thing that is compiled and shipped.
 
-The executable remains grounded in the C++ program developers actually intend to ship.
+The formal layer exists to make claims about that program explicit, reusable,
+composable, and independently checkable.
+
+This produces the fundamental design relationship:
+
+```text
+C++ ⊂ C++L
+```
+
+and the corresponding erasure direction:
+
+```text
+erase : C++L -> C++
+```
+
+The exact semantic requirements are normative in `SPEC.md`. The design point is
+that C++L is not trying to create a second runtime language beside C++.
 
 ---
 
-# 3. Why extend C++ instead of creating another language
+# 4. Why C++L extends C++ instead of replacing it
 
-A new independent language could provide a cleaner starting point.
+A clean-sheet verification language could simplify many problems.
 
-It would also immediately lose much of what makes C++ valuable:
+It could:
+
+- use a smaller type system;
+- ban undefined behavior by construction;
+- control aliasing globally;
+- use a simpler memory model;
+- require immutable values;
+- define a proof-friendly standard library;
+- avoid C++ preprocessing;
+- avoid C++ overload resolution;
+- avoid C++ ABI constraints.
+
+That would also abandon much of the reason people use C++.
+
+Existing C++ systems depend on:
 
 ```text
 existing source
 existing headers
 existing templates
 existing libraries
+existing binary interfaces
 existing build systems
-existing ABI
-existing tooling
-existing platform integration
+existing debuggers
+existing profilers
+existing platform SDKs
+existing operating-system interfaces
+existing hardware integrations
 ```
 
-C++L is aimed particularly at systems where rewriting the world is unrealistic.
+C++L deliberately accepts the harder technical problem because its intended value
+is verification **inside the C++ ecosystem**.
 
-The design therefore starts with:
-
-```text
-preserve the C++ ecosystem
-```
-
-and asks:
-
-```text
-how much formal reasoning can be added without abandoning it?
-```
-
-The exact compatibility commitment is defined in `COMPATIBILITY.md`.
+The project therefore treats compatibility pressure as a fundamental design
+constraint rather than an inconvenience to be removed.
 
 ---
 
-# 4. Why C++L is a language rather than only a verifier
+# 5. Why C++L is a language, not only an external verifier
 
-C++L is not intended to replace C++ with a new programming model.
+An external verifier can prove useful properties of C++.
 
-It is a conservative extension of C++ that introduces a compile-time logical
-language for expressing and proving properties that ordinary C++ does not
-represent as part of its language semantics.
+That alone does not require a new language.
 
-The fundamental relationship is:
-
-```math
-\mathrm{C{+}{+}} \subset \mathrm{C{+}{+}L}
-```
-
-Equivalently, every valid C++ program is also a valid C++L program:
-
-```math
-\forall p \in \mathrm{C{+}{+}}, \quad p \in \mathrm{C{+}{+}L}
-```
-
-C++L adds compile-time language constructs while retaining C++ as the runtime
-execution language. Those constructs admit erasure to ordinary C++:
-
-```math
-\mathrm{erase} : \mathrm{C{+}{+}L} \to \mathrm{C{+}{+}}
-```
-
-The central runtime requirement is semantic preservation:
-
-```math
-\mathrm{Sem}_{\mathrm{runtime}}(p)
-=
-\mathrm{Sem}_{\mathrm{runtime}}(\mathrm{erase}(p))
-```
-
-Thus C++L extends the language used to state and prove program properties
-without introducing a second runtime semantics.
-
-Every ordinary C++ program is therefore also a C++L program.
-
-For a C++L program that uses laws, propositions, and proofs, erasure removes
-the proof layer and produces ordinary C++ while preserving the runtime meaning
-of the program.
-
-C++L does not exist merely to add another assertion mechanism, contract
-syntax, static analyzer, or verification frontend.
-
-Its purpose is to make propositions, laws, and their proofs part of the
-language itself.
-
-## 4.1 Why this cannot just be a C++ library
-
-C++ can already express many verification-related ideas using templates,
-concepts, `constexpr`, `static_assert`, attributes, macros, tests, and external
-tools.
-
-For example:
-
-```cpp
-template<class T>
-concept Addable = requires(T a, T b) {
-    a + b;
-};
-
-static_assert(sizeof(int) >= 4);
-```
-
-A library can also approximate mathematical laws:
-
-```cpp
-template<class T>
-constexpr bool associative(T a, T b, T c) {
-    return (a + b) + c == a + (b + c);
-}
-```
-
-and evaluate particular instances:
-
-```cpp
-static_assert(associative(1, 2, 3));
-```
-
-But this proves only that the expression evaluates to `true` for those
-particular values.
-
-It does not establish the proposition:
+C++L becomes a language because it wants programs to be able to carry
+language-defined entities such as:
 
 ```text
-∀ a, b, c : T,
-    (a + b) + c = a + (b + c)
+propositions
+Laws
+proof declarations
+proof evidence
+formal quantification
+refinement types
+ghost state
+termination measures
+trusted assumptions
 ```
 
-The distinction is fundamental.
+with common semantics that different source files, libraries, tools, and proof
+producers can share.
 
-C++ expressions compute values.
+The distinction is important.
 
-C++ has no built-in semantic category for a mathematical proposition and no
-built-in notion that an object constitutes evidence proving such a
-proposition.
+An external verifier may answer:
 
-Ordinary C++ does not provide first-class language semantics for:
+```text
+Does this program satisfy P?
+```
 
-- propositions;
-- universally quantified statements;
-- existentially quantified statements;
-- proof terms;
-- assumptions;
-- implication;
-- conjunction and disjunction as proof objects;
-- quantified introduction and elimination;
-- equality reasoning;
-- substitution;
-- reusable theorem evidence;
-- kernel-checked composition of proofs.
+C++L also wants the language to represent:
 
-These concepts can be encoded with templates, macros, `constexpr`, or external
-tooling, but such encodings remain conventions built on top of C++.
+```text
+P
+```
 
-The C++ language itself does not assign them proof-theoretic meaning.
+and:
 
-A sufficiently elaborate library could introduce types resembling:
+```text
+evidence for P
+```
+
+so that the result can participate in another proof.
+
+That turns verification results into reusable interfaces rather than isolated
+tool outcomes.
+
+---
+
+# 6. Why C++L is not merely a C++ library
+
+C++ is powerful enough to encode almost anything eventually.
+
+Templates, `constexpr`, concepts, macros, `static_assert`, attributes, and library
+types can simulate many proof-like APIs.
+
+A library might define something resembling:
 
 ```cpp
 Proof<ForAll<X, P<X>>>
 ```
 
-and implement operations over those types using template metaprogramming.
+but the language itself does not know that such a type is proof evidence.
 
-At that point, however, the library has effectively implemented another
-logical language indirectly inside the C++ type system.
+Its meaning depends on:
 
-Its correctness depends on the encoding machinery, compiler behaviour,
-template implementation, and conventions of that particular library.
+- the library implementation;
+- conventions;
+- template machinery;
+- compiler behavior;
+- user discipline.
 
-C++L instead gives these constructs language-defined meaning.
+At sufficient complexity, the library has implemented a logical language
+indirectly inside C++.
 
-A proposition is a proposition.
+C++L instead makes the logical layer explicit.
 
-A proof term is evidence.
+The design test is:
 
-A law is a reusable theorem.
+> If a feature can be expressed naturally and completely as ordinary C++ without
+> introducing distinct logical semantics, it probably does not belong in C++L.
 
-The C++L kernel checks whether the supplied evidence derives the claimed
-proposition according to the rules of the language.
-
-For example, given evidence for:
-
-```text
-∀ x : T, P(x)
-```
-
-and a term:
-
-```text
-a : T
-```
-
-the kernel can derive:
-
-```text
-P(a)
-```
-
-through universal elimination:
-
-```text
-proof : ∀ x : T, P(x)
-a     : T
-────────────────────
-proof(a) : P(a)
-```
-
-This is not equivalent to evaluating a Boolean C++ expression.
-
-It is a proof rule applied to proof evidence.
-
-The kernel, rather than the program being verified, determines whether the
-derivation is valid.
-
-## 4.2 Proofs as interfaces
-
-Giving proofs common language semantics also allows independently developed
-code to exchange mathematical guarantees.
-
-Conceptually:
-
-```text
-Library A
-    proves P
-       │
-       ▼
- proof : P
-       │
-       ▼
-Library B
-    requires P
-       │
-       ▼
-C++L kernel checks the composition
-```
-
-Without common proof semantics, two ordinary C++ libraries may independently
-implement concepts called `law`, `proof`, `theorem`, or `verified`.
-
-Those concepts do not automatically interoperate.
-
-For example:
-
-```cpp
-library_a::Proof<P>
-```
-
-and:
-
-```cpp
-library_b::Theorem<P>
-```
-
-have no shared meaning merely because both libraries intend them to represent
-proofs.
-
-Their interpretation is determined by library code and convention.
-
-In C++L, proof validity is defined by the language and checked by the same
-kernel.
-
-This allows laws to become part of an interface rather than merely part of an
-implementation's testing strategy.
-
-A library may provide:
-
-```text
-proof : P
-```
-
-and another library may require:
-
-```text
-P
-```
-
-without either library needing to trust the other's verification
-implementation.
-
-They trust the C++L kernel.
-
-## 4.3 Why verification alone is insufficient
-
-Existing verification tools can analyze C++ programs, generate verification
-conditions, invoke SMT solvers, perform symbolic execution, model-check
-program behaviour, or attach contracts to declarations.
-
-Those approaches are valuable and C++L does not attempt to replace them.
-
-But a verifier and a proof language solve different problems.
-
-A verifier primarily answers:
-
-```text
-Does this program satisfy property P?
-```
-
-C++L additionally needs to represent:
-
-```text
-P
-```
-
-and:
-
-```text
-proof : P
-```
-
-as language-level objects whose relationship can be checked and whose evidence
-can be reused by other proofs.
-
-The distinction is:
-
-```text
-verification condition
-        │
-        ▼
-     solver
-        │
-        ▼
-    yes / no
-```
-
-versus:
-
-```text
-proposition
-    │
-    ▼
-proof term
-    │
-    ▼
-small kernel
-    │
-    ▼
-checked derivation
-```
-
-C++L may eventually use automation, SMT solvers, proof search, or external
-provers to construct proof terms.
-
-Those tools may help discover a proof.
-
-They must not define what constitutes a valid proof.
-
-The kernel remains the authority that checks the resulting evidence.
-
-This keeps the trusted computing base substantially smaller than the complete
-verification toolchain.
-
-## 4.4 The boundary between C++ and C++L
-
-C++L should not absorb features merely because they are useful for writing
-safer programs.
-
-If a feature can be expressed naturally and completely using existing C++
-facilities, it should remain ordinary C++.
-
-For example:
-
-```text
-concepts
-+ constexpr
-+ static_assert
-+ contracts
-+ type constraints
-+ property tests
-```
-
-do not by themselves justify a new language.
-
-C++L becomes justified only when the requirement crosses into a logical layer
-that C++ itself does not possess:
-
-```text
-C++
-+ propositions
-+ laws
-+ explicit proof objects
-+ proof composition
-+ quantified reasoning
-+ machine-checked derivations
-+ a small trusted kernel
-```
-
-This gives the project an important design test:
-
-> If a proposed C++L feature can be implemented naturally and completely as
-> an ordinary C++ library without introducing separate logical semantics, that
-> feature does not justify extending the language.
-
-Conversely, functionality requiring first-class propositions, proofs, proof
-composition, or kernel-defined derivation rules belongs in the C++L layer.
-
-This boundary prevents C++L from becoming a second general-purpose programming
-language layered unnecessarily on top of C++.
-
-## 4.5 Erasure and runtime transparency
-
-Proofs exist to establish facts about programs, not to silently redefine their
-runtime execution.
-
-C++L therefore maintains an explicit erasure boundary:
-
-```text
-erase : C++L → C++
-```
-
-For a C++L program `p`, erasure removes constructs that exist only for logical
-reasoning.
-
-The intended invariant is:
-
-```text
-⟦erase(p)⟧runtime = ⟦p⟧runtime
-```
-
-The proof layer may affect whether compilation succeeds.
-
-It must not introduce hidden runtime behaviour merely by existing.
-
-This means that:
-
-```text
-proof checking
-law checking
-logical normalization
-proof elaboration
-```
-
-belong to compilation, while ordinary program execution remains governed by
-C++ semantics.
-
-The resulting model is:
-
-```text
-C++L source
-    │
-    ├── C++ program
-    │
-    └── logical layer
-            │
-            ▼
-        elaboration
-            │
-            ▼
-       proof kernel
-            │
-       accepted / rejected
-            │
-            ▼
-          erase
-            │
-            ▼
-      ordinary C++
-            │
-            ▼
-      C++ toolchain
-```
-
-The logical layer disappears from the runtime program unless a construct has
-an explicit runtime C++ meaning independent of its role in proof checking.
-
-## 4.6 The trusted kernel
-
-The correctness of C++L should not require trusting every component of the
-compiler.
-
-Parsing, elaboration, proof search, diagnostics, optimization, IDE tooling,
-SMT integration, and other automation may all contain bugs.
-
-The final acceptance of a proof should depend on a substantially smaller
-component: the proof kernel.
-
-The kernel receives explicit propositions and proof terms and checks whether
-the proof term establishes the proposition.
-
-Conceptually:
-
-```text
-check(proof : P) = valid
-```
-
-means that the kernel independently validates the derivation represented by
-`proof`.
-
-Elaboration may construct:
-
-```text
-proof : P
-```
-
-but the kernel must not trust the elaborator's conclusion.
-
-Automation may construct:
-
-```text
-proof : P
-```
-
-but the kernel must not trust the automation.
-
-An SMT solver may help construct:
-
-```text
-proof : P
-```
-
-but the kernel must not accept `P` merely because the solver returned
-`sat`, `unsat`, or `valid`.
-
-The evidence must ultimately reduce to rules understood by the kernel.
-
-This creates the intended trust boundary:
-
-```text
-untrusted / complex
-────────────────────────────────
-parser
-elaborator
-proof search
-SMT integration
-IDE
-optimizer
-diagnostics
-automation
-────────────────────────────────
-            │
-            │ explicit proof
-            ▼
-────────────────────────────────
-trusted / small
-────────────────────────────────
-proof kernel
-────────────────────────────────
-```
-
-Keeping this kernel small, deterministic, and independently testable is a
-central architectural requirement.
-
-## 4.7 What C++L is
-
-C++L is therefore not merely:
-
-```text
-C++ + assertions
-```
-
-nor:
-
-```text
-C++ + contracts
-```
-
-nor:
-
-```text
-C++ + an SMT solver
-```
-
-nor:
-
-```text
-C++ + static analysis
-```
-
-Its intended model is:
-
-```text
-C++L
-=
-C++
-+
-a compile-time logical language
-+
-first-class propositions
-+
-first-class laws
-+
-explicit proof evidence
-+
-proof composition
-+
-a small trusted proof kernel
-+
-semantics-preserving erasure to C++
-```
-
-The defining idea is not that C++ programs can be verified.
-
-C++ programs can already be verified by external tools.
-
-The defining idea is that C++ programs can carry reusable, language-defined,
-kernel-checked mathematical evidence while remaining ordinary C++ after the
-logical layer is erased.
+C++L should extend the language only where the new concept genuinely crosses from
+ordinary computation into specification or proof.
 
 ---
 
-# 5. Compatibility as a design pressure
+# 7. Why C++ remains the runtime authority
 
-C++L is intended to be useful in existing C++ repositories.
+C++L does not introduce a second runtime interpretation for ordinary C++ syntax.
 
-That makes source compatibility one of the strongest pressures on the language design.
+That is essential.
 
-Features that would require broad mechanical rewrites are viewed skeptically.
+If the verification system reasons about one meaning while the native toolchain
+executes another, internally valid proofs can become irrelevant to the shipped
+program.
 
-Examples include designs requiring developers to:
+The intended relationship is therefore:
 
 ```text
-rename every source file
-replace ordinary functions
-replace the standard library
-replace native pointers everywhere
-rewrite code into a functional language
-change native calling conventions
-verify every dependency before adoption
+ordinary C++ syntax
+        |
+        v
+ordinary C++ semantics
+
+C++L specification/proof layer
+        |
+        v
+claims about those semantics
 ```
 
-The preferred adoption model is incremental.
-
-The normative compatibility rules belong in `COMPATIBILITY.md`.
+C++L may add compile-time-only meaning around C++ constructs, but it should not
+quietly replace ordinary C++ runtime behavior with a proof-friendlier imaginary
+machine.
 
 ---
 
-# 6. Why verification is incremental
+# 8. Why adoption is incremental
 
-Real C++ systems are rarely uniform.
+Real C++ systems are heterogeneous.
 
-A single application may contain:
+One executable may contain:
 
-```text
-new code
-twenty-year-old code
-third-party libraries
-generated code
-assembly
-platform APIs
-hardware interaction
-external binaries
-```
+- new verified code;
+- old unverified code;
+- generated source;
+- third-party libraries;
+- assembly;
+- operating-system APIs;
+- device interfaces;
+- proprietary binaries.
 
-Demanding equivalent formal assurance everywhere before any verification becomes useful would make adoption impractical.
+Requiring the entire dependency graph to be proven before any local theorem is
+useful would make adoption unrealistic.
 
-The design therefore favors a progression such as:
+C++L therefore favors **local guarantees with explicit boundaries**.
+
+Conceptually:
 
 ```text
 ordinary C++
     ↓
-specified code
+specified boundary
     ↓
-partially verified code
+verified region
     ↓
-stronger verified regions
+stronger verified subsystem
 ```
 
-The objective is to let the formally understood portion of a system grow over time.
+This does not mean all assurance levels are equivalent.
 
-This is an adoption strategy, not a claim that all assurance levels are equivalent.
+It means useful proof can exist without pretending the rest of the machine has
+already been proved.
 
 ---
 
-# 7. Why Laws exist
+# 9. Claims, evidence, and assumptions are different things
 
-Function contracts are useful, but not every important property belongs naturally to one function.
-
-Examples include:
-
-```text
-relationships between operations
-algebraic properties
-conservation properties
-type invariants
-cross-function consistency
-domain rules
-protocol rules
-```
-
-A named Law gives such intent a first-class identity.
-
-This is particularly useful when an implementation changes while the intended property remains stable.
-
-The exact semantics of Laws belong in `SPEC.md`.
-
-Their concrete syntax belongs in `GRAMMAR.md`.
-
----
-
-# 8. Why specifications and implementations are separated conceptually
-
-A dangerous development pattern is:
-
-```text
-implementation behaves this way
-therefore specification should say this
-```
-
-C++L is intended to support the opposite direction when appropriate:
-
-```text
-this is the required property
-therefore implementation must satisfy it
-```
-
-This distinction becomes especially important when AI generates implementation code.
-
-The specification should represent intent rather than merely document whatever implementation currently happens to do.
-
----
-
-# 9. Why declaring intent is different from establishing it
-
-Formal systems lose much of their value if stating a proposition automatically grants it authority.
-
-C++L therefore treats these as different concepts:
+A central design choice is to keep these three concepts separate:
 
 ```text
 claim
@@ -831,1076 +366,1748 @@ evidence
 assumption
 ```
 
-The motivation is auditability.
+A proposition being written in source does not make it true.
 
-A reviewer should be able to distinguish:
+A proof establishes a claim.
+
+A trusted declaration admits a claim as an explicit assumption.
+
+This separation supports auditability.
+
+A reviewer should be able to ask independently:
 
 ```text
-what the program claims
+What is being claimed?
+Why is it accepted?
+What assumptions does it depend on?
 ```
 
-from:
-
-```text
-why the system accepts that claim
-```
-
-The normative proof and status semantics are defined in `SPEC.md` and `TRUST.md`.
+Collapsing those questions would make the verification result much harder to
+interpret.
 
 ---
 
-# 10. Why proofs are explicit concepts
+# 10. Why Laws are first-class
 
-Proof evidence creates a useful separation between:
+Function contracts are important, but not every stable property belongs to one
+function.
+
+Useful properties include:
+
+- algebraic identities;
+- relationships between operations;
+- conservation rules;
+- protocol invariants;
+- state-transition properties;
+- cross-function consistency;
+- domain laws;
+- properties of data representations.
+
+A named Law gives such a property identity independent of whichever
+implementation currently establishes it.
+
+That is especially valuable when implementation code changes while the intended
+property remains stable.
+
+A Law can therefore act as a durable formal interface.
+
+---
+
+# 11. Why contracts and Laws are both needed
+
+Contracts and Laws operate at different scales.
+
+A function contract naturally answers:
+
+```text
+under which conditions may this function be called?
+what does it guarantee on normal return?
+```
+
+A Law naturally answers:
+
+```text
+what reusable proposition does this module or domain establish?
+```
+
+Forcing every theorem into a function postcondition would make broader properties
+awkward.
+
+Forcing every local API condition into a standalone theorem would make routine
+contracts unnecessarily indirect.
+
+Keeping both concepts gives the language a local specification mechanism and a
+reusable theorem mechanism.
+
+---
+
+# 12. Why proofs are explicit concepts
+
+Proof evidence separates:
 
 ```text
 finding a proof
 ```
 
-and:
+from:
 
 ```text
 checking a proof
 ```
 
-That separation allows many different producers:
+That is strategically important because proof producers may vary dramatically.
 
-```text
-human-written reasoning
-compiler automation
-rewriting systems
-decision procedures
-SMT solvers
-specialized tactics
-AI agents
-```
+Evidence may be produced by:
 
-without requiring every producer to become part of the ultimate correctness authority.
+- a human;
+- compiler automation;
+- a rewriting engine;
+- a decision procedure;
+- an SMT solver;
+- a specialized tactic;
+- an AI agent;
+- a future external prover.
 
-This is one of the most important design choices in C++L.
+Those producers can be large, heuristic, changing, or probabilistic.
 
----
+The acceptance criterion should be substantially more stable.
 
-# 11. Why proof search and proof checking are different
-
-Proof search can be large, heuristic, probabilistic, expensive, and rapidly evolving.
-
-Proof checking can be much smaller and more deterministic.
-
-That suggests a desirable shape:
-
-```text
-powerful search
-      ↓
-evidence
-      ↓
-small checker
-```
-
-rather than:
-
-```text
-powerful search
-      =
-truth authority
-```
-
-The exact trusted boundary is documented in `TRUST.md`.
-
-The implementation structure belongs in `docs/ARCHITECTURE.md`.
+This is why C++L distinguishes proof construction from proof validation.
 
 ---
 
-# 12. Why AI is deliberately outside the authority boundary
+# 13. Why automation is not the definition of truth
 
-AI is expected to be useful for:
+Strong automation is necessary for usability.
 
-```text
-generating implementations
-generating specifications
-suggesting invariants
-finding counterexamples
-constructing proofs
-repairing failed proofs
-explaining diagnostics
-```
+Manual proof of every trivial arithmetic or control-flow fact would make the
+language impractical.
 
-But AI output should be treated as candidate work.
-
-A desirable workflow is:
+But the project does not want:
 
 ```text
-human or system defines intent
-        ↓
-AI generates implementation
-        ↓
-AI generates candidate reasoning
-        ↓
-independent verification checks it
+the automation said yes
 ```
 
-This lets C++L benefit from increasingly capable models without making model reliability a foundation of program correctness.
+to be the ultimate semantics of proof.
+
+The desired pattern is:
+
+```text
+powerful automation
+        ↓
+candidate evidence
+        ↓
+independent checking
+```
+
+The precise Trusted Computing Base is defined in `TRUST.md`; the design principle
+is that search power and logical authority should be separated whenever
+practical.
 
 ---
 
-# 13. Why contextual syntax was chosen
+# 14. Why AI is outside the authority boundary
 
-C++ has decades of existing identifiers.
+AI is expected to be extremely useful for C++L.
 
-Short words useful to C++L may already exist in ordinary programs:
+It can help:
 
-```cpp
-law
-proof
-ghost
+- write implementations;
+- propose contracts;
+- discover invariants;
+- generate proofs;
+- repair failed proofs;
+- generate negative tests;
+- explain proof failures;
+- refactor verified code.
+
+But AI output is still candidate source and candidate evidence.
+
+The desirable relationship is:
+
+```text
+human intent
+    ↓
+formal specification
+    ↓
+AI-generated candidate implementation/proof
+    ↓
+independent verification
+```
+
+This lets the project benefit from improving models without making model
+reliability a premise of mathematical correctness.
+
+It also gives AI a better target: satisfy explicit Laws rather than infer intent
+from prose after the fact.
+
+---
+
+# 15. Why specification is not derived from implementation
+
+A dangerous engineering pattern is:
+
+```text
+the implementation behaves this way
+therefore the specification should say this
+```
+
+C++L is designed to support the opposite direction:
+
+```text
+this property is required
+therefore the implementation must satisfy it
+```
+
+That distinction is especially important for agentic development.
+
+An implementation agent should not be allowed to turn a missing feature,
+temporary simplification, or currently green regression test into new language
+meaning.
+
+The specification represents intended semantics; `STATUS.md` represents progress
+toward them.
+
+---
+
+# 16. Why purity is explicit
+
+Formal reasoning is easier when a computation behaves like a mathematical
+function.
+
+C++ deliberately permits effects such as:
+
+- mutation;
+- I/O;
+- volatile access;
+- atomics;
+- global state;
+- resource ownership;
+- external interaction.
+
+Pretending all functions are mathematically pure would be dishonest.
+
+C++L therefore makes purity explicit so stronger reasoning can be requested where
+it is appropriate without imposing functional programming on ordinary C++.
+
+---
+
+# 17. Why purity and verification are separate
+
+Purity does not imply correctness.
+
+A pure function can return the wrong answer.
+
+Conversely, an imperative function can satisfy a useful verified contract.
+
+The concepts therefore answer different questions:
+
+```text
 pure
+    what effects may this computation have?
+
 verified
+    what claimed properties have been established?
 ```
 
-Globally reserving such words would create avoidable migration problems.
-
-Context-sensitive extension points were therefore chosen as the preferred direction.
-
-The exact lexical and disambiguation rules belong in `GRAMMAR.md`.
+Keeping them separate prevents one modifier from carrying unrelated semantic
+burdens.
 
 ---
 
-# 14. Why existing C++ keywords are not reused casually
+# 18. Why termination is separate from purity
 
-Modern C++ already gives precise meanings to terms such as:
+A function can have no side effects and still diverge.
+
+That matters in proof-relevant computation because unrestricted nontermination can
+invalidate logical reasoning.
+
+At the same time, ordinary systems software often intentionally contains
+nonterminating behavior:
+
+- event loops;
+- servers;
+- schedulers;
+- kernels;
+- embedded controllers.
+
+C++L therefore separates:
 
 ```text
-requires
-concept
-constexpr
-consteval
+partial correctness
 ```
 
-Overloading them with unrelated proof-language meanings would create confusion and grammar pressure.
-
-The design preference is therefore:
+from:
 
 ```text
-reuse C++ syntax when the concept really is the C++ concept
-
-introduce distinct syntax when C++L introduces a different concept
+total correctness
 ```
 
-For example, contract terminology can remain distinct from C++ constraints.
-
-The exact syntax belongs in `GRAMMAR.md`.
+and gives termination its own proof role rather than hiding it inside purity.
 
 ---
 
-# 15. Why C++ declarators are treated as an existing boundary
+# 19. Why proof-relevant computation must be terminating
 
-C++ declarators already encode a large amount of language complexity:
+Runtime divergence can be meaningful.
+
+Proof construction cannot rely on divergence as if it were evidence.
+
+The proof layer therefore needs a well-founded account of any computation whose
+result participates in proof.
+
+This is also why `decreases` is conceptually distinct from induction:
 
 ```text
-types
-templates
-cv qualification
-reference qualification
-noexcept
-attributes
-constraints
-trailing return types
-override
-final
+decreases
+    explains why computation terminates
+
+induction
+    explains why a proposition holds over a structure/domain
 ```
 
-Inserting a second language into the middle of that machinery would create unnecessary ambiguity.
-
-C++L syntax is therefore designed with a strong preference for leaving the ordinary declarator structurally recognizable.
-
-The concrete placement rules are defined in `GRAMMAR.md`.
+They may use related measures, but they solve different problems.
 
 ---
 
-# 16. Why contracts and Laws are both useful
+# 20. Why quantification belongs in the language
 
-Contracts and Laws address different scales of intent.
+Many useful program properties are not about one concrete input.
 
-A contract is naturally associated with a declaration or operation.
-
-A Law can express a property with a broader conceptual identity.
-
-Keeping both concepts avoids forcing every specification into:
+They are statements such as:
 
 ```text
-function precondition/postcondition
+for every x, P(x)
 ```
 
-and avoids forcing every local API rule into a standalone theorem.
+or:
 
-Their exact relationship is defined normatively in `SPEC.md`.
+```text
+there exists x such that P(x)
+```
+
+Encoding such claims as repeated tests or enumerated examples changes their
+meaning.
+
+First-class quantification allows Laws to express the intended scope directly and
+allows proof evidence to compose according to that scope.
 
 ---
 
-# 17. Why purity is explicit
+# 21. Why implication, conjunction, and disjunction are proof concepts
 
-Formal reasoning becomes dramatically simpler when a computation behaves like a mathematical function.
+Boolean computation and logical reasoning are related but not identical.
 
-But C++ is intentionally full of effects.
+A runtime Boolean expression computes a value under C++ evaluation semantics.
+
+A logical connective combines propositions and evidence.
+
+C++L needs both.
+
+The design therefore gives specification contexts explicit logical meaning while
+leaving ordinary runtime expressions under C++ semantics.
+
+This distinction is especially important for:
+
+- short-circuit evaluation;
+- definedness;
+- side effects;
+- overloaded operators;
+- proof decomposition.
+
+The exact boundary is normative in `SPEC.md`.
+
+---
+
+# 22. Why equality has more than one notion
+
+C++L distinguishes:
+
+```text
+definitional equality
+propositional equality
+ordinary C++ operator==
+```
+
+because they answer different questions.
+
+Definitional equality is what the formal system can normalize to the same meaning.
+
+Propositional equality is a statement requiring evidence.
+
+C++ `operator==` is a runtime operation selected by C++ semantics.
+
+Treating those as interchangeable would allow runtime overloads, conversions, or
+implementation-defined behavior to leak into the proof calculus.
+
+---
+
+# 23. Why mathematical domains are visibly different from machine types
+
+Executable integers are machine values.
+
+Mathematical integers are not.
+
+Likewise:
+
+```text
+std::vector<T>
+```
+
+is a runtime container, while an abstract sequence used in a specification has no
+reason to inherit its allocator, capacity, iterator, lifetime, or ABI semantics.
+
+C++L therefore uses visibly formal domains such as:
+
+```text
+@N
+@Z
+@Seq<T>
+@Set<T>
+@Map<K, V>
+```
+
+The `@` prefix makes the boundary visually and lexically obvious.
+
+This prevents accidental claims that:
+
+```text
+int == mathematical integer
+```
+
+or:
+
+```text
+std::set<T> == mathematical set
+```
+
+and keeps proof-only abstraction separate from runtime representation.
+
+---
+
+# 24. Why refinements exist
+
+Many runtime types represent much broader domains than an application actually
+accepts.
 
 Examples include:
 
 ```text
-mutation
-I/O
-volatile access
-atomics
-external state
-resource ownership
+percentage
+index
+port number
+non-negative count
+validated identifier
+bounded quantity
 ```
 
-Rather than pretending all functions are mathematical functions, C++L makes purity an explicit concept.
+A refinement lets the logical type record that narrower domain.
 
-This allows stronger reasoning where appropriate without imposing functional programming on ordinary C++.
+This turns repeatedly re-proven conditions into reusable type-level facts.
 
-The exact purity rules belong in `SPEC.md`.
+The design goal is not to create wrapper objects.
+
+A refinement is intended to add **verification identity and obligations** while
+retaining the runtime representation of its base C++ type.
+
+That gives stronger static reasoning without forcing a new runtime abstraction.
 
 ---
 
-# 18. Why purity and verification are separate ideas
+# 25. Why refinement validity belongs to values, not variable names
 
-Purity and correctness answer different questions.
+A source variable is not eternally equal to the value it once held.
 
-A pure function can still compute the wrong result.
+Mutation matters.
 
-An imperative function can still satisfy a meaningful verified property.
+Aliasing matters.
 
-Keeping the concepts separate avoids forcing unrelated concerns into one modifier or one assurance category.
+Calls matter.
 
----
-
-# 19. Why termination is separate from purity
-
-A computation can have no side effects and still fail to terminate.
-
-That matters because unrestricted non-termination inside proof-relevant computation can undermine logical reasoning.
-
-At the same time, requiring every systems program to terminate is unrealistic:
-
-```text
-servers
-event loops
-kernels
-embedded controllers
-```
-
-The design therefore distinguishes ordinary runtime divergence from contexts where termination becomes logically important.
-
-The exact semantic rules belong in `SPEC.md`.
-
----
-
-# 20. Why refinements are useful
-
-Many C++ programs use primitive types for values with much narrower valid domains.
-
-For example:
-
-```cpp
-int percentage;
-int port;
-std::size_t index;
-int balance;
-```
-
-The compiler knows the machine type but not necessarily the domain meaning.
-
-Refinement types provide a way to attach such meaning directly to values.
-
-This can reduce repeated defensive reasoning and make invariants available to later verification.
-
-A refinement describes a logical value version, not a variable spelling or a
-permanent property of a C++ reference. Storage therefore has a separate identity.
-Exact aliases read and write its current version; a possible alias write replaces
-uncertain observations with fresh values. The same membership obligation applies
-to direct writes and values established by verified calls. This keeps call effects
-from becoming an alternative refinement authority. The kernel checks each
-obligation, while the Clang bridge owns runtime correspondence.
-
-Their exact construction and conversion semantics belong in `SPEC.md`.
-
----
-
-# 21. Why dependent types are part of the long-term design
-
-Some correctness properties depend directly on values:
-
-```text
-index bounded by a particular collection
-buffer sized for a particular payload
-matrix dimensions
-protocol phase
-array length
-resource count
-```
-
-Dependent typing offers a principled way to represent such relationships.
-
-C++L includes this direction because a verification language limited to value-independent types would eventually hit significant expressive limits.
-
-The design goal is progressive use rather than requiring dependent typing throughout normal C++ code.
-
----
-
-# 22. Why structural reasoning uses C++ types, not new data types
-
-Structural reasoning needs the verifier to know:
-
-```text
-the complete set of cases
-case distinction
-structural recursion
-induction principle
-exhaustiveness
-```
-
-These capabilities are valuable for formal reasoning over:
-
-```text
-trees
-syntax
-state machines
-results
-recursive structures
-```
-
-An earlier design obtained them by adding algebraic data types (`data Nat { Zero; Succ(Nat); };`) and runtime pattern matching (`match`). That was the wrong layer. C++L verifies real C++ programs. Requiring developers to restate their data structures in a second logical language would duplicate the type system, add runtime-looking control flow with its own lowering and ABI questions, and move proofs away from the code that actually executes. `match` has also been proposed for runtime pattern matching in C++ itself, which a C++ superset must not pre-empt.
-
-The verifier needs proof steps, not runtime constructs. C++L therefore:
-
-```text
-reasons directly over C++ types
-    struct, class, enum, std::variant, pointers, arrays, integers, templates
-
-adds proof-only constructs
-    cases       one proof obligation per case
-    induction   the domain's induction principle
-    @N @Z @Seq<T> @Set<T> @Map<K, V>
-
-erases all of them
-    zero runtime representation
-```
-
-Structural induction remains; the `Nat` datatype syntax does not.
-
-Arms bind structural components only, as in `successor(pred)` or `node(value, left, right)`. Induction hypotheses are not bound by position. The principle supplies them, and the existing `assume` names them, so program values and proof evidence stay separate. A mismatched `assume` is rejected rather than trusted.
-
-Case analysis covers the full C++ state space. An `enum class` value can match no enumerator (`unnamed(value)`), and a `std::variant` can be `valueless`. These residual cases are named and explicit. There is no wildcard arm, because a wildcard would silently absorb an enumerator added later. With named residual cases, adding an enumerator makes every proof that ignores it stop checking.
-
-Mathematical domains are still needed. A vector's contract is much easier to state over an `@Seq<int>` than over its buffer. The `@` spellings make the boundary visible: `int` is a machine integer and `@Z` is not. `std::set<int>` is a runtime container and `@Set<int>` is not. `@` never forms valid C++, so the spellings cannot collide with existing code. The set of domains is closed, and domains have no storage, ABI, lifetime, or `sizeof`. Other candidates were rejected. A `math` introducer is ambiguous when a type named `math` is in scope. Reserved `_Name` spellings look like ordinary C++ types and overlap names standard libraries already use.
-
-The normative semantics are in `SPEC.md` §19–§21. The decision is recorded in `docs/rfcs/0005-cxx-types-case-analysis-induction.md`.
-
----
-
-# 23. Why impossible states are valuable
-
-Repeatedly proving that invalid combinations never occur is often weaker than choosing a representation where they cannot be constructed naturally.
-
-For example:
-
-```cpp
-std::variant<Value, Error>
-```
-
-communicates more structural information than several loosely related flags and optionals.
-
-C++L therefore favors designs where useful invariants can move into types or constructors rather than remaining perpetual proof obligations.
-
-This is a design preference, not a requirement that ordinary C++ code be rewritten.
-
----
-
-# 24. Why ghost state exists
-
-Proofs sometimes need concepts that have no reason to exist at runtime:
-
-```text
-initial value
-logical history
-abstract resource token
-previous state
-induction witness
-```
-
-Representing those concepts explicitly can make proofs easier to understand.
-
-Making them runtime objects would impose unnecessary cost.
-
-Ghost state exists to support that proof vocabulary while keeping it conceptually separate from executable state.
-
-The exact erasure rules belong in `SPEC.md`.
-
----
-
-# 25. Why proof information is designed to erase
-
-C++L is aimed at systems programming.
-
-Requiring proof objects to remain in production binaries would introduce costs such as:
-
-```text
-extra memory
-extra execution
-different layouts
-different calling conventions
-additional runtime dependencies
-```
-
-for information whose primary purpose is compile-time verification.
-
-The design therefore strongly favors proof erasure.
-
-The normative erasure semantics belong in `SPEC.md`.
-
-The implementation of erasure belongs in `docs/ARCHITECTURE.md`.
-
----
-
-# 26. Why there is no theorem runtime in the basic model
-
-C++L is not intended to turn native C++ executables into theorem interpreters.
-
-The desired conceptual lifecycle is:
-
-```text
-reason before execution
-        ↓
-accept or reject the program
-        ↓
-ship ordinary native code
-```
-
-A mandatory proof VM or theorem garbage collector would move C++L away from its systems-programming goals.
-
-This does not prohibit runtime libraries for ordinary application purposes.
-
-It means proof itself is not intended to require one.
-
----
-
-# 27. Why runtime validation remains necessary
-
-Some information simply does not exist until execution:
-
-```text
-user input
-network packets
-database rows
-files
-sensor readings
-operating-system responses
-```
-
-No amount of compile-time reasoning can predict arbitrary future input.
-
-The design therefore includes an explicit boundary where dynamic information can be checked and then used with stronger knowledge afterward.
-
-This preserves a clear distinction between:
-
-```text
-universal compile-time reasoning
-```
-
-and:
-
-```text
-facts discovered during one execution
-```
-
-The normative distinction belongs in `SPEC.md`.
-
----
-
-# 28. Why failed proof and runtime checking are not automatically interchangeable
-
-Automatically turning an unproved claim into a runtime assertion may appear convenient.
-
-It also changes both:
-
-```text
-assurance
-```
-
-and:
-
-```text
-runtime behavior
-```
-
-without the developer explicitly choosing that trade.
-
-C++L therefore treats static verification and dynamic validation as separate tools.
-
-This makes the assurance model visible rather than silently degrading it.
-
----
-
-# 29. Why explicit unsafe regions are useful
-
-Systems programming inevitably reaches operations that may be difficult or impossible for a verifier to model immediately:
-
-```text
-assembly
-hardware registers
-platform intrinsics
-foreign runtimes
-low-level allocation
-special pointer manipulation
-```
-
-Rejecting every such program would make the language impractical.
-
-Pretending the operations are proven would make it unsound.
-
-An explicit unsafe boundary gives developers a way to acknowledge that gap.
-
-The exact semantics belong in `SPEC.md`.
-
----
-
-# 30. Why unsafe and trusted are different concepts
-
-Two fundamentally different situations occur at system boundaries:
-
-```text
-we are not proving this operation
-```
-
-and:
-
-```text
-we are accepting this proposition as an assumption
-```
-
-Combining them would make low-level code an easy path for injecting arbitrary logical facts.
-
-C++L therefore keeps these ideas conceptually separate.
-
-The normative distinction and propagation rules belong in `SPEC.md` and `TRUST.md`.
-
----
-
-# 31. Why explicit trust exists
-
-No practical system proves reality from first principles.
-
-Eventually a system depends on something such as:
-
-```text
-hardware
-compiler behavior
-operating-system behavior
-foreign libraries
-cryptographic assumptions
-environmental contracts
-formal models
-```
-
-Hiding those assumptions creates false confidence.
-
-Explicit trust exists so that assumptions can be inspected, reviewed, and traced.
-
-`TRUST.md` defines the actual trust model.
-
----
-
-# 32. Why assurance states should remain distinguishable
-
-A useful verification environment needs to communicate more than:
-
-```text
-green
-red
-```
-
-Different results may come from:
-
-```text
-proof
-explicit assumption
-dynamic validation
-lack of verification
-unsupported reasoning
-unsafe execution
-```
-
-Conflating these would make audit and CI information much less useful.
-
-The exact status set and semantics are normative matters and belong in `SPEC.md`.
-
----
-
-# 33. Why C++ machine semantics matter
-
-It is tempting for a verifier to simplify C++ arithmetic into ordinary mathematics.
-
-That can prove properties of a program that does not actually exist.
-
-For example, machine arithmetic includes issues such as:
-
-```text
-bounded representation
-overflow behavior
-bit operations
-shifts
-conversion rules
-```
-
-C++L is designed around semantic fidelity.
-
-Mathematical domains are useful, but they should be explicit abstractions rather than silent replacements for executable C++ semantics.
-
-The normative arithmetic model belongs in `SPEC.md`.
-
----
-
-# 34. Why floating point cannot be treated as real arithmetic
-
-The same reasoning applies more strongly to floating point.
-
-Floating-point computation involves behavior such as:
-
-```text
-rounding
-NaN
-infinity
-signed zero
-finite precision
-target-specific details
-```
-
-Treating those values as exact real numbers may produce elegant but irrelevant proofs.
-
-C++L therefore favors reasoning about the execution model that actually runs.
-
----
-
-# 35. Why undefined behavior is important to proof
-
-Formal verification depends on there being a meaningful execution semantics to reason about.
-
-Undefined behavior can remove that foundation.
-
-A verification system that proves properties while ignoring reachable undefined behavior risks proving statements about an idealized program rather than the executable.
-
-This is why modeling defined behavior is a central design concern.
-
-The exact verification requirements belong in `SPEC.md`.
-
----
-
-# 36. Why the C++ object model cannot be abstracted away casually
-
-For many systems properties, correctness depends on:
-
-```text
-lifetime
-ownership
-aliasing
-references
-moves
-destruction
-pointer validity
-object identity
-```
-
-A verifier that replaces those concepts with a much simpler imaginary machine may become easier to build but less relevant to real C++.
-
-C++L therefore favors progressively modeling actual C++ semantics instead of pretending they do not matter.
-
----
-
-# 37. Why existing C++ semantic infrastructure should be reused
-
-Reimplementing C++ semantics would require reproducing enormous complexity:
-
-```text
-name lookup
-overload resolution
-templates
-conversions
-constexpr
-object lifetime
-language modes
-extensions
-layout
-ABI rules
-```
-
-It would also create a risk that:
-
-```text
-the verifier understands one program
-```
-
-while:
-
-```text
-the native compiler executes another
-```
-
-The design therefore favors reusing mature C++ semantic infrastructure.
-
-The current implementation strategy is documented in `docs/ARCHITECTURE.md`.
-
----
-
-# 38. Why Clang is a natural semantic foundation
-
-Clang already provides mature machinery for understanding real C++ programs and integrates directly with LLVM.
-
-Using that machinery reduces duplication and keeps C++L close to mainstream compiler semantics.
-
-The motivation is not loyalty to one implementation.
-
-It is to avoid building and maintaining a second complete C++ frontend without a compelling reason.
-
-The exact dependency and integration model belongs in `docs/ARCHITECTURE.md`.
-
----
-
-# 39. Why a permanent compiler fork is undesirable by default
-
-Forking a major compiler can unlock deep customization.
-
-It also creates continuing costs:
-
-```text
-upstream merges
-security updates
-new language standards
-platform support
-toolchain drift
-release maintenance
-```
-
-C++L therefore prefers external integration where it provides sufficient control.
-
-A fork remains a possible engineering response if a hard requirement eventually justifies its cost.
-
-That decision would be architectural rather than semantic.
-
----
-
-# 40. Why C++L needs a formal representation distinct from the C++ AST
-
-A C++ AST is designed to represent C++.
-
-Verification needs additional concepts such as:
-
-```text
-propositions
-proof terms
-logical assumptions
-formal equality
-refinement facts
-verification obligations
-ghost information
-```
-
-Using the raw C++ AST as the entire proof language would couple proof reasoning too tightly to frontend representation details.
-
-C++L therefore benefits from a verification-oriented representation derived from resolved C++ meaning.
-
-The key design constraint is that this representation should describe the same program rather than inventing a competing interpretation.
-
-Its concrete form belongs in `docs/ARCHITECTURE.md`.
-
----
-
-# 41. Why semantic drift between verification and execution is dangerous
-
-One of the largest risks in verification tooling is:
-
-```text
-prove model A
-execute implementation B
-```
-
-If A and B diverge, the proof can remain internally correct while becoming irrelevant to the shipped program.
-
-C++L design therefore places strong importance on maintaining a defensible relationship between:
-
-```text
-formal meaning
-```
-
-and:
-
-```text
-runtime meaning
-```
-
-The mechanisms used to maintain that relationship belong in `docs/ARCHITECTURE.md` and `TRUST.md`.
-
----
-
-# 42. Why the compiler implementation can use a newer C++ standard
-
-The language used to build a compiler and the languages accepted by that compiler are separate concerns.
-
-Using a modern implementation standard gives the C++L codebase access to better implementation tools without requiring user projects to adopt the same source standard.
-
-This separation is particularly valuable for C++L because supporting existing code is a central project goal.
-
-The supported user language modes are defined in `COMPATIBILITY.md`.
-
----
-
-# 43. Why C++23 is the initial implementation choice
-
-C++23 keeps the implementation in the same ecosystem as Clang while providing useful modern facilities for compiler engineering.
-
-Examples include:
-
-```text
-strong value-oriented programming
-std::variant
-std::optional
-std::expected
-concepts
-modern constexpr
-improved standard-library facilities
-RAII
-```
-
-Using C++ also avoids introducing a large FFI boundary directly through the Clang-facing portion of the compiler.
-
-This is an implementation choice, not part of the C++L language definition.
-
----
-
-# 44. Why proof-critical implementation should be conservative
-
-Proof-critical code has a different optimization target from ordinary product code.
-
-Its primary qualities are:
-
-```text
-auditability
-predictability
-small surface area
-determinism
-clear ownership
-clear control flow
-```
-
-Clever abstractions can make such code harder to inspect.
-
-The design therefore favors deliberately boring implementation techniques in the most sensitive parts of the verifier.
-
-Exact coding and dependency rules belong in `AGENTS.md`, `TRUST.md`, and `docs/ARCHITECTURE.md`.
-
----
-
-# 45. Why self-hosted verification is a long-term goal
-
-A language intended to improve confidence in C++ software provides an especially interesting test case for itself:
-
-```text
-its own compiler
-```
-
-As C++L matures, compiler invariants can increasingly be expressed using C++L itself.
-
-That creates a gradual path:
-
-```text
-compiler written in C++
-        ↓
-C++L becomes capable
-        ↓
-critical invariants gain Laws
-        ↓
-more of the compiler verifies itself
-```
-
-This is preferable to requiring the initial implementation to bootstrap from an immature language.
-
----
-
-# 46. Why existing libraries remain part of the model
-
-Real C++ programs depend on enormous ecosystems.
-
-A useful C++ verification language should coexist with:
-
-```text
-standard libraries
-Boost
-platform SDKs
-C libraries
-C++ libraries
-binary dependencies
-proprietary libraries
-```
-
-Requiring replacement equivalents would undermine the purpose of extending C++.
-
-Different dependencies may provide different levels of formal information.
-
-C++L's design therefore focuses on making boundaries visible rather than pretending the external ecosystem is already verified.
-
----
-
-# 47. Why whole-world verification is not the starting point
-
-Proving:
-
-```text
-an application
-its libraries
-its operating system
-its hardware
-```
-
-before any local property becomes useful is unrealistic.
-
-C++L instead aims to support meaningful local guarantees whose assumptions and boundaries remain visible.
-
-This is a practical compromise in scope, not a claim that external assumptions disappear.
-
----
-
-# 48. Why proof failure should be conservative
-
-Verification has an asymmetric failure cost.
-
-A false negative means:
-
-```text
-something true was not proven
-```
-
-A false positive means:
-
-```text
-something unestablished was presented as proven
-```
-
-For a verification system, the latter is substantially more damaging.
-
-C++L therefore favors conservative failure when required reasoning is unavailable.
-
-The exact acceptance behavior belongs in `SPEC.md`.
-
----
-
-# 49. Why unsupported verification should not automatically reject ordinary C++
-
-Conservative proof behavior and C++ compatibility pull in different directions.
-
-The useful distinction is between:
-
-```text
-the verifier cannot establish this property
-```
-
-and:
-
-```text
-the underlying C++ program is invalid
-```
-
-Keeping those concepts separate allows C++L to remain useful as a C++ toolchain even while formal coverage grows incrementally.
-
-The normative behavior belongs in `SPEC.md` and `COMPATIBILITY.md`.
-
----
-
-# 50. Why tests remain important
-
-Formal proof addresses properties represented in the formal model.
-
-Software systems still interact with:
-
-```text
-real operating systems
-real files
-real networks
-performance constraints
-user interfaces
-external services
-hardware
-```
-
-Tests remain useful for those dimensions and for ordinary regression detection.
-
-C++L is therefore designed to complement testing rather than replace it.
-
-What it rejects conceptually is treating a collection of successful examples as equivalent to a universal proof.
-
----
-
-# 51. Why counterexamples are useful but asymmetric
-
-Finding one valid counterexample can destroy a universal claim.
-
-Failing to find one cannot generally establish the claim.
-
-This asymmetry makes counterexample generation extremely useful for:
-
-```text
-diagnostics
-debugging
-AI feedback
-proof development
-```
-
-without making it a replacement for proof.
-
----
-
-# 52. Why determinism matters
-
-Compiler verification results need to be useful in:
-
-```text
-CI
-code review
-reproducible builds
-distributed development
-security analysis
-caching
-```
-
-Results that depend accidentally on:
-
-```text
-pointer addresses
-thread schedules
-hash iteration order
-random proof-search order
-```
-
-would make those workflows difficult to trust.
-
-C++L therefore values deterministic semantic results even when search strategies themselves may use heuristics.
-
-The concrete mechanisms belong in `docs/ARCHITECTURE.md`.
-
----
-
-# 53. Why incremental verification matters
-
-Large C++ repositories may contain millions of lines of code.
-
-Rechecking every theorem after every edit would make verification impractical.
-
-The design therefore favors semantic dependency tracking so that a change invalidates the reasoning actually affected by that change.
+A refinement fact therefore belongs to a logical value/version, not permanently
+to the spelling of a variable or address of an object.
 
 Conceptually:
 
 ```text
+place
+    stores
+logical value version
+    for which
+refinement predicate is established
+```
+
+A later write creates a new value that needs its own justification.
+
+This choice is what makes refinements compatible with ordinary imperative C++
+instead of pretending C++ variables are immutable theorem constants.
+
+---
+
+# 26. Why semantic validity is recursive through objects
+
+If an object contains a refinement-bearing subobject, the validity of the object
+must account for that subobject.
+
+For example:
+
+```cpp
+type Positive = int where (self > 0);
+
+struct S {
+    Positive x;
+};
+```
+
+the verification meaning of a valid `S` includes the validity of `x`.
+
+Otherwise a refined member would become weaker merely because it was nested
+inside another C++ type.
+
+The design therefore treats semantic validity recursively.
+
+This supports modular reasoning at verified boundaries: a parameter whose type is
+known valid may expose the refinement facts of its current valid subobjects
+without requiring a proof of its entire historical construction provenance.
+
+Mutation still invalidates the affected current-version facts.
+
+---
+
+# 27. Why unverified callers can violate erased refinement preconditions
+
+Refinements are intended to erase.
+
+That means an ordinary C++ caller can physically construct a representation whose
+bytes do not satisfy the refinement predicate.
+
+This is not a contradiction.
+
+The verification guarantee is conditional on the semantic validity required at
+the verified boundary, just as a normal precondition is conditional on the caller
+satisfying it.
+
+The alternative would require hidden runtime wrappers or validators, which would
+break the project's erasure and ABI goals.
+
+---
+
+# 28. Why indexed refinements use declaration binders but C++-style application
+
+An indexed refinement has two different syntactic roles.
+
+Declaration introduces the index variable:
+
+```cpp
+type Index(unsigned n) = unsigned where (self < n);
+```
+
+Use applies the type constructor:
+
+```cpp
+Index<4u>
+```
+
+The distinction is intentional.
+
+Parentheses are natural for binding the declaration's formal index.
+
+Angle brackets integrate application with ordinary C++ type syntax, template
+arguments, nested type positions, and dependent contexts.
+
+Using `Index(4u)` as a type application would look like an expression or
+functional cast and would create a second, unnecessary type-application syntax.
+
+---
+
+# 29. Why casts do not manufacture refinement
+
+A C++ cast can change the runtime interpretation or representation of a value
+according to C++ rules.
+
+It does not prove an arbitrary predicate.
+
+Therefore:
+
+```text
+runtime conversion
+```
+
+and:
+
+```text
+refinement introduction
+```
+
+must remain distinct operations in the verification model.
+
+This is a recurring design theme: C++ operations keep their C++ meaning, while
+logical authority comes only from established evidence.
+
+---
+
+# 30. Why runtime validation remains necessary
+
+Some facts do not exist until execution.
+
+Examples include values obtained from:
+
+- networks;
+- users;
+- databases;
+- files;
+- sensors;
+- operating-system calls;
+- foreign libraries.
+
+Compile-time proof cannot predict arbitrary future input.
+
+The right model is therefore:
+
+```text
+runtime value
+    ↓
+ordinary C++ validation
+    ↓
+successful control-flow path
+    ↓
+stronger fact available to verification
+```
+
+C++L does not need a mandatory validation runtime to support this idea.
+
+Ordinary C++ performs the check; the verifier reasons about the successful path.
+
+---
+
+# 31. Why failed proof does not silently become runtime validation
+
+A failed static proof and a runtime check have different meanings.
+
+Silently replacing one with the other changes:
+
+- assurance;
+- runtime behavior;
+- failure mode;
+- performance;
+- deployment semantics.
+
+That trade should never happen accidentally.
+
+If the programmer wants a runtime check, it should be present as runtime C++.
+
+If the programmer requested proof, inability to prove should remain inability to
+prove.
+
+---
+
+# 32. Why storage needs a semantic identity separate from values
+
+Imperative C++ distinguishes:
+
+```text
+where a value is stored
+```
+
+from:
+
+```text
+which value is currently stored there
+```
+
+Proof reasoning needs the same distinction.
+
+A storage location may:
+
+- be written;
+- be aliased;
+- have subobjects;
+- change lifetime;
+- be reached through references;
+- be reached through pointers;
+- be invalidated by calls.
+
+This motivates the conceptual distinction between a **place** and a **logical
+value version**.
+
+The exact implementation representation belongs in `ARCHITECTURE.md`; the design
+reason is that refinements and contracts must track changing storage without
+confusing storage identity with immutable logical values.
+
+---
+
+# 33. Why member paths and projections need a common model
+
+Special-casing:
+
+```text
+local
+member
+member of member
+array element
+reference target
+pointer target
+```
+
+independently creates duplicated semantics.
+
+C++L instead benefits from one conceptual storage model in which those forms are
+different projections of storage.
+
+That makes the important rules uniform:
+
+```text
+read current value
+write new value
+invalidate possible aliases
+re-establish refinement validity
+check capability before access
+```
+
+Uniformity is important for both soundness and implementation maintainability.
+
+---
+
+# 34. Why alias reasoning is conservative
+
+Aliasing is one of the places where unsound optimism is particularly dangerous.
+
+If the verifier assumes two places are disjoint when they may actually refer to
+the same storage, it can preserve facts that runtime mutation has invalidated.
+
+The preferred asymmetry is therefore:
+
+```text
+prove disjointness when justified
+otherwise assume mutation may interfere
+```
+
+This can lose proof power.
+
+It does not invent correctness.
+
+That trade matches the project's general preference for honest incompleteness over
+false proof.
+
+---
+
+# 35. Why type-based alias shortcuts are treated cautiously
+
+C++ aliasing rules are entangled with defined behavior.
+
+Using a type-based aliasing conclusion as a premise before the verifier has
+established that the execution respects the relevant C++ rules can become
+circular:
+
+```text
+assume program has no forbidden aliasing
+therefore prove operation is safe
+therefore conclude program has no relevant UB
+```
+
+C++L therefore favors alias conclusions grounded in resolved object/storage
+identity and explicitly modeled semantics rather than optimistic assumptions that
+presuppose the safety being proved.
+
+---
+
+# 36. Why memory capabilities are separate facts
+
+A non-null pointer does not imply:
+
+```text
+live object
+readable storage
+writable storage
+initialized value
+sufficient extent
+valid provenance
+correct dynamic object
+```
+
+Those are different properties.
+
+Treating all of them as consequences of:
+
+```cpp
+p != nullptr
+```
+
+would create a large hidden axiom.
+
+C++L therefore separates pointer-state facts from memory-access capabilities.
+
+This permits proofs to say exactly what is known rather than promoting one weak
+fact into many stronger ones.
+
+---
+
+# 37. Why bounds are not the same as capabilities
+
+Bounds are often arithmetic relationships:
+
+```text
+index < extent
+```
+
+while readability/writability/lifetime are properties of storage.
+
+Mixing them into one undifferentiated "pointer valid" bit would make the model
+less precise and harder to compose.
+
+The design therefore favors separate reasoning:
+
+```text
+storage capability
++
+arithmetic bounds proof
+```
+
+before an indexed access is justified.
+
+---
+
+# 38. Why `non_null` binds nothing
+
+Case analysis over a pointer can establish:
+
+```text
+null
+```
+
+or:
+
+```text
+non_null
+```
+
+The non-null case intentionally does not bind a magical "valid address" object.
+
+Doing so would encourage users and implementation code to treat non-nullness as a
+capability.
+
+The proof obtains exactly the fact being split on and no stronger one.
+
+---
+
+# 39. Why the C++ object model cannot be abstracted away casually
+
+Real C++ correctness depends on:
+
+- lifetime;
+- active union member;
+- subobject identity;
+- references;
+- aliasing;
+- moves;
+- destruction;
+- pointer provenance;
+- initialization;
+- virtual dispatch;
+- object construction;
+- exception paths.
+
+A verifier can become simpler by replacing those semantics with an idealized
+machine.
+
+It also becomes less relevant to actual C++.
+
+C++L therefore chooses progressive fidelity to the real object model rather than
+pretending difficult C++ semantics do not exist.
+
+---
+
+# 40. Why structural reasoning uses existing C++ types
+
+Proofs need structural operations such as:
+
+- case analysis;
+- exhaustiveness;
+- decomposition;
+- induction.
+
+An earlier possible direction was to introduce a second family of algebraic data
+types and runtime-looking pattern matching.
+
+That would duplicate the runtime type model and move proof away from the program
+that actually executes.
+
+C++L instead reasons over existing C++ structures where a sound logical model is
+available.
+
+Examples include:
+
+- scoped enums;
+- `std::variant`;
+- `std::optional`;
+- `std::expected`;
+- pointers;
+- records;
+- tuples;
+- arrays.
+
+The proof language adds proof-only structural operations rather than a parallel
+runtime data language.
+
+---
+
+# 41. Why case analysis must cover the real C++ state space
+
+A proof is only exhaustive if its cases correspond to every runtime state the
+modeled type can actually inhabit.
+
+That means convenient source-level intuition is not always enough.
+
+Examples:
+
+- a scoped enum may hold an underlying value with no enumerator;
+- a `std::variant` may be valueless;
+- an optional may be disengaged;
+- a pointer may be null.
+
+Residual states therefore matter.
+
+If the proof language ignored them, it could prove a theorem about a smaller
+fictional datatype rather than the C++ object.
+
+---
+
+# 42. Why residual cases are named rather than hidden by a wildcard
+
+A wildcard makes proofs brittle in a subtle way.
+
+Suppose a proof handles all known enum alternatives with:
+
+```text
+_
+```
+
+as the fallback.
+
+Adding a new named state later may silently flow through that old fallback.
+
+C++L prefers explicit residual cases so that structural evolution causes proofs to
+be revisited when appropriate.
+
+The intent is not verbosity for its own sake.
+
+The intent is to make exhaustiveness maintainable.
+
+---
+
+# 43. Why decomposition and case analysis are different
+
+A sum-like value has alternatives.
+
+A product-like value has components.
+
+Those are different proof operations.
+
+Case analysis divides the state space.
+
+Product decomposition merely exposes components of the one current state.
+
+Keeping them separate avoids treating every record as if it represented multiple
+alternatives and makes proof obligations correspond more directly to the
+structure being reasoned about.
+
+---
+
+# 44. Why induction is proof-only
+
+Induction is a way to establish a proposition over a recursively or
+well-foundedly structured domain.
+
+It is not a runtime pattern-matching construct.
+
+Keeping induction proof-only avoids:
+
+- new runtime control flow;
+- ABI questions;
+- duplicated data representations;
+- confusion between recursive execution and proof reasoning.
+
+The runtime program continues to use ordinary C++ constructs.
+
+---
+
+# 45. Why ghost state exists
+
+Some useful proof concepts have no reason to survive execution.
+
+Examples include:
+
+- snapshots;
+- logical histories;
+- auxiliary counters;
+- abstract resource tokens;
+- witnesses;
+- proof bookkeeping.
+
+Representing those concepts as normal runtime objects could add:
+
+- storage;
+- construction;
+- destruction;
+- side effects;
+- ABI differences.
+
+Ghost state gives proofs an auxiliary vocabulary while preserving the principle
+that proof-only information should not alter runtime behavior.
+
+---
+
+# 46. Why ghost operations are restricted
+
+Erasure is only sound if removing ghost state cannot change observable execution.
+
+Therefore the design of ghost state cannot permit:
+
+```text
+runtime branch depends on ghost
+runtime return depends on ghost
+ghost constructor performs observable I/O
+ghost destructor mutates runtime state
+ghost address escapes to runtime
+```
+
+The exact rules are normative in `SPEC.md`.
+
+The rationale is simple: proof-only state is allowed precisely because execution
+does not depend on it.
+
+---
+
+# 47. Why `unsafe` exists
+
+Systems programming reaches operations a verifier may not model completely.
+
+Examples include:
+
+- inline assembly;
+- hardware registers;
+- platform intrinsics;
+- low-level allocators;
+- foreign runtimes;
+- special pointer manipulations.
+
+Rejecting every such program would make the language unusable.
+
+Pretending those operations are proven would make the language dishonest.
+
+An explicit `unsafe` boundary records that the strongest guarantee stops there.
+
+---
+
+# 48. Why `unsafe` does not create proof
+
+"Not proven" and "assumed true" are fundamentally different states.
+
+If `unsafe` automatically generated logical facts, any low-level operation could
+become a proof escape hatch.
+
+C++L therefore keeps:
+
+```text
+unsafe
+```
+
+separate from:
+
+```text
+trusted
+```
+
+`unsafe` acknowledges missing verification.
+
+Trust explicitly admits a proposition.
+
+That difference is central to auditability.
+
+---
+
+# 49. Why trusted assumptions exist
+
+No practical verification system proves the universe from first principles.
+
+Eventually a program relies on something external:
+
+- hardware behavior;
+- an operating-system contract;
+- an external library;
+- a protocol guarantee;
+- a device specification;
+- a cryptographic assumption;
+- environmental behavior.
+
+The wrong response is to hide that dependence.
+
+C++L therefore permits explicit trust so that assumptions can be named, reviewed,
+tracked, and propagated.
+
+The exact trusted surface and trust closure are defined by `SPEC.md` and
+`TRUST.md`.
+
+---
+
+# 50. Why trust is not a fallback for failure
+
+A proof failure is evidence that the requested derivation has not been
+established.
+
+Automatically converting:
+
+```text
+UNRESOLVED
+```
+
+into:
+
+```text
+TRUSTED
+```
+
+would make trust invisible and make the language's assurance levels meaningless.
+
+Explicit trust must be an intentional source-level act, not an error-recovery
+strategy.
+
+---
+
+# 51. Why assurance states remain distinct
+
+A mature verification workflow needs more information than:
+
+```text
+green / red
+```
+
+Different code may be:
+
+- proven;
+- dependent on explicit trust;
+- runtime-checked;
+- unsafe;
+- unverified;
+- unresolved.
+
+Those states describe different assurance.
+
+Keeping them distinct helps:
+
+- code review;
+- CI policy;
+- release auditing;
+- security analysis;
+- trust reporting;
+- agentic workflows.
+
+The normative status meanings belong in `SPEC.md`.
+
+---
+
+# 52. Why machine arithmetic is modeled as machine arithmetic
+
+Replacing executable integer arithmetic with mathematical integers silently is
+tempting because proofs become simpler.
+
+It is also wrong for many C++ programs.
+
+Machine arithmetic involves:
+
+- finite widths;
+- promotions;
+- conversions;
+- wrapping where defined;
+- undefined overflow where applicable;
+- shifts;
+- bit operations;
+- signedness.
+
+C++L therefore reasons about the machine operation that actually executes unless
+the programmer deliberately moves into a mathematical domain.
+
+This keeps proof relevant to runtime behavior.
+
+---
+
+# 53. Why signed overflow cannot be hand-waved away
+
+For ordinary signed C++ arithmetic, "the mathematical result exists" does not imply
+"the C++ operation has defined behavior."
+
+A verification system that proves:
+
+```text
+a + b = c
+```
+
+while ignoring reachable signed overflow may be proving a theorem about a
+different language.
+
+Definedness therefore has to participate in proof.
+
+This is representative of a broader design rule:
+
+> Verification may abstract C++ semantics only when the abstraction is sound for
+> the property being claimed.
+
+---
+
+# 54. Why floating point is not real arithmetic
+
+C++ floating-point execution includes:
+
+- rounding;
+- finite precision;
+- infinities;
+- NaNs;
+- signed zero;
+- target and mode effects.
+
+Treating floats as exact real numbers may produce elegant but irrelevant
+theorems.
+
+The project therefore prefers an explicit abstraction boundary when real-number
+reasoning is desired rather than silently changing the meaning of floating
+runtime values.
+
+---
+
+# 55. Why undefined behavior is central to proof
+
+Formal reasoning requires a meaningful execution to reason about.
+
+Reachable undefined behavior can destroy that foundation.
+
+A verifier that proves postconditions while ignoring an earlier UB path risks
+proving statements about an execution that C++ does not define.
+
+This is why C++L treats defined behavior as part of the verification problem, not
+as an unrelated static-analysis concern.
+
+---
+
+# 56. Why exceptions need explicit semantic treatment
+
+Exceptions create control-flow and lifetime behavior that differs from normal
+return.
+
+A normal postcondition cannot automatically be assumed on an exceptional exit.
+
+Likewise:
+
+- partially constructed objects;
+- destructors during unwinding;
+- mutation before throw;
+- exception specifications;
+
+can affect what remains true.
+
+C++L therefore avoids treating exceptions as merely another hidden branch of
+normal-return reasoning.
+
+---
+
+# 57. Why concurrency cannot be proven with sequential reasoning
+
+Threads, atomics, locks, memory ordering, and data races introduce semantics that
+do not reduce to ordinary sequential paths.
+
+A proof that is sound for one thread in isolation may be invalid under concurrent
+interleavings.
+
+The design therefore rejects the shortcut:
+
+```text
+verified sequentially
+therefore thread-safe
+```
+
+Concurrency properties require semantics adequate to the concurrency claim.
+
+Ordinary concurrent C++ can still exist outside such verified claims.
+
+---
+
+# 58. Why C++ templates remain C++ templates
+
+C++L does not need a second runtime generic-programming system.
+
+C++ templates already define:
+
+- generic declarations;
+- substitution;
+- instantiation;
+- specialization;
+- overload interactions;
+- dependent names.
+
+C++L's formal layer should attach obligations to the actual instantiated C++
+semantics rather than invent a parallel template mechanism.
+
+This is also why indexed refinements use C++-style angle-bracket application.
+
+---
+
+# 59. Why concepts are not automatically proofs
+
+A concept constrains C++ template participation according to C++ semantics.
+
+That does not automatically make every proposition suggested by its spelling a
+formal theorem.
+
+For example, a concept named `Ordered` is still whatever C++ expression defines
+it.
+
+C++L therefore distinguishes:
+
+```text
+C++ constraint satisfaction
+```
+
+from:
+
+```text
+formal evidence for a proposition
+```
+
+unless a specified correspondence explicitly connects them.
+
+---
+
+# 60. Why standard-library models are semantic adapters, not replacements
+
+Real C++ programs depend heavily on the standard library.
+
+C++L should reason about useful abstractions such as:
+
+- `std::optional`;
+- `std::variant`;
+- `std::expected`;
+- arrays;
+- spans;
+- vectors;
+- strings;
+- smart pointers;
+- algorithms.
+
+But proof models must describe the public semantics relevant to the claim rather
+than assume private implementation layout.
+
+This preserves portability and keeps formal reasoning connected to the abstraction
+the C++ program actually uses.
+
+---
+
+# 61. Why headers and translation units remain first-class
+
+C++ interfaces do not live only in implementation files.
+
+Headers and module interfaces contain:
+
+- declarations;
+- templates;
+- inline functions;
+- types;
+- constants;
+- contracts;
+- reusable proof declarations.
+
+Verification therefore has to compose across translation units without changing
+native calling conventions merely to transport proof metadata.
+
+This is part of fitting the C++ ecosystem rather than imposing a new project
+organization.
+
+---
+
+# 62. Why proof metadata is separate from native ABI
+
+A caller may need formal information that the native ABI does not encode.
+
+Examples include:
+
+- contracts;
+- refinement predicates;
+- effect summaries;
+- theorem evidence;
+- trust provenance.
+
+Changing native calling conventions to carry that information would undermine
+interoperability.
+
+The design therefore treats verification metadata and runtime ABI as separate
+layers.
+
+The metadata may be required for proof, but it should not become hidden runtime
+state.
+
+---
+
+# 63. Why proof information erases
+
+Proof evidence exists to justify compilation, not to become production data by
+default.
+
+Keeping it at runtime would create unnecessary:
+
+- memory cost;
+- code size;
+- calling-convention effects;
+- object-layout effects;
+- deployment dependencies.
+
+The preferred lifecycle is:
+
+```text
+specify
+    ↓
+prove
+    ↓
+accept/reject
+    ↓
+erase proof-only information
+    ↓
+compile ordinary C++
+```
+
+This is one of the project's defining systems-programming choices.
+
+---
+
+# 64. Why there is no mandatory theorem runtime
+
+C++L is not intended to make every native executable host a proof interpreter.
+
+A mandatory theorem VM, proof garbage collector, or runtime proof-object system
+would undermine the goal of adding compile-time assurance to ordinary native C++.
+
+Runtime libraries remain available for ordinary application needs.
+
+What is rejected is a runtime dependency that exists only because static proof was
+used.
+
+---
+
+# 65. Why native ABI stability matters
+
+C++ is often selected specifically because it can interoperate with:
+
+- existing binaries;
+- operating-system APIs;
+- platform frameworks;
+- C interfaces;
+- plugin systems;
+- device SDKs.
+
+Verification-only features that unnecessarily alter representation or calling
+conventions would make adoption much harder.
+
+This pressure strongly favors:
+
+```text
+proof identity != runtime representation
+```
+
+for refinements and other proof-only abstractions.
+
+---
+
+# 66. Why erasure must preserve runtime meaning
+
+Erasure is not a cosmetic compiler pass.
+
+It is the boundary connecting the verified source to the program that executes.
+
+If erasure:
+
+- removes a real runtime check;
+- alters an expression;
+- changes control flow;
+- changes object lifetime;
+- changes layout;
+- changes calling convention;
+
+then verification may no longer describe the shipped program.
+
+This is why erasure correctness belongs to the runtime trust chain even though the
+proof constructs themselves are compile-time-only.
+
+---
+
+# 67. Why a small proof kernel is desirable but not the whole story
+
+A small proof checker is easier to audit than an entire compiler.
+
+That is a valuable architecture.
+
+But a kernel only proves the proposition it receives.
+
+If a frontend maps:
+
+```text
+source property P
+```
+
+to:
+
+```text
+different core property Q
+```
+
+a perfect kernel can soundly prove `Q` while the tool incorrectly reports `P`.
+
+The project therefore distinguishes:
+
+```text
+logical proof validity
+```
+
+from:
+
+```text
+source-to-proof correspondence
+```
+
+and from:
+
+```text
+verified-source-to-runtime correspondence
+```
+
+`TRUST.md` defines those boundaries precisely.
+
+The design principle is not "trust only the kernel."
+
+It is "make each unavoidable trust boundary explicit and shrink it where
+independent checking is practical."
+
+---
+
+# 68. Why C++ semantic infrastructure should be reused
+
+Reimplementing C++ would require reproducing enormous complexity:
+
+- preprocessing;
+- name lookup;
+- overload resolution;
+- templates;
+- conversions;
+- `constexpr`;
+- access control;
+- object lifetime;
+- value categories;
+- language modes;
+- extensions;
+- layout;
+- ABI rules.
+
+It would also create another opportunity for verification semantics to drift from
+execution semantics.
+
+C++L therefore prefers to consume resolved C++ meaning from mature C++ semantic
+infrastructure rather than creating a competing C++ implementation without a
+compelling reason.
+
+The concrete integration strategy belongs in `ARCHITECTURE.md`.
+
+---
+
+# 69. Why Clang is a natural semantic authority without being the language definition
+
+Clang is an attractive implementation foundation because it already understands
+real C++ and integrates with LLVM.
+
+That does not mean C++L semantics are defined as "whatever Clang happens to do."
+
+The language definition remains in C++L's normative documents.
+
+The implementation uses a selected C++ semantic authority to answer ordinary C++
+questions within the supported compatibility envelope.
+
+This distinction allows implementation strategy to evolve without turning the
+current frontend into the specification.
+
+---
+
+# 70. Why a permanent compiler fork is not a design requirement
+
+A compiler fork can provide deeper hooks.
+
+It also creates continuing costs in:
+
+- upstream merging;
+- security updates;
+- new C++ standards;
+- platform support;
+- release maintenance.
+
+C++L should not require a permanent fork merely because proof is being added.
+
+If a future hard requirement justifies one, that is an architectural decision
+that should be evaluated on its merits rather than baked into the language model.
+
+---
+
+# 71. Why C++L needs a verification representation distinct from the C++ AST
+
+A C++ AST represents C++ syntax and semantic entities.
+
+Verification additionally needs:
+
+- propositions;
+- proof terms;
+- logical binders;
+- obligations;
+- logical value versions;
+- places/storage facts;
+- refinement validity;
+- effect summaries;
+- proof-only mathematical values.
+
+Trying to make the raw C++ AST be the entire proof representation would entangle
+logical reasoning with frontend implementation details.
+
+C++L therefore benefits from a verification-oriented representation derived from
+resolved C++ meaning.
+
+The crucial requirement is correspondence: the verification representation must
+describe the same program, not invent a more convenient one.
+
+---
+
+# 72. Why semantic drift is treated as a first-class risk
+
+One of the worst possible verification failures is:
+
+```text
+prove model A
+execute program B
+```
+
+where the difference is invisible to the user.
+
+This can happen through:
+
+- incorrect source projection;
+- wrong overload correspondence;
+- missed conversions;
+- stale metadata;
+- incorrect alias modeling;
+- unsound effect summaries;
+- incorrect erasure;
+- backend mismatch.
+
+C++L therefore treats correspondence as an explicit design and trust problem
+rather than assuming that a correct proof kernel automatically solves it.
+
+---
+
+# 73. Why tests remain necessary
+
+Formal proof only covers properties represented in the formal model.
+
+Real software also has concerns such as:
+
+- performance;
+- UI behavior;
+- operational integration;
+- deployment;
+- external services;
+- hardware;
+- platform bugs;
+- properties not yet formalized.
+
+Tests remain valuable for those concerns and for compiler regression detection.
+
+What C++L rejects is the equivalence:
+
+```text
+many passing examples
+=
+universal theorem
+```
+
+Testing and proof are complementary.
+
+---
+
+# 74. Why counterexamples are useful but asymmetric
+
+One valid counterexample can refute a universal statement.
+
+Failure to discover a counterexample usually cannot establish the statement.
+
+This makes counterexample generation highly valuable for:
+
+- diagnostics;
+- debugging;
+- proof development;
+- fuzzing;
+- AI repair loops.
+
+It does not make counterexample search a proof checker.
+
+---
+
+# 75. Why deterministic semantic results matter
+
+Verification participates in:
+
+- CI;
+- code review;
+- reproducible builds;
+- security auditing;
+- caching;
+- distributed development.
+
+Accepted or rejected proof meaning should not accidentally depend on:
+
+- memory addresses;
+- hash iteration order;
+- thread scheduling;
+- temporary paths;
+- random search order.
+
+Search may be heuristic.
+
+The semantic result, given the same formal inputs and accepted evidence, should be
+stable.
+
+---
+
+# 76. Why semantic identity matters more than file identity
+
+Proof validity depends on semantic inputs, not editor accidents.
+
+A timestamp, temporary path, or source buffer address is not a mathematical
+dependency.
+
+This motivates using semantic identities for:
+
+- declarations;
+- obligations;
+- imported contracts;
+- proof artifacts;
+- caches.
+
+That improves reproducibility and incremental verification without turning cache
+mechanics into language semantics.
+
+---
+
+# 77. Why incremental verification matters
+
+Large C++ repositories cannot afford to reprove everything after every edit.
+
+The desired model is:
+
+```text
 source change
     ↓
-semantic change
+semantic dependency change
     ↓
 affected obligations
 ```
@@ -1910,100 +2117,223 @@ rather than:
 ```text
 source change
     ↓
-prove entire repository again
+verify entire world
 ```
 
-The implementation strategy belongs in `docs/ARCHITECTURE.md`.
+The optimization is architectural, but the design pressure affects how formal
+interfaces and semantic identities should be structured.
+
+Proof reuse must never weaken dependency correctness.
 
 ---
 
-# 54. Why semantic identity matters more than file identity
+# 78. Why proof-critical code should be conservative
 
-Proof validity depends on semantic inputs.
+Proof-critical code has a different optimization target from product features.
 
-It does not fundamentally depend on:
+Useful qualities include:
+
+- small surface area;
+- explicit control flow;
+- determinism;
+- auditable data structures;
+- obvious ownership;
+- minimal hidden state;
+- negative-testability.
+
+A clever abstraction is not automatically bad.
+
+But sophistication that obscures the proof acceptance path raises the cost of
+auditing the system whose job is to establish confidence.
+
+---
+
+# 79. Why contextual C++L vocabulary was chosen
+
+C++ already contains decades of user identifiers.
+
+Words useful to C++L, such as:
 
 ```text
-file timestamp
-editor session
-temporary path
-memory address
+law
+proof
+pure
+ghost
+verified
 ```
 
-This motivates designing future proof artifacts and caches around stable semantic identity.
+may already occur in valid C++ programs.
 
-That supports:
+Globally reserving them would create unnecessary source incompatibility.
+
+Contextual interpretation allows C++L to add a formal surface while preserving
+ordinary use outside the relevant grammatical contexts.
+
+---
+
+# 80. Why existing C++ keywords are not repurposed casually
+
+Words such as:
 
 ```text
-reproducibility
-incremental checking
-remote caches
-distributed CI
+requires
+concept
+constexpr
+consteval
 ```
 
-without making caching part of the language semantics.
+already have precise C++ meanings.
 
----
+Giving them unrelated proof semantics would create both cognitive and parsing
+ambiguity.
 
-# 55. Why native ABI compatibility matters
-
-C++ is frequently chosen precisely because it can interact directly with existing native binaries and platform interfaces.
-
-Formal features that unnecessarily alter calling conventions or runtime representations would make adoption much harder.
-
-This creates strong design pressure toward compile-time-only representations for compile-time-only information.
-
-The actual ABI guarantees belong in `COMPATIBILITY.md`.
-
----
-
-# 56. Why headers remain important
-
-C++ does not place all important semantics in `.cpp` files.
-
-Headers frequently contain:
+The design preference is:
 
 ```text
-public interfaces
-templates
-inline functions
-types
-concepts
-constants
-library contracts
+reuse C++ syntax when the concept really is the C++ concept
+introduce distinct formal vocabulary when the concept is new
 ```
 
-A verification system designed around implementation files alone would not fit the language ecosystem.
-
-C++L therefore treats headers as first-class places for formal interfaces.
-
-The compatibility details belong in `COMPATIBILITY.md`.
+This is why `requires` remains C++ rather than becoming a C++L contract keyword.
 
 ---
 
-# 57. Why a dedicated file extension is optional
+# 81. Why C++ declarators remain recognizable
 
-A dedicated extension can communicate:
+C++ declarators already carry substantial complexity:
+
+- templates;
+- attributes;
+- cv/ref qualifiers;
+- `noexcept`;
+- constraints;
+- trailing return types;
+- `override`;
+- `final`;
+- calling conventions.
+
+Inserting an unrelated grammar deeply inside that machinery would increase
+ambiguity and implementation pressure.
+
+C++L therefore prefers extension points that leave the underlying C++ declarator
+structurally recognizable.
+
+The exact legal placement is owned by `GRAMMAR.md`.
+
+---
+
+# 82. Why declaration and application syntax are not always identical
+
+Binding parameters and applying a parameterized type are different operations.
+
+For indexed refinements:
+
+```cpp
+type Index(unsigned n) = unsigned where (self < n);
+```
+
+the declaration introduces `n`.
+
+Use:
+
+```cpp
+Index<4u>
+```
+
+applies the type constructor.
+
+This design deliberately follows C++-style type application rather than
+function-call-looking syntax.
+
+It makes indexed refinements fit naturally inside existing C++ type grammar.
+
+---
+
+# 83. Why C++L does not define `data` or runtime `match`
+
+Adding algebraic data types and runtime pattern matching would create a second
+runtime type/control-flow layer.
+
+That would raise questions about:
+
+- representation;
+- constructors;
+- ABI;
+- lifetime;
+- interoperability;
+- lowering;
+- duplicate modeling of existing C++ types.
+
+C++L's need is proof decomposition, not a replacement runtime data model.
+
+Therefore structural proof is expressed through proof-only constructs over
+existing C++ types.
+
+---
+
+# 84. Why proof arm syntax is uniform
+
+Case analysis, product decomposition, and induction all benefit from a consistent
+visual grammar:
 
 ```text
-this source intentionally uses C++L syntax
+Label(bindings) => {
+    ...
+}
 ```
 
-and may be convenient for tools.
+Uniformity reduces the number of proof-specific mini-languages users and tools
+must understand.
 
-Requiring one for every existing source file would create migration work with little semantic value.
-
-The design therefore favors language capability over filename identity.
-
-Supported extensions belong in `COMPATIBILITY.md`.
+The labels still have domain-specific meaning; the shared structure is about
+readability and tooling.
 
 ---
 
-# 58. Why grammar is separate from semantics
+# 85. Why proof binders and assumptions are distinct
 
-Concrete syntax and semantic meaning evolve differently.
+A runtime/program value and a proof hypothesis are different things.
 
-For example, the project might eventually improve the spelling of a construct without changing its formal meaning.
+Induction, for example, may introduce:
+
+- a predecessor value;
+- an induction hypothesis about that predecessor.
+
+Binding both positionally in one arm would blur program data with proof evidence.
+
+C++L therefore prefers structural binders for values and explicit `assume` for
+context-supplied proof hypotheses.
+
+That keeps the proof context visible and prevents a pattern arm from silently
+granting arbitrary propositions.
+
+---
+
+# 86. Why `assume` names evidence instead of creating it
+
+The word "assume" can be dangerous in a proof language.
+
+If it meant "make this proposition true," it would be an axiom escape hatch.
+
+C++L instead uses it to name a premise already supplied by the current proof
+context.
+
+That lets proof scripts give readable names to evidence without enlarging the
+assumption set.
+
+Explicit trust remains a separate language mechanism.
+
+---
+
+# 87. Why grammar is separate from semantics
+
+Syntax and meaning evolve at different rates.
+
+A language may improve the spelling of a construct without changing its formal
+semantics.
+
+Conversely, a semantic clarification should not require rewriting every grammar
+production explanation.
 
 Separating:
 
@@ -2017,497 +2347,327 @@ from:
 SPEC.md
 ```
 
-keeps both documents easier to reason about.
+lets each document be precise about one job.
 
-`DESIGN.md` explains why a particular syntax direction was selected but does not define what syntax is legal.
+`DESIGN.md` explains why a spelling direction was chosen only when that rationale
+is important to preserve.
 
 ---
 
-# 59. Why design rationale is separate from specification
+# 88. Why design rationale is separate from the specification
 
 A specification answers:
 
 ```text
-What does the language mean?
+What does this program mean?
 ```
 
 Design rationale answers:
 
 ```text
-Why was that meaning chosen?
+Why did we choose that meaning?
 ```
 
-Mixing them makes it difficult to distinguish:
+Mixing the two makes it difficult to distinguish:
 
-```text
-normative requirement
-```
+- mandatory behavior;
+- historical explanation;
+- engineering preference;
+- rejected alternative;
+- future evaluation criterion.
 
-from:
+C++L therefore keeps rationale non-normative.
 
-```text
-motivation
-historical reason
-tradeoff
-preference
-```
-
-C++L deliberately separates the two.
+This also means obsolete rationale can be rewritten without silently changing the
+language.
 
 ---
 
-# 60. Why trust policy is separate from general design
+# 89. Why trust policy is separate from design rationale
 
-Trust deserves focused treatment.
+"Why minimize trust?" is a design question.
 
-Questions such as:
+"What exactly is trusted?" is a normative trust question.
 
-```text
-What is inside the TCB?
-What assumptions can enter a proof?
-How are assumptions reported?
-What happens when trust propagates?
-```
+The second requires much more precision.
 
-need more precision than a general rationale document should provide.
+`DESIGN.md` therefore explains the motivation for:
 
-`DESIGN.md` explains why explicit and minimal trust is desirable.
+- explicit assumptions;
+- independent checking;
+- visible trust closure;
+- correspondence auditing.
 
-`TRUST.md` defines the actual trust model.
+`TRUST.md` defines the actual TCB requirements.
 
 ---
 
-# 61. Why implementation architecture is separate from design rationale
+# 90. Why implementation architecture is separate from design rationale
 
-Language and proof concepts should survive normal compiler evolution.
+Compiler architecture will evolve.
 
-For example, these implementation changes should not inherently redefine C++L:
+Passes may be split or merged.
 
-```text
-splitting a compiler pass
-changing an internal data structure
-moving the LSP to another process
-changing a cache format
-replacing one solver adapter
-parallelizing verification
-```
+Internal representations may change.
 
-`docs/ARCHITECTURE.md` therefore owns the implementation structure.
+Caching may move processes.
 
-`DESIGN.md` records only the reasons behind major architectural directions where those reasons are useful for future decisions.
+Solvers may be replaced.
 
----
+None of those changes should automatically redefine C++L.
 
-# 62. Rejected direction: mandatory whole-program verification
+`ARCHITECTURE.md` owns the current intended implementation structure.
 
-The project does not start from the assumption that every dependency must be proved before useful verification can occur.
-
-That direction was rejected because it would make adoption impractical for most existing C++ systems.
-
-Explicit boundaries and incremental assurance provide a more realistic path.
+`DESIGN.md` records only durable reasons that should constrain architecture
+choices.
 
 ---
 
-# 63. Rejected direction: tests as proofs
-
-Tests observe selected executions.
-
-Laws may describe properties over unbounded classes of executions or values.
-
-Treating enough tests as equivalent to proof would blur an important distinction and provide misleading assurance.
-
-Testing remains complementary.
-
----
-
-# 64. Rejected direction: runtime assertions as proofs
-
-A runtime assertion can establish something about a particular execution path at runtime.
-
-It does not by itself provide a universal compile-time theorem.
-
-Conflating the two would obscure the difference between dynamic checking and static reasoning.
-
----
-
-# 65. Rejected direction: silent runtime fallback after proof failure
-
-A system could respond to failed proof by automatically inserting a runtime check.
-
-That is convenient, but it silently changes:
-
-```text
-the assurance model
-```
-
-and potentially:
-
-```text
-program behavior
-```
-
-The design instead favors making such a transition explicit.
-
----
-
-# 66. Rejected direction: solver as unconditional truth authority
-
-Modern solvers are powerful and extremely valuable.
-
-Making their implementation part of the unquestioned logical authority by default would substantially enlarge the trusted base.
-
-C++L therefore prefers architectures where solver intelligence can be separated from final evidence checking where practical.
-
-The precise trust model belongs in `TRUST.md`.
-
----
-
-# 67. Rejected direction: global reservation of C++L vocabulary
-
-Globally reserving all new C++L terms would unnecessarily invalidate existing source.
-
-Contextual syntax provides a better compatibility path.
-
-The exact disambiguation rules are defined in `GRAMMAR.md`.
-
----
-
-# 68. Rejected direction: repurposing unrelated C++ keywords
-
-Giving existing C++ syntax a second unrelated formal meaning would create unnecessary confusion and parser complexity.
-
-C++L therefore favors distinct formal vocabulary where the underlying concept is genuinely new.
-
----
-
-# 69. Rejected direction: unsafe as a proof escape hatch
-
-If low-level code automatically implied trusted facts, any unsafe operation could bypass the verifier.
-
-That would make formal guarantees difficult to interpret.
-
-The separation between lack of verification and explicit assumption is therefore intentional.
-
----
-
-# 70. Rejected direction: silently replacing machine integers with mathematics
-
-Reasoning over ideal mathematical integers is often easier.
-
-Doing it silently for executable C++ values would risk proving properties that fail under machine semantics.
-
-C++L instead favors explicit abstraction when mathematical domains are desired.
-
----
-
-# 71. Rejected direction: proving a rewritten shadow implementation
-
-Maintaining:
-
-```text
-one implementation for proof
-```
-
-and:
-
-```text
-another implementation for execution
-```
-
-creates a dangerous semantic synchronization problem.
-
-C++L is designed around verifying meaning connected to the program that actually executes.
-
----
-
-# 72. Rejected direction: mandatory proof runtime
-
-Keeping proof machinery alive in every executable would add cost and deployment requirements unrelated to ordinary program execution.
-
-That conflicts with the project's systems-programming goals.
-
-Compile-time reasoning with runtime erasure is the preferred direction.
-
----
-
-# 73. Rejected direction: reimplement all C++ semantics
-
-A new C++ semantic frontend would be a massive undertaking and another source of disagreement with mainstream toolchains.
-
-C++L gains more by concentrating engineering effort on:
-
-```text
-formal specification
-verification
-proof
-diagnostics
-```
-
-than by recreating mature C++ semantics unnecessarily.
-
----
-
-# 74. Rejected direction: permanent Clang fork as the default
-
-A fork can solve integration problems but creates continuous maintenance cost.
-
-Starting with a permanent fork would commit the project to that cost before demonstrating that it is necessary.
-
-External integration is therefore the preferred initial direction.
-
----
-
-# 75. Rejected direction: mandatory second implementation language for the proof core
-
-Languages with stronger memory-safety guarantees can be attractive for trusted components.
-
-Using another language also introduces:
-
-```text
-FFI boundaries
-serialization
-build complexity
-packaging complexity
-debugging complexity
-```
-
-and does not automatically establish logical soundness.
-
-The initial preference is to keep the implementation coherent while minimizing and auditing proof-critical code.
-
-This choice can be reconsidered if evidence later favors another approach.
-
----
-
-# 76. Rejected direction: clever proof-critical code
-
-Proof-critical implementation benefits more from being understandable than from showcasing advanced language techniques.
-
-Abstraction remains useful, but obscuring proof rules behind metaprogramming or implicit behavior would make review harder.
-
-The project therefore values boring implementation in the most sensitive regions.
-
----
-
-# 77. Design pressure: compatibility versus proof power
-
-Supporting real C++ introduces semantics that are substantially harder to verify than a deliberately small language.
-
-Weakening C++ compatibility would make verification easier.
+# 91. Compatibility versus proof power
+
+Supporting real C++ makes proof harder.
+
+Weakening C++ compatibility would simplify:
+
+- aliasing;
+- lifetime;
+- templates;
+- exceptions;
+- concurrency;
+- UB;
+- library modeling.
 
 Weakening proof fidelity would make verification less meaningful.
 
-C++L deliberately accepts this tension.
+C++L accepts this tension deliberately.
 
-The preferred response to unsupported semantics is gradual modeling rather than pretending complexity does not exist.
+The preferred response to hard semantics is:
+
+```text
+model them soundly
+or fail closed
+```
+
+not:
+
+```text
+pretend they are simpler
+```
 
 ---
 
-# 78. Design pressure: automation versus transparency
+# 92. Formal expressiveness versus usability
 
-Manual proof everywhere would be unusable.
+A language with dependent types, induction, quantified propositions, refinements,
+and explicit proofs can become intimidating.
 
-Opaque automation everywhere would be difficult to audit.
+C++L therefore favors progressive disclosure.
 
-C++L aims for:
+A developer should be able to begin with:
+
+- simple contracts;
+- straightforward Laws;
+- refinements;
+- automatic proofs;
+
+before needing:
+
+- explicit quantifier manipulation;
+- structural induction;
+- advanced proof terms;
+- abstract mathematical domains.
+
+Power should exist without becoming the entry price for basic verification.
+
+---
+
+# 93. Automation versus transparency
+
+Too little automation makes formal methods impractical.
+
+Too much opaque authority makes results difficult to audit.
+
+The desired balance is:
 
 ```text
 strong automation
 +
 explicit specifications
 +
-inspectable proof boundaries
+independently checkable evidence
++
+visible trust boundaries
 ```
 
-The user should benefit from automation without needing to treat it as magic.
+Users should benefit from automation without needing to treat it as magic.
 
 ---
 
-# 79. Design pressure: proof strength versus verification cost
+# 94. Proof strength versus verification cost
 
-Precise reasoning can be expensive.
+More precise reasoning often costs more.
 
-The project does not want compile-time performance problems solved by quietly weakening proof meaning.
+The project should not solve compile-time performance problems by quietly
+weakening theorem meaning.
 
-Instead, the preferred engineering directions include:
+Preferred engineering responses include:
+
+- incrementality;
+- dependency analysis;
+- proof reuse;
+- parallel search;
+- specialized decision procedures;
+- semantic caching.
+
+Those optimizations should operate around stable semantics rather than redefining
+what counts as proof.
+
+---
+
+# 95. C++ familiarity versus formal clarity
+
+Making every new feature look exactly like ordinary C++ may reduce visual novelty.
+
+It may also hide important semantic boundaries.
+
+C++L therefore tries to retain C++ syntax where the concept is genuinely C++ and
+use visibly formal syntax where the concept is genuinely new.
+
+Examples include:
 
 ```text
-incrementality
-dependency analysis
-proof reuse
-parallel search
-semantic caching
-specialized decision procedures
+C++ template application      -> existing C++ syntax
+formal mathematical domain    -> visible @ prefix
+C++ requires                  -> remains C++ requires
+Law conclusion                -> distinct proves vocabulary
 ```
 
-These are architectural optimizations around stable semantics.
+The goal is recognizability without pretending proof is ordinary computation.
 
 ---
 
-# 80. Design pressure: formal expressiveness versus usability
+# 96. Zero runtime cost versus dynamic reality
 
-A language capable of advanced formal reasoning can easily become inaccessible to ordinary C++ developers.
-
-C++L therefore favors progressive disclosure.
-
-A developer should be able to start with simple contracts and Laws before needing concepts such as:
-
-```text
-dependent types
-induction
-advanced proof terms
-complex formal abstractions
-```
-
-Advanced power remains available without becoming the entry price for basic verification.
-
----
-
-# 81. Design pressure: C++ familiarity versus formal clarity
-
-Making every new construct look exactly like existing C++ can reduce initial visual novelty.
-
-It can also hide important semantic distinctions.
-
-The preferred balance is:
-
-```text
-retain C++ where the concept is genuinely C++
-
-use explicit formal syntax where a genuinely new concept exists
-```
-
-This keeps C++L recognizable without pretending proof is just another ordinary C++ expression.
-
----
-
-# 82. Design pressure: zero runtime cost versus dynamic reality
-
-Proof-only information can often disappear entirely.
+Proof-only information can often disappear completely.
 
 Dynamic validation cannot.
 
 The design therefore distinguishes:
 
 ```text
-information needed only to establish compilation
+information needed only to justify compilation
 ```
 
 from:
 
 ```text
-checks inherently required because the value is unknown until runtime
+checks inherently required because a runtime value was unknown beforehand
 ```
 
-This lets C++L pursue zero-cost proof abstractions without making impossible promises about external input.
+This permits zero-cost proof abstractions without making impossible promises about
+external data.
 
 ---
 
-# 83. Design pressure: local reasoning versus whole-system truth
+# 97. Local reasoning versus whole-system truth
 
 Developers need useful local guarantees.
 
-Those guarantees inevitably depend on assumptions about surrounding components.
+Those guarantees inevitably depend on:
 
-C++L therefore emphasizes making dependency boundaries explicit rather than claiming local proof somehow establishes every property of the entire machine.
+- callers;
+- external components;
+- runtime environment;
+- libraries;
+- compiler/backend correctness;
+- explicit assumptions.
 
----
+C++L therefore focuses on **explicit dependencies** rather than claiming that a
+local theorem proves the whole machine correct.
 
-# 84. Design pressure: language evolution versus stability
-
-C++L will evolve as difficult areas become better understood:
-
-```text
-memory semantics
-concurrency
-standard-library modeling
-templates
-dependent typing
-proof automation
-```
-
-The project should avoid prematurely locking large amounts of syntax around poorly understood semantics.
-
-Small, principled additions are preferable to speculative surface area.
+This is a more useful and more honest model for real systems.
 
 ---
 
-# 85. Initial implementation philosophy
+# 98. Stability versus language evolution
 
-The first implementation should prove something small **for real**.
+C++L has to evolve as difficult areas are understood more deeply.
 
-A narrow vertical slice with:
+At the same time, proof-bearing source depends more heavily on semantic stability
+than ordinary syntax sugar does.
 
-```text
-real semantic analysis
-real formal obligation
-real proof checking
-real rejection of a false case
-real native output
-```
-
-is more valuable than a broad collection of syntax whose verification is mostly placeholder behavior.
-
-This principle guides the implementation roadmap but does not define language semantics.
-
----
-
-# 86. Growth philosophy
-
-New C++L capabilities should generally follow this order:
+The preferred evolution strategy is therefore:
 
 ```text
 understand the property
-        ↓
+    ↓
 define semantics
-        ↓
-define syntax
-        ↓
+    ↓
 define trust implications
-        ↓
+    ↓
+choose syntax
+    ↓
 design implementation
-        ↓
+    ↓
 add conformance tests
-        ↓
-ship
 ```
 
-Implementation convenience should not become the source of language meaning.
+rather than freezing syntax around an incompletely understood model.
 
 ---
 
-# 87. Self-verification direction
+# 99. Why unsupported verification fails closed
 
-Over time, C++L itself should become one of the strongest real-world users of C++L.
+Verification has asymmetric failure costs.
 
-Compiler components provide valuable targets for Laws concerning:
+A false negative means:
 
 ```text
-determinism
-representation invariants
-proof checking
-erasure
-semantic preservation
-serialization
-dependency handling
+a true property was not established
 ```
 
-This creates useful pressure for the language to solve real systems problems rather than only academic examples.
+A false positive means:
+
+```text
+an unestablished property was presented as proven
+```
+
+For a proof system, the second failure is substantially worse.
+
+C++L therefore prefers conservative refusal when required reasoning is missing.
+
+That preference is not permission to leave the language permanently incomplete;
+it is the correct behavior of an incomplete implementation on unsupported cases.
 
 ---
 
-# 88. AI-oriented design direction
+# 100. Why unsupported verification does not make ordinary C++ invalid
 
-AI changes the economics of code production.
+"Cannot prove this claim" and "this C++ program is ill-formed" are different
+statements.
 
-Generating code is becoming cheaper.
+C++L's additive adoption model depends on preserving that distinction where the
+normative language permits ordinary unverified C++.
 
-Establishing that generated code satisfies human intent remains difficult.
+A verification limitation should not automatically become a new C++ language
+restriction.
 
-C++L is designed around the idea that formal specifications can become a durable interface between:
+Likewise, ordinary C++ acceptance must not be misreported as formal proof.
+
+---
+
+# 101. AI-oriented design
+
+AI changes the economics of implementation generation.
+
+Producing candidate code is becoming cheap.
+
+Establishing that candidate code satisfies durable human intent remains hard.
+
+C++L's Laws and contracts can act as an interface between:
 
 ```text
-human intent
+human/domain intent
 ```
 
 and:
@@ -2516,158 +2676,471 @@ and:
 machine-generated implementation
 ```
 
-A model can attempt many implementations.
+An agent can attempt many implementations.
 
-The Law remains the thing they are expected to satisfy.
+The specification remains stable.
+
+The proof checker determines whether the attempt satisfies the required property.
+
+This makes formal specification especially valuable in an agentic engineering
+environment.
 
 ---
 
-# 89. Criteria for future language proposals
+# 102. Why the documentation should be agent-addressable
 
-When evaluating a proposed feature, useful design questions include:
+A mature specification may be too large to serve as the raw prompt for every
+coding task.
+
+That is a tooling/documentation problem, not a reason to weaken the specification.
+
+The project therefore benefits from:
+
+- stable rule identifiers;
+- feature indexes;
+- dependency maps;
+- implementation maps;
+- test matrices;
+- bounded task packets.
+
+The canonical specification remains complete.
+
+Agents receive the relevant slice plus its dependencies.
+
+This separates:
 
 ```text
-What problem does this solve?
-
-Why does it belong in the language rather than tooling?
-
-Does it describe actual C++ execution?
-
-Does it create a second interpretation of C++?
-
-Does it make existing-code adoption harder?
-
-Can proof-only information remain compile-time-only?
-
-Does it make assumptions more explicit or less explicit?
-
-Does it unnecessarily enlarge the trusted base?
-
-Can unsupported cases remain honest rather than guessed?
-
-Can it be introduced incrementally?
-
-Does the syntax collide with ordinary C++?
-
-Can an AI or automated tool exploit it to bypass rather than satisfy verification?
-
-Is the feature understandable without knowing compiler internals?
+source of truth
 ```
 
-These questions are guidance, not normative conformance rules.
-
----
-
-# 90. Criteria for future implementation decisions
-
-Implementation proposals should be judged differently from language proposals.
-
-Useful questions include:
+from:
 
 ```text
-Does this implementation preserve the semantics already specified?
-
-Does it reuse existing C++ semantic infrastructure where appropriate?
-
-Does it introduce duplicate semantic authorities?
-
-Does it increase the trusted base unnecessarily?
-
-Can it remain deterministic?
-
-Can failures remain diagnosable?
-
-Can the component evolve independently?
-
-Does it create permanent architecture debt?
-
-Does it scale to large C++ repositories?
+working context
 ```
 
-The actual implementation invariants are documented in `docs/ARCHITECTURE.md`, `TRUST.md`, and `AGENTS.md`.
+and reduces the intelligence needed merely to discover task scope.
+
+The exact agent tooling belongs outside this design rationale.
 
 ---
 
-# 91. Design principles
+# 103. Criteria for future language proposals
 
-The project is guided by these design principles:
+A language proposal should answer questions such as:
+
+1. What problem does the feature solve?
+2. Why does that problem require language semantics rather than tooling or a
+   library?
+3. Does it describe actual C++ execution or create a competing model?
+4. Does it preserve C++ source and ABI compatibility where promised?
+5. Can proof-only information remain proof-only?
+6. Does it make assumptions more explicit or less explicit?
+7. Does it enlarge the TCB?
+8. Can unsupported cases fail closed?
+9. Does it compose with mutation, aliasing, templates, exceptions, and
+   translation units?
+10. Does the syntax collide with ordinary C++?
+11. Can automation exploit the feature without becoming a hidden authority?
+12. Is the feature understandable without knowing compiler internals?
+13. Does it introduce a second runtime abstraction C++ already has?
+14. Can its semantics be stated independently of the current implementation?
+
+A proposal that cannot answer those questions is probably not ready for the
+language surface.
+
+---
+
+# 104. Criteria for future implementation decisions
+
+Implementation decisions should be judged by a different set of questions:
+
+1. Does the implementation preserve already-defined semantics?
+2. Does it reuse authoritative C++ semantic information where appropriate?
+3. Does it introduce duplicate semantic authorities?
+4. Does it increase any TCB layer unnecessarily?
+5. Can the result fail closed?
+6. Is semantic identity stable and reproducible?
+7. Can the component be independently checked or fuzzed?
+8. Does it preserve erasure/runtime correspondence?
+9. Does it scale to large C++ repositories?
+10. Does it create architecture debt that will make later semantic coverage
+    harder?
+11. Does it create a feature-specific path where a common semantic mechanism
+    should exist?
+12. Are negative and adversarial tests as strong as happy-path tests?
+
+The current implementation topology belongs in `ARCHITECTURE.md`, not here.
+
+---
+
+# 105. Rejected direction: mandatory whole-program verification
+
+Whole-program proof before any local guarantee was rejected as an adoption model.
+
+It would make useful verification depend on proving:
+
+- third-party libraries;
+- the operating system;
+- device code;
+- proprietary binaries;
+- unrelated application modules.
+
+C++L instead supports useful local claims whose external assumptions and
+boundaries remain explicit.
+
+---
+
+# 106. Rejected direction: tests as proofs
+
+Tests observe selected executions.
+
+A universal theorem ranges over the domain stated by its proposition.
+
+No quantity of ordinary test cases changes that logical distinction.
+
+Tests remain complementary evidence about software quality, not theorem evidence.
+
+---
+
+# 107. Rejected direction: runtime assertions as compile-time proofs
+
+A runtime assertion can stop one execution when a condition fails.
+
+That does not establish a universal compile-time proposition.
+
+Treating assertions as proof would blur runtime validation and theorem proving and
+would make assurance depend on execution reaching the assertion.
+
+---
+
+# 108. Rejected direction: silent runtime fallback after proof failure
+
+Automatically inserting a runtime check when proof fails was rejected because it
+silently changes both runtime semantics and assurance.
+
+The programmer may choose runtime validation explicitly.
+
+The compiler should not choose it on the programmer's behalf as a hidden
+degradation mode.
+
+---
+
+# 109. Rejected direction: solver as unconditional truth authority
+
+Solvers are powerful.
+
+They are also large pieces of software with their own translations, heuristics,
+and potential defects.
+
+Where practical, C++L prefers solver-generated evidence that can be independently
+checked.
+
+If a solver is ever trusted directly, that should be an explicit trust decision,
+not an invisible consequence of using automation.
+
+---
+
+# 110. Rejected direction: global reservation of C++L vocabulary
+
+Globally reserving every C++L word would invalidate existing C++ unnecessarily.
+
+Contextual interpretation was chosen to reduce that compatibility cost.
+
+---
+
+# 111. Rejected direction: repurposing unrelated C++ keywords
+
+Existing C++ keywords already carry established meaning.
+
+Using them for unrelated proof constructs would create avoidable ambiguity.
+
+In particular, C++ `requires` remains C++ rather than becoming C++L's contract
+syntax.
+
+---
+
+# 112. Rejected direction: unsafe as a proof escape hatch
+
+If entering `unsafe` could produce arbitrary trusted facts, the verification
+system could be bypassed trivially.
+
+`unsafe` therefore means a reduction in what is proved, not an increase in what
+may be assumed.
+
+---
+
+# 113. Rejected direction: silently replacing machine values with mathematics
+
+Machine integers, floating-point values, pointers, and runtime containers do not
+become ideal mathematical objects merely because they appear in a specification.
+
+C++L uses explicit mathematical domains when mathematical abstraction is desired.
+
+---
+
+# 114. Rejected direction: proving a shadow implementation
+
+Maintaining:
+
+```text
+implementation A for proof
+implementation B for execution
+```
+
+creates a semantic synchronization problem.
+
+C++L instead aims to prove properties connected to the program that actually
+executes, with erasure removing only proof-specific material.
+
+---
+
+# 115. Rejected direction: mandatory proof runtime
+
+A theorem interpreter in every executable would add runtime cost and deployment
+complexity unrelated to ordinary C++ execution.
+
+The project therefore treats proof as a compile-time concern unless the
+application itself explicitly chooses runtime mechanisms.
+
+---
+
+# 116. Rejected direction: reimplement all C++ semantics
+
+Rebuilding a full C++ frontend would consume enormous engineering effort and
+create a new source of disagreement with production compilers.
+
+C++L's unique value lies in the formal layer, not in duplicating mature C++
+semantic infrastructure without need.
+
+---
+
+# 117. Rejected direction: permanent compiler fork as a language premise
+
+A fork may become architecturally justified.
+
+It is not part of the language's identity.
+
+The design should remain compatible with different implementation strategies as
+long as they satisfy the normative semantics and trust requirements.
+
+---
+
+# 118. Rejected direction: mandatory second implementation language for the proof core
+
+A language with stronger memory-safety properties can be attractive for
+proof-critical implementation.
+
+Using another implementation language also introduces new build, FFI,
+serialization, packaging, and debugging boundaries.
+
+No implementation language automatically makes a proof checker logically sound.
+
+The important requirement is an auditable and correctly trusted proof boundary,
+not a mandated implementation language.
+
+---
+
+# 119. Rejected direction: cleverness as proof-critical architecture
+
+Dense metaprogramming, hidden control flow, and implicit global behavior can make
+proof-critical code harder to audit.
+
+The project therefore prefers clarity over novelty in components that determine
+assurance.
+
+This is an engineering preference, not a ban on abstraction.
+
+---
+
+# 120. Rejected direction: historical implementation limitations as language design
+
+A temporary limitation such as:
+
+```text
+only one return handled
+templates unsupported
+signed arithmetic refused
+members not modeled
+```
+
+may be an honest implementation status.
+
+It is not automatically a reason for the language to forbid the corresponding
+construct.
+
+The correct direction is:
+
+```text
+normative semantics
+    ↓
+implementation catches up
+```
+
+rather than:
+
+```text
+temporary implementation
+    ↓
+language is narrowed to match it
+```
+
+---
+
+# 121. Rejected direction: feature-specific verification islands
+
+A new feature can often be implemented quickly by creating a special path:
+
+```text
+special member logic
+special array logic
+special pointer logic
+special refinement logic
+```
+
+That tends to duplicate invariants and eventually produce contradictory behavior.
+
+C++L prefers common semantic abstractions where different language features share
+the same underlying concept.
+
+Examples include:
+
+```text
+common place/value-version model for storage
+common crossing logic for refinement introduction
+common call/effect model
+common proof evidence model
+common erasure principles
+```
+
+This preference is especially important for agent-generated implementation work,
+where local special cases are easy to create and hard to see globally.
+
+---
+
+# 122. Design principles
+
+The project is guided by the following principles:
 
 ```text
 Extend C++ rather than replace it.
 
-Keep runtime behavior grounded in real C++ semantics.
+Keep ordinary runtime behavior grounded in real C++ semantics.
 
-Make verification incremental.
+Make formal intent first-class.
 
-Treat formal intent as first-class source.
+Keep claims, evidence, trust, runtime checking, and unsafe execution distinct.
 
-Keep claims separate from evidence.
-
-Keep assumptions visible.
+Prefer reusable Laws and contracts over prose-only intent.
 
 Use automation aggressively without making automation the definition of truth.
 
-Prefer small proof authority over large proof authority.
+Prefer small, independently checkable proof authority where practical.
 
-Keep proof-only information out of runtime where practical.
+Treat source-to-proof and proof-to-runtime correspondence as first-class trust problems.
 
-Distinguish static proof from dynamic validation.
+Keep proof-only information out of runtime representation.
+
+Preserve native ABI where verification semantics do not require runtime change.
 
 Model machine behavior rather than silently replacing it with ideal mathematics.
 
-Reuse mature C++ semantics rather than rebuilding C++ unnecessarily.
+Use explicit mathematical domains when abstraction from runtime representation is intended.
+
+Attach refinement facts to logical values/versions, not permanently to variable names.
+
+Model mutation, aliasing, lifetime, and memory capabilities explicitly enough for the claims being made.
+
+Reason structurally over existing C++ types rather than introducing a duplicate runtime data language.
+
+Keep termination distinct from purity and induction.
+
+Keep runtime validation ordinary runtime behavior.
+
+Keep unsafe code distinct from trusted assumptions.
+
+Reuse mature C++ semantic infrastructure rather than guessing C++ meaning independently.
 
 Prefer honest incompleteness over false proof.
 
-Keep verification connected to the program that actually executes.
+Do not let temporary implementation limitations redefine the language.
 
-Preserve interoperability as a core design pressure.
+Design for incremental adoption in real C++ repositories.
 
-Make advanced formal power progressively accessible.
+Design proof interfaces to work across translation units without changing native ABI unnecessarily.
 
-Design for both human-written and AI-generated implementations.
+Design for both human-written and machine-generated implementations.
+
+Make documentation addressable enough that agents can receive bounded semantic task contexts without weakening the canonical specification.
 ```
 
 ---
 
-# 92. Summary
+# 123. Summary
 
-C++L is motivated by a simple gap:
-
-```text
-C++ is excellent at saying how a machine should execute.
-
-It is much less expressive at saying, in a machine-checkable way,
-what must always be true about that execution.
-```
-
-The project explores adding that missing layer without discarding the C++ ecosystem.
-
-The intended relationship is:
+C++L begins from a simple observation:
 
 ```text
-existing C++ execution model
-        +
-precise formal intent
-        +
-machine-checkable evidence
+C++ is exceptionally good at specifying how native software executes.
+
+It is much weaker at expressing reusable, machine-checked statements about
+what must always be true of that execution.
 ```
 
-The resulting design favors:
+The project adds that missing layer while trying to preserve the ecosystem and
+runtime properties that make C++ valuable.
+
+The resulting design is centered on:
 
 ```text
-incremental adoption
-explicit specifications
-explicit assumptions
-proof-producing automation
-small proof authority
-semantic fidelity to C++
-proof erasure
-native execution
-existing-library interoperability
-AI-compatible verification workflows
+real C++ execution
++
+explicit formal intent
++
+composable proof evidence
++
+explicit trust
++
+semantics-preserving erasure
 ```
 
-`DESIGN.md` records **why** those directions were chosen.
+The most important design constraint is fidelity.
 
-The authoritative definition of what C++L actually means remains in `SPEC.md`, `GRAMMAR.md`, `COMPATIBILITY.md`, and `TRUST.md`.
+C++L should not make proof easier by quietly changing what the underlying C++
+program means.
+
+When a semantic area is difficult, the preferred choices are:
+
+```text
+model it soundly
+make the boundary explicit
+or fail closed
+```
+
+rather than inventing facts.
+
+That principle connects the major choices in the language:
+
+- refinements preserve runtime representation but require proof at semantic
+  crossings;
+- storage facts follow logical value versions rather than source names;
+- aliasing and capability reasoning are conservative;
+- structural proof reasons over actual C++ state spaces;
+- mathematical abstractions are visibly distinct from machine values;
+- proof-only information erases;
+- runtime validation remains runtime behavior;
+- trusted assumptions remain explicit;
+- unsafe code does not manufacture proof;
+- automation proposes evidence rather than defining truth;
+- the proof kernel is important but source/runtime correspondence remains part of
+  end-to-end assurance.
+
+`SPEC.md` defines what C++L means.
+
+`TRUST.md` defines what must be trusted for those meanings to remain credible.
+
+`FOUNDATIONS.md` defines the formal basis.
+
+`ARCHITECTURE.md` defines how the implementation realizes them.
+
+`DESIGN.md` records **why this particular shape was chosen**.
