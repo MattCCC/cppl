@@ -6,7 +6,9 @@
 set -euo pipefail
 
 CPPL="$1"
-FIXTURES="$2"
+# These fixtures exist only to be refused, so they live apart from the ones that
+# must compile: nothing here is ever expected to produce a program.
+FIXTURES="$2/negative"
 WORK="$3"
 
 mkdir -p "$WORK"
