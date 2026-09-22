@@ -662,6 +662,14 @@ the failing goal named, and two spellings of one predicate cross while two
 arithmetically related predicates cross only because the kernel relates them.
 Verification identity is what a refinement means, not how it is spelled.
 
+A call that takes a pointer to non-const may write through it, so what the
+caller knew about the pointee does not survive the call. A pointer is passed by
+value, so the parameter keeps its own version while the storage it designates
+goes stale; that distinction is what separates this from the by-reference case,
+and missing it once let a contract promising a positive result verify while
+returning zero. A pointee reached only through a pointer to const survives,
+because writing through one is not something the callee may do.
+
 Methods are refused at the declaration, which is what closes virtual dispatch
 rather than leaving it open: the dynamic type decides which body runs, so a
 contract proved from a base's body would not cover an override that replaces

@@ -589,4 +589,25 @@ type Positive = int where (self > 0);
 verified int f(Positive* p) expects (p != nullptr) ensures (result > 0) { return *p; }
 CPP
 
+# Invalidating a pointee across a call is a rule about what the callee could
+# have written, not a blanket refusal of pointer arguments. What the call
+# establishes is still readable after it, and a pointee reached through a
+# pointer to const survives, since writing through one is not something the
+# callee may do (SPEC.md 12.10 VERIFIED-040).
+accept a_pointee_read_after_a_call_and_a_const_pointee_across_one <<'CPP'
+verified void touch(int* q) expects (writable(q)) ensures (true) { *q = 0; }
+verified int reads_after(int* p) expects (readable(p) && writable(p)) ensures (result == result) {
+    touch(p);
+    return *p;
+}
+verified int const_pointee_survives(const int* p, int* q)
+    expects (readable(p) && writable(q))
+    ensures (result == result)
+{
+    int seen = *p;
+    touch(q);
+    return seen;
+}
+CPP
+
 echo 'refinement flow: proven crossings and refused crossings both hold'

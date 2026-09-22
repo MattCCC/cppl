@@ -212,8 +212,8 @@ Type convert_type(CXType type, unsigned depth = 0, ReferenceModel references = R
                 // canonical one: canonicalizing discards the alias a refinement
                 // is named by, and the element's predicate would be lost with
                 // it (SPEC.md 17.3).
-                CXType element = array ? clang_getArrayElementType(type)
-                                       : clang_Type_getTemplateArgumentAsType(canonical, 0);
+                CXType element =
+                    array ? clang_getArrayElementType(type) : clang_Type_getTemplateArgumentAsType(canonical, 0);
                 if (array && element.kind == CXType_Invalid)
                     element = clang_getArrayElementType(canonical);
                 if (!array && clang_Cursor_getTemplateArgumentKind(declaration, 1) == CXTemplateArgumentKind_Integral)
@@ -506,8 +506,8 @@ struct Local {
     // the place undecided: which element it selects is not known here, so it is
     // never concluded disjoint from a sibling element.
     [[nodiscard]] bool has_symbolic_step() const {
-        return std::ranges::any_of(
-            path, [](const PlaceStep& step) { return step.kind == PlaceStep::Kind::SymbolicElement; });
+        return std::ranges::any_of(path,
+                                   [](const PlaceStep& step) { return step.kind == PlaceStep::Kind::SymbolicElement; });
     }
 
     // Whether a write to `other` reaches this place: `s` covers `s.x`, and
@@ -595,6 +595,20 @@ source::ParameterPassing passing_of(CXType written) {
         return source::ParameterPassing::ConstReference;
     return canonical.kind == CXType_RValueReference ? source::ParameterPassing::RvalueReference
                                                     : source::ParameterPassing::MutableReference;
+}
+
+// Whether passing this parameter lets the callee write storage the caller can
+// still name afterwards. A pointer is passed by value, so `passing_of` calls it
+// `Value` and the parameter's own version is unaffected -- but the callee may
+// write through it, and the caller's facts about the pointee do not survive
+// that (SPEC.md 12.10 VERIFIED-040, VERIFIED-041). A pointer to const is
+// excluded: writing through it is not something the callee may do.
+bool may_write_through(CXType written) {
+    if (source::may_write(passing_of(written))) {
+        return true;
+    }
+    const auto canonical = clang_getCanonicalType(written);
+    return canonical.kind == CXType_Pointer && clang_isConstQualifiedType(clang_getPointeeType(canonical)) == 0U;
 }
 
 std::optional<std::size_t> find_binding(const Locals& locals, CXCursor declaration,
@@ -750,8 +764,8 @@ std::optional<ResolvedAccess> resolve_access(CXCursor cursor) {
                 // cannot decide. It is still one place -- the step records
                 // which index term selects it -- and it is disjoint from
                 // another element only where that is proved (RFC 0014 §4, §7).
-                path.push_back(PlaceStep{PlaceStep::Kind::SymbolicElement, 0,
-                                         static_cast<std::uint32_t>(symbolic.size())});
+                path.push_back(
+                    PlaceStep{PlaceStep::Kind::SymbolicElement, 0, static_cast<std::uint32_t>(symbolic.size())});
                 symbolic.push_back(children[1]);
             }
         } else {
@@ -1735,9 +1749,8 @@ struct BodyLowering {
         const auto at = std::ranges::find_if(
             parameters, [&](CXCursor candidate) { return clang_equalCursors(candidate, declaration) != 0; });
         const auto pointer = find_local(state, declaration);
-        const std::size_t root = pointer.value_or(at == parameters.end()
-                                                      ? std::size_t{0}
-                                                      : static_cast<std::size_t>(at - parameters.begin()));
+        const std::size_t root = pointer.value_or(
+            at == parameters.end() ? std::size_t{0} : static_cast<std::size_t>(at - parameters.begin()));
         const std::uint32_t version = pointer ? state[*pointer].version : 0;
         if (auto existing = find_deref(state, root, version, access->path); existing.has_value()) {
             return existing;
@@ -1771,8 +1784,8 @@ struct BodyLowering {
         if (refinements != nullptr) {
             auto resolved = refinements_of(declaration, pointee, *refinements);
             if (!resolved) {
-                rejection = "the pointee of '" + take(clang_getCursorSpelling(declaration)) + "' has " +
-                            resolved.error();
+                rejection =
+                    "the pointee of '" + take(clang_getCursorSpelling(declaration)) + "' has " + resolved.error();
                 return std::nullopt;
             }
             type.refinements = std::move(*resolved);
@@ -1865,8 +1878,8 @@ struct BodyLowering {
         const auto kind = clang_getCursorKind(cursor);
         // A symbolic subscript of a tracked array forms its own place.
         if (kind == CXCursor_ArraySubscriptExpr) {
-            if (const auto access = resolve_access(cursor); access && !access->dereferenced &&
-                                                            !access->symbolic_indices.empty()) {
+            if (const auto access = resolve_access(cursor);
+                access && !access->dereferenced && !access->symbolic_indices.empty()) {
                 if (!resolve_symbolic_element(state, *access)) {
                     return false;
                 }
@@ -1875,8 +1888,7 @@ struct BodyLowering {
         }
         const bool dereferences =
             (kind == CXCursor_UnaryOperator && clang_getCursorUnaryOperatorKind(cursor) == CXUnaryOperator_Deref) ||
-            ((kind == CXCursor_MemberRefExpr || kind == CXCursor_ArraySubscriptExpr) &&
-             !children_of(cursor).empty() &&
+            ((kind == CXCursor_MemberRefExpr || kind == CXCursor_ArraySubscriptExpr) && !children_of(cursor).empty() &&
              clang_getCanonicalType(clang_getCursorType(strip_parens(children_of(cursor)[0]))).kind == CXType_Pointer);
         if (dereferences) {
             if (const auto access = resolve_access(cursor); access && access->dereferenced) {
@@ -1907,7 +1919,8 @@ struct BodyLowering {
         Expr result;
         result.type = body.type;
         result.location = presumed_location(clang_getCursorLocation(at));
-        result.node = UnknownVersion{state[entry].version, place_of(state, entry), state[entry].type, {std::move(body)}};
+        result.node =
+            UnknownVersion{state[entry].version, place_of(state, entry), state[entry].type, {std::move(body)}};
         return result;
     }
 
@@ -2007,6 +2020,49 @@ struct BodyLowering {
             return value;
         const auto callee = clang_getCursorReferenced(cursor);
         const auto params = parameters_of(callee);
+        // A callee that takes a pointer to non-const may write through it, and
+        // the caller's facts about the pointee do not survive that. This is
+        // separate from the reference case below: a pointer is passed by value,
+        // so the parameter keeps its own version and it is the storage it
+        // designates that goes stale (SPEC.md 12.10 VERIFIED-040).
+        for (std::size_t index = 0; index < params.size(); ++index) {
+            const CXType declared = clang_getCursorType(params[index]);
+            if (source::aliases_storage(passing_of(declared)) || !may_write_through(declared))
+                continue;
+            const CXCursor argument = clang_Cursor_getArgument(cursor, static_cast<unsigned>(index));
+            // The pointer is only read here, so it is looked up rather than
+            // resolved as a write target: passing a pointer owes no capability
+            // of its own, and demanding one would refuse the call outright.
+            const auto access = resolve_access(strip_parens(argument));
+            if (!access || access->dereferenced || !access->symbolic_indices.empty())
+                continue;
+            // A deref place records the entry holding its pointer, and a
+            // pointer parameter is identified by its own index rather than by a
+            // tracked local, exactly as `resolve_storage` roots one.
+            const CXCursor declaration = clang_getCursorReferenced(access->object);
+            auto pointer = find_binding(state, declaration, access->path);
+            if (!pointer) {
+                const auto at = std::ranges::find_if(
+                    parameters, [&](CXCursor candidate) { return clang_equalCursors(candidate, declaration) != 0; });
+                if (at == parameters.end())
+                    continue;
+                pointer = static_cast<std::size_t>(at - parameters.begin());
+            }
+            // Every place reached through this pointer, and everything that may
+            // alias one, is unknown from here on. Which of them the callee
+            // actually wrote is not stated by its contract, so none is kept.
+            for (std::size_t other = 0; other < state.size(); ++other) {
+                if (state[other].referent.has_value() || !state[other].is_deref())
+                    continue;
+                if (state[other].pointer != pointer)
+                    continue;
+                state[other].version = next_version++;
+                invalidated.push_back(other);
+                for (const auto aliased : invalidate_aliases(other, state)) {
+                    invalidated.push_back(aliased);
+                }
+            }
+        }
         const bool writes = std::ranges::any_of(
             params, [](CXCursor parameter) { return source::may_write(passing_of(clang_getCursorType(parameter))); });
         if (!writes)
@@ -2709,8 +2765,8 @@ struct BodyLowering {
                           "' is a conversion that is not modeled");
         }
         const std::uint32_t version = next_version++;
-        declaring.push_back(
-            Local{.declaration = declaration, .version = version, .type = type, .referent = referent, .spelling = name});
+        declaring.push_back(Local{
+            .declaration = declaration, .version = version, .type = type, .referent = referent, .spelling = name});
         std::optional<Expr> body = lower_declaration(declared, index + 1, next, declaring, depth);
         if (!body) {
             return std::nullopt;
@@ -3273,7 +3329,8 @@ std::expected<Capability, std::string> build_capability(CXCursor cursor, source:
     if (arguments != 2 && arguments != 3)
         return std::unexpected("a memory capability states a pointer and an optional element count");
     Capability capability;
-    capability.kind = kind == source::ProjectionKind::Readable ? Capability::Kind::Readable : Capability::Kind::Writable;
+    capability.kind =
+        kind == source::ProjectionKind::Readable ? Capability::Kind::Readable : Capability::Kind::Writable;
     capability.location = presumed_location(clang_getCursorLocation(cursor));
 
     // In a contract the capability's pointer is one of the function's
@@ -3309,9 +3366,9 @@ std::expected<Capability, std::string> build_capability(CXCursor cursor, source:
 // A capability clause is either one capability or a conjunction of them, which
 // the projector emitted as a lambda holding one statement per operand.
 std::expected<std::vector<Capability>, std::string> build_capabilities(CXCursor cursor,
-                                                                      const source::ProjectionShape& shape,
-                                                                      const std::vector<CXCursor>& parameters,
-                                                                      unsigned depth) {
+                                                                       const source::ProjectionShape& shape,
+                                                                       const std::vector<CXCursor>& parameters,
+                                                                       unsigned depth) {
     if (depth > kMaxExpressionDepth)
         return std::unexpected("memory capabilities nest too deeply");
     if (shape.kind != source::ProjectionKind::Capabilities) {
@@ -3576,9 +3633,8 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
         }
         // The probe's parameters mirror the verified function's, so the index
         // each capability resolved against is the function's own parameter.
-        const auto owner = std::ranges::find_if(request.selection.clause_owners, [&](const auto& candidate) {
-            return candidate.probe == probe.owner;
-        });
+        const auto owner = std::ranges::find_if(request.selection.clause_owners,
+                                                [&](const auto& candidate) { return candidate.probe == probe.owner; });
         if (owner == request.selection.clause_owners.end()) {
             continue;
         }
@@ -3635,8 +3691,7 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
             // value, so the referent is what it means.
             const auto written = clang_getCursorType(parameter);
             const auto passing = passing_of(written);
-            Type parameter_type =
-                convert_type(written, 0, ReferenceModel::Referent, &request.selection.refinements);
+            Type parameter_type = convert_type(written, 0, ReferenceModel::Referent, &request.selection.refinements);
             attach_refinements(parameter_type, parameter,
                                source::aliases_storage(passing) ? reference_value_type(written) : written);
             function.parameters.push_back(
@@ -3658,9 +3713,8 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
             const auto body_parameters = parameters_of(body_cursor);
             const auto stated = stated_capabilities.find(function.analysis_offset);
             extract_body(function, body_cursor, body_parameters,
-                         request.selection.specification_prefix.empty()
-                             ? std::string()
-                             : request.selection.specification_prefix,
+                         request.selection.specification_prefix.empty() ? std::string()
+                                                                        : request.selection.specification_prefix,
                          request.selection.refinements,
                          std::ranges::find(request.selection.verified_offsets, function.analysis_offset) !=
                              request.selection.verified_offsets.end(),

@@ -166,3 +166,35 @@ verified unsigned f(unsigned* p)
     return *p;
 }
 CPP
+
+# A callee taking a pointer to non-const may write through it, so what the
+# caller knew about the pointee does not survive the call. The callee's contract
+# says nothing about preserving it, and "it was not mentioned" is not evidence
+# that it is unchanged (SPEC.md 12.10 VERIFIED-040, VERIFIED-041).
+#
+# This is the pointer twin of the by-reference case: a pointer is passed by
+# value, so the parameter keeps its own version while the storage it designates
+# goes stale. Missing that distinction once made this exact program verify while
+# returning 0 from a contract promising a positive result.
+# SPEC: VERIFIED-040, VERIFIED-041
+reject a_call_through_a_pointer_invalidates_the_pointee 'does not satisfy its contract' <<'CPP'
+verified void touch(int* q) expects (writable(q)) ensures (true) { *q = 0; }
+verified int f(int* p) expects (readable(p) && writable(p)) ensures (result > 0) {
+    int seen = *p;
+    touch(p);
+    return seen > 0 ? *p : 1;
+}
+CPP
+
+# What a caller may rely on is exactly the callee's `ensures`, never more. The
+# callee here promises only that its result is non-negative, so the crossing
+# into a type requiring a positive value is not discharged by the call.
+# SPEC: REFINEOBL-004
+reject a_callers_fact_is_only_the_callees_ensures 'not shown to satisfy refinement type' <<'CPP'
+type Positive = int where (self > 0);
+verified int weak(int x) expects (x >= 0) ensures (result >= 0) { return x; }
+verified int f(int x) expects (x >= 0) ensures (result > 0) {
+    Positive p = weak(x);
+    return p;
+}
+CPP
