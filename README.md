@@ -1435,6 +1435,7 @@ Not a theorem prover beside C++.
 - [COMPATIBILITY.md](docs/COMPATIBILITY.md) — supported C++/ABI/toolchain compatibility
 - [STATUS.md](docs/STATUS.md) — current implementation coverage
 - [ROADMAP.md](docs/ROADMAP.md) — implementation milestones
+- [CI.md](docs/CI.md) — running the full CI matrix locally (`make ci-full`)
 - [SECURITY.md](SECURITY.md) — soundness and security policy
 - [ACKNOWLEDGEMENTS.md](ACKNOWLEDGEMENTS.md) — intellectual and project credits
 - [CONTRIBUTING.md](CONTRIBUTING.md) — contribution process

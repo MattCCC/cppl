@@ -11,7 +11,7 @@ bool is_supported_width(const IntType& type) {
     return type.width >= 1 && type.width <= 64;
 }
 
-using Unsigned = unsigned __int128;
+using Unsigned = WideUnsigned;
 
 // The absolute value of `value` as a magnitude, correct for the least Wide too.
 Unsigned magnitude(Wide value) {

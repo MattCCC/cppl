@@ -272,6 +272,27 @@ Where possible include a counterexample.
 
 ---
 
+# Before you push
+
+Every check CI runs can be run first. See [docs/CI.md](docs/CI.md).
+
+```sh
+make check      # fast: formatting, changed-file lint, build, tests
+make ci         # the native CI profile for this host, clean build
+make ci-full    # every CI environment available on this machine
+```
+
+`make check` is the loop to use while working; it is incremental. `make ci`
+configures from scratch with the same presets GitHub invokes, which is what
+catches compiler-specific and environment-specific breakage before a runner
+does.
+
+Build configuration belongs in `CMakePresets.json`, never in workflow YAML.
+Adding a `-D` flag to a job reintroduces the local/CI drift that structure
+exists to prevent (AGENTS.md 40).
+
+---
+
 # Pull requests
 
 A pull request should include:

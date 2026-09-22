@@ -64,6 +64,15 @@ option(
     ON
 )
 
+# Set by every ci-* preset. It enables the configure-time environment banner
+# that makes a local run and a GitHub run directly comparable. It must never
+# change what gets built.
+option(
+    CPPL_CI
+    "Report the full toolchain environment at configure time"
+    OFF
+)
+
 option(
     CPPL_WARNINGS_AS_ERRORS
     "Treat compiler warnings as errors"
@@ -87,6 +96,13 @@ option(
     "Enable ThreadSanitizer"
     OFF
 )
+
+# -----------------------------------------------------------------------------
+# CI host-environment isolation
+# -----------------------------------------------------------------------------
+
+include(ci/HostEnvironment)
+cppl_ci_check_host_environment()
 
 # -----------------------------------------------------------------------------
 # Common project compile options
@@ -120,6 +136,33 @@ else()
             -Wconversion
             -Wsign-conversion
     )
+
+    # Clang 22 added -Wmissing-designated-field-initializers to -Wextra. It
+    # fires on a designated initializer that omits a trailing field, which is
+    # how this codebase says "this field keeps its in-class default". Spelling
+    # every defaulted field out at each site would make adding a struct member
+    # break unrelated call sites, so the warning is declined rather than the
+    # idiom abandoned. Every other warning, and -Werror, stay in force.
+    #
+    # The positive form is what gets probed. A compiler that does not know a
+    # -Wno-<x> accepts it silently and only mentions it if some other
+    # diagnostic fires ("unrecognized command-line option ... may have been
+    # intended to silence earlier diagnostics"), so probing -Wno- directly
+    # succeeds everywhere and proves nothing.
+    include(CheckCXXCompilerFlag)
+
+    check_cxx_compiler_flag(
+        -Wmissing-designated-field-initializers
+        CPPL_HAVE_MISSING_DESIGNATED_FIELD_INITIALIZERS
+    )
+
+    if(CPPL_HAVE_MISSING_DESIGNATED_FIELD_INITIALIZERS)
+        target_compile_options(
+            cppl_project_options
+            INTERFACE
+                -Wno-missing-designated-field-initializers
+        )
+    endif()
 
     if(CPPL_WARNINGS_AS_ERRORS)
         target_compile_options(
@@ -283,6 +326,11 @@ message(
 include(LLVMToolchain)
 include(Formatting)
 include(Linting)
+
+# Reported after Formatting/Linting so that clang-format and clang-tidy have
+# been resolved and can be named in the banner.
+include(ci/Environment)
+cppl_ci_report_environment()
 
 # -----------------------------------------------------------------------------
 # C++L components

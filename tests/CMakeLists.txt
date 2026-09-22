@@ -13,10 +13,38 @@ target_include_directories(cppl_testing PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/support/include>)
 target_link_libraries(cppl_testing PRIVATE cppl_project_options)
 
+# Labels are what CTest selects a tier with (`ctest -L unit`). They are applied
+# at registration so no list of tests is maintained anywhere else -- not in the
+# Makefile, and not in a CI workflow.
+#
+# The tier is derived from the test name's prefix, which already encodes the
+# responsibility split documented above. `kernel_*` is a compiled in-process
+# suite, so it carries both its own tier and `unit`.
+function(cppl_test_tier name out_var)
+    if(${name} MATCHES "^kernel_")
+        set(${out_var} "kernel;unit" PARENT_SCOPE)
+    elseif(${name} MATCHES "^negative_")
+        set(${out_var} "negative" PARENT_SCOPE)
+    elseif(${name} MATCHES "^conformance_")
+        set(${out_var} "conformance" PARENT_SCOPE)
+    elseif(${name} MATCHES "^integration_")
+        set(${out_var} "integration" PARENT_SCOPE)
+    elseif(${name} MATCHES "^e2e_")
+        set(${out_var} "e2e" PARENT_SCOPE)
+    elseif(${name} MATCHES "^architecture_")
+        set(${out_var} "architecture" PARENT_SCOPE)
+    else()
+        set(${out_var} "unit" PARENT_SCOPE)
+    endif()
+endfunction()
+
 function(cppl_add_unit_test name)
     add_executable(${name} ${ARGN})
     target_link_libraries(${name} PRIVATE cppl_testing cppl_project_options)
     add_test(NAME ${name} COMMAND ${name})
+
+    cppl_test_tier(${name} tier)
+    set_tests_properties(${name} PROPERTIES LABELS "${tier}")
 endfunction()
 
 cppl_add_unit_test(kernel_value_model_test kernel/value_model_test.cpp)
@@ -136,11 +164,21 @@ target_compile_definitions(lsp_fixtures_test PRIVATE
     CPPL_TEST_FIXTURES_DIR="${CPPL_TEST_FIXTURES}"
     CPPL_TEST_DEFAULT_CLANG="${CPPL_DEFAULT_CLANG}")
 
+# Driver-level suites invoke the real compiler on real fixtures, so they are
+# slower than the in-process unit tiers and are given an explicit timeout
+# rather than inheriting CTest's default.
+set(CPPL_SCRIPT_TEST_TIMEOUT 600)
+
 function(cppl_add_script_test name script)
     add_test(NAME ${name}
              COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/${script}"
                      $<TARGET_FILE:cppl> "${CPPL_TEST_FIXTURES}" "${CPPL_TEST_WORK}"
                      "${CPPL_DEFAULT_CLANG}")
+
+    cppl_test_tier(${name} tier)
+    set_tests_properties(${name} PROPERTIES
+        LABELS "${tier};script"
+        TIMEOUT ${CPPL_SCRIPT_TEST_TIMEOUT})
 endfunction()
 
 # cppl-format: the CLI surface of compiler/formatter (--check/-i), exercised
@@ -148,6 +186,9 @@ endfunction()
 add_test(NAME format_check
          COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/format/format_check.sh"
                  $<TARGET_FILE:cppl-format> "${CPPL_TEST_FIXTURES}" "${CPPL_TEST_WORK}")
+set_tests_properties(format_check PROPERTIES
+    LABELS "format;script"
+    TIMEOUT ${CPPL_SCRIPT_TEST_TIMEOUT})
 
 cppl_add_script_test(conformance_ordinary_cpp conformance/ordinary_cpp.sh)
 cppl_add_script_test(conformance_contextual_identifiers conformance/contextual_identifiers.sh)
@@ -157,6 +198,9 @@ cppl_add_script_test(conformance_target_standard_isolation conformance/target_st
 add_test(NAME conformance_readme_examples
          COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/conformance/readme_examples.sh"
                  $<TARGET_FILE:cppl> "${CMAKE_SOURCE_DIR}/README.md" "${CPPL_TEST_WORK}")
+set_tests_properties(conformance_readme_examples PROPERTIES
+    LABELS "conformance;script"
+    TIMEOUT ${CPPL_SCRIPT_TEST_TIMEOUT})
 
 cppl_add_script_test(e2e_valid_law e2e/valid_law.sh)
 cppl_add_script_test(e2e_invalid_law e2e/invalid_law.sh)
@@ -205,3 +249,20 @@ cppl_add_script_test(integration_parallel_verification integration/parallel_veri
 add_test(NAME architecture_dependency_boundaries
          COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/architecture/dependency_boundaries.sh"
                  "${CMAKE_SOURCE_DIR}/kernel" "$<TARGET_FILE:cppl_kernel>")
+set_tests_properties(architecture_dependency_boundaries PROPERTIES
+    LABELS "architecture;script"
+    TIMEOUT ${CPPL_SCRIPT_TEST_TIMEOUT})
+
+# The repository checks are CMake scripts, so they run under CTest like
+# anything else. Registering them here means a plain `ctest` catches a
+# committed host path or a broken preset convention, rather than that
+# depending on someone remembering to run `make ci-checks` (AGENTS.md 40).
+foreach(check IN ITEMS HostPaths PresetLayout)
+    string(TOLOWER "ci_${check}" check_test)
+
+    add_test(NAME ${check_test}
+             COMMAND "${CMAKE_COMMAND}" -P
+                     "${CMAKE_SOURCE_DIR}/cmake/ci/Check${check}.cmake")
+
+    set_tests_properties(${check_test} PROPERTIES LABELS "ci;repository")
+endforeach()

@@ -3158,9 +3158,24 @@ CXChildVisitResult collect(CXCursor cursor, CXCursor, CXClientData data) {
 // Detect an explicit refinement use at an unverified storage/callable boundary.
 // These are Clang declaration-reference edges, including ordinary aliases and
 // type constructors; no pointer/pointee or container-wide fact is inferred.
-std::optional<std::string> refinement_use(CXCursor declaration, const Selection& selection, unsigned depth = 0) {
+std::optional<std::string> refinement_use(CXCursor declaration, const Selection& selection, unsigned depth = 0,
+                                          std::unordered_set<std::size_t>* visited = nullptr) {
     if (depth > kMaxExpressionDepth)
         return "unresolved alias chain";
+
+    // Record types reach one another, and themselves: a glibc `FILE` is a
+    // `struct _IO_FILE` whose fields point back at `_IO_FILE`. Walking that
+    // without remembering where we have been revisits the same declarations
+    // until the depth guard trips, and the guard's "unresolved alias chain"
+    // would then be reported as a refinement on a standard header that
+    // declares none. A declaration is therefore visited once per query.
+    std::unordered_set<std::size_t> owned;
+
+    if (visited == nullptr)
+        visited = &owned;
+
+    if (!visited->insert(physical_offset(declaration)).second)
+        return std::nullopt;
     const auto entry =
         std::ranges::find(selection.refinements, physical_offset(declaration), &Selection::Refinement::alias_offset);
     if (entry != selection.refinements.end())
@@ -3176,12 +3191,12 @@ std::optional<std::string> refinement_use(CXCursor declaration, const Selection&
             const auto referenced_kind = clang_getCursorKind(referenced);
             if (referenced_kind == CXCursor_TypeAliasDecl || referenced_kind == CXCursor_TypedefDecl ||
                 referenced_kind == CXCursor_TypeAliasTemplateDecl) {
-                if (auto use = refinement_use(referenced, selection, depth + 1))
+                if (auto use = refinement_use(referenced, selection, depth + 1, visited))
                     return use;
             }
         }
         if (kind == CXCursor_TypeAliasDecl) {
-            if (auto use = refinement_use(child, selection, depth + 1))
+            if (auto use = refinement_use(child, selection, depth + 1, visited))
                 return use;
         }
         // A record's refined member is storage this declaration establishes
@@ -3196,7 +3211,7 @@ std::optional<std::string> refinement_use(CXCursor declaration, const Selection&
                 for (const auto field : children_of(definition)) {
                     if (clang_getCursorKind(field) != CXCursor_FieldDecl)
                         continue;
-                    if (auto use = refinement_use(field, selection, depth + 1))
+                    if (auto use = refinement_use(field, selection, depth + 1, visited))
                         return use;
                 }
             }

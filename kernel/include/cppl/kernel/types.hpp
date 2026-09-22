@@ -13,7 +13,13 @@ enum class Signedness : std::uint8_t { Signed, Unsigned };
 // coefficients and wrap multiples of 64-bit types, and their products with
 // certificate multipliers. Every operation on them is overflow-checked, and an
 // overflow rejects rather than wraps.
-using Wide = __int128;
+//
+// `__int128` is a compiler extension, which -Wpedantic reports. The project
+// keeps -Wpedantic and marks the two uses instead: `__extension__` states that
+// this one is deliberate. Every other use of 128-bit arithmetic goes through
+// these two aliases rather than naming the extension again.
+__extension__ using Wide = __int128;
+__extension__ using WideUnsigned = unsigned __int128;
 
 // Truncating division and remainder of `Wide`, computed in 64-bit pieces.
 //

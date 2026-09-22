@@ -145,7 +145,10 @@ void install_crash_report() {
 #else
     struct sigaction action{};
     action.sa_sigaction = on_signal;
-    action.sa_flags = SA_SIGINFO | SA_RESETHAND;
+    // glibc types the flag macros as `unsigned` but `sa_flags` as `int`, so
+    // the combination has to be narrowed explicitly. The value is a small
+    // constant bitmask, so the conversion discards nothing.
+    action.sa_flags = static_cast<int>(SA_SIGINFO | SA_RESETHAND);
     sigemptyset(&action.sa_mask);
     for (const int number : {SIGSEGV, SIGBUS, SIGFPE, SIGILL, SIGABRT})
         ::sigaction(number, &action, nullptr);

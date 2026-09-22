@@ -301,7 +301,7 @@ Wide value_of(const IntType& type, std::uint64_t bits) {
 }
 
 std::uint64_t bits_of(const IntType& type, Wide value) {
-    return static_cast<std::uint64_t>(static_cast<unsigned __int128>(value)) & mask(type);
+    return static_cast<std::uint64_t>(static_cast<WideUnsigned>(value)) & mask(type);
 }
 
 std::expected<Polynomial, CoreError> polynomial(const Term& normal, IntType type, const CoreLimits& limits) {

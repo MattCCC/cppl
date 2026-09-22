@@ -1,5 +1,19 @@
 name: CI
 
+# This workflow provisions runners and selects compilers. It does not decide
+# how C++L is built.
+#
+# Build type, warning policy, sanitizer selection, binary directories and test
+# configuration all live in CMakePresets.json, so that every job below runs the
+# same configuration a developer runs locally:
+#
+#   cmake --preset <preset>
+#   cmake --build --preset <preset>
+#   ctest --preset <preset>
+#
+# Adding a -D flag here instead of to a preset reintroduces the drift this
+# structure exists to prevent. See docs/DEVELOPER_GUIDE.md.
+
 on:
   push:
     branches:
@@ -24,6 +38,7 @@ concurrency:
 
 env:
   CTEST_OUTPUT_ON_FAILURE: "1"
+  CPPL_LLVM_MAJOR: "22"
 
 jobs:
   quality:
@@ -31,38 +46,41 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
+    env:
+      CPPL_CI_PRESET: ci-quality
+
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 
-      - name: Install LLVM/Clang 22
+      - name: Install LLVM/Clang
         run: |
           wget -q https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
-          sudo ./llvm.sh 22
+          sudo ./llvm.sh "${CPPL_LLVM_MAJOR}"
           sudo apt-get install -y \
-            llvm-22-dev \
-            libclang-22-dev \
-            clang-format-22 \
-            clang-tidy-22 \
-            clang-tools-22
+            "llvm-${CPPL_LLVM_MAJOR}-dev" \
+            "libclang-${CPPL_LLVM_MAJOR}-dev" \
+            "clang-format-${CPPL_LLVM_MAJOR}" \
+            "clang-tidy-${CPPL_LLVM_MAJOR}" \
+            "clang-tools-${CPPL_LLVM_MAJOR}"
+          echo "LLVM_ROOT=/usr/lib/llvm-${CPPL_LLVM_MAJOR}" >> "$GITHUB_ENV"
+
+      - name: Repository checks
+        run: |
+          cmake -P cmake/ci/CheckHostPaths.cmake
+          cmake -P cmake/ci/CheckPresetLayout.cmake
 
       - name: Configure
-        run: |
-          cmake --preset dev \
-            -DCMAKE_C_COMPILER=/usr/lib/llvm-22/bin/clang \
-            -DCMAKE_CXX_COMPILER=/usr/lib/llvm-22/bin/clang++ \
-            -DLibClang_ROOT=/usr/lib/llvm-22
+        run: cmake --preset ci-quality
 
       - name: Check formatting
-        run: cmake --build build/dev --target format-check
+        run: cmake --build --preset ci-quality --target format-check
 
       - name: Static analysis
-        run: |
-          export PATH="/usr/lib/llvm-22/bin:$PATH"
-          /usr/lib/llvm-22/bin/run-clang-tidy -p build/dev -j 2
+        run: cmake --build --preset ci-quality --target lint
 
   build-test:
     name: Build & test / ${{ matrix.name }}
@@ -73,22 +91,25 @@ jobs:
         include:
           - name: Linux GCC
             os: ubuntu-latest
-            platform: linux-gcc
+            preset: ci-linux-gcc
 
-          - name: Linux Clang 22
+          - name: Linux Clang
             os: ubuntu-latest
-            platform: linux-clang
+            preset: ci-linux-clang
 
-          - name: macOS Clang 22
+          - name: macOS LLVM
             os: macos-latest
-            platform: macos
+            preset: ci-macos-llvm
 
-          - name: Windows Clang-CL 22
+          - name: Windows Clang-CL
             os: windows-latest
-            platform: windows
+            preset: ci-windows-clang-cl
 
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+
+    env:
+      CPPL_CI_PRESET: ${{ matrix.preset }}
 
     steps:
       - name: Checkout
@@ -96,25 +117,26 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install LLVM/Clang 22 / Linux
+      - name: Install LLVM/Clang / Linux
         if: runner.os == 'Linux'
         run: |
           wget -q https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
-          sudo ./llvm.sh 22
+          sudo ./llvm.sh "${CPPL_LLVM_MAJOR}"
           sudo apt-get install -y \
-            llvm-22-dev \
-            libclang-22-dev \
-            clang-format-22 \
-            clang-tidy-22
+            "llvm-${CPPL_LLVM_MAJOR}-dev" \
+            "libclang-${CPPL_LLVM_MAJOR}-dev" \
+            "clang-format-${CPPL_LLVM_MAJOR}" \
+            "clang-tidy-${CPPL_LLVM_MAJOR}"
+          echo "LLVM_ROOT=/usr/lib/llvm-${CPPL_LLVM_MAJOR}" >> "$GITHUB_ENV"
 
-      - name: Install LLVM/Clang 22 / macOS
+      - name: Install LLVM/Clang and Ninja / macOS
         if: runner.os == 'macOS'
         run: |
-          brew install llvm@22
-          echo "LLVM_ROOT=$(brew --prefix llvm@22)" >> "$GITHUB_ENV"
+          brew install "llvm@${CPPL_LLVM_MAJOR}" ninja
+          echo "LLVM_ROOT=$(brew --prefix "llvm@${CPPL_LLVM_MAJOR}")" >> "$GITHUB_ENV"
 
-      - name: Install LLVM/Clang 22 / Windows
+      - name: Install LLVM/Clang / Windows
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
@@ -126,56 +148,19 @@ jobs:
           "LLVM_ROOT=C:/Program Files/LLVM" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Enable MSVC
-        if: matrix.platform == 'windows'
+        if: runner.os == 'Windows'
         uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
         with:
           arch: x64
 
-      - name: Configure Linux GCC
-        if: matrix.platform == 'linux-gcc'
-        run: |
-          CXXFLAGS="-Wno-pedantic" \
-          cmake --preset dev \
-            -DCMAKE_C_COMPILER=/usr/bin/gcc \
-            -DCMAKE_CXX_COMPILER=/usr/bin/g++ \
-            -DCPPL_WARNINGS_AS_ERRORS=OFF \
-            -DLibClang_ROOT=/usr/lib/llvm-22
-
-      - name: Configure Linux Clang 22
-        if: matrix.platform == 'linux-clang'
-        run: |
-          cmake --preset dev \
-            -DCMAKE_C_COMPILER=/usr/lib/llvm-22/bin/clang \
-            -DCMAKE_CXX_COMPILER=/usr/lib/llvm-22/bin/clang++ \
-            -DLibClang_ROOT=/usr/lib/llvm-22
-
-      - name: Configure macOS Clang 22
-        if: matrix.platform == 'macos'
-        run: |
-          cmake --preset dev \
-            -DCMAKE_C_COMPILER="${LLVM_ROOT}/bin/clang" \
-            -DCMAKE_CXX_COMPILER="${LLVM_ROOT}/bin/clang++" \
-            -DLibClang_ROOT="${LLVM_ROOT}"
-
-      - name: Configure Windows Clang-CL 22
-        if: matrix.platform == 'windows'
-        shell: pwsh
-        run: |
-          cmake --preset dev `
-            -G Ninja `
-            "-DCMAKE_C_COMPILER=$env:LLVM_ROOT/bin/clang-cl.exe" `
-            "-DCMAKE_CXX_COMPILER=$env:LLVM_ROOT/bin/clang-cl.exe" `
-            "-DLibClang_ROOT=$env:LLVM_ROOT"
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }}
 
       - name: Build
-        run: cmake --build build/dev --parallel
+        run: cmake --build --preset ${{ matrix.preset }}
 
       - name: Test
-        run: >
-          ctest
-          --test-dir build/dev
-          --output-on-failure
-          --no-tests=error
+        run: ctest --preset ${{ matrix.preset }}
 
   sanitizers:
     name: ${{ matrix.name }}
@@ -185,13 +170,16 @@ jobs:
       matrix:
         include:
           - name: AddressSanitizer
-            preset: asan
+            preset: ci-asan
 
           - name: UndefinedBehaviorSanitizer
-            preset: ubsan
+            preset: ci-ubsan
 
     runs-on: ubuntu-latest
     timeout-minutes: 30
+
+    env:
+      CPPL_CI_PRESET: ${{ matrix.preset }}
 
     steps:
       - name: Checkout
@@ -199,33 +187,26 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install LLVM/Clang 22
+      - name: Install LLVM/Clang
         run: |
           wget -q https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
-          sudo ./llvm.sh 22
+          sudo ./llvm.sh "${CPPL_LLVM_MAJOR}"
           sudo apt-get install -y \
-            llvm-22-dev \
-            libclang-22-dev \
-            clang-format-22 \
-            clang-tidy-22
+            "llvm-${CPPL_LLVM_MAJOR}-dev" \
+            "libclang-${CPPL_LLVM_MAJOR}-dev" \
+            "clang-format-${CPPL_LLVM_MAJOR}" \
+            "clang-tidy-${CPPL_LLVM_MAJOR}"
+          echo "LLVM_ROOT=/usr/lib/llvm-${CPPL_LLVM_MAJOR}" >> "$GITHUB_ENV"
 
       - name: Configure
-        run: |
-          cmake --preset "${{ matrix.preset }}" \
-            -DCMAKE_C_COMPILER=/usr/lib/llvm-22/bin/clang \
-            -DCMAKE_CXX_COMPILER=/usr/lib/llvm-22/bin/clang++ \
-            -DLibClang_ROOT=/usr/lib/llvm-22
+        run: cmake --preset ${{ matrix.preset }}
 
       - name: Build
-        run: cmake --build build/${{ matrix.preset }} --parallel
+        run: cmake --build --preset ${{ matrix.preset }}
 
       - name: Test
-        run: >
-          ctest
-          --test-dir build/${{ matrix.preset }}
-          --output-on-failure
-          --no-tests=error
+        run: ctest --preset ${{ matrix.preset }}
 
   thread-sanitizer:
     name: ThreadSanitizer
@@ -233,39 +214,35 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
 
+    env:
+      CPPL_CI_PRESET: ci-tsan
+
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
 
-      - name: Install LLVM/Clang 22
+      - name: Install LLVM/Clang
         run: |
           wget -q https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
-          sudo ./llvm.sh 22
+          sudo ./llvm.sh "${CPPL_LLVM_MAJOR}"
           sudo apt-get install -y \
-            llvm-22-dev \
-            libclang-22-dev \
-            clang-format-22 \
-            clang-tidy-22
+            "llvm-${CPPL_LLVM_MAJOR}-dev" \
+            "libclang-${CPPL_LLVM_MAJOR}-dev" \
+            "clang-format-${CPPL_LLVM_MAJOR}" \
+            "clang-tidy-${CPPL_LLVM_MAJOR}"
+          echo "LLVM_ROOT=/usr/lib/llvm-${CPPL_LLVM_MAJOR}" >> "$GITHUB_ENV"
 
       - name: Configure
-        run: |
-          cmake --preset tsan \
-            -DCMAKE_C_COMPILER=/usr/lib/llvm-22/bin/clang \
-            -DCMAKE_CXX_COMPILER=/usr/lib/llvm-22/bin/clang++ \
-            -DLibClang_ROOT=/usr/lib/llvm-22
+        run: cmake --preset ci-tsan
 
       - name: Build
-        run: cmake --build build/tsan --parallel
+        run: cmake --build --preset ci-tsan
 
       - name: Test
-        run: >
-          ctest
-          --test-dir build/tsan
-          --output-on-failure
-          --no-tests=error
+        run: ctest --preset ci-tsan
 
   required:
     name: Required CI

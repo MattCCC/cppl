@@ -1405,7 +1405,56 @@ generic on purpose: refinement types consume it and must never define it.
 
 ---
 
-# 40. Final invariant
+# 40. Local CI parity invariant
+
+Every build, test, formatting, sanitizer, and validation step required by
+GitHub CI must have a project-owned local execution path. GitHub Actions must
+invoke shared CMake/CTest entry points rather than maintain independent build
+logic. CMake presets are the authoritative CI configuration. New CI checks must
+remain locally reproducible.
+
+A failure that only a runner can produce is a failure nobody can fix.
+
+Required:
+
+- `CMakePresets.json` decides build type, warning policy, sanitizer selection,
+  binary directory, feature switches and test configuration.
+- A workflow job provisions the runner, installs dependencies, selects a
+  compiler, and then calls the same preset a developer calls. A `-D` flag in
+  workflow YAML is a defect.
+- Workflow jobs name the same preset names exposed locally. A matrix entry that
+  maps a compiler name onto its own flags is the drift this rule prevents.
+- Each compiler/environment configures into its own binary directory. No
+  configuration reads another's CMake cache.
+- CI-oriented runs configure from a clean tree. A reused developer cache hides
+  stale assumptions, undeclared dependencies and missing generated files.
+- Tests are registered with CTest, with their labels and timeouts. A list of
+  test executables maintained in a workflow is a defect.
+- An environment that cannot run on a host is reported unavailable. Reporting
+  an unrun environment as passing is a defect.
+- Docker reproduces Linux only. It is never presented as macOS or Windows
+  parity, and neither is WSL, Wine or a Linux container.
+- Toolchain paths are discovered or supplied by the selected environment, never
+  committed. Configuration that only works on one machine is a defect, whether
+  it is a committed path or an ambient `CFLAGS`/`LDFLAGS`.
+
+The fast path stays fast. `make check` is incremental and scoped to what
+changed; clean rebuilds and whole-repository analysis belong to `make ci`. A
+change that makes the everyday loop slower needs a reason.
+
+Do not add a CI runtime dependency. Python, Node.js, npm, Ruby, Perl, Go, Rust,
+Java and general task runners are prohibited for CI orchestration. The
+permitted infrastructure is CMake, CTest, Ninja, the native compilers, Docker
+for Linux reproduction, POSIX shell and PowerShell for minimal host
+orchestration, and Make as a convenience frontend. Shell and PowerShell scripts
+remain thin wrappers around CMake/CTest and must not grow build policy.
+
+Do not make a GitHub Actions emulator the source of truth. It may help debug
+workflow syntax; it does not establish compiler or environment parity.
+
+---
+
+# 41. Final invariant
 
 For every Law reported as `PROVEN`, the project must be able to answer:
 

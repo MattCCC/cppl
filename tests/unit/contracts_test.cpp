@@ -69,7 +69,8 @@ o::Program composed(bool weak = false) {
     caller.id = v::FunctionId{1};
     caller.symbol = v::SymbolId{"swapped"};
     caller.qualified_name = "swapped";
-    caller.contract = v::Contract{.preconditions = {equality(parameter(0), parameter(1))}, .postcondition = equality(parameter(2), parameter(1))};
+    caller.contract = v::Contract{.preconditions = {equality(parameter(0), parameter(1))},
+                                  .postcondition = equality(parameter(2), parameter(1))};
     v::Expr call;
     call.id = v::ExprId{1};
     call.type = vUnsigned;
@@ -168,7 +169,8 @@ o::Program anchored() {
     caller.id = v::FunctionId{1};
     caller.symbol = v::SymbolId{"anchor"};
     caller.qualified_name = "anchor";
-    caller.contract = v::Contract{.preconditions = {equality(parameter(0), parameter(1))}, .postcondition = equality(parameter(2), parameter(1))};
+    caller.contract = v::Contract{.preconditions = {equality(parameter(0), parameter(1))},
+                                  .postcondition = equality(parameter(2), parameter(1))};
     v::Expr call;
     call.id = v::ExprId{1};
     call.type = vUnsigned;

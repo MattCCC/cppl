@@ -38,6 +38,7 @@ endif
 	test-unit \
 	test-integration \
 	check \
+	check-full \
 	format \
 	format-check \
 	tidy \
@@ -49,6 +50,15 @@ endif
 	asan \
 	ubsan \
 	tsan \
+	ci \
+	ci-full \
+	ci-clean \
+	ci-checks \
+	ci-native \
+	ci-linux-gcc \
+	ci-linux-clang \
+	ci-asan \
+	ci-ubsan \
 	release \
 	install \
 	package \
@@ -68,7 +78,18 @@ help:
 		'  build             Build the selected preset' \
 		'  rebuild           Clean and rebuild the selected preset' \
 		'  test              Run the full test suite' \
-		'  check             Run formatting checks, linting, build, and tests' \
+		'  check             Fast local verification (incremental)' \
+		'  check-full        As check, with whole-repository static analysis' \
+		'' \
+		'Local CI (docs/CI.md):' \
+		'  ci                Native CI profile for this host, clean build' \
+		'  ci-full           Every CI environment available on this machine' \
+		'  ci-linux-gcc      Linux GCC CI, through Docker' \
+		'  ci-linux-clang    Linux Clang CI, through Docker' \
+		'  ci-asan           AddressSanitizer CI profile, natively' \
+		'  ci-ubsan          UndefinedBehaviorSanitizer CI profile, natively' \
+		'  ci-checks         Host-path and preset-layout checks (no build)' \
+		'  ci-clean          Remove every CI build tree' \
 		'' \
 		'Quality:' \
 		'  format            Apply source formatting' \
@@ -98,6 +119,7 @@ help:
 		'  make test JOBS=12' \
 		'  make build PRESET=release' \
 		'  make check' \
+		'  make ci' \
 		'  make asan'
 
 # CMake's own build-system regeneration (driven by CONFIGURE_DEPENDS/
@@ -154,8 +176,15 @@ test-integration: build
 test-mutations:
 	./scripts/test-mutations.sh $(if $(JOBS),--jobs $(JOBS),)
 
-## check: Run repository validation suitable for CI/pre-merge checks
-check: format-check lint spec-rules-check test
+# The fast feedback loop. Everything here is incremental and scoped to what
+# changed, so it stays usable after every edit. Whole-repository static
+# analysis and clean rebuilds are deliberately not in this path -- they belong
+# to `make ci`, which runs before a push rather than during development.
+## check: Fast local verification: formatting, changed-file lint, build, tests
+check: format-check lint-changed spec-rules-check test
+
+## check-full: The `check` set with whole-repository static analysis
+check-full: format-check lint spec-rules-check test
 
 ## spec-rules-check: Validate normative rule IDs and citations in docs/SPEC.md
 spec-rules-check: configure
@@ -197,6 +226,60 @@ ubsan:
 ## tsan: Run ThreadSanitizer configuration
 tsan:
 	$(MAKE) test PRESET=tsan
+
+# -----------------------------------------------------------------------------
+# Local CI parity
+# -----------------------------------------------------------------------------
+#
+# These targets are a convenience frontend and nothing more. Each one hands off
+# to the same CMake/CTest presets GitHub Actions invokes, so a compiler flag
+# never lives here. See docs/DEVELOPER_GUIDE.md.
+#
+# The native profile is chosen by host, matching the GitHub matrix entry for
+# that platform.
+UNAME_S := $(shell uname -s)
+
+ifeq ($(UNAME_S),Darwin)
+CI_NATIVE_PRESET ?= ci-macos-llvm
+else
+CI_NATIVE_PRESET ?= ci-linux-clang
+endif
+
+## ci-checks: Repository checks that need no build (host paths, preset layout)
+ci-checks:
+	$(CMAKE) -P cmake/ci/CheckHostPaths.cmake
+	$(CMAKE) -P cmake/ci/CheckPresetLayout.cmake
+
+## ci-native: Clean native CI profile for this host
+ci-native:
+	./tools/ci/native.sh $(CI_NATIVE_PRESET)
+
+## ci: Full native CI profile for this host (clean build)
+ci: ci-checks ci-native
+
+## ci-linux-gcc: Linux GCC CI, reproduced through Docker
+ci-linux-gcc:
+	./tools/ci/linux.sh gcc
+
+## ci-linux-clang: Linux Clang CI, reproduced through Docker
+ci-linux-clang:
+	./tools/ci/linux.sh clang
+
+## ci-asan: AddressSanitizer CI profile, natively
+ci-asan:
+	./tools/ci/native.sh ci-asan
+
+## ci-ubsan: UndefinedBehaviorSanitizer CI profile, natively
+ci-ubsan:
+	./tools/ci/native.sh ci-ubsan
+
+## ci-full: Every CI environment available on this host
+ci-full:
+	@./tools/ci/full.sh
+
+## ci-clean: Remove every CI build tree
+ci-clean:
+	$(CMAKE) -E rm -rf build/ci
 
 ## release: Build production configuration
 release:

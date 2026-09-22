@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string_view>
 
 // The vocabulary of case labels, shared by the generic parser, the projector and

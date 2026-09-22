@@ -104,6 +104,163 @@
         "CPPL_ENABLE_UBSAN": "OFF",
         "CPPL_ENABLE_TSAN": "ON"
       }
+    },
+
+    {
+      "name": "ci-base",
+      "hidden": true,
+      "inherits": "base",
+      "description": "Shared CI policy. Every ci-* preset inherits this; GitHub Actions and local runs use the identical configuration.",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CPPL_BUILD_TESTS": "ON",
+        "CPPL_WARNINGS_AS_ERRORS": "ON",
+        "CPPL_CI": "ON"
+      }
+    },
+
+    {
+      "name": "ci-llvm-root",
+      "hidden": true,
+      "description": "Selects the LLVM installation named by the LLVM_ROOT environment variable. The environment supplies the path; the repository never commits one.",
+      "cacheVariables": {
+        "LibClang_ROOT": "$env{LLVM_ROOT}",
+        "CMAKE_C_COMPILER": "$env{LLVM_ROOT}/bin/clang",
+        "CMAKE_CXX_COMPILER": "$env{LLVM_ROOT}/bin/clang++"
+      }
+    },
+
+    {
+      "name": "ci-linux-gcc",
+      "displayName": "CI / Linux GCC",
+      "description": "Linux GCC build against LLVM_ROOT's libclang. Mirrors the GitHub 'Linux GCC' matrix entry.",
+      "inherits": "ci-base",
+      "binaryDir": "${sourceDir}/build/ci/linux-gcc",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "LibClang_ROOT": "$env{LLVM_ROOT}",
+        "CPPL_WARNINGS_AS_ERRORS": "OFF"
+      }
+    },
+
+    {
+      "name": "ci-linux-clang",
+      "displayName": "CI / Linux Clang",
+      "description": "Linux Clang build. Mirrors the GitHub 'Linux Clang 22' matrix entry.",
+      "inherits": ["ci-llvm-root", "ci-base"],
+      "binaryDir": "${sourceDir}/build/ci/linux-clang",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+
+    {
+      "name": "ci-macos-llvm",
+      "displayName": "CI / macOS Homebrew LLVM",
+      "description": "macOS build using the Homebrew LLVM named by LLVM_ROOT. Mirrors the GitHub 'macOS Clang 22' matrix entry. Never falls back to AppleClang.",
+      "inherits": ["ci-llvm-root", "ci-base"],
+      "binaryDir": "${sourceDir}/build/ci/macos-llvm",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Darwin"
+      }
+    },
+
+    {
+      "name": "ci-windows-clang-cl",
+      "displayName": "CI / Windows Clang-CL",
+      "description": "Windows clang-cl build inside an MSVC developer environment. Mirrors the GitHub 'Windows Clang-CL 22' matrix entry.",
+      "inherits": "ci-base",
+      "binaryDir": "${sourceDir}/build/ci/windows-clang-cl",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "$env{LLVM_ROOT}/bin/clang-cl.exe",
+        "CMAKE_CXX_COMPILER": "$env{LLVM_ROOT}/bin/clang-cl.exe",
+        "LibClang_ROOT": "$env{LLVM_ROOT}"
+      }
+    },
+
+    {
+      "name": "ci-quality",
+      "displayName": "CI / Quality",
+      "description": "Formatting and static-analysis configuration. Mirrors the GitHub 'Quality' job.",
+      "inherits": ["ci-llvm-root", "ci-base"],
+      "binaryDir": "${sourceDir}/build/ci/quality",
+      "condition": {
+        "type": "notEquals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
+    },
+
+    {
+      "name": "ci-asan",
+      "displayName": "CI / AddressSanitizer",
+      "description": "AddressSanitizer configuration. Mirrors the GitHub 'AddressSanitizer' job.",
+      "inherits": ["ci-llvm-root", "ci-base"],
+      "binaryDir": "${sourceDir}/build/ci/asan",
+      "condition": {
+        "type": "notEquals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CPPL_ENABLE_ASAN": "ON",
+        "CPPL_ENABLE_UBSAN": "OFF",
+        "CPPL_ENABLE_TSAN": "OFF"
+      }
+    },
+
+    {
+      "name": "ci-ubsan",
+      "displayName": "CI / UndefinedBehaviorSanitizer",
+      "description": "UndefinedBehaviorSanitizer configuration. Mirrors the GitHub 'UndefinedBehaviorSanitizer' job.",
+      "inherits": ["ci-llvm-root", "ci-base"],
+      "binaryDir": "${sourceDir}/build/ci/ubsan",
+      "condition": {
+        "type": "notEquals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CPPL_ENABLE_ASAN": "OFF",
+        "CPPL_ENABLE_UBSAN": "ON",
+        "CPPL_ENABLE_TSAN": "OFF"
+      }
+    },
+
+    {
+      "name": "ci-tsan",
+      "displayName": "CI / ThreadSanitizer",
+      "description": "ThreadSanitizer configuration. Mirrors the nightly GitHub 'ThreadSanitizer' job.",
+      "inherits": ["ci-llvm-root", "ci-base"],
+      "binaryDir": "${sourceDir}/build/ci/tsan",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CPPL_ENABLE_ASAN": "OFF",
+        "CPPL_ENABLE_UBSAN": "OFF",
+        "CPPL_ENABLE_TSAN": "ON"
+      }
     }
   ],
 
@@ -127,59 +284,119 @@
     {
       "name": "tsan",
       "configurePreset": "tsan"
+    },
+
+    {
+      "name": "ci-linux-gcc",
+      "configurePreset": "ci-linux-gcc"
+    },
+    {
+      "name": "ci-linux-clang",
+      "configurePreset": "ci-linux-clang"
+    },
+    {
+      "name": "ci-macos-llvm",
+      "configurePreset": "ci-macos-llvm"
+    },
+    {
+      "name": "ci-windows-clang-cl",
+      "configurePreset": "ci-windows-clang-cl"
+    },
+    {
+      "name": "ci-quality",
+      "configurePreset": "ci-quality"
+    },
+    {
+      "name": "ci-asan",
+      "configurePreset": "ci-asan"
+    },
+    {
+      "name": "ci-ubsan",
+      "configurePreset": "ci-ubsan"
+    },
+    {
+      "name": "ci-tsan",
+      "configurePreset": "ci-tsan"
     }
   ],
 
   "testPresets": [
     {
-      "name": "dev",
-      "configurePreset": "dev",
+      "name": "test-base",
+      "hidden": true,
       "output": {
         "outputOnFailure": true
       },
       "execution": {
         "noTestsAction": "error"
       }
+    },
+
+    {
+      "name": "dev",
+      "configurePreset": "dev",
+      "inherits": "test-base"
     },
     {
       "name": "release",
       "configurePreset": "release",
-      "output": {
-        "outputOnFailure": true
-      },
-      "execution": {
-        "noTestsAction": "error"
-      }
+      "inherits": "test-base"
     },
     {
       "name": "asan",
       "configurePreset": "asan",
-      "output": {
-        "outputOnFailure": true
-      },
-      "execution": {
-        "noTestsAction": "error"
-      }
+      "inherits": "test-base"
     },
     {
       "name": "ubsan",
       "configurePreset": "ubsan",
-      "output": {
-        "outputOnFailure": true
-      },
-      "execution": {
-        "noTestsAction": "error"
-      }
+      "inherits": "test-base"
     },
     {
       "name": "tsan",
       "configurePreset": "tsan",
-      "output": {
-        "outputOnFailure": true
-      },
-      "execution": {
-        "noTestsAction": "error"
-      }
+      "inherits": "test-base"
+    },
+
+    {
+      "name": "ci-linux-gcc",
+      "configurePreset": "ci-linux-gcc",
+      "inherits": "test-base"
+    },
+    {
+      "name": "ci-linux-clang",
+      "configurePreset": "ci-linux-clang",
+      "inherits": "test-base"
+    },
+    {
+      "name": "ci-macos-llvm",
+      "configurePreset": "ci-macos-llvm",
+      "inherits": "test-base"
+    },
+    {
+      "name": "ci-windows-clang-cl",
+      "configurePreset": "ci-windows-clang-cl",
+      "inherits": "test-base"
+    },
+    {
+      "name": "ci-quality",
+      "configurePreset": "ci-quality",
+      "inherits": "test-base"
+    },
+    {
+      "name": "ci-asan",
+      "configurePreset": "ci-asan",
+      "inherits": "test-base"
+    },
+    {
+      "name": "ci-ubsan",
+      "configurePreset": "ci-ubsan",
+      "inherits": "test-base"
+    },
+    {
+      "name": "ci-tsan",
+      "configurePreset": "ci-tsan",
+      "inherits": "test-base"
     }
   ],
 
@@ -286,6 +503,82 @@
         {
           "type": "test",
           "name": "tsan"
+        }
+      ]
+    },
+
+    {
+      "name": "ci-linux-gcc",
+      "displayName": "CI / Linux GCC workflow",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "ci-linux-gcc"
+        },
+        {
+          "type": "build",
+          "name": "ci-linux-gcc"
+        },
+        {
+          "type": "test",
+          "name": "ci-linux-gcc"
+        }
+      ]
+    },
+
+    {
+      "name": "ci-linux-clang",
+      "displayName": "CI / Linux Clang workflow",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "ci-linux-clang"
+        },
+        {
+          "type": "build",
+          "name": "ci-linux-clang"
+        },
+        {
+          "type": "test",
+          "name": "ci-linux-clang"
+        }
+      ]
+    },
+
+    {
+      "name": "ci-macos-llvm",
+      "displayName": "CI / macOS LLVM workflow",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "ci-macos-llvm"
+        },
+        {
+          "type": "build",
+          "name": "ci-macos-llvm"
+        },
+        {
+          "type": "test",
+          "name": "ci-macos-llvm"
+        }
+      ]
+    },
+
+    {
+      "name": "ci-windows-clang-cl",
+      "displayName": "CI / Windows Clang-CL workflow",
+      "steps": [
+        {
+          "type": "configure",
+          "name": "ci-windows-clang-cl"
+        },
+        {
+          "type": "build",
+          "name": "ci-windows-clang-cl"
+        },
+        {
+          "type": "test",
+          "name": "ci-windows-clang-cl"
         }
       ]
     }

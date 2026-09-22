@@ -606,7 +606,7 @@ void encode(source::Hasher& hasher, const kernel::Term& term) {
                 // Both halves: a literal's value is 128 bits wide, so hashing
                 // only the low half would give two distinct literals one
                 // identity.
-                const auto bits = static_cast<unsigned __int128>(node.value);
+                const auto bits = static_cast<kernel::WideUnsigned>(node.value);
                 hasher.update_u64(static_cast<std::uint64_t>(bits));
                 hasher.update_u64(static_cast<std::uint64_t>(bits >> 64));
             } else if constexpr (std::is_same_v<Node, kernel::Call>) {
