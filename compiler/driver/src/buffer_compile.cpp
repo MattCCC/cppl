@@ -78,7 +78,7 @@ BufferCompileOutcome compile_buffer(const BufferCompileRequest& request, diagnos
 
     const std::string clang = request.clang.empty() ? std::string{CPPL_DEFAULT_CLANG} : request.clang;
     const ProcessResult preprocessing = run(clang, preprocess);
-    if (!preprocessing.started) {
+    if (!preprocessing.started || preprocessing.signaled) {
         report_internal(engine, "could not run the C++ preprocessor for '" + request.virtual_path +
                                     "': " + preprocessing.error);
         outcome.ok = false;

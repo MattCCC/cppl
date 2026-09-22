@@ -10,6 +10,11 @@ struct ProcessResult {
     bool started = false;
     int exit_code = -1;
     std::string error;
+    // The program died from a signal rather than returning a status. Its
+    // `exit_code` is then the shell's `128 + signal` convention, which a
+    // caller must not return as its own: doing so reports a crash this
+    // process did not have, and says nothing about the one it observed.
+    bool signaled = false;
 };
 
 // Runs a program with the given arguments, inheriting standard streams so that

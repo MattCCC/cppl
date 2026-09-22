@@ -130,7 +130,10 @@ UnitOutcome compile_unit(const Options& options, const Input& input, const std::
 
     const Stage preprocessing_stage{"preprocessing"};
     const ProcessResult preprocessing = run(options.clang, preprocess);
-    if (!preprocessing.started) {
+    // A preprocessor that died from a signal wrote no reason to stderr, so
+    // unlike an ordinary non-zero status it needs one reported here, and its
+    // `128 + signal` must not become this process's own exit status.
+    if (!preprocessing.started || preprocessing.signaled) {
         report(engine, diagnostics::Category::Internal, preprocessing.error);
         outcome.failed = true;
         return outcome;
@@ -248,7 +251,7 @@ int run_driver(int argc, const char* const* argv) {
 
     if (options.passthrough || options.inputs.empty()) {
         const ProcessResult result = run(options.clang, options.arguments);
-        if (!result.started) {
+        if (!result.started || result.signaled) {
             std::cerr << "cppl: error: " << result.error << "\n";
             return 1;
         }
@@ -317,7 +320,11 @@ int run_driver(int argc, const char* const* argv) {
 
     const Stage compiling{"running the C++ compiler"};
     const ProcessResult result = run(options.clang, arguments);
-    if (!result.started) {
+    // A signalled compiler is reported, not impersonated. Returning its
+    // `128 + signal` as this process's own status is indistinguishable from
+    // `cppl` itself crashing, so the crash report never runs and a build
+    // system sees a silent fault with no reason attached (`AGENTS.md` 23).
+    if (!result.started || result.signaled) {
         std::cerr << "cppl: error: " << result.error << "\n";
         return 1;
     }

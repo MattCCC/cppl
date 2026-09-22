@@ -191,7 +191,8 @@ ProcessResult wait_for(pid_t child, const std::string& executable) {
         return ProcessResult{true, WEXITSTATUS(status), {}};
     }
     if (WIFSIGNALED(status)) {
-        return ProcessResult{true, 128 + WTERMSIG(status), "'" + executable + "' terminated by signal"};
+        return ProcessResult{true, 128 + WTERMSIG(status),
+                             "'" + executable + "' terminated by signal " + std::to_string(WTERMSIG(status)), true};
     }
     return ProcessResult{true, -1, "'" + executable + "' ended abnormally"};
 }
