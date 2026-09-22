@@ -29,8 +29,13 @@ constexpr std::size_t kMaxDerivations = 48;
 // Case analyses one proof search may open. Each one doubles the work below it,
 // so the bound keeps a failing search from growing without end.
 constexpr std::size_t kMaxCaseSplits = 24;
-// The widest machine type whose values a disjunction may enumerate. A domain
-// this small can be covered side by side; anything wider is not exhausted here.
+// The widest machine type whose values this search will enumerate side by side.
+//
+// A resource threshold, not a semantic boundary. Every machine type is finite
+// and its equality is decidable, so a wider type is no less decidable; covering
+// one by enumeration just costs a case per value, which stops being worth
+// constructing well before 2^32 of them. Raising this changes what the search
+// spends, never what is true.
 constexpr std::uint16_t kMaxEnumeratedWidth = 4;
 
 [[nodiscard]] bool add(Wide& into, Wide value) {
@@ -581,12 +586,12 @@ class Prover {
                 return k::ProofTerm::disjunction_introduction(std::move(*evidence), right);
             }
         }
-        // No side holds on its own. A disjunction that enumerates a domain the
-        // core can exhaust is still provable, by taking its sides as cases.
-        if (!enumerates_a_domain(goal)) {
+        // No side holds on its own. Where a decidability principle covers the
+        // sides, the goal is still provable by taking them as cases.
+        if (!can_decide(goal)) {
             return std::nullopt;
         }
-        return by_exhaustive_cases(goal);
+        return derive_decidable_cases(goal);
     }
 
     // The sides of a disjunction, flattened. Nesting associates to the right,
@@ -600,44 +605,28 @@ class Prover {
         found.push_back(&proposition);
     }
 
-    // Whether the sides of `goal` enumerate a domain this search may exhaust.
-    //
-    // Two shapes qualify, and only these. Both are decidability principles
-    // about machine integers, not about propositions in general.
-    //
-    //   - Every side compares the same two terms, so the sides are a subset of
-    //     the order relations on one pair. The order is total and the machine
-    //     decides it.
-    //   - Every side equates one term to a literal of a type narrow enough to
-    //     enumerate, and there are at least as many sides as the type has
-    //     values. The type's domain is then covered.
-    //
-    // A pair of complementary propositions over an unbounded domain is neither,
-    // so excluded middle is not reachable here.
-    static bool enumerates_a_domain(const k::Proposition& goal) {
-        std::vector<const k::Proposition*> sides;
-        sides_of(goal, sides);
-        if (sides.size() < 2) {
-            return false;
-        }
-
-        // An order enumeration: one pair of terms, compared by every side.
+    // Whether the sides of `goal` are covered by the order of one pair of
+    // terms. Machine order is total and decided at every width, so no size
+    // threshold applies to this principle.
+    static bool decided_by_order(const std::vector<const k::Proposition*>& sides) {
         std::optional<std::pair<k::Term, k::Term>> pair;
-        bool ordered = true;
         for (const k::Proposition* side : sides) {
             const auto compared = compared_terms(*side);
             if (!compared || (pair && !(*compared == *pair))) {
-                ordered = false;
-                break;
+                return false;
             }
             pair = compared;
         }
-        if (ordered) {
-            return true;
-        }
+        return true;
+    }
 
-        // A value enumeration: one term, equated to a literal of a narrow type
-        // by every side, with a side for each of the type's values.
+    // Whether the sides of `goal` name every value of one machine type: one
+    // term equated to a literal by each side, with a side per value.
+    //
+    // Capped at `kMaxEnumeratedWidth`, which is a cost threshold of this search
+    // and not a claim about decidability. A wider type is equally finite and
+    // its equality equally decidable; enumerating it is merely expensive.
+    static bool decided_by_enumeration(const std::vector<const k::Proposition*>& sides) {
         std::optional<k::Term> subject;
         std::optional<k::IntType> type;
         for (const k::Proposition* side : sides) {
@@ -663,6 +652,26 @@ class Prover {
         }
         // The values must be distinct, so a side for each one covers the type.
         return type && sides.size() >= (std::size_t{1} << type->width);
+    }
+
+    // Whether this search will construct a case analysis for `goal`, by some
+    // decidability principle it knows (`SPEC.md` 7.8).
+    //
+    // Every principle recognized here is one about machine integers, and each
+    // is checked against the goal's sides. New decidable relations should be
+    // added as further principles feeding this one decision, so that what the
+    // search will derive stays stated in a single place.
+    //
+    // This answers what the search *builds*, not what is decidable. A goal it
+    // declines is not thereby false or undecidable: a proof of the same goal
+    // arrived at another way is checked by the kernel on its own merits.
+    static bool can_decide(const k::Proposition& goal) {
+        std::vector<const k::Proposition*> sides;
+        sides_of(goal, sides);
+        if (sides.size() < 2) {
+            return false;
+        }
+        return decided_by_order(sides) || decided_by_enumeration(sides);
     }
 
     // The two terms a proposition compares, when it is an order or equality
@@ -692,21 +701,20 @@ class Prover {
         return std::pair{equality->lhs, equality->rhs};
     }
 
-    // A disjunction whose sides enumerate a domain the core can exhaust: the
-    // values of a narrow machine type, or the order of one pair of terms. No
-    // side holds alone, so the goal is proven by splitting on the first side's
-    // decision: where it holds the goal is that side, and where it fails that
-    // failure is a premise for the rest.
+    // The case analysis `can_decide` promised. No side holds alone, so the goal
+    // is proven by splitting on the first side's decision: where it holds the
+    // goal is that side, and where it fails that failure is a premise for the
+    // rest.
     //
     // The split is on a comparison the machine decides, so the two branches are
     // exhaustive by construction. Each branch is closed by the ordinary search,
     // and every step is a kernel rule checked independently.
     //
-    // Only a disjunction over such a domain is taken this way. A decidable
-    // split is not excluded middle and must not stand in for it: `P || not P`
-    // over an arbitrary proposition is not granted here, and a goal needing it
-    // stays unproven (`SPEC.md` 7.8, `TRUST.md` "Disjunction").
-    std::optional<k::ProofTerm> by_exhaustive_cases(const k::Proposition& goal) {
+    // Every case comes from a decidability principle applied to a machine
+    // comparison. Nothing here grants `P || not P` for an arbitrary `P`: a goal
+    // that needs excluded middle over an undecided proposition stays unproven
+    // (`SPEC.md` 7.8, `TRUST.md` "Disjunction").
+    std::optional<k::ProofTerm> derive_decidable_cases(const k::Proposition& goal) {
         if (++splits_ > kMaxCaseSplits) {
             return std::nullopt;
         }
@@ -756,7 +764,7 @@ class Prover {
                 return k::ProofTerm::disjunction_introduction(std::move(*evidence), right);
             }
         }
-        return by_exhaustive_cases(goal);
+        return derive_decidable_cases(goal);
     }
 
     // The boolean term whose truth is exactly `proposition`, when the machine

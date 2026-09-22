@@ -1263,6 +1263,82 @@ CPPL_TEST(a_decidable_split_does_not_prove_a_false_equality) {
 }
 
 // -----------------------------------------------------------------------------
+// The boundary between what is decidable and what this automation constructs.
+//
+// These goals are true, and decidable: every machine type is finite and its
+// equality is decided by the machine. Automation declines them because the
+// enumeration principle it uses costs one case per value, and it will not spend
+// 2^32 of them. That is a resource policy of the search, not a statement that
+// the proposition lacks a truth value or that the core denies it.
+//
+// The distinction matters for the trust model: "automation did not synthesize a
+// proof" and "the proposition is false" are different outcomes, and only the
+// first one is what these record.
+// -----------------------------------------------------------------------------
+
+CPPL_TEST(a_complementary_pair_is_decided_by_order_at_any_width) {
+    // forall x:u32. x == 0 || x != 0
+    //
+    // Equality and its negation are order relations on one pair, so the order
+    // principle settles this and no width threshold applies. The width of the
+    // type is irrelevant to whether the proposition is decidable.
+    const auto x = var(0);
+    const auto goal = k::Proposition::disjunction(equal(kU32, x, lit(kU32, 0)),
+                                                  holds(k::PrimOp::NotEqual, kU32, x, lit(kU32, 0)));
+    CPPL_CHECK(proven(closed(kU32, 1, {}, goal)));
+}
+
+CPPL_TEST(automation_declines_to_enumerate_a_wide_domain_it_could_in_principle_decide) {
+    // forall x:u8. x == 0 || x == 1 || ... || x == 255
+    //
+    // True, and decidable: u8 is finite and its equality is decided by the
+    // machine. No two sides are the same pair, so the order principle does not
+    // apply and only enumeration would settle it -- at one case per value.
+    // Automation declines to spend 256 of them. That is this search's cost
+    // policy, not a claim that the proposition lacks a truth value.
+    const auto x = var(0);
+    k::Proposition goal = equal(kU8, x, lit(kU8, 255));
+    for (std::int64_t value = 254; value >= 0; --value) {
+        goal = k::Proposition::disjunction(equal(kU8, x, lit(kU8, value)), std::move(goal));
+    }
+    CPPL_CHECK(not_accepted_from_automation(closed(kU8, 1, {}, goal)));
+}
+
+CPPL_TEST(the_same_goal_at_an_enumerable_width_is_proven) {
+    // The u2 instance of the goal above. Nothing about the proposition changed
+    // but the width, which is what makes the previous case a cost decision.
+    const auto x = var(0);
+    const auto goal = k::Proposition::disjunction(equal(kU2, x, lit(kU2, 0)),
+                                                  holds(k::PrimOp::NotEqual, kU2, x, lit(kU2, 0)));
+    CPPL_CHECK(proven(closed(kU2, 1, {}, goal)));
+}
+
+CPPL_TEST(a_declined_width_is_still_decided_where_order_settles_it) {
+    // Order is total and decided at every width, so the order principle carries
+    // no threshold: this u32 trichotomy is proven though the enumeration
+    // principle would have declined the same type.
+    const auto y = var(0);
+    const auto x = var(1);
+    const auto goal = k::Proposition::disjunction(
+        holds(k::PrimOp::Less, kU32, x, y),
+        k::Proposition::disjunction(equal(kU32, x, y), holds(k::PrimOp::Greater, kU32, x, y)));
+    CPPL_CHECK(proven(closed(kU32, 2, {}, goal)));
+}
+
+CPPL_TEST(a_goal_automation_declines_is_still_established_case_by_case) {
+    // What the search will not assemble in one step is not thereby out of
+    // reach: the cases of the declined u8 enumeration are each provable, so the
+    // derivation exists even where automation does not spend the effort to
+    // build it. The trust boundary is the kernel's check, not the search's
+    // willingness to look.
+    const auto x = var(0);
+    const auto is_zero = holds(k::PrimOp::Equal, kU8, x, lit(kU8, 0));
+    const auto is_one = holds(k::PrimOp::Equal, kU8, x, lit(kU8, 1));
+    CPPL_CHECK(proven(closed(kU8, 1, {is_zero}, equal(kU8, x, lit(kU8, 0)))));
+    CPPL_CHECK(proven(closed(kU8, 1, {is_one}, equal(kU8, x, lit(kU8, 1)))));
+}
+
+// -----------------------------------------------------------------------------
 // Realistic verification obligations.
 // -----------------------------------------------------------------------------
 
