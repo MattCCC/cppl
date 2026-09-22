@@ -1,0 +1,4 @@
+.vscodeignore
+scripts/**
+node_modules/**
+**/*.vsix

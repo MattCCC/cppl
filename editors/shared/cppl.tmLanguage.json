@@ -1,0 +1,135 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "C++L",
+  "scopeName": "source.cppl",
+  "comment": "C++L is a superset of C++: this grammar injects the C++L-only surface from docs/GRAMMAR.md section 1 and defers everything else to the C++ grammar. Contextual words are matched only where the grammar gives them meaning, so an ordinary C++ identifier named `result`, `old`, `self` or `type` is left alone.",
+  "patterns": [
+    { "include": "#comments-and-strings" },
+    { "include": "#cppl-declarations" },
+    { "include": "#cppl-clauses" },
+    { "include": "#cppl-proof-statements" },
+    { "include": "#cppl-modifiers" },
+    { "include": "source.cpp" }
+  ],
+  "repository": {
+    "comments-and-strings": {
+      "comment": "Matched before any C++L rule so that a keyword inside a comment, a string or a character literal is never reinterpreted as C++L syntax. The bodies are left to the C++ grammar; these rules only claim the regions.",
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.cppl",
+          "begin": "//",
+          "end": "$"
+        },
+        {
+          "name": "comment.block.cppl",
+          "begin": "/\\*",
+          "end": "\\*/"
+        },
+        {
+          "name": "string.quoted.double.cppl",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [{ "match": "\\\\." , "name": "constant.character.escape.cppl" }]
+        },
+        {
+          "name": "string.quoted.single.cppl",
+          "begin": "'",
+          "end": "'",
+          "patterns": [{ "match": "\\\\.", "name": "constant.character.escape.cppl" }]
+        }
+      ]
+    },
+    "cppl-declarations": {
+      "patterns": [
+        {
+          "comment": "law / proof declaration heads: `law name(` and `proof name(`",
+          "match": "\\b(law|proof)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(?=\\()",
+          "captures": {
+            "1": { "name": "keyword.control.declaration.cppl" },
+            "2": { "name": "entity.name.function.cppl" }
+          }
+        },
+        {
+          "comment": "refinement type declaration: `type Name = Base where (...)`",
+          "match": "\\b(type)\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*(?=[(=])",
+          "captures": {
+            "1": { "name": "keyword.control.declaration.cppl" },
+            "2": { "name": "entity.name.type.cppl" }
+          }
+        },
+        {
+          "comment": "`proves` attaches a proof to its proposition",
+          "match": "\\b(proves)\\b",
+          "name": "keyword.control.proves.cppl"
+        },
+        {
+          "comment": "`where` introduces a refinement predicate",
+          "match": "\\b(where)\\s*(?=\\()",
+          "name": "keyword.control.where.cppl"
+        }
+      ]
+    },
+    "cppl-clauses": {
+      "patterns": [
+        {
+          "comment": "Specification clauses always take a parenthesized proposition",
+          "match": "\\b(expects|ensures|invariant|decreases)\\s*(?=\\()",
+          "name": "keyword.control.clause.cppl"
+        },
+        {
+          "comment": "Quantifiers bind inside specification expressions",
+          "match": "\\b(forall|exists)\\s*(?=\\()",
+          "name": "keyword.control.quantifier.cppl"
+        },
+        {
+          "comment": "`old(expr)` is a function-entry snapshot in a postcondition",
+          "match": "\\b(old)\\s*(?=\\()",
+          "name": "support.function.contract.cppl"
+        },
+        {
+          "comment": "`result` is the return value in a non-void postcondition and `self` the candidate value in a refinement predicate. Both are ordinary C++ names elsewhere (docs/GRAMMAR.md sections 12 and 15), so they are only colored inside the clause that gives them meaning.",
+          "begin": "\\b(?:ensures|where)\\s*(\\()",
+          "beginCaptures": { "1": { "name": "punctuation.section.parens.begin.cppl" } },
+          "end": "\\)",
+          "endCaptures": { "0": { "name": "punctuation.section.parens.end.cppl" } },
+          "patterns": [
+            {
+              "match": "\\b(result|self)\\b",
+              "name": "variable.language.contract.cppl"
+            },
+            { "include": "#cppl-clauses" },
+            { "include": "source.cpp" }
+          ]
+        }
+      ]
+    },
+    "cppl-proof-statements": {
+      "patterns": [
+        {
+          "comment": "Proof statements taking an argument list (docs/GRAMMAR.md section 5)",
+          "match": "\\b(exact|apply|assume|rewrite|cases|decompose|induction)\\s*(?=[(<])",
+          "name": "keyword.other.proof.cppl"
+        },
+        {
+          "comment": "`refl` is a complete proof statement on its own",
+          "match": "\\b(refl)\\b(?=\\s*;)",
+          "name": "keyword.other.proof.cppl"
+        }
+      ]
+    },
+    "cppl-modifiers": {
+      "patterns": [
+        {
+          "comment": "Declaration modifiers (docs/GRAMMAR.md section 7). A modifier only ever prefixes another declaration, so it must be followed by a further type or specifier: `int verified = 0;` and `struct ghost {};` are ordinary C++ and stay uncolored.\n\n`ghost value;` is genuinely ambiguous -- a ghost local and an ordinary variable of a type named `ghost` are spelled identically. Separating them needs the frontend's syntactic and semantic C++ context plus the SPEC.md 3.1 precedence rule, which a TextMate grammar does not have, so it defers to the C++ reading (SPEC.md 3.1; tests/fixtures/contextual_identifiers.cpp). Requiring a following type is what keeps valid C++ correct.",
+          "match": "\\b(verified|pure|ghost|trusted)\\s+(?=(?:law|proof|type|struct|class|enum|union|auto|void|bool|char|short|int|long|float|double|signed|unsigned|const|constexpr|consteval|inline|static|template|typename)\\b|[A-Za-z_][A-Za-z0-9_:]*[\\s*&<]+[A-Za-z_*&])",
+          "name": "storage.modifier.cppl"
+        },
+        {
+          "comment": "`unsafe` opens a block or prefixes a declaration (docs/GRAMMAR.md sections 22 and 23), never stands alone as an identifier.",
+          "match": "\\b(unsafe)\\s*(?=\\{)|\\b(unsafe)\\s+(?=[A-Za-z_])",
+          "name": "storage.modifier.cppl"
+        }
+      ]
+    }
+  }
+}
