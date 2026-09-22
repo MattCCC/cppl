@@ -593,7 +593,12 @@ void encode(source::Hasher& hasher, const kernel::Term& term) {
             } else if constexpr (std::is_same_v<Node, kernel::Literal>) {
                 hasher.update_u8(11);
                 encode(hasher, kernel::Type{node.type});
-                hasher.update_u64(static_cast<std::uint64_t>(node.value));
+                // Both halves: a literal's value is 128 bits wide, so hashing
+                // only the low half would give two distinct literals one
+                // identity.
+                const auto bits = static_cast<unsigned __int128>(node.value);
+                hasher.update_u64(static_cast<std::uint64_t>(bits));
+                hasher.update_u64(static_cast<std::uint64_t>(bits >> 64));
             } else if constexpr (std::is_same_v<Node, kernel::Call>) {
                 hasher.update_u8(12);
                 hasher.update_u64(node.callee.value);

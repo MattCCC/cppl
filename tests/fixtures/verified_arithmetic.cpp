@@ -132,6 +132,16 @@ law successor_stays_below(unsigned i, unsigned n)
 law product_commutes(unsigned x, unsigned y)
     proves (x * y == y * x);
 
+// A u64 literal in the upper half of the range. Its bits reach the compiler in
+// a negative `int64_t`, and the core denotes the value itself, so it needs no
+// encoding as an expression to be stated or reasoned about.
+law greatest_u64_is_above_zero()
+    proves (18446744073709551615ull > 0ull);
+
+law greatest_u64_is_its_own_value(unsigned long long x)
+    expects (x == 18446744073709551615ull)
+    proves (x > 9223372036854775807ull);
+
 proof product_commutes_holds(unsigned x, unsigned y)
     proves (product_commutes(x, y))
 {

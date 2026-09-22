@@ -9,7 +9,7 @@ run=$(mktemp -d "$WORK/verified-arithmetic.XXXXXX")
 for standard in c++17 c++20 c++23; do
     "$CPPL" "-std=$standard" "$FIXTURES/verified_arithmetic.cpp" -o "$run/program" \
         --cppl-trust-report "--cppl-emit-projection=$run/runtime.cpp" > "$run/report"
-    grep -Eq '^Laws proven: +3$' "$run/report"
+    grep -Eq '^Laws proven: +5$' "$run/report"
     grep -Eq '^Function contracts proven: +15$' "$run/report"
     grep -Eq '^Call preconditions proven: +2$' "$run/report"
     grep -Eq '^Unresolved obligations: +0$' "$run/report"
