@@ -1,0 +1,24 @@
+name: Editors release
+
+# Publishing the editor integrations. The extensions use their own
+# `editors-v*` tag series, separate from the compiler's `v*.*.*` releases, so
+# a client fix does not require a compiler release.
+#
+# This builds through the same jobs as ordinary validation (editors.yml) and
+# only adds the publish steps, so a release cannot take a different code path
+# from what pull requests already exercised.
+on:
+  push:
+    tags: ["editors-v*.*.*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Build and publish
+    uses: ./.github/workflows/editors.yml
+    with:
+      publish: true
+    secrets: inherit

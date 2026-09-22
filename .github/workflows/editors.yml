@@ -1,0 +1,185 @@
+name: Editors
+
+# Builds and validates every editor integration, and publishes them when
+# called with `publish: true`.
+#
+# A `push` entry cannot combine `paths` with `tags` -- a tag push reports no
+# changed files, so the `paths` filter would drop it. The release tag
+# therefore lives in its own workflow (editors-release.yml), which calls this
+# one. Publish steps are no-ops unless that caller asks for them.
+on:
+  push:
+    branches: [main]
+    paths: ["editors/**", ".github/workflows/editors*.yml"]
+  pull_request:
+    paths: ["editors/**", ".github/workflows/editors*.yml"]
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      publish:
+        description: Publish to the marketplaces after a successful build.
+        type: boolean
+        default: false
+    secrets:
+      VSCE_PAT:
+        required: false
+      OVSX_PAT:
+        required: false
+      JETBRAINS_MARKETPLACE_TOKEN:
+        required: false
+      JETBRAINS_CERTIFICATE_CHAIN:
+        required: false
+      JETBRAINS_PRIVATE_KEY:
+        required: false
+      JETBRAINS_PRIVATE_KEY_PASSWORD:
+        required: false
+      VS_MARKETPLACE_TOKEN:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  vscode:
+    name: VS Code
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "20"
+
+      - name: Check the shared grammar
+        run: node editors/shared/test-grammar.js
+
+      - name: Install dependencies
+        working-directory: editors/vscode
+        run: npm install --no-fund --no-audit
+
+      - name: Package
+        working-directory: editors/vscode
+        run: npm run package
+
+      - name: Upload VSIX
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: cppl-vsix
+          path: editors/vscode/cppl.vsix
+          if-no-files-found: error
+
+      # `secrets` cannot be read in an `if:`, so an absent token is handled in
+      # the step body. This lets the marketplaces be rolled out one at a time.
+      - name: Publish to Visual Studio Marketplace
+        if: inputs.publish
+        working-directory: editors/vscode
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          if [ -z "$VSCE_PAT" ]; then
+            echo "VSCE_PAT is not set; skipping the VS Code Marketplace publish."
+            exit 0
+          fi
+          npm run publish:vsce
+
+      - name: Publish to Open VSX
+        if: inputs.publish
+        working-directory: editors/vscode
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          if [ -z "$OVSX_PAT" ]; then
+            echo "OVSX_PAT is not set; skipping the Open VSX publish."
+            exit 0
+          fi
+          npm run publish:ovsx
+
+  jetbrains:
+    name: JetBrains
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up JDK
+        uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4
+        with:
+          java-version: "17"
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@06832c7b30a0129d7fb559bcc6e43d26f6374244 # v4
+
+      - name: Build plugin
+        working-directory: editors/jetbrains
+        run: gradle buildPlugin --no-daemon
+
+      - name: Upload plugin
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: cppl-jetbrains
+          path: editors/jetbrains/build/distributions/*.zip
+          if-no-files-found: error
+
+      - name: Publish to JetBrains Marketplace
+        if: inputs.publish
+        working-directory: editors/jetbrains
+        env:
+          JETBRAINS_MARKETPLACE_TOKEN: ${{ secrets.JETBRAINS_MARKETPLACE_TOKEN }}
+          JETBRAINS_CERTIFICATE_CHAIN: ${{ secrets.JETBRAINS_CERTIFICATE_CHAIN }}
+          JETBRAINS_PRIVATE_KEY: ${{ secrets.JETBRAINS_PRIVATE_KEY }}
+          JETBRAINS_PRIVATE_KEY_PASSWORD: ${{ secrets.JETBRAINS_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [ -z "$JETBRAINS_MARKETPLACE_TOKEN" ]; then
+            echo "JETBRAINS_MARKETPLACE_TOKEN is not set; skipping the JetBrains publish."
+            exit 0
+          fi
+          gradle publishPlugin --no-daemon
+
+  visual-studio:
+    name: Visual Studio
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@6fb02220983dee41ce7ae257b6f4d8f9bf5ed4ce # v2
+
+      - name: Restore
+        run: msbuild editors/visual-studio/src/CpplVsix.csproj -t:Restore -p:Configuration=Release
+
+      - name: Build VSIX
+        run: msbuild editors/visual-studio/src/CpplVsix.csproj -p:Configuration=Release
+
+      - name: Upload VSIX
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: cppl-visual-studio
+          path: editors/visual-studio/src/bin/Release/*.vsix
+          if-no-files-found: error
+
+      # VsixPublisher ships with the Visual Studio installation on the runner.
+      - name: Publish to Visual Studio Marketplace
+        if: inputs.publish
+        shell: pwsh
+        env:
+          VS_MARKETPLACE_TOKEN: ${{ secrets.VS_MARKETPLACE_TOKEN }}
+        run: |
+          if (-not $env:VS_MARKETPLACE_TOKEN) {
+            Write-Host "VS_MARKETPLACE_TOKEN is not set; skipping the Visual Studio publish."
+            exit 0
+          }
+          $publisher = Get-ChildItem -Path "${env:ProgramFiles(x86)}\Microsoft Visual Studio" `
+            -Recurse -Filter VsixPublisher.exe -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+          if (-not $publisher) { throw "VsixPublisher.exe not found on this runner." }
+          & $publisher.FullName publish `
+            -payload editors/visual-studio/src/bin/Release/Cppl.VisualStudio.vsix `
+            -publishManifest editors/visual-studio/publish-manifest.json `
+            -personalAccessToken $env:VS_MARKETPLACE_TOKEN
