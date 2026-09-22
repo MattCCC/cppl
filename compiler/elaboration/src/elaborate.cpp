@@ -510,15 +510,32 @@ void collect_callees(const vir::Expr& expr, std::vector<vir::SymbolId>& callees)
 // never make an ambiguous helper lookup pick the first declaration. Laws and
 // executable declarations are linked separately by physical analysis offset.
 const clangbridge::Function* find_projected(const clangbridge::TranslationUnit& unit, std::string_view name,
-                                            const source::SourceLocation& declared_at) {
+                                            const source::SourceLocation& declared_at,
+                                            const std::vector<clangbridge::TemplateArgument>* arguments = nullptr) {
     const clangbridge::Function* found = nullptr;
     for (const clangbridge::Function& function : unit.functions) {
-        if (function.name == name && function.location.file == declared_at.file &&
-            function.location.line == declared_at.line) {
-            if (found != nullptr)
-                return nullptr;
-            found = &function;
+        if (function.name != name || function.location.file != declared_at.file) {
+            continue;
         }
+        // A specialization reports the line of the declaration it came from,
+        // which is the template's own line rather than the clause's. Matching
+        // by name and file is enough for one: generated probe names are unique
+        // per clause, and the arguments below separate the specializations of
+        // one probe from each other.
+        if (function.template_arguments.empty() && function.location.line != declared_at.line) {
+            continue;
+        }
+        // A probe declared under a template header is instantiated once per
+        // specialization, so the one that states this specialization's contract
+        // is the one instantiated at its arguments. Pairing them by anything
+        // less would check `f<4>` against the proposition written for `f<5>`
+        // (SPEC.md TEMPLATE-001, TEMPLATE-003).
+        if (arguments != nullptr && function.template_arguments != *arguments) {
+            continue;
+        }
+        if (found != nullptr)
+            return nullptr;
+        found = &function;
     }
     return found;
 }
@@ -546,19 +563,22 @@ std::optional<std::vector<vir::Parameter>> convert_parameters(const clangbridge:
 // happens here is only the conversion of that resolved expression into the
 // fragment C++L models.
 const clangbridge::Function* proposition_function(const Request& request, std::string_view generated,
-                                                  const source::SourceLocation& written) {
+                                                  const source::SourceLocation& written,
+                                                  const std::vector<clangbridge::TemplateArgument>* arguments =
+                                                      nullptr) {
     for (const auto& probe : request.projection.proposition_probes) {
         if (probe.owner == generated && probe.location.file == written.file && probe.location.line == written.line) {
-            return find_projected(request.unit, probe.name, probe.location);
+            return find_projected(request.unit, probe.name, probe.location, arguments);
         }
     }
-    return find_projected(request.unit, generated, written);
+    return find_projected(request.unit, generated, written, arguments);
 }
 
 std::optional<vir::Expr> convert_projected(const Request& request, std::string_view generated,
                                            const source::SourceLocation& written, std::uint32_t& next_expression_id,
-                                           const std::string& subject, diagnostics::Engine& engine) {
-    const clangbridge::Function* function = proposition_function(request, generated, written);
+                                           const std::string& subject, diagnostics::Engine& engine,
+                                           const std::vector<clangbridge::TemplateArgument>* arguments = nullptr) {
+    const clangbridge::Function* function = proposition_function(request, generated, written, arguments);
     if (function == nullptr || !function->returned_value.has_value()) {
         report(engine, diagnostics::Category::Elaboration, written, subject + " was not resolved",
                "Clang did not resolve the projected expression");
@@ -588,8 +608,10 @@ std::optional<vir::Expr> convert_projected(const Request& request, std::string_v
 std::vector<vir::Capability> convert_capabilities(const Request& request, std::string_view generated,
                                                   const source::SourceLocation& written,
                                                   std::uint32_t& next_expression_id, const std::string& subject,
-                                                  diagnostics::Engine& engine) {
-    const clangbridge::Function* function = proposition_function(request, generated, written);
+                                                  diagnostics::Engine& engine,
+                                                  const std::vector<clangbridge::TemplateArgument>* arguments =
+                                                      nullptr) {
+    const clangbridge::Function* function = proposition_function(request, generated, written, arguments);
     if (function == nullptr || function->capabilities.empty()) {
         return {};
     }
@@ -1079,9 +1101,16 @@ void elaborate_contract(const Request& request, const frontend::VerifiedFunction
     }
     const auto postcondition_location =
         postcondition != nullptr ? postcondition->location : declaration.function_location;
+    // For a specialization, the contract to read back is the instantiation of
+    // the probe at this specialization's own template arguments (SPEC.md
+    // TEMPLATE-001). For an ordinary function there are none and the lookup is
+    // unchanged.
+    const std::vector<clangbridge::TemplateArgument>* arguments =
+        function.primary_usr.empty() ? nullptr : &function.template_arguments;
     std::optional<vir::Expr> ensured =
         convert_projected(request, projected.postcondition_name, postcondition_location, next_expression_id,
-                          "the postcondition of verified function '" + function.qualified_name + "'", engine);
+                          "the postcondition of verified function '" + function.qualified_name + "'", engine,
+                          arguments);
     if (!ensured.has_value()) {
         return;
     }
@@ -1103,7 +1132,7 @@ void elaborate_contract(const Request& request, const frontend::VerifiedFunction
         // the kernel (RFC 0014 §10).
         std::vector<vir::Capability> capabilities =
             convert_capabilities(request, projected.precondition_names[index], preconditions[index]->location,
-                                 next_expression_id, subject, engine);
+                                 next_expression_id, subject, engine, arguments);
         if (!capabilities.empty()) {
             contract.capabilities.insert(contract.capabilities.end(), std::make_move_iterator(capabilities.begin()),
                                          std::make_move_iterator(capabilities.end()));
@@ -1114,7 +1143,7 @@ void elaborate_contract(const Request& request, const frontend::VerifiedFunction
         }
         std::optional<vir::Expr> expected =
             convert_projected(request, projected.precondition_names[index], preconditions[index]->location,
-                              next_expression_id, subject, engine);
+                              next_expression_id, subject, engine, arguments);
         if (!expected.has_value()) {
             return;
         }
@@ -1375,21 +1404,36 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
         const frontend::VerifiedFunction& declaration = request.syntax.verified_functions[projected.function_index];
         const auto offset = request.projection.declaration_offset(declaration.function_offset);
         const clangbridge::Function* function = offset.has_value() ? request.unit.find_at_offset(*offset) : nullptr;
-        if (function == nullptr) {
-            // A contract on a template is parameterized by the template's own
-            // parameters, and the claim it makes is interpreted per
-            // specialization after substitution (SPEC.md 42 TEMPLATE-001,
-            // Annex G.1). This implementation verifies functions, not the
-            // uninstantiated pattern, so the contract is refused rather than
-            // checked once against dependent types.
-            if (declaration.template_header.length != 0) {
+        // A contract on a template is parameterized by the template's own
+        // parameters, and the claim it makes is interpreted per specialization
+        // after substitution (SPEC.md 42 TEMPLATE-001, Annex G.1). Clang
+        // performs that substitution; what is checked here is each
+        // specialization it produced, with its own instantiated contract and
+        // its own proof identity.
+        if (declaration.template_header.length != 0 && offset.has_value()) {
+            const std::vector<const clangbridge::Function*> specializations =
+                request.unit.find_specializations_at_offset(*offset);
+            if (specializations.empty()) {
+                // A template nothing instantiated has no specialization to
+                // check. There is no obligation, and equally nothing was
+                // proven: it must not be counted as a verified function
+                // (SPEC.md TEMPLATE-001).
                 report(engine, diagnostics::Category::UnsupportedSemantics, declaration.function_location,
                        "verified function template '" + declaration.function_name +
-                           "' is not verified by this "
-                           "implementation",
-                       "a contract on a template is checked per specialization; that is not implemented yet");
+                           "' is not instantiated in this translation unit",
+                       "a contract on a template is checked for each specialization, so a template that is never "
+                       "used states nothing this unit can discharge");
                 continue;
             }
+            for (const clangbridge::Function* specialization : specializations) {
+                Candidate& candidate = candidate_for(specialization);
+                candidate.contract = &projected;
+                candidate.declaration = &declaration;
+                verified_symbols.insert(specialization->usr);
+            }
+            continue;
+        }
+        if (function == nullptr) {
             report(engine, diagnostics::Category::Elaboration, declaration.function_location,
                    "the declaration of verified function '" + declaration.function_name + "' was not resolved",
                    "Clang did not report a function declaration at this location");

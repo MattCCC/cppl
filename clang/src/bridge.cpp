@@ -1169,6 +1169,22 @@ Expr build_expression(CXCursor cursor, const std::vector<CXCursor>& parameters, 
                 return expr;
             }
         }
+        // In a specialization a non-type template parameter denotes the value it
+        // was instantiated at. Clang has already substituted it, and reports the
+        // reference with no referent declaration: what remains is a constant of
+        // the parameter's type. Asking Clang to evaluate it reads back that
+        // substitution; none is performed here (SPEC.md 42, TEMPLATE-001).
+        //
+        // A reference that does not evaluate is one Clang left dependent, so
+        // this is not a resolved specialization. It falls through to the
+        // refusal below rather than becoming a value nothing established.
+        if (clang_getCursorKind(referenced) == CXCursor_NonTypeTemplateParameter ||
+            clang_Cursor_isNull(referenced) != 0 || clang_getCursorKind(referenced) == CXCursor_NoDeclFound) {
+            Expr literal = build_integer_literal(cursor);
+            if (!std::holds_alternative<Unsupported>(literal.node)) {
+                return literal;
+            }
+        }
         // C++ puts a local in scope inside its own initializer, so scoping
         // alone does not rule out a read before the local holds a value.
         if (clang_getCursorKind(referenced) == CXCursor_VarDecl &&
@@ -2316,6 +2332,14 @@ struct BodyLowering {
             return bind(version, anonymous_place("return value"), std::move(*value), std::move(body), statement);
         }
         if (kind == CXCursor_DeclStmt) {
+            // The projector puts one declaration in a templated body to make
+            // C++ instantiate that specialization's contract probes with it.
+            // It names a probe and computes nothing, so it is not a statement
+            // of the program being verified and is stepped over rather than
+            // modeled (SPEC.md TEMPLATE-001).
+            if (is_instantiation_marker(statement)) {
+                return lower_statements(next, locals, depth + 1);
+            }
             return lower_declaration(children_of(statement), 0, next, locals, depth);
         }
         if (kind == CXCursor_BinaryOperator &&
@@ -2388,6 +2412,22 @@ struct BodyLowering {
         CXCursor cursor;
         bool measure = false;
     };
+
+    // Whether this statement is the declaration the projector emitted to force
+    // a templated function's contract probes to be instantiated alongside it.
+    //
+    // Every such declaration is generated, so it is recognized by the
+    // projector's own prefix, which no ordinary declaration may use.
+    [[nodiscard]] bool is_instantiation_marker(CXCursor statement) const {
+        if (invariant_prefix.empty() || clang_getCursorKind(statement) != CXCursor_DeclStmt) {
+            return false;
+        }
+        const std::vector<CXCursor> declared = children_of(statement);
+        return std::ranges::all_of(declared, [&](CXCursor candidate) {
+            return clang_getCursorKind(candidate) == CXCursor_VarDecl &&
+                   take(clang_getCursorSpelling(candidate)).starts_with(invariant_prefix + "force_");
+        }) && !declared.empty();
+    }
 
     [[nodiscard]] std::optional<LoopMarker> invariant_marker(CXCursor statement) const {
         if (invariant_prefix.empty() || clang_getCursorKind(statement) != CXCursor_DeclStmt) {
@@ -3169,9 +3209,60 @@ std::size_t physical_offset(CXCursor cursor) {
     return static_cast<std::size_t>(offset);
 }
 
+// The template arguments a specialization was instantiated at, as Clang
+// resolved them (SPEC.md 42).
+//
+// Clang owns substitution: these are read back only to pair a specialization
+// with the instantiation of its own contract, never to perform substitution
+// here. A form this implementation does not read becomes `Other`, which
+// compares equal only to the same position of another argument list and so
+// never merges two specializations that differ in it.
+std::vector<TemplateArgument> template_arguments_of(CXCursor cursor) {
+    std::vector<TemplateArgument> arguments;
+    const int count = clang_Cursor_getNumTemplateArguments(cursor);
+    for (int index = 0; index < count; ++index) {
+        const auto position = static_cast<unsigned>(index);
+        TemplateArgument argument;
+        switch (clang_Cursor_getTemplateArgumentKind(cursor, position)) {
+            case CXTemplateArgumentKind_Integral:
+                argument.kind = TemplateArgument::Kind::Integral;
+                argument.integral = clang_Cursor_getTemplateArgumentValue(cursor, position);
+                break;
+            case CXTemplateArgumentKind_Type: {
+                argument.kind = TemplateArgument::Kind::Type;
+                const CXType type = clang_Cursor_getTemplateArgumentType(cursor, position);
+                argument.spelling = take(clang_getTypeSpelling(clang_getCanonicalType(type)));
+                break;
+            }
+            default:
+                argument.kind = TemplateArgument::Kind::Other;
+                argument.spelling = std::to_string(index);
+                break;
+        }
+        arguments.push_back(std::move(argument));
+    }
+    return arguments;
+}
+
+// Whether `cursor` is a specialization of a function template, and if so the
+// primary template it came from.
+std::optional<CXCursor> specialized_template(CXCursor cursor) {
+    if (clang_Cursor_getNumTemplateArguments(cursor) <= 0) {
+        return std::nullopt;
+    }
+    const CXCursor primary = clang_getSpecializedCursorTemplate(cursor);
+    if (clang_Cursor_isNull(primary) != 0) {
+        return std::nullopt;
+    }
+    return primary;
+}
+
 struct Collector {
     const Selection* selection = nullptr;
     std::vector<CXCursor> selected;
+    // Specializations of verified function templates this unit instantiated,
+    // deduplicated by USR.
+    std::vector<CXCursor> specializations;
     std::vector<CXCursor> functions;
     std::vector<CXCursor> unverified_storage;
 };
@@ -3221,6 +3312,55 @@ CXChildVisitResult collect(CXCursor cursor, CXCursor, CXClientData data) {
         collector.unverified_storage.push_back(cursor);
 
     return collector.selection->refinements.empty() ? CXChildVisit_Continue : CXChildVisit_Recurse;
+}
+
+// Collect the specializations of function templates that this unit actually
+// instantiated (SPEC.md 42, TEMPLATE-001).
+//
+// An implicit instantiation is not a child of the translation unit cursor, so
+// it cannot be found by walking declarations: it is reached from the use that
+// caused it. Every reference is followed and the referenced declaration taken,
+// which is the specialization Clang selected and instantiated. Nothing here
+// decides which specialization a use denotes -- Clang already did, including
+// overload resolution and constraints (SPEC.md TEMPLATE-002).
+CXChildVisitResult collect_specializations(CXCursor cursor, CXCursor, CXClientData data) {
+    auto& collector = *static_cast<Collector*>(data);
+    const CXCursorKind kind = clang_getCursorKind(cursor);
+    if (kind != CXCursor_CallExpr && kind != CXCursor_DeclRefExpr && kind != CXCursor_MemberRefExpr) {
+        return CXChildVisit_Recurse;
+    }
+    const CXCursor referenced = clang_getCursorReferenced(cursor);
+    if (clang_Cursor_isNull(referenced) != 0) {
+        return CXChildVisit_Recurse;
+    }
+    const auto primary = specialized_template(referenced);
+    if (!primary) {
+        return CXChildVisit_Recurse;
+    }
+    // Only a specialization of a declaration this unit marked verified is
+    // checked here, or of a probe the projector generated for one. The
+    // primary's own location is what the projector recorded, because that is
+    // where the author wrote the declaration.
+    const auto offset = physical_offset(*primary);
+    const auto name = take(clang_getCursorSpelling(referenced));
+    const bool generated = !collector.selection->specification_prefix.empty() &&
+                           name.starts_with(collector.selection->specification_prefix);
+    if (!generated && std::ranges::find(collector.selection->offsets, offset) == collector.selection->offsets.end()) {
+        return CXChildVisit_Recurse;
+    }
+    const auto usr = take(clang_getCursorUSR(referenced));
+    const bool known = std::ranges::any_of(
+        collector.specializations, [&](CXCursor candidate) { return take(clang_getCursorUSR(candidate)) == usr; });
+    if (!known) {
+        collector.specializations.push_back(referenced);
+        // The instantiated body refers to this specialization's own contract
+        // probes, which C++ instantiates at the same arguments. Those
+        // instantiations exist only inside the body, so they are collected by
+        // descending into it: that is what makes the proposition checked the
+        // one written for these arguments (SPEC.md TEMPLATE-001).
+        clang_visitChildren(referenced, collect_specializations, &collector);
+    }
+    return CXChildVisit_Recurse;
 }
 
 // Detect an explicit refinement use at an unverified storage/callable boundary.
@@ -3581,6 +3721,16 @@ const Function* TranslationUnit::find_at_offset(std::size_t offset) const {
     return found;
 }
 
+std::vector<const Function*> TranslationUnit::find_specializations_at_offset(std::size_t offset) const {
+    std::vector<const Function*> found;
+    for (const Function& function : functions) {
+        if (function.analysis_offset == offset && !function.primary_usr.empty()) {
+            found.push_back(&function);
+        }
+    }
+    return found;
+}
+
 std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
     CXIndex index = clang_createIndex(/*excludeDeclarationsFromPCH=*/0, /*displayDiagnostics=*/0);
     if (index == nullptr) {
@@ -3646,6 +3796,12 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
     Collector collector;
     collector.selection = &request.selection;
     clang_visitChildren(clang_getTranslationUnitCursor(unit), collect, &collector);
+    // A second pass for template specializations, which are reached from their
+    // uses rather than from the declaration list (SPEC.md 42).
+    clang_visitChildren(clang_getTranslationUnitCursor(unit), collect_specializations, &collector);
+    for (const CXCursor& specialization : collector.specializations) {
+        collector.selected.push_back(specialization);
+    }
     if (result.has_errors && request.recover_contract_types && !request.recover_bindings) {
         // Recover only canonical void return identities, never bodies, layout,
         // obligations or facts from an erroneous AST. The corrected projection
@@ -3677,11 +3833,22 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
         if (!refined)
             continue;
         const auto canonical = clang_getCanonicalCursor(cursor);
-        const bool verified = std::ranges::any_of(collector.selected, [&](CXCursor candidate) {
-            return clang_equalCursors(canonical, clang_getCanonicalCursor(candidate)) &&
-                   std::ranges::find(request.selection.verified_offsets, physical_offset(candidate)) !=
-                       request.selection.verified_offsets.end();
-        });
+        // A template's specializations are the functions that get verified, and
+        // each reports the primary's location rather than its own. The
+        // declaration the author marked `verified` is therefore the primary, so
+        // a specialization is matched through it (SPEC.md TEMPLATE-001).
+        const auto declared_offset = [](CXCursor candidate) {
+            const auto primary = specialized_template(candidate);
+            return physical_offset(primary.value_or(candidate));
+        };
+        const bool verified =
+            std::ranges::find(request.selection.verified_offsets, declared_offset(cursor)) !=
+                request.selection.verified_offsets.end() ||
+            std::ranges::any_of(collector.selected, [&](CXCursor candidate) {
+                return clang_equalCursors(canonical, clang_getCanonicalCursor(candidate)) &&
+                       std::ranges::find(request.selection.verified_offsets, declared_offset(candidate)) !=
+                           request.selection.verified_offsets.end();
+            });
         if (!verified) {
             result.has_errors = true;
             result.diagnostics.push_back(
@@ -3768,6 +3935,21 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
                                        &request.selection.refinements);
         function.location = presumed_location(clang_getCursorLocation(cursor));
         function.analysis_offset = physical_offset(cursor);
+        // A specialization records the template it came from and the arguments
+        // it was instantiated at. Its `usr` already differs per specialization,
+        // so this identifies which declaration's contract it carries without
+        // ever merging two of them (SPEC.md TEMPLATE-001, TEMPLATE-003).
+        if (const auto primary = specialized_template(cursor); primary.has_value()) {
+            function.primary_usr = take(clang_getCursorUSR(*primary));
+            function.template_arguments = template_arguments_of(cursor);
+            // An explicit specialization is written where the author put it,
+            // while an implicit one reports the primary's location. Both are
+            // keyed to the declaration the projector recorded, which is the
+            // primary's, so that the contract written once is found for every
+            // specialization of it.
+            function.analysis_offset = physical_offset(*primary);
+            function.location = presumed_location(clang_getCursorLocation(*primary));
+        }
 
         // A refinement on a parameter or a result is verification-level identity
         // Clang canonicalizes away, so it is recovered from the written type here
@@ -3805,7 +3987,13 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
         const auto probe = std::ranges::find_if(request.selection.proposition_probes,
                                                 [&](const auto& selected) { return selected.name == function.name; });
         if (probe != request.selection.proposition_probes.end()) {
-            extract_formal(function, cursor, parameter_cursors, probe->shape);
+            // A templated probe is reached through the reference that forced its
+            // instantiation, which names a declaration; the proposition it
+            // states lives in the definition. Clang owns which declaration is
+            // the definition, so it is asked rather than assumed.
+            const CXCursor defined = clang_getCursorDefinition(cursor);
+            const CXCursor stating = clang_Cursor_isNull(defined) != 0 ? cursor : defined;
+            extract_formal(function, stating, parameters_of(stating), probe->shape);
         } else {
             // Clang owns declaration/definition identity, including overloads
             // and parameter renaming. The public declaration supplies contract

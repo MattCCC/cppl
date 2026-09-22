@@ -172,6 +172,14 @@ struct VerifiedFunction {
     std::uint32_t body_end_line = 0;
     std::uint32_t body_end_column = 0;
 
+    // Just inside the body's opening brace. A templated function's probes are
+    // templates too, and a template is instantiated only where it is used, so
+    // the body names its own probes at its own template arguments to make C++
+    // instantiate them alongside it (SPEC.md TEMPLATE-001).
+    std::size_t body_open = 0;
+    std::uint32_t body_open_line = 0;
+    std::uint32_t body_open_column = 0;
+
     [[nodiscard]] const Clause* postcondition() const;
     [[nodiscard]] std::vector<const Clause*> preconditions() const; // in source order
 };

@@ -328,6 +328,22 @@ struct Parameter {
     source::ParameterPassing passing = source::ParameterPassing::Value;
 };
 
+// One template argument of a specialization, as Clang resolved it.
+//
+// The argument is kept in the form Clang gives it -- an integral value or a
+// canonical type spelling -- so that two specializations are compared by what
+// they were instantiated at rather than by how the use site spelled it
+// (SPEC.md 43, formal identity is semantic rather than spelling-only).
+struct TemplateArgument {
+    enum class Kind : std::uint8_t { Integral, Type, Other };
+
+    Kind kind = Kind::Other;
+    long long integral = 0;
+    std::string spelling;
+
+    friend bool operator==(const TemplateArgument&, const TemplateArgument&) = default;
+};
+
 struct Function {
     std::string usr;
     std::string name;
@@ -337,6 +353,19 @@ struct Function {
     source::SourceLocation location;
     bool has_body = false;
     std::size_t analysis_offset = 0;
+
+    // The primary template this is a specialization of, empty when this is an
+    // ordinary function. Clang's USR for a specialization already embeds its
+    // template arguments, so `usr` distinguishes `f<4>` from `f<5>` and the
+    // proof identity that keys every obligation separates them with no rule of
+    // its own (SPEC.md TEMPLATE-003).
+    std::string primary_usr;
+
+    // The arguments this specialization was instantiated at. Used to pair a
+    // specialization with the instantiation of its own contract probes, so the
+    // proposition checked is the one the author wrote for these arguments
+    // (SPEC.md TEMPLATE-001).
+    std::vector<TemplateArgument> template_arguments;
 
     // A resolved return expression or a finite conditional return tree.
     std::optional<Expr> returned_value;
@@ -379,6 +408,14 @@ struct TranslationUnit {
     [[nodiscard]] const Function* find_by_usr(std::string_view usr) const;
     [[nodiscard]] const Function* find_by_name(std::string_view name) const;
     [[nodiscard]] const Function* find_at_offset(std::size_t offset) const;
+
+    // Every specialization declared at `offset`, in instantiation order.
+    //
+    // A template's specializations all report the primary's location, so they
+    // share one offset and `find_at_offset` cannot name one of them. Each is a
+    // separate function to check, with its own contract and its own proof
+    // identity (SPEC.md TEMPLATE-001, TEMPLATE-003).
+    [[nodiscard]] std::vector<const Function*> find_specializations_at_offset(std::size_t offset) const;
 };
 
 } // namespace cppl::clangbridge

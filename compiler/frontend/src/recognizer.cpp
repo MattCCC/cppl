@@ -1242,6 +1242,11 @@ bool try_verified(const TokenStream& stream, std::size_t index, diagnostics::Eng
     verified.body_end = tokens[body_close].span.end();
     verified.body_end_line = tokens[body_close].line;
     verified.body_end_column = tokens[body_close].column + 1;
+    if (!declaration_only) {
+        verified.body_open = tokens[cursor].span.end();
+        verified.body_open_line = tokens[cursor].line;
+        verified.body_open_column = tokens[cursor].column + 1;
+    }
 
     // The body is walked as usual, so anything inside it is recognized exactly
     // as it would be in an ordinary function.

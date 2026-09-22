@@ -56,6 +56,76 @@ std::string spelled_indices(const TokenStream& stream, const RefinementType& ref
     return spelled_tokens(stream, refinement.indices);
 }
 
+// The names a template header introduces, as an argument list: from
+// `template <unsigned N, typename T>` this yields `N, T`.
+//
+// A probe declared under that header is a template too, and a template is
+// instantiated only where it is used. Naming the probe at these arguments
+// inside the body is what makes C++ instantiate it alongside each
+// specialization of the function, at the same arguments (SPEC.md TEMPLATE-001).
+//
+// The name of each parameter is the last identifier before the `,` or `>` that
+// ends it, which is where C++ puts it in every form this implementation
+// accepts. A parameter pack or a defaulted parameter is not one of those forms,
+// and yields no name, so the caller emits nothing rather than something wrong.
+std::optional<std::string> template_parameter_names(const TokenStream& stream, const source::ByteSpan& header) {
+    const std::string_view text = stream.spelling(header);
+    const std::size_t open = text.find('<');
+    if (open == std::string_view::npos) {
+        return std::nullopt;
+    }
+    const std::size_t close = text.rfind('>');
+    if (close == std::string_view::npos || close <= open) {
+        return std::nullopt;
+    }
+    const std::string_view inside = text.substr(open + 1, close - open - 1);
+    std::string names;
+    std::string candidate;
+    int depth = 0;
+    const auto flush = [&] {
+        if (candidate.empty()) {
+            return false;
+        }
+        if (!names.empty()) {
+            names += ", ";
+        }
+        names += candidate;
+        candidate.clear();
+        return true;
+    };
+    for (std::size_t index = 0; index <= inside.size(); ++index) {
+        const char character = index < inside.size() ? inside[index] : ',';
+        if (character == '<' || character == '(') {
+            ++depth;
+            continue;
+        }
+        if (character == '>' || character == ')') {
+            --depth;
+            continue;
+        }
+        if (depth != 0) {
+            continue;
+        }
+        if (character == ',') {
+            if (!flush()) {
+                return std::nullopt;
+            }
+            continue;
+        }
+        // `...` introduces a pack and `=` a default argument; neither is a form
+        // whose instantiation can be forced by naming the parameters.
+        if (character == '.' || character == '=') {
+            return std::nullopt;
+        }
+        if ((std::isalnum(static_cast<unsigned char>(character)) != 0) || character == '_') {
+            candidate += character;
+            continue;
+        }
+        candidate.clear();
+    }
+    return names.empty() ? std::nullopt : std::optional<std::string>{names};
+}
+
 } // namespace
 
 std::string canonical_lowering(const TokenStream& stream, const RefinementType& refinement) {
@@ -416,6 +486,47 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         replacement += line_directive(verified.body_end_line, verified.keyword_location.file);
         replacement.append(verified.body_end_column - 1, ' ');
         edits.push_back(Edit{source::ByteSpan{verified.body_end, 0}, std::move(replacement)});
+
+        // A templated function's probes are templates, and nothing has used
+        // them: the specializations that would carry this specialization's
+        // contract would never exist. The body names each probe at its own
+        // template arguments so that instantiating the function instantiates
+        // its contract with it, at the very arguments Clang substituted.
+        //
+        // The probes are defined after the body, so a declaration of each is
+        // emitted before the function for the body to name. The reference
+        // itself takes the probe's address into an unused variable: it calls
+        // nothing, and the runtime text never sees it (SPEC.md TEMPLATE-001).
+        if (!template_header.empty() && verified.body_open != 0) {
+            if (const auto names = template_parameter_names(stream, verified.template_header); names.has_value()) {
+                std::string declared = "\n";
+                declared += line_directive(verified.function_location.line, verified.function_location.file);
+                declared += template_header + " bool " + projected.postcondition_name + "(" + result_parameter + ");";
+                for (const std::string& precondition : projected.precondition_names) {
+                    declared += " " + template_header + " bool " + precondition + "(" + std::string(parameters) + ");";
+                }
+                declared += "\n";
+                declared += line_directive(verified.keyword_location.line, verified.keyword_location.file);
+                declared.append(verified.keyword_location.column - 1, ' ');
+                const std::size_t before =
+                    verified.template_header.length != 0 ? verified.template_header.offset : verified.keyword.offset;
+                edits.push_back(Edit{source::ByteSpan{before, 0}, std::move(declared)});
+
+                std::string forced = "\n";
+                forced += line_directive(verified.function_location.line, verified.function_location.file);
+                forced += "[[maybe_unused]] auto " + options.generated_prefix + "force_" + suffix + " = &" +
+                          projected.postcondition_name + "<" + *names + ">;";
+                for (std::size_t position = 0; position < projected.precondition_names.size(); ++position) {
+                    forced += " [[maybe_unused]] auto " + options.generated_prefix + "force_" + suffix + "_" +
+                              std::to_string(position) + " = &" + projected.precondition_names[position] + "<" +
+                              *names + ">;";
+                }
+                forced += "\n";
+                forced += line_directive(verified.body_open_line, verified.keyword_location.file);
+                forced.append(verified.body_open_column - 1, ' ');
+                edits.push_back(Edit{source::ByteSpan{verified.body_open, 0}, std::move(forced)});
+            }
+        }
         projection.contract_functions.push_back(std::move(projected));
     }
     template_header.clear();
