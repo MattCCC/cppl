@@ -160,25 +160,37 @@ struct Conditional {
     std::vector<Expr> operands;
 }; // condition, true return, false return
 
-// One step into a place: a data member, or an array element at a constant
-// index. Numbered the way the representation's components are, so a component
-// index and a field index denote the same member.
+// One step into a place: a data member, or an array element. Numbered the way
+// the representation's components are, so a component index and a field index
+// denote the same member.
+//
+// `SymbolicElement` carries `symbol` instead of `index`: an element whose index
+// is a term rather than a constant. Two symbolic elements are disjoint only
+// when their index terms are proved unequal, never merely because the symbols
+// differ (RFC 0014 §4).
 struct PlaceStep {
-    enum class Kind : std::uint8_t { Field, Element };
+    enum class Kind : std::uint8_t { Field, Element, SymbolicElement };
 
     Kind kind = Kind::Field;
     std::uint32_t index = 0;
+    std::uint32_t symbol = 0;
 
     friend bool operator==(const PlaceStep&, const PlaceStep&) = default;
 };
 
-// Which storage a place is rooted in: a local of this body, or the referent a
-// by-reference parameter designates.
+// Which storage a place is rooted in: a local of this body, the referent a
+// by-reference parameter designates, or the pointee a pointer designates.
+//
+// `Deref` is the one root that crosses from a value to a place, and the only
+// one requiring a capability to form (RFC 0014 §1). It is identified by the
+// pointer's place and the version whose value it dereferences, so `*p` before
+// and after a write to `p` are different places.
 struct PlaceRoot {
-    enum class Kind : std::uint8_t { Local, Parameter };
+    enum class Kind : std::uint8_t { Local, Parameter, Deref };
 
     Kind kind = Kind::Local;
     std::uint32_t id = 0;
+    std::uint32_t version = 0;
 
     friend bool operator==(const PlaceRoot&, const PlaceRoot&) = default;
 };
@@ -195,6 +207,27 @@ struct Place {
     friend bool operator==(const Place& lhs, const Place& rhs) {
         return lhs.root == rhs.root && lhs.path == rhs.path;
     }
+};
+
+// A memory capability a specification states: `readable(p)` / `writable(p, n)`
+// (SPEC.md 12.10). It is resolved here so Clang owns its operands' C++ meaning,
+// and it is carried apart from `Expr` because it is not a proposition the
+// kernel ever sees (RFC 0014 §10).
+struct Capability {
+    enum class Kind : std::uint8_t { Readable, Writable };
+
+    Kind kind = Kind::Readable;
+
+    // The place holding the pointer whose pointee the capability describes. The
+    // capability names the storage that pointer designates; it says nothing
+    // about the pointer's own value, and non-nullness never establishes it
+    // (SPEC.md VERIFIED-037).
+    Place pointer;
+
+    // The element count of the sized form. Empty abbreviates one object.
+    std::vector<Expr> extent;
+
+    source::SourceLocation location;
 };
 
 // The logical version of a place a write establishes, whatever syntax wrote it.
@@ -291,9 +324,16 @@ struct Function {
     // A resolved return expression or a finite conditional return tree.
     std::optional<Expr> returned_value;
 
+    // When this probe states a memory capability rather than a value, the
+    // capability it states. A capability is not an `Expr`: it must not reach
+    // the kernel's proposition language, so it leaves the bridge by its own
+    // channel (RFC 0014 §10). A probe sets this or `returned_value`, never
+    // both.
+    std::optional<Capability> capability;
+
     // Why the body could not be reduced to a returned expression, when it
-    // could not. Exactly one of returned_value / body_rejection is set for a
-    // function that has a body.
+    // could not. Exactly one of returned_value / capability / body_rejection is
+    // set for a function that has a body.
     std::optional<std::string> body_rejection;
 
     // The generated invariant declarations the body lowering attached to a

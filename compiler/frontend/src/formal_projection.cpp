@@ -151,6 +151,37 @@ std::size_t quantifier_form(const std::vector<Token>& tokens, std::size_t begin,
     return body == end ? begin : body + 1;
 }
 
+// A memory capability word is a built-in specification proposition only in the
+// complete call form `readable(p)` / `readable(p, n)` (SPEC.md 12.10). Anything
+// else spelled `readable` or `writable` is an ordinary C++ identifier and stays
+// Clang's, so a program that already uses those names keeps its meaning
+// (SPEC.md 3.1). Returns the index one past the closing parenthesis, or `begin`
+// for any other tokens.
+std::size_t capability_form(const std::vector<Token>& tokens, std::size_t begin, std::size_t end) {
+    if (begin >= end || !(tokens[begin].is_identifier("readable") || tokens[begin].is_identifier("writable")))
+        return begin;
+    if (begin + 1 >= end || tokens[begin + 1].text != "(")
+        return begin;
+    const std::size_t arguments = matching(tokens, begin + 1, end);
+    return arguments == end ? begin : arguments + 1;
+}
+
+// The one comma separating a sized capability's operands, if any. Nested
+// brackets stay opaque: `readable(a, f(x, y))` states one extent.
+std::size_t capability_comma(const std::vector<Token>& tokens, std::size_t begin, std::size_t end) {
+    for (std::size_t index = begin; index < end; ++index) {
+        const auto token = tokens[index].text;
+        if (token == "(" || token == "{" || token == "[") {
+            index = matching(tokens, index, end);
+            if (index == end)
+                return end;
+        } else if (token == ",") {
+            return index;
+        }
+    }
+    return end;
+}
+
 source::ByteSpan span_of(const std::vector<Token>& tokens, std::size_t begin, std::size_t end) {
     if (begin == end)
         return {tokens[begin].span.offset, 0};
@@ -268,6 +299,29 @@ FormulaProjection formula(const TokenStream& stream, source::ByteSpan expression
                 {}};
     }
 
+    // A capability states storage permission, not a value, so it is recognized
+    // before the ordinary C++ leaf case: `readable(p)` has no meaning as a C++
+    // call and must never be projected as one.
+    if (capability_form(tokens, begin, end) == end) {
+        const Kind kind = tokens[begin].is_identifier("readable") ? Kind::Readable : Kind::Writable;
+        const std::size_t close = end - 1;
+        const std::size_t first = begin + 2;
+        if (first == close)
+            return {{}, {}, "a memory capability requires a pointer operand"};
+        const std::size_t comma = capability_comma(tokens, first, close);
+        // The operands are copied into a lambda that is declared and never
+        // called, so Clang resolves the pointer and the extent exactly as
+        // written while nothing reaches the runtime. `p` is passed, never `*p`:
+        // the capability is what makes the dereference legal, so projecting it
+        // as a dereference would presuppose what it establishes.
+        const std::string pointer = copied(stream, span_of(tokens, first, comma == close ? close : comma));
+        std::string operands = "auto&& cppl_place" + std::string(comma == close ? "" : ", auto&& cppl_extent");
+        std::string arguments = pointer;
+        if (comma != close)
+            arguments += ", " + copied(stream, span_of(tokens, comma + 1, close));
+        return {{kind, {}}, "([](" + operands + ") {})(" + arguments + ")", {}};
+    }
+
     if (const auto eq = equality_syntax(stream, expression); eq && !contains_formal_equality(stream, eq->arguments)) {
         const auto type = std::string(stream.spelling(eq->type));
         return {{Kind::Equality, {}},
@@ -302,6 +356,8 @@ bool contains_formal_syntax(const TokenStream& stream, source::ByteSpan expressi
         return true;
     for (std::size_t index = begin; index < end; ++index) {
         if (quantifier_form(tokens, index, end) != index)
+            return true;
+        if (capability_form(tokens, index, end) != index)
             return true;
         if (tokens[index].is_identifier("Eq") && index + 1 < end && tokens[index + 1].text == "<")
             return true;

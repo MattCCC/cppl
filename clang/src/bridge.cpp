@@ -2527,6 +2527,13 @@ std::expected<Expr, std::string> build_formal(CXCursor cursor, const source::Pro
     using Kind = source::ProjectionKind;
     if (depth > kMaxExpressionDepth)
         return std::unexpected("formal proposition nests too deeply");
+    // A capability is a statement about storage, not a value, so it cannot be an
+    // operand of a logical connective that the kernel would then have to check.
+    // Combining capabilities is a contract-level matter: state them as separate
+    // clauses (SPEC.md 12.10).
+    if (shape.kind == Kind::Readable || shape.kind == Kind::Writable)
+        return std::unexpected("a memory capability cannot be combined with logical connectives; "
+                               "state it as its own expects clause");
     if (shape.kind == Kind::Expression) {
         if (!shape.children.empty())
             return std::unexpected("malformed expression projection");
@@ -2621,15 +2628,84 @@ std::expected<Expr, std::string> build_formal(CXCursor cursor, const source::Pro
     return std::unexpected("unknown formal projection form");
 }
 
+// A capability probe's body is the projected `([](auto&&...) {})(operands)`:
+// a lambda that is declared, called for its operand types and does nothing.
+// Decoding it yields the capability's operands, resolved by Clang, and never an
+// `Expr` that could reach the kernel.
+std::expected<Capability, std::string> build_capability(CXCursor cursor, source::ProjectionKind kind,
+                                                        const std::vector<CXCursor>& parameters) {
+    while (clang_getCursorKind(cursor) == CXCursor_UnexposedExpr || clang_getCursorKind(cursor) == CXCursor_ParenExpr) {
+        const auto children = children_of(cursor);
+        if (children.size() != 1)
+            return std::unexpected("malformed memory capability wrapper");
+        cursor = children[0];
+    }
+    if (clang_getCursorKind(cursor) != CXCursor_CallExpr)
+        return std::unexpected("malformed memory capability probe");
+    // The first argument of the projected call is the closure object; the
+    // capability's own operands follow it.
+    const int arguments = clang_Cursor_getNumArguments(cursor);
+    if (arguments != 2 && arguments != 3)
+        return std::unexpected("a memory capability states a pointer and an optional element count");
+    Capability capability;
+    capability.kind = kind == source::ProjectionKind::Readable ? Capability::Kind::Readable : Capability::Kind::Writable;
+    capability.location = presumed_location(clang_getCursorLocation(cursor));
+
+    // In a contract the capability's pointer is one of the function's
+    // parameters, so the place it names is that parameter's storage. Resolving
+    // it here keeps Clang the authority on which declaration the spelling
+    // refers to.
+    CXCursor pointer = clang_Cursor_getArgument(cursor, 1);
+    while (clang_getCursorKind(pointer) == CXCursor_UnexposedExpr ||
+           clang_getCursorKind(pointer) == CXCursor_ParenExpr) {
+        const auto nested = children_of(pointer);
+        if (nested.size() != 1)
+            break;
+        pointer = nested[0];
+    }
+    if (clang_getCursorKind(pointer) != CXCursor_DeclRefExpr)
+        return std::unexpected("a memory capability names a pointer parameter");
+    const CXCursor declaration = clang_getCursorReferenced(pointer);
+    const auto at = std::ranges::find_if(
+        parameters, [&](CXCursor candidate) { return clang_equalCursors(candidate, declaration) != 0; });
+    if (at == parameters.end())
+        return std::unexpected("a memory capability names a pointer parameter of this function");
+    if (clang_getCanonicalType(clang_getCursorType(declaration)).kind != CXType_Pointer)
+        return std::unexpected("a memory capability names a pointer");
+    capability.pointer.root.kind = PlaceRoot::Kind::Parameter;
+    capability.pointer.root.id = static_cast<std::uint32_t>(at - parameters.begin());
+    capability.pointer.spelling = take(clang_getCursorSpelling(declaration));
+
+    if (arguments == 3)
+        capability.extent.push_back(build_expression(clang_Cursor_getArgument(cursor, 2), parameters, {}, 0));
+    return capability;
+}
+
 void extract_formal(Function& function, CXCursor cursor, const std::vector<CXCursor>& parameters,
                     const source::ProjectionShape& shape) {
     function.has_body = true;
     function.body_rejection = "malformed formal proposition probe";
+    const bool is_capability =
+        shape.kind == source::ProjectionKind::Readable || shape.kind == source::ProjectionKind::Writable;
     for (const auto child : children_of(cursor)) {
         if (clang_getCursorKind(child) != CXCursor_CompoundStmt)
             continue;
         const auto statements = children_of(child);
-        if (statements.size() != 1 || clang_getCursorKind(statements[0]) != CXCursor_ReturnStmt)
+        if (statements.size() != 1)
+            return;
+        // A capability probe states no value, so its body is the projected call
+        // as a statement rather than a return.
+        if (is_capability) {
+            auto capability = build_capability(statements[0], shape.kind, parameters);
+            if (!capability) {
+                function.body_rejection = capability.error();
+                return;
+            }
+            function.capability = std::move(*capability);
+            function.body_rejection.reset();
+            return;
+        }
+        if (clang_getCursorKind(statements[0]) != CXCursor_ReturnStmt)
             return;
         const auto values = children_of(statements[0]);
         if (values.size() != 1)

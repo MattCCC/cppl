@@ -2,6 +2,7 @@
 
 #include "cppl/source/location.hpp"
 #include "cppl/source/storage.hpp"
+#include "cppl/vir/capability.hpp"
 #include "cppl/vir/expr.hpp"
 #include "cppl/vir/ids.hpp"
 #include "cppl/vir/types.hpp"
@@ -39,8 +40,15 @@ enum class Purity : std::uint8_t {
 // last position, standing for the value the function returns. That parameter is
 // what `result` denotes; it exists only in the specification. The
 // preconditions, in source order, conjoin (SPEC.md 11.5).
+// `capabilities` are the memory propositions an `expects` clause states
+// (SPEC.md 12.10). They are kept beside the preconditions rather than among
+// them because they are not kernel propositions: the obligation layer supposes
+// them as context hypotheses and the kernel never sees them (RFC 0014 §10).
+// Putting them in `preconditions` would conjoin them into the goal, which is
+// exactly the rejected option.
 struct Contract {
     std::vector<Expr> preconditions;
+    std::vector<Capability> capabilities;
     Expr postcondition;
     source::SourceRange range;
 };

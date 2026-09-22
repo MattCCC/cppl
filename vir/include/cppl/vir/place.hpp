@@ -32,14 +32,21 @@ struct PlaceStep {
     // components are, so a component index and a field index denote the same
     // member.
     //
-    // `Element` reuses this index for an array element whose index is a
-    // constant. A symbolic element index needs the extent obligations of RFC
-    // 0014 §7 and is refused until they exist, so it has no representation
-    // here yet.
-    enum class Kind : std::uint8_t { Field, Element };
+    // `Element` is an array element whose index is a constant, reusing the same
+    // numbering. `SymbolicElement` is an element whose index is a term rather
+    // than a constant: it carries `symbol` instead of `index`, and two symbolic
+    // elements are the same place only when their index terms are identical.
+    // Crucially they are *not* disjoint merely by being different symbols --
+    // `i != j` must be proved, never assumed (RFC 0014 §4).
+    enum class Kind : std::uint8_t { Field, Element, SymbolicElement };
 
     Kind kind = Kind::Field;
     std::uint32_t index = 0;
+
+    // For `SymbolicElement`, the identity of the index term. The term itself
+    // lives with the body's values; this names which one, so that place identity
+    // stays a cheap structural comparison and no term reaches `place.hpp`.
+    std::uint32_t symbol = 0;
 
     friend bool operator==(const PlaceStep&, const PlaceStep&) = default;
 };
@@ -50,11 +57,28 @@ struct PlaceStep {
 // by-reference parameter designates, which is caller storage the body does not
 // own. Both are opaque identities: the bridge assigns them from Clang-resolved
 // declarations and nothing here interprets them.
+//
+// `Deref` is the pointee a pointer designates. It is the one root that crosses
+// from a value to a place, and the only one that requires a capability to form
+// (RFC 0014 §1): forming it is exactly where `readable`/`writable` is owed, and
+// nothing about the pointer's value -- non-nullness above all -- establishes
+// that (SPEC.md 12.10 VERIFIED-037).
+//
+// A `Deref` root is identified by the pointer whose value it dereferences: the
+// root of the place the pointer was read from, plus the version that read saw.
+// Identifying it by version is what keeps `*p` before and after a write to `p`
+// distinct places, and what makes two dereferences of one unchanged pointer the
+// same place.
 struct PlaceRoot {
-    enum class Kind : std::uint8_t { Local, Parameter };
+    enum class Kind : std::uint8_t { Local, Parameter, Deref };
 
     Kind kind = Kind::Local;
     std::uint32_t id = 0;
+
+    // For `Deref`, the version of the pointer whose pointee this is. Two
+    // dereferences of the same pointer value are one place; a dereference after
+    // the pointer is rewritten is a different one.
+    std::uint32_t version = 0;
 
     friend bool operator==(const PlaceRoot&, const PlaceRoot&) = default;
 };

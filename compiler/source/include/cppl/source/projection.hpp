@@ -15,7 +15,13 @@ enum class ProjectionKind : std::uint8_t {
     Implication,
     Conjunction,
     Disjunction,
-    Equivalence
+    Equivalence,
+    // `readable(p)` / `writable(p, n)`: a built-in memory proposition, not a
+    // call to a user function (SPEC.md 12.10). It never becomes a kernel
+    // proposition and never becomes a runtime call; the bridge resolves its
+    // operands through Clang and hands the obligation layer a capability.
+    Readable,
+    Writable
 };
 
 struct ProjectionShape {

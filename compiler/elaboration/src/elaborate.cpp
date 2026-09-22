@@ -29,18 +29,40 @@ void report(diagnostics::Engine& engine, diagnostics::Category category, const s
 // (SPEC.md 12.10); they are separate types because the bridge boundary does not
 // let a Clang-facing structure reach the logical core (ARCHITECTURE.md 12).
 vir::Place convert_place(const clangbridge::Place& place) {
+    using From = clangbridge::PlaceRoot::Kind;
+    using To = vir::PlaceRoot::Kind;
     vir::Place converted;
-    converted.root.kind = place.root.kind == clangbridge::PlaceRoot::Kind::Parameter
-                              ? vir::PlaceRoot::Kind::Parameter
-                              : vir::PlaceRoot::Kind::Local;
+    switch (place.root.kind) {
+        case From::Parameter:
+            converted.root.kind = To::Parameter;
+            break;
+        case From::Deref:
+            converted.root.kind = To::Deref;
+            break;
+        case From::Local:
+            converted.root.kind = To::Local;
+            break;
+    }
     converted.root.id = place.root.id;
+    converted.root.version = place.root.version;
     converted.spelling = place.spelling;
     converted.path.reserve(place.path.size());
     for (const auto& step : place.path) {
-        converted.path.push_back(
-            vir::PlaceStep{step.kind == clangbridge::PlaceStep::Kind::Element ? vir::PlaceStep::Kind::Element
-                                                                             : vir::PlaceStep::Kind::Field,
-                           step.index});
+        vir::PlaceStep converted_step;
+        switch (step.kind) {
+            case clangbridge::PlaceStep::Kind::Element:
+                converted_step.kind = vir::PlaceStep::Kind::Element;
+                break;
+            case clangbridge::PlaceStep::Kind::SymbolicElement:
+                converted_step.kind = vir::PlaceStep::Kind::SymbolicElement;
+                break;
+            case clangbridge::PlaceStep::Kind::Field:
+                converted_step.kind = vir::PlaceStep::Kind::Field;
+                break;
+        }
+        converted_step.index = step.index;
+        converted_step.symbol = step.symbol;
+        converted.path.push_back(converted_step);
     }
     return converted;
 }
@@ -532,6 +554,47 @@ std::optional<vir::Expr> convert_projected(const Request& request, std::string_v
     return converted;
 }
 
+// The memory capability a projected clause states, when it states one.
+//
+// A capability leaves elaboration on its own channel and never becomes a
+// `vir::Expr`, because it is not a proposition the kernel can check: it is a
+// property of the execution state, supposed by the obligation layer as a
+// context hypothesis (RFC 0014 §10, SPEC.md 12.10).
+std::optional<vir::Capability> convert_capability(const Request& request, std::string_view generated,
+                                                  const source::SourceLocation& written,
+                                                  std::uint32_t& next_expression_id, const std::string& subject,
+                                                  diagnostics::Engine& engine) {
+    const clangbridge::Function* function = proposition_function(request, generated, written);
+    if (function == nullptr || !function->capability.has_value()) {
+        return std::nullopt;
+    }
+    const clangbridge::Capability& stated = *function->capability;
+    vir::Capability capability;
+    capability.kind = stated.kind == clangbridge::Capability::Kind::Readable ? vir::CapabilityKind::Readable
+                                                                            : vir::CapabilityKind::Writable;
+    // A capability stated by a contract is owed by the caller, so its origin is
+    // the contract until a trusted law admits it.
+    capability.origin = vir::CapabilityOrigin::Contract;
+    capability.location = written;
+
+    // The capability names the storage its pointer designates. The bridge
+    // resolved which declaration that is, so the place is carried across
+    // directly and the obligation layer can match a dereference against it.
+    capability.place = convert_place(stated.pointer);
+
+    ExpressionElaborator elaborator(next_expression_id);
+    for (const clangbridge::Expr& extent : stated.extent) {
+        std::optional<vir::Expr> converted = elaborator.convert(extent);
+        if (!converted.has_value()) {
+            report(engine, diagnostics::Category::UnsupportedSemantics, written,
+                   subject + " has an element count this implementation does not model");
+            return std::nullopt;
+        }
+        capability.extent.push_back(std::move(*converted));
+    }
+    return capability;
+}
+
 // Resolves a proof body into typed steps.
 //
 // A step's reference names a proof-level entity: a proof this translation unit
@@ -985,9 +1048,22 @@ void elaborate_contract(const Request& request, const frontend::VerifiedFunction
         return;
     }
     for (std::size_t index = 0; index < preconditions.size(); ++index) {
-        std::optional<vir::Expr> expected = convert_projected(
-            request, projected.precondition_names[index], preconditions[index]->location, next_expression_id,
-            "the precondition of verified function '" + function.qualified_name + "'", engine);
+        const std::string subject = "the precondition of verified function '" + function.qualified_name + "'";
+        // A memory capability is a precondition the caller owes, but it is not a
+        // proposition: it leaves on the capability channel so it never reaches
+        // the kernel (RFC 0014 §10).
+        if (std::optional<vir::Capability> capability =
+                convert_capability(request, projected.precondition_names[index], preconditions[index]->location,
+                                   next_expression_id, subject, engine)) {
+            contract.capabilities.push_back(std::move(*capability));
+            continue;
+        }
+        if (engine.has_errors()) {
+            return;
+        }
+        std::optional<vir::Expr> expected =
+            convert_projected(request, projected.precondition_names[index], preconditions[index]->location,
+                              next_expression_id, subject, engine);
         if (!expected.has_value()) {
             return;
         }

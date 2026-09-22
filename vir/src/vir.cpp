@@ -1,3 +1,4 @@
+#include "cppl/vir/capability.hpp"
 #include "cppl/vir/expr.hpp"
 #include "cppl/vir/module.hpp"
 #include "cppl/vir/types.hpp"
@@ -33,13 +34,44 @@ std::string describe(const Place& place) {
     if (!place.spelling.empty()) {
         return place.spelling;
     }
-    std::string text = place.root.kind == PlaceRoot::Kind::Parameter ? "parameter#" : "local#";
-    text += std::to_string(place.root.id);
+    std::string text;
+    switch (place.root.kind) {
+        case PlaceRoot::Kind::Parameter:
+            text = "parameter#" + std::to_string(place.root.id);
+            break;
+        case PlaceRoot::Kind::Deref:
+            text = "*(#" + std::to_string(place.root.id) + "@" + std::to_string(place.root.version) + ")";
+            break;
+        case PlaceRoot::Kind::Local:
+            text = "local#" + std::to_string(place.root.id);
+            break;
+    }
     for (const PlaceStep& step : place.path) {
-        text += step.kind == PlaceStep::Kind::Field ? ".field" + std::to_string(step.index)
-                                                    : "[" + std::to_string(step.index) + "]";
+        switch (step.kind) {
+            case PlaceStep::Kind::Field:
+                text += ".field" + std::to_string(step.index);
+                break;
+            case PlaceStep::Kind::Element:
+                text += "[" + std::to_string(step.index) + "]";
+                break;
+            case PlaceStep::Kind::SymbolicElement:
+                text += "[#" + std::to_string(step.symbol) + "]";
+                break;
+        }
     }
     return text;
+}
+
+std::string describe(CapabilityKind kind) {
+    return kind == CapabilityKind::Readable ? "readable" : "writable";
+}
+
+std::string describe(const Capability& capability) {
+    std::string text = describe(capability.kind) + "(" + describe(capability.place);
+    if (!capability.extent.empty()) {
+        text += ", " + describe(capability.extent.front());
+    }
+    return text + ")";
 }
 
 std::string describe(BinaryOp op) {
