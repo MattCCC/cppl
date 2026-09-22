@@ -127,12 +127,33 @@ const char* describe(int number) noexcept {
     }
 }
 
+// The handler's own stack.
+//
+// The signal this most often reports is a stack overflow, and a handler that
+// ran on the overflowed stack would fault again the moment it needed a frame.
+// `SA_RESETHAND` does not save it: the second fault is delivered on the same
+// exhausted stack, before the default action can take effect, and the process
+// spins in the handler instead of dying. Giving the handler its own stack is
+// what makes a stack overflow reportable at all.
+alignas(std::max_align_t) char handler_stack[SIGSTKSZ < 65536 ? 65536 : SIGSTKSZ];
+
 extern "C" void on_signal(int number, siginfo_t* information, void*) {
-    report(describe(number), static_cast<std::uint64_t>(number),
-           information != nullptr ? information->si_addr : nullptr);
+    // A second fault inside the report would re-enter this handler. The report
+    // is best-effort and the process is already lost, so the re-entry is
+    // dropped rather than retried: the fall-through below still ends the
+    // process with the right signal.
+    static std::atomic_flag reporting = ATOMIC_FLAG_INIT;
+    if (!reporting.test_and_set()) {
+        report(describe(number), static_cast<std::uint64_t>(number),
+               information != nullptr ? information->si_addr : nullptr);
+    }
     // The handler was reset when it ran, so this ends the process the way the
     // operating system meant to, and a caller still sees the signal.
     static_cast<void>(::raise(number));
+    // `raise` returns if the signal is blocked while this handler runs, which
+    // leaves a fault that cannot be resumed looping forever. Nothing about the
+    // process is trustworthy here, so leave without running any more code.
+    ::_exit(128 + number);
 }
 
 #endif
@@ -143,12 +164,20 @@ void install_crash_report() {
 #ifdef _WIN32
     SetUnhandledExceptionFilter(on_exception);
 #else
+    // Install the handler's own stack first: SA_ONSTACK is what lets a stack
+    // overflow be reported instead of faulting the handler too.
+    stack_t stack{};
+    stack.ss_sp = handler_stack;
+    stack.ss_size = sizeof(handler_stack);
+    stack.ss_flags = 0;
+    static_cast<void>(::sigaltstack(&stack, nullptr));
+
     struct sigaction action{};
     action.sa_sigaction = on_signal;
     // glibc types the flag macros as `unsigned` but `sa_flags` as `int`, so
     // the combination has to be narrowed explicitly. The value is a small
     // constant bitmask, so the conversion discards nothing.
-    action.sa_flags = static_cast<int>(SA_SIGINFO | SA_RESETHAND);
+    action.sa_flags = static_cast<int>(SA_SIGINFO | SA_RESETHAND | SA_ONSTACK);
     sigemptyset(&action.sa_mask);
     for (const int number : {SIGSEGV, SIGBUS, SIGFPE, SIGILL, SIGABRT})
         ::sigaction(number, &action, nullptr);
