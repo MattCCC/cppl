@@ -1,0 +1,175 @@
+# C++L editor integrations
+
+Every editor here is a **thin client**. None of them implement C++L semantics:
+they locate [`cppl-lsp`](../tools/cppl-lsp/README.md), start it over stdio, and
+let it answer with diagnostics, canonical formatting and code actions. Syntax
+coloring is the one exception — an editor must color tokens before any server
+replies — so it comes from a grammar shared by all clients.
+
+```text
+editors/
+├── shared/          TextMate grammar + its regression test (one source of truth)
+├── vscode/          VS Code / VSCodium  → Marketplace + Open VSX
+├── jetbrains/       CLion / IDEA        → JetBrains Marketplace
+├── visual-studio/   Visual Studio       → Visual Studio Marketplace
+└── neovim/          Neovim              → installed from this repository
+```
+
+## What you get
+
+| Feature | Source | VS Code | JetBrains | Visual Studio | Neovim |
+| --- | --- | :-: | :-: | :-: | :-: |
+| Diagnostics (C++L + Clang) | `cppl-lsp` | yes | yes | yes | yes |
+| Formatting | `cppl-lsp` | yes | yes | yes | yes |
+| Format on save | editor config | yes | yes | yes | yes |
+| Format on type | `cppl-lsp` | yes | yes | yes | — |
+| Code actions | `cppl-lsp` | yes | yes | yes | yes |
+| Syntax coloring | `editors/shared` | yes | via LSP | via LSP | yes |
+
+Hover, completion, navigation, rename and semantic tokens are **not**
+implemented by the server yet, so no client offers them. See "Currently
+unsupported" in [`tools/cppl-lsp/README.md`](../tools/cppl-lsp/README.md).
+
+## The shared grammar
+
+[`shared/cppl.tmLanguage.json`](shared/cppl.tmLanguage.json) is the single
+definition of C++L coloring. It follows the normative lexical rule in
+[`docs/GRAMMAR.md`](../docs/GRAMMAR.md) §1: C++L words are *contextual*, so
+`law`, `type`, `result` and friends are colored only where the grammar gives
+them meaning and remain ordinary identifiers everywhere else.
+
+That boundary is enforced by a test, not by inspection:
+
+```sh
+node editors/shared/test-grammar.js
+```
+
+It also runs under `ctest -R editors_grammar` and in CI. Edit the grammar and
+this test together; `tests/fixtures/contextual_identifiers.cpp` is the fixture
+it defends.
+
+### The highlighter is not the language authority
+
+```text
+lexer / highlighter        ≠  language authority
+parser + C++ semantic context  =  authority for contextual words
+```
+
+C++L reserves nothing. Every C++L word is *contextual*, so outside a
+grammatical C++L construct the ordinary C++ reading wins (SPEC.md 3.1). The
+grammar here therefore follows one rule when a construct is ambiguous:
+**never mis-color valid C++.**
+
+The sharpest case is a ghost local with no explicit type:
+
+```cpp
+struct ghost {};
+ghost value;        // ordinary C++ — MUST stay ordinary C++
+ghost int x = 1;    // C++L ghost local — unambiguous, and colored
+int ghost = 1;      // ordinary identifier — MUST stay valid
+```
+
+`ghost value;` and a hypothetical C++L ghost-local declaration are spelled
+identically. Resolving it requires the frontend's syntactic and semantic C++
+context together with the §3.1 precedence rule — not a name lookup, since C++
+declaration parsing is more context-dependent than "is this token currently a
+known type name". A TextMate grammar has none of that, so it defers to the C++
+reading. That is the conservative and correct behavior, not a language defect.
+
+**Do not "fix" this by making a contextual word globally special.** Doing so
+would contradict the compatibility guarantee and would encourage the frontend
+to drift toward keyword-like treatment. `tests/fixtures/contextual_identifiers.cpp`
+pins all three shapes above for every contextual word, and is compiled and run
+across C++17/20/23 by `conformance_contextual_identifiers`.
+
+The Neovim syntax in [`neovim/syntax/cppl.vim`](neovim/syntax/cppl.vim)
+applies the same contextual rules through Vim's regex engine, and likewise
+sources the bundled C++ syntax rather than replacing it.
+
+The VS Code extension cannot reference a file outside its own root, so
+`npm run package` copies the grammar in via `scripts/sync-grammar.js`. The copy
+under `editors/vscode/syntaxes/` is generated and git-ignored — never edit it.
+
+---
+
+## Publishing
+
+Publishing is **tag-driven and automatic**. The
+[`Editors`](../.github/workflows/editors.yml) workflow builds all four
+integrations on every pull request;
+[`Editors release`](../.github/workflows/editors-release.yml) reuses those same
+jobs and turns on the publish steps when a tag is pushed:
+
+```sh
+git tag editors-v0.1.0
+git push origin editors-v0.1.0
+```
+
+Editors use their own `editors-v*` tag series, separate from the compiler's
+`v*.*.*` releases, so a client fix does not require a compiler release.
+
+On a tag the workflow publishes VS Code to both the Visual Studio Marketplace
+and Open VSX, the JetBrains plugin to the JetBrains Marketplace, and the VSIX
+to the Visual Studio Marketplace. On a pull request it only builds and uploads
+artifacts, so a packaging break is caught before release. Neovim needs no
+publishing step — users install it straight from this repository.
+
+### Before the first release
+
+Bump the version in each manifest, then tag. Keep them in step:
+
+| Editor | Version lives in |
+| --- | --- |
+| VS Code | `editors/vscode/package.json` → `version` |
+| JetBrains | `editors/jetbrains/gradle.properties` → `pluginVersion` |
+| Visual Studio | `editors/visual-studio/src/source.extension.vsixmanifest` → `Identity Version` |
+
+The `publisher` fields (`cppl`, `dev.cppl.jetbrains`, the VSIX `Identity Id`)
+are placeholders until the marketplace accounts exist; each marketplace must
+have the publisher registered before its first publish succeeds.
+
+### Required repository secrets
+
+Publishing is skipped for any marketplace whose secret is absent, so you can
+roll these out one at a time.
+
+| Secret | Marketplace | How to get it |
+| --- | --- | --- |
+| `VSCE_PAT` | Visual Studio Marketplace (VS Code) | Azure DevOps PAT, scope *Marketplace → Manage* |
+| `OVSX_PAT` | Open VSX | Access token from your open-vsx.org profile |
+| `JETBRAINS_MARKETPLACE_TOKEN` | JetBrains Marketplace | Marketplace profile → *Tokens* |
+| `JETBRAINS_CERTIFICATE_CHAIN` | JetBrains plugin signing | Signing certificate chain (PEM) |
+| `JETBRAINS_PRIVATE_KEY` | JetBrains plugin signing | Signing private key (PEM) |
+| `JETBRAINS_PRIVATE_KEY_PASSWORD` | JetBrains plugin signing | Password for that key |
+| `VS_MARKETPLACE_TOKEN` | Visual Studio Marketplace (VSIX) | Azure DevOps PAT, scope *Marketplace → Publish* |
+
+### Publishing by hand
+
+Only needed when debugging a failed release.
+
+```sh
+# VS Code
+cd editors/vscode && npm install && npm run package
+VSCE_PAT=… npm run publish:vsce
+OVSX_PAT=… npm run publish:ovsx
+
+# JetBrains
+cd editors/jetbrains && gradle buildPlugin
+JETBRAINS_MARKETPLACE_TOKEN=… gradle publishPlugin
+
+# Visual Studio (Windows)
+msbuild editors/visual-studio/src/CpplVsix.csproj -p:Configuration=Release
+```
+
+---
+
+## Local development
+
+Each client resolves the server the same way, so a local build is picked up
+with no configuration: an explicit setting wins, otherwise
+`build/dev/bin/cppl-lsp` under the workspace root, otherwise `cppl-lsp` on
+`PATH`. Build it first with `make build`.
+
+Per-editor setup and configuration lives in each subdirectory's README:
+[vscode](vscode/README.md), [jetbrains](jetbrains/README.md),
+[visual-studio](visual-studio/README.md), [neovim](neovim/README.md).
