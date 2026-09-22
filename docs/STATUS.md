@@ -655,6 +655,21 @@ A lambda spelled to resemble the text a capability probe is projected to grants
 no capability either, because a capability comes from the recognized
 `readable`/`writable` form and never from what the projection happens to emit.
 
+A value crossing from one refinement into another owes the target's predicate
+like any other crossing, and the implication is proved rather than read off the
+names: a stronger refinement enters a weaker one, the converse is refused with
+the failing goal named, and two spellings of one predicate cross while two
+arithmetically related predicates cross only because the kernel relates them.
+Verification identity is what a refinement means, not how it is spelled.
+
+Methods are refused at the declaration, which is what closes virtual dispatch
+rather than leaving it open: the dynamic type decides which body runs, so a
+contract proved from a base's body would not cover an override that replaces
+it. A refinement does not cross a translation unit on a declaration's word
+either. An ordinary function's refined return is refused as evidence at the
+boundary, including through a header, so the only way a refined value enters is
+where its predicate was proved.
+
 Binding a conditional to a local splits the route on its condition, so each arm
 is proved under what its own path supposes rather than as one opaque `select`
 term. An arm that is itself a conditional splits again, and a refinement

@@ -68,8 +68,8 @@ Manifest: `features/refinement-types.yaml`
 | Verified call post-state | interaction | partial |
 | Nested refinements | positive, negative | partial |
 | Indexed refinements | positive, negative | partial |
-| Refinement implication and conversion | positive, negative | needed |
-| Overload erasure collision | erasure, negative | needed |
+| Refinement implication and conversion | positive, negative | covered — a stronger refinement enters a weaker one, the converse is refused, and the relation is decided by the predicates rather than the names (`negative/refinement_types.sh`) |
+| Overload erasure collision | erasure, negative | covered — two refinements of one base erase to one signature and are reported where written (`negative/refinement_types.sh`) |
 | ABI equivalence | erasure | partial — a refined member lowers to a plain member with identical codegen (`e2e/refinement_types.sh`) |
 | No hidden runtime validation | erasure, adversarial | partial — the erased program is compiled by Clang alone and behaves identically |
 

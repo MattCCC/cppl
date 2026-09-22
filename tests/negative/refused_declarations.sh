@@ -80,6 +80,14 @@ grep -q "refinement type 'Small' is declared outside namespace scope" \
 grep -q "'pure' is applied outside namespace scope" "$run/misplaced_declarations.log"
 grep -q "'verified' is applied outside namespace scope" "$run/misplaced_declarations.log"
 
+# A method is refused by that same rule, and a virtual one deserves its own
+# assertion: the dynamic type decides which body runs, so a contract proved from
+# the base's body must never stand as evidence about a call that dispatches to
+# an override. The fixture states one in a block, one on a virtual base method
+# and one on its override, so all three are reported.
+test "$(grep -c "'verified' is applied outside namespace scope" \
+    "$run/misplaced_declarations.log")" -ge 3
+
 # A trusted Law is an assumption, so the report must be able to name it.
 grep -q "a trusted law must be declared at namespace scope" "$run/misplaced_declarations.log"
 grep -q "a trusted assumption is a unit-level declaration" "$run/misplaced_declarations.log"

@@ -44,6 +44,28 @@ void trusted_in_a_block() {
         proves (identity(x) == x);
 }
 
+// Class scope is not namespace scope either. The virtual case is the one that
+// matters most: which body runs is decided by the dynamic type, so a proof of
+// the base's body would not cover an override that replaces it. Refusing the
+// specifier outright is what keeps a base's contract from becoming evidence
+// about a call that dispatches elsewhere.
+struct Base {
+    verified virtual unsigned get() const
+        ensures (result > 0u)
+    {
+        return 1u;
+    }
+    virtual ~Base() = default;
+};
+
+struct Derived : Base {
+    verified unsigned get() const override
+        ensures (result > 0u)
+    {
+        return 2u;
+    }
+};
+
 int main() {
     std::cout << identity(41u) << "\n";
     return 0;

@@ -598,4 +598,73 @@ int main() {
 }
 CPP
 
+# A value crossing from one refinement into another owes the target's predicate
+# like any other crossing. The implication is proved from the predicates, never
+# assumed from the names, so a true one is admitted and a false one is refused.
+# SPEC: REFINEOBL-002, REFINEOBL-004
+
+# `self > 0` implies `self >= 0`, so this crossing is discharged.
+accept a_stronger_refinement_enters_a_weaker_one <<'CPP'
+type Positive = int where (self > 0);
+type NonNegative = int where (self >= 0);
+verified NonNegative widen(Positive p) ensures (result >= 0) {
+    return p;
+}
+int main() { return widen(3) >= 0 ? 0 : 1; }
+CPP
+
+# The converse does not hold: zero satisfies `self >= 0` and not `self > 0`.
+# Nothing about the declaration order or the names makes this admissible.
+reject a_weaker_refinement_does_not_enter_a_stronger_one <<'CPP'
+type Positive = int where (self > 0);
+type NonNegative = int where (self >= 0);
+verified Positive narrow(NonNegative n) ensures (result > 0) {
+    return n;
+}
+CPP
+
+# The relation is arithmetic, not lexical: nothing declares Tiny and Small to be
+# related, and the kernel relates `self < 5` to `self < 10` on its own.
+accept an_unrelated_pair_crosses_when_arithmetic_proves_it <<'CPP'
+type Small = unsigned where (self < 10u);
+type Tiny = unsigned where (self < 5u);
+verified Small from_tiny(Tiny t) ensures (result < 10u) {
+    return t;
+}
+int main() { return from_tiny(3u) < 10u ? 0 : 1; }
+CPP
+
+# Two names for one predicate. The crossing holds because the predicate is
+# proved, not because the two declarations were identified with each other:
+# verification identity is what a refinement means, not how it is spelled.
+accept distinct_names_with_one_predicate_cross <<'CPP'
+type Positive = int where (self > 0);
+type Count = int where (self > 0);
+verified Count relabel(Positive p) ensures (result > 0) {
+    return p;
+}
+int main() { return relabel(2) > 0 ? 0 : 1; }
+CPP
+
+# A refinement crosses a translation unit the same way it crosses anything else:
+# the predicate is proved where the value enters, never trusted because a
+# declaration elsewhere named the type. A header is the realistic way an
+# unverified definition in another unit would reach a caller, so the boundary is
+# checked through one rather than only within a single file.
+# SPEC: REFINEOBL-004
+cat > "$run/supplied.hpp" <<'HPP'
+#pragma once
+type Positive = int where (self > 0);
+Positive supplied(int x);
+HPP
+reject a_header_declaration_does_not_carry_evidence <<'CPP'
+#include "supplied.hpp"
+verified int use(int x) expects (x > 0) ensures (result > 0) {
+    Positive p = supplied(x);
+    return p;
+}
+CPP
+grep -q 'ordinary function.*return cannot establish refinement' \
+    "$run/a_header_declaration_does_not_carry_evidence.log"
+
 echo "refinement membership is proven or refused; contextual words keep their C++ meaning"
