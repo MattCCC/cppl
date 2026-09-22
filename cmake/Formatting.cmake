@@ -124,6 +124,19 @@ list(
     "/tmp/"
 )
 
+# Test fixtures are C++L, not C++, and they carry the `.cpp` extension because
+# that is what the driver compiles. clang-format parses them as C++: it reads
+# `proves (P)` as a call and deletes the space, joins the clause lines of a
+# `law` declaration into one, and rewrites `forall (T x) { ... }` as
+# `forall(T x){...}`. The result is a different program, and for the negative
+# fixtures it is no longer the diagnostic they pin. Formatting the corpus this
+# project exists to parse is left to the project's own formatter.
+list(
+    FILTER CPPL_FORMAT_FILES
+    EXCLUDE REGEX
+    "/tests/fixtures/"
+)
+
 list(
     SORT CPPL_FORMAT_FILES
 )

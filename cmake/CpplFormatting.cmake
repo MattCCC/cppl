@@ -25,6 +25,19 @@ file(
     LIST_DIRECTORIES false
 
     "${PROJECT_SOURCE_DIR}/tests/fixtures/*.cpp"
+    "${PROJECT_SOURCE_DIR}/tests/fixtures/*.hpp"
+)
+
+# `negative/` fixtures are deliberately malformed and pin the diagnostics the
+# compiler must produce for them: a law carrying `decreases`, an unterminated
+# construct, a clause written out of grammar order. Canonicalizing one would
+# rewrite the very defect under test -- the formatter moves a law's `decreases`
+# after its `proves`, which is the error `refused_declarations.sh` asserts on.
+# They are held exactly as written.
+list(
+    FILTER CPPL_L_FORMAT_FILES
+    EXCLUDE REGEX
+    "/tests/fixtures/negative/"
 )
 
 list(

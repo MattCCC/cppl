@@ -11,6 +11,7 @@ proof expected_states(std::expected<unsigned, bool> e)
         value(payload) => {
             refl;
         }
+
         error(reason) => {
             refl;
         }
@@ -25,6 +26,7 @@ proof expected_error_payload(std::expected<int, int> e)
         value(good) => {
             refl;
         }
+
         error(bad) => {
             refl;
         }
@@ -41,11 +43,13 @@ proof expected_of_optional(std::expected<std::optional<int>, bool> e)
                 some(payload) => {
                     refl;
                 }
+
                 none => {
                     refl;
                 }
             }
         }
+
         error(reason) => {
             refl;
         }
@@ -61,11 +65,13 @@ proof optional_of_expected(std::optional<std::expected<int, bool>> o)
                 value(good) => {
                     refl;
                 }
+
                 error(bad) => {
                     refl;
                 }
             }
         }
+
         none => {
             refl;
         }

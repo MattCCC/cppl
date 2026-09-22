@@ -15,6 +15,7 @@ proof choose_one(One s)
             rewrite here;
             refl;
         }
+
         unnamed(value) => {
             assume other : value != 1u;
             rewrite other;
@@ -32,6 +33,7 @@ proof nested(StateAlias s, One t)
             rewrite h;
             refl;
         }
+
         State::idle => {
             assume outer : s == State::idle;
             cases t {
@@ -39,6 +41,7 @@ proof nested(StateAlias s, One t)
                     rewrite outer;
                     refl;
                 }
+
                 unnamed(value) => {
                     assume excluded : value != 1u;
                     rewrite outer;
@@ -46,9 +49,11 @@ proof nested(StateAlias s, One t)
                 }
             }
         }
+
         State::unnamed => {
             refl;
         }
+
         unnamed(value) => {
             assume residual : value != static_cast<int>(State::idle) && value != 3 && value != 8;
             refl;
@@ -81,6 +86,7 @@ proof under_a_quantifier(One s)
             assume h : s == One::one;
             refl;
         }
+
         unnamed(value) => {
             assume h : value != 1u;
             refl;
@@ -97,12 +103,15 @@ proof stable_holds(State s)
         State::idle => {
             exact later(s);
         }
+
         State::running => {
             refl;
         }
+
         State::unnamed => {
             refl;
         }
+
         unnamed(value) => {
             refl;
         }

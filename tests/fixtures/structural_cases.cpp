@@ -30,12 +30,15 @@ proof variant_alternatives(Repeated v)
         alternative<0>(first) => {
             refl;
         }
+
         alternative<1>(second) => {
             refl;
         }
+
         alternative<2>(third) => {
             refl;
         }
+
         valueless => {
             refl;
         }
@@ -50,9 +53,11 @@ proof variant_through_alias(AliasOfAliased v)
         alternative<0>(number) => {
             refl;
         }
+
         alternative<1>(flag) => {
             refl;
         }
+
         valueless => {
             refl;
         }
@@ -67,9 +72,11 @@ proof variant_qualified(const Aliased& v)
         alternative<0>(number) => {
             refl;
         }
+
         alternative<1>(flag) => {
             refl;
         }
+
         valueless => {
             refl;
         }
@@ -87,9 +94,11 @@ proof variant_dependent(Sum<unsigned> v)
         alternative<0>(number) => {
             refl;
         }
+
         alternative<1>(flag) => {
             refl;
         }
+
         valueless => {
             refl;
         }
@@ -114,6 +123,7 @@ proof optional_states(std::optional<unsigned> o)
         some(payload) => {
             refl;
         }
+
         none => {
             refl;
         }
@@ -127,6 +137,7 @@ proof optional_template(Wrapped<bool> o)
         some(payload) => {
             refl;
         }
+
         none => {
             refl;
         }
@@ -141,6 +152,7 @@ proof pointer_states(const int* p)
         null => {
             refl;
         }
+
         non_null => {
             refl;
         }
@@ -223,14 +235,17 @@ proof variant_of_optional(std::variant<std::optional<int>, bool> v)
                 some(payload) => {
                     refl;
                 }
+
                 none => {
                     refl;
                 }
             }
         }
+
         alternative<1>(flag) => {
             refl;
         }
+
         valueless => {
             refl;
         }
@@ -246,14 +261,17 @@ proof optional_of_variant(std::optional<Aliased> o)
                 alternative<0>(number) => {
                     refl;
                 }
+
                 alternative<1>(flag) => {
                     refl;
                 }
+
                 valueless => {
                     refl;
                 }
             }
         }
+
         none => {
             refl;
         }
@@ -271,6 +289,7 @@ proof optional_of_product(std::optional<Point> o)
                 }
             }
         }
+
         none => {
             refl;
         }
@@ -286,6 +305,7 @@ proof product_of_optional(std::pair<std::optional<int>, bool> p)
                 some(payload) => {
                     refl;
                 }
+
                 none => {
                     refl;
                 }
@@ -340,21 +360,25 @@ proof deeply_nested(std::optional<std::optional<std::optional<std::optional<int>
                                 some(d) => {
                                     refl;
                                 }
+
                                 none => {
                                     refl;
                                 }
                             }
                         }
+
                         none => {
                             refl;
                         }
                     }
                 }
+
                 none => {
                     refl;
                 }
             }
         }
+
         none => {
             refl;
         }
@@ -369,6 +393,7 @@ proof under_quantifier(std::optional<unsigned> o)
         some(payload) => {
             refl;
         }
+
         none => {
             refl;
         }
@@ -399,6 +424,7 @@ proof splits_then_applies(std::optional<unsigned> o, unsigned x)
         some(payload) => {
             exact settled_holds(x);
         }
+
         none => {
             exact settled_holds(x);
         }

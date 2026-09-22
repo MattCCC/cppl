@@ -12,10 +12,29 @@ WORK="$3"
 mkdir -p "$WORK"
 run=$(mktemp -d "$WORK/format_check.XXXXXX")
 
-# A canonical fixture must already pass --check.
-cp "$FIXTURES/refinement_types.cpp" "$run/canonical.cpp"
-if ! "$CPPL_FORMAT" --check "$run/canonical.cpp"; then
-    echo "expected --check to accept an already-canonical fixture" >&2
+# Every committed fixture must already be canonical. Checking the whole corpus
+# rather than one file is what makes the fixtures a regression test for the
+# formatter: a change that starts corrupting a construct now fails here instead
+# of being noticed only when someone runs `-i` and reads the diff.
+#
+# `negative/` is excluded on purpose. Those fixtures are deliberately malformed
+# -- wrong clause order, unterminated constructs -- and pin the diagnostics the
+# compiler must produce for them. The formatter would canonicalize exactly the
+# defect under test (it reorders a law's `decreases` after its `proves`), so
+# they are held byte-for-byte as written.
+uncanonical=""
+for fixture in "$FIXTURES"/*.cpp "$FIXTURES"/include/*.hpp; do
+    [ -e "$fixture" ] || continue
+    if ! "$CPPL_FORMAT" --check "$fixture" > /dev/null 2>&1; then
+        uncanonical="$uncanonical $fixture"
+    fi
+done
+if [ -n "$uncanonical" ]; then
+    echo "these committed fixtures are not in canonical form:" >&2
+    for fixture in $uncanonical; do
+        echo "  $fixture" >&2
+    done
+    echo "run: cppl-format -i <file>" >&2
     exit 1
 fi
 
