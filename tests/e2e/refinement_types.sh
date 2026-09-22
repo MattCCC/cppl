@@ -44,6 +44,30 @@ for standard in c++17 c++20 c++23; do
     # behaves identically: a refinement changes no runtime representation.
     "$CLANG" "-std=$standard" -x c++-cpp-output "$run/runtime.cpp" -o "$run/erased"
     test "$("$run/erased")" = "$("$run/program")"
+
+    # Equal output is necessary and not sufficient: a check that happens to pass
+    # on this input leaves the output alone while still being emitted. The claim
+    # is that no code exists for the refinement at all, so the comparison is of
+    # the object code itself (SPEC.md 17.8, 18).
+    #
+    # The C++L source and the erased source are each compiled to an object, the
+    # first by the C++L driver and the second by Clang alone. Identical objects
+    # mean the refinements contributed no instruction, symbol or datum -- no
+    # predicate, no tag, no guard on any path, whether or not that path runs
+    # here.
+    "$CPPL" "-std=$standard" -c "$FIXTURES/refinement_types.cpp" -o "$run/erased_cppl.o"
+    "$CLANG" "-std=$standard" -x c++-cpp-output -c "$run/runtime.cpp" -o "$run/erased_clang.o"
+    if ! cmp -s "$run/erased_cppl.o" "$run/erased_clang.o"; then
+        echo "erasure changed the object code for $standard" >&2
+        exit 1
+    fi
+
+    # No refinement name reaches the object either. A symbol carrying one would
+    # mean the type survived erasure into the runtime image.
+    if nm "$run/erased_clang.o" 2>/dev/null | grep -Eq 'Percentage|NonNegative'; then
+        echo "a refinement name reached the object code for $standard" >&2
+        exit 1
+    fi
 done
 
 # A lowering occupies its declaration's own lines, so nothing below it moves.

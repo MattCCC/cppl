@@ -519,9 +519,102 @@ type Index(unsigned n) = unsigned where (self < n);
 verified unsigned f(Index(10) i) ensures (result < 10u) { return i; }
 CPP
 
+# A compound update is the assignment it abbreviates, so a refined local owes
+# its predicate at the updated value. The existing negative pins a constant that
+# plainly leaves the type; this pins the symbolic case, where the predicate
+# survives only because the kernel relates the update to the entry fact.
+# SPEC: REFINEOBL-002
+accept a_compound_update_preserving_its_refinement <<'CPP'
+type Big = unsigned where (self > 10u);
+verified unsigned f(unsigned x) expects (x > 10u && x < 100u) ensures (result > 10u) {
+    Big b = x;
+    b += 5u;
+    return b;
+}
+CPP
+
+# An indexed refinement is applied per argument, and a wider bound follows from
+# a narrower one only because the kernel proves `x < 4` implies `x < 8`. The
+# index is a value the predicate mentions, never a name matched against another.
+# SPEC: REFINEOBL-004
+accept an_indexed_refinement_widens_when_the_kernel_proves_it <<'CPP'
+type Index(unsigned n) = unsigned where (self < n);
+verified unsigned takes8(Index<8u> x) ensures (result < 8u) { return x; }
+verified unsigned f(Index<4u> x) ensures (result < 8u) { return takes8(x); }
+CPP
+
+# Passing an argument into a refined parameter is a crossing at the call, owed
+# by the caller from what it knows. The existing cases cross a value already
+# carrying the refinement; this crosses a plain `int` that only a precondition
+# relates to the predicate, so the call stands on the kernel's reasoning.
+# SPEC: REFINEOBL-004
+accept a_plain_argument_crosses_into_a_refined_parameter <<'CPP'
+type Positive = int where (self > 0);
+verified int takes(Positive p) ensures (result > 0) { return p; }
+verified int f(int x) expects (x > 0) ensures (result > 0) { return takes(x); }
+CPP
+
+# A refinement over a refinement carries both predicates, so entering the inner
+# one owes the outer one as well.
+# SPEC: REFINEOBL-002
+accept a_nested_refinement_owes_both_predicates <<'CPP'
+type Positive = int where (self > 0);
+type Small = Positive where (self < 10);
+verified int f(int x) expects (x > 0 && x < 10) ensures (result > 0) {
+    Small s = x;
+    return s;
+}
+CPP
+
 # A lambda is not a modeled body.
 refuse lambda_is_not_modeled 'cannot state as a value' <<'CPP'
 verified int f(int x) ensures (result == x) { auto g = [](int v) { return v; }; return g(x); }
+CPP
+
+# A compound update that leaves the refinement is refused at the update, not at
+# the return: the local's own place owes the predicate whenever it is written.
+# `x > 10` permits `x == 11`, so `b -= 10u` can reach 1.
+# SPEC: REFINEOBL-002
+refuse a_compound_update_leaving_its_refinement 'not shown to satisfy refinement type' <<'CPP'
+type Big = unsigned where (self > 10u);
+verified unsigned f(unsigned x) expects (x > 10u && x < 100u) ensures (result > 10u) {
+    Big b = x;
+    b -= 10u;
+    return b;
+}
+CPP
+
+# Evidence for one index argument is not evidence for another. The narrowing
+# direction is unsound and stays refused however the two are spelled.
+# SPEC: REFINEOBL-004, TEMPLATE-003
+refuse an_indexed_refinement_does_not_narrow 'not shown to satisfy refinement type' <<'CPP'
+type Index(unsigned n) = unsigned where (self < n);
+verified unsigned f(Index<8u> x) ensures (result < 4u) {
+    Index<4u> y = x;
+    return y;
+}
+CPP
+
+# The same crossing without the precondition that justifies it. Nothing relates
+# `x` to the predicate, so the call is refused where the argument crosses rather
+# than where the result is returned.
+# SPEC: REFINEOBL-004
+refuse a_plain_argument_without_its_fact_does_not_cross 'call-site precondition' <<'CPP'
+type Positive = int where (self > 0);
+verified int takes(Positive p) ensures (result > 0) { return p; }
+verified int f(int x) ensures (result > 0) { return takes(x); }
+CPP
+
+# The inner predicate of a nested refinement is not implied by the outer one.
+# `Positive` alone does not establish `Small`.
+# SPEC: REFINEOBL-002
+refuse a_nested_refinement_is_not_entered_by_its_base 'not shown to satisfy refinement type' <<'CPP'
+type Positive = int where (self > 0);
+type Small = Positive where (self < 10);
+verified int f(int x) expects (x > 0) ensures (result > 0) {
+    Small s = x;
+    return s;
+}
 CPP
 
 # A dereference resolves to a place and reads through the one read path
