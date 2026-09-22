@@ -1233,8 +1233,8 @@ CPPL_TEST(two_sided_disjunction_over_a_wide_domain_is_not_proven) {
 CPPL_TEST(trichotomy_without_its_equality_case_is_not_proven) {
     const auto y = var(0);
     const auto x = var(1);
-    const auto goal = k::Proposition::disjunction(holds(k::PrimOp::Less, kI8, x, y),
-                                                  holds(k::PrimOp::Greater, kI8, x, y));
+    const auto goal =
+        k::Proposition::disjunction(holds(k::PrimOp::Less, kI8, x, y), holds(k::PrimOp::Greater, kI8, x, y));
     CPPL_CHECK(not_accepted_from_automation(closed(kI8, 2, {}, goal)));
 }
 
@@ -1254,8 +1254,8 @@ CPPL_TEST(case_analysis_does_not_recover_a_side_from_a_disjunctive_premise) {
 CPPL_TEST(case_analysis_still_requires_every_case_to_support_the_goal) {
     const auto x = var(0);
     const auto premise = k::Proposition::disjunction(equal(kU32, x, lit(kU32, 0)), equal(kU32, x, lit(kU32, 5)));
-    CPPL_CHECK(not_accepted_from_automation(
-        closed(kU32, 1, {premise}, holds(k::PrimOp::LessEqual, kU32, x, lit(kU32, 1)))));
+    CPPL_CHECK(
+        not_accepted_from_automation(closed(kU32, 1, {premise}, holds(k::PrimOp::LessEqual, kU32, x, lit(kU32, 1)))));
 }
 
 CPPL_TEST(a_decidable_split_does_not_prove_a_false_equality) {
@@ -1283,8 +1283,8 @@ CPPL_TEST(a_complementary_pair_is_decided_by_order_at_any_width) {
     // principle settles this and no width threshold applies. The width of the
     // type is irrelevant to whether the proposition is decidable.
     const auto x = var(0);
-    const auto goal = k::Proposition::disjunction(equal(kU32, x, lit(kU32, 0)),
-                                                  holds(k::PrimOp::NotEqual, kU32, x, lit(kU32, 0)));
+    const auto goal =
+        k::Proposition::disjunction(equal(kU32, x, lit(kU32, 0)), holds(k::PrimOp::NotEqual, kU32, x, lit(kU32, 0)));
     CPPL_CHECK(proven(closed(kU32, 1, {}, goal)));
 }
 
@@ -1308,8 +1308,8 @@ CPPL_TEST(the_same_goal_at_an_enumerable_width_is_proven) {
     // The u2 instance of the goal above. Nothing about the proposition changed
     // but the width, which is what makes the previous case a cost decision.
     const auto x = var(0);
-    const auto goal = k::Proposition::disjunction(equal(kU2, x, lit(kU2, 0)),
-                                                  holds(k::PrimOp::NotEqual, kU2, x, lit(kU2, 0)));
+    const auto goal =
+        k::Proposition::disjunction(equal(kU2, x, lit(kU2, 0)), holds(k::PrimOp::NotEqual, kU2, x, lit(kU2, 0)));
     CPPL_CHECK(proven(closed(kU2, 1, {}, goal)));
 }
 

@@ -29,7 +29,8 @@ struct Evidence {
 // same, on any machine. A search that cannot make progress stops rather than
 // continuing, so composition terminates on every input and never reads evidence
 // that was not established.
-[[nodiscard]] std::vector<obligations::ObligationResult>
-verify(const obligations::Program& program, diagnostics::Engine& engine, std::size_t* transitions = nullptr);
+[[nodiscard]] std::vector<obligations::ObligationResult> verify(const obligations::Program& program,
+                                                                diagnostics::Engine& engine,
+                                                                std::size_t* transitions = nullptr);
 
 } // namespace cppl::automation

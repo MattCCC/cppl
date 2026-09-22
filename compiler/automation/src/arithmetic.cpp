@@ -457,8 +457,8 @@ class Prover {
     std::optional<k::ProofTerm> by_premise_cases(const k::Proposition& goal) {
         for (std::size_t index = premises_.size(); index > 0; --index) {
             const Premise& premise = premises_[index - 1];
-            const auto shifted = k::shift(premise.proposition, static_cast<std::uint32_t>(binders_.size() -
-                                                                                          premise.binders));
+            const auto shifted =
+                k::shift(premise.proposition, static_cast<std::uint32_t>(binders_.size() - premise.binders));
             if (premise.consumed || !std::holds_alternative<k::Or>(shifted.node)) {
                 continue;
             }
@@ -479,8 +479,8 @@ class Prover {
             if (!left || !right) {
                 continue;
             }
-            const auto hypothesis = k::ProofTerm::hypothesis(
-                k::HypothesisIndex{static_cast<std::uint32_t>(premises_.size() - index)});
+            const auto hypothesis =
+                k::ProofTerm::hypothesis(k::HypothesisIndex{static_cast<std::uint32_t>(premises_.size() - index)});
             return k::ProofTerm::disjunction_elimination(shifted, hypothesis, std::move(*left), std::move(*right));
         }
         return std::nullopt;
@@ -507,15 +507,13 @@ class Prover {
         if (!motive) {
             return std::nullopt;
         }
-        auto when_true = under_premise(k::predicate(branch.arguments[0], true), [&] {
-            return prove(k::instantiate(*motive, branch.arguments[1]));
-        });
+        auto when_true = under_premise(k::predicate(branch.arguments[0], true),
+                                       [&] { return prove(k::instantiate(*motive, branch.arguments[1])); });
         if (!when_true) {
             return std::nullopt;
         }
-        auto when_false = under_premise(k::predicate(branch.arguments[0], false), [&] {
-            return prove(k::instantiate(*motive, branch.arguments[2]));
-        });
+        auto when_false = under_premise(k::predicate(branch.arguments[0], false),
+                                        [&] { return prove(k::instantiate(*motive, branch.arguments[2])); });
         if (!when_false) {
             return std::nullopt;
         }
@@ -554,8 +552,7 @@ class Prover {
     // introduction that puts the premise there. The premise is recorded at the
     // current binder depth, so the hypothesis indices the leaves use match the
     // introductions the proof term actually has.
-    template <typename Body>
-    std::optional<k::ProofTerm> under_premise(k::Proposition premise, Body&& body) {
+    template <typename Body> std::optional<k::ProofTerm> under_premise(k::Proposition premise, Body&& body) {
         premises_.push_back(Premise{premise, binders_.size()});
         auto proof = std::forward<Body>(body)();
         premises_.pop_back();
@@ -740,9 +737,8 @@ class Prover {
         auto when_false = under_premise(k::predicate(*decision, false), [&] {
             // The remaining sides are the rest of the same enumeration, so they
             // are continued directly rather than judged as a domain again.
-            auto side = std::holds_alternative<k::Or>(disjunction.right->node)
-                            ? by_side_or_cases(*disjunction.right)
-                            : prove(*disjunction.right);
+            auto side = std::holds_alternative<k::Or>(disjunction.right->node) ? by_side_or_cases(*disjunction.right)
+                                                                               : prove(*disjunction.right);
             if (!side) {
                 return side;
             }

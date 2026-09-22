@@ -140,6 +140,14 @@ struct Projection {
     std::vector<Expr> operands; // one subject, signature supplied by its type
 };
 
+// One element of an array value, selected at a term rather than a constant
+// (FOUNDATIONS.md 45). Forming it proves nothing about the index: the
+// `index < extent` obligation is owed separately, by the same `ElementBound` a
+// tracked subscript owes (SPEC.md STORAGE-011, STORAGE-012).
+struct Element {
+    std::vector<Expr> operands; // subject, index
+};
+
 struct FormalEquality {
     Type operand_type;
     std::vector<Expr> operands;
@@ -282,7 +290,7 @@ struct Loop {
     std::vector<std::uint32_t> heads;
     std::vector<Place> places;
     std::uint32_t invariants = 0;
-    std::uint32_t measures = 0;                      // 0 or 1: a `decreases` measure
+    std::uint32_t measures = 0; // 0 or 1: a `decreases` measure
     std::vector<Expr> operands; // entry values, invariants, measures, head
 };
 
@@ -317,7 +325,7 @@ struct Expr {
     Type type;
     source::SourceLocation location;
     std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, PlaceVersion, PlaceRef, Loop, Iterate,
-                 Projection, FormalEquality, Universal, Implication, Connective, ReturnState, UnknownVersion,
+                 Projection, Element, FormalEquality, Universal, Implication, Connective, ReturnState, UnknownVersion,
                  ElementBound, Unsupported>
         node;
 };

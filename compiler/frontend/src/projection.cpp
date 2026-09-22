@@ -501,9 +501,20 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
             if (const auto names = template_parameter_names(stream, verified.template_header); names.has_value()) {
                 std::string declared = "\n";
                 declared += line_directive(verified.function_location.line, verified.function_location.file);
-                declared += template_header + " bool " + projected.postcondition_name + "(" + result_parameter + ");";
+                declared += template_header;
+                declared += " bool ";
+                declared += projected.postcondition_name;
+                declared += "(";
+                declared += result_parameter;
+                declared += ");";
                 for (const std::string& precondition : projected.precondition_names) {
-                    declared += " " + template_header + " bool " + precondition + "(" + std::string(parameters) + ");";
+                    declared += " ";
+                    declared += template_header;
+                    declared += " bool ";
+                    declared += precondition;
+                    declared += "(";
+                    declared += parameters;
+                    declared += ");";
                 }
                 declared += "\n";
                 declared += line_directive(verified.keyword_location.line, verified.keyword_location.file);

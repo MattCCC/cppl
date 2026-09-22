@@ -152,8 +152,7 @@ std::expected<void, std::string> Composition::spend(std::optional<std::size_t> d
     return {};
 }
 
-Composition::Composition(const obligations::Program& program)
-    : program_(program), budget_(budget_for(program)) {
+Composition::Composition(const obligations::Program& program) : program_(program), budget_(budget_for(program)) {
     for (std::size_t index = 0; index < program.contracts.size(); ++index) {
         const auto& function = program.contracts[index];
         if (function.partial) {

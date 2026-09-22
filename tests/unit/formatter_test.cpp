@@ -539,6 +539,28 @@ CPPL_TEST(consteval_precedes_verified_pure_modifiers) {
     CPPL_CHECK(formatted.find("consteval verified pure int f(int x)\n") != std::string::npos);
 }
 
+// The formatter lexes the source as written, not the preprocessed text the
+// compiler recognizes, so a macro that expands to `verified` is just an
+// identifier here. The clauses are still laid out: which specifier happens to
+// precede a contract must not decide whether it gets canonical form.
+CPPL_TEST(macro_spelled_specifier_still_formats_the_contract) {
+    const std::string input = "#define V verified\nV int f(int x) ensures(result==x){return x;}\n";
+    const std::string formatted = format_text(input);
+    CPPL_CHECK(formatted.find("V int f(int x)\n    ensures (result == x)\n") != std::string::npos);
+}
+
+CPPL_TEST(unrecognized_leading_specifier_still_formats_the_contract) {
+    const std::string input = "inline int f(int x) ensures(result==x){return x;}\n";
+    const std::string formatted = format_text(input);
+    CPPL_CHECK(formatted.find("inline int f(int x)\n    ensures (result == x)\n") != std::string::npos);
+}
+
+CPPL_TEST(contract_with_no_specifier_at_all_still_formats) {
+    const std::string input = "int f(int x) ensures(result==x){return x;}\n";
+    const std::string formatted = format_text(input);
+    CPPL_CHECK(formatted.find("int f(int x)\n    ensures (result == x)\n") != std::string::npos);
+}
+
 CPPL_TEST(noexcept_remains_in_ordinary_declarator_before_contract_clauses) {
     const std::string input = "verified int f(int x) noexcept ensures(result==x){return x;}\n";
     const std::string formatted = format_text(input);

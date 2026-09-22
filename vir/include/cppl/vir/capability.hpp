@@ -1,12 +1,12 @@
 #pragma once
 
-#include <cstdint>
-#include <string>
-#include <vector>
-
 #include "cppl/source/location.hpp"
 #include "cppl/vir/expr.hpp"
 #include "cppl/vir/place.hpp"
+
+#include <cstdint>
+#include <string>
+#include <vector>
 
 namespace cppl::vir {
 

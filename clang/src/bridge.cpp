@@ -944,6 +944,43 @@ std::string statement_name(CXCursorKind kind) {
 Expr build_expression(CXCursor cursor, const std::vector<CXCursor>& parameters, const Locals& locals, unsigned depth,
                       bool sequenced_call = false);
 
+// Observe one element of an array value at a symbolic index, with the bounds
+// obligation the subscript owes (FOUNDATIONS.md 45, SPEC.md STORAGE-011).
+//
+// The extent is the resolved type's own component count, so it is available
+// before any element has been observed. The obligation is the same
+// `ElementBound` a tracked subscript owes, stated at the same index term this
+// observation reads (ARCHITECTURE.md ARCH-ELEM-003, ARCH-ELEM-004).
+Expr element_observation(Expr subject, CXCursor index_cursor, const std::vector<CXCursor>& parameters,
+                         const Locals& locals, unsigned depth, CXCursor cursor) {
+    const std::size_t extent = subject.type.projections.size();
+    if (extent == 0) {
+        return unsupported_expression(cursor, "this subscript's array has no modeled extent");
+    }
+    Expr index = build_expression(index_cursor, parameters, locals, depth + 1);
+    if (index.type.kind != TypeKind::Int) {
+        return unsupported_expression(cursor, "a symbolic array index must be an integer this implementation models");
+    }
+    // The extent enters the comparison at the index's own type, as it does for
+    // a tracked subscript: a differing type is a conversion this implementation
+    // does not model, and the obligation refuses it rather than inventing one.
+    Expr count;
+    count.type = index.type;
+    count.location = index.location;
+    count.node = IntLiteral{static_cast<std::int64_t>(extent)};
+
+    Expr observed;
+    observed.type = subject.type.projections.front();
+    observed.location = presumed_location(clang_getCursorLocation(cursor));
+    observed.node = Element{{std::move(subject), index}};
+
+    Expr bound;
+    bound.type = observed.type;
+    bound.location = index.location;
+    bound.node = ElementBound{{std::move(count)}, {std::move(index), std::move(observed)}};
+    return bound;
+}
+
 Expr build_integer_literal(CXCursor cursor) {
     CXEvalResult evaluated = clang_Cursor_Evaluate(cursor);
     if (evaluated == nullptr) {
@@ -1071,8 +1108,12 @@ Expr build_expression(CXCursor cursor, const std::vector<CXCursor>& parameters, 
                     if (index >= 0 && static_cast<std::size_t>(index) < subject.type.projections.size())
                         return make_projection(std::move(subject), static_cast<std::uint32_t>(index));
                 }
-                return unsupported_expression(cursor,
-                                              "proof array index must be a constant within the resolved extent");
+                // A symbolic index observes the element at a term instead
+                // (FOUNDATIONS.md 45). The extent comes from the resolved array
+                // type rather than from whichever elements happen to have been
+                // observed already, so it is known without any prior element
+                // fact (ARCHITECTURE.md ARCH-ELEM-004).
+                return element_observation(std::move(subject), children[1], parameters, locals, depth, cursor);
             }
         }
     }
@@ -1894,6 +1935,40 @@ struct BodyLowering {
         return state.size() - 1;
     }
 
+    // The resolved type of the storage `prefix` designates within `declaration`.
+    //
+    // This answers "what indexed structure does this object have", which is a
+    // question about its C++ type and not about which of its elements the proof
+    // has met so far. The place answers "which object" separately
+    // (ARCHITECTURE.md ARCH-ELEM-004).
+    Type declared_place_type(CXCursor declaration, const std::vector<PlaceStep>& prefix, const Locals& state) const {
+        // A tracked entry for the whole object is preferred: it already carries
+        // the type the declaration was modeled with, including a reference
+        // parameter's referent type.
+        for (const Local& candidate : state) {
+            if (clang_equalCursors(candidate.declaration, declaration) != 0 && !candidate.symbolic &&
+                candidate.path.empty()) {
+                return walk_components(candidate.type, prefix);
+            }
+        }
+        if (clang_Cursor_isNull(declaration) != 0) {
+            return {};
+        }
+        return walk_components(convert_type(reference_value_type(clang_getCursorType(declaration))), prefix);
+    }
+
+    // The type each step of `path` selects, by the resolved component order the
+    // representation already records.
+    static Type walk_components(Type current, const std::vector<PlaceStep>& path) {
+        for (const PlaceStep& step : path) {
+            if (step.kind == PlaceStep::Kind::SymbolicElement || step.index >= current.projections.size()) {
+                return {};
+            }
+            current = current.projections[step.index];
+        }
+        return current;
+    }
+
     // Form the place a symbolic subscript names, with the bounds obligation it
     // owes (RFC 0014 §7).
     //
@@ -1925,6 +2000,20 @@ struct BodyLowering {
             }
             extent = std::max(extent, candidate.path.back().index + 1);
             element = &candidate.type;
+        }
+        // The extent belongs to the array's resolved type, so it is known
+        // before any element of it has been observed. Scanning tracked element
+        // entries only ever finds the elements some earlier access happened to
+        // form, which would make the array's shape depend on the order of the
+        // proof rather than on its C++ type (ARCHITECTURE.md ARCH-ELEM-004).
+        Type indexed;
+        if (element == nullptr) {
+            indexed = declared_place_type(declaration, prefix, state);
+            if (indexed.representation.kind == source::RepresentationKind::Array &&
+                !indexed.projections.empty()) {
+                extent = static_cast<std::uint32_t>(indexed.projections.size());
+                element = &indexed.projections.front();
+            }
         }
         if (element == nullptr) {
             rejection = "this subscript's array is not tracked storage of this body, so the extent its index must "

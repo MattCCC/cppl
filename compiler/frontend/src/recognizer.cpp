@@ -1137,6 +1137,62 @@ std::optional<std::size_t> scan_function_clauses(const TokenStream& stream, std:
     return cursor;
 }
 
+// Whether a C++L declaration keyword stands between the declaration's first
+// token and its declarator name. Each of those has its own branch above that
+// reads the declaration properly, so the layout-only fallback must leave them
+// alone rather than file a second, overlapping region for the same text.
+// A `law`/`proof`/`trusted` declaration reaches the fallback whenever its own
+// branch declined it -- a non-exhaustive `cases`, say -- and its `proves`
+// clause is a proposition, not a function postcondition. Reporting on one
+// would replace that branch's real diagnostic with a misleading "a runtime
+// function postcondition uses 'ensures', never 'proves'".
+bool has_cppl_keyword(const std::vector<Token>& tokens, std::size_t index, std::size_t name_index) {
+    for (std::size_t cursor = index; cursor < name_index && cursor < tokens.size(); ++cursor) {
+        if (tokens[cursor].is_identifier("verified") || tokens[cursor].is_identifier("pure") ||
+            tokens[cursor].is_identifier("law") || tokens[cursor].is_identifier("proof") ||
+            tokens[cursor].is_identifier("trusted")) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Records a clause-bearing function declaration for layout alone, where the
+// declaration is not one this implementation checks: a `pure` function, or a
+// function led by any other specifier (`inline`, `static`, `constexpr`, or a
+// macro that expands to one). See `Syntax::unchecked_clauses`.
+//
+// `keyword_index` is the declaration's own first token, which is what the
+// formatter indents the clause block against; `name_index` is the declarator
+// name. Returns false when no clause survives the scan, leaving the caller to
+// treat the declaration as ordinary C++.
+bool record_unchecked_clauses(const TokenStream& stream, std::size_t keyword_index, std::size_t name_index,
+                              diagnostics::Engine& engine, Syntax& syntax) {
+    const std::vector<Token>& tokens = stream.tokens();
+    const std::size_t open = name_index + 1;
+    const std::size_t close = matching_parenthesis(tokens, open);
+    if (close >= tokens.size()) {
+        return false;
+    }
+    const std::size_t first_clause = skip_ordinary_declarator_suffix(tokens, close + 1);
+    VerifiedFunction layout;
+    const std::optional<std::size_t> scanned =
+        scan_function_clauses(stream, first_clause, engine, layout.clauses, /*report_decreases_unsupported=*/false);
+    if (!scanned.has_value() || layout.clauses.empty()) {
+        return false;
+    }
+    layout.keyword = tokens[keyword_index].span;
+    layout.keyword_location = stream.location_of(tokens[keyword_index]);
+    layout.function_name = std::string(tokens[name_index].text);
+    layout.function_location = stream.location_of(tokens[name_index]);
+    layout.function_offset = tokens[name_index].span.offset;
+    layout.parameters = source::ByteSpan{tokens[open].span.end(), tokens[close].span.offset - tokens[open].span.end()};
+    layout.clause_region = source::ByteSpan{tokens[first_clause].span.offset,
+                                            tokens[*scanned].span.offset - tokens[first_clause].span.offset};
+    syntax.unchecked_clauses.push_back(std::move(layout));
+    return true;
+}
+
 // `verified` marks a function whose contract this implementation has to
 // discharge. The clauses are delimited here; what they mean is settled once
 // Clang has resolved them, like every other specification expression.
@@ -1745,25 +1801,7 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
                     // written, in every `RecognitionMode`, the same way it
                     // lays out any other syntactically well-formed,
                     // semantically unsupported construct.
-                    const std::size_t open = *name + 1;
-                    const std::size_t close = matching_parenthesis(tokens, open);
-                    const std::size_t first_clause = skip_ordinary_declarator_suffix(tokens, close + 1);
-                    VerifiedFunction layout;
-                    const std::optional<std::size_t> scanned = scan_function_clauses(
-                        stream, first_clause, engine, layout.clauses, /*report_decreases_unsupported=*/false);
-                    if (scanned.has_value() && !layout.clauses.empty()) {
-                        layout.keyword = tokens[index].span;
-                        layout.keyword_location = stream.location_of(tokens[index]);
-                        layout.function_name = std::string(tokens[*name].text);
-                        layout.function_location = stream.location_of(tokens[*name]);
-                        layout.function_offset = tokens[*name].span.offset;
-                        layout.parameters = source::ByteSpan{tokens[open].span.end(),
-                                                             tokens[close].span.offset - tokens[open].span.end()};
-                        layout.clause_region =
-                            source::ByteSpan{tokens[first_clause].span.offset,
-                                             tokens[*scanned].span.offset - tokens[first_clause].span.offset};
-                        syntax.unchecked_clauses.push_back(std::move(layout));
-                    }
+                    record_unchecked_clauses(stream, index, *name, engine, syntax);
                 } else if (!at_namespace_scope()) {
                     report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
                            "'pure' is applied outside namespace scope",
@@ -1779,6 +1817,44 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
                     syntax.pure_markers.push_back(std::move(marker));
                 }
             }
+            ++index;
+            continue;
+        }
+
+        // Any other function declaration carrying clauses. The specifier in
+        // front of it is not one this implementation reads -- `inline`,
+        // `static`, `constexpr`, or a macro that expands to `verified`, whose
+        // expansion the formatter never sees because it lexes the source as
+        // written rather than the preprocessed text the compiler recognizes.
+        //
+        // Nothing here is checked: this claims no contract and emits no
+        // obligation, and the compiler's own reading of the declaration is
+        // untouched. It exists so that clause syntax a developer actually
+        // wrote is laid out rather than silently skipped, which is the same
+        // reason the `pure` path above records one. Without it the formatter
+        // is not idempotent in the way its users rely on: whether a clause
+        // gets canonical layout would depend on which specifier happens to
+        // precede it.
+        //
+        // No diagnostic accompanies this. The `pure` path's "would not be
+        // checked" report is about `pure`, a C++L specifier whose author
+        // plainly meant the contract to mean something. Here the leading
+        // token may be an ordinary C++ specifier or an unexpanded macro, and
+        // the Compile-mode recognizer reaches the same declaration through
+        // the preprocessed stream where the macro is already `verified` -- so
+        // warning would fire on correct, checked code.
+        //
+        // Two guards keep this from claiming a declaration that is already
+        // spoken for. `specifiers_start` is the declaration's own first token,
+        // and `at_declaration_start` is true both there and at each specifier
+        // after it, so recording anywhere else would file two overlapping
+        // regions for one declaration. `has_cppl_keyword` then yields to the
+        // branches above, which read the declaration properly.
+        std::size_t clause_index = 0;
+        if (const std::optional<std::size_t> name = find_declarator_name(tokens, index);
+            name.has_value() && specifiers_start(tokens, index) == index && !has_cppl_keyword(tokens, index, *name) &&
+            has_specification_clause(tokens, *name, clause_index)) {
+            record_unchecked_clauses(stream, index, *name, engine, syntax);
         }
 
         ++index;

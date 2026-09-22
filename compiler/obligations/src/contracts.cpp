@@ -970,8 +970,8 @@ class Conditions {
             const kernel::IntType integer = type->integer_type();
             emit(scope, Origin::ElementBounds, function_.qualified_name + " element index",
                  bounded->operands[0].provenance.range,
-                 kernel::predicate(
-                     kernel::Term::primitive(kernel::PrimOp::Less, integer, {*index, std::move(*extent)}), true));
+                 kernel::predicate(kernel::Term::primitive(kernel::PrimOp::Less, integer, {*index, std::move(*extent)}),
+                                   true));
             return walk(bounded->operands[1], std::move(scope), loops);
         }
 
@@ -1174,8 +1174,8 @@ class Conditions {
         for (std::size_t index = 0; index < carried; ++index) {
             holes[loop.heads[index]] = scope.binders.size() + index;
         }
-        auto next = lower_value(written, definitions_, scope.binders.size() + carried, &scope.calls, &scope.versions,
-                                &holes);
+        auto next =
+            lower_value(written, definitions_, scope.binders.size() + carried, &scope.calls, &scope.versions, &holes);
         if (!next) {
             return std::unexpected(next.error());
         }

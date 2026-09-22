@@ -140,6 +140,12 @@ std::string describe(const Expr& expr) {
                 return node.operands.size() == 1
                            ? "project<" + std::to_string(node.index) + ">(" + describe(node.operands[0]) + ")"
                            : "<malformed-projection>";
+            } else if constexpr (std::is_same_v<Node, Element>) {
+                // Spelled as the subscript it denotes: this reaches users in
+                // goals and diagnostics.
+                return node.operands.size() == 2
+                           ? describe(node.operands[0]) + "[" + describe(node.operands[1]) + "]"
+                           : "<malformed-element>";
             } else if constexpr (std::is_same_v<Node, FormalEquality>) {
                 return node.operands.size() == 2
                            ? "Eq<" + describe(node.operand_type) + ">(" + describe(node.operands[0]) + ", " +

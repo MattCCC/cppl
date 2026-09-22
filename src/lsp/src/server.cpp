@@ -86,8 +86,8 @@ std::vector<CodeAction> Server::text_document_code_actions(const TextDocumentIde
         actions.push_back({fix.title, "quickfix", to_text_edits(request.text, fix.edits)});
     const auto formatted = formatter::format_document(request);
     if (formatted.ok && !formatted.edits.empty())
-        actions.push_back({"Format canonical C++L syntax", "source.fixAll.cppl",
-                           to_text_edits(request.text, formatted.edits)});
+        actions.push_back(
+            {"Format canonical C++L syntax", "source.fixAll.cppl", to_text_edits(request.text, formatted.edits)});
     return actions;
 }
 

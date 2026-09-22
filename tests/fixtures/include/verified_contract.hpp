@@ -3,7 +3,9 @@
 #define CPPL_VERIFY verified
 namespace imported {
 using word = unsigned;
-CPPL_VERIFY word from_header(word x) ensures(result == x) {
+CPPL_VERIFY word from_header(word x)
+    ensures (result == x)
+{
     return x;
 }
 verified word next(word y)

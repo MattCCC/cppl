@@ -562,10 +562,9 @@ std::optional<std::vector<vir::Parameter>> convert_parameters(const clangbridge:
 // The expression itself was resolved by Clang in the proof's own scope; what
 // happens here is only the conversion of that resolved expression into the
 // fragment C++L models.
-const clangbridge::Function* proposition_function(const Request& request, std::string_view generated,
-                                                  const source::SourceLocation& written,
-                                                  const std::vector<clangbridge::TemplateArgument>* arguments =
-                                                      nullptr) {
+const clangbridge::Function* proposition_function(
+    const Request& request, std::string_view generated, const source::SourceLocation& written,
+    const std::vector<clangbridge::TemplateArgument>* arguments = nullptr) {
     for (const auto& probe : request.projection.proposition_probes) {
         if (probe.owner == generated && probe.location.file == written.file && probe.location.line == written.line) {
             return find_projected(request.unit, probe.name, probe.location, arguments);
@@ -605,12 +604,10 @@ std::optional<vir::Expr> convert_projected(const Request& request, std::string_v
 // `vir::Expr`, because it is not a proposition the kernel can check: it is a
 // property of the execution state, supposed by the obligation layer as a
 // context hypothesis (RFC 0014 §10, SPEC.md 12.10).
-std::vector<vir::Capability> convert_capabilities(const Request& request, std::string_view generated,
-                                                  const source::SourceLocation& written,
-                                                  std::uint32_t& next_expression_id, const std::string& subject,
-                                                  diagnostics::Engine& engine,
-                                                  const std::vector<clangbridge::TemplateArgument>* arguments =
-                                                      nullptr) {
+std::vector<vir::Capability> convert_capabilities(
+    const Request& request, std::string_view generated, const source::SourceLocation& written,
+    std::uint32_t& next_expression_id, const std::string& subject, diagnostics::Engine& engine,
+    const std::vector<clangbridge::TemplateArgument>* arguments = nullptr) {
     const clangbridge::Function* function = proposition_function(request, generated, written, arguments);
     if (function == nullptr || function->capabilities.empty()) {
         return {};
@@ -1107,10 +1104,9 @@ void elaborate_contract(const Request& request, const frontend::VerifiedFunction
     // unchanged.
     const std::vector<clangbridge::TemplateArgument>* arguments =
         function.primary_usr.empty() ? nullptr : &function.template_arguments;
-    std::optional<vir::Expr> ensured =
-        convert_projected(request, projected.postcondition_name, postcondition_location, next_expression_id,
-                          "the postcondition of verified function '" + function.qualified_name + "'", engine,
-                          arguments);
+    std::optional<vir::Expr> ensured = convert_projected(
+        request, projected.postcondition_name, postcondition_location, next_expression_id,
+        "the postcondition of verified function '" + function.qualified_name + "'", engine, arguments);
     if (!ensured.has_value()) {
         return;
     }

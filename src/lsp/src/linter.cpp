@@ -51,8 +51,8 @@ void Linter::lint_laws(const std::vector<frontend::LawDeclaration>& laws, std::v
             diag.range = mapper.source_range_to_range(law.range);
             diag.severity = DiagnosticSeverity::Error;
             diag.code = std::string(diagnostic_codes::law_multiple_proves);
-            diag.message = "law '" + law.name + "' has " + std::to_string(proves_count) +
-                           " 'proves' clauses; only one is allowed";
+            diag.message =
+                "law '" + law.name + "' has " + std::to_string(proves_count) + " 'proves' clauses; only one is allowed";
             out.push_back(std::move(diag));
         }
 

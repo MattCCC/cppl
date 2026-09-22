@@ -154,8 +154,8 @@ std::vector<obligations::ObligationResult> verify(const obligations::Program& pr
             } else if (obligation.origin == obligations::Origin::LoopPreservation) {
                 diagnostic.message = "loop invariant '" + obligation.subject + "' is not preserved by an iteration";
             } else if (obligation.origin == obligations::Origin::LoopDescent) {
-                diagnostic.message = "loop measure '" + obligation.subject +
-                                     "' is not shown to decrease on every iteration";
+                diagnostic.message =
+                    "loop measure '" + obligation.subject + "' is not shown to decrease on every iteration";
             } else if (obligation.origin == obligations::Origin::RefinementIntroduction) {
                 // The value is what must satisfy the predicate; the refinement is
                 // not something a proof can be written for.
