@@ -155,6 +155,11 @@ struct VerifiedFunction {
     source::ByteSpan return_type;
     source::ByteSpan parameters;
 
+    // The `template <...>` header introducing this function, where it has one.
+    // A contract probe names whatever the clause names, including template
+    // parameters, so the probe is emitted under this same header.
+    source::ByteSpan template_header;
+
     // The clauses, and the region of text they occupy between the parameter
     // list and the body. The region is removed from both projections: a
     // contract is not C++.

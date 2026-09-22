@@ -595,7 +595,7 @@ std::vector<vir::Capability> convert_capabilities(const Request& request, std::s
     for (const clangbridge::Capability& stated : function->capabilities) {
         vir::Capability capability;
         capability.kind = stated.kind == clangbridge::Capability::Kind::Readable ? vir::CapabilityKind::Readable
-                                                                                : vir::CapabilityKind::Writable;
+                                                                                 : vir::CapabilityKind::Writable;
         // A capability stated by a contract is owed by the caller, so its
         // origin is the contract until a trusted law admits it.
         capability.origin = vir::CapabilityOrigin::Contract;
@@ -1373,6 +1373,20 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
         const auto offset = request.projection.declaration_offset(declaration.function_offset);
         const clangbridge::Function* function = offset.has_value() ? request.unit.find_at_offset(*offset) : nullptr;
         if (function == nullptr) {
+            // A contract on a template is parameterized by the template's own
+            // parameters, and the claim it makes is interpreted per
+            // specialization after substitution (SPEC.md 42 TEMPLATE-001,
+            // Annex G.1). This implementation verifies functions, not the
+            // uninstantiated pattern, so the contract is refused rather than
+            // checked once against dependent types.
+            if (declaration.template_header.length != 0) {
+                report(engine, diagnostics::Category::UnsupportedSemantics, declaration.function_location,
+                       "verified function template '" + declaration.function_name +
+                           "' is not verified by this "
+                           "implementation",
+                       "a contract on a template is checked per specialization; that is not implemented yet");
+                continue;
+            }
             report(engine, diagnostics::Category::Elaboration, declaration.function_location,
                    "the declaration of verified function '" + declaration.function_name + "' was not resolved",
                    "Clang did not report a function declaration at this location");

@@ -88,16 +88,37 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         edits.push_back(Edit{marker.keyword, std::string(marker.keyword.length, ' ')});
     }
 
+    // The template header the declaration being emitted stands under, where it
+    // has one. A contract clause may name the template's parameters, so its
+    // probe has to be declared under the same header; laws and proofs are not
+    // templated and leave this empty.
+    std::string template_header;
+
+    // What every generated declaration is introduced by. A templated probe
+    // cannot be `static`: it is a template, and its header has to precede the
+    // declaration it introduces.
+    const auto declaration_prefix = [&template_header] {
+        std::string prefix;
+        if (!template_header.empty()) {
+            prefix += template_header;
+            prefix += " [[maybe_unused]] ";
+            return prefix;
+        }
+        prefix += "[[maybe_unused]] static ";
+        return prefix;
+    };
+
     // A declaration becomes an ordinary C++ function stating the proposition it
     // carries, emitted where the declaration stood. Everything after this point
     // in the analysis text is C++ that Clang resolves on its own.
-    const auto emit = [&stream, &projection,
-                       &options](std::string_view name, std::string_view parameters, const source::ByteSpan& expression,
-                                 const source::SourceLocation& begin, std::uint32_t end_line,
-                                 std::size_t* name_offset = nullptr, std::string* proposition_name = nullptr) {
+    const auto emit = [&stream, &projection, &options, &declaration_prefix](
+                          std::string_view name, std::string_view parameters, const source::ByteSpan& expression,
+                          const source::SourceLocation& begin, std::uint32_t end_line,
+                          std::size_t* name_offset = nullptr, std::string* proposition_name = nullptr) {
+        const std::string prefix = declaration_prefix();
         std::string replacement = "\n";
         replacement += line_directive(begin.line, begin.file);
-        replacement += "[[maybe_unused]] static bool ";
+        replacement += prefix + "bool ";
         if (name_offset != nullptr)
             *name_offset = replacement.size();
         replacement += name;
@@ -121,7 +142,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
             if (proposition_name != nullptr)
                 *proposition_name = probe;
             replacement += line_directive(begin.line, begin.file);
-            replacement += "[[maybe_unused]] static auto " + probe + "(";
+            replacement += prefix + "auto " + probe + "(";
             replacement += parameters;
             // A memory capability states storage permission, not a value, so its
             // probe body is a statement: there is nothing to return, and the
@@ -129,8 +150,8 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
             const bool capability = formula.shape.kind == source::ProjectionKind::Readable ||
                                     formula.shape.kind == source::ProjectionKind::Writable ||
                                     formula.shape.kind == source::ProjectionKind::Capabilities;
-            replacement += capability ? ") { " + formula.expression + "; }\n"
-                                      : ") { return (" + formula.expression + "); }\n";
+            replacement +=
+                capability ? ") { " + formula.expression + "; }\n" : ") { return (" + formula.expression + "); }\n";
             replacement += line_directive(end_line, begin.file);
             return replacement;
         }
@@ -341,6 +362,11 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
 
         const Clause* postcondition = verified.postcondition();
 
+        // Every probe for this function is declared under the function's own
+        // template header, so a clause naming a template parameter resolves.
+        template_header = verified.template_header.length == 0 ? std::string()
+                                                               : std::string(stream.spelling(verified.template_header));
+
         const std::string suffix = std::to_string(index) + (options.unit_key.empty() ? "" : "_" + options.unit_key);
         std::string_view parameters = stream.spelling(verified.parameters);
         const std::size_t first = parameters.find_first_not_of(" \t\r\n");
@@ -375,7 +401,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
                 ? emit(projected.postcondition_name, result_parameter, postcondition->expression,
                        postcondition->location, verified.body_end_line)
                 : "\n" + line_directive(verified.function_location.line, verified.function_location.file) +
-                      "[[maybe_unused]] static bool " + projected.postcondition_name + "(" + result_parameter +
+                      declaration_prefix() + "bool " + projected.postcondition_name + "(" + result_parameter +
                       ") { return true; }\n";
         for (const Clause* precondition : verified.preconditions()) {
             std::string name = options.generated_prefix + "expects_" + suffix;
@@ -392,6 +418,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         edits.push_back(Edit{source::ByteSpan{verified.body_end, 0}, std::move(replacement)});
         projection.contract_functions.push_back(std::move(projected));
     }
+    template_header.clear();
 
     // A loop's clauses are not C++ either. Each invariant becomes a `bool`
     // declaration at the start of the body, in the scope the loop head sees,

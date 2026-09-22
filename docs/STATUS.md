@@ -634,9 +634,17 @@ pin both directions, and the erasure test shows a refined member lowering to a
 plain member with identical generated code.
 
 Refined array elements use the same place model, at constant and at symbolic
-indices alike. General casts, lambdas, methods, templates in contracts,
-alias-return lifetimes, `old` over mutable state, and dependent object flows
-remain unimplemented.
+indices alike. General casts, lambdas, methods, alias-return lifetimes, `old`
+over mutable state, and dependent object flows remain unimplemented.
+
+A contract may name types a template supplies, including dependent names
+spelled through one, because each clause is projected under the header its
+declaration stands under. A contract on a template itself is a different claim:
+it is parameterized by the template's own parameters and is interpreted per
+specialization after substitution, and evidence for one specialization is not
+evidence for another. Checking it once against dependent types would report a
+result no specialization proved, so a verified function template is refused by
+name rather than verified.
 
 Binding a conditional to a local splits the route on its condition, so each arm
 is proved under what its own path supposes rather than as one opaque `select`

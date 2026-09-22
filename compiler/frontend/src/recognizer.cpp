@@ -52,13 +52,12 @@ std::size_t skip_back_over_attribute(const std::vector<Token>& tokens, std::size
     return scan;
 }
 
-// A declaration can begin here: at the start of the unit, or after a token that
-// can only end a previous declaration, statement or label.
-bool at_declaration_start(const std::vector<Token>& tokens, std::size_t index) {
-    // Ordinary specifiers and `[[...]]` attributes (GRAMMAR.md 40: "Ordinary
-    // attributes keep their C++ placement") can precede a C++L declaration
-    // in either relative order, and either may repeat, so both are skipped
-    // back over together until neither applies any more.
+// The first token of the declaration at `index`, walking back over the ordinary
+// specifiers and `[[...]]` attributes (GRAMMAR.md 40: "Ordinary attributes keep
+// their C++ placement") that may precede a C++L declaration. Either kind may
+// repeat and they may appear in either relative order, so both are skipped back
+// over together until neither applies any more.
+std::size_t specifiers_start(const std::vector<Token>& tokens, std::size_t index) {
     while (index > 0) {
         if (tokens[index - 1].is_identifier("static") || tokens[index - 1].is_identifier("inline") ||
             tokens[index - 1].is_identifier("constexpr") || tokens[index - 1].is_identifier("consteval") ||
@@ -73,32 +72,53 @@ bool at_declaration_start(const std::vector<Token>& tokens, std::size_t index) {
         }
         break;
     }
-    // A template header (GRAMMAR.md 39: "C++ owns template syntax") precedes
-    // the declaration it introduces, e.g. `template <typename T>\nverified ...`.
-    // Skip back over one balanced `template < ... >` before applying the usual
-    // "previous token ends a declaration/statement/label" rule.
-    if (index > 0 && tokens[index - 1].is_punctuator(">")) {
-        std::size_t depth = 0;
-        std::size_t scan = index - 1;
-        std::size_t matched = tokens.size(); // the '<' balancing the initial '>'
-        while (true) {
-            if (tokens[scan].is_punctuator(">")) {
-                ++depth;
-            } else if (tokens[scan].is_punctuator("<")) {
-                --depth;
-                if (depth == 0) {
-                    matched = scan;
-                    break;
-                }
+    return index;
+}
+
+// The `template` token of the header introducing the declaration at `index`,
+// where there is one (GRAMMAR.md 39: "C++ owns template syntax"). The header
+// precedes the declaration it introduces, e.g. `template <typename T>\nverified
+// ...`, so this scans back over one balanced `template < ... >`.
+//
+// The span matters beyond recognition: a contract probe for a templated
+// function names the template's parameters, so it has to be emitted under the
+// same header the author wrote (SPEC.md 21).
+std::optional<std::size_t> template_header_start(const std::vector<Token>& tokens, std::size_t index) {
+    if (index == 0 || !tokens[index - 1].is_punctuator(">")) {
+        return std::nullopt;
+    }
+    std::size_t depth = 0;
+    std::size_t scan = index - 1;
+    std::size_t matched = tokens.size(); // the '<' balancing the initial '>'
+    while (true) {
+        if (tokens[scan].is_punctuator(">")) {
+            ++depth;
+        } else if (tokens[scan].is_punctuator("<")) {
+            --depth;
+            if (depth == 0) {
+                matched = scan;
+                break;
             }
-            if (scan == 0) {
-                break; // no matching '<': not a template header
-            }
-            --scan;
         }
-        if (matched < tokens.size() && matched > 0 && tokens[matched - 1].is_identifier("template")) {
-            index = matched - 1;
+        if (scan == 0) {
+            break; // no matching '<': not a template header
         }
+        --scan;
+    }
+    if (matched < tokens.size() && matched > 0 && tokens[matched - 1].is_identifier("template")) {
+        return matched - 1;
+    }
+    return std::nullopt;
+}
+
+// A declaration can begin here: at the start of the unit, or after a token that
+// can only end a previous declaration, statement or label.
+bool at_declaration_start(const std::vector<Token>& tokens, std::size_t index) {
+    index = specifiers_start(tokens, index);
+    // Skip back over a template header before applying the usual "previous
+    // token ends a declaration/statement/label" rule.
+    if (const std::optional<std::size_t> header = template_header_start(tokens, index); header.has_value()) {
+        index = *header;
     }
     if (index == 0) {
         return true;
@@ -688,7 +708,8 @@ bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std
         // semantic layer, which continues to reject every induction proof
         // outright (elaborate.cpp) - recognizing the syntax here only lets
         // the FORMATTER lay out what was written.
-        if (token.is_identifier("induction") && cursor + 1 < body_close && tokens[cursor + 1].kind == TokenKind::Identifier) {
+        if (token.is_identifier("induction") && cursor + 1 < body_close &&
+            tokens[cursor + 1].kind == TokenKind::Identifier) {
             const std::size_t subject = cursor + 1;
             ProofStatement statement;
             statement.kind = ProofStatementKind::Induction;
@@ -1199,6 +1220,16 @@ bool try_verified(const TokenStream& stream, std::size_t index, diagnostics::Eng
 
     verified.keyword = tokens[index].span;
     verified.keyword_location = stream.location_of(tokens[index]);
+    // The header ends at its closing `>`, which is where the declaration's own
+    // specifiers begin. Taking it to the `verified` keyword instead would carry
+    // any `inline` or `static` between them into the generated probe, where
+    // they do not belong.
+    const std::size_t declaration_start = specifiers_start(tokens, index);
+    if (const std::optional<std::size_t> header = template_header_start(tokens, declaration_start);
+        header.has_value()) {
+        verified.template_header = source::ByteSpan{tokens[*header].span.offset, tokens[declaration_start].span.offset -
+                                                                                     tokens[*header].span.offset};
+    }
     verified.function_name = std::string(tokens[*name].text);
     verified.function_location = stream.location_of(tokens[*name]);
     verified.function_offset = tokens[*name].span.offset;
@@ -1334,8 +1365,7 @@ LoopClauses try_loop_clauses(const TokenStream& stream, std::size_t index, std::
                 continue;
             }
             const source::ByteSpan measure{tokens[clause.keyword + 1].span.end(),
-                                           tokens[clause.close].span.offset -
-                                               tokens[clause.keyword + 1].span.end()};
+                                           tokens[clause.close].span.offset - tokens[clause.keyword + 1].span.end()};
             if (stream.spelling(measure).find_first_not_of(" \t\r\n") == std::string_view::npos) {
                 report(engine, stream, keyword, diagnostics::Category::CpplSyntax,
                        "'decreases' requires an expression");
@@ -1352,8 +1382,7 @@ LoopClauses try_loop_clauses(const TokenStream& stream, std::size_t index, std::
                 outcome = LoopClauses::Refused;
                 continue;
             }
-            loop.decreases =
-                Clause{ClauseKind::Decreases, keyword.span, measure, stream.location_of(keyword)};
+            loop.decreases = Clause{ClauseKind::Decreases, keyword.span, measure, stream.location_of(keyword)};
             loop.measure_location = stream.location_of(tokens[clause.keyword + 2]);
             continue;
         }
@@ -1723,10 +1752,11 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
                         layout.function_name = std::string(tokens[*name].text);
                         layout.function_location = stream.location_of(tokens[*name]);
                         layout.function_offset = tokens[*name].span.offset;
-                        layout.parameters =
-                            source::ByteSpan{tokens[open].span.end(), tokens[close].span.offset - tokens[open].span.end()};
-                        layout.clause_region = source::ByteSpan{
-                            tokens[first_clause].span.offset, tokens[*scanned].span.offset - tokens[first_clause].span.offset};
+                        layout.parameters = source::ByteSpan{tokens[open].span.end(),
+                                                             tokens[close].span.offset - tokens[open].span.end()};
+                        layout.clause_region =
+                            source::ByteSpan{tokens[first_clause].span.offset,
+                                             tokens[*scanned].span.offset - tokens[first_clause].span.offset};
                         syntax.unchecked_clauses.push_back(std::move(layout));
                     }
                 } else if (!at_namespace_scope()) {

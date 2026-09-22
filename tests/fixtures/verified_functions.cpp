@@ -74,6 +74,22 @@ verified unsigned identity(unsigned x)
 }
 } // namespace nested
 
+// A contract may name types that come from a template, including dependent
+// names spelled through it. The function itself is not a template: its clauses
+// are projected under whatever header the declaration stands under, so the
+// names a clause mentions resolve exactly as they do in the declaration
+// (SPEC.md 42, Annex G.1).
+template <typename T> struct Traits {
+    using type = T;
+};
+
+verified Traits<unsigned>::type twice(Traits<unsigned>::type x)
+    expects (x < 100u)
+    ensures (result == x + x)
+{
+    return x + x;
+}
+
 law signed_identity(int x)
     proves (nested::identity(x) == x);
 law constant_equality(unsigned x)
@@ -85,5 +101,5 @@ int main() {
     return result != 41u || inc(41u) != 42u || inc(~0u) != 0u || zero_if_zero(0u) != 0u || one_if_zero(0u) != 1u ||
            first(2u, 3u) != 2u || second(2u, 3u) != 3u || equal_inputs(4u, 4u) != 5u || from_pure(6u) != 6u ||
            constant() != 7u || nested::identity(8) != 8 || nested::identity(9u) != 9u || zero_if_zero(5u) != 5u ||
-           imported::from_header(10u) != 10u || imported::next(11u) != 11u;
+           imported::from_header(10u) != 10u || imported::next(11u) != 11u || twice(12u) != 24u;
 }

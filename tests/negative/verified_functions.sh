@@ -115,5 +115,17 @@ reject direct_recursion 'it calls itself; recursion is not modeled' \
     'verified unsigned f(unsigned x) ensures (result == x) { if (x == 0u) return 0u; return f(x - 1u) + 1u; }'
 reject mutual_recursion "call to 'g' is recursive or depends on recursion" \
     'unsigned g(unsigned); verified unsigned f(unsigned x) ensures (result == x) { return g(x); } verified unsigned g(unsigned x) ensures (result == x) { return f(x); }'
+# A contract on a template is parameterized by the template's own parameters and
+# states a claim interpreted per specialization, after substitution (SPEC.md 42
+# TEMPLATE-001, Annex G.1). Checking it once against dependent types would
+# report a result no specialization proved, and evidence for one specialization
+# is not evidence for another (TEMPLATE-003), so it is refused by name.
+# SPEC: TEMPLATE-001, TEMPLATE-003
+reject verified_function_template 'verified function template .* is not verified by this implementation' \
+    'template <typename T> verified T id(T x) ensures (result == x) { return x; }'
+# The header is found past the specifiers that may stand between it and the
+# `verified` keyword, so this is refused for the same stated reason.
+reject specified_function_template 'verified function template .* is not verified by this implementation' \
+    'template <typename T> inline verified T id(T x) ensures (result == x) { return x; }'
 
 echo 'false contracts and unsupported verified bodies fail closed'
