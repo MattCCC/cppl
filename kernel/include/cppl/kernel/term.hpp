@@ -134,6 +134,19 @@ struct Term {
     friend bool operator==(const Term&, const Term&) = default;
 };
 
+// A term former is part of the logical TCB: typing, substitution, normalization
+// and structural identity must each account for every alternative. A dispatch
+// chain ending in a catch-all `else` would silently treat a new alternative as
+// the one that `else` handles, which is how an unchecked term becomes a checked
+// one (TRUST.md TCB-CORE-001, AGENTS.md 7).
+//
+// Adding an alternative must therefore fail here first. Update the count only
+// together with every site that decides what the new former means.
+static_assert(std::variant_size_v<decltype(Term::node)> == 6,
+              "a kernel term former was added or removed: review type_of, normalize and describe_with_names in "
+              "context.cpp, shift/instantiate in substitution.cpp, compare in arithmetic.cpp, describe in "
+              "term.cpp, and the obligation hashing in obligations/generate.cpp");
+
 // The de Bruijn index denoting parameter `position` of a definition declaring
 // `parameter_count` parameters. Parameters are bound outermost-first, so
 // position 0 is the outermost binder and has the largest index.

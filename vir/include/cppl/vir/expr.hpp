@@ -235,6 +235,21 @@ struct Expr {
     friend bool operator==(const Expr&, const Expr&) = default;
 };
 
+// Several consumers dispatch over `Expr::node` with an `if constexpr` chain
+// whose final `else` handles one remaining alternative. Such a chain accepts a
+// new alternative silently, routing it to whichever branch the `else` happens
+// to be: a node the verifier does not understand would be treated as one it
+// does, which is the shape of a soundness bug rather than a missing feature.
+//
+// This assertion does not make those chains exhaustive. It makes adding an
+// alternative fail here first, so the author has to visit every dispatch site
+// and decide what the new node means to each (AGENTS.md 7 "exhaustive
+// handling"). Update the count only together with those sites.
+static_assert(std::variant_size_v<decltype(Expr::node)> == 19,
+              "a VIR expression alternative was added or removed: review every dispatch over Expr::node, "
+              "including describe() in vir.cpp, lowering in obligations/generate.cpp, the walk in "
+              "obligations/contracts.cpp, and conversion in elaboration/elaborate.cpp");
+
 std::string describe(const Expr& expr);
 
 } // namespace cppl::vir
