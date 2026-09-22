@@ -83,3 +83,11 @@ dist
 mcp.json
 opencode.jsonc
 docs/local/
+
+# Editor extension build outputs
+editors/vscode/node_modules/
+editors/vscode/syntaxes/
+editors/vscode/*.vsix
+editors/jetbrains/build/
+editors/visual-studio/src/bin/
+editors/visual-studio/src/obj/

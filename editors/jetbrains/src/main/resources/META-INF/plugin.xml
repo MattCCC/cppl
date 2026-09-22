@@ -1,0 +1,30 @@
+<idea-plugin>
+    <id>dev.cppl.jetbrains</id>
+    <name>C++L</name>
+    <vendor>C++L</vendor>
+
+    <description><![CDATA[
+        C++L language support for JetBrains IDEs: diagnostics, canonical
+        formatting and syntax highlighting, provided by the
+        <code>cppl-lsp</code> language server.
+        <br/><br/>
+        Requires <code>cppl-lsp</code> on PATH or built at
+        <code>build/dev/bin/cppl-lsp</code> in the project.
+    ]]></description>
+
+    <!-- The platform LSP API lives in the commercial IDE platform. -->
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.ultimate</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <fileType
+            name="C++L"
+            implementationClass="dev.cppl.CpplFileType"
+            fieldName="INSTANCE"
+            language="C++L"
+            extensions="cppl"/>
+
+        <platform.lsp.serverSupportProvider
+            implementation="dev.cppl.CpplLspSupportProvider"/>
+    </extensions>
+</idea-plugin>

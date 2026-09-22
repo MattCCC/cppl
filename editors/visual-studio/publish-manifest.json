@@ -1,0 +1,13 @@
+{
+  "$schema": "http://json.schemastore.org/vsix-publish",
+  "categories": ["programming languages", "coding"],
+  "identity": {
+    "internalName": "cppl-visual-studio"
+  },
+  "overview": "README.md",
+  "priceCategory": "free",
+  "publisher": "C++L",
+  "private": false,
+  "qna": true,
+  "repo": "https://github.com/cppl-lang/cppl"
+}
