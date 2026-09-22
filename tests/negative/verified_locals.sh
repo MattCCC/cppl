@@ -45,6 +45,12 @@ reject assignment_call_precondition 'call-site precondition' \
 # Declarations outside the modeled subset.
 reject uninitialized 'without an initializer' \
     'verified unsigned f(unsigned x) ensures (result == x) { unsigned y; y = x; return y; }'
+# A refined local declared without an initializer holds no value, so it holds no
+# evidence either. Its declared type must never stand in for the proof that its
+# predicate holds, or a refinement could be obtained by declaring one.
+# SPEC: REFINEOBL-002
+reject uninitialized_refined_local 'without an initializer' \
+    'type Positive = int where (self > 0); verified int f() ensures (result > 0) { Positive p; return p; }'
 reject static_local 'automatic storage' \
     'verified unsigned f(unsigned x) ensures (result == x) { static unsigned y = 0u; return x; }'
 reject thread_local_local 'thread-local' \
