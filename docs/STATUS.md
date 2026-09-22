@@ -633,8 +633,8 @@ ordinary C++ establishes its members without proof. Permanent regression tests
 pin both directions, and the erasure test shows a refined member lowering to a
 plain member with identical generated code.
 
-Refined array elements at constant indices use the same place model. General
-casts, lambdas, methods, pointer dereference, symbolic subscripts,
+Refined array elements use the same place model, at constant and at symbolic
+indices alike. General casts, lambdas, methods, templates in contracts,
 alias-return lifetimes, `old` over mutable state, and dependent object flows
 remain unimplemented.
 
@@ -670,25 +670,52 @@ must agree, so a body whose splits cannot be kept in step with the `select`
 nesting of its lowered value is refused rather than proven. These are
 implementation gaps, not completed capability.
 
-Pointer dereference is blocked rather than merely unimplemented. Every form
-(`*p`, `*p = e`, `p->m`, `p[i]`) is refused because dereference validity needs
-storage and capability obligations; `p != nullptr` is necessary and
-insufficient, and the pointer's state model may not supply the difference
-(`SPEC.md` 12.9). RFC 0014 is accepted and specifies that model, normatively
-stated in `SPEC.md` 12.10; the access forms are refused until they are
-implemented against it. Pointer values and proof-side `null`/`non_null` case
-analysis are `IMPLEMENTED` and unaffected.
+Pointer dereference resolves to a place and reads and writes through the common
+machinery. `*p`, `*p = e`, `p->m` and `p[i]` all form a `Deref` place rooted in
+the pointer and the version whose value they dereference, so `*p` before and
+after a write to `p` are different places. Forming one requires a capability,
+which the contract states as `readable(p)` or `writable(p, n)` and nothing else
+supplies: `p != nullptr` establishes neither, and a failed capability is a
+diagnostic rather than a silent assumption (`SPEC.md` 12.10 VERIFIED-037,
+VERIFIED-043). A pointer computed by arithmetic or returned by a call names no
+place this implementation can identify and stays refused. Reading requires
+`readable` and writing requires `writable`; neither entails the other.
 
-The storage model that gates dereference also gates subscripts with symbolic
-indices, reference capture and returned aliases: they need one place, region and
-capability model rather than four, so they are sequenced behind it (RFC 0014
-§17). Capability tracking is a correspondence-layer responsibility and carries a
-stated TCB delta (`TRUST.md` 41.2); it adds no kernel rule, axiom or logical
-assumption.
+`readable` and `writable` are built-in specification propositions, not calls to
+user functions, and they never become runtime calls. They are recognized
+contextually, so ordinary C++ that already spells a function or variable
+`readable` keeps its own meaning. Because a contract states one `expects`
+clause, several capabilities are written joined by `&&`; mixing a capability
+with an ordinary predicate in one clause is refused, since the two belong to
+different channels.
 
-Steps 1 to 4 of that model are implemented. A place is a root - a local, or the
-referent a by-reference parameter designates - and a path of projections into
-it, so a member of a member is an ordinary place rather than a special case.
+A capability never reaches the proof kernel. It is a property of the execution
+state rather than a computable function of any value, so encoding it as a term
+would need an uninterpreted constant and adding a proposition former for it
+would put memory semantics inside the trusted kernel (RFC 0014 §10). Instead the
+obligation layer carries capabilities as context hypotheses, structurally
+separated: `vir::Capability` is deliberately not a node of `Expr`, so there is
+no path from a capability to the kernel's proposition language. Capability
+tracking is a correspondence-layer responsibility and carries a stated TCB delta
+(`TRUST.md` 41.2); it adds no kernel rule, axiom or logical assumption.
+
+Bounds are the opposite case and are *proved*. A symbolic subscript forms a
+symbolic element place and owes `index < extent`, where the extent is the
+array's own resolved layout. Both sides are terms, so the kernel checks it with
+the existing arithmetic rules. Two symbolic elements are disjoint only when
+their indices are proved unequal: a write at `a[j]` invalidates what was read at
+`a[i]` unless `i != j` is established, and a false rejection is preferred to a
+stale fact. Refined elements owe their predicate at every write, symbolic or
+not.
+
+Pointer values and proof-side `null`/`non_null` case analysis are `IMPLEMENTED`
+and unaffected. Reference capture and returned aliases remain sequenced behind
+the rest of the storage model (RFC 0014 §17).
+
+Steps 1 to 7 of that model are implemented. A place is a root - a local, the
+referent a by-reference parameter designates, or the pointee a pointer
+designates - and a path of projections into it, so a member of a member is an
+ordinary place rather than a special case.
 `PlaceVersion` and `PlaceRef` are the only version and read nodes in the VIR;
 there is no parallel local-only path. Every read resolves a place to its current
 version through one mechanism, and every write - a declaration, an assignment, a
@@ -701,17 +728,20 @@ locals never share storage, and within one object paths that differ at some step
 select different members. A write to an object reaches the members inside it and
 a write to a member reaches the object it belongs to, because they are the same
 storage at different granularity. Two by-reference parameters may designate one
-object, so a write through either havocs the other. No type-based argument is
-used: strict aliasing presupposes the undefined-behavior freedom a proof has not
-established.
+object, so a write through either havocs the other. A dereference is the
+conservative case: two dereferences of different pointers may always alias, and
+a dereference may reach any local whose address the body takes, which Clang
+resolves. A local whose address is never taken cannot be a pointee and is left
+alone. No type-based argument is used: strict aliasing presupposes the
+undefined-behavior freedom a proof has not established.
 
 An array local is the same model: it is a record whose members are its elements,
 so a constant index names a place and a write reaches exactly that element. A
-variable index is refused rather than resolved to some element, because deciding
-which element it names soundly requires the extent obligations of RFC 0014.
-Only aggregate initialization is admitted for a tracked record, because a
-constructor call or default initialization would leave a tracked member holding
-a value the body cannot state.
+variable index names a symbolic element place instead, which is not resolved to
+any particular element: it owes its bound, its value is opaque, and it is never
+concluded disjoint from a sibling. Only aggregate initialization is admitted for
+a tracked record, because a constructor call or default initialization would
+leave a tracked member holding a value the body cannot state.
 
 The same membership checks cover partial-correctness bodies containing loops and
 their callers, including unused refined locals. Corrupt or unresolved refinement

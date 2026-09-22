@@ -64,9 +64,12 @@ reject narrowing_assignment 'not modeled' \
 # one that its construction does not establish must still fail.
 reject aggregate_element_is_not_unconstrained 'does not satisfy its contract' \
     'verified unsigned f(unsigned x) ensures (result == 0u) { unsigned y[2] = {x, x}; return y[1]; }'
-# A variable index names no single place, so it is refused rather than resolved
-# to some element; deciding which needs the extent obligations of RFC 0014.
-reject variable_index_names_no_place 'cannot state as a value' \
+# A variable index names a symbolic element place: which element it selects is
+# not decided, so the value read is not any one initializer. That every element
+# happens to hold `x` is not concluded here; relating a symbolic place to each
+# element is exactly the reasoning the conservative model withholds, and a
+# false rejection is preferable to a stale fact (RFC 0014 §4, §7).
+reject variable_index_names_no_decided_element 'does not satisfy its contract' \
     'verified unsigned f(unsigned x, unsigned i) expects (i < 2u) ensures (result == x) { unsigned y[2] = {x, x}; return y[i]; }'
 reject empty_braces 'single modeled value' \
     'verified unsigned f(unsigned x) ensures (result == x) { unsigned y{}; return x; }'

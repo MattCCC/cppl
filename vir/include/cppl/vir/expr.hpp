@@ -143,6 +143,20 @@ struct PlaceRef {
     friend bool operator==(const PlaceRef&, const PlaceRef&) = default;
 };
 
+// A subscript's index must lie within its array's extent (SPEC.md 12.10
+// VERIFIED-038, RFC 0014 §7).
+//
+// Both sides are terms, so this is an ordinary proposition the kernel proves
+// with the existing arithmetic rules. That is the deliberate split: bounds
+// safety is *proved*, while the capability permitting the access is tracked
+// contextually and never reaches the kernel (RFC 0014 §10).
+struct ElementBound {
+    std::uint32_t extent = 0;
+    std::vector<Expr> operands; // index, body
+
+    friend bool operator==(const ElementBound&, const ElementBound&) = default;
+};
+
 // A loop (SPEC.md 24). Each place the loop writes is carried: from the head on
 // it denotes the version in `heads`, an unknown of which only the invariants
 // and the condition are known. `operands` are each carried place's value on
@@ -197,7 +211,8 @@ struct Expr {
     Type type;
     Provenance provenance;
     std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, PlaceVersion, PlaceRef, Loop, Iterate,
-                 Projection, FormalEquality, Universal, Implication, Connective, ReturnState, UnknownVersion>
+                 Projection, FormalEquality, Universal, Implication, Connective, ReturnState, UnknownVersion,
+                 ElementBound>
         node;
 
     friend bool operator==(const Expr&, const Expr&) = default;

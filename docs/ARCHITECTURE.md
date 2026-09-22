@@ -3232,14 +3232,22 @@ without a merge rule or a new kernel capability. `vir::PlaceVersion` and
 `vir::PlaceRef` carry this; the runtime statements are not rewritten.
 
 A version belongs to a place, not to a local (`vir::Place`, `SPEC.md` 12.10,
-RFC 0014 §1). A place is a root - a local, or the referent a by-reference
-parameter designates - and a path of projections into it, so `s`, `s.x` and
-`s.x.y` are three places of one object and a member of a member needs no rule of
-its own. Identity is structural and follows Clang's resolution, never a
-spelling. A place is never a value: reading one yields a value, and the place
-itself never reaches the kernel as a term, which keeps the kernel's term
-language closed. Adding a `Deref` or symbolic `Element` root later joins the
-existing variants rather than replacing the abstraction.
+RFC 0014 §1). A place is a root - a local, the referent a by-reference parameter
+designates, or the pointee a pointer designates - and a path of projections into
+it, so `s`, `s.x` and `s.x.y` are three places of one object and a member of a
+member needs no rule of its own. Identity is structural and follows Clang's
+resolution, never a spelling. A place is never a value: reading one yields a
+value, and the place itself never reaches the kernel as a term, which keeps the
+kernel's term language closed.
+
+A `Deref` root is identified by the pointer place and the version whose value it
+dereferences, so `*p` before and after a write to `p` are different places, and
+two dereferences of one unchanged pointer are the same place. Forming one
+requires a capability, which is why `*p`, `*p = e`, `p->m` and `p[i]` all route
+through one resolver: the obligation cannot be avoided by choosing a different
+syntax. An element step is either a constant index or a symbolic one; a symbolic
+element carries the index term that selects it and is never concluded disjoint
+from a sibling, because `i != j` must be proved rather than assumed.
 
 Obligation generation walks a path's steps in order. A guard contributes its
 condition; a version contributes the value it binds. Both contribute their calls
@@ -3542,6 +3550,17 @@ The escape hatch is `trusted`, and it is explicit: a capability introduced there
 is a recorded trust event naming the capability, the place, the location and the
 mechanism. A failed capability obligation is a diagnostic, never a silent
 downgrade to an assumption.
+
+The separation is structural rather than a convention to remember.
+`vir::Capability` is deliberately not a node of `vir::Expr`, so there is no path
+from a capability to the kernel's proposition language: the compiler rejects the
+mistake instead of a reviewer having to catch it. `readable` and `writable` are
+built-in specification propositions recognized contextually in a clause, never
+calls to user functions and never runtime calls, so ordinary C++ that already
+uses those names keeps its meaning. A contract states one `expects` clause, so
+several capabilities are joined by `&&`; a clause mixing a capability with an
+ordinary predicate is refused, because the two leave elaboration on different
+channels.
 
 ### Abstract value boundary
 

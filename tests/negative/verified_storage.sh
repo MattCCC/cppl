@@ -119,6 +119,28 @@ type Positive = int where (self > 0);
 verified void f(Positive* p) expects (writable(p)) ensures (true) { *p = 0; }
 CPP
 
+# A symbolic subscript owes `index < extent`, and the extent is the array's own
+# (SPEC.md 12.10 VERIFIED-038, RFC 0014 §7). Both sides are values, so the
+# kernel proves it rather than the access being trusted.
+reject symbolic_index_owes_its_bound "element index' is not proven" <<'CPP'
+verified unsigned f(unsigned i) ensures (result == result) {
+    unsigned a[4] = {0u, 1u, 2u, 3u};
+    return a[i];
+}
+CPP
+
+# Two symbolic indices are disjoint only when proved unequal. Nothing here
+# proves `i != j`, so the write may hit the element already read and the earlier
+# fact does not survive it (RFC 0014 §4).
+reject symbolic_indices_are_not_assumed_distinct 'does not satisfy its contract' <<'CPP'
+verified unsigned f(unsigned i, unsigned j) expects (i < 4u && j < 4u) ensures (result == 1u) {
+    unsigned a[4] = {1u, 1u, 1u, 1u};
+    unsigned seen = a[i];
+    a[j] = 0u;
+    return seen;
+}
+CPP
+
 # Two dereferences may designate one object, so a write through either
 # invalidates what was known through the other. Nothing here proves `p` and `q`
 # distinct, and distinctness is proved, never assumed (RFC 0014 §4).

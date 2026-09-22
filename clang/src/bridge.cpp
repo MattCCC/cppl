@@ -190,9 +190,11 @@ Type convert_type(CXType type, unsigned depth = 0, ReferenceModel references = R
                     model.rejection = "component '" + name + "' has an unmodeled type '" + resolved.spelling + "'";
                     return;
                 }
-                // A member's declared refinement belongs to the member's type,
-                // so every crossing into that storage owes it (SPEC.md 17.6).
-                if (known != nullptr && clang_getCursorKind(origin) == CXCursor_FieldDecl) {
+                // A member's or element's declared refinement belongs to that
+                // storage's type, so every crossing into it owes the predicate
+                // (SPEC.md 17.6). An array element's refinement is the element
+                // type's own, which is why the origin need not be a field.
+                if (known != nullptr) {
                     auto member_refinements = refinements_of(origin, child, *known);
                     if (!member_refinements) {
                         model.rejection = "component '" + name + "' has " + member_refinements.error();
@@ -206,8 +208,14 @@ Type convert_type(CXType type, unsigned depth = 0, ReferenceModel references = R
             };
             if (array || model.kind == K::StdArray) {
                 long long count = array ? clang_getArraySize(canonical) : -1;
-                CXType element =
-                    array ? clang_getArrayElementType(canonical) : clang_Type_getTemplateArgumentAsType(canonical, 0);
+                // Take the element type from the written array type, not the
+                // canonical one: canonicalizing discards the alias a refinement
+                // is named by, and the element's predicate would be lost with
+                // it (SPEC.md 17.3).
+                CXType element = array ? clang_getArrayElementType(type)
+                                       : clang_Type_getTemplateArgumentAsType(canonical, 0);
+                if (array && element.kind == CXType_Invalid)
+                    element = clang_getArrayElementType(canonical);
                 if (!array && clang_Cursor_getTemplateArgumentKind(declaration, 1) == CXTemplateArgumentKind_Integral)
                     count = clang_Cursor_getTemplateArgumentValue(declaration, 1);
                 if (count < 0 || count > 256) {
@@ -472,6 +480,16 @@ struct Local {
     std::optional<std::size_t> pointer = std::nullopt;
     std::uint32_t pointer_version = 0;
 
+    // For a symbolic element place, the extent of the array it indexes and the
+    // index expression that selects it. The index owes `index < extent`, which
+    // is a proposition about values and so is proved by the kernel rather than
+    // tracked (RFC 0014 §7, §10). A non-zero extent marks the entry symbolic.
+    std::uint32_t extent = 0;
+
+    // The index value, lowered where the place was formed so it denotes the
+    // versions current there. A vector because `Expr` is incomplete here.
+    std::vector<Expr> index_value;
+
     [[nodiscard]] bool is_deref() const {
         return pointer.has_value();
     }
@@ -482,6 +500,14 @@ struct Local {
     // invariants): never from a type-based aliasing argument.
     bool same_place(CXCursor object, const std::vector<PlaceStep>& projection) const {
         return !is_deref() && clang_equalCursors(declaration, object) != 0 && path == projection;
+    }
+
+    // Whether any step of this place's path is a symbolic element, which makes
+    // the place undecided: which element it selects is not known here, so it is
+    // never concluded disjoint from a sibling element.
+    [[nodiscard]] bool has_symbolic_step() const {
+        return std::ranges::any_of(
+            path, [](const PlaceStep& step) { return step.kind == PlaceStep::Kind::SymbolicElement; });
     }
 
     // Whether a write to `other` reaches this place: `s` covers `s.x`, and
@@ -619,10 +645,10 @@ CXCursor strip_parens(CXCursor cursor) {
 
 // The constant element index a subscript selects, when Clang evaluated one.
 //
-// A variable index names no single place: which element it selects is not
-// decided, and deciding it soundly needs the extent obligations of RFC 0014 §7
-// rather than a guess. Until those exist it has no place, and the caller
-// refuses rather than resolving it to some element.
+// A variable index selects no single element, so it becomes a symbolic element
+// step instead (RFC 0014 §7). The two are different place kinds because a
+// constant index is decided and a symbolic one is not: two symbolic elements
+// are disjoint only when their indices are proved unequal.
 std::optional<std::uint32_t> constant_index_of(CXCursor subscript) {
     CXEvalResult evaluated = clang_Cursor_Evaluate(subscript);
     if (evaluated == nullptr)
@@ -654,17 +680,30 @@ struct ResolvedAccess {
     // hold a pointer. `*p`, `p->m` and `p[i]` all resolve this way, so one
     // capability rule and one read/write path serve all three.
     bool dereferenced = false;
+
+    // The index expressions of the symbolic element steps in `path`, in the
+    // order those steps appear. Each one owes a bounds obligation against its
+    // array's extent, and the obligation is a proposition about values, so it
+    // is proved by the kernel rather than tracked (RFC 0014 §10).
+    std::vector<CXCursor> symbolic_indices;
 };
 
 std::optional<ResolvedAccess> resolve_access(CXCursor cursor) {
     std::vector<PlaceStep> path;
+    std::vector<CXCursor> symbolic;
     bool dereferenced = false;
+    // The path is built outermost-first and reversed at the end, so the
+    // symbolic indices are reversed with it to stay in step order.
+    const auto finish = [&](CXCursor object, bool through_pointer) {
+        std::ranges::reverse(path);
+        std::ranges::reverse(symbolic);
+        return ResolvedAccess{object, std::move(path), through_pointer, std::move(symbolic)};
+    };
     cursor = strip_parens(cursor);
     for (unsigned depth = 0; depth < kMaxExpressionDepth; ++depth) {
         const auto kind = clang_getCursorKind(cursor);
         if (kind == CXCursor_DeclRefExpr) {
-            std::ranges::reverse(path);
-            return ResolvedAccess{cursor, std::move(path), dereferenced};
+            return finish(cursor, dereferenced);
         }
         // A dereference roots the access in the pointee. Nothing may stand
         // between it and the declaration holding the pointer: a pointer
@@ -675,12 +714,11 @@ std::optional<ResolvedAccess> resolve_access(CXCursor cursor) {
             if (children.size() != 1 || dereferenced) {
                 return std::nullopt;
             }
-            std::ranges::reverse(path);
             const auto pointer = strip_parens(children[0]);
             if (clang_getCursorKind(pointer) != CXCursor_DeclRefExpr) {
                 return std::nullopt;
             }
-            return ResolvedAccess{pointer, std::move(path), true};
+            return finish(pointer, true);
         }
         const auto children = children_of(cursor);
         // `p->m` and `p[i]` dereference without a `*`: Clang leaves the operand
@@ -705,10 +743,17 @@ std::optional<ResolvedAccess> resolve_access(CXCursor cursor) {
         } else if (kind == CXCursor_ArraySubscriptExpr) {
             if (children.size() != 2)
                 return std::nullopt;
-            const auto index = constant_index_of(children[1]);
-            if (!index)
-                return std::nullopt;
-            path.push_back(PlaceStep{PlaceStep::Kind::Element, *index});
+            if (const auto index = constant_index_of(children[1])) {
+                path.push_back(PlaceStep{PlaceStep::Kind::Element, *index, 0});
+            } else {
+                // A symbolic index selects an element this implementation
+                // cannot decide. It is still one place -- the step records
+                // which index term selects it -- and it is disjoint from
+                // another element only where that is proved (RFC 0014 §4, §7).
+                path.push_back(PlaceStep{PlaceStep::Kind::SymbolicElement, 0,
+                                         static_cast<std::uint32_t>(symbolic.size())});
+                symbolic.push_back(children[1]);
+            }
         } else {
             return std::nullopt;
         }
@@ -1581,6 +1626,16 @@ struct BodyLowering {
         for (const Local& entry : std::ranges::reverse_view(formed_derefs)) {
             Locals one{entry};
             body = unknown(one, 0, std::move(body), at);
+            // A symbolic element owes `index < extent` where it was formed. The
+            // bound wraps the binding, so the obligation stands whether or not
+            // the element's value is ever used.
+            if (entry.extent != 0 && !entry.index_value.empty()) {
+                Expr bound;
+                bound.type = body.type;
+                bound.location = entry.index_value.front().location;
+                bound.node = ElementBound{entry.extent, {entry.index_value.front(), std::move(body)}};
+                body = std::move(bound);
+            }
         }
         formed_derefs.clear();
         return body;
@@ -1734,6 +1789,69 @@ struct BodyLowering {
         return state.size() - 1;
     }
 
+    // Form the place a symbolic subscript names, with the bounds obligation it
+    // owes (RFC 0014 §7).
+    //
+    // The element is undecided, so it gets its own place and an opaque value:
+    // nothing here decides which element it is. The bounds obligation is a
+    // proposition about values -- `index < extent` -- so it is proved by the
+    // kernel rather than tracked as a capability (RFC 0014 §10).
+    std::optional<std::size_t> resolve_symbolic_element(Locals& state, const ResolvedAccess& access) {
+        const auto declaration = clang_getCursorReferenced(access.object);
+        if (const auto existing = find_symbolic(state, declaration, access.path); existing.has_value()) {
+            return existing;
+        }
+        // An array local is tracked as one entry per element, so the extent is
+        // how many element entries this array has and the element type is
+        // theirs. Both come from Clang's resolved layout rather than a separate
+        // claim (RFC 0014 §2).
+        //
+        // The prefix is the path up to the symbolic step; the elements of the
+        // array being indexed are the entries sharing it with one more step.
+        std::vector<PlaceStep> prefix(access.path.begin(), access.path.end() - 1);
+        std::uint32_t extent = 0;
+        const Type* element = nullptr;
+        for (const Local& candidate : state) {
+            if (clang_equalCursors(candidate.declaration, declaration) == 0 ||
+                candidate.path.size() != prefix.size() + 1 || candidate.extent != 0 ||
+                !std::equal(prefix.begin(), prefix.end(), candidate.path.begin()) ||
+                candidate.path.back().kind != PlaceStep::Kind::Element) {
+                continue;
+            }
+            extent = std::max(extent, candidate.path.back().index + 1);
+            element = &candidate.type;
+        }
+        if (element == nullptr) {
+            rejection = "this subscript's array is not tracked storage of this body, so the extent its index must "
+                        "lie within is unknown";
+            return std::nullopt;
+        }
+        Local entry;
+        entry.declaration = declaration;
+        entry.version = next_version++;
+        entry.type = *element;
+        entry.path = access.path;
+        entry.spelling = take(clang_getCursorSpelling(declaration)) + "[?]";
+        entry.extent = extent;
+        if (!access.symbolic_indices.empty()) {
+            entry.index_value.push_back(build_expression(access.symbolic_indices.front(), parameters, state, 0));
+        }
+        state.push_back(std::move(entry));
+        return state.size() - 1;
+    }
+
+    static std::optional<std::size_t> find_symbolic(const Locals& locals, CXCursor declaration,
+                                                    const std::vector<PlaceStep>& path) {
+        for (std::size_t index = locals.size(); index > 0; --index) {
+            const Local& candidate = locals[index - 1];
+            if (candidate.extent != 0 && clang_equalCursors(candidate.declaration, declaration) != 0 &&
+                candidate.path == path) {
+                return index - 1;
+            }
+        }
+        return std::nullopt;
+    }
+
     // Form the place of every dereference an expression reads, so the read
     // resolves to storage rather than to an opaque value.
     //
@@ -1745,6 +1863,16 @@ struct BodyLowering {
             return true;
         }
         const auto kind = clang_getCursorKind(cursor);
+        // A symbolic subscript of a tracked array forms its own place.
+        if (kind == CXCursor_ArraySubscriptExpr) {
+            if (const auto access = resolve_access(cursor); access && !access->dereferenced &&
+                                                            !access->symbolic_indices.empty()) {
+                if (!resolve_symbolic_element(state, *access)) {
+                    return false;
+                }
+                return materialize_derefs(children_of(cursor)[1], state, depth + 1);
+            }
+        }
         const bool dereferences =
             (kind == CXCursor_UnaryOperator && clang_getCursorUnaryOperatorKind(cursor) == CXUnaryOperator_Deref) ||
             ((kind == CXCursor_MemberRefExpr || kind == CXCursor_ArraySubscriptExpr) &&
@@ -1821,6 +1949,15 @@ struct BodyLowering {
             return storage.external || escaped.contains(clang_hashCursor(storage.declaration));
         }
         if (clang_equalCursors(target.declaration, other.declaration) != 0) {
+            // A symbolic index selects an element this implementation cannot
+            // decide, so two element places of one array may be the same
+            // element unless their indices are proved unequal. That proof does
+            // not exist here, so they are assumed to overlap: a false rejection
+            // is preferable to a stale fact (RFC 0014 §4, AGENTS.md storage
+            // invariants).
+            if (target.has_symbolic_step() || other.has_symbolic_step()) {
+                return true;
+            }
             return target.covered_by(other) || other.covered_by(target);
         }
         // Distinct locals never share storage. A by-reference parameter
@@ -1860,7 +1997,7 @@ struct BodyLowering {
             return std::nullopt;
         }
         for (std::size_t index = before; index < state.size(); ++index) {
-            if (state[index].is_deref()) {
+            if (state[index].is_deref() || state[index].extent != 0) {
                 formed_derefs.push_back(state[index]);
             }
         }
@@ -2473,8 +2610,11 @@ struct BodyLowering {
             values.push_back(std::move(*evaluated));
             const PlaceStep step{array ? PlaceStep::Kind::Element : PlaceStep::Kind::Field,
                                  static_cast<std::uint32_t>(member)};
-            declaring.push_back(Local{declaration, versions.back(), member_type, std::nullopt, false, {step},
-                                      written(member)});
+            declaring.push_back(Local{.declaration = declaration,
+                                      .version = versions.back(),
+                                      .type = member_type,
+                                      .path = {step},
+                                      .spelling = written(member)});
         }
 
         std::optional<Expr> body = lower_declaration(declared, index + 1, next, declaring, depth);
@@ -2569,7 +2709,8 @@ struct BodyLowering {
                           "' is a conversion that is not modeled");
         }
         const std::uint32_t version = next_version++;
-        declaring.push_back(Local{declaration, version, type, referent, false, {}, name});
+        declaring.push_back(
+            Local{.declaration = declaration, .version = version, .type = type, .referent = referent, .spelling = name});
         std::optional<Expr> body = lower_declaration(declared, index + 1, next, declaring, depth);
         if (!body) {
             return std::nullopt;
@@ -2606,6 +2747,22 @@ struct BodyLowering {
             // must exist for that to be well formed.
             for (std::size_t index = before; index < locals.size(); ++index) {
                 if (locals[index].is_deref()) {
+                    formed_derefs.push_back(locals[index]);
+                }
+            }
+            return storage;
+        }
+        // A symbolic subscript is written through the same place machinery as
+        // any other element: the index owes its bound, and the write reaches
+        // every element that may be the one selected.
+        if (access && !access->symbolic_indices.empty()) {
+            const std::size_t before = locals.size();
+            const auto storage = resolve_symbolic_element(locals, *access);
+            if (!storage) {
+                return rejection.empty() ? reject("this subscript does not name tracked storage") : std::nullopt;
+            }
+            for (std::size_t index = before; index < locals.size(); ++index) {
+                if (locals[index].extent != 0) {
                     formed_derefs.push_back(locals[index]);
                 }
             }
@@ -2815,9 +2972,10 @@ void extract_body(Function& function, CXCursor cursor, const std::vector<CXCurso
     for (std::size_t index = 0; index < parameters.size(); ++index) {
         const auto& parameter = function.parameters[index];
         if (executable_state && (parameter.type.kind == TypeKind::Int || parameter.type.kind == TypeKind::Bool))
-            candidates.push_back(Local{parameters[index], 0, parameter.type, std::nullopt,
-                                       source::aliases_storage(parameter.passing), {},
-                                       take(clang_getCursorSpelling(parameters[index]))});
+            candidates.push_back(Local{.declaration = parameters[index],
+                                       .type = parameter.type,
+                                       .external = source::aliases_storage(parameter.passing),
+                                       .spelling = take(clang_getCursorSpelling(parameters[index]))});
     }
     std::vector<bool> needed(candidates.size(), lowering.has_post_state());
     mark_writes(members[body_index], candidates, needed);

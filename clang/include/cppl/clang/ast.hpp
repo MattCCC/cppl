@@ -209,6 +209,14 @@ struct Place {
     }
 };
 
+// A subscript index that must lie within its array's extent (SPEC.md 12.10).
+// Both sides are values, so the kernel proves it; only the capability part of
+// an access is tracked contextually (RFC 0014 §10).
+struct ElementBound {
+    std::uint32_t extent = 0;
+    std::vector<Expr> operands; // index, body
+};
+
 // A memory capability a specification states: `readable(p)` / `writable(p, n)`
 // (SPEC.md 12.10). It is resolved here so Clang owns its operands' C++ meaning,
 // and it is carried apart from `Expr` because it is not a proposition the
@@ -302,7 +310,7 @@ struct Expr {
     source::SourceLocation location;
     std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, PlaceVersion, PlaceRef, Loop, Iterate,
                  Projection, FormalEquality, Universal, Implication, Connective, ReturnState, UnknownVersion,
-                 Unsupported>
+                 ElementBound, Unsupported>
         node;
 };
 

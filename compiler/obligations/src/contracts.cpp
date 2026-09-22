@@ -160,6 +160,9 @@ void collect_calls(const vir::Expr& expression, const Contracts& contracts, std:
     } else if (const auto* bound = std::get_if<vir::PlaceVersion>(&expression.node)) {
         for (const auto& operand : bound->operands)
             collect_calls(operand, contracts, calls);
+    } else if (const auto* bounded = std::get_if<vir::ElementBound>(&expression.node)) {
+        for (const auto& operand : bounded->operands)
+            collect_calls(operand, contracts, calls);
     } else if (const auto* binary = std::get_if<vir::Binary>(&expression.node)) {
         for (const auto& operand : binary->operands) {
             collect_calls(operand, contracts, calls);
@@ -182,7 +185,9 @@ void collect_calls(const vir::Expr& expression, const Contracts& contracts, std:
 bool requires_conditions(const vir::Expr& expression) {
     if (std::holds_alternative<vir::Loop>(expression.node) ||
         std::holds_alternative<vir::ReturnState>(expression.node) ||
-        std::holds_alternative<vir::UnknownVersion>(expression.node)) {
+        std::holds_alternative<vir::UnknownVersion>(expression.node) ||
+        // A bound states an obligation, which only the path walk emits.
+        std::holds_alternative<vir::ElementBound>(expression.node)) {
         return true;
     }
     if (const auto* bound = std::get_if<vir::PlaceVersion>(&expression.node)) {
@@ -911,6 +916,33 @@ class Conditions {
             }
             scope.versions.emplace(bound->version, &bound->operands[0]);
             return walk(bound->operands[1], std::move(scope), loops);
+        }
+
+        // A symbolic subscript owes `index < extent`. Both sides are terms, so
+        // this is an ordinary proposition the kernel proves with the existing
+        // arithmetic rules: bounds safety is proved, not tracked (RFC 0014 §10).
+        if (const auto* bounded = std::get_if<vir::ElementBound>(&expression.node)) {
+            if (bounded->operands.size() != 2) {
+                return fail("malformed element bound", location);
+            }
+            if (auto evaluated = evaluate(bounded->operands[0], scope); !evaluated) {
+                return evaluated;
+            }
+            auto index = lower(bounded->operands[0], scope);
+            if (!index) {
+                return std::unexpected(index.error());
+            }
+            const std::optional<kernel::Type> type = core_type(bounded->operands[0].type);
+            if (!type || !type->is_integer()) {
+                return fail("an element index must be an integer this implementation models", location);
+            }
+            const kernel::IntType integer = type->integer_type();
+            auto extent = kernel::Term::literal(integer, kernel::Wide{bounded->extent});
+            emit(scope, Origin::ElementBounds, function_.qualified_name + " element index",
+                 bounded->operands[0].provenance.range,
+                 kernel::predicate(
+                     kernel::Term::primitive(kernel::PrimOp::Less, integer, {*index, std::move(extent)}), true));
+            return walk(bounded->operands[1], std::move(scope), loops);
         }
 
         if (const auto* branch = std::get_if<vir::Conditional>(&expression.node)) {

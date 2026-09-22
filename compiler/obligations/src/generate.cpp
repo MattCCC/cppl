@@ -347,6 +347,16 @@ class TermLowering {
             return kernel::Term::primitive(kernel::PrimOp::Select, type->integer_type(), std::move(operands));
         }
 
+        // A bound states an obligation about the index; it does not change the
+        // value the body denotes. The obligation itself is emitted where the
+        // path is walked, so lowering here is lowering the body.
+        if (const auto* bounded = std::get_if<vir::ElementBound>(&expr.node)) {
+            if (bounded->operands.size() != 2) {
+                return fail("malformed element bound", location);
+            }
+            return lower(bounded->operands[1]);
+        }
+
         if (std::holds_alternative<vir::Loop>(expr.node) || std::holds_alternative<vir::Iterate>(expr.node)) {
             return fail("a loop has no total core term: what it computes is established by partial-correctness "
                         "obligations, never unfolded",

@@ -33,10 +33,14 @@ enum class Origin : std::uint8_t {
     FunctionContract,
     CallPrecondition,
     ReturnPath,
-    LoopEntry,             // a loop invariant holds when the loop is entered
-    LoopPreservation,      // an iteration re-establishes a loop invariant
-    LoopDescent,           // an iteration strictly decreases a loop measure (SPEC.md 24.3)
-    RefinementIntroduction // a value enters a refinement type (SPEC.md 17.2)
+    LoopEntry,              // a loop invariant holds when the loop is entered
+    LoopPreservation,       // an iteration re-establishes a loop invariant
+    LoopDescent,            // an iteration strictly decreases a loop measure (SPEC.md 24.3)
+    RefinementIntroduction, // a value enters a refinement type (SPEC.md 17.2)
+    // A subscript's index is within its array's extent (SPEC.md 12.10
+    // VERIFIED-038). This is a proposition about values, so the kernel proves
+    // it; only the capability part of an access is tracked contextually.
+    ElementBounds
 };
 
 std::string describe(Origin origin);

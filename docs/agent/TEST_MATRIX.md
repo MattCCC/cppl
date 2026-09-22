@@ -62,8 +62,9 @@ Manifest: `features/refinement-types.yaml`
 | Assignment and compound update | positive, negative | partial |
 | Member initialization and write | positive, negative | covered — construction, direct write, write through a reference, and a sibling left alone (`refinement_types.sh`, `e2e/refinement_flow.sh`, `fixtures/refinement_types.cpp`) |
 | Subobject entry validity | positive | covered — a verified parameter supplies its refined subobjects' validity (`REFINEOBL-005`) |
-| Array/element write | positive, negative | partial — constant indices only; a symbolic index needs RFC 0014 extent obligations |
-| Alias mutation invalidates facts | interaction, adversarial | partial — reference aliases to locals and members covered; pointer aliases need RFC 0014 |
+| Array/element write | positive, negative | covered — constant and symbolic indices; a symbolic index owes `index < extent` and is never assumed distinct from a sibling (`e2e/refinement_flow.sh`, `negative/verified_storage.sh`) |
+| Dereference read and write | positive, negative | covered — `readable`/`writable` gate every form; non-nullness establishes neither, and neither capability entails the other (`negative/verified_storage.sh`) |
+| Alias mutation invalidates facts | interaction, adversarial | covered — reference, member, pointer and symbolic-element aliases all invalidate conservatively |
 | Verified call post-state | interaction | partial |
 | Nested refinements | positive, negative | partial |
 | Indexed refinements | positive, negative | partial |

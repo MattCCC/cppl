@@ -46,6 +46,8 @@ std::string describe(Origin origin) {
             return "loop measure descent";
         case Origin::RefinementIntroduction:
             return "refinement membership";
+        case Origin::ElementBounds:
+            return "element index within extent";
     }
     return "obligation";
 }

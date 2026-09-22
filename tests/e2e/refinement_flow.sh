@@ -481,12 +481,16 @@ refuse subscript_outside_the_extent 'cannot state as a value' <<'CPP'
 verified int f() ensures (result == 0) { int a[3]{1, 2, 3}; return a[7]; }
 CPP
 
-# A variable index must not be resolved to some element: it names no place here.
-refuse variable_index_read 'cannot state as a value' <<'CPP'
+# A variable index names a symbolic element place, which is not resolved to any
+# particular element: the value read is not any one initializer, so a contract
+# claiming one is unproven (RFC 0014 §7).
+refuse variable_index_read 'does not satisfy its contract' <<'CPP'
 verified int f(unsigned i) expects (i < 3u) ensures (result > 0) { int a[3]{1, 2, 3}; return a[i]; }
 CPP
 
-refuse variable_index_write 'extent obligations of RFC 0014' <<'CPP'
+# A write at a symbolic index may hit any element, so a fact about a sibling
+# does not survive it: `i != 0` is not proved (RFC 0014 §4).
+refuse variable_index_write 'does not satisfy its contract' <<'CPP'
 verified int f(unsigned i) expects (i < 3u) ensures (result == 1) { int a[3]{1, 2, 3}; a[i] = 5; return a[0]; }
 CPP
 
@@ -546,6 +550,36 @@ CPP
 refuse a_write_through_a_pointer_owes_the_predicate 'not shown to satisfy refinement type' <<'CPP'
 type Positive = int where (self > 0);
 verified void f(Positive* p) expects (writable(p)) { *p = 0; }
+CPP
+
+# A symbolic subscript is a place like any other: the index owes its bound, and
+# once bounded the element reads and writes through the one read/write path
+# (RFC 0014 §7).
+accept a_bounded_symbolic_subscript_reads <<'CPP'
+verified unsigned f(unsigned i) expects (i < 4u) ensures (result == result) {
+    unsigned a[4] = {0u, 1u, 2u, 3u};
+    return a[i];
+}
+CPP
+
+accept a_bounded_symbolic_subscript_writes <<'CPP'
+type Small = unsigned where (self < 10u);
+verified unsigned f(unsigned i) expects (i < 4u) ensures (result == result) {
+    Small a[4] = {0u, 1u, 2u, 3u};
+    a[i] = 5u;
+    return a[0];
+}
+CPP
+
+# A write into a refined element owes the element's predicate, at the element's
+# own place, whether the index is decided or not.
+refuse a_symbolic_element_write_owes_the_predicate 'not shown to satisfy refinement type' <<'CPP'
+type Small = unsigned where (self < 10u);
+verified unsigned f(unsigned i) expects (i < 4u) ensures (result == result) {
+    Small a[4] = {0u, 1u, 2u, 3u};
+    a[i] = 50u;
+    return a[0];
+}
 CPP
 
 # The capability is what permits the dereference; nothing about the pointer's
