@@ -664,10 +664,21 @@ uninstantiated contract states nothing this unit discharged.
 A C++ constraint remains a C++ constraint. It controls which specialization
 Clang selects and never becomes a formal premise (TEMPLATE-002).
 
-Verified function templates are `PROTOTYPE`. Explicit specialization and
-explicit instantiation of a verified template are not recognized, and a
-specialization consumed across translation units carries no exported
-verification metadata, so a use in another unit is not verified there.
+An explicit specialization is one concrete function, not an instantiation of
+the primary. It states its own contract at its own declaration, so it is
+checked directly: its arguments are already fixed, its contract probes are
+ordinary functions rather than templates, and nothing has to be instantiated to
+reach them. The primary's proof never covers it, so a specialization that
+replaces the body with one its contract does not describe is refused by name,
+with the goal stated at its own arguments (TEMPLATE-003).
+
+Verified function templates are `PROTOTYPE`. An explicit instantiation,
+`template unsigned f<4u>(unsigned);`, is not recognized: libclang's cursor API
+exposes no cursor for one, so a template whose only use is an explicit
+instantiation is reported as uninstantiated rather than checked. That fails
+closed -- nothing is claimed verified -- but it refuses a program `SPEC.md`
+admits. A specialization consumed across translation units also carries no
+exported verification metadata, so a use in another unit is not verified there.
 
 A lambda is a closure object with its own call operator, and it is refused on
 every route into a verified body: bound to a local, called without ever
