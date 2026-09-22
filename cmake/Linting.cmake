@@ -11,6 +11,14 @@
 #       Run clang-tidy with automatic fixes over all project C/C++
 #       translation units.
 #
+#   lint-changed
+#       Run clang-tidy over only the C/C++ translation units that differ
+#       from a base git ref (BASE_REF, default: merge-base with main).
+#       Intended for routine local development; CI still uses `lint`.
+#
+#   tidy-changed
+#       Same restriction as lint-changed, with automatic fixes.
+#
 # clang-tidy is resolved by LLVMToolchain.cmake and must come from the same
 # LLVM installation as the Clang driver selected by C++L.
 
@@ -208,6 +216,65 @@ add_custom_target(
 
     COMMENT
         "Applying clang-tidy fixes to C++L sources"
+
+    VERBATIM
+    COMMAND_EXPAND_LISTS
+    USES_TERMINAL
+)
+
+# -----------------------------------------------------------------------------
+# Targeted (changed-files-only) variants
+# -----------------------------------------------------------------------------
+#
+# `lint`/`tidy` analyze the entire compilation database, which is correct
+# for CI but too slow to run routinely during local development. These
+# targets restrict clang-tidy to files that differ from a base git ref
+# (BASE_REF, default: merge-base with main), driven by scripts/lint-changed.sh
+# with the exact same driver, binaries, and extra args as the full targets so
+# behavior never drifts between them.
+
+add_custom_target(
+    lint-changed
+
+    COMMAND
+        "${PROJECT_SOURCE_DIR}/scripts/lint-changed.sh"
+        "${CPPL_RUN_CLANG_TIDY}"
+        "${CMAKE_BINARY_DIR}"
+        "${CPPL_CLANG_TIDY}"
+        "${CPPL_CLANG_APPLY_REPLACEMENTS}"
+        0
+        ${CPPL_LINT_JOBS}
+        ${CPPL_CLANG_TIDY_EXTRA_ARGS}
+
+    WORKING_DIRECTORY
+        "${PROJECT_SOURCE_DIR}"
+
+    COMMENT
+        "Running clang-tidy on changed C++L sources"
+
+    VERBATIM
+    COMMAND_EXPAND_LISTS
+    USES_TERMINAL
+)
+
+add_custom_target(
+    tidy-changed
+
+    COMMAND
+        "${PROJECT_SOURCE_DIR}/scripts/lint-changed.sh"
+        "${CPPL_RUN_CLANG_TIDY}"
+        "${CMAKE_BINARY_DIR}"
+        "${CPPL_CLANG_TIDY}"
+        "${CPPL_CLANG_APPLY_REPLACEMENTS}"
+        1
+        ${CPPL_LINT_JOBS}
+        ${CPPL_CLANG_TIDY_EXTRA_ARGS}
+
+    WORKING_DIRECTORY
+        "${PROJECT_SOURCE_DIR}"
+
+    COMMENT
+        "Applying clang-tidy fixes to changed C++L sources"
 
     VERBATIM
     COMMAND_EXPAND_LISTS

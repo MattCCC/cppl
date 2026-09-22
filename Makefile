@@ -41,8 +41,10 @@ endif
 	format \
 	format-check \
 	tidy \
+	tidy-changed \
 	spec-rules-check \
 	lint \
+	lint-changed \
 	asan \
 	ubsan \
 	tsan \
@@ -71,7 +73,9 @@ help:
 		'  format            Apply source formatting' \
 		'  format-check      Verify source formatting without modifying files' \
 		'  tidy            	 Apply source formatting' \
-		'  lint              Run static analysis / lint checks' \
+		'  lint              Run static analysis / lint checks (full, CI)' \
+		'  lint-changed      Run static analysis on changed files only (fast, local)' \
+		'  tidy-changed      Apply lint fixes to changed files only (fast, local)' \
 		'' \
 		'Sanitizers:' \
 		'  asan              Build and test with AddressSanitizer' \
@@ -160,9 +164,17 @@ format-check: configure
 lint: configure
 	$(CMAKE) --build $(BUILD_DIR) --target lint
 
+## lint-changed: Run static analysis on files changed vs BASE_REF (fast, local dev)
+lint-changed: configure
+	$(CMAKE) --build $(BUILD_DIR) --target lint-changed
+
 ## tidy: Run clang-tidy with automatic fixes
 tidy:
 	$(CMAKE) --build $(BUILD_DIR) --target tidy
+
+## tidy-changed: Apply clang-tidy fixes to files changed vs BASE_REF (fast, local dev)
+tidy-changed: configure
+	$(CMAKE) --build $(BUILD_DIR) --target tidy-changed
 
 ## asan: Run AddressSanitizer configuration
 asan:
