@@ -69,6 +69,14 @@ bool is_supported(const Type& type) {
             return false;
         if (current.is_integer())
             return is_supported(current.integer_type());
+        if (current.is_indexed()) {
+            const auto& indexed = std::get<IndexedType>(current.node);
+            // A domain of no components admits no observation, and a malformed
+            // one carrying other than a single element type is not a type.
+            if (indexed.element.size() != 1 || indexed.extent <= 0)
+                return false;
+            return self(self, indexed.element[0], depth + 1);
+        }
         const auto& value = std::get<ValueType>(current.node);
         if (value.identity.empty() || value.identity.size() > 4096 || value.projections.size() > 256)
             return false;
@@ -141,6 +149,11 @@ std::string describe(const IntType& type) {
 std::string describe(const Type& type) {
     if (type.is_integer()) {
         return describe(type.integer_type());
+    }
+    if (type.is_indexed()) {
+        const auto& indexed = std::get<IndexedType>(type.node);
+        const std::string element = indexed.element.size() == 1 ? describe(indexed.element[0]) : "?";
+        return "indexed[" + describe(indexed.extent) + "]{" + element + "}";
     }
     const auto& value = std::get<ValueType>(type.node);
     std::string result = "value[" + std::to_string(value.identity.size()) + ":" + value.identity + "]{";

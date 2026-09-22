@@ -278,6 +278,14 @@ std::strong_ordering compare(const Term& lhs, const Term& rhs) {
                 if (const auto order = left.index <=> right.index; order != 0)
                     return order;
                 return compare_lists(left.arguments, right.arguments);
+            } else if constexpr (std::is_same_v<Node, Element>) {
+                // The index is an argument, so two observations of one array
+                // order by their index terms and are equal only when those
+                // terms are identical. Nothing here decides whether two
+                // different index terms denote the same element.
+                if (const auto order = describe(left.domain) <=> describe(right.domain); order != 0)
+                    return order;
+                return compare_lists(left.arguments, right.arguments);
             } else {
                 if (const auto order = static_cast<std::uint8_t>(left.op) <=> static_cast<std::uint8_t>(right.op);
                     order != 0) {

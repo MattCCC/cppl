@@ -43,6 +43,13 @@ Term shift(const Term& term, std::uint32_t amount, std::uint32_t cutoff) {
         return Term{std::move(result)};
     }
 
+    if (const auto* element = std::get_if<Element>(&term.node)) {
+        Element result = *element;
+        for (auto& child : result.arguments)
+            child = shift(child, amount, cutoff);
+        return Term{std::move(result)};
+    }
+
     return term; // a literal denotes the same value under any binder
 }
 
@@ -106,6 +113,13 @@ Term instantiate(const Term& body, const Term& argument, std::uint32_t depth) {
 
     if (const auto* projection = std::get_if<Projection>(&body.node)) {
         Projection result = *projection;
+        for (auto& child : result.arguments)
+            child = instantiate(child, argument, depth);
+        return Term{std::move(result)};
+    }
+
+    if (const auto* element = std::get_if<Element>(&body.node)) {
+        Element result = *element;
         for (auto& child : result.arguments)
             child = instantiate(child, argument, depth);
         return Term{std::move(result)};

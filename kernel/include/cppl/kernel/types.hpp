@@ -70,8 +70,24 @@ struct ValueType {
     friend bool operator==(const ValueType&, const ValueType&) = default;
 };
 
+// A homogeneous finite indexed domain: `extent` components, every one of type
+// `element`. Unlike `ValueType`, whose signature is a fixed heterogeneous list
+// selected at a constant position, this domain is observed at a position that
+// is itself a term (FOUNDATIONS.md 45).
+//
+// The extent is part of type identity, so a domain of 4 and a domain of 8 are
+// different types and no value of one is a value of the other. It is a count
+// rather than a term because a formal type must be comparable without proof;
+// a symbolic C++ extent is carried by the bounds obligation, not by the type.
+struct IndexedType {
+    std::vector<Type> element; // exactly one, a vector because Type is incomplete here
+    Wide extent = 0;
+
+    friend bool operator==(const IndexedType&, const IndexedType&) = default;
+};
+
 struct Type {
-    std::variant<IntType, ValueType> node;
+    std::variant<IntType, ValueType, IndexedType> node;
 
     static Type integer(std::uint16_t width, Signedness signedness) {
         return Type{IntType{width, signedness}};
@@ -81,8 +97,16 @@ struct Type {
         return Type{ValueType{std::move(identity), std::move(projections)}};
     }
 
+    static Type indexed(Type element, Wide extent) {
+        return Type{IndexedType{{std::move(element)}, extent}};
+    }
+
     [[nodiscard]] bool is_value() const noexcept {
         return std::holds_alternative<ValueType>(node);
+    }
+
+    [[nodiscard]] bool is_indexed() const noexcept {
+        return std::holds_alternative<IndexedType>(node);
     }
 
     [[nodiscard]] bool is_integer() const noexcept {

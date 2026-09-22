@@ -48,8 +48,8 @@ std::unexpected<CoreError> fail(CoreErrorKind kind, std::string detail) {
                     return std::unexpected(valid.error());
                 }
                 if (!is_representable(node.type, node.value)) {
-                    return fail(CoreErrorKind::MalformedLiteral, "literal " + describe(node.value) +
-                                                                     " is not representable in " + describe(node.type));
+                    return fail(CoreErrorKind::MalformedLiteral,
+                                "literal " + describe(node.value) + " is not representable in " + describe(node.type));
                 }
                 return std::move(type);
 
@@ -93,6 +93,26 @@ std::unexpected<CoreError> fail(CoreErrorKind kind, std::string detail) {
                 if (*subject != node.domain)
                     return fail(CoreErrorKind::TypeMismatch, "projection subject does not match its domain signature");
                 return signature.projections[node.index];
+
+            } else if constexpr (std::is_same_v<Node, Element>) {
+                // FOUNDATIONS.md 45. The index is typed but unconstrained: the
+                // observation is total, and `index < extent` is a separate
+                // obligation this rule deliberately does not require.
+                if (!is_supported(node.domain) || !node.domain.is_indexed())
+                    return fail(CoreErrorKind::MalformedType, "element requires a valid indexed domain");
+                if (node.arguments.size() != 2)
+                    return fail(CoreErrorKind::ArityMismatch, "element requires exactly one subject and one index");
+                auto subject = type_of_impl(context, locals, node.arguments[0], limits, depth + 1);
+                if (!subject)
+                    return subject;
+                if (*subject != node.domain)
+                    return fail(CoreErrorKind::TypeMismatch, "element subject does not match its indexed domain");
+                auto index = type_of_impl(context, locals, node.arguments[1], limits, depth + 1);
+                if (!index)
+                    return index;
+                if (!index->is_integer())
+                    return fail(CoreErrorKind::TypeMismatch, "element index must be an integer");
+                return std::get<IndexedType>(node.domain.node).element[0];
             } else {
                 const Type type{node.type};
                 if (auto valid = validate_type(type); !valid) {
@@ -230,6 +250,14 @@ std::unexpected<CoreError> fail(CoreErrorKind kind, std::string detail) {
                         node.index >= std::get<ValueType>(node.domain.node).projections.size())
                         return fail(CoreErrorKind::MalformedPrimitive, "malformed projection");
                     return Term{Projection{node.domain, node.index, std::move(arguments)}};
+                } else if constexpr (std::is_same_v<Node, Element>) {
+                    // Normalizing the subject and index is all there is to do:
+                    // the observation is uninterpreted, so it has no reduction
+                    // rule and never selects a component of anything
+                    // (FOUNDATIONS.md 45).
+                    if (!is_supported(node.domain) || !node.domain.is_indexed() || arguments.size() != 2)
+                        return fail(CoreErrorKind::MalformedPrimitive, "malformed element");
+                    return Term{Element{node.domain, std::move(arguments)}};
                 } else {
                     return normalize_primitive(node.op, node.type, std::move(arguments), limits, steps);
                 }
@@ -256,6 +284,8 @@ std::string describe_with_names(const Context& context, const Term& term) {
                     text = definition != nullptr ? definition->name : "def#" + std::to_string(node.callee.value);
                 } else if constexpr (std::is_same_v<Node, Projection>) {
                     text = "project[" + describe(node.domain) + "," + std::to_string(node.index) + "]";
+                } else if constexpr (std::is_same_v<Node, Element>) {
+                    text = "element[" + describe(node.domain) + "]";
                 } else {
                     text = describe(node.op);
                 }

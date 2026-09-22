@@ -587,6 +587,18 @@ void encode(source::Hasher& hasher, const kernel::Type& type) {
             encode(hasher, projection);
         return;
     }
+    if (type.is_indexed()) {
+        // The extent is part of type identity, so it is hashed: a domain of 4
+        // and a domain of 8 must not share an identity.
+        hasher.update_u8(3);
+        const auto& indexed = std::get<kernel::IndexedType>(type.node);
+        const auto bits = static_cast<kernel::WideUnsigned>(indexed.extent);
+        hasher.update_u64(static_cast<std::uint64_t>(bits));
+        hasher.update_u64(static_cast<std::uint64_t>(bits >> 64));
+        for (const auto& element : indexed.element)
+            encode(hasher, element);
+        return;
+    }
     hasher.update_u8(1);
     const kernel::IntType& integer = type.integer_type();
     hasher.update_u64(integer.width);
@@ -620,6 +632,15 @@ void encode(source::Hasher& hasher, const kernel::Term& term) {
                 hasher.update_u8(14);
                 encode(hasher, node.domain);
                 hasher.update_u64(node.index);
+                hasher.update_u64(node.arguments.size());
+                for (const auto& argument : node.arguments)
+                    encode(hasher, argument);
+            } else if constexpr (std::is_same_v<Node, kernel::Element>) {
+                // A distinct tag, and the index hashed as the argument it is:
+                // observations at different index terms must not share one
+                // obligation identity.
+                hasher.update_u8(15);
+                encode(hasher, node.domain);
                 hasher.update_u64(node.arguments.size());
                 for (const auto& argument : node.arguments)
                     encode(hasher, argument);

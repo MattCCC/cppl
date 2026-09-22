@@ -92,8 +92,26 @@ struct Projection {
     friend bool operator==(const Projection&, const Projection&) = default;
 };
 
+// One component of an indexed domain, selected at a term (FOUNDATIONS.md 45).
+//
+// This is the term-indexed sibling of `Projection`, not a replacement for it:
+// a projection selects from a heterogeneous signature, so its result type
+// depends on a constant position, while an element selects from a homogeneous
+// domain and so has one result type whatever the index denotes.
+//
+// The observation is total. Forming it proves nothing about the index, and in
+// particular does not prove `index < extent`: that obligation belongs to the
+// C++ subscript and is discharged separately (SPEC.md STORAGE-011,
+// STORAGE-012).
+struct Element {
+    Type domain;
+    std::vector<Term> arguments; // exactly two: subject of domain type, then index
+
+    friend bool operator==(const Element&, const Element&) = default;
+};
+
 struct Term {
-    std::variant<Var, Literal, Call, Prim, Projection> node;
+    std::variant<Var, Literal, Call, Prim, Projection, Element> node;
 
     static Term variable(VarIndex index) {
         return Term{Var{index}};
@@ -109,6 +127,9 @@ struct Term {
     }
     static Term project(Type domain, std::uint32_t index, Term subject) {
         return Term{Projection{std::move(domain), index, {std::move(subject)}}};
+    }
+    static Term element(Type domain, Term subject, Term index) {
+        return Term{Element{std::move(domain), {std::move(subject), std::move(index)}}};
     }
 
     friend bool operator==(const Term&, const Term&) = default;
