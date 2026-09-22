@@ -704,6 +704,52 @@ verified unsigned f(const unsigned* a, unsigned n, unsigned i)
 }
 CPP
 
+# An array reference carries its extent in its own type, so a symbolic index
+# into one is bounded without any capability and without any element of it
+# having been observed first. The extent comes from the resolved type, never
+# from which elements an earlier access happened to form (SPEC.md STORAGE-005,
+# ARCHITECTURE.md ARCH-ELEM-004).
+accept an_array_reference_extent_bounds_a_symbolic_subscript <<'CPP'
+type Below4 = unsigned where (self < 4u);
+verified unsigned f(const unsigned (&a)[4], Below4 i)
+    ensures (result == result)
+{
+    return a[i];
+}
+CPP
+
+# The same access, with nothing else in the body: no `a[0]` precedes it, so the
+# extent cannot have come from a tracked element entry.
+accept an_array_extent_needs_no_prior_element_observation <<'CPP'
+verified unsigned f(const unsigned (&a)[4], unsigned i)
+    expects (i < 4u)
+    ensures (result == result)
+{
+    return a[i];
+}
+CPP
+
+# An index bounded above the array's own extent is not bounded by it.
+refuse an_index_wider_than_the_array_extent "element index' is not proven" <<'CPP'
+verified unsigned f(const unsigned (&a)[4], unsigned i)
+    expects (i < 8u)
+    ensures (result == result)
+{
+    return a[i];
+}
+CPP
+
+# An unbounded index into an array reference is refused, exactly as one into a
+# capability region is: observing an element establishes no bound
+# (SPEC.md STORAGE-005).
+refuse an_unbounded_index_into_an_array_reference "element index' is not proven" <<'CPP'
+verified unsigned f(const unsigned (&a)[4], unsigned i)
+    ensures (result == result)
+{
+    return a[i];
+}
+CPP
+
 # A write owes the same bound as a read, and `writable` is what permits it.
 accept a_capability_extent_bounds_an_element_write <<'CPP'
 type Below4 = unsigned where (self < 4u);

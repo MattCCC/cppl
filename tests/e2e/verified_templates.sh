@@ -211,6 +211,58 @@ verified unsigned first(unsigned i) ensures (result == result) {
 int main() { return static_cast<int>(first<4u>(3u)); }
 CPP
 
+# A dependent extent: the array's size is the template parameter itself, so
+# there is no literal to compare against until Clang substitutes one. The
+# extent comes from each specialization's resolved type, and no element of the
+# array is observed before the symbolic subscript.
+# SPEC: TEMPLATE-001, STORAGE-005
+accept a_dependent_array_extent_bounds_a_symbolic_subscript 1 <<'CPP'
+template <unsigned N>
+verified unsigned get(const unsigned (&a)[N], unsigned i)
+    expects (i < N)
+    ensures (result == result)
+{
+    return a[i];
+}
+int main() { unsigned b[4] = {}; return static_cast<int>(get<4u>(b, 0u)); }
+CPP
+
+# Two specializations of one template, each bounded by its own extent. A single
+# shared bound would prove one of them wrong.
+# SPEC: TEMPLATE-001, TEMPLATE-003
+accept two_dependent_extents_are_bounded_separately 2 <<'CPP'
+template <unsigned N>
+verified unsigned get(const unsigned (&a)[N], unsigned i)
+    expects (i < N)
+    ensures (result == result)
+{
+    return a[i];
+}
+int main() {
+    unsigned small[4] = {};
+    unsigned large[8] = {};
+    return static_cast<int>(get<4u>(small, 0u) + get<8u>(large, 0u));
+}
+CPP
+
+# The premise must bound the index by *this* specialization's extent. `i < 8`
+# is true of the `<8>` specialization and not of the `<4>` one, so a template
+# stating it is refused exactly where it is false.
+# SPEC: TEMPLATE-003, STORAGE-005
+refuse a_wider_bound_does_not_carry_to_a_narrower_extent "element index' is not proven" <<'CPP'
+template <unsigned N>
+verified unsigned get(const unsigned (&a)[N], unsigned i)
+    expects (i < 8u)
+    ensures (result == result)
+{
+    return a[i];
+}
+int main() {
+    unsigned b[4] = {};
+    return static_cast<int>(get<4u>(b, 0u));
+}
+CPP
+
 # A C++ constraint controls which specialization Clang selects; it is not a
 # formal premise. A contract that would need the constraint as a theorem is
 # refused, so satisfaction never becomes evidence (TEMPLATE-002).

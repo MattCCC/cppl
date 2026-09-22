@@ -105,7 +105,7 @@ CPPL_TEST(indexed_observation_corruption_fails_independently_of_frontend) {
 
 CPPL_TEST(indexed_observation_proves_no_bound_and_no_element_value) {
     // Forming the observation must not establish anything about the index, and
-    // must not decide the observed value (SPEC.md STORAGE-012).
+    // must not decide the observed value (SPEC.md STORAGE-005).
     const auto at = k::Term::element(indexed, variable, zero);
     const auto goal =
         k::Proposition::for_all(indexed, k::Proposition::equality(u32, at, k::Term::literal(u32.integer_type(), 42)));
@@ -116,7 +116,7 @@ CPPL_TEST(indexed_observation_proves_no_bound_and_no_element_value) {
 
 CPPL_TEST(indexed_observation_admits_neither_injectivity_nor_extensionality) {
     // Two observations of one subject at different index terms are different
-    // terms, and nothing proves them equal or unequal (SPEC.md STORAGE-013,
+    // terms, and nothing proves them equal or unequal (SPEC.md STORAGE-005,
     // TRUST.md TCB-CORE-016).
     const auto first = k::Term::element(indexed, variable, zero);
     const auto second = k::Term::element(indexed, variable, one);
