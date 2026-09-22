@@ -451,8 +451,16 @@ class ExpressionElaborator {
             result.node = std::move(converted);
             return result;
         }
-        const auto& unsupported = std::get<clangbridge::Unsupported>(expr.node);
-        failure_ = Failure{unsupported.reason, expr.location};
+        // Every other node kind is refused by name rather than assumed to be
+        // `Unsupported`. A kind added to the bridge with no handler here used
+        // to reach `std::get` and throw `bad_variant_access` out of the
+        // compiler: an unhandled expression form must fail closed, not by
+        // exception (`AGENTS.md` 7, 23, 36).
+        if (const auto* unsupported = std::get_if<clangbridge::Unsupported>(&expr.node)) {
+            failure_ = Failure{unsupported->reason, expr.location};
+            return std::nullopt;
+        }
+        failure_ = Failure{"this expression form has no formal meaning in this implementation", expr.location};
         return std::nullopt;
     }
 
