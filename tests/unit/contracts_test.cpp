@@ -371,6 +371,27 @@ CPPL_TEST(exported_contract_must_be_linked_to_the_actual_definition) {
     CPPL_CHECK(results.back().verdict.reason().find("callee") != std::string::npos);
 }
 
+// The call-site precondition is what the caller owes the callee. A caller that
+// does not establish it must not be able to use the callee's postcondition,
+// because that postcondition only holds where the precondition did.
+//
+// This is asserted here, over the scheduler alone, rather than only through a
+// compiled fixture: the gate is also what stops a stage being attempted before
+// its precondition is proven, so removing it does not produce a wrong answer,
+// it stops the search converging. A compile then hangs instead of failing, and
+// a test that times out states nothing.
+CPPL_TEST(a_caller_that_does_not_establish_a_precondition_cannot_use_the_summary) {
+    auto program = composed();
+    // The caller's own precondition is what discharges the one it owes the
+    // callee. Dropping it leaves the call-site obligation unprovable, so the
+    // callee's postcondition is not the caller's to use.
+    program.contracts.back().preconditions.clear();
+    cppl::diagnostics::Engine engine;
+    const auto results = cppl::automation::verify(program, engine);
+    CPPL_CHECK(!results.back().verdict.is_proven());
+    CPPL_CHECK(results.back().verdict.reason().find("required premise") != std::string::npos);
+}
+
 CPPL_TEST(caller_identity_includes_summary_changes_when_the_body_goal_is_unchanged) {
     const auto strong = composed();
     const auto repeat = composed();
