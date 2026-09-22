@@ -272,3 +272,14 @@ foreach(check IN ITEMS HostPaths PresetLayout)
 
     set_tests_properties(${check_test} PROPERTIES LABELS "ci;repository")
 endforeach()
+
+# The editors' shared TextMate grammar decides what is colored as C++L. Its
+# regression cases pin the contextual-word boundary (GRAMMAR.md 1): a grammar
+# that colored every `result` or `law` would mis-highlight ordinary C++.
+find_program(CPPL_NODE_EXECUTABLE NAMES node)
+if(CPPL_NODE_EXECUTABLE)
+    add_test(NAME editors_grammar
+             COMMAND "${CPPL_NODE_EXECUTABLE}"
+                     "${CMAKE_SOURCE_DIR}/editors/shared/test-grammar.js")
+    set_tests_properties(editors_grammar PROPERTIES LABELS "editors;repository")
+endif()
