@@ -20,26 +20,28 @@
     {
       "name": "dev",
       "displayName": "Development",
-      "description": "Optimized development build with debug information, tests, and warnings as errors.",
+      "description": "Optimized, hardened development build with debug information, tests, and warnings as errors.",
       "inherits": "base",
       "binaryDir": "${sourceDir}/build/dev",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "CPPL_BUILD_TESTS": "ON",
-        "CPPL_WARNINGS_AS_ERRORS": "ON"
+        "CPPL_WARNINGS_AS_ERRORS": "ON",
+        "CPPL_ENABLE_HARDENING": "ON"
       }
     },
 
     {
       "name": "release",
       "displayName": "Release",
-      "description": "Production release build with tests enabled.",
+      "description": "Hardened production release build with tests enabled.",
       "inherits": "base",
       "binaryDir": "${sourceDir}/build/release",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
         "CPPL_BUILD_TESTS": "ON",
-        "CPPL_WARNINGS_AS_ERRORS": "ON"
+        "CPPL_WARNINGS_AS_ERRORS": "ON",
+        "CPPL_ENABLE_HARDENING": "ON"
       }
     },
 
@@ -110,11 +112,12 @@
       "name": "ci-base",
       "hidden": true,
       "inherits": "base",
-      "description": "Shared CI policy. Every ci-* preset inherits this; GitHub Actions and local runs use the identical configuration.",
+      "description": "Shared CI policy. Every ci-* preset inherits this; GitHub Actions and local runs use the identical configuration. Builds are hardened as releases are, except where a sanitizer replaces that.",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "CPPL_BUILD_TESTS": "ON",
         "CPPL_WARNINGS_AS_ERRORS": "ON",
+        "CPPL_ENABLE_HARDENING": "ON",
         "CPPL_CI": "ON"
       }
     },
@@ -219,6 +222,7 @@
       },
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
+        "CPPL_ENABLE_HARDENING": "OFF",
         "CPPL_ENABLE_ASAN": "ON",
         "CPPL_ENABLE_UBSAN": "OFF",
         "CPPL_ENABLE_TSAN": "OFF"
@@ -238,6 +242,7 @@
       },
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
+        "CPPL_ENABLE_HARDENING": "OFF",
         "CPPL_ENABLE_ASAN": "OFF",
         "CPPL_ENABLE_UBSAN": "ON",
         "CPPL_ENABLE_TSAN": "OFF"
@@ -257,6 +262,7 @@
       },
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
+        "CPPL_ENABLE_HARDENING": "OFF",
         "CPPL_ENABLE_ASAN": "OFF",
         "CPPL_ENABLE_UBSAN": "OFF",
         "CPPL_ENABLE_TSAN": "ON"

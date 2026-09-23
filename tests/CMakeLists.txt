@@ -320,6 +320,24 @@ set_tests_properties(architecture_dependency_boundaries PROPERTIES
     LABELS "architecture;script"
     TIMEOUT ${CPPL_TEST_TIMEOUT})
 
+# The executables C++L ships carry the mitigations cmake/Hardening.cmake asks
+# for. A target that stops linking cppl_project_options would lose them
+# without a build error, so the linked files are read. Windows reports its
+# mitigations in a form this reader does not parse yet.
+if(CPPL_ENABLE_HARDENING AND NOT WIN32)
+    cppl_find_llvm_tool(CPPL_LLVM_READOBJ llvm-readobj)
+    cppl_find_llvm_tool(CPPL_LLVM_NM llvm-nm)
+
+    add_test(NAME architecture_hardening
+             COMMAND bash "${CPPL_BOUNDED}" bash "${CMAKE_CURRENT_SOURCE_DIR}/architecture/hardening.sh"
+                     "${CPPL_LLVM_READOBJ}" "${CPPL_LLVM_NM}"
+                     $<TARGET_FILE:cppl> $<TARGET_FILE:cppl-lsp> $<TARGET_FILE:cppl-format>
+                     $<TARGET_FILE:cppl-spec-rules>)
+    set_tests_properties(architecture_hardening PROPERTIES
+        LABELS "architecture;script"
+        TIMEOUT ${CPPL_TEST_TIMEOUT})
+endif()
+
 # The repository checks are CMake scripts, so they run under CTest like
 # anything else. Registering them here means a plain `ctest` catches a
 # committed host path, a broken preset convention or a local CI run that no

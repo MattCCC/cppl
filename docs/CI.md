@@ -285,3 +285,36 @@ chmod +x .git/hooks/pre-push
 `make ci` is the native profile and takes a few minutes. `make ci-full` adds
 the Docker Linux environments and takes considerably longer; it is a better fit
 for a release branch than for every push.
+
+---
+
+# 10. Hardening
+
+The `release` and `dev` presets and every `ci-*` build-and-test preset set
+`CPPL_ENABLE_HARDENING`, so the configuration GitHub tests on each push is the
+one that ships. `cmake/Hardening.cmake` holds the flags, per platform:
+
+| Mitigation | Linux (GCC, Clang) | macOS | Windows (clang-cl) |
+| --- | --- | --- | --- |
+| Stack canaries | `-fstack-protector-strong` | same | `/GS` (default) |
+| Stack clash probing | `-fstack-clash-protection` | not available | default |
+| Control-flow integrity | `-fcf-protection=full` (x86-64), `-mbranch-protection=standard` (AArch64) | arm64e only | `/guard:cf`, `/CETCOMPAT` |
+| Checked libc calls | `_FORTIFY_SOURCE=3` outside Debug | libc default | n/a |
+| Standard library assertions | `_GLIBCXX_ASSERTIONS` | `_LIBCPP_HARDENING_MODE_FAST` | n/a |
+| Position-independent executable | `-fPIE -pie` | always | default |
+| Read-only relocations, non-executable stack | `-z relro -z now -z noexecstack` | dyld default | default |
+
+None of them changes what a correct program computes; they make a defect
+harder to exploit and fix none. A sanitizer preset turns hardening off, and
+configuring both is an error: fortified libc calls bypass what ASan
+intercepts.
+
+A flag that is set is not a mitigation that is present, so
+`architecture_hardening` reads the linked `cppl`, `cppl-lsp`, `cppl-format` and
+`cppl-spec-rules` with `llvm-readobj` and `llvm-nm`. It fails when an ELF file
+is not PIE, lacks RELRO or BIND_NOW, has an executable stack, or never calls
+`__stack_chk_fail`, and when a Mach-O file lacks `MH_PIE` or the stack
+protector. A target that stops linking `cppl_project_options` loses its flags
+without a build error; this is what notices. Windows reports its mitigations
+in a form the test does not read yet, so there the flags are set but not
+checked.

@@ -97,6 +97,12 @@ option(
     OFF
 )
 
+option(
+    CPPL_ENABLE_HARDENING
+    "Build with the platform's exploit mitigations (cmake/Hardening.cmake)"
+    OFF
+)
+
 # -----------------------------------------------------------------------------
 # CI host-environment isolation
 # -----------------------------------------------------------------------------
@@ -255,6 +261,29 @@ if(CPPL_ENABLE_TSAN)
         INTERFACE
             -fsanitize=thread
     )
+endif()
+
+# -----------------------------------------------------------------------------
+# Hardening
+# -----------------------------------------------------------------------------
+#
+# The shipped configuration. A sanitizer build is a diagnostic build instead,
+# and fortified libc calls bypass the functions ASan intercepts, so the two
+# are never combined.
+
+if(
+    CPPL_ENABLE_HARDENING
+    AND (CPPL_ENABLE_ASAN OR CPPL_ENABLE_UBSAN OR CPPL_ENABLE_TSAN)
+)
+    message(
+        FATAL_ERROR
+        "CPPL_ENABLE_HARDENING cannot be combined with a sanitizer."
+    )
+endif()
+
+if(CPPL_ENABLE_HARDENING)
+    include(Hardening)
+    cppl_enable_hardening(cppl_project_options)
 endif()
 
 # -----------------------------------------------------------------------------
