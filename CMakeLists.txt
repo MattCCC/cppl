@@ -217,10 +217,14 @@ if(CPPL_ENABLE_UBSAN)
         )
     endif()
 
+    # A UBSan finding otherwise prints a report and lets the program carry on,
+    # so a test that hits undefined behavior still passes. Every check aborts
+    # instead, the way ASan does.
     target_compile_options(
         cppl_project_options
         INTERFACE
             -fsanitize=undefined
+            -fno-sanitize-recover=undefined
             -fno-omit-frame-pointer
     )
 

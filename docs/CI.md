@@ -66,6 +66,11 @@ name the same one.
 | `ci-ubsan` | UndefinedBehaviorSanitizer | Linux, macOS |
 | `ci-tsan` | ThreadSanitizer (nightly) | Linux |
 
+A sanitizer finding fails the run. ASan stops at its first report by default;
+UBSan would print its report and let the program carry on, so a test that hit
+undefined behavior would still pass, and it is built with
+`-fno-sanitize-recover=undefined` to stop the same way.
+
 Every build-and-test preset is three commands:
 
 ```sh
