@@ -1,11 +1,18 @@
 #include "cppl/lsp/document.hpp"
 
+#include "cppl/diagnostics/diagnostic.hpp"
+#include "cppl/frontend/syntax.hpp"
 #include "cppl/frontend/token.hpp"
 #include "cppl/lsp/position.hpp"
+#include "cppl/lsp/protocol.hpp"
 #include "cppl/lsp/uri.hpp"
 
 #include <cstddef>
+#include <cstdint>
+#include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace cppl::lsp {
 

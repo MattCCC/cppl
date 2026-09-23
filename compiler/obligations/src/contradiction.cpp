@@ -1,8 +1,14 @@
 #include "contradiction.hpp"
 
+#include "cppl/kernel/box.hpp"
+#include "cppl/kernel/context.hpp"
 #include "cppl/kernel/linear.hpp"
+#include "cppl/kernel/proof.hpp"
+#include "cppl/kernel/proposition.hpp"
 #include "cppl/refutation/refute.hpp"
 
+#include <expected>
+#include <span>
 #include <utility>
 #include <variant>
 #include <vector>

@@ -1,11 +1,17 @@
 // Finite-model oracles for de Bruijn substitution. Expected meanings are
 // evaluated in environments; they are not computed by another substitution.
 #include "cppl/kernel/check.hpp"
+#include "cppl/kernel/proof.hpp"
+#include "cppl/kernel/proposition.hpp"
 #include "cppl/kernel/substitution.hpp"
+#include "cppl/kernel/term.hpp"
+#include "cppl/kernel/types.hpp"
 #include "cppl/testing/test.hpp"
 
 #include <cstdint>
 #include <ranges>
+#include <utility>
+#include <variant>
 #include <vector>
 
 namespace {

@@ -1,5 +1,10 @@
 #include "cppl/diagnostics/diagnostic.hpp"
 
+#include "cppl/source/location.hpp"
+
+#include <string>
+#include <utility>
+
 namespace cppl::diagnostics {
 
 std::string describe(Category category) {

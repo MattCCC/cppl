@@ -4,6 +4,7 @@
 #include "cppl/vir/expr.hpp"
 #include "cppl/vir/types.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>

@@ -7,10 +7,18 @@
 // depending on Clang being present. `lsp_fixtures_test` covers the real
 // pipeline end to end.
 
+#include "cppl/elaboration/elaborate.hpp"
+#include "cppl/frontend/syntax.hpp"
 #include "cppl/lsp/decomposition_view.hpp"
+#include "cppl/lsp/protocol.hpp"
+#include "cppl/source/location.hpp"
 #include "cppl/testing/test.hpp"
 
+#include <cstddef>
+#include <cstdint>
+#include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace cppl::lsp;

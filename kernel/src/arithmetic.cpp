@@ -1,12 +1,22 @@
 #include "cppl/kernel/arithmetic.hpp"
 
+#include "cppl/kernel/context.hpp"
+#include "cppl/kernel/term.hpp"
+#include "cppl/kernel/types.hpp"
+
 #include <algorithm>
+#include <compare>
+#include <cstddef>
+#include <cstdint>
+#include <expected>
 #include <iterator>
 #include <map>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <variant>
+#include <vector>
 
 namespace cppl::kernel {
 

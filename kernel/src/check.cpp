@@ -1,8 +1,17 @@
 #include "cppl/kernel/check.hpp"
 
+#include "cppl/kernel/context.hpp"
 #include "cppl/kernel/linear.hpp"
+#include "cppl/kernel/proof.hpp"
+#include "cppl/kernel/proposition.hpp"
 #include "cppl/kernel/substitution.hpp"
+#include "cppl/kernel/term.hpp"
+#include "cppl/kernel/types.hpp"
 
+#include <cstddef>
+#include <cstdint>
+#include <expected>
+#include <string>
 #include <utility>
 #include <variant>
 #include <vector>

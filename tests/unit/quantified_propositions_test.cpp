@@ -1,6 +1,19 @@
 #include "cppl/automation/evidence.hpp"
+#include "cppl/diagnostics/diagnostic.hpp"
+#include "cppl/elaboration/elaborate.hpp"
+#include "cppl/kernel/proposition.hpp"
 #include "cppl/obligations/generate.hpp"
+#include "cppl/obligations/obligation.hpp"
 #include "cppl/testing/test.hpp"
+#include "cppl/vir/expr.hpp"
+#include "cppl/vir/module.hpp"
+#include "cppl/vir/types.hpp"
+
+#include <cstddef>
+#include <cstdint>
+#include <utility>
+#include <variant>
+#include <vector>
 
 namespace {
 namespace v = cppl::vir;

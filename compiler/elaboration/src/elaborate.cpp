@@ -1,12 +1,31 @@
 #include "cppl/elaboration/elaborate.hpp"
 
+#include "cppl/clang/ast.hpp"
 #include "cppl/decomposition/decomposition.hpp"
+#include "cppl/diagnostics/diagnostic.hpp"
+#include "cppl/frontend/projection.hpp"
+#include "cppl/frontend/syntax.hpp"
+#include "cppl/source/location.hpp"
+#include "cppl/vir/capability.hpp"
+#include "cppl/vir/expr.hpp"
+#include "cppl/vir/ids.hpp"
+#include "cppl/vir/module.hpp"
+#include "cppl/vir/place.hpp"
+#include "cppl/vir/types.hpp"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <functional>
+#include <iterator>
 #include <map>
 #include <optional>
 #include <set>
+#include <string>
+#include <string_view>
+#include <utility>
 #include <variant>
+#include <vector>
 
 namespace cppl::elaboration {
 

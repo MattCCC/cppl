@@ -1,6 +1,11 @@
 #include "cppl/kernel/arithmetic.hpp"
 #include "cppl/kernel/check.hpp"
+#include "cppl/kernel/context.hpp"
+#include "cppl/kernel/proof.hpp"
+#include "cppl/kernel/proposition.hpp"
 #include "cppl/kernel/substitution.hpp"
+#include "cppl/kernel/term.hpp"
+#include "cppl/kernel/types.hpp"
 #include "cppl/testing/test.hpp"
 
 namespace {

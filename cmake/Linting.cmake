@@ -5,15 +5,15 @@
 # Provides:
 #
 #   lint
-#       Run clang-tidy over all project C/C++ translation units.
+#       Run clang-tidy over all project C/C++ translation units and headers.
 #
 #   tidy
 #       Run clang-tidy with automatic fixes over all project C/C++
-#       translation units.
+#       translation units and headers.
 #
 #   lint-changed
-#       Run clang-tidy over only the C/C++ translation units that differ
-#       from a base git ref (BASE_REF, default: merge-base with main).
+#       Run clang-tidy over only the C/C++ translation units and headers that
+#       differ from a base git ref (BASE_REF, default: merge-base with main).
 #       Intended for routine local development; CI still uses `lint`.
 #
 #   tidy-changed
@@ -143,7 +143,10 @@ endif()
 # The compilation database is the set of translation units, so run-clang-tidy
 # needs no file list of its own. It is also the correct set: generated,
 # fixture, and externally-owned sources are not build targets and so never
-# appear there. Headers are analyzed through the units that include them.
+# appear there. Every project header is also an entry of its own, analyzed as a
+# main file with its owning target's flags (cmake/HeaderChecks.cmake), so
+# misc-include-cleaner holds a header to the includes it states rather than to
+# whatever its includers happened to include first.
 #
 # Files are deliberately not passed positionally. run-clang-tidy treats each
 # argument as a Python regex over the path, and the repository directory name

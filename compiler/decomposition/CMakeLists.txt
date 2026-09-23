@@ -27,3 +27,6 @@ target_link_libraries(cppl_decomposition
     PRIVATE cppl_project_options)
 
 add_library(cppl::decomposition ALIAS cppl_decomposition)
+
+# Each header is analyzed on its own (cmake/HeaderChecks.cmake).
+cppl_check_headers(cppl_decomposition)

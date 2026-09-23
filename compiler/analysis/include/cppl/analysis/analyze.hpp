@@ -1,6 +1,12 @@
 #pragma once
+#include "cppl/clang/ast.hpp"
 #include "cppl/clang/bridge.hpp"
 #include "cppl/frontend/projection.hpp"
+#include "cppl/frontend/syntax.hpp"
+#include "cppl/frontend/token.hpp"
+
+#include <expected>
+#include <string>
 
 namespace cppl::analysis {
 struct Result {

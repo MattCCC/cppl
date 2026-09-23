@@ -1,10 +1,23 @@
 #include "cppl/obligations/status.hpp"
 
+#include "cppl/kernel/check.hpp"
+#include "cppl/kernel/proof.hpp"
+#include "cppl/kernel/proposition.hpp"
 #include "cppl/kernel/substitution.hpp"
+#include "cppl/kernel/term.hpp"
+#include "cppl/obligations/obligation.hpp"
+#include "cppl/vir/ids.hpp"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <optional>
 #include <ranges>
+#include <string>
+#include <string_view>
+#include <utility>
 #include <variant>
+#include <vector>
 
 namespace cppl::obligations {
 

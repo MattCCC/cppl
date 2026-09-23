@@ -4,8 +4,12 @@
 #include "cppl/diagnostics/diagnostic.hpp"
 #include "cppl/frontend/projection.hpp"
 #include "cppl/frontend/syntax.hpp"
+#include "cppl/source/location.hpp"
+#include "cppl/vir/ids.hpp"
 #include "cppl/vir/module.hpp"
+#include "cppl/vir/types.hpp"
 
+#include <optional>
 #include <string>
 #include <vector>
 

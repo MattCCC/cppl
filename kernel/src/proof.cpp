@@ -1,5 +1,11 @@
 #include "cppl/kernel/proof.hpp"
 
+#include "cppl/kernel/proposition.hpp"
+#include "cppl/kernel/term.hpp"
+#include "cppl/kernel/types.hpp"
+
+#include <cstddef>
+#include <string>
 #include <variant>
 
 namespace cppl::kernel {

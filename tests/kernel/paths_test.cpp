@@ -1,7 +1,16 @@
+#include "cppl/kernel/box.hpp"
 #include "cppl/kernel/check.hpp"
+#include "cppl/kernel/context.hpp"
+#include "cppl/kernel/proof.hpp"
+#include "cppl/kernel/proposition.hpp"
+#include "cppl/kernel/term.hpp"
+#include "cppl/kernel/types.hpp"
 #include "cppl/testing/test.hpp"
 
+#include <cstddef>
+#include <cstdint>
 #include <limits>
+#include <utility>
 
 namespace {
 namespace k = cppl::kernel;

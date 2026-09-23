@@ -4,15 +4,22 @@
 // Every test here MUST fail if the kernel is sound.
 // These are attacks, not valid usage examples.
 
+#include "cppl/kernel/box.hpp"
 #include "cppl/kernel/check.hpp"
 #include "cppl/kernel/context.hpp"
 #include "cppl/kernel/linear.hpp"
+#include "cppl/kernel/proof.hpp"
+#include "cppl/kernel/proposition.hpp"
 #include "cppl/kernel/substitution.hpp"
+#include "cppl/kernel/term.hpp"
+#include "cppl/kernel/types.hpp"
 #include "cppl/testing/test.hpp"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <iterator>
+#include <utility>
 #include <vector>
 
 namespace {

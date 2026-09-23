@@ -17,3 +17,6 @@ target_link_libraries(cppl_refutation
     PRIVATE cppl_project_options)
 
 add_library(cppl::refutation ALIAS cppl_refutation)
+
+# Each header is analyzed on its own (cmake/HeaderChecks.cmake).
+cppl_check_headers(cppl_refutation)

@@ -9,3 +9,6 @@ target_link_libraries(cppl_elaboration
     PRIVATE cppl_project_options)
 
 add_library(cppl::elaboration ALIAS cppl_elaboration)
+
+# Each header is analyzed on its own (cmake/HeaderChecks.cmake).
+cppl_check_headers(cppl_elaboration)

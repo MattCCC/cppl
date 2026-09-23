@@ -2,6 +2,19 @@
 
 #include "arithmetic.hpp"
 #include "composition.hpp"
+#include "cppl/diagnostics/diagnostic.hpp"
+#include "cppl/kernel/check.hpp"
+#include "cppl/kernel/context.hpp"
+#include "cppl/kernel/proof.hpp"
+#include "cppl/kernel/proposition.hpp"
+#include "cppl/obligations/obligation.hpp"
+#include "cppl/obligations/status.hpp"
+
+#include <cstddef>
+#include <optional>
+#include <string>
+#include <utility>
+#include <vector>
 
 namespace cppl::automation {
 

@@ -9,3 +9,6 @@ target_link_libraries(cppl_erasure
     PRIVATE cppl_project_options)
 
 add_library(cppl::erasure ALIAS cppl_erasure)
+
+# Each header is analyzed on its own (cmake/HeaderChecks.cmake).
+cppl_check_headers(cppl_erasure)

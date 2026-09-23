@@ -20,3 +20,6 @@ target_compile_definitions(cppl_formatter PRIVATE
     CPPL_REPO_CLANG_FORMAT_CONFIG="${CPPL_CLANG_FORMAT_CONFIG}")
 
 add_library(cppl::formatter ALIAS cppl_formatter)
+
+# Each header is analyzed on its own (cmake/HeaderChecks.cmake).
+cppl_check_headers(cppl_formatter)

@@ -1,11 +1,19 @@
 #pragma once
 
 #include "cppl/automation/evidence.hpp"
+#include "cppl/kernel/check.hpp"
+#include "cppl/kernel/proof.hpp"
+#include "cppl/kernel/proposition.hpp"
+#include "cppl/obligations/contracts.hpp"
+#include "cppl/obligations/obligation.hpp"
 
+#include <cstddef>
+#include <cstdint>
 #include <expected>
 #include <map>
 #include <optional>
 #include <set>
+#include <string>
 
 namespace cppl::automation {
 

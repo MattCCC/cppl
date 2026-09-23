@@ -5,12 +5,20 @@
 // one proposition cannot be presented as a verdict on another.
 
 #include "cppl/kernel/check.hpp"
+#include "cppl/kernel/context.hpp"
+#include "cppl/kernel/proof.hpp"
+#include "cppl/kernel/proposition.hpp"
+#include "cppl/kernel/term.hpp"
+#include "cppl/kernel/types.hpp"
+#include "cppl/obligations/obligation.hpp"
 #include "cppl/obligations/status.hpp"
 #include "cppl/testing/test.hpp"
 #include "cppl/vir/ids.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
+#include <utility>
 
 namespace {
 

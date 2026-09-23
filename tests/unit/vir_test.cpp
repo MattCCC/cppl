@@ -2,9 +2,15 @@
 // and carries provenance on every node (ARCHITECTURE.md 17).
 
 #include "cppl/testing/test.hpp"
+#include "cppl/vir/expr.hpp"
+#include "cppl/vir/ids.hpp"
 #include "cppl/vir/module.hpp"
+#include "cppl/vir/types.hpp"
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
+#include <utility>
 
 namespace {
 

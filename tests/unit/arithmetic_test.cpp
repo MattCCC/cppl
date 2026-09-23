@@ -14,6 +14,7 @@
 // soundness tests. A false theorem becoming accepted is always a critical bug.
 
 #include "cppl/automation/evidence.hpp"
+#include "cppl/kernel/box.hpp"
 #include "cppl/kernel/check.hpp"
 #include "cppl/kernel/context.hpp"
 #include "cppl/kernel/proof.hpp"
@@ -23,12 +24,14 @@
 #include "cppl/testing/test.hpp"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <optional>
 #include <ranges>
 #include <string>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace {

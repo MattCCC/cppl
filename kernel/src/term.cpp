@@ -1,7 +1,11 @@
 #include "cppl/kernel/term.hpp"
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
+#include <type_traits>
 #include <variant>
+#include <vector>
 
 namespace cppl::kernel {
 

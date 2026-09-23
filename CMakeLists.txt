@@ -326,6 +326,7 @@ message(
 include(LLVMToolchain)
 include(Formatting)
 include(Linting)
+include(HeaderChecks)
 
 # Reported after Formatting/Linting so that clang-format and clang-tidy have
 # been resolved and can be named in the banner.
@@ -360,6 +361,13 @@ include(CpplFormatting)
 if(CPPL_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
+endif()
+
+# Every header belongs to exactly one component and is analyzed on its own.
+if(CPPL_BUILD_TESTS)
+    cppl_add_header_checks(compiler kernel vir clang src tools tests/support)
+else()
+    cppl_add_header_checks(compiler kernel vir clang src tools)
 endif()
 
 # -----------------------------------------------------------------------------

@@ -1,16 +1,28 @@
 #include "cppl/formatter/format.hpp"
 
+#include "cppl/diagnostics/diagnostic.hpp"
 #include "cppl/driver/process.hpp"
 #include "cppl/driver/scratch.hpp"
+#include "cppl/frontend/syntax.hpp"
 #include "cppl/frontend/token.hpp"
+#include "cppl/source/location.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <charconv>
+#include <cstddef>
+#include <filesystem>
 #include <fstream>
+#include <ios>
 #include <iterator>
 #include <optional>
 #include <sstream>
+#include <string>
+#include <string_view>
+#include <system_error>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 #ifndef CPPL_DEFAULT_CLANG_FORMAT
 #define CPPL_DEFAULT_CLANG_FORMAT "clang-format"

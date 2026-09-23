@@ -1,5 +1,7 @@
 #include "cppl/source/location.hpp"
 
+#include <string>
+
 namespace cppl::source {
 
 std::string describe(const SourceLocation& location) {

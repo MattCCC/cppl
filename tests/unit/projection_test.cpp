@@ -10,10 +10,13 @@
 #include "cppl/frontend/projection.hpp"
 #include "cppl/frontend/syntax.hpp"
 #include "cppl/frontend/token.hpp"
+#include "cppl/source/projection.hpp"
 #include "cppl/testing/test.hpp"
 
 #include <algorithm>
+#include <cstddef>
 #include <string>
+#include <string_view>
 
 namespace {
 

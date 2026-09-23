@@ -1,7 +1,11 @@
 #include "cppl/source/digest.hpp"
 
 #include <algorithm>
+#include <array>
+#include <cstdint>
 #include <cstring>
+#include <string>
+#include <string_view>
 
 namespace cppl::source {
 

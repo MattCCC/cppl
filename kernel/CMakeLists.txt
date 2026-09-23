@@ -20,3 +20,6 @@ target_include_directories(cppl_kernel PUBLIC
 target_link_libraries(cppl_kernel PRIVATE cppl_project_options)
 
 add_library(cppl::kernel ALIAS cppl_kernel)
+
+# Each header is analyzed on its own (cmake/HeaderChecks.cmake).
+cppl_check_headers(cppl_kernel)

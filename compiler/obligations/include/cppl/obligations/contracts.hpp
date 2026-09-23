@@ -1,6 +1,8 @@
 #pragma once
 
 #include "cppl/kernel/proposition.hpp"
+#include "cppl/kernel/term.hpp"
+#include "cppl/kernel/types.hpp"
 #include "cppl/source/digest.hpp"
 #include "cppl/vir/ids.hpp"
 

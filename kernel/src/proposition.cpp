@@ -1,5 +1,9 @@
 #include "cppl/kernel/proposition.hpp"
 
+#include "cppl/kernel/term.hpp"
+#include "cppl/kernel/types.hpp"
+
+#include <string>
 #include <variant>
 
 namespace cppl::kernel {

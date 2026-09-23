@@ -1,9 +1,13 @@
 // Deterministic malformed-source campaigns through the real lexer, recognizer,
 // and projector. Successful recognition is not a verification result.
+#include "cppl/diagnostics/diagnostic.hpp"
 #include "cppl/erasure/erase.hpp"
 #include "cppl/frontend/projection.hpp"
+#include "cppl/frontend/syntax.hpp"
+#include "cppl/frontend/token.hpp"
 #include "cppl/testing/test.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>

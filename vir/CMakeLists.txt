@@ -15,3 +15,6 @@ target_link_libraries(cppl_vir
     PRIVATE cppl_project_options)
 
 add_library(cppl::vir ALIAS cppl_vir)
+
+# Each header is analyzed on its own (cmake/HeaderChecks.cmake).
+cppl_check_headers(cppl_vir)

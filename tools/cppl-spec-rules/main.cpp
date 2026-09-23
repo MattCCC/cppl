@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cstddef>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -10,6 +11,9 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <system_error>
+#include <tuple>
+#include <utility>
 #include <vector>
 
 namespace {

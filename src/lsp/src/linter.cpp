@@ -1,7 +1,16 @@
 #include "cppl/lsp/linter.hpp"
 
+#include "cppl/diagnostics/diagnostic.hpp"
+#include "cppl/frontend/syntax.hpp"
+#include "cppl/frontend/token.hpp"
 #include "cppl/lsp/diagnostic_codes.hpp"
 #include "cppl/lsp/position.hpp"
+#include "cppl/lsp/protocol.hpp"
+
+#include <cstddef>
+#include <string>
+#include <utility>
+#include <vector>
 
 namespace cppl::lsp {
 

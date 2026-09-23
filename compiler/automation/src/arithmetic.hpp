@@ -1,6 +1,8 @@
 #pragma once
 
 #include "cppl/kernel/check.hpp"
+#include "cppl/kernel/proof.hpp"
+#include "cppl/kernel/proposition.hpp"
 
 #include <optional>
 

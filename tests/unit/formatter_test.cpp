@@ -28,6 +28,7 @@
 
 #include <cstddef>
 #include <fstream>
+#include <ios>
 #include <sstream>
 #include <string>
 #include <vector>

@@ -2,13 +2,31 @@
 
 #include "contradiction.hpp"
 #include "cppl/decomposition/decomposition.hpp"
+#include "cppl/diagnostics/diagnostic.hpp"
+#include "cppl/elaboration/elaborate.hpp"
+#include "cppl/kernel/box.hpp"
 #include "cppl/kernel/check.hpp"
+#include "cppl/kernel/context.hpp"
+#include "cppl/kernel/proof.hpp"
+#include "cppl/kernel/proposition.hpp"
 #include "cppl/kernel/substitution.hpp"
+#include "cppl/kernel/term.hpp"
+#include "cppl/kernel/types.hpp"
 #include "cppl/kernel/version.hpp"
+#include "cppl/obligations/obligation.hpp"
 #include "cppl/source/digest.hpp"
+#include "cppl/source/location.hpp"
+#include "cppl/source/representation.hpp"
+#include "cppl/vir/expr.hpp"
+#include "cppl/vir/ids.hpp"
+#include "cppl/vir/module.hpp"
+#include "cppl/vir/place.hpp"
+#include "cppl/vir/types.hpp"
 #include "lowering.hpp"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <expected>
 #include <iterator>
 #include <limits>
@@ -16,8 +34,11 @@
 #include <optional>
 #include <ranges>
 #include <set>
+#include <string>
+#include <type_traits>
 #include <utility>
 #include <variant>
+#include <vector>
 
 namespace cppl::obligations {
 

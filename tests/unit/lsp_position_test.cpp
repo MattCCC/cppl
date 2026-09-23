@@ -1,8 +1,12 @@
 // UTF-16 position mapping for LSP must handle Unicode correctly.
 
 #include "cppl/lsp/position.hpp"
+#include "cppl/lsp/protocol.hpp"
+#include "cppl/source/location.hpp"
 #include "cppl/testing/test.hpp"
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
 
 using namespace cppl::lsp;

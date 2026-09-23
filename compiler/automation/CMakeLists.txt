@@ -16,3 +16,6 @@ target_link_libraries(cppl_automation
     PRIVATE cppl_refutation cppl_project_options)
 
 add_library(cppl::automation ALIAS cppl_automation)
+
+# Each header is analyzed on its own (cmake/HeaderChecks.cmake).
+cppl_check_headers(cppl_automation)

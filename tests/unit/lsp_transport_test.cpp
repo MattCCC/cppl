@@ -1,10 +1,13 @@
 // Content-Length framing and the JSON-RPC dispatch loop, driven over
 // in-memory streams rather than a real subprocess and pipes.
 
+#include "cppl/lsp/server.hpp"
 #include "cppl/lsp/transport.hpp"
 #include "cppl/testing/test.hpp"
 
+#include <cstddef>
 #include <sstream>
+#include <string>
 
 using namespace cppl::lsp;
 

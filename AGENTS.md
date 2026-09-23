@@ -1178,6 +1178,22 @@ Avoid:
 - exception-driven normal proof flow
 - clever kernel abstractions
 
+Every translation unit and every header directly includes the header that
+declares each name it uses. A header compiles from its own includes alone and
+never leans on what its includers happened to include first. Both are enforced,
+not advised:
+
+- `misc-include-cleaner` runs in `lint`, and every finding is an error.
+- `lint` analyzes each header as a main file with its owning component's flags
+  (`cmake/HeaderChecks.cmake`). A header under `compiler/`, `kernel/`, `vir/`,
+  `clang/`, `src/`, `tools/` or `tests/support/` that no component's
+  `cppl_check_headers` owns fails configuration.
+- `IgnoreHeaders` in `.clang-tidy` names only platform-internal headers
+  (`sys/`, `bits/`, `mach/`, ...) whose public POSIX header is the portable
+  spelling. A standard or project header is never added to it.
+- `// IWYU pragma: keep` is for an include whose use the analysis cannot see,
+  such as `<compare>` for a defaulted `<=>`, and nothing else.
+
 ---
 
 # 37. Required review checklist

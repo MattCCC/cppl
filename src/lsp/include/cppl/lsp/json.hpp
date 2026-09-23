@@ -13,6 +13,7 @@
 // is small enough that a compact hand-written implementation is easier to
 // audit than a large third-party dependency would be to vet.
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>

@@ -2,18 +2,31 @@
 
 #include "cppl/analysis/analyze.hpp"
 #include "cppl/automation/evidence.hpp"
+#include "cppl/clang/ast.hpp"
 #include "cppl/clang/bridge.hpp"
+#include "cppl/diagnostics/diagnostic.hpp"
 #include "cppl/driver/scratch.hpp"
 #include "cppl/elaboration/elaborate.hpp"
 #include "cppl/erasure/erase.hpp"
 #include "cppl/frontend/projection.hpp"
+#include "cppl/frontend/syntax.hpp"
+#include "cppl/frontend/token.hpp"
+#include "cppl/obligations/contracts.hpp"
 #include "cppl/obligations/generate.hpp"
+#include "cppl/obligations/obligation.hpp"
+#include "cppl/obligations/status.hpp"
 #include "cppl/obligations/trust.hpp"
 #include "cppl/source/digest.hpp"
+#include "cppl/source/location.hpp"
 
 #include <algorithm>
+#include <cstddef>
 #include <expected>
 #include <filesystem>
+#include <memory>
+#include <optional>
+#include <string>
+#include <utility>
 #include <vector>
 
 namespace cppl::driver::detail {

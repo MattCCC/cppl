@@ -6,6 +6,13 @@
 #include "cppl/decomposition/decomposition.hpp"
 #include "cppl/decomposition/labels.hpp"
 #include "cppl/testing/test.hpp"
+#include "cppl/vir/expr.hpp"
+#include "cppl/vir/types.hpp"
+
+#include <cstddef>
+#include <cstdint>
+#include <utility>
+#include <vector>
 
 namespace {
 namespace d = cppl::decomposition;

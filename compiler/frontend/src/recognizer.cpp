@@ -1,10 +1,17 @@
 #include "cppl/decomposition/labels.hpp"
+#include "cppl/diagnostics/diagnostic.hpp"
 #include "cppl/frontend/syntax.hpp"
+#include "cppl/frontend/token.hpp"
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
+#include <cstdint>
 #include <optional>
+#include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 namespace cppl::frontend {
 

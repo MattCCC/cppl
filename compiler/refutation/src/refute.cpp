@@ -1,11 +1,17 @@
 #include "cppl/refutation/refute.hpp"
 
+#include "cppl/kernel/box.hpp"
+#include "cppl/kernel/linear.hpp"
+#include "cppl/kernel/proof.hpp"
 #include "cppl/kernel/types.hpp"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <limits>
 #include <map>
+#include <optional>
 #include <utility>
 #include <vector>
 

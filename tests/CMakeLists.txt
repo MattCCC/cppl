@@ -12,6 +12,8 @@ add_library(cppl_testing STATIC support/src/test.cpp)
 target_include_directories(cppl_testing PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/support/include>)
 target_link_libraries(cppl_testing PRIVATE cppl_project_options)
+# Only the harness's own headers: the fixtures are programs under test.
+cppl_check_headers(cppl_testing support)
 
 # Labels are what CTest selects a tier with (`ctest -L unit`). They are applied
 # at registration so no list of tests is maintained anywhere else -- not in the

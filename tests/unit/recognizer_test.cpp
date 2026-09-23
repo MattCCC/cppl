@@ -6,6 +6,8 @@
 #include "cppl/frontend/token.hpp"
 #include "cppl/testing/test.hpp"
 
+#include <cstddef>
+#include <cstdint>
 #include <string>
 
 namespace {

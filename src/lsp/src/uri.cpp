@@ -1,6 +1,10 @@
 #include "cppl/lsp/uri.hpp"
 
 #include <cctype>
+#include <cstddef>
+#include <optional>
+#include <string>
+#include <string_view>
 
 namespace cppl::lsp {
 

@@ -10,9 +10,11 @@
 #include "cppl/source/location.hpp"
 #include "cppl/vir/ids.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace cppl::obligations {

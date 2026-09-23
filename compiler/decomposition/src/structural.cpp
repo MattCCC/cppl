@@ -1,4 +1,16 @@
+#include "cppl/decomposition/decomposition.hpp"
 #include "cppl/decomposition/providers.hpp"
+#include "cppl/source/representation.hpp"
+#include "cppl/vir/expr.hpp"
+#include "cppl/vir/types.hpp"
+
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 namespace cppl::decomposition {
 namespace {

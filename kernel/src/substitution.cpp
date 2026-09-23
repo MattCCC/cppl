@@ -1,5 +1,9 @@
 #include "cppl/kernel/substitution.hpp"
 
+#include "cppl/kernel/proposition.hpp"
+#include "cppl/kernel/term.hpp"
+
+#include <cstdint>
 #include <utility>
 #include <variant>
 #include <vector>

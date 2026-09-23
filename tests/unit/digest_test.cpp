@@ -4,7 +4,9 @@
 #include "cppl/source/digest.hpp"
 #include "cppl/testing/test.hpp"
 
+#include <cstddef>
 #include <string>
+#include <string_view>
 
 namespace {
 

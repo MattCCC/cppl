@@ -30,6 +30,7 @@ Checks: >
   modernize-use-equals-delete,
   modernize-use-noexcept,
   modernize-use-transparent-functors,
+  misc-include-cleaner,
   readability-avoid-const-params-in-decls,
   readability-const-return-type,
   readability-container-size-empty,
@@ -56,6 +57,16 @@ Checks: >
   readability-uniqueptr-delete-release
 
 WarningsAsErrors: "*"
+
+# Include what you use (misc-include-cleaner), in every translation unit and,
+# through cmake/HeaderChecks.cmake, every header. The platform's own system
+# headers are left out: a POSIX name such as `sigaction` or `pid_t` is declared
+# in a different internal header on every platform (`sys/_types/...` on macOS,
+# `bits/...` on glibc), so no single direct include is right everywhere. Code
+# includes the portable header, such as <signal.h>, and those names are not
+# charged to it.
+CheckOptions:
+  misc-include-cleaner.IgnoreHeaders: "sys/.*;_types/.*;_types\\.h;bits/.*;asm/.*;asm-generic/.*;linux/.*;mach/.*;machine/.*;arm/.*;i386/.*;secure/.*"
 
 HeaderFilterRegex: ".*"
 

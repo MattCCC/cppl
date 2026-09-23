@@ -1,11 +1,19 @@
 #include "cppl/driver/buffer_compile.hpp"
 
+#include "cppl/diagnostics/diagnostic.hpp"
 #include "cppl/driver/process.hpp"
 #include "cppl/driver/scratch.hpp"
 #include "pipeline.hpp"
 
+#include <filesystem>
 #include <fstream>
+#include <ios>
+#include <memory>
+#include <optional>
 #include <sstream>
+#include <string>
+#include <utility>
+#include <vector>
 
 namespace cppl::driver {
 

@@ -1,12 +1,16 @@
 #include "cppl/lsp/server.hpp"
 
+#include "cppl/diagnostics/diagnostic.hpp"
 #include "cppl/driver/buffer_compile.hpp"
 #include "cppl/formatter/format.hpp"
 #include "cppl/lsp/decomposition_view.hpp"
+#include "cppl/lsp/document.hpp"
 #include "cppl/lsp/position.hpp"
+#include "cppl/lsp/protocol.hpp"
 
 #include <algorithm>
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>

@@ -1,7 +1,22 @@
 #include "cppl/analysis/analyze.hpp"
 
+#include "cppl/clang/ast.hpp"
+#include "cppl/clang/bridge.hpp"
 #include "cppl/decomposition/decomposition.hpp"
 #include "cppl/elaboration/elaborate.hpp"
+#include "cppl/frontend/projection.hpp"
+#include "cppl/frontend/syntax.hpp"
+#include "cppl/frontend/token.hpp"
+#include "cppl/source/projection.hpp"
+#include "cppl/vir/expr.hpp"
+#include "cppl/vir/types.hpp"
+
+#include <cstddef>
+#include <expected>
+#include <string>
+#include <utility>
+#include <variant>
+#include <vector>
 
 namespace cppl::analysis {
 namespace {

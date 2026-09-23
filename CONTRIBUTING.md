@@ -252,6 +252,11 @@ Avoid:
 - ambiguous error recovery inside the proof kernel
 - silent fallback from verified to unverified behavior
 
+Include what you use, directly, in every source file and every header; a
+header must compile from its own includes. `make lint` enforces this for
+headers too, and a new header needs an owner in its component's
+`cppl_check_headers` (AGENTS.md 36).
+
 ---
 
 # Diagnostics

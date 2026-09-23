@@ -2,7 +2,12 @@
 
 #include "cppl/source/digest.hpp"
 
+#include <filesystem>
 #include <fstream>
+#include <ios>
+#include <string>
+#include <string_view>
+#include <system_error>
 
 #ifdef _WIN32
 #include <cstdint>

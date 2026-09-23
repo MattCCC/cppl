@@ -18,3 +18,6 @@ target_link_libraries(cppl_obligations
     PRIVATE cppl_refutation cppl_project_options)
 
 add_library(cppl::obligations ALIAS cppl_obligations)
+
+# Each header is analyzed on its own (cmake/HeaderChecks.cmake).
+cppl_check_headers(cppl_obligations)

@@ -6,13 +6,21 @@
 // must agree on every assignment. That is the property definitional equality
 // relies on, tested exhaustively rather than by example.
 
+#include "cppl/kernel/box.hpp"
 #include "cppl/kernel/check.hpp"
+#include "cppl/kernel/context.hpp"
 #include "cppl/kernel/linear.hpp"
+#include "cppl/kernel/proof.hpp"
+#include "cppl/kernel/proposition.hpp"
+#include "cppl/kernel/term.hpp"
+#include "cppl/kernel/types.hpp"
 #include "cppl/testing/test.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace {

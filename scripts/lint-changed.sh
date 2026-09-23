@@ -38,8 +38,9 @@ if [ "${#CHANGED_FILES[@]}" -eq 0 ]; then
 	exit 0
 fi
 
-# Only files clang-tidy can actually analyze as translation units; headers
-# are covered indirectly through the units that include them.
+# Only files the compilation database lists. Every project header is listed
+# as its own entry (cmake/HeaderChecks.cmake), so a changed header is
+# analyzed as a main file, not only through the units that include it.
 mapfile -t DB_FILES < <(
 	python3 -c '
 import json, sys
@@ -61,8 +62,7 @@ for f in "${CHANGED_FILES[@]}"; do
 done
 
 if [ "${#LINT_FILES[@]}" -eq 0 ]; then
-	echo "changed C/C++ files are headers or not translation units in the compile database; nothing to lint"
-	echo "(clang-tidy analyzes headers through the translation units that include them; run 'make lint' for full header coverage)"
+	echo "changed C/C++ files are not in the compile database (fixtures or unowned files); nothing to lint"
 	exit 0
 fi
 

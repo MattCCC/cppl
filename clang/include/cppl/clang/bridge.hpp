@@ -3,7 +3,9 @@
 #include "cppl/clang/ast.hpp"
 #include "cppl/source/projection.hpp"
 
+#include <cstddef>
 #include <expected>
+#include <optional>
 #include <string>
 #include <vector>
 

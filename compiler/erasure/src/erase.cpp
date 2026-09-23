@@ -1,7 +1,16 @@
 #include "cppl/erasure/erase.hpp"
 
+#include "cppl/diagnostics/diagnostic.hpp"
+#include "cppl/frontend/projection.hpp"
+#include "cppl/frontend/syntax.hpp"
+#include "cppl/frontend/token.hpp"
+#include "cppl/source/location.hpp"
+
 #include <algorithm>
+#include <cstddef>
 #include <string>
+#include <string_view>
+#include <utility>
 #include <vector>
 
 namespace cppl::erasure {

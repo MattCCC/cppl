@@ -2,9 +2,12 @@
 
 #include "cppl/diagnostics/diagnostic.hpp"
 #include "cppl/kernel/check.hpp"
+#include "cppl/kernel/proof.hpp"
+#include "cppl/kernel/proposition.hpp"
 #include "cppl/obligations/obligation.hpp"
 #include "cppl/obligations/status.hpp"
 
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <vector>

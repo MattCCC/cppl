@@ -1,4 +1,6 @@
+#include "cppl/decomposition/decomposition.hpp"
 #include "cppl/decomposition/providers.hpp"
+#include "cppl/vir/types.hpp"
 
 #include <array>
 

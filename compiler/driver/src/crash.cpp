@@ -16,6 +16,9 @@
 #include <windows.h>
 #else
 #include <csignal>
+// sigaction, sigaltstack and sigemptyset are POSIX, declared by <signal.h>
+// rather than by the C++ wrapper.
+#include <signal.h>
 #include <unistd.h>
 #endif
 

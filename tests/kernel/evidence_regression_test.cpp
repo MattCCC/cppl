@@ -1,7 +1,14 @@
 // Each rejection below has a valid surrounding derivation. It must fail at
 // the named check, so an unrelated malformed premise cannot mask a bypass.
 #include "cppl/kernel/check.hpp"
+#include "cppl/kernel/proof.hpp"
+#include "cppl/kernel/proposition.hpp"
+#include "cppl/kernel/term.hpp"
+#include "cppl/kernel/types.hpp"
 #include "cppl/testing/test.hpp"
+
+#include <cstdint>
+#include <utility>
 
 namespace {
 namespace k = cppl::kernel;

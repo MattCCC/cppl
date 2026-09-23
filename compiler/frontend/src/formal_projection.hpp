@@ -1,10 +1,13 @@
 #pragma once
 
 #include "cppl/frontend/token.hpp"
+#include "cppl/source/location.hpp"
 #include "cppl/source/projection.hpp"
 
+#include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 
 namespace cppl::frontend::detail {
 

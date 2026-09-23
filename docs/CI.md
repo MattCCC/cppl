@@ -33,6 +33,12 @@ belong to `make ci`.
 
 Use `make check-full` for the `check` set with whole-repository lint.
 
+Lint covers headers as well as source files. Each header is in the compilation
+database as a unit of its own, compiled with its owning component's flags, so
+`misc-include-cleaner` holds it to the includes it states: it must compile
+without its includers' help and directly include what it uses. `lint-changed`
+therefore analyzes a changed header directly. The policy is in `AGENTS.md` §36.
+
 Every test runs under `tests/support/bounded.sh`, locally and on every runner:
 no file a test writes may grow past 256 MiB and no process it starts may use
 more than 1800 CPU seconds. A runaway writer is stopped with `SIGXFSZ` and a

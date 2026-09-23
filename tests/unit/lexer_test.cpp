@@ -5,6 +5,7 @@
 #include "cppl/testing/test.hpp"
 
 #include <string>
+#include <string_view>
 
 namespace {
 

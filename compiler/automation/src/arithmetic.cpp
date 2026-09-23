@@ -1,12 +1,20 @@
 #include "arithmetic.hpp"
 
+#include "cppl/kernel/box.hpp"
+#include "cppl/kernel/context.hpp"
 #include "cppl/kernel/linear.hpp"
+#include "cppl/kernel/proof.hpp"
+#include "cppl/kernel/proposition.hpp"
 #include "cppl/kernel/substitution.hpp"
+#include "cppl/kernel/term.hpp"
 #include "cppl/kernel/types.hpp"
 #include "cppl/obligations/obligation.hpp"
 #include "cppl/refutation/refute.hpp"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <optional>
 #include <ranges>
 #include <set>
 #include <utility>

@@ -28,3 +28,6 @@ add_library(cppl::driver ALIAS cppl_driver)
 
 add_executable(cppl src/main.cpp)
 target_link_libraries(cppl PRIVATE cppl_driver cppl_project_options)
+
+# Each header is analyzed on its own (cmake/HeaderChecks.cmake).
+cppl_check_headers(cppl_driver)

@@ -1,7 +1,16 @@
 #include "cppl/lsp/decomposition_view.hpp"
 
+#include "cppl/elaboration/elaborate.hpp"
+#include "cppl/frontend/syntax.hpp"
+#include "cppl/lsp/protocol.hpp"
+#include "cppl/source/location.hpp"
+
 #include <algorithm>
+#include <cstddef>
+#include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace cppl::lsp {
 namespace {

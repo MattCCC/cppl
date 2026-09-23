@@ -21,3 +21,6 @@ set_target_properties(cppl_clang PROPERTIES
     INSTALL_RPATH "${LibClang_LIBRARY_DIR}")
 
 add_library(cppl::clang ALIAS cppl_clang)
+
+# Each header is analyzed on its own (cmake/HeaderChecks.cmake).
+cppl_check_headers(cppl_clang)

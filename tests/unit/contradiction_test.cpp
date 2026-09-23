@@ -21,13 +21,27 @@
 //         }
 //     }
 #include "cppl/automation/evidence.hpp"
+#include "cppl/diagnostics/diagnostic.hpp"
+#include "cppl/elaboration/elaborate.hpp"
 #include "cppl/kernel/check.hpp"
+#include "cppl/kernel/proof.hpp"
+#include "cppl/kernel/proposition.hpp"
+#include "cppl/kernel/term.hpp"
+#include "cppl/kernel/types.hpp"
 #include "cppl/obligations/generate.hpp"
+#include "cppl/obligations/obligation.hpp"
 #include "cppl/obligations/status.hpp"
 #include "cppl/testing/test.hpp"
+#include "cppl/vir/expr.hpp"
+#include "cppl/vir/module.hpp"
+#include "cppl/vir/types.hpp"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <optional>
 #include <string>
+#include <utility>
 #include <variant>
 
 namespace {

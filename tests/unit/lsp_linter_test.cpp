@@ -1,9 +1,11 @@
 // Linter tests: syntax-aware C++L lint diagnostics
 
 #include "cppl/diagnostics/diagnostic.hpp"
+#include "cppl/frontend/syntax.hpp"
 #include "cppl/frontend/token.hpp"
 #include "cppl/lsp/linter.hpp"
 #include "cppl/lsp/position.hpp"
+#include "cppl/lsp/protocol.hpp"
 #include "cppl/testing/test.hpp"
 
 #include <string>

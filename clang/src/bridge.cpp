@@ -1,13 +1,32 @@
 #include "cppl/clang/bridge.hpp"
 
+#include "cppl/clang/ast.hpp"
+#include "cppl/source/location.hpp"
+#include "cppl/source/projection.hpp"
+#include "cppl/source/representation.hpp"
+#include "cppl/source/storage.hpp"
+
 #include <algorithm>
+#include <clang-c/CXDiagnostic.h>
+#include <clang-c/CXErrorCode.h>
+#include <clang-c/CXSourceLocation.h>
+#include <clang-c/CXString.h>
 #include <clang-c/Index.h>
+#include <cstddef>
 #include <cstdint>
+#include <expected>
 #include <functional>
+#include <iterator>
 #include <limits>
+#include <optional>
 #include <ranges>
+#include <string>
+#include <string_view>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
+#include <variant>
+#include <vector>
 
 namespace cppl::clangbridge {
 

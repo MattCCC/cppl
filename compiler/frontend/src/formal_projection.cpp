@@ -1,7 +1,17 @@
 #include "formal_projection.hpp"
 
+#include "cppl/frontend/token.hpp"
+#include "cppl/source/location.hpp"
+#include "cppl/source/projection.hpp"
+
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <string>
+#include <string_view>
 #include <utility>
+#include <vector>
 
 namespace cppl::frontend::detail {
 

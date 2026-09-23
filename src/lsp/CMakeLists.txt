@@ -32,3 +32,6 @@ target_link_libraries(cppl_lsp PUBLIC
 )
 
 target_compile_features(cppl_lsp PUBLIC cxx_std_20)
+
+# Each header is analyzed on its own (cmake/HeaderChecks.cmake).
+cppl_check_headers(cppl_lsp)

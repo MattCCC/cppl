@@ -6,9 +6,11 @@
 #include "cppl/driver/options.hpp"
 #include "cppl/driver/process.hpp"
 #include "cppl/driver/scratch.hpp"
+#include "cppl/frontend/syntax.hpp"
 #include "cppl/kernel/version.hpp"
 #include "cppl/obligations/obligation.hpp"
 #include "cppl/obligations/trust.hpp"
+#include "cppl/source/location.hpp"
 #include "pipeline.hpp"
 
 #include <algorithm>
@@ -20,6 +22,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace cppl::driver {

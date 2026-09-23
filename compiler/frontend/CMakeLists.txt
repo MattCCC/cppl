@@ -18,3 +18,6 @@ target_link_libraries(cppl_frontend
     PRIVATE cppl_project_options)
 
 add_library(cppl::frontend ALIAS cppl_frontend)
+
+# Each header is analyzed on its own (cmake/HeaderChecks.cmake).
+cppl_check_headers(cppl_frontend)

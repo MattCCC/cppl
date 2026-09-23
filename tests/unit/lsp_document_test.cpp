@@ -5,6 +5,7 @@
 #include "cppl/testing/test.hpp"
 
 #include <string>
+#include <vector>
 
 using namespace cppl::lsp;
 

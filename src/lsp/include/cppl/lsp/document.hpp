@@ -6,9 +6,12 @@
 #include "cppl/frontend/token.hpp"
 #include "cppl/lsp/protocol.hpp"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 namespace cppl::lsp {
 

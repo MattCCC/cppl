@@ -4,6 +4,7 @@
 #include "cppl/frontend/token.hpp"
 #include "cppl/source/location.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>

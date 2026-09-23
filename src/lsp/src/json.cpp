@@ -1,8 +1,17 @@
 #include "cppl/lsp/json.hpp"
 
+#include <cctype>
 #include <charconv>
 #include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <exception>
 #include <sstream>
+#include <string>
+#include <string_view>
+#include <system_error>
+#include <utility>
 
 namespace cppl::lsp::json {
 

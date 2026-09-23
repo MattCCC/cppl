@@ -1,10 +1,20 @@
 #include "cppl/lsp/transport.hpp"
 
 #include "cppl/lsp/json.hpp"
+#include "cppl/lsp/protocol.hpp"
+#include "cppl/lsp/server.hpp"
 
+#include <cstddef>
+#include <cstdint>
+#include <exception>
+#include <ios>
 #include <istream>
+#include <optional>
 #include <ostream>
+#include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 namespace cppl::lsp {
 

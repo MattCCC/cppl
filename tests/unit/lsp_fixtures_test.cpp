@@ -10,14 +10,20 @@
 // against -- rather than a subprocess/JSON-RPC round trip, to keep the
 // suite fast and free of transport flakiness.
 
+#include "cppl/diagnostics/diagnostic.hpp"
 #include "cppl/driver/buffer_compile.hpp"
+#include "cppl/frontend/token.hpp"
 #include "cppl/testing/test.hpp"
 
+#include <cstddef>
 #include <fstream>
 #include <functional>
+#include <ios>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 using namespace cppl;
 

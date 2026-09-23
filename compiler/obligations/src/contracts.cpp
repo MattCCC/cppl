@@ -1,10 +1,33 @@
+#include "cppl/obligations/contracts.hpp"
+
+#include "cppl/diagnostics/diagnostic.hpp"
+#include "cppl/kernel/context.hpp"
+#include "cppl/kernel/proposition.hpp"
 #include "cppl/kernel/substitution.hpp"
+#include "cppl/kernel/term.hpp"
+#include "cppl/kernel/types.hpp"
+#include "cppl/obligations/obligation.hpp"
+#include "cppl/source/digest.hpp"
+#include "cppl/source/storage.hpp"
+#include "cppl/vir/expr.hpp"
+#include "cppl/vir/module.hpp"
+#include "cppl/vir/place.hpp"
+#include "cppl/vir/types.hpp"
 #include "lowering.hpp"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
+#include <expected>
+#include <functional>
 #include <iterator>
+#include <map>
+#include <optional>
 #include <ranges>
+#include <string>
+#include <utility>
 #include <variant>
+#include <vector>
 
 namespace cppl::obligations::detail {
 namespace {

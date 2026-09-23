@@ -1,7 +1,14 @@
 #include "cppl/lsp/position.hpp"
 
+#include "cppl/lsp/protocol.hpp"
+#include "cppl/source/location.hpp"
+
 #include <algorithm>
 #include <cassert>
+#include <cstddef>
+#include <cstdint>
+#include <iterator>
+#include <string_view>
 
 namespace cppl::lsp {
 

@@ -3,6 +3,7 @@
 #include "cppl/kernel/term.hpp"
 #include "cppl/kernel/types.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <span>

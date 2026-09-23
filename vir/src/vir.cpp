@@ -1,8 +1,14 @@
 #include "cppl/vir/capability.hpp"
 #include "cppl/vir/expr.hpp"
+#include "cppl/vir/ids.hpp"
 #include "cppl/vir/module.hpp"
+#include "cppl/vir/place.hpp"
 #include "cppl/vir/types.hpp"
 
+#include <cstddef>
+#include <string>
+#include <string_view>
+#include <type_traits>
 #include <variant>
 
 namespace cppl::vir {

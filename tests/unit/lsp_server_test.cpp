@@ -5,8 +5,10 @@
 #include "cppl/testing/test.hpp"
 
 #include <algorithm>
+#include <cstddef>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 using namespace cppl::lsp;

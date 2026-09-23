@@ -1,9 +1,17 @@
 // Reproducible structural fuzzing of all thirteen proof constructors, with false
 // closed goals as the rejection oracle. No frontend or automation is involved.
+#include "cppl/kernel/box.hpp"
 #include "cppl/kernel/check.hpp"
+#include "cppl/kernel/context.hpp"
+#include "cppl/kernel/proof.hpp"
+#include "cppl/kernel/proposition.hpp"
+#include "cppl/kernel/term.hpp"
+#include "cppl/kernel/types.hpp"
 #include "cppl/testing/test.hpp"
 
 #include <cstdint>
+#include <utility>
+#include <vector>
 
 namespace {
 namespace k = cppl::kernel;

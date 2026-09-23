@@ -1,7 +1,14 @@
 #include "cppl/frontend/token.hpp"
+#include "cppl/source/location.hpp"
 
 #include <array>
 #include <cctype>
+#include <cstddef>
+#include <cstdint>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 namespace cppl::frontend {
 
