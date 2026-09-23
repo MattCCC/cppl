@@ -144,7 +144,7 @@ CPPL_TEST(an_omitted_case_is_an_obligation_of_its_own_that_the_kernel_checks) {
 }
 
 // SPEC: CASE-013, CASE-014
-CPPL_TEST(an_omission_concludes_absurdity_by_ordinary_linear_arithmetic) {
+CPPL_TEST(an_omission_concludes_false_by_ordinary_linear_arithmetic) {
     cppl::diagnostics::Engine engine;
     const auto program = lower(omitting(), engine);
     CPPL_CHECK(!engine.has_errors());
@@ -155,8 +155,8 @@ CPPL_TEST(an_omission_concludes_absurdity_by_ordinary_linear_arithmetic) {
     }
 
     // The claim is that the premises standing in the omitted case cannot all
-    // hold: underneath its binders and premises it concludes `0 == 1`, the
-    // equality no value satisfies, rather than the proof's own goal.
+    // hold: underneath its binders and premises it concludes `False`, rather
+    // than the proof's own goal.
     const k::Proposition* claim = &omission->goal;
     while (true) {
         if (const auto* quantified = std::get_if<k::Forall>(&claim->node)) {
@@ -167,14 +167,12 @@ CPPL_TEST(an_omission_concludes_absurdity_by_ordinary_linear_arithmetic) {
             break;
         }
     }
-    const auto& absurd = std::get<k::Eq>(claim->node);
-    CPPL_CHECK(absurd.lhs == k::Term::literal(k::kBoolean, 0));
-    CPPL_CHECK(absurd.rhs == k::Term::literal(k::kBoolean, 1));
+    CPPL_CHECK(std::holds_alternative<k::Falsity>(claim->node));
 
     // And the evidence is introductions around one linear-arithmetic step whose
     // facts are the named evidence and the standing premises: hypotheses, or
     // sides taken from a conjunction of them. No node here is specific to cases
-    // or to contradiction.
+    // or to contradiction, and no goal takes part in the step.
     const k::LinearArithmetic& step = refutation_of(*omission->evidence);
     CPPL_CHECK(step.facts.size() >= 2);
     for (const k::ArithmeticFact& fact : step.facts) {

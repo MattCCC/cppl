@@ -40,6 +40,9 @@ std::string describe(const Proposition& proposition) {
     if (const auto* disjunction = std::get_if<Or>(&proposition.node)) {
         return "(" + describe(*disjunction->left) + " || " + describe(*disjunction->right) + ")";
     }
+    if (std::holds_alternative<Falsity>(proposition.node)) {
+        return "False";
+    }
     const auto& equality = std::get<Eq>(proposition.node);
     return "Eq<" + describe(equality.type) + ">(" + describe(equality.lhs) + ", " + describe(equality.rhs) + ")";
 }

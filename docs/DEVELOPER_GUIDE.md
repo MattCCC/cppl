@@ -850,6 +850,10 @@ before the goal is looked at, and the kernel checks it. A premise that has merel
 not been proven is not a contradiction, and neither is a failure to find a state
 that reaches the goal.
 
+The goal's shape does not matter. The contradiction is evidence for `False`, and
+the kernel closes any goal from that, so `Eq<Pair>(p, q)` for two arbitrary
+records closes exactly as `x == 7u` does.
+
 Use `cases` when a proof depends on which state a value occupies.
 
 Use `induction` when the proof depends on a recursively smaller predecessor and

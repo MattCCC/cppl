@@ -1,13 +1,13 @@
 // Discharging a goal from a premise that cannot hold (GRAMMAR.md 5.6,
 // SPEC.md CASE-004/005/011).
 //
-// `contradiction e;` is not a new rule and not an axiom. The proposition
-// language has no falsity constant, so the contradiction is carried by the
-// existing linear-arithmetic rule in two steps: the named evidence and the
-// premises standing where it is written are refuted into `0 == 1`, which the
-// goal takes no part in, and the goal is then closed from that. The kernel
-// states the constraints and checks both certificates itself, so a premise that
-// is merely unproven, rather than contradictory, closes nothing.
+// `contradiction e;` is not an axiom. It is two steps the kernel checks: the
+// named evidence and the premises standing where it is written are refuted into
+// `False` by linear arithmetic, which the goal takes no part in, and the goal
+// is then closed from `False` by falsity elimination, whatever its shape
+// (FOUNDATIONS.md 26). The kernel states the constraints and checks the
+// certificate itself, so a premise that is merely unproven, rather than
+// contradictory, closes nothing.
 #include <cstdio>
 
 pure unsigned zero() {
@@ -45,19 +45,41 @@ proof another_conclusion_under_the_same_premise_holds(unsigned x)
     contradiction impossible;
 }
 
-// A goal with structure: its quantifier, conjuncts and premise are introduced by
-// the ordinary rules, and each equality left is closed from the contradiction.
-// The premise stands outside the quantifier, so it is restated beneath it.
-law structured_conclusion_under_a_false_premise(unsigned x)
+// A goal with structure: a quantifier, a conjunction and an implication. It is
+// closed as a whole, not piece by piece.
+law compound_conclusion_under_a_false_premise(unsigned x)
     expects (zero() == 1u)
     proves ((forall(unsigned y) { y == x }) && (x == 2u -> x == 3u));
 
-proof structured_conclusion_under_a_false_premise_holds(unsigned x)
-    proves (structured_conclusion_under_a_false_premise(x))
+proof compound_conclusion_under_a_false_premise_holds(unsigned x)
+    proves (compound_conclusion_under_a_false_premise(x))
 {
     assume impossible : zero() == 1u;
     contradiction impossible;
 }
+
+// A goal no arithmetic states: two arbitrary records are equal. Nothing about
+// the goal is looked at, so it closes exactly as an integer goal does. The
+// refused half of this pair, with a satisfiable premise, is
+// `fixtures/negative/contradiction_structured_goal_satisfiable.cpp`.
+struct Pair {
+    int first;
+    int second;
+};
+
+law structured_conclusion_under_a_false_premise(Pair p, Pair q)
+    expects (zero() == 1u)
+    proves (Eq<Pair>(p, q))
+{
+    assume impossible : zero() == 1u;
+    contradiction impossible;
+}
+
+// The same goal with no written proof: automation reaches it the same way, by
+// refuting the premise into `False`.
+law structured_conclusion_proven_automatically(Pair p, Pair q)
+    expects (zero() == 1u)
+    proves (Eq<Pair>(p, q));
 
 // None of the proof syntax may reach the runtime.
 int main() {

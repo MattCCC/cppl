@@ -83,11 +83,11 @@ refuse omission_and_arm "duplicate case 'State::running'"
 refuse contradiction_satisfiable "'possible' does not state a contradiction"
 refuse contradiction_not_an_equality "'quantified_evidence' does not establish an equality"
 
-# SPEC: CASE-014
-# A recorded limit of the formal core rather than of this implementation: a
-# contradiction closes a goal only where it is built from equalities of
-# integers, because no existing rule derives an equality of records from a
-# false fact. Refusing is the safe direction; closing it would need a new rule.
-refuse contradiction_structured_value_goal "a contradiction closes a goal only where that goal is built from equalities of integers"
+# SPEC: CASE-014, CASE-015
+# The refused half of a matched pair whose accepted half is
+# `structured_conclusion_under_a_false_premise` in `fixtures/contradiction.cpp`.
+# Falsity elimination closes a goal of any shape, an equality of records
+# included, so only the premise being satisfiable refuses this.
+refuse contradiction_structured_goal_satisfiable "'possible' does not state a contradiction"
 
 echo 'contradictions and case omissions are refused unless the context genuinely cannot occur'

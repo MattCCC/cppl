@@ -51,6 +51,9 @@ std::string describe(const ProofTerm& proof) {
         return "or_elim(" + describe(*cases->evidence) + ", " + describe(*cases->left_case) + ", " +
                describe(*cases->right_case) + ")";
     }
+    if (const auto* absurd = std::get_if<FalsityElimination>(&proof.node)) {
+        return "false_elim(" + describe(*absurd->evidence) + ")";
+    }
     return "refl";
 }
 

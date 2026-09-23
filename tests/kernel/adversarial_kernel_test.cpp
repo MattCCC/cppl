@@ -7,9 +7,11 @@
 #include "cppl/kernel/check.hpp"
 #include "cppl/kernel/context.hpp"
 #include "cppl/kernel/linear.hpp"
+#include "cppl/kernel/substitution.hpp"
 #include "cppl/testing/test.hpp"
 
 #include <algorithm>
+#include <cstdint>
 #include <iterator>
 #include <vector>
 
@@ -762,21 +764,19 @@ CPPL_TEST(u64_arithmetic_limited_by_int64_literal_range) {
 //
 // Omitting a case (SPEC.md CASE-004/005) and discharging an impossible path
 // (VERIFIED-023) both need one operation: from checked contradiction evidence
-// in the current context, close a goal of any shape. These tests fix how that
-// is expressed, because the wrong answer is to give the kernel a new rule.
+// in the current context, close a goal of any shape. The contradiction is
+// evidence for `False`, obtained by linear arithmetic refuting the facts alone,
+// and the goal is closed from it by falsity elimination (FOUNDATIONS.md 26),
+// whose own tests follow this section.
 //
-// The proposition language has no falsity constant: `Eq` is its only atom
-// (proposition.hpp). So absurdity is `Eq(0, 1)` at a type where the kernel
-// knows those are distinct.
-//
-// Transport along it is NOT the mechanism, and these tests pin why. Equality
-// elimination needs evidence of the goal at the equality's other side, so with
-// a constant motive it needs the goal to prove the goal: it can conclude the
-// contradiction itself and nothing else. What actually discharges an omitted
-// case is `LinearArithmetic`, used twice: the premises are first refuted into
-// `0 = 1`, and the goal is then closed from that fact, because a fact no value
-// satisfies refutes any system it stands in, whatever the goal is. Either way
-// nothing is added to the trusted surface.
+// Transport along an absurd equality is NOT the mechanism, and these tests pin
+// why. Equality elimination needs evidence of the goal at the equality's other
+// side, so with a constant motive it needs the goal to prove the goal: it can
+// conclude the contradiction itself and nothing else. Linear arithmetic alone
+// reaches further - a fact no value satisfies refutes any system it stands in,
+// whatever the goal is - but only for goals it can state, which are equalities
+// of integers. Neither reaches an equality of structured values, which is why
+// falsity elimination is a rule of its own.
 
 CPPL_TEST(a_contradictory_premise_closes_any_goal) {
     // Transport along an absurd premise, the derivation an omitted case might
@@ -828,8 +828,8 @@ CPPL_TEST(transport_along_a_contradiction_is_the_ex_falso_shape) {
     // reached under the absurd premise. Note what this does NOT show: the goal
     // here is the contradiction itself, so transport closes it only because the
     // goal's own terms are the ones being transported. An unrelated goal is not
-    // reachable this way, which is why a discharged case goes through linear
-    // arithmetic instead.
+    // reachable this way, which is why a discharged case goes through `False`
+    // instead.
     CPPL_CHECK(result.has_value());
 }
 
@@ -845,9 +845,9 @@ CPPL_TEST(a_case_cannot_be_omitted_without_evidence_of_its_impossibility) {
 }
 
 CPPL_TEST(contradictory_facts_close_an_unrelated_goal_through_arithmetic) {
-    // The step a discharged case closes its goal with. The fact `0 = 1` is
-    // contradictory on its own, and the goal `5 = 9` is unrelated to it and
-    // false, so nothing about the goal can be closing it.
+    // Linear arithmetic's own reach. The fact `0 = 1` is contradictory on its
+    // own, and the goal `5 = 9` is unrelated to it and false, so nothing about
+    // the goal can be closing it.
     //
     // The kernel states the constraints from the facts and the negated goal
     // itself. A fact no value satisfies leaves a constraint with no variable
@@ -923,4 +923,230 @@ CPPL_TEST(a_hypothesis_that_is_not_in_scope_cannot_supply_the_contradiction) {
     const auto result = cppl::kernel::check(ctx, eq(0, 1), forged, {});
     CPPL_CHECK(!result.has_value());
     CPPL_CHECK(result.error().kind == RejectionKind::MalformedProofTerm);
+}
+
+// ============================================================================
+// FALSITY ELIMINATION (FOUNDATIONS.md 26)
+// ============================================================================
+//
+//     p : False
+//     ---------
+//         P
+//
+// The rule asks nothing of the goal, so everything rests on how `False` can be
+// established: a hypothesis supposing it, an elimination yielding it, or linear
+// arithmetic refuting its facts with no goal taking part. It has no
+// introduction (TRUST.md TCB-CORE-017). Each attack below goes after one of
+// those.
+
+namespace {
+
+const Type kPair = Type::value("pair", {u32(), u32()});
+
+// Evidence of `False` from the fact `0 = 1`, which stands as hypothesis `index`:
+// linear arithmetic refuting that fact alone.
+ProofTerm refutation_of_zero_is_one(const cppl::kernel::Context& ctx, std::uint32_t index) {
+    const Proposition facts[] = {eq(0, 1)};
+    const auto system = cppl::kernel::arithmetic_system(ctx, facts, Proposition::falsity(), CoreLimits{});
+    CPPL_CHECK(system.has_value());
+    const auto contradictory = std::ranges::find_if(
+        system->constraints, [](const auto& entry) { return entry.terms.empty() && entry.constant > 0; });
+    CPPL_CHECK(contradictory != system->constraints.end());
+    cppl::kernel::FarkasSum refutation;
+    refutation.multipliers.emplace_back(
+        static_cast<std::uint32_t>(std::distance(system->constraints.begin(), contradictory)), cppl::kernel::Wide{1});
+    std::vector<cppl::kernel::ArithmeticFact> stated;
+    stated.push_back(
+        cppl::kernel::ArithmeticFact{eq(0, 1), cppl::kernel::Box<ProofTerm>{ProofTerm::hypothesis({index})}});
+    return ProofTerm::linear_arithmetic(std::move(stated), cppl::kernel::ArithmeticCertificate{refutation});
+}
+
+// `premise -> goal`, closed by eliminating the evidence `inside` gives for
+// `False` under that premise.
+bool closes_under(const Proposition& premise, const Proposition& goal, const ProofTerm& inside) {
+    const cppl::kernel::Context ctx;
+    return cppl::kernel::check(ctx, Proposition::implication(premise, goal),
+                               ProofTerm::implication_introduction(premise, ProofTerm::falsity_elimination(inside)), {})
+        .has_value();
+}
+
+} // namespace
+
+CPPL_TEST(false_elimination_closes_an_equality_of_structured_values) {
+    // The goal no arithmetic states: two arbitrary pairs are equal. Under the
+    // contradictory premise it closes, because the premise is refuted into
+    // `False` and nothing about the goal is looked at.
+    cppl::kernel::Context ctx;
+    const auto pairs_equal = Proposition::equality(kPair, Term::variable(VarIndex{1}), Term::variable(VarIndex{0}));
+    const auto goal =
+        Proposition::for_all(kPair, Proposition::for_all(kPair, Proposition::implication(eq(0, 1), pairs_equal)));
+    const auto evidence = ProofTerm::forall_introduction(
+        kPair, ProofTerm::forall_introduction(
+                   kPair, ProofTerm::implication_introduction(
+                              eq(0, 1), ProofTerm::falsity_elimination(refutation_of_zero_is_one(ctx, 0)))));
+    CPPL_CHECK(cppl::kernel::check(ctx, goal, evidence, {}).has_value());
+
+    // The same evidence without the premise has nothing to refute: its fact
+    // names a hypothesis no introduction placed.
+    const auto unsupposed = Proposition::for_all(kPair, Proposition::for_all(kPair, pairs_equal));
+    const auto stripped = ProofTerm::forall_introduction(
+        kPair,
+        ProofTerm::forall_introduction(kPair, ProofTerm::falsity_elimination(refutation_of_zero_is_one(ctx, 0))));
+    const auto refused = cppl::kernel::check(ctx, unsupposed, stripped, {});
+    CPPL_CHECK(!refused.has_value());
+    CPPL_CHECK(refused.error().kind == RejectionKind::MalformedProofTerm);
+}
+
+CPPL_TEST(false_elimination_closes_a_goal_of_every_shape) {
+    // Every proposition form, each false or unprovable on its own, so only the
+    // eliminated contradiction can be closing it.
+    const cppl::kernel::Context ctx;
+    const auto absurd = refutation_of_zero_is_one(ctx, 0);
+    const Proposition goals[] = {
+        eq(5, 9),
+        Proposition::equality(kPair, Term::variable(VarIndex{0}), Term::variable(VarIndex{0})),
+        Proposition::for_all(u32(), Proposition::equality(u32(), var0(), literal(3))),
+        Proposition::implication(eq(1, 1), eq(1, 2)),
+        Proposition::conjunction(eq(1, 2), eq(3, 4)),
+        Proposition::disjunction(eq(1, 2), eq(3, 4)),
+        Proposition::falsity(),
+    };
+    for (std::size_t index = 0; index < std::size(goals); ++index) {
+        // The structured goal mentions a variable, so it is stated under a pair.
+        if (index == 1) {
+            const auto goal = Proposition::for_all(kPair, Proposition::implication(eq(0, 1), goals[index]));
+            const auto evidence = ProofTerm::forall_introduction(
+                kPair, ProofTerm::implication_introduction(eq(0, 1), ProofTerm::falsity_elimination(absurd)));
+            CPPL_CHECK(cppl::kernel::check(ctx, goal, evidence, {}).has_value());
+            continue;
+        }
+        CPPL_CHECK(closes_under(eq(0, 1), goals[index], absurd));
+    }
+}
+
+CPPL_TEST(false_elimination_needs_evidence_for_false_itself) {
+    const cppl::kernel::Context ctx;
+    const auto goal = Proposition::equality(u32(), literal(5), literal(9));
+
+    // Reflexivity establishes an equality, never `False`.
+    CPPL_CHECK(!closes_under(eq(0, 1), goal, ProofTerm::reflexivity()));
+
+    // A hypothesis that is an absurd equality is still an equality: it is not
+    // evidence for `False` until arithmetic refutes it.
+    CPPL_CHECK(!closes_under(eq(0, 1), goal, ProofTerm::hypothesis({0})));
+
+    // A satisfiable fact refutes nothing, whatever the certificate claims.
+    for (std::uint32_t constraint = 0; constraint < 4; ++constraint) {
+        cppl::kernel::FarkasSum forged;
+        forged.multipliers.emplace_back(constraint, cppl::kernel::Wide{1});
+        std::vector<cppl::kernel::ArithmeticFact> stated;
+        stated.push_back(
+            cppl::kernel::ArithmeticFact{eq(0, 0), cppl::kernel::Box<ProofTerm>{ProofTerm::hypothesis({0})}});
+        CPPL_CHECK(!closes_under(
+            eq(0, 0), goal,
+            ProofTerm::linear_arithmetic(std::move(stated), cppl::kernel::ArithmeticCertificate{forged})));
+    }
+
+    // No facts at all: an empty system has a solution.
+    CPPL_CHECK(!closes_under(
+        eq(0, 1), goal,
+        ProofTerm::linear_arithmetic({}, cppl::kernel::ArithmeticCertificate{cppl::kernel::FarkasSum{}})));
+
+    // The right fact with a certificate naming a constraint that is not there.
+    auto malformed = refutation_of_zero_is_one(ctx, 0);
+    std::get<cppl::kernel::FarkasSum>(std::get<cppl::kernel::LinearArithmetic>(malformed.node).certificate.node)
+        .multipliers.front()
+        .first = 99;
+    CPPL_CHECK(!closes_under(eq(0, 1), goal, malformed));
+
+    // A fact restated as something its evidence does not establish.
+    auto restated = refutation_of_zero_is_one(ctx, 0);
+    std::get<cppl::kernel::LinearArithmetic>(restated.node).facts.front().proposition = eq(0, 2);
+    CPPL_CHECK(!closes_under(eq(0, 1), goal, restated));
+}
+
+CPPL_TEST(false_has_no_introduction) {
+    // `False` on its own, with nothing in scope, is never established.
+    const cppl::kernel::Context ctx;
+    const ProofTerm attempts[] = {
+        ProofTerm::reflexivity(),
+        ProofTerm::conjunction_introduction(ProofTerm::reflexivity(), ProofTerm::reflexivity()),
+        ProofTerm::disjunction_introduction(ProofTerm::reflexivity(), false),
+        ProofTerm::forall_introduction(u32(), ProofTerm::reflexivity()),
+        ProofTerm::implication_introduction(eq(0, 1), ProofTerm::reflexivity()),
+        ProofTerm::falsity_elimination(ProofTerm::reflexivity()),
+        ProofTerm::linear_arithmetic({}, cppl::kernel::ArithmeticCertificate{cppl::kernel::FarkasSum{}}),
+    };
+    for (const ProofTerm& attempt : attempts) {
+        const auto result = cppl::kernel::check(ctx, Proposition::falsity(), attempt, {});
+        CPPL_CHECK(!result.has_value());
+    }
+    const auto refused = cppl::kernel::check(ctx, Proposition::falsity(), ProofTerm::reflexivity(), {});
+    CPPL_CHECK(!refused.has_value());
+    CPPL_CHECK(refused.error().kind == RejectionKind::ProofShapeMismatch);
+}
+
+CPPL_TEST(false_is_refuted_from_the_facts_alone) {
+    // The negation of `False` states no constraint, so a certificate that leans
+    // on a negated goal has nothing to lean on. `x = 0` proves `x = 0`: the
+    // system holds the fact and the goal's negation, and together they are
+    // refuted. The same certificate for `False` is refused, because the fact
+    // alone is satisfiable.
+    cppl::kernel::Context ctx;
+    const auto fact = Proposition::equality(u32(), var0(), zero32());
+    const Proposition facts[] = {fact};
+    const auto with_goal = cppl::kernel::arithmetic_system(ctx, facts, fact, CoreLimits{});
+    const auto alone = cppl::kernel::arithmetic_system(ctx, facts, Proposition::falsity(), CoreLimits{});
+    CPPL_CHECK(with_goal.has_value());
+    CPPL_CHECK(alone.has_value());
+    // The negated goal `x != 0` is the one disjunction; `False` adds none.
+    CPPL_CHECK_EQ(with_goal->disjunctions.size(), std::size_t{1});
+    CPPL_CHECK(alone->disjunctions.empty());
+    CPPL_CHECK_EQ(alone->constraints.size(), with_goal->constraints.size());
+
+    // Every single-constraint certificate over what `False` states is refused.
+    for (std::uint32_t constraint = 0; constraint < 8; ++constraint) {
+        cppl::kernel::FarkasSum forged;
+        forged.multipliers.emplace_back(constraint, cppl::kernel::Wide{1});
+        std::vector<cppl::kernel::ArithmeticFact> stated;
+        stated.push_back(cppl::kernel::ArithmeticFact{fact, cppl::kernel::Box<ProofTerm>{ProofTerm::hypothesis({0})}});
+        const auto goal = Proposition::for_all(u32(), Proposition::implication(fact, Proposition::falsity()));
+        const auto evidence = ProofTerm::forall_introduction(
+            u32(),
+            ProofTerm::implication_introduction(
+                fact, ProofTerm::linear_arithmetic(std::move(stated), cppl::kernel::ArithmeticCertificate{forged})));
+        CPPL_CHECK(!cppl::kernel::check(ctx, goal, evidence, {}).has_value());
+    }
+}
+
+CPPL_TEST(a_supposed_false_premise_is_restated_under_binders) {
+    // A premise of `False` placed outside a quantifier is still `False` beneath
+    // it: it mentions no variable, so restating it changes nothing.
+    const cppl::kernel::Context ctx;
+    const auto inner = Proposition::for_all(u32(), Proposition::equality(u32(), var0(), literal(5)));
+    const auto goal = Proposition::implication(Proposition::falsity(), inner);
+    const auto evidence = ProofTerm::implication_introduction(
+        Proposition::falsity(),
+        ProofTerm::forall_introduction(u32(), ProofTerm::falsity_elimination(ProofTerm::hypothesis({0}))));
+    CPPL_CHECK(cppl::kernel::check(ctx, goal, evidence, {}).has_value());
+
+    // The hypothesis names `False` only where it was supposed.
+    const auto unsupposed =
+        ProofTerm::forall_introduction(u32(), ProofTerm::falsity_elimination(ProofTerm::hypothesis({0})));
+    const auto refused = cppl::kernel::check(ctx, inner, unsupposed, {});
+    CPPL_CHECK(!refused.has_value());
+    CPPL_CHECK(refused.error().kind == RejectionKind::MalformedProofTerm);
+
+    // And a premise that is some other proposition is not `False`.
+    const auto wrong = ProofTerm::implication_introduction(
+        eq(0, 0), ProofTerm::forall_introduction(u32(), ProofTerm::falsity_elimination(ProofTerm::hypothesis({0}))));
+    CPPL_CHECK(!cppl::kernel::check(ctx, Proposition::implication(eq(0, 0), inner), wrong, {}).has_value());
+}
+
+CPPL_TEST(falsity_is_inert_under_substitution) {
+    const auto falsity = Proposition::falsity();
+    CPPL_CHECK(cppl::kernel::shift(falsity, 3) == falsity);
+    CPPL_CHECK(cppl::kernel::instantiate(falsity, literal(7)) == falsity);
+    CPPL_CHECK(cppl::kernel::describe(falsity) == "False");
+    CPPL_CHECK(falsity != eq(0, 1));
 }

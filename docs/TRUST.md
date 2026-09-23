@@ -225,6 +225,10 @@ The proof checker is the final authority for the validity of core proof evidence
 
 **[TCB-CORE-007]** The checker MUST fail closed on malformed or resource-exhausting evidence; resource failure MUST NOT be interpreted as success.
 
+Falsity elimination (`FOUNDATIONS.md` §26) is one of the checker's primitive rules and so part of this TCB under TCB-CORE-003. It is ex falso quodlibet, not an axiom: it concludes any well-formed goal from checked evidence for `False`, and it is sound only as long as `False` cannot be established without a contradiction.
+
+**[TCB-CORE-017]** `False` MUST have no introduction rule. Evidence for it MUST come only from a hypothesis the proof itself introduced, from an elimination rule applied to checked evidence, or from a linear-arithmetic certificate that refutes the stated facts with no goal taking part.
+
 ## 5.2 Primitive formal semantics
 
 Primitive formal operations used by the checker must correspond exactly to their definitions in `FOUNDATIONS.md` and, where they model C++ operations, to the C++ semantics admitted by `SPEC.md`.
@@ -658,10 +662,12 @@ Structural proof features can be logically sound while still depending on a repr
 A case omission, `omit label by contradiction evidence;` (`SPEC.md` `CASE-004`,
 `CASE-011`), adds nothing to this TCB. Its claim is discharged by ordinary kernel
 evidence: the named evidence and the premises standing in the case, including the
-discriminator the provider supplies, are refuted into `0 == 1` by linear
+discriminator the provider supplies, are refuted into `False` by linear
 arithmetic whose certificate the kernel checks, and the claim is recorded and
-checked as an obligation of its own. Kernel rules added: 0. Axioms: 0.
-Assumptions: 0. The certificate search is an untrusted producer (§6). What an
+checked as an obligation of its own. The kernel rules involved are linear
+arithmetic and, where a goal is closed from the contradiction, falsity
+elimination (§5.1); neither is specific to cases. Axioms: 0. Assumptions: 0.
+The certificate search is an untrusted producer (§6). What an
 omission rests on is what an arm rests on: that the provider's discriminator for
 the omitted case is the right one (TCB-DECOMP-002). A discriminator that stated
 the wrong condition could make a possible state look contradictory, exactly as

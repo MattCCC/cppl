@@ -77,6 +77,10 @@ Proposition shift(const Proposition& proposition, std::uint32_t amount, std::uin
                                         shift(*disjunction->right, amount, cutoff));
     }
 
+    if (std::holds_alternative<Falsity>(proposition.node)) {
+        return proposition; // it mentions no variable
+    }
+
     const auto& equality = std::get<Eq>(proposition.node);
     return Proposition::equality(equality.type, shift(equality.lhs, amount, cutoff),
                                  shift(equality.rhs, amount, cutoff));
@@ -146,6 +150,10 @@ Proposition instantiate(const Proposition& body, const Term& argument, std::uint
     if (const auto* disjunction = std::get_if<Or>(&body.node)) {
         return Proposition::disjunction(instantiate(*disjunction->left, argument, depth),
                                         instantiate(*disjunction->right, argument, depth));
+    }
+
+    if (std::holds_alternative<Falsity>(body.node)) {
+        return body;
     }
 
     const auto& equality = std::get<Eq>(body.node);

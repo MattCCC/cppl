@@ -73,6 +73,11 @@ struct Assumption {
         return validate_proposition(context, locals, *disjunction->right, limits, depth + 1);
     }
 
+    // Falsity states nothing about any term, so there is nothing to type.
+    if (std::holds_alternative<Falsity>(proposition.node)) {
+        return {};
+    }
+
     const auto& equality = std::get<Eq>(proposition.node);
     for (const Term* side : {&equality.lhs, &equality.rhs}) {
         auto type = type_of(context, locals, *side, limits);
@@ -127,11 +132,12 @@ struct Assumption {
 
     // Linear arithmetic closes an equality from facts whose evidence is itself
     // checked here. The kernel states the facts and the goal's negation as
-    // integer constraints on its own, and the certificate must refute them.
+    // integer constraints on its own, and the certificate must refute them. For
+    // `False` the negation states nothing, so the facts alone must be refuted.
     if (const auto* arithmetic = std::get_if<LinearArithmetic>(&proof.node)) {
-        if (!std::holds_alternative<Eq>(proposition.node)) {
+        if (!std::holds_alternative<Eq>(proposition.node) && !std::holds_alternative<Falsity>(proposition.node)) {
             return reject(RejectionKind::ProofShapeMismatch,
-                          "linear arithmetic establishes an equality or a comparison, and the "
+                          "linear arithmetic establishes an equality, a comparison or False, and the "
                           "goal is " +
                               describe(proposition));
         }
@@ -310,6 +316,14 @@ struct Assumption {
         return check_under(context, locals, assumptions, from_right, *cases->right_case, limits, depth + 1);
     }
 
+    // Falsity elimination closes a goal of any shape, and asks nothing of it: the
+    // goal is well formed wherever this is reached, and evidence for `False` is
+    // checked against `False` itself, never against the goal. A goal of `False`
+    // is closed this way only from evidence that already establishes `False`.
+    if (const auto* absurd = std::get_if<FalsityElimination>(&proof.node)) {
+        return check_under(context, locals, assumptions, Proposition::falsity(), *absurd->evidence, limits, depth + 1);
+    }
+
     // Equality elimination closes a goal of any shape too: the context it
     // transports through decides what the result says, not the goal.
     if (const auto* transport = std::get_if<EqualityElimination>(&proof.node)) {
@@ -435,6 +449,15 @@ struct Assumption {
         }
         const Proposition& side = introduction->right ? *disjunction->right : *disjunction->left;
         return check_under(context, locals, assumptions, side, *introduction->evidence, limits, depth + 1);
+    }
+
+    // `False` has no introduction rule. Every way to establish it has been tried
+    // above: a hypothesis supposing it, an elimination that yields it, or linear
+    // arithmetic refuting the facts alone.
+    if (std::holds_alternative<Falsity>(proposition.node)) {
+        return reject(RejectionKind::ProofShapeMismatch,
+                      "False has no introduction; it is established only by a hypothesis, by eliminating evidence "
+                      "for it, or by linear arithmetic refuting the facts alone");
     }
 
     const auto& equality = std::get<Eq>(proposition.node);

@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # SPEC: CASE-011, CASE-014
-# `contradiction e;` closes a goal from a premise no value satisfies, adding no
-# axiom and no trusted mechanism (GRAMMAR.md 5.6, SPEC.md CASE-011). The
-# rejections matter as much as the acceptance, and are written out as source in
-# `fixtures/negative/`, driven by `negative/contradictions.sh`.
+# `contradiction e;` closes a goal of any shape from a premise no value
+# satisfies, adding no axiom and no trusted mechanism (GRAMMAR.md 5.6, SPEC.md
+# CASE-011): the premise is refuted into `False` and the goal eliminated from it.
+# The rejections matter as much as the acceptance, and are written out as source
+# in `fixtures/negative/`, driven by `negative/contradictions.sh`.
 set -euo pipefail
 
 CPPL="$1"
@@ -19,11 +20,13 @@ report="$run/contradiction.report"
 "$CPPL" "$FIXTURES/contradiction.cpp" -o "$binary" --cppl-trust-report \
     "--cppl-emit-projection=$run/runtime.cpp" > "$report"
 
-# Every law is closed by the evidence the author wrote, and the contradiction is
-# derived rather than trusted. A plain `contradiction` statement makes no
-# separate claim, so no omitted case or impossible path is counted.
-grep -Eq "^Laws proven: +3$" "$report"
-grep -Eq "^ +by a written proof: +3$" "$report"
+# Every law with a written proof is closed by the evidence the author wrote, the
+# one without is closed by automation the same way, and the contradiction is
+# derived rather than trusted. Two of the goals equate records, which no
+# arithmetic states. A plain `contradiction` statement makes no separate claim,
+# so no omitted case or impossible path is counted.
+grep -Eq "^Laws proven: +5$" "$report"
+grep -Eq "^ +by a written proof: +4$" "$report"
 grep -Eq "^Omitted cases proven: +0$" "$report"
 grep -Eq "^Impossible paths proven: +0$" "$report"
 grep -Eq "^Unresolved obligations: +0$" "$report"

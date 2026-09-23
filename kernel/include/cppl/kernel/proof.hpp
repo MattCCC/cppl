@@ -162,6 +162,23 @@ struct DisjunctionElimination {
     friend bool operator==(const DisjunctionElimination&, const DisjunctionElimination&) = default;
 };
 
+// Elimination of falsity (FOUNDATIONS.md 26): evidence for `False` establishes
+// any goal.
+//
+//     p : False
+//     ---------
+//         P
+//
+// Only the evidence is checked, against `False` itself; the goal is whatever is
+// being proved, which the checker has already found well formed. Nothing here
+// introduces `False`, so this rule can do no more than the evidence under it
+// already did: every premise that evidence rests on is checked where it stands.
+struct FalsityElimination {
+    Box<ProofTerm> evidence;
+
+    friend bool operator==(const FalsityElimination&, const FalsityElimination&) = default;
+};
+
 // Elimination of an equality: evidence transported through a proposition
 // context (SPEC.md 7.2).
 //
@@ -252,6 +269,11 @@ struct ArithmeticFact {
 // negated goal into integer linear constraints itself, and checks that the
 // certificate refutes them. Nothing about the translation is supplied by the
 // producer, and a certificate that does not refute the system is refused.
+//
+// `G` is an equality or comparison, or `False`. The negation of `False` holds
+// outright and states no constraint, so concluding `False` means refuting the
+// facts alone: that the facts are contradictory, never merely that some goal
+// follows from them.
 struct LinearArithmetic {
     std::vector<ArithmeticFact> facts;
     ArithmeticCertificate certificate;
@@ -275,7 +297,8 @@ struct ConditionalElimination {
 struct ProofTerm {
     std::variant<Reflexivity, ForallIntroduction, ForallElimination, Hypothesis, ImplicationIntroduction,
                  ImplicationElimination, EqualityElimination, ConditionalElimination, LinearArithmetic,
-                 ConjunctionIntroduction, ConjunctionElimination, DisjunctionIntroduction, DisjunctionElimination>
+                 ConjunctionIntroduction, ConjunctionElimination, DisjunctionIntroduction, DisjunctionElimination,
+                 FalsityElimination>
         node;
 
     static ProofTerm reflexivity() {
@@ -338,6 +361,10 @@ struct ProofTerm {
         return ProofTerm{
             DisjunctionElimination{Box<Proposition>{std::move(disjunction)}, Box<ProofTerm>{std::move(evidence)},
                                    Box<ProofTerm>{std::move(left_case)}, Box<ProofTerm>{std::move(right_case)}}};
+    }
+
+    static ProofTerm falsity_elimination(ProofTerm evidence) {
+        return ProofTerm{FalsityElimination{Box<ProofTerm>{std::move(evidence)}}};
     }
 
     static ProofTerm forall_elimination(Proposition quantified, ProofTerm evidence, Term argument) {

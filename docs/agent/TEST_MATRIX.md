@@ -95,7 +95,8 @@ Manifest: `features/checked-contradiction.yaml`
 | One contradiction under two origins | adversarial | covered — two obligations, two identities, two reporting names, two diagnostics, and no strategy replaces refused evidence (`unit/contradiction_test.cpp` citing `CASE-012`, `CASE-016`) |
 | Contextual words | positive, conformance | covered — the words as types, variables, functions and labels, in C++ and inside proofs, across `c++17`, `c++20`, `c++23` (`conformance/contextual_identifiers.sh` citing `WORD-002`, `WORD-010`) |
 | Erasure | erasure | covered (`e2e/omitted_case.sh`, `e2e/contradiction.sh`) |
-| Structured-value goal | negative | recorded limit — refused by name, since no existing rule derives such an equality from a contradiction (`negative/contradictions.sh` citing `CASE-014`) |
+| Structured-value goal | positive, negative | covered — a matched pair: two records are proven equal under a false premise, by a written `contradiction` and by automation, and refused under a satisfiable one (`fixtures/contradiction.cpp`, `negative/contradictions.sh` citing `CASE-014`, `CASE-015`) |
+| Falsity elimination | adversarial | covered — every proposition form is closed from a refuted fact; falsity elimination over reflexivity, an absurd equality, a satisfiable fact, no facts, a missing constraint or a restated fact is refused, `False` has no introduction, and a certificate that leaned on a negated goal is refused for `False` (`kernel/adversarial_kernel_test.cpp` citing `TCB-CORE-017`) |
 | Unreachable runtime path from source | positive, negative | not built — no source form yet (`VERIFIED-023`); origin, identity and diagnostics are exercised below the surface |
 
 Status here describes test coverage, not implementation maturity.

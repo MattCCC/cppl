@@ -191,32 +191,41 @@ diagnostics, because a proof-side omitted case and a runtime control-flow path
 are different claims about different things, and conflating their provenance
 would make a diagnostic name the wrong one.
 
-The elimination needs no new kernel rule, but it is not the transport it first
-looks like. The proposition language has no falsity constant -- `Eq` is its only
-atom -- so absurdity is an equality the kernel knows to be false. Eliminating it
-with `EqualityElimination` does not work: transport needs evidence of the goal
-at the equality's other side, and with a constant motive that is the goal again.
-Transport can only conclude the contradiction itself, not an arbitrary goal.
+The elimination is not the transport it first looks like. Eliminating an absurd
+equality with `EqualityElimination` does not work: transport needs evidence of
+the goal at the equality's other side, and with a constant motive that is the
+goal again. Transport can only conclude the contradiction itself, not an
+arbitrary goal.
 
-What discharges the case is the rule that already reasons from a set of facts.
-`LinearArithmetic` refutes `F1 /\ ... /\ Fn /\ not G`, and it is used in two
+A contradiction is evidence for `False`, a proposition of the core with no
+introduction rule, and the goal is closed from it by falsity elimination,
+`p : False` giving `P` for any well-formed `P` (FOUNDATIONS.md 26). That is two
 steps. The first refutes the named evidence and every premise standing at that
-point -- for an omitted case, including its own discriminator -- into `0 == 1`,
-whose negation holds outright, so the certificate can only be refuting the
-facts. The second closes the goal from `0 == 1`. The split is not cosmetic. A
-single step against the real goal also succeeds when the goal merely follows
-from the premises, and an omission judged that way accepts `omit C by
-contradiction e;` for a perfectly possible case `C` whenever `C`'s goal happens
-to be provable. Separating the steps makes "the context cannot occur" the
-content of a checked proof term rather than an inference drawn from one.
+point -- for an omitted case, including its own discriminator -- into `False`
+with `LinearArithmetic`, which refutes `F1 /\ ... /\ Fn /\ not G`; for
+`G = False` the negation holds outright and states no constraint, so the
+certificate can only be refuting the facts. The second eliminates `False` into
+the goal. The split is not cosmetic. A single step against the real goal also
+succeeds when the goal merely follows from the premises, and an omission judged
+that way accepts `omit C by contradiction e;` for a perfectly possible case `C`
+whenever `C`'s goal happens to be provable. Separating the steps makes "the
+context cannot occur" the content of a checked proof term rather than an
+inference drawn from one.
 
-A goal with structure is taken apart by the introduction rules -- quantifiers,
-premises, conjuncts, one disjunct -- and each equality left is closed from the
-contradiction. Those equalities must be of integers, because linear arithmetic
-states nothing else and no other rule derives an equality of structured values
-from a false one. That is a real limit of the core rather than an oversight, and
-such a goal is refused by name: closing it would need a new rule, growing the
-trusted surface to buy convenience.
+The first version of this mechanism added no rule: it carried absurdity as
+`0 == 1` over booleans and closed the goal from it with a second
+linear-arithmetic step, after taking the goal apart by its introduction rules.
+That reached every goal built from equalities of integers and nothing else, so
+a goal equating two records was refused by name, and whether a contradiction
+closed a goal depended on what the goal happened to be about. Falsity
+elimination replaces it. It is ordinary ex falso quodlibet, not an axiom or an
+assumption: it concludes nothing until evidence for `False` has been checked,
+and it is the only primitive that makes a contradiction independent of the
+goal's shape. A rule specific to equalities of structured values was rejected
+for the same reason; it would have left the next proposition form refused in
+turn. Kernel rules added: one. Axioms and assumptions added: none. The
+core/kernel version is 0.7.0, so evidence checked by an earlier kernel is not
+reused.
 
 Finding a certificate is search, and it is the search automation already runs
 for arithmetic goals, moved below both layers into `compiler/refutation` so that
@@ -249,7 +258,7 @@ discriminator premise, so the check is the one an arm would have received.
 
 Each omission that holds is an obligation of its own (CASE-012, CASE-016):
 origin `OmittedCase`, a goal stating that the premises standing in the case,
-closed over the binders they stand under, entail `0 == 1`, the refutation as its
+closed over the binders they stand under, entail `False`, the refutation as its
 evidence, and an identity that includes its origin, so an unreachable runtime
 path stating the same proposition never shares it. The kernel checks it apart
 from the proof it occurs in, and the trust report counts it apart from laws. A
@@ -311,6 +320,18 @@ facts, its certificate, a fact's stated proposition -- and check it against the
 wrong claim, and every corruption is refused. The same evidence claimed under
 `OmittedCase` and `ImpossiblePath` stays two obligations with two identities,
 and is reported under each claim's own name when refused.
+
+Falsity elimination is pinned by a matched pair whose goal equates two records:
+closed under a false premise, by a written proof and by automation, and refused
+under a satisfiable one. Kernel tests close every proposition form from a
+refuted fact, and refuse falsity elimination over reflexivity, over a
+hypothesis that is an absurd equality rather than `False`, over a satisfiable
+fact, over no facts, over a certificate naming a constraint that is not there,
+and over a fact restated as something its evidence does not establish. `False`
+alone is refused under every introduction, and a certificate that leaned on a
+negated goal is refused once the goal is `False`. Mutations that check the
+evidence against the goal, skip the check, or let `False`'s negation state a
+constraint are each caught.
 
 ## Abstract observation signature
 

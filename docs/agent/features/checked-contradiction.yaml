@@ -12,9 +12,10 @@ summary: >
   occur: the `contradiction evidence;` proof statement, and a case omitted from
   `cases` as `omit label by contradiction evidence;`. The named evidence and the
   premises standing where it is written, an omitted case's own discriminator
-  included, are refuted into an equality no value satisfies before the goal is
-  considered, by ordinary kernel-checked linear arithmetic. An omission is an
-  obligation of its own, kept distinct from an unreachable runtime path.
+  included, are refuted into `False` before the goal is considered, by ordinary
+  kernel-checked linear arithmetic, and the goal is then closed from `False` by
+  falsity elimination, whatever its shape. An omission is an obligation of its
+  own, kept distinct from an unreachable runtime path.
 
 normative_sources:
   spec:
@@ -29,7 +30,9 @@ normative_sources:
     - "§49 Canonical formatting"
   foundations:
     - "Contradiction and explosion"
+    - "§B.13 False elimination"
   trust:
+    - "§5.1 Proof checker (TCB-CORE-017)"
     - "§6 Untrusted proof producers"
     - "§19 Case analysis, decomposition and representation models"
 
@@ -58,6 +61,11 @@ depends_on:
   - obligation-identity
 
 implementation:
+  kernel:
+    - kernel/include/cppl/kernel/proposition.hpp
+    - kernel/include/cppl/kernel/proof.hpp
+    - kernel/src/check.cpp
+    - kernel/src/linear.cpp
   frontend:
     - compiler/frontend/src/recognizer.cpp
     - compiler/frontend/include/cppl/frontend/syntax.hpp
@@ -76,6 +84,7 @@ implementation:
     - compiler/refutation/src/refute.cpp
   automation:
     - compiler/automation/src/evidence.cpp
+    - compiler/automation/src/arithmetic.cpp
   driver:
     - compiler/driver/src/pipeline.cpp
     - compiler/driver/src/driver.cpp
@@ -111,7 +120,9 @@ tests:
     - tests/fixtures/negative/omission_and_arm.cpp
     - tests/fixtures/negative/contradiction_satisfiable.cpp
     - tests/fixtures/negative/contradiction_not_an_equality.cpp
-    - tests/fixtures/negative/contradiction_structured_value_goal.cpp
+    - tests/fixtures/negative/contradiction_structured_goal_satisfiable.cpp
+  kernel:
+    - tests/kernel/adversarial_kernel_test.cpp
   unit:
     - tests/unit/contradiction_test.cpp
     - tests/unit/lsp_decomposition_view_test.cpp
@@ -130,6 +141,8 @@ required_test_categories:
   - residual case omitted by its discriminator
   - omission under a quantifier the cases statement introduces
   - corrupted omission evidence
+  - a goal equating structured values, closed and refused as a matched pair
+  - falsity elimination over evidence that does not establish False
   - one contradiction under two origins
   - contextual words as ordinary identifiers
   - erasure

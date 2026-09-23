@@ -588,6 +588,7 @@ Conceptually:
 ```text
 Bool(e)
 Eq<T>(t, u)
+False
 P && Q
 P || Q
 P -> Q
@@ -596,6 +597,9 @@ forall (x : T), P
 exists (x : T), P
 memory propositions defined by SPEC.md
 ```
+
+`False` has no surface spelling. It is the proposition a checked contradiction
+establishes (§26), and nothing introduces it.
 
 `P <-> Q` is derived:
 
@@ -1034,16 +1038,25 @@ derivation of any proposition:
 C++L need not expose `False` as a special surface keyword for the principle to
 matter.
 
-The current formal core has no `False` constant and no rule of its own for
-False-E. `False` is carried by an equality no value satisfies, `0 == 1` over
-booleans, and False-E is derived rather than primitive: linear arithmetic refutes
-`F1 /\ ... /\ Fn /\ not G`, and a fact that no value satisfies refutes that system
-whatever `G` is. What that derives is a goal built from equalities of integers,
-which is every goal linear arithmetic can state; introducing the goal's
-quantifiers, premises, conjuncts and one disjunct first reaches the rest of the
-propositions whose equalities are of integers. An equality of structured values
-is not reached this way, and reaching it would take a primitive False-E: a new
-kernel rule, not a derivation (`SPEC.md` `CASE-011`).
+The formal core has `False` as a proposition and False-E as a primitive rule.
+The goal `P` may be any well-formed proposition: an equality of integers, an
+equality of structured values, a quantifier, a connective, or `False` itself.
+False-E is ordinary ex falso quodlibet, not an axiom and not an assumption: it
+concludes nothing unless evidence for `False` has already been checked.
+
+`False` has no introduction rule. Evidence for it arises in exactly three ways:
+
+```text
+a hypothesis supposing it           h : False  in Γ
+an elimination that yields it       e.g. Imp-E on  P -> False  and  P
+linear arithmetic over facts alone  F1, ..., Fn  refuted with no goal
+```
+
+The third is the one a contradiction uses. Linear arithmetic refutes
+`F1 /\ ... /\ Fn /\ not G`; for `G = False`, `not G` holds outright and states no
+constraint, so the certificate must refute the facts themselves. That is what
+separates showing a context cannot occur from closing a goal that merely
+follows from it (`SPEC.md` `CASE-011`, `CASE-013`).
 
 The crucial soundness condition is that contradiction itself must be derived from
 valid premises.
@@ -4003,7 +4016,8 @@ x does not escape into Q
 Γ ⊢ absurd(f) : P
 ```
 
-when `False` is represented/derived in the formal environment.
+for any well-formed `P`. `False` is a proposition of the core with no
+introduction rule; see §26 for how evidence for it arises.
 
 ## B.14 Conditional/case composition
 

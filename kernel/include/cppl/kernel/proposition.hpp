@@ -68,8 +68,15 @@ struct Or {
     friend bool operator==(const Or&, const Or&) = default;
 };
 
+// Falsity (FOUNDATIONS.md 26). No rule introduces it: evidence for it exists only
+// where a hypothesis supposes it or linear arithmetic refutes the facts alone,
+// and its one use is eliminating it into any goal.
+struct Falsity {
+    friend bool operator==(const Falsity&, const Falsity&) = default;
+};
+
 struct Proposition {
-    std::variant<Eq, Forall, Implies, And, Or> node;
+    std::variant<Eq, Forall, Implies, And, Or, Falsity> node;
 
     static Proposition equality(Type type, Term lhs, Term rhs) {
         return Proposition{Eq{std::move(type), std::move(lhs), std::move(rhs)}};
@@ -89,6 +96,10 @@ struct Proposition {
 
     static Proposition disjunction(Proposition left, Proposition right) {
         return Proposition{Or{Box<Proposition>{std::move(left)}, Box<Proposition>{std::move(right)}}};
+    }
+
+    static Proposition falsity() {
+        return Proposition{Falsity{}};
     }
 
     friend bool operator==(const Proposition&, const Proposition&) = default;

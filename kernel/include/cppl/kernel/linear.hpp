@@ -52,7 +52,8 @@ struct ArithmeticSystem {
 };
 
 // Translates facts and a negated goal, each an equality between well-typed
-// terms, into an arithmetic system (SPEC.md 7.5).
+// terms, into an arithmetic system (SPEC.md 7.5). A goal of `False` contributes
+// no constraint: its negation holds outright.
 //
 // Every term is normalized and read as a polynomial of its machine type. A
 // monomial becomes a variable bounded by that type; a polynomial that is not a

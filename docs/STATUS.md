@@ -202,15 +202,17 @@ results are proven on every return. The boundary is stated under
 `contradiction e;` is `PROTOTYPE`: a proof statement that closes the goal from
 evidence that the context where it is written cannot occur (`GRAMMAR.md` 5.6,
 `SPEC.md` `CASE-011`, `CASE-013`). The named evidence and every premise standing
-there are first refuted into `0 == 1`, which the goal takes no part in, and only
-then is the goal closed from that, so a goal that merely follows from the
-premises establishes nothing. Both steps are ordinary linear arithmetic whose
-certificates the kernel checks against constraints it states itself. The
-certificates are found by the same bounded refutation search automation uses
+there are first refuted into `False` by linear arithmetic, which the goal takes
+no part in, and only then is the goal closed from that by falsity elimination,
+so a goal that merely follows from the premises establishes nothing. The kernel
+checks the certificate against constraints it states itself. Certificates are
+found by the same bounded refutation search automation uses
 (`compiler/refutation`), which is untrusted: when it finds nothing, the claim is
-unproven, never an impossibility (`CASE-015`). No kernel rule, axiom or trusted
-mechanism is added. The goal may have any shape: its quantifiers, premises,
-conjuncts and one disjunct are introduced by the ordinary rules.
+unproven, never an impossibility (`CASE-015`). The goal may have any shape,
+an equality of structured values such as two records included, because falsity
+elimination looks only at the evidence for `False`. Automation closes a goal
+from contradictory premises the same way, so a path whose premises cannot hold
+is proven whatever its goal equates. No axiom or trusted mechanism is added.
 
 Omitting a case is `PROTOTYPE`: `omit label by contradiction e;` inside a
 `cases` statement accounts for a case without an arm (`GRAMMAR.md` 5.7,
@@ -225,12 +227,7 @@ stated apart from the proof it is written in, and evidence the kernel checks
 against that goal. The trust report counts them as `Omitted cases proven`, apart
 from the laws they occur in.
 
-What is not built. A contradiction closes a goal only where the goal is built
-from equalities of integers, which includes booleans, enumerations and pointer
-observations. An equality of structured values, such as two records, cannot be
-derived from a false fact by any existing kernel rule, so such a goal is refused
-by name rather than closed by a new rule. Runtime path discharge (`VERIFIED-023`)
-has no source form: its origin (`ImpossiblePath`), identity and diagnostics are
+What is not built. Runtime path discharge (`VERIFIED-023`) has no source form: its origin (`ImpossiblePath`), identity and diagnostics are
 distinct from an omission's and are exercised below the surface, but nothing in a
 verified body can yet claim a path impossible, so the trust report's `Impossible
 paths proven` line reads 0.
@@ -425,6 +422,7 @@ The project should not claim broad language implementation before the proof sema
 | Linear arithmetic (certificates)     | `PROTOTYPE`   |
 | Conjunction introduction/elimination | `PROTOTYPE`   |
 | Disjunction introduction/elimination | `PROTOTYPE`   |
+| Falsity elimination                  | `PROTOTYPE`   |
 | Existential introduction/elimination | `NOT STARTED` |
 | Induction checking                   | `NOT STARTED` |
 | Refinement introduction/elimination  | `NOT STARTED` |
@@ -437,7 +435,7 @@ The project should not claim broad language implementation before the proof sema
 | Mechanized core calculus             | `NOT STARTED` |
 | Meta-theory / soundness proofs       | `NOT STARTED` |
 
-The kernel implements thirteen rules:
+The kernel implements fourteen rules:
 
 ```text
 1. Reflexivity
@@ -453,10 +451,14 @@ The kernel implements thirteen rules:
 11. Conjunction elimination (left or right)
 12. Disjunction introduction (left or right)
 13. Disjunction elimination (a case for each side)
+14. Falsity elimination (any goal, from evidence for False)
 ```
 
 They act over propositions built from equality, universal quantification,
-implication, conjunction and disjunction. The kernel's terms are variables,
+implication, conjunction, disjunction and `False`. `False` has no introduction
+rule (`TRUST.md` TCB-CORE-017): evidence for it comes from a hypothesis, from an
+elimination, or from linear arithmetic refuting its facts with no goal taking
+part (core/kernel 0.7.0). The kernel's terms are variables,
 machine-integer literals, applications of admitted definitions, observations of
 an abstract value (at a constant position, or at an index that is itself a
 term), and primitives: wrapping addition, subtraction and multiplication, the
@@ -467,7 +469,9 @@ Reflexivity decides definitional equality by normalization, which puts machine
 arithmetic in polynomial normal form modulo `2^width` and comparisons in
 canonical form (`SPEC.md` 7.1.1). Linear arithmetic concludes an equality or
 comparison from facts whose evidence it checks, by checking a certificate
-against the integer constraint system it states for them (`SPEC.md` 7.5).
+against the integer constraint system it states for them (`SPEC.md` 7.5). It
+concludes `False` when the certificate refutes the facts alone, and falsity
+elimination then closes any goal from that (`FOUNDATIONS.md` 26).
 Property testing currently covers the normal form only: random terms and their
 normal forms are evaluated by an independent evaluator on every assignment of
 small types.

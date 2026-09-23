@@ -105,8 +105,12 @@ class Builder {
         return equal(*lhs, *rhs);
     }
 
-    // The goal's negation: the goal fails to hold.
+    // The goal's negation: the goal fails to hold. `False` always fails to hold,
+    // so its negation constrains nothing and the facts must be refuted alone.
     std::expected<void, CoreError> refuted(const Proposition& goal) {
+        if (std::holds_alternative<Falsity>(goal.node)) {
+            return {};
+        }
         const auto* equality = std::get_if<Eq>(&goal.node);
         if (equality == nullptr || !equality->type.is_integer()) {
             return fail("linear arithmetic establishes an equality of integers");

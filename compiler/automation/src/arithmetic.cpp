@@ -491,16 +491,23 @@ class Prover {
         return k::Term::primitive(k::PrimOp::Equal, equality->type.integer_type(), {equality->lhs, equality->rhs});
     }
 
+    // A goal arithmetic cannot state, such as an equality of structured values,
+    // still follows from premises that are contradictory on their own: they are
+    // refuted into `False` with no goal taking part, and the goal is closed from
+    // that by falsity elimination.
     std::optional<k::ProofTerm> by_arithmetic(const k::Proposition& goal) const {
-        if (!std::holds_alternative<k::Eq>(goal.node)) {
+        const auto* equality = std::get_if<k::Eq>(&goal.node);
+        if (equality == nullptr && !std::holds_alternative<k::Falsity>(goal.node)) {
             return std::nullopt;
         }
+        const bool stated = equality == nullptr || equality->type.is_integer();
         std::vector<k::ArithmeticFact> used = facts();
         std::vector<k::Proposition> propositions;
         propositions.reserve(used.size());
         for (const auto& fact : used)
             propositions.push_back(fact.proposition);
-        const auto system = k::arithmetic_system(context_, propositions, goal, k::CoreLimits{});
+        const auto system =
+            k::arithmetic_system(context_, propositions, stated ? goal : k::Proposition::falsity(), k::CoreLimits{});
         if (!system) {
             return std::nullopt;
         }
@@ -508,7 +515,8 @@ class Prover {
         if (!certificate) {
             return std::nullopt;
         }
-        return k::ProofTerm::linear_arithmetic(std::move(used), std::move(*certificate));
+        auto proof = k::ProofTerm::linear_arithmetic(std::move(used), std::move(*certificate));
+        return stated ? proof : k::ProofTerm::falsity_elimination(std::move(proof));
     }
 
     bool definitional(const k::Proposition& goal) const {

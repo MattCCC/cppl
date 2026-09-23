@@ -282,8 +282,8 @@ What decomposition still does not do:
    rather than letting a provider guess it, as an obligation of its own. What
    remains in this phase is a source form for unreachable runtime paths
    (`VERIFIED-023`), which reuses the same mechanism under its own obligation
-   origin (`SPEC.md` `CASE-012`), and closing goals that equate structured
-   values, which the current core cannot derive from a contradiction.
+   origin (`SPEC.md` `CASE-012`). A contradiction closes a goal of any shape,
+   structured-value equalities included, by falsity elimination.
 
 Neither delivers induction or recursive proof admission.
 

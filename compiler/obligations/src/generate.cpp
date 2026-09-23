@@ -23,11 +23,9 @@ namespace cppl::obligations {
 
 namespace {
 
-using detail::absurdity;
 using detail::arithmetic_fact;
 using detail::Failure;
-using detail::from_absurdity;
-using detail::refute_facts;
+using detail::Standing;
 using detail::Unestablished;
 
 std::unexpected<Failure> fail(std::string reason, const source::SourceLocation& location) {
@@ -735,6 +733,10 @@ void encode(source::Hasher& hasher, const kernel::Proposition& proposition) {
         encode(hasher, *disjunction->right);
         return;
     }
+    if (std::holds_alternative<kernel::Falsity>(proposition.node)) {
+        hasher.update_u8(25);
+        return;
+    }
     const auto& equality = std::get<kernel::Eq>(proposition.node);
     hasher.update_u8(21);
     encode(hasher, equality.type);
@@ -774,6 +776,9 @@ void collect_dependencies(const kernel::Context& context, const kernel::Proposit
     if (const auto* disjunction = std::get_if<kernel::Or>(&proposition.node)) {
         collect_dependencies(context, *disjunction->left, reached);
         collect_dependencies(context, *disjunction->right, reached);
+        return;
+    }
+    if (std::holds_alternative<kernel::Falsity>(proposition.node)) {
         return;
     }
     const auto& equality = std::get<kernel::Eq>(proposition.node);
@@ -889,6 +894,16 @@ bool conclusion_is_applicable(const kernel::Proposition& available, const kernel
         reason = available_or != nullptr ? "it states a disjunction the goal does not"
                                          : "the goal states a disjunction it does not";
         return false;
+    }
+
+    const bool available_false = std::holds_alternative<kernel::Falsity>(available.node);
+    const bool goal_false = std::holds_alternative<kernel::Falsity>(goal.node);
+    if (available_false || goal_false) {
+        if (available_false != goal_false) {
+            reason = available_false ? "it concludes False where the goal is an equality"
+                                     : "the goal is False and it concludes an equality";
+        }
+        return available_false == goal_false;
     }
 
     const auto& available_equality = std::get<kernel::Eq>(available.node);
@@ -1067,6 +1082,9 @@ kernel::Proposition abstract_occurrences(const kernel::Proposition& proposition,
     if (const auto* disjunction = std::get_if<kernel::Or>(&proposition.node)) {
         return kernel::Proposition::disjunction(abstract_occurrences(*disjunction->left, target, depth, found),
                                                 abstract_occurrences(*disjunction->right, target, depth, found));
+    }
+    if (std::holds_alternative<kernel::Falsity>(proposition.node)) {
+        return proposition;
     }
     const auto& equality = std::get<kernel::Eq>(proposition.node);
     return kernel::Proposition::equality(equality.type, abstract_occurrences(equality.lhs, target, depth, found),
@@ -1414,16 +1432,16 @@ std::optional<kernel::ProofTerm> transport(Body& body, const vir::ProofStep& ste
 // Records an established omission as the obligation CASE-012 and CASE-016
 // require, with an origin, provenance and identity of its own and a goal that
 // stands apart from the proof it was written in: that the premises standing in
-// the omitted case, closed over the binders they stand under, cannot all hold.
-// Its evidence is the refutation `absurd`, which the kernel checks against that
-// goal on its own.
+// the omitted case, closed over the binders they stand under, cannot all hold:
+// that together they establish `False`. Its evidence is the refutation `absurd`,
+// which the kernel checks against that goal on its own.
 //
 // Every premise in `body` is stated at the body's depth (`Underneath`), so they
 // are introduced after all the binders, in the order they were assumed; that
 // keeps each hypothesis the refutation names at the same position it had where
 // the refutation was built.
 void record_omission(const Body& body, const vir::CaseArm& arm, const kernel::ProofTerm& absurd) {
-    kernel::Proposition goal = absurdity();
+    kernel::Proposition goal = kernel::Proposition::falsity();
     kernel::ProofTerm evidence = absurd;
     for (std::size_t index = body.assumptions.size(); index > 0; --index) {
         const kernel::Proposition& premise = body.assumptions[index - 1].second;
@@ -1454,23 +1472,25 @@ void record_omission(const Body& body, const vir::CaseArm& arm, const kernel::Pr
 // The contradiction is between the named evidence and every premise standing
 // here, which for an omitted case includes that case's own discriminator
 // (CASE-013). It is established on its own, before the goal is looked at: the
-// premises are refuted into `absurdity()`, whose negation holds outright, and
-// only then is the goal closed from that. A goal that merely follows from the premises
-// therefore establishes nothing here, so neither form can close a case whose
-// goal happened to be provable while claiming the case cannot occur.
+// premises are refuted into `False`, which no goal takes part in, and only then
+// is the goal closed from that by falsity elimination, whatever its shape. A
+// goal that merely follows from the premises therefore establishes nothing
+// here, so neither form can close a case whose goal happened to be provable
+// while claiming the case cannot occur.
 //
-// Both steps are ordinary linear arithmetic (contradiction.hpp), so this adds
-// no rule and asserts nothing: the kernel states and refutes the constraints
-// itself (CASE-014), and a context not shown contradictory is an ordinary
-// unproven claim (CASE-005, CASE-015), never an impossibility.
+// The refutation is linear arithmetic whose certificate the kernel checks
+// against constraints it states itself (CASE-014), and a context not shown
+// contradictory is an ordinary unproven claim (CASE-005, CASE-015), never an
+// impossibility.
 std::optional<kernel::ProofTerm> prove_contradiction(Body& body, const vir::ProofStep& step,
                                                      const vir::ContradictionStep& contradiction,
                                                      const kernel::Proposition& goal, diagnostics::Engine& engine,
                                                      const vir::CaseArm* omitted = nullptr) {
     // The goal's own quantifiers come first, as for every statement that names
-    // evidence, because an argument may mention them.
+    // evidence, because an argument may mention them. What stands beneath them
+    // is closed whatever it is, so only the binders are kept.
     std::vector<kernel::Type> binders;
-    const kernel::Proposition* inner = under_quantifiers(goal, binders);
+    under_quantifiers(goal, binders);
     const Underneath introduced(body, binders);
 
     const std::string& name = contradiction.evidence.name;
@@ -1500,37 +1520,20 @@ std::optional<kernel::ProofTerm> prove_contradiction(Body& body, const vir::Proo
         return std::nullopt;
     }
 
-    // The named evidence, then every standing premise from the innermost out.
-    // An omitted case's discriminator is the innermost, so it is never the one
-    // left out if the core's limit on facts is reached. A conjunction - a
-    // residual case's exclusions - contributes each conjunct. A premise linear
-    // arithmetic cannot state takes no part: leaving it out can only fail to
-    // find a contradiction, never make one appear.
-    const kernel::CoreLimits limits{};
+    // Every standing premise, from the innermost out, so an omitted case's
+    // discriminator is never the one left out.
     const kernel::Proposition established = instantiated->proposition;
-    std::vector<kernel::ArithmeticFact> facts;
-    facts.push_back(kernel::ArithmeticFact{established, kernel::Box<kernel::ProofTerm>{std::move(instantiated->term)}});
-    const auto state = [&](auto&& self, const kernel::Proposition& proposition, kernel::ProofTerm term) -> void {
-        if (facts.size() >= limits.max_arithmetic_facts) {
-            return;
-        }
-        if (const auto* conjunction = std::get_if<kernel::And>(&proposition.node)) {
-            self(self, *conjunction->left, kernel::ProofTerm::conjunction_elimination(proposition, term, false));
-            self(self, *conjunction->right,
-                 kernel::ProofTerm::conjunction_elimination(proposition, std::move(term), true));
-            return;
-        }
-        if (arithmetic_fact(body.context, proposition)) {
-            facts.push_back(kernel::ArithmeticFact{proposition, kernel::Box<kernel::ProofTerm>{std::move(term)}});
-        }
-    };
+    std::vector<Standing> standing;
+    standing.reserve(body.assumptions.size());
     for (std::size_t index = body.assumptions.size(); index > 0; --index) {
-        state(state, body.assumptions[index - 1].second,
-              kernel::ProofTerm::hypothesis(
-                  kernel::HypothesisIndex{static_cast<std::uint32_t>(body.assumptions.size() - index)}));
+        standing.push_back(Standing{body.assumptions[index - 1].second,
+                                    kernel::ProofTerm::hypothesis(kernel::HypothesisIndex{
+                                        static_cast<std::uint32_t>(body.assumptions.size() - index)})});
     }
 
-    std::expected<kernel::ProofTerm, Unestablished> absurd = refute_facts(body.context, std::move(facts));
+    std::expected<kernel::ProofTerm, Unestablished> absurd = detail::refute(
+        body.context,
+        kernel::ArithmeticFact{established, kernel::Box<kernel::ProofTerm>{std::move(instantiated->term)}}, standing);
     if (!absurd.has_value()) {
         if (absurd.error().kind == Unestablished::Kind::Unreadable) {
             report(engine, diagnostics::Category::ProofFailure, step.location,
@@ -1556,14 +1559,7 @@ std::optional<kernel::ProofTerm> prove_contradiction(Body& body, const vir::Proo
         record_omission(body, *omitted, *absurd);
     }
 
-    std::expected<kernel::ProofTerm, Unestablished> closed = from_absurdity(body.context, std::move(*absurd), *inner);
-    if (!closed.has_value()) {
-        report(engine, diagnostics::Category::ProofFailure, step.location,
-               "a contradiction closes a goal only where that goal is built from equalities of integers",
-               "the goal here is " + kernel::describe(*inner) + ": " + closed.error().detail);
-        return std::nullopt;
-    }
-    return quantify(binders, std::move(*closed));
+    return quantify(binders, kernel::ProofTerm::falsity_elimination(std::move(*absurd)));
 }
 
 // At most this many arms in one statement, so malformed VIR cannot make

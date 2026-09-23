@@ -127,7 +127,8 @@ Normative sources: `CASE-004`, `CASE-005`, `CASE-011`–`CASE-016` (SPEC §20.2,
 | frontend | Recognize `contradiction evidence;` at a statement's start in a proof body, and `omit label by contradiction evidence;` inside `cases` only where a label followed by `by` comes after `omit`. Read the statement after `by` with the ordinary statement parser. | `compiler/frontend/src/recognizer.cpp`, `compiler/frontend/include/cppl/frontend/syntax.hpp` |
 | elaboration | Resolve an omission's label through the same path as an arm's, so a case is accounted for exactly once. | `compiler/elaboration/src/elaborate.cpp` |
 | vir | Carry `ContradictionStep` and mark an omitted `CaseArm` explicitly, never by its shape. | `vir/include/cppl/vir/module.hpp` |
-| obligations | State the named evidence and every standing premise, refute them into `0 == 1`, close the goal from that, and record each omission as an obligation of its own with an origin-bearing identity. Keep every standing premise at the current depth. | `compiler/obligations/src/contradiction.cpp`, `compiler/obligations/src/generate.cpp`, `compiler/obligations/include/cppl/obligations/obligation.hpp` |
+| kernel | `False` with no introduction rule; falsity elimination closes any goal from evidence for it; linear arithmetic concludes `False` from facts alone. | `kernel/include/cppl/kernel/proposition.hpp`, `kernel/include/cppl/kernel/proof.hpp`, `kernel/src/check.cpp`, `kernel/src/linear.cpp` |
+| obligations | State the named evidence and every standing premise, refute them into `False`, eliminate that into the goal, and record each omission as an obligation of its own with an origin-bearing identity. Keep every standing premise at the current depth. | `compiler/obligations/src/contradiction.cpp`, `compiler/obligations/src/generate.cpp`, `compiler/obligations/include/cppl/obligations/obligation.hpp` |
 | refutation | Propose certificates; never decide. | `compiler/refutation/src/refute.cpp` |
 | automation | Submit an omission's own evidence and nothing else; name each origin in its own diagnostic. | `compiler/automation/src/evidence.cpp` |
 | driver | Count omitted cases and impossible paths apart from laws and from each other. | `compiler/driver/src/pipeline.cpp`, `compiler/driver/src/driver.cpp` |
@@ -156,7 +157,7 @@ the construct            erases completely
 ```text
 omission x every decomposition provider    CASE-*, TCB-DECOMP-*
 contradiction x quantified goals           FORALL-*
-contradiction x structured goals           CASE-014 (equalities of integers only)
+contradiction x structured goals           CASE-014, TCB-CORE-017 (any goal, by falsity elimination)
 premises x quantifiers introduced later    PROOF-*
 words x ordinary C++ identifiers           WORD-*, CXX-*
 omission x erasure                         ERASE-*
@@ -169,11 +170,10 @@ tests/fixtures/omitted_case.cpp           accepted omissions, and the accepted h
 tests/fixtures/contradiction.cpp          the statement under flat and structured goals
 tests/negative/contradictions.sh          every rejection, written out in tests/fixtures/negative/
 tests/unit/contradiction_test.cpp         evidence shape, corruption, and the two origins
+tests/kernel/adversarial_kernel_test.cpp  falsity elimination and how False may be established
 ```
 
-Not built: a source form for an unreachable runtime path (`VERIFIED-023`), and
-closing a goal that equates structured values, which no existing kernel rule
-derives from a contradiction.
+Not built: a source form for an unreachable runtime path (`VERIFIED-023`).
 
 ---
 
