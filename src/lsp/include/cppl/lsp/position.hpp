@@ -28,7 +28,6 @@ class PositionMapper {
     // Convert source::ByteSpan to LSP Range
     [[nodiscard]] Range byte_span_to_range(source::ByteSpan span) const;
 
-
   private:
     std::string_view text_;
     std::vector<std::size_t> line_starts_; // byte offset of each line start

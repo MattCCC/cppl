@@ -488,17 +488,18 @@ CPPL_TEST(contradiction_where_no_statement_begins_is_not_a_claim) {
 
 CPPL_TEST(every_proof_statement_records_where_its_keyword_was_written) {
     // The keyword alone, not the statement: it is what an editor colors.
-    const std::string text = "proof p(E s, int a) proves (a == a) {\n"
-                             "    assume h : a == a;\n"
-                             "    rewrite h;\n"
-                             "    apply h;\n"
-                             "    exact h;\n"
-                             "    contradiction h;\n"
-                             "    induction a;\n"
-                             "    cases s { omit E::b by contradiction h; E::a => { refl; } }\n"
-                             "    decompose s { unnamed(v) => { refl; } }\n"
-                             "}\n"
-                             "verified int f(int x) ensures (result == x) { if (x != x) { contradiction p; } return x; }\n";
+    const std::string text =
+        "proof p(E s, int a) proves (a == a) {\n"
+        "    assume h : a == a;\n"
+        "    rewrite h;\n"
+        "    apply h;\n"
+        "    exact h;\n"
+        "    contradiction h;\n"
+        "    induction a;\n"
+        "    cases s { omit E::b by contradiction h; E::a => { refl; } }\n"
+        "    decompose s { unnamed(v) => { refl; } }\n"
+        "}\n"
+        "verified int f(int x) ensures (result == x) { if (x != x) { contradiction p; } return x; }\n";
     Recognized result;
     recognize(text, result);
     CPPL_CHECK(!result.engine.has_errors());
@@ -507,7 +508,7 @@ CPPL_TEST(every_proof_statement_records_where_its_keyword_was_written) {
     };
 
     const auto& statements = result.syntax.proofs[0].statements;
-    const std::vector<std::string> keywords = {"assume",    "rewrite", "apply", "exact",
+    const std::vector<std::string> keywords = {"assume",        "rewrite",   "apply", "exact",
                                                "contradiction", "induction", "cases", "decompose"};
     CPPL_CHECK_EQ(statements.size(), keywords.size());
     for (std::size_t index = 0; index < keywords.size(); ++index) {

@@ -225,7 +225,8 @@ std::optional<Hover> Server::text_document_hover(const TextDocumentIdentifier& i
     return case_site_hover(*site);
 }
 
-std::optional<std::vector<std::uint32_t>> Server::text_document_semantic_tokens(const TextDocumentIdentifier& id) const {
+std::optional<std::vector<std::uint32_t>> Server::text_document_semantic_tokens(
+    const TextDocumentIdentifier& id) const {
     const Document* doc = documents_.get(id.uri);
     if (doc == nullptr) {
         return std::nullopt;

@@ -39,24 +39,19 @@ class Linter {
 
   private:
     void lint_laws(const std::vector<frontend::LawDeclaration>& laws, std::vector<Diagnostic>& out,
-                   const PositionMapper& mapper,
-                   const PublishedDocument& document) const;
+                   const PositionMapper& mapper, const PublishedDocument& document) const;
 
     void lint_proofs(const std::vector<frontend::ProofDeclaration>& proofs, std::vector<Diagnostic>& out,
-                     const PositionMapper& mapper,
-                   const PublishedDocument& document) const;
+                     const PositionMapper& mapper, const PublishedDocument& document) const;
 
     void lint_verified_functions(const std::vector<frontend::VerifiedFunction>& functions, std::vector<Diagnostic>& out,
-                                 const PositionMapper& mapper,
-                   const PublishedDocument& document) const;
+                                 const PositionMapper& mapper, const PublishedDocument& document) const;
 
     void lint_refinement_types(const std::vector<frontend::RefinementType>& refinements, std::vector<Diagnostic>& out,
-                               const PositionMapper& mapper,
-                   const PublishedDocument& document) const;
+                               const PositionMapper& mapper, const PublishedDocument& document) const;
 
     void lint_loops(const std::vector<frontend::LoopSpecification>& loops, std::vector<Diagnostic>& out,
-                    const PositionMapper& mapper,
-                   const PublishedDocument& document) const;
+                    const PositionMapper& mapper, const PublishedDocument& document) const;
 
     void check_clause_validity(const std::vector<frontend::Clause>& clauses, const std::string& context,
                                std::vector<Diagnostic>& out, const PositionMapper& mapper) const;

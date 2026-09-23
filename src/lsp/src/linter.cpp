@@ -172,7 +172,8 @@ void Linter::lint_proofs(const std::vector<frontend::ProofDeclaration>& proofs, 
 }
 
 void Linter::lint_verified_functions(const std::vector<frontend::VerifiedFunction>& functions,
-                                     std::vector<Diagnostic>& out, const PositionMapper& mapper, const PublishedDocument& document) const {
+                                     std::vector<Diagnostic>& out, const PositionMapper& mapper,
+                                     const PublishedDocument& document) const {
     for (const auto& func : functions) {
         if (!document.holds(func.keyword_location)) {
             continue;
@@ -185,7 +186,8 @@ void Linter::lint_verified_functions(const std::vector<frontend::VerifiedFunctio
 }
 
 void Linter::lint_refinement_types(const std::vector<frontend::RefinementType>& refinements,
-                                   std::vector<Diagnostic>& out, const PositionMapper& mapper, const PublishedDocument& document) const {
+                                   std::vector<Diagnostic>& out, const PositionMapper& mapper,
+                                   const PublishedDocument& document) const {
     for (const auto& refinement : refinements) {
         if (!document.holds(refinement.keyword_location)) {
             continue;

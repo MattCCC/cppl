@@ -135,7 +135,8 @@ CPPL_TEST(a_header_error_is_shown_on_the_include_that_brought_the_header_in) {
         CPPL_CHECK_EQ(where.range.start.line, 6u);
         CPPL_CHECK_EQ(where.range.start.character, 25u);
     }
-    CPPL_CHECK(std::ranges::all_of(published, [](const Diagnostic& diagnostic) { return diagnostic.range.start.line < 4; }));
+    CPPL_CHECK(
+        std::ranges::all_of(published, [](const Diagnostic& diagnostic) { return diagnostic.range.start.line < 4; }));
 }
 
 CPPL_TEST(a_note_in_the_document_points_into_the_document) {

@@ -14,7 +14,8 @@ namespace cppl::lsp {
 
 namespace {
 
-void collect_keywords(const std::vector<frontend::ProofStatement>& statements, std::vector<source::ByteSpan>& keywords) {
+void collect_keywords(const std::vector<frontend::ProofStatement>& statements,
+                      std::vector<source::ByteSpan>& keywords) {
     for (const frontend::ProofStatement& statement : statements) {
         keywords.push_back(statement.keyword);
         for (const frontend::ProofArm& arm : statement.arms) {

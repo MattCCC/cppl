@@ -176,9 +176,8 @@ CPPL_TEST(a_macro_expansion_keeps_its_columns_and_the_line_around_it_is_written)
     TokenStream stream = cppl::frontend::lex(preprocessed, "main.cpp");
     const std::uint32_t expanded = find(stream, "q")->column;
 
-    stream.use_written_columns([](const std::string&) -> std::optional<std::string> {
-        return std::string("int   x = TWICE(q)   +   y;\n");
-    });
+    stream.use_written_columns(
+        [](const std::string&) -> std::optional<std::string> { return std::string("int   x = TWICE(q)   +   y;\n"); });
     CPPL_CHECK_EQ(find(stream, "x")->column, 7u);
     CPPL_CHECK_EQ(find(stream, "q")->column, expanded);
     CPPL_CHECK_EQ(find(stream, "+")->column, 22u);
