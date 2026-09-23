@@ -392,10 +392,8 @@ std::vector<ClauseRegion> collect_regions(const frontend::TokenStream& stream, c
         for (const frontend::Clause& clause : loop.invariants) {
             region.clauses.push_back(&clause);
         }
-        if (loop.decreases.has_value()) {
-            // NOLINTNEXTLINE(bugprone-unchecked-optional-access): guarded on the
-            // line above; the check's dataflow does not carry the guard here.
-            region.clauses.push_back(&loop.decreases.value());
+        if (const std::optional<frontend::Clause>& decreases = loop.decreases; decreases.has_value()) {
+            region.clauses.push_back(&*decreases);
         }
         regions.push_back(std::move(region));
     }
