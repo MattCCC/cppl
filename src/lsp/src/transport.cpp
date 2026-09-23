@@ -2,6 +2,7 @@
 
 #include <istream>
 #include <ostream>
+#include <string_view>
 
 namespace cppl::lsp {
 
@@ -127,25 +128,37 @@ std::optional<Position> parse_position(const json::Value& value) {
     return position;
 }
 
+// Both ends are checked exactly as `parse_position` checks one, and an end
+// before its start names no text, so that is malformed too.
 std::optional<Range> parse_range(const json::Value& value) {
     const json::Value* start = value.find("start");
     const json::Value* end = value.find("end");
     if (start == nullptr || end == nullptr) {
         return std::nullopt;
     }
-    const auto start_line = start->find_number("line");
-    const auto start_character = start->find_number("character");
-    const auto end_line = end->find_number("line");
-    const auto end_character = end->find_number("character");
-    if (!start_line || !start_character || !end_line || !end_character) {
+    const std::optional<Position> from = parse_position(*start);
+    const std::optional<Position> to = parse_position(*end);
+    if (!from || !to) {
         return std::nullopt;
     }
-    Range range;
-    range.start.line = static_cast<std::uint32_t>(*start_line);
-    range.start.character = static_cast<std::uint32_t>(*start_character);
-    range.end.line = static_cast<std::uint32_t>(*end_line);
-    range.end.character = static_cast<std::uint32_t>(*end_character);
-    return range;
+    if (to->line < from->line || (to->line == from->line && to->character < from->character)) {
+        return std::nullopt;
+    }
+    return Range{*from, *to};
+}
+
+// A document version is an integer that arrives as a JSON double, and
+// narrowing a double outside `std::int32_t` is undefined behavior exactly as it
+// is for a position.
+std::optional<std::int32_t> parse_version(double number) {
+    constexpr double lowest = -2147483648.0;
+    constexpr double highest = 2147483647.0;
+    // NaN fails every comparison, so it is out of range here too.
+    const bool in_range = number >= lowest && number <= highest;
+    if (!in_range) {
+        return std::nullopt;
+    }
+    return static_cast<std::int32_t>(number);
 }
 
 // Dispatches one JSON-RPC message to `server`. Writes a response to
@@ -323,8 +336,22 @@ class Dispatcher {
         item.uri = *uri;
         item.text = *text;
         item.languageId = language_id.value_or("cppl");
-        item.version = version ? static_cast<std::int32_t>(*version) : 0;
+        item.version = checked_version(version, "textDocument/didOpen");
         server_.text_document_did_open(item);
+    }
+
+    // The version a notification carries, or 0 when it carries none or one no
+    // `std::int32_t` holds. A version is only recorded, so a bad one is logged
+    // rather than allowed to cost the text it arrived with.
+    std::int32_t checked_version(std::optional<double> version, std::string_view method) {
+        if (!version) {
+            return 0;
+        }
+        const std::optional<std::int32_t> checked = parse_version(*version);
+        if (!checked) {
+            log_ << "cppl-lsp: " << method << " has an out-of-range 'version'; recording 0\n";
+        }
+        return checked.value_or(0);
     }
 
     void handle_did_change(const json::Value* params) {
@@ -346,7 +373,7 @@ class Dispatcher {
         }
         VersionedTextDocumentIdentifier id;
         id.uri = *uri;
-        id.version = version ? static_cast<std::int32_t>(*version) : 0;
+        id.version = checked_version(version, "textDocument/didChange");
 
         std::vector<TextDocumentContentChangeEvent> events;
         for (const json::Value& change : changes->as_array()) {
@@ -358,6 +385,12 @@ class Dispatcher {
             event.text = *text;
             if (const json::Value* range = change.find("range")) {
                 event.range = parse_range(*range);
+                if (!event.range) {
+                    // Taken as a whole-document change, the fragment would
+                    // silently become the entire buffer.
+                    log_ << "cppl-lsp: textDocument/didChange skipping a change with a malformed 'range'\n";
+                    continue;
+                }
             }
             events.push_back(std::move(event));
         }
@@ -537,19 +570,15 @@ class Dispatcher {
                           "textDocument/onTypeFormatting missing 'textDocument.uri', 'position' or 'ch'");
             return;
         }
-        const auto line = position_value->find_number("line");
-        const auto column = position_value->find_number("character");
-        if (!line || !column) {
+        const std::optional<Position> position = parse_position(*position_value);
+        if (!position) {
             respond_error(*id, kInvalidParams, "textDocument/onTypeFormatting has a malformed 'position'");
             return;
         }
-        Position position;
-        position.line = static_cast<std::uint32_t>(*line);
-        position.character = static_cast<std::uint32_t>(*column);
 
         TextDocumentIdentifier document_id;
         document_id.uri = *uri;
-        respond_edits(*id, server_.text_document_on_type_formatting(document_id, position, *character));
+        respond_edits(*id, server_.text_document_on_type_formatting(document_id, *position, *character));
     }
 
     void publish_diagnostics(const std::string& uri, const std::vector<Diagnostic>& diagnostics) {

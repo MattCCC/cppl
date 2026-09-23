@@ -1,7 +1,11 @@
 #include "cppl/lsp/document.hpp"
 
 #include "cppl/frontend/token.hpp"
+#include "cppl/lsp/position.hpp"
 #include "cppl/lsp/uri.hpp"
+
+#include <cstddef>
+#include <string>
 
 namespace cppl::lsp {
 
@@ -20,15 +24,18 @@ void Document::update(std::string text, std::int32_t version) {
 
 void Document::apply_change(const TextDocumentContentChangeEvent& change, std::int32_t version) {
     if (!change.range.has_value()) {
-        // Full document sync
         update(change.text, version);
         return;
     }
-
-    // Incremental update (not yet implemented)
-    // For now, reject incremental changes
-    // This should not be called if we advertise Full sync
-    update(change.text, version);
+    // Full sync is advertised, so a client should not send a range. One that
+    // does has it applied where it lands: taken as the whole document, the
+    // fragment would silently replace the buffer.
+    const PositionMapper mapper(text_);
+    const std::size_t start = mapper.position_to_byte_offset(change.range->start);
+    const std::size_t end = mapper.position_to_byte_offset(change.range->end);
+    std::string text = text_;
+    text.replace(start, end > start ? end - start : 0, change.text);
+    update(std::move(text), version);
 }
 
 void Document::reparse() {

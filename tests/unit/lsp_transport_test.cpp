@@ -157,6 +157,83 @@ CPPL_TEST(a_negative_position_is_rejected_not_wrapped) {
     CPPL_CHECK(output.str().find("-32602") != std::string::npos);
 }
 
+CPPL_TEST(every_client_number_is_checked_before_it_is_narrowed) {
+    // Positions, ranges and versions all arrive as JSON doubles, and each is
+    // checked wherever it is read: narrowing one that does not fit is
+    // undefined behavior, which the UBSan configuration traps.
+    Server server;
+    std::istringstream input(
+        framed(R"({"jsonrpc":"2.0","id":1,"method":"textDocument/onTypeFormatting","params":{"textDocument":)"
+               R"({"uri":"file:///n.cpp"},"position":{"line":-1,"character":0},"ch":";"}})") +
+        framed(R"({"jsonrpc":"2.0","id":2,"method":"textDocument/rangeFormatting","params":{"textDocument":)"
+               R"({"uri":"file:///n.cpp"},"range":{"start":{"line":0,"character":-3},)"
+               R"("end":{"line":0,"character":1}}}})") +
+        framed(R"({"jsonrpc":"2.0","id":3,"method":"textDocument/rangeFormatting","params":{"textDocument":)"
+               R"({"uri":"file:///n.cpp"},"range":{"start":{"line":0,"character":0},)"
+               R"("end":{"line":1e300,"character":1}}}})") +
+        framed(R"({"jsonrpc":"2.0","method":"exit"})"));
+    std::ostringstream output;
+    std::ostringstream log;
+
+    [[maybe_unused]] const int exit_code = run_transport(server, input, output, log);
+    CPPL_CHECK(output.str().find(R"("id":1,"error":{"code":-32602)") != std::string::npos);
+    CPPL_CHECK(output.str().find(R"("id":2,"error":{"code":-32602)") != std::string::npos);
+    CPPL_CHECK(output.str().find(R"("id":3,"error":{"code":-32602)") != std::string::npos);
+}
+
+CPPL_TEST(a_range_that_ends_before_it_starts_is_malformed) {
+    Server server;
+    std::istringstream input(
+        framed(R"({"jsonrpc":"2.0","id":1,"method":"textDocument/rangeFormatting","params":{"textDocument":)"
+               R"({"uri":"file:///n.cpp"},"range":{"start":{"line":2,"character":0},)"
+               R"("end":{"line":1,"character":9}}}})") +
+        framed(R"({"jsonrpc":"2.0","method":"exit"})"));
+    std::ostringstream output;
+    std::ostringstream log;
+
+    [[maybe_unused]] const int exit_code = run_transport(server, input, output, log);
+    CPPL_CHECK(output.str().find(R"("id":1,"error":{"code":-32602)") != std::string::npos);
+}
+
+CPPL_TEST(an_out_of_range_version_costs_the_version_not_the_text) {
+    // The version is only recorded, so one no `std::int32_t` holds is logged
+    // and replaced by 0. The document itself is opened and changed as sent.
+    Server server;
+    std::istringstream input(
+        framed(R"({"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":)"
+               R"({"uri":"file:///v.cpp","languageId":"cpp","version":1e20,"text":"int x;"}}})") +
+        framed(R"({"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":)"
+               R"({"uri":"file:///v.cpp","version":-1e20},"contentChanges":[{"text":"int y;"}]}})") +
+        framed(R"({"jsonrpc":"2.0","method":"exit"})"));
+    std::ostringstream output;
+    std::ostringstream log;
+
+    [[maybe_unused]] const int exit_code = run_transport(server, input, output, log);
+    CPPL_CHECK(log.str().find("textDocument/didOpen has an out-of-range 'version'") != std::string::npos);
+    CPPL_CHECK(log.str().find("textDocument/didChange has an out-of-range 'version'") != std::string::npos);
+    // Opening and then changing the document each published its diagnostics.
+    CPPL_CHECK_EQ(count_messages(output.str()), 2u);
+}
+
+CPPL_TEST(a_change_with_a_malformed_range_is_skipped_not_taken_as_the_document) {
+    Server server;
+    std::istringstream input(
+        framed(R"({"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":)"
+               R"({"uri":"file:///r.cpp","languageId":"cpp","version":1,"text":"int x;"}}})") +
+        framed(R"({"jsonrpc":"2.0","method":"textDocument/didChange","params":{"textDocument":)"
+               R"({"uri":"file:///r.cpp","version":2},"contentChanges":[{"range":{"start":{"line":-1,)"
+               R"("character":0},"end":{"line":0,"character":0}},"text":"garbage"}]}})") +
+        framed(R"({"jsonrpc":"2.0","method":"exit"})"));
+    std::ostringstream output;
+    std::ostringstream log;
+
+    [[maybe_unused]] const int exit_code = run_transport(server, input, output, log);
+    CPPL_CHECK(log.str().find("skipping a change with a malformed 'range'") != std::string::npos);
+    // Only the open published: a change with nothing applicable left in it
+    // changes nothing and publishes nothing.
+    CPPL_CHECK_EQ(count_messages(output.str()), 1u);
+}
+
 CPPL_TEST(completion_without_a_position_is_an_invalid_params_error) {
     // A malformed request is rejected rather than answered with an empty
     // list, which would be indistinguishable from "nothing to suggest".

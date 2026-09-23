@@ -94,6 +94,50 @@ CPPL_TEST(document_manager_change) {
     CPPL_CHECK_EQ(doc->version(), 2);
 }
 
+CPPL_TEST(a_ranged_change_is_applied_where_it_lands) {
+    // Full sync is advertised, but a client that sends a range anyway must have
+    // it applied in place: taken as the whole document, the two characters
+    // below would silently become the entire buffer.
+    Document doc("file:///test.cpp", "int a = 1;\nint b = 2;\n", 1);
+    TextDocumentContentChangeEvent change;
+    change.range = Range{Position{1, 8}, Position{1, 9}};
+    change.text = "42";
+    doc.apply_change(change, 2);
+    CPPL_CHECK_EQ(doc.text(), "int a = 1;\nint b = 42;\n");
+    CPPL_CHECK_EQ(doc.version(), 2);
+}
+
+CPPL_TEST(a_ranged_change_counts_positions_in_utf16_units) {
+    // `é` is one UTF-16 unit and two UTF-8 bytes, so `x` is at character 5
+    // and byte 6.
+    Document doc("file:///test.cpp", "// é x\n", 1);
+    TextDocumentContentChangeEvent change;
+    change.range = Range{Position{0, 5}, Position{0, 6}};
+    change.text = "y";
+    doc.apply_change(change, 2);
+    CPPL_CHECK_EQ(doc.text(), "// é y\n");
+}
+
+CPPL_TEST(ranged_changes_apply_in_order_each_to_the_result_of_the_last) {
+    DocumentManager manager;
+    TextDocumentItem item;
+    item.uri = "file:///test.cpp";
+    item.text = "abc";
+    item.version = 1;
+    manager.open(item);
+
+    TextDocumentContentChangeEvent insert;
+    insert.range = Range{Position{0, 3}, Position{0, 3}};
+    insert.text = "d";
+    TextDocumentContentChangeEvent erase;
+    erase.range = Range{Position{0, 0}, Position{0, 1}};
+    manager.change(VersionedTextDocumentIdentifier{"file:///test.cpp", 2}, {insert, erase});
+
+    const Document* doc = manager.get("file:///test.cpp");
+    CPPL_CHECK(doc != nullptr);
+    CPPL_CHECK_EQ(doc->text(), "bcd");
+}
+
 CPPL_TEST(document_parses_valid_cppl) {
     std::string text = R"(
 law reflexivity(int x) proves (x == x);

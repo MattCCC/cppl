@@ -1160,4 +1160,8 @@ trigger character that would pull it into ordinary member access.
 `textDocument/didChange` is handled under full document sync
 (`TextDocumentSyncKind.Full`): the client resends the whole document on every
 change, which this server always accepts correctly regardless of what sync
-kind the client actually advertises support for.
+kind the client actually advertises support for. A change that carries a range
+anyway is applied where it lands rather than taken as the whole document, and
+one whose range is malformed is skipped and logged. Every position, range and
+version a client sends is checked before it is narrowed; one out of range is
+refused as invalid params, or, for a version, logged and recorded as 0.
