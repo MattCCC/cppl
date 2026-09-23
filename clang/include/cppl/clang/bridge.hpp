@@ -1,7 +1,6 @@
 #pragma once
 
 #include "cppl/clang/ast.hpp"
-#include "cppl/source/location.hpp"
 #include "cppl/source/projection.hpp"
 
 #include <expected>

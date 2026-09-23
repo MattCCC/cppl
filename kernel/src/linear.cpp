@@ -1,5 +1,7 @@
 #include "cppl/kernel/linear.hpp"
 
+#include "cppl/kernel/arithmetic.hpp"
+
 #include <map>
 #include <utility>
 #include <variant>

@@ -7,7 +7,6 @@
 #include "cppl/lsp/protocol.hpp"
 
 #include <memory>
-#include <optional>
 #include <string>
 #include <unordered_map>
 

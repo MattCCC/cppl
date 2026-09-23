@@ -1,6 +1,5 @@
 #pragma once
 
-#include "cppl/kernel/arithmetic.hpp"
 #include "cppl/kernel/context.hpp"
 #include "cppl/kernel/proof.hpp"
 #include "cppl/kernel/proposition.hpp"

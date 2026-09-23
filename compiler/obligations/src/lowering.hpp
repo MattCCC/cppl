@@ -1,7 +1,18 @@
 #pragma once
 
-#include "cppl/obligations/generate.hpp"
+#include "cppl/diagnostics/diagnostic.hpp"
+#include "cppl/kernel/context.hpp"
+#include "cppl/kernel/proposition.hpp"
+#include "cppl/kernel/term.hpp"
+#include "cppl/kernel/types.hpp"
+#include "cppl/obligations/obligation.hpp"
+#include "cppl/source/location.hpp"
+#include "cppl/vir/expr.hpp"
+#include "cppl/vir/module.hpp"
+#include "cppl/vir/types.hpp"
 
+#include <cstddef>
+#include <cstdint>
 #include <expected>
 #include <functional>
 #include <map>

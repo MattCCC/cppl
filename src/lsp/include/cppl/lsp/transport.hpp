@@ -9,7 +9,6 @@
 // std::istream and writes to an std::ostream so it, too, can be driven by a
 // test without a real subprocess and pipes.
 
-#include "cppl/lsp/json.hpp"
 #include "cppl/lsp/server.hpp"
 
 #include <iosfwd>

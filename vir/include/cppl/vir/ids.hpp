@@ -1,6 +1,8 @@
 #pragma once
 
-#include <compare>
+// A defaulted `operator<=>` returns a `<compare>` category type, a use the
+// include-cleaner does not see.
+#include <compare> // IWYU pragma: keep
 #include <cstdint>
 #include <string>
 

@@ -5,7 +5,6 @@
 #include "cppl/frontend/token.hpp"
 #include "cppl/lsp/protocol.hpp"
 
-#include <string_view>
 #include <vector>
 
 namespace cppl::lsp {

@@ -1,5 +1,7 @@
 #include "cppl/lsp/transport.hpp"
 
+#include "cppl/lsp/json.hpp"
+
 #include <istream>
 #include <ostream>
 #include <string_view>
