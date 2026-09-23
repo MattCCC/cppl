@@ -29,7 +29,8 @@ textDocument/formatting                     canonical C++L clause placement
 textDocument/rangeFormatting                scoped to the requested range
 textDocument/onTypeFormatting               scoped to the smallest safe unit
 textDocument/completion                     case labels a subject still owes
-textDocument/hover                          a case subject's state partition
+textDocument/hover                          C++ from Clang; C++L as written;
+                                            a case subject's state partition
 textDocument/codeAction                     syntax migrations; canonical fix-all
 textDocument/semanticTokens/full            proof-statement keywords
 textDocument/definition                     Clang, over the document's projection
@@ -615,6 +616,20 @@ The LSP determines how that information is presented.
 Hover information should combine ordinary C++ information with C++L information where appropriate.
 
 For an ordinary C++ entity, the result should primarily come from Clang.
+
+Implemented today: hover over a C++ name shows what Clang knows of it -- its
+kind and qualified name, its declaration without a body, a variable's type, a
+constant's or enumerator's value, a type's size and alignment, the comment
+written for it, and the file it is declared in when that is another. Over
+`auto` it shows the type deduced. Over a name that stands for a C++L
+declaration -- a Law named in a proof's claim or by a proof statement, a proof,
+a refinement type, a verified function, a name `assume` binds -- it shows that
+declaration as written, never what the projection generated for it: a Law is
+its `law` declaration, not a function returning `bool`, and a refinement type
+says what it refines and that it erases to its base type. `result` in a
+postcondition and `self` in a refinement predicate are declared only by
+generated code, so hover says what they mean. Inside a `cases` or `decompose`
+block, hover still shows the subject's states (see "Case arms").
 
 For C++L entities, hover may expose:
 
@@ -1285,10 +1300,10 @@ proof search / interactive proof state
 incremental (as opposed to full) text document sync
 ```
 
-Completion and hover cover C++L's own syntax: what states a `cases` subject
-has and which arms it still owes. Ordinary C++ completion and hover are
-clangd's, and this server does not try to duplicate them — it claims no
-trigger character that would pull it into ordinary member access.
+Completion covers C++L's own syntax: which arms a `cases` subject still owes.
+It claims no trigger character that would pull it into ordinary member access.
+Hover covers every name, from Clang for C++ and from the C++L declaration a
+name stands for (see "Hover").
 
 `textDocument/didChange` is handled under full document sync
 (`TextDocumentSyncKind.Full`): the client resends the whole document on every

@@ -36,7 +36,8 @@ otherwise `build\dev\bin\cppl-lsp.exe` under the open folder, otherwise
 Diagnostics, formatting, format-on-save and code actions, all from the server,
 for `*.cppl` files. Ordinary `.cpp` files keep their normal C++ tooling.
 
-The server also answers hover and completion inside a `cases` or `decompose`
+The server answers hover over any name -- what Clang knows of a C++ name, a
+C++L declaration as written -- and completion inside a `cases` or `decompose`
 arm block, which Visual Studio shows where its LSP client supports those
 features. Go To Definition is answered by Clang over the file's projection,
 for C++ and for the C++L declarations the projection stands for. The server

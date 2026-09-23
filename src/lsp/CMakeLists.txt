@@ -2,6 +2,7 @@ add_library(cppl_lsp STATIC
     src/decomposition_view.cpp
     src/document.cpp
     src/editor_view.cpp
+    src/hover.cpp
     src/json.cpp
     src/linter.cpp
     src/position.cpp
@@ -15,6 +16,7 @@ add_library(cppl_lsp STATIC
     include/cppl/lsp/diagnostic_codes.hpp
     include/cppl/lsp/document.hpp
     include/cppl/lsp/editor_view.hpp
+    include/cppl/lsp/hover.hpp
     include/cppl/lsp/json.hpp
     include/cppl/lsp/linter.hpp
     include/cppl/lsp/position.hpp

@@ -287,6 +287,10 @@ CPPL_TEST(auto_leads_to_the_type_it_was_deduced_as) {
     open(server, "file:///work/main.cpp", text);
     CPPL_CHECK_EQ(go(server, Destination::Definition, "file:///work/main.cpp", position_of(text, "auto")),
                   spans("main.cpp", text, "Widget"));
+    // Asked from inside the word, the word is what is asked about: Clang reads
+    // a token from where it is asked to, so the request is moved to its start.
+    CPPL_CHECK_EQ(go(server, Destination::Definition, "file:///work/main.cpp", position_of(text, "auto", 0, 2)),
+                  spans("main.cpp", text, "Widget"));
 }
 
 CPPL_TEST(an_overloaded_operator_leads_to_its_declaration) {

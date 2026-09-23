@@ -1392,6 +1392,7 @@ AI output must always be independently verified.
 | LSP: sync and diagnostics            | `PARTIAL`     |
 | LSP/CLI: canonical clause formatting | `PROTOTYPE`   |
 | LSP: case completion and hover       | `PROTOTYPE`   |
+| LSP: hover over C++ and C++L names   | `PROTOTYPE`   |
 | LSP: code actions                    | `PROTOTYPE`   |
 | LSP: proof-keyword semantic tokens   | `PROTOTYPE`   |
 | LSP: definition and declaration      | `PROTOTYPE`   |
@@ -1449,6 +1450,15 @@ rather than guess. Elaboration runs on publish rather than per keystroke, so
 offered labels may lag the buffer by one edit. A case split in a verified body
 is served the same way, from the states the compiler recorded while elaborating
 the body.
+
+Outside a case block, hover describes any name. For C++ it shows what Clang
+reports: the declaration's kind and qualified name, the declaration without a
+body, a variable's type, a constant's value where Clang evaluates it, a type's
+size and alignment, the declaration's comment, and the file it is declared in.
+For a name that stands for a C++L declaration -- a Law, a proof, a refinement
+type, a verified function, a name `assume` binds -- it shows the declaration as
+written rather than what the projection generated for it. `result` and `self`
+are explained, not shown as the generated parameters they are to Clang.
 
 `semanticTokensProvider` reports, as `keyword` tokens, the proof statements
 the editors' TextMate grammar cannot tell from C++ declarations, such as

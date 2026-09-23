@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -243,12 +244,17 @@ CPPL_TEST(completion_and_hover_do_not_require_a_diagnostic_publisher) {
     item.version = 1;
     server.text_document_did_open(item);
 
-    // Ordinary C++ with no `cases` in it: both answer emptily, and neither
-    // faults on a document whose compile ran with no publisher attached.
+    // Ordinary C++ with no `cases` in it: no arm is owed, hover is Clang's, and
+    // neither faults on a document whose compile ran with no publisher
+    // attached.
     TextDocumentIdentifier id;
     id.uri = "file:///nopublisher.cpp";
     CPPL_CHECK(server.text_document_completion(id, Position{0, 4}).empty());
-    CPPL_CHECK(!server.text_document_hover(id, Position{0, 4}).has_value());
+    const std::optional<Hover> hover = server.text_document_hover(id, Position{0, 4});
+    CPPL_CHECK(hover.has_value());
+    if (hover.has_value()) {
+        CPPL_CHECK(hover->contents.find("`main`") != std::string::npos);
+    }
 }
 
 namespace {

@@ -65,6 +65,31 @@ struct Entity {
     std::optional<Extent> declaration;
 };
 
+// What Clang knows about a name: what hover shows.
+struct Description {
+    // What kind of declaration it is, in words: "function", "variable", ...
+    std::string kind;
+    std::string name;
+    // Its name with every enclosing namespace and class.
+    std::string qualified_name;
+    // The declaration as Clang prints it, without a body.
+    std::string declaration;
+    // The type of a variable, parameter, field or alias, and of what `auto`
+    // was deduced as.
+    std::string type;
+    // A constant's value, where Clang can evaluate it.
+    std::string value;
+    // A type's size and alignment in bytes, where it has them.
+    std::optional<long long> size;
+    std::optional<long long> alignment;
+    // The comment written for it, markers removed.
+    std::string documentation;
+    // Where its name is declared, and the extent of the name the request was
+    // made on.
+    std::optional<Extent> declared;
+    std::optional<Extent> named;
+};
+
 // What a navigation request asks for (LSP `textDocument/definition` and kin).
 enum class Destination : std::uint8_t {
     Definition,
@@ -138,6 +163,10 @@ class EditorUnit {
 
     // Every declaration spelled `name` in those files.
     [[nodiscard]] std::vector<Occurrence> declarations_named(std::string_view name) const;
+
+    // What Clang knows about the name written at `offset`: a declaration, a
+    // use, a macro, or the type `auto` was deduced as.
+    [[nodiscard]] std::optional<Description> describe(std::size_t offset) const;
 
   private:
     struct State;

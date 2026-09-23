@@ -64,6 +64,15 @@ class EditorView {
     // is the target too.
     [[nodiscard]] std::vector<Mention> mentions(const Target& target) const;
 
+    // What hover shows for the name at `position`. A name that stands for a
+    // C++L declaration is shown as that declaration, never as what the
+    // projection generated for it; a name only generated code declares shows
+    // what it means (`result`, `self`) or nothing.
+    [[nodiscard]] std::optional<Hover> hover(const Position& position) const;
+
+    // The C++L declaration whose name is written at `location`, as markdown.
+    [[nodiscard]] std::optional<std::string> cppl_markdown_at(const Location& location) const;
+
     // The number of refreshes that had to parse the unit from scratch, for
     // tests that check an edit reuses what Clang kept.
     [[nodiscard]] std::size_t parses() const noexcept {
@@ -77,6 +86,9 @@ class EditorView {
 
     // Where an extent Clang reported was written, when it can be traced there.
     [[nodiscard]] std::optional<Location> locate(const clangbridge::Extent& extent) const;
+
+    // The file an open buffer, the document or a projected header is, by URI.
+    [[nodiscard]] const ProjectedFile* file_for(const std::string& uri) const;
 
     // Headers the unit includes that hold C++L, read as their projection, and
     // headers found to hold none, each with the write time it was read at.

@@ -53,8 +53,10 @@ Diagnostics, formatting, format-on-save, format-on-type and code actions, all
 from the server. Format-on-save and format-on-type are enabled by default for
 `cppl` files only; override them in your settings under `"[cppl]"`.
 
-Inside a `cases` or `decompose` arm block the server also answers hover, with
-the subject's states, and completion, with the arms still owed.
+Hovering a name shows what Clang knows of it -- declaration, type, value, size,
+its comment -- or, for a Law, a proof, a refinement type or a verified
+function, the declaration as written. Inside a `cases` or `decompose` arm block
+hover shows the subject's states, and completion offers the arms still owed.
 
 Go to Definition, Go to Declaration, Go to Type Definition and Go to
 Implementations are answered by Clang over the file's projection, for C++ and

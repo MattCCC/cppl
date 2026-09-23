@@ -3184,7 +3184,9 @@ claim and in its `assume` statements alike. The names proof statements use
 navigate the same way, from the compiler's own resolution: `exact p;` and
 `apply p;` lead to proof `p` or trusted Law `p`, `rewrite h;` to the `assume`
 that bound `h`, and `contradiction e;` to its evidence, whether it closes a
-proof, discharges an omitted case or claims a path cannot occur.
+proof, discharges an omitted case or claims a path cannot occur. Hovering any of
+these names shows the declaration as written, so a Law reads as its `law`
+declaration and a refinement type says what it refines and erases to.
 
 No fix may:
 

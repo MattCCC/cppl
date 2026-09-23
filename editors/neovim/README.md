@@ -66,8 +66,9 @@ declarations, such as `exact h;` and `contradiction name;`, come from the
 server's semantic tokens instead, as `@lsp.type.keyword.cppl`, which
 `setup()` links to `Statement` like the syntax file's own proof words.
 
-Inside a `cases` or `decompose` arm block the server also answers hover
-(`vim.lsp.buf.hover`) and completion.
+`vim.lsp.buf.hover()` (`K`) shows what Clang knows of a name, or a C++L
+declaration as written; inside a `cases` or `decompose` arm block it shows the
+subject's states, and completion offers the arms still owed.
 
 `vim.lsp.buf.definition()`, `declaration()`, `type_definition()` and
 `implementation()` are answered by Clang over the file's projection; with the

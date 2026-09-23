@@ -376,16 +376,34 @@ std::vector<CompletionItem> Server::text_document_completion(const TextDocumentI
 
 std::optional<Hover> Server::text_document_hover(const TextDocumentIdentifier& id, const Position& position) {
     const Document* doc = documents_.get(id.uri);
-    if (doc == nullptr || doc->syntax() == nullptr) {
+    if (doc == nullptr) {
         return std::nullopt;
     }
-    const PositionMapper mapper(doc->text());
-    const std::optional<CaseSite> site =
-        enclosing_case_site(*doc->syntax(), doc->subject_states(), mapper.position_to_byte_offset(position));
-    if (!site) {
+    if (doc->syntax() != nullptr) {
+        const PositionMapper mapper(doc->text());
+        const std::optional<CaseSite> site =
+            enclosing_case_site(*doc->syntax(), doc->subject_states(), mapper.position_to_byte_offset(position));
+        if (site) {
+            return case_site_hover(*site);
+        }
+    }
+    EditorView* view = view_for(id.uri);
+    if (view == nullptr) {
         return std::nullopt;
     }
-    return case_site_hover(*site);
+    // A name a proof statement uses, shown as the declaration the compiler
+    // resolved it to.
+    const ProofNames names(documents_);
+    if (const std::optional<ProofNames::Declaration> named = names.declaration_at(*doc, position)) {
+        if (const std::optional<Location> declared = names.locate(*named)) {
+            if (std::optional<std::string> markdown = view->cppl_markdown_at(*declared)) {
+                Hover hover;
+                hover.contents = std::move(*markdown);
+                return hover;
+            }
+        }
+    }
+    return view->hover(position);
 }
 
 std::optional<std::vector<std::uint32_t>> Server::text_document_semantic_tokens(

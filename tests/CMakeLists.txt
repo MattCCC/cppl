@@ -239,6 +239,12 @@ target_compile_definitions(lsp_proof_names_test PRIVATE
     CPPL_TEST_FIXTURES_DIR="${CPPL_TEST_FIXTURES}"
     CPPL_TEST_DEFAULT_CLANG="${CPPL_DEFAULT_CLANG}")
 
+cppl_add_unit_test(lsp_hover_test unit/lsp_hover_test.cpp)
+target_link_libraries(lsp_hover_test PRIVATE cppl_lsp)
+target_compile_definitions(lsp_hover_test PRIVATE
+    CPPL_TEST_FIXTURES_DIR="${CPPL_TEST_FIXTURES}"
+    CPPL_TEST_DEFAULT_CLANG="${CPPL_DEFAULT_CLANG}")
+
 # Driver-level suites invoke the real compiler on real fixtures and write what
 # it produces into the work tree, so each one runs under the same limits.
 function(cppl_add_script_test name script)

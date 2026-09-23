@@ -74,10 +74,13 @@ class Server {
     // subject's states -- it could not reach elaboration, or no provider
     // models the type -- these return nothing rather than guess.
     //
-    // Ordinary C++ completion and hover are not attempted here; that is
-    // clangd's job (`tools/cppl-lsp/README.md`).
     [[nodiscard]] std::vector<CompletionItem> text_document_completion(const TextDocumentIdentifier& id,
                                                                        const Position& position);
+
+    // Hover: inside a `cases`/`decompose` block, the subject's states, as
+    // above; on a name a proof statement uses, the declaration the compiler
+    // resolved it to; on any other name, Clang's description of it, or the
+    // C++L declaration it stands for (tools/cppl-lsp/README.md, "Hover").
     [[nodiscard]] std::optional<Hover> text_document_hover(const TextDocumentIdentifier& id, const Position& position);
 
     // The proof-statement keywords a spelling-based grammar cannot color, as

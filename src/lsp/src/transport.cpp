@@ -644,6 +644,9 @@ class Dispatcher {
         contents.set("value", json::Value(hover->contents));
         json::Value result = json::Value::object();
         result.set("contents", std::move(contents));
+        if (hover->range.has_value()) {
+            result.set("range", range_to_json(*hover->range));
+        }
         respond_result(*id, std::move(result));
     }
 

@@ -293,8 +293,8 @@ CPPL_TEST(a_code_action_request_without_a_range_is_invalid_params) {
 }
 
 CPPL_TEST(hover_outside_a_case_block_is_answered_not_rejected) {
-    // A position with no decomposition under it is an ordinary answer, not a
-    // failure: ordinary C++ hover belongs to clangd.
+    // A position with no decomposition under it is answered by Clang, with the
+    // range of the name hovered.
     Server server;
     std::istringstream input(
         framed(R"({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}})") +
@@ -309,6 +309,10 @@ CPPL_TEST(hover_outside_a_case_block_is_answered_not_rejected) {
     [[maybe_unused]] const int exit_code = run_transport(server, input, output, log);
     CPPL_CHECK(output.str().find("-32601") == std::string::npos);
     CPPL_CHECK(output.str().find("-32602") == std::string::npos);
+    CPPL_CHECK(output.str().find(R"("id":2,"result":{"contents":{"kind":"markdown","value":"**function** `main`)") !=
+               std::string::npos);
+    CPPL_CHECK(output.str().find(R"("range":{"start":{"line":0,"character":4},"end":{"line":0,"character":8}})") !=
+               std::string::npos);
 }
 
 CPPL_TEST(a_negative_position_is_rejected_not_wrapped) {

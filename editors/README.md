@@ -24,6 +24,7 @@ editors/
 | Format on save | editor config | yes | yes | yes | yes |
 | Format on type | `cppl-lsp` | yes | yes | yes | — |
 | Code actions | `cppl-lsp` | yes | yes | yes | yes |
+| Hover | `cppl-lsp` | yes | unverified | yes | yes |
 | Go to definition | `cppl-lsp` | yes | yes | yes | yes |
 | Declaration, type definition, implementation | `cppl-lsp` | yes | unverified | unverified | yes |
 | Find references, highlight occurrences | `cppl-lsp` | yes | unverified | unverified | yes |
@@ -32,19 +33,19 @@ editors/
 
 Code actions are syntax migrations, offered as quick fixes where they would
 edit, and canonical formatting as `source.fixAll.cppl`. The server also answers
-hover and completion inside `cases` and `decompose` arm blocks, for C++L's own
-syntax only, and an editor shows them where its LSP client supports those
-features.
+completion inside `cases` and `decompose` arm blocks, for C++L's own syntax.
 
+Hover shows what Clang knows of a C++ name, and a C++L declaration -- a Law, a
+proof, a refinement type, a verified function's contract -- as it is written.
 Navigation is answered by Clang over each document's projection, for ordinary
 C++ and for the C++L declarations the projection stands for: a Law named in a
 proof, a Law's parameter in its proposition, a function parameter in a
 contract, a refinement type. The names proof statements use (`exact p;`,
 `rewrite h;`, `contradiction e;`) lead where the compiler resolved them.
-References cover every open document and the headers each includes. "Unverified" means the IDE's own LSP client documents
-the request but nobody has checked it against this server. Rename is **not**
-implemented yet. See "Currently unsupported" in
-[`tools/cppl-lsp/README.md`](../tools/cppl-lsp/README.md).
+References cover every open document and the headers each includes.
+"Unverified" means the IDE's own LSP client documents the request but nobody
+has checked it against this server. Rename is **not** implemented yet. See
+"Currently unsupported" in [`tools/cppl-lsp/README.md`](../tools/cppl-lsp/README.md).
 
 ### Plain C++ files
 

@@ -1,6 +1,7 @@
 #include "cppl/lsp/editor_view.hpp"
 
 #include "cppl/clang/editor.hpp"
+#include "cppl/lsp/hover.hpp"
 #include "cppl/lsp/position.hpp"
 #include "cppl/lsp/projected_file.hpp"
 #include "cppl/lsp/protocol.hpp"
@@ -179,12 +180,21 @@ bool EditorView::read_included_headers() {
 
 std::optional<std::size_t> EditorView::request_offset(const Position& position) const {
     const std::string& text = main_->text();
-    const std::size_t offset = PositionMapper(text).position_to_byte_offset(position);
+    std::size_t offset = PositionMapper(text).position_to_byte_offset(position);
+    // Clang reads a token from where it is asked to, so a request inside a
+    // name is made at the name's start.
+    const auto name_start = [&text](std::size_t within) {
+        while (within > 0 && is_name_byte(text[within - 1])) {
+            --within;
+        }
+        return within;
+    };
     if (offset < text.size() && is_name_byte(text[offset])) {
-        return offset;
+        return name_start(offset);
     }
     if (offset > 0 && offset <= text.size() && is_name_byte(text[offset - 1])) {
-        return offset - 1;
+        offset = name_start(offset - 1);
+        return offset;
     }
     if (offset < text.size() && std::isspace(static_cast<unsigned char>(text[offset])) == 0) {
         return offset;
@@ -295,6 +305,78 @@ std::vector<EditorView::Mention> EditorView::mentions(const Target& target) cons
         }
     }
     return found;
+}
+
+const ProjectedFile* EditorView::file_for(const std::string& uri) const {
+    if (uri == uri_) {
+        return main_.get();
+    }
+    for (const auto& [key, buffer_uri] : buffer_uris_) {
+        if (buffer_uri == uri) {
+            return buffers_.at(key).get();
+        }
+    }
+    for (const auto& [key, header] : headers_) {
+        if (header.file != nullptr && path_to_uri(key) == uri) {
+            return header.file.get();
+        }
+    }
+    return nullptr;
+}
+
+std::optional<std::string> EditorView::cppl_markdown_at(const Location& location) const {
+    const ProjectedFile* file = file_for(location.uri);
+    if (file == nullptr || !file->projected()) {
+        return std::nullopt;
+    }
+    const std::size_t offset = PositionMapper(file->text()).position_to_byte_offset(location.range.start);
+    return describe_cppl(file->tokens(), file->syntax(), file->text(), offset);
+}
+
+std::optional<Hover> EditorView::hover(const Position& position) const {
+    if (unit_ == nullptr || main_ == nullptr) {
+        return std::nullopt;
+    }
+    const std::optional<std::size_t> offset = request_offset(position);
+    const std::optional<std::size_t> analysis = offset.has_value() ? main_->to_analysis(*offset) : std::nullopt;
+    if (!analysis.has_value()) {
+        return std::nullopt;
+    }
+    const std::optional<clangbridge::Description> description = unit_->describe(*analysis);
+    if (!description.has_value()) {
+        return std::nullopt;
+    }
+    Hover hover;
+    if (description->named.has_value()) {
+        if (const std::optional<Location> named = locate(*description->named)) {
+            hover.range = named->range;
+        }
+    }
+    const std::optional<Location> declared =
+        description->declared.has_value() ? locate(*description->declared) : std::nullopt;
+    if (description->declared.has_value() && !declared.has_value()) {
+        // Declared only in generated text: what it means, or nothing.
+        const std::optional<std::string> implicit = describe_implicit(*description);
+        if (!implicit.has_value()) {
+            return std::nullopt;
+        }
+        hover.contents = *implicit;
+        return hover;
+    }
+    if (declared.has_value()) {
+        if (std::optional<std::string> markdown = cppl_markdown_at(*declared)) {
+            hover.contents = std::move(*markdown);
+            return hover;
+        }
+    }
+    std::string declared_in;
+    if (declared.has_value() && declared->uri != uri_) {
+        const std::size_t slash = declared->uri.rfind('/');
+        declared_in = declared->uri.substr(slash == std::string::npos ? 0 : slash + 1) + ":" +
+                      std::to_string(declared->range.start.line + 1);
+    }
+    hover.contents = describe_cpp(*description, declared_in);
+    return hover;
 }
 
 std::vector<Location> EditorView::navigate(clangbridge::Destination destination, const Position& position) const {

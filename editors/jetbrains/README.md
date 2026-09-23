@@ -51,7 +51,8 @@ Diagnostics, formatting, format-on-save and code actions, all from the server.
 `*.cppl` files are registered as their own file type, and formatting is routed
 exclusively to `cppl-lsp` rather than the IDE's C++ engine.
 
-The server also answers hover and completion inside a `cases` or `decompose`
+The server answers hover over any name -- what Clang knows of a C++ name, a
+C++L declaration as written -- and completion inside a `cases` or `decompose`
 arm block, which the IDE shows where its LSP client supports those features.
 Go to Declaration (Ctrl/Cmd-click) asks the server for the definition, which
 Clang answers over the file's projection, for C++ and for the C++L declarations

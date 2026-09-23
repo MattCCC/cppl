@@ -18,12 +18,8 @@
 
 namespace cppl::lsp {
 
-namespace {
-
-// The name a declaration spells, as the first identifier token inside its range
-// that spells it.
-std::optional<source::ByteSpan> name_in(const frontend::TokenStream& tokens, const source::ByteSpan& range,
-                                        std::string_view name) {
+std::optional<source::ByteSpan> declared_name(const frontend::TokenStream& tokens, const source::ByteSpan& range,
+                                              std::string_view name) {
     for (const frontend::Token& token : tokens.tokens()) {
         if (token.span.offset < range.offset) {
             continue;
@@ -37,8 +33,6 @@ std::optional<source::ByteSpan> name_in(const frontend::TokenStream& tokens, con
     }
     return std::nullopt;
 }
-
-} // namespace
 
 ProjectedFile::ProjectedFile(std::string path, std::string text) : path_(std::move(path)), text_(std::move(text)) {
     tokens_ = std::make_unique<frontend::TokenStream>(frontend::lex(text_, path_));
@@ -58,7 +52,7 @@ ProjectedFile::ProjectedFile(std::string path, std::string text) : path_(std::mo
             continue;
         }
         const frontend::LawDeclaration& law = syntax_->laws[function.law_index];
-        if (const auto name = name_in(*tokens_, law.range.span, law.name)) {
+        if (const auto name = declared_name(*tokens_, law.range.span, law.name)) {
             anchors_.push_back(Anchor{function.analysis_offset, *name});
         }
     }
@@ -67,7 +61,7 @@ ProjectedFile::ProjectedFile(std::string path, std::string text) : path_(std::mo
             continue;
         }
         const frontend::RefinementType& refinement = syntax_->refinement_types[probe.refinement_index];
-        if (const auto name = name_in(*tokens_, refinement.range.span, refinement.name)) {
+        if (const auto name = declared_name(*tokens_, refinement.range.span, refinement.name)) {
             anchors_.push_back(Anchor{probe.alias_offset, *name});
         }
     }

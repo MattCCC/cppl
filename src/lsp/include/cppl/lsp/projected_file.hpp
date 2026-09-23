@@ -9,9 +9,15 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace cppl::lsp {
+
+// The name a C++L declaration spells: the first identifier token inside its
+// range that spells it.
+[[nodiscard]] std::optional<source::ByteSpan> declared_name(const frontend::TokenStream& tokens,
+                                                            const source::ByteSpan& range, std::string_view name);
 
 // A file as Clang reads it for editor services.
 //
