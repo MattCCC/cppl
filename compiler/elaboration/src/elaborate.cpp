@@ -612,13 +612,15 @@ std::optional<vir::Expr> convert_projected(const Request& request, std::string_v
 // `vir::Expr`, because it is not a proposition the kernel can check: it is a
 // property of the execution state, supposed by the obligation layer as a
 // context hypothesis (RFC 0014 §10, SPEC.md 12.10).
-std::vector<vir::Capability> convert_capabilities(
+// Absent when a capability was stated and could not be read, which is reported
+// here; empty when the clause states none.
+std::optional<std::vector<vir::Capability>> convert_capabilities(
     const Request& request, std::string_view generated, const source::SourceLocation& written,
     std::uint32_t& next_expression_id, const std::string& subject, diagnostics::Engine& engine,
     const std::vector<clangbridge::TemplateArgument>* arguments = nullptr) {
     const clangbridge::Function* function = proposition_function(request, generated, written, arguments);
     if (function == nullptr || function->capabilities.empty()) {
-        return {};
+        return std::vector<vir::Capability>{};
     }
     std::vector<vir::Capability> converted_all;
     ExpressionElaborator elaborator(next_expression_id);
@@ -641,7 +643,7 @@ std::vector<vir::Capability> convert_capabilities(
             if (!converted.has_value()) {
                 report(engine, diagnostics::Category::UnsupportedSemantics, written,
                        subject + " has an element count this implementation does not model");
-                return {};
+                return std::nullopt;
             }
             capability.extent.push_back(std::move(*converted));
         }
@@ -1190,16 +1192,19 @@ void elaborate_contract(const Request& request, const frontend::VerifiedFunction
         // A memory capability is a precondition the caller owes, but it is not a
         // proposition: it leaves on the capability channel so it never reaches
         // the kernel (RFC 0014 §10).
-        std::vector<vir::Capability> capabilities =
+        // Whether this clause's own capabilities failed to read is what decides
+        // here. An error reported anywhere earlier in the unit says nothing
+        // about this contract, and must not drop it unread.
+        std::optional<std::vector<vir::Capability>> capabilities =
             convert_capabilities(request, projected.precondition_names[index], preconditions[index]->location,
                                  next_expression_id, subject, engine, arguments);
-        if (!capabilities.empty()) {
-            contract.capabilities.insert(contract.capabilities.end(), std::make_move_iterator(capabilities.begin()),
-                                         std::make_move_iterator(capabilities.end()));
-            continue;
-        }
-        if (engine.has_errors()) {
+        if (!capabilities.has_value()) {
             return;
+        }
+        if (!capabilities->empty()) {
+            contract.capabilities.insert(contract.capabilities.end(), std::make_move_iterator(capabilities->begin()),
+                                         std::make_move_iterator(capabilities->end()));
+            continue;
         }
         std::optional<vir::Expr> expected =
             convert_projected(request, projected.precondition_names[index], preconditions[index]->location,

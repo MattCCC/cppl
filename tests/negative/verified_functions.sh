@@ -144,4 +144,17 @@ reject immediately_invoked_lambda 'call does not resolve to an ordinary function
 reject lambda_in_clause 'call does not resolve to an ordinary function' \
     'verified int f(int x) ensures ([](int v) { return v > 0; }(x)) { return x; }'
 
+# SPEC: VERIFIED-002
+# A contract is read whatever was reported before it. The earlier function's
+# refused postcondition must not drop the later function's false contract
+# unread: both failures are reported, each as its own.
+FIXTURES="$2/negative"
+status=0
+"$CPPL" -std=c++17 -c "$FIXTURES/contract_after_an_unrelated_error.cpp" -o "$run/after_error.o" \
+    > "$run/after_error.out" 2> "$run/after_error.err" || status=$?
+test "$status" -ne 0
+test ! -e "$run/after_error.o"
+grep -q "the postcondition of verified function 'halves' is not modeled" "$run/after_error.err"
+grep -q "verified function 'claims_zero' does not satisfy its contract" "$run/after_error.err"
+
 echo 'false contracts and unsupported verified bodies fail closed'
