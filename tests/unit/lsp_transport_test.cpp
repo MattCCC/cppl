@@ -240,6 +240,34 @@ CPPL_TEST(a_code_lens_states_a_verdict_and_runs_nothing) {
     CPPL_CHECK(output.str().find(R"("id":3,"error":{"code":-32602)") != std::string::npos);
 }
 
+CPPL_TEST(a_completion_is_a_snippet_only_for_a_client_that_takes_snippets) {
+    const auto completed = [](const std::string& capabilities) {
+        Server server;
+        std::istringstream input(
+            framed(R"({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":)" + capabilities + "}}") +
+            framed(R"({"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":)"
+                   R"({"uri":"file:///complete.cpp","languageId":"cpp","version":1,)"
+                   R"("text":"int twice(int value);\nint main() { return twi; }\n"}}})") +
+            framed(R"({"jsonrpc":"2.0","id":2,"method":"textDocument/completion","params":{"textDocument":)"
+                   R"({"uri":"file:///complete.cpp"},"position":{"line":1,"character":23}}})") +
+            framed(R"({"jsonrpc":"2.0","method":"exit"})"));
+        std::ostringstream output;
+        std::ostringstream log;
+        [[maybe_unused]] const int exit_code = run_transport(server, input, output, log);
+        return output.str();
+    };
+    const std::string snippets =
+        completed(R"({"textDocument":{"completion":{"completionItem":{"snippetSupport":true}}}})");
+    CPPL_CHECK(snippets.find(R"("triggerCharacters":["{",".",">",":"])") != std::string::npos);
+    CPPL_CHECK(
+        snippets.find(R"json("id":2,"result":{"isIncomplete":false,"items":[{"label":"twice(int value)",)json"
+                      R"json("kind":3,"detail":"int","insertText":"twice(${1:int value})","insertTextFormat":2,)json"
+                      R"json("filterText":"twice")json") != std::string::npos);
+    const std::string plain = completed("{}");
+    CPPL_CHECK(plain.find(R"("insertText":"twice","filterText":"twice")") != std::string::npos);
+    CPPL_CHECK(plain.find(R"("insertTextFormat")") == std::string::npos);
+}
+
 CPPL_TEST(semantic_tokens_answer_with_the_encoded_keywords) {
     Server server;
     std::istringstream input(

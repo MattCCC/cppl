@@ -18,6 +18,9 @@ local defaults = {
   -- Show, over each Law, proof and verified function, what became of its
   -- obligations in the last compile.
   code_lens = true,
+  -- Neovim's own LSP completion (0.11 and newer), triggered as you type. Off
+  -- leaves completion to whatever completion plugin is installed.
+  completion = true,
 }
 
 M.options = vim.deepcopy(defaults)
@@ -105,16 +108,16 @@ function M.setup(options)
     end,
   })
 
-  -- Neovim shows code lenses only once asked to fetch them, and again after
-  -- each change to the buffer they describe.
-  if M.options.code_lens then
-    vim.api.nvim_create_autocmd("LspAttach", {
-      group = group,
-      callback = function(event)
-        local client = vim.lsp.get_client_by_id(event.data.client_id)
-        if client == nil or client.name ~= "cppl-lsp" then
-          return
-        end
+  vim.api.nvim_create_autocmd("LspAttach", {
+    group = group,
+    callback = function(event)
+      local client = vim.lsp.get_client_by_id(event.data.client_id)
+      if client == nil or client.name ~= "cppl-lsp" then
+        return
+      end
+      -- Neovim shows code lenses only once asked to fetch them, and again
+      -- after each change to the buffer they describe.
+      if M.options.code_lens then
         local function refresh()
           vim.lsp.codelens.refresh({ bufnr = event.buf })
         end
@@ -124,9 +127,12 @@ function M.setup(options)
           buffer = event.buf,
           callback = refresh,
         })
-      end,
-    })
-  end
+      end
+      if M.options.completion and vim.lsp.completion ~= nil then
+        vim.lsp.completion.enable(true, client.id, event.buf, { autotrigger = true })
+      end
+    end,
+  })
 
   if M.options.format_on_save then
     vim.api.nvim_create_autocmd("BufWritePre", {

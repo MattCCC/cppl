@@ -52,6 +52,9 @@ require("cppl").setup({
   format_on_save = true,
   -- Verification status over each Law, proof and verified function.
   code_lens = true,
+  -- Neovim's own LSP completion as you type (0.11 and newer); false leaves
+  -- completion to a completion plugin.
+  completion = true,
 })
 ```
 
@@ -71,7 +74,11 @@ server's semantic tokens instead, as `@lsp.type.keyword.cppl`, which
 `vim.lsp.buf.hover()` (`K`) shows what Clang knows of a name, or a C++L
 declaration as written with what became of its obligations; inside a `cases`
 or `decompose` arm block it shows the subject's states, and completion offers
-the arms still owed.
+the arms still owed. Elsewhere completion offers what Clang would accept, and
+C++L's declarations, proof statements and clauses where the grammar admits
+them. On Neovim 0.11 and newer `setup()` turns on Neovim's own LSP completion
+for C++L buffers (`completion = false` leaves it to a completion plugin, which
+reads the same answers through `vim.lsp`).
 
 Each Law, proof and verified function shows its verification status as a code
 lens over its name -- `PROVEN`, `TRUSTED`, `UNRESOLVED` and why -- refreshed

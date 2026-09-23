@@ -562,11 +562,11 @@ cppl trust-report
 
 Also:
 
-- LSP completion, rename and incremental sync (full sync, diagnostics,
-  formatting, code actions, hover, definition, declaration, type definition,
+- LSP rename and incremental sync (full sync, diagnostics, formatting, code
+  actions, hover, completion, definition, declaration, type definition,
   implementation, references and highlights, navigation from proof statements
-  to what they name, verification status and each obligation's goal, and
-  completion over case arms are implemented; see `STATUS.md`)
+  to what they name, and verification status and each obligation's goal are
+  implemented; see `STATUS.md`)
 - IDE diagnostics
 - proof goals
 - counterexamples

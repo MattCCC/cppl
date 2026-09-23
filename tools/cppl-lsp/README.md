@@ -28,7 +28,8 @@ textDocument/publishDiagnostics             from the real compile pipeline
 textDocument/formatting                     canonical C++L clause placement
 textDocument/rangeFormatting                scoped to the requested range
 textDocument/onTypeFormatting               scoped to the smallest safe unit
-textDocument/completion                     case labels a subject still owes
+textDocument/completion                     C++ from Clang; C++L where the grammar
+                                            admits it; case labels still owed
 textDocument/hover                          C++ from Clang; C++L as written;
                                             a case subject's state partition
 textDocument/codeAction                     syntax migrations; canonical fix-all
@@ -725,6 +726,28 @@ The final completion list may combine results from both sources before returning
 
 `cppl-lsp` adds C++L knowledge rather than replacing Clang's understanding of C++.
 
+Implemented today: completion of ordinary C++ is what Clang would accept at the
+position (`clang_codeCompleteAt` over the editor unit), after `.`, `->` and
+`::` as well as while a name is typed. Candidates are matched against what has
+been typed of the name, in the same case first, then in any case, then as the
+typed letters in order, and ranked within each by Clang's own priority; a
+function or method is inserted with its parameters as snippet placeholders
+where the client takes snippets. A name the projection generated is never
+offered, and neither is a reserved name (`__x`) unless what was typed starts
+with an underscore. At most 150 items are sent; a longer list is marked
+incomplete, so the client asks again as the user types more.
+
+C++L's own words are offered where the grammar admits them, as snippets laid
+out as the formatter lays them out: `law`, `trusted law`, `proof`, `verified`,
+`type` and `pure` where a declaration may begin at namespace scope; the proof
+statements at the start of a statement in a proof body; after `exact`,
+`apply`, `rewrite` or `contradiction`, the other proofs, the trusted Laws and
+the names this body has assumed so far; `proves` and `expects` after a Law's
+or a proof's parameters; `expects` and `ensures` between a verified function's
+parameters and its body. A proof being written does not parse, so these
+positions are found from the tokens as written. Nothing here resolves a name:
+a suggestion the compiler would reject is only a suggestion.
+
 ### Case arms
 
 Arm completion, residual arms, binder completion, duplicate-arm and missing-arm
@@ -1324,10 +1347,8 @@ proof search / interactive proof state
 incremental (as opposed to full) text document sync
 ```
 
-Completion covers C++L's own syntax: which arms a `cases` subject still owes.
-It claims no trigger character that would pull it into ordinary member access.
-Hover covers every name, from Clang for C++ and from the C++L declaration a
-name stands for (see "Hover").
+Completion and hover cover every name, from Clang for C++ and from C++L's own
+syntax and declarations (see "Completion" and "Hover").
 
 `textDocument/didChange` is handled under full document sync
 (`TextDocumentSyncKind.Full`): the client resends the whole document on every

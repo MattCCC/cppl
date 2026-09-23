@@ -61,9 +61,8 @@ Server::Server(std::string clang, std::vector<std::string> clang_arguments)
       clang_arguments_(std::move(clang_arguments)),
       driver_(resolve_driver(clang_.empty() ? std::string{CPPL_DEFAULT_CLANG} : clang_)) {}
 
-void Server::initialize() {
-    // Server is now initialized
-    // In a real implementation, this would process InitializeParams
+void Server::initialize(ClientCapabilities capabilities) {
+    client_ = capabilities;
 }
 
 void Server::initialized() {
@@ -361,19 +360,26 @@ std::optional<std::vector<TextEdit>> Server::text_document_on_type_formatting(co
     return to_text_edits(doc->text(), result.edits);
 }
 
-std::vector<CompletionItem> Server::text_document_completion(const TextDocumentIdentifier& id,
-                                                             const Position& position) {
+CompletionList Server::text_document_completion(const TextDocumentIdentifier& id, const Position& position) {
     const Document* doc = documents_.get(id.uri);
-    if (doc == nullptr || doc->syntax() == nullptr) {
+    if (doc == nullptr) {
         return {};
     }
-    const PositionMapper mapper(doc->text());
-    const std::optional<CaseSite> site =
-        enclosing_case_site(*doc->syntax(), doc->subject_states(), mapper.position_to_byte_offset(position));
-    if (!site) {
+    if (doc->syntax() != nullptr) {
+        const PositionMapper mapper(doc->text());
+        const std::optional<CaseSite> site =
+            enclosing_case_site(*doc->syntax(), doc->subject_states(), mapper.position_to_byte_offset(position));
+        if (site) {
+            // The arms still owed are the whole answer: the list is the
+            // provider's complete set.
+            return CompletionList{false, missing_case_completions(*site)};
+        }
+    }
+    EditorView* view = view_for(id.uri);
+    if (view == nullptr) {
         return {};
     }
-    return missing_case_completions(*site);
+    return view->complete(position, client_.snippets);
 }
 
 std::optional<Hover> Server::text_document_hover(const TextDocumentIdentifier& id, const Position& position) {

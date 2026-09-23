@@ -9,6 +9,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace cppl::clangbridge {
@@ -90,6 +91,61 @@ struct Description {
     std::optional<Extent> named;
 };
 
+// A name or keyword Clang would accept at a position.
+struct Completion {
+    enum class Kind : std::uint8_t {
+        Function,
+        Method,
+        Constructor,
+        Field,
+        Variable,
+        Parameter,
+        Class,
+        Struct,
+        Enum,
+        Enumerator,
+        Namespace,
+        TypeAlias,
+        TemplateParameter,
+        Macro,
+        Concept,
+        Keyword,
+        Other,
+    };
+    Kind kind = Kind::Other;
+    // The text that chooses it.
+    std::string typed;
+    // `typed` followed by its parameters, where it has them.
+    std::string label;
+    // Its type, or what it returns.
+    std::string result;
+    // `typed` with its parameters as numbered placeholders, in LSP snippet
+    // syntax.
+    std::string snippet;
+    std::string documentation;
+    // Clang's ranking: lower is likelier.
+    unsigned priority = 0;
+    bool deprecated = false;
+};
+
+// One declaration a call's arguments could be resolving to.
+struct Signature {
+    std::string label;
+    // Each parameter as a byte range of `label`.
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> parameters;
+    // The parameter the argument being written stands for, where Clang says.
+    std::optional<std::uint32_t> active;
+    std::string documentation;
+};
+
+// What encloses a position, as far as what may be declared there goes.
+enum class Scope : std::uint8_t {
+    Namespace,
+    Class,
+    Function,
+    Other,
+};
+
 // What a navigation request asks for (LSP `textDocument/definition` and kin).
 enum class Destination : std::uint8_t {
     Definition,
@@ -167,6 +223,18 @@ class EditorUnit {
     // What Clang knows about the name written at `offset`: a declaration, a
     // use, a macro, or the type `auto` was deduced as.
     [[nodiscard]] std::optional<Description> describe(std::size_t offset) const;
+
+    // Every name and keyword Clang would accept at `offset` of the main file's
+    // text, which is where the name being written starts. Clang parses the
+    // text afresh up to there, reusing the preamble.
+    [[nodiscard]] std::vector<Completion> complete(std::size_t offset) const;
+
+    // Every declaration the call whose arguments are being written at `offset`
+    // could resolve to.
+    [[nodiscard]] std::vector<Signature> signatures(std::size_t offset) const;
+
+    // What encloses `offset`: a namespace, a class, a function body.
+    [[nodiscard]] Scope scope_at(std::size_t offset) const;
 
   private:
     struct State;

@@ -25,6 +25,7 @@ editors/
 | Format on type | `cppl-lsp` | yes | yes | yes | — |
 | Code actions | `cppl-lsp` | yes | yes | yes | yes |
 | Hover | `cppl-lsp` | yes | unverified | yes | yes |
+| Completion | `cppl-lsp` | yes | unverified | yes | yes |
 | Go to definition | `cppl-lsp` | yes | yes | yes | yes |
 | Declaration, type definition, implementation | `cppl-lsp` | yes | unverified | unverified | yes |
 | Find references, highlight occurrences | `cppl-lsp` | yes | unverified | unverified | yes |
@@ -33,8 +34,9 @@ editors/
 | Proof-statement coloring | `cppl-lsp` | yes | unverified | unverified | yes |
 
 Code actions are syntax migrations, offered as quick fixes where they would
-edit, and canonical formatting as `source.fixAll.cppl`. The server also answers
-completion inside `cases` and `decompose` arm blocks, for C++L's own syntax.
+edit, and canonical formatting as `source.fixAll.cppl`. Completion offers what
+Clang would accept for C++, C++L's declarations, statements and clauses where
+the grammar admits them, and inside `cases` and `decompose` the arms still owed.
 
 Hover shows what Clang knows of a C++ name, and a C++L declaration -- a Law, a
 proof, a refinement type, a verified function's contract -- as it is written,

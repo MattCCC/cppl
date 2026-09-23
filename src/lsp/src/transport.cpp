@@ -349,8 +349,22 @@ class Dispatcher {
         write(message);
     }
 
-    void handle_initialize(const json::Value* id, const json::Value*) {
-        server_.initialize();
+    // What the client said it can do, where it changes what is sent.
+    static ClientCapabilities client_capabilities(const json::Value* params) {
+        ClientCapabilities capabilities;
+        const json::Value* stated = params != nullptr ? params->find("capabilities") : nullptr;
+        const json::Value* document = stated != nullptr ? stated->find("textDocument") : nullptr;
+        const json::Value* completion = document != nullptr ? document->find("completion") : nullptr;
+        const json::Value* item = completion != nullptr ? completion->find("completionItem") : nullptr;
+        if (const json::Value* snippets = item != nullptr ? item->find("snippetSupport") : nullptr;
+            snippets != nullptr && snippets->is_boolean()) {
+            capabilities.snippets = snippets->as_boolean();
+        }
+        return capabilities;
+    }
+
+    void handle_initialize(const json::Value* id, const json::Value* params) {
+        server_.initialize(client_capabilities(params));
 
         json::Value capabilities = json::Value::object();
         // Full document sync: Document::apply_change currently replaces the
@@ -369,13 +383,14 @@ class Dispatcher {
         on_type_formatting.set("moreTriggerCharacter", more_trigger_characters);
         capabilities.set("documentOnTypeFormattingProvider", on_type_formatting);
 
-        // Proof-decomposition completion and hover. These cover C++L's own
-        // syntax only: inside a `cases`/`decompose` arm block. Ordinary C++
-        // completion and hover stay with clangd, so no trigger character is
-        // claimed that would pull this server into ordinary member access.
+        // Completion: Clang's for C++, after member access and scope as well
+        // as while a name is typed, C++L's own words where the grammar admits
+        // them, and inside a `cases`/`decompose` block the arms still owed.
         json::Value completion = json::Value::object();
         json::Value trigger_characters = json::Value::array();
-        trigger_characters.push_back(json::Value(std::string("{")));
+        for (const char* trigger : {"{", ".", ">", ":"}) {
+            trigger_characters.push_back(json::Value(std::string(trigger)));
+        }
         completion.set("triggerCharacters", std::move(trigger_characters));
         capabilities.set("completionProvider", std::move(completion));
         capabilities.set("hoverProvider", json::Value(true));
@@ -577,11 +592,8 @@ class Dispatcher {
         respond_edits(*id, server_.text_document_formatting(document_id));
     }
 
-    // Both of these answer from what the compiler's case engine recorded for
-    // this buffer. An empty completion list and a null hover are ordinary
-    // answers: the cursor is not in a `cases` block, or the compiler has not
-    // confirmed that subject's states. Neither is an error, and neither is a
-    // reason to guess (`AGENTS.md` 39).
+    // An empty completion list and a null hover are ordinary answers: nothing
+    // is offered there, or nothing is named there. Neither is an error.
     void handle_completion(const json::Value* id, const json::Value* params) {
         if (id == nullptr) {
             return;
@@ -598,8 +610,9 @@ class Dispatcher {
         TextDocumentIdentifier document_id;
         document_id.uri = *uri;
 
+        const CompletionList completion = server_.text_document_completion(document_id, *position);
         json::Value items = json::Value::array();
-        for (const CompletionItem& item : server_.text_document_completion(document_id, *position)) {
+        for (const CompletionItem& item : completion.items) {
             json::Value entry = json::Value::object();
             entry.set("label", json::Value(item.label));
             entry.set("kind", json::Value(static_cast<int>(item.kind)));
@@ -612,16 +625,27 @@ class Dispatcher {
             if (!item.insertText.empty()) {
                 entry.set("insertText", json::Value(item.insertText));
             }
+            if (item.snippet) {
+                constexpr int kSnippet = 2; // InsertTextFormat.Snippet
+                entry.set("insertTextFormat", json::Value(kSnippet));
+            }
+            if (!item.filterText.empty()) {
+                entry.set("filterText", json::Value(item.filterText));
+            }
             if (!item.sortText.empty()) {
                 entry.set("sortText", json::Value(item.sortText));
             }
+            if (item.deprecated) {
+                json::Value tags = json::Value::array();
+                tags.push_back(json::Value(1)); // CompletionItemTag.Deprecated
+                entry.set("tags", std::move(tags));
+            }
             items.push_back(std::move(entry));
         }
-        // `isIncomplete: false`: this list is the provider's complete set of
-        // still-unwritten states, so the editor may filter it client-side
-        // rather than asking again on every character.
+        // An incomplete list is asked for again as the user types: more
+        // matched than was sent.
         json::Value list = json::Value::object();
-        list.set("isIncomplete", json::Value(false));
+        list.set("isIncomplete", json::Value(completion.incomplete));
         list.set("items", std::move(items));
         respond_result(*id, std::move(list));
     }

@@ -27,7 +27,7 @@ class Server {
     explicit Server(std::string clang = {}, std::vector<std::string> clang_arguments = {});
 
     // Lifecycle
-    void initialize();
+    void initialize(ClientCapabilities capabilities = {});
     void initialized();
     void shutdown();
     void exit();
@@ -74,8 +74,10 @@ class Server {
     // subject's states -- it could not reach elaboration, or no provider
     // models the type -- these return nothing rather than guess.
     //
-    [[nodiscard]] std::vector<CompletionItem> text_document_completion(const TextDocumentIdentifier& id,
-                                                                       const Position& position);
+    //
+    // Everywhere else, completion is Clang's names and keywords with C++L's
+    // own words where the grammar admits them (completion.hpp).
+    [[nodiscard]] CompletionList text_document_completion(const TextDocumentIdentifier& id, const Position& position);
 
     // Hover: inside a `cases`/`decompose` block, the subject's states, as
     // above; on a name a proof statement uses, the declaration the compiler
@@ -135,6 +137,7 @@ class Server {
     EditorView* view_for(const std::string& uri);
 
     DocumentManager documents_;
+    ClientCapabilities client_;
     // One view per open document, each with the buffer generation it was last
     // refreshed at. Any edit to any open buffer can change what another
     // document's unit reads, so every edit starts a new generation.

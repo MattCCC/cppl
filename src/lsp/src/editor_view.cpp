@@ -1,6 +1,7 @@
 #include "cppl/lsp/editor_view.hpp"
 
 #include "cppl/clang/editor.hpp"
+#include "cppl/lsp/completion.hpp"
 #include "cppl/lsp/hover.hpp"
 #include "cppl/lsp/position.hpp"
 #include "cppl/lsp/projected_file.hpp"
@@ -331,6 +332,46 @@ std::optional<CpplDeclaration> EditorView::cppl_declaration_at(const Location& l
     }
     const std::size_t offset = PositionMapper(file->text()).position_to_byte_offset(location.range.start);
     return describe_cppl(file->tokens(), file->syntax(), file->text(), offset);
+}
+
+std::optional<std::size_t> EditorView::insertion_point(std::size_t written) const {
+    if (written < main_->text().size()) {
+        if (const std::optional<std::size_t> at = main_->to_analysis(written)) {
+            return at;
+        }
+    }
+    if (written > 0) {
+        if (const std::optional<std::size_t> before = main_->to_analysis(written - 1)) {
+            return *before + 1;
+        }
+    }
+    return std::nullopt;
+}
+
+CompletionList EditorView::complete(const Position& position, bool snippets) const {
+    CompletionList list;
+    if (main_ == nullptr) {
+        return list;
+    }
+    const std::string& text = main_->text();
+    const std::size_t cursor = PositionMapper(text).position_to_byte_offset(position);
+    std::size_t start = cursor;
+    while (start > 0 && is_name_byte(text[start - 1])) {
+        --start;
+    }
+    const std::string_view prefix(text.data() + start, cursor - start);
+
+    clangbridge::Scope scope = clangbridge::Scope::Other;
+    if (unit_ != nullptr) {
+        if (const std::optional<std::size_t> analysis = insertion_point(start)) {
+            scope = unit_->scope_at(*analysis);
+            list = cpp_completions(unit_->complete(*analysis), prefix, snippets);
+        }
+    }
+    std::vector<CompletionItem> own =
+        cppl_completions(main_->tokens(), main_->syntax(), text, cursor, prefix, scope, snippets);
+    list.items.insert(list.items.begin(), std::make_move_iterator(own.begin()), std::make_move_iterator(own.end()));
+    return list;
 }
 
 std::optional<EditorView::HoverAnswer> EditorView::hover(const Position& position) const {

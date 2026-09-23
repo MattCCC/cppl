@@ -244,12 +244,14 @@ CPPL_TEST(completion_and_hover_do_not_require_a_diagnostic_publisher) {
     item.version = 1;
     server.text_document_did_open(item);
 
-    // Ordinary C++ with no `cases` in it: no arm is owed, hover is Clang's, and
+    // Ordinary C++ with no `cases` in it: completion and hover are Clang's, and
     // neither faults on a document whose compile ran with no publisher
     // attached.
     TextDocumentIdentifier id;
     id.uri = "file:///nopublisher.cpp";
-    CPPL_CHECK(server.text_document_completion(id, Position{0, 4}).empty());
+    const CompletionList completion = server.text_document_completion(id, Position{0, 20});
+    CPPL_CHECK(
+        std::ranges::any_of(completion.items, [](const CompletionItem& item) { return item.label == "main()"; }));
     const std::optional<Hover> hover = server.text_document_hover(id, Position{0, 4});
     CPPL_CHECK(hover.has_value());
     if (hover.has_value()) {
@@ -331,6 +333,6 @@ CPPL_TEST(completion_on_an_unknown_document_is_empty) {
     Server server;
     TextDocumentIdentifier id;
     id.uri = "file:///never-opened.cpp";
-    CPPL_CHECK(server.text_document_completion(id, Position{0, 0}).empty());
+    CPPL_CHECK(server.text_document_completion(id, Position{0, 0}).items.empty());
     CPPL_CHECK(!server.text_document_hover(id, Position{0, 0}).has_value());
 }

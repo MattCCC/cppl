@@ -4,6 +4,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace cppl::lsp {
@@ -107,28 +108,85 @@ struct FormattingOptions {
     bool insertSpaces = true;
 };
 
-// The subset of LSP `CompletionItemKind` this server produces. A case label is
-// an `EnumMember` when the representation spells it as one (a scoped
-// enumerator) and a `Keyword` when the representation reserves the spelling
-// (`valueless`, `none`, `unnamed`), which is the distinction
-// `decomposition::LabelKind` already draws.
+// LSP `CompletionItemKind`. A case label is an `EnumMember` when the
+// representation spells it as one (a scoped enumerator) and a `Keyword` when the
+// representation reserves the spelling (`valueless`, `none`, `unnamed`), which
+// is the distinction `decomposition::LabelKind` already draws.
 enum class CompletionItemKind : std::uint8_t {
+    Text = 1,
+    Method = 2,
+    Function = 3,
+    Constructor = 4,
+    Field = 5,
+    Variable = 6,
+    Class = 7,
+    Interface = 8,
+    Module = 9,
+    Property = 10,
+    Unit = 11,
+    Value = 12,
+    Enum = 13,
     Keyword = 14,
+    Snippet = 15,
+    Color = 16,
+    File = 17,
+    Reference = 18,
+    Folder = 19,
     EnumMember = 20,
+    Constant = 21,
+    Struct = 22,
+    Event = 23,
+    Operator = 24,
+    TypeParameter = 25,
 };
 
 struct CompletionItem {
     std::string label;
     CompletionItemKind kind = CompletionItemKind::Keyword;
-    // Shown beside the label: which representation supplies this state.
+    // Shown beside the label: which representation supplies this state, or a
+    // function's result type.
     std::string detail;
     std::string documentation;
     // What is inserted, when it differs from `label` (an arm skeleton with its
     // binders). Empty means insert `label`.
     std::string insertText;
+    // Whether `insertText` is an LSP snippet, with `${1:placeholder}` tab stops.
+    bool snippet = false;
+    // What the editor filters by as the user types, when it differs from
+    // `label`.
+    std::string filterText;
     // Orders provider states ahead of anything the editor merges in, and keeps
     // the provider's own order (alternative<0> before alternative<1>) stable.
     std::string sortText;
+    bool deprecated = false;
+};
+
+// A completion answer: its items, and whether typing more would change which
+// items there are rather than only which of them match.
+struct CompletionList {
+    bool incomplete = false;
+    std::vector<CompletionItem> items;
+};
+
+// One signature a call could be resolving to (LSP `SignatureInformation`), with
+// each parameter as a byte range of `label`.
+struct SignatureInformation {
+    std::string label;
+    std::string documentation;
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> parameters;
+};
+
+struct SignatureHelp {
+    std::vector<SignatureInformation> signatures;
+    std::uint32_t active_signature = 0;
+    std::uint32_t active_parameter = 0;
+};
+
+// What the client said it can do, where the answer changes what the server
+// sends (LSP `ClientCapabilities`).
+struct ClientCapabilities {
+    // `textDocument.completion.completionItem.snippetSupport`.
+    bool snippets = false;
 };
 
 struct Hover {

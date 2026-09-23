@@ -79,6 +79,10 @@ class EditorView {
     // The C++L declaration whose name is written at `location`.
     [[nodiscard]] std::optional<CpplDeclaration> cppl_declaration_at(const Location& location) const;
 
+    // What may be written at `position`: Clang's names and keywords, and C++L's
+    // own words where the grammar admits them (completion.hpp).
+    [[nodiscard]] CompletionList complete(const Position& position, bool snippets) const;
+
     // The number of refreshes that had to parse the unit from scratch, for
     // tests that check an edit reuses what Clang kept.
     [[nodiscard]] std::size_t parses() const noexcept {
@@ -89,6 +93,10 @@ class EditorView {
     // The byte a request at `position` names: the one under it, or the one
     // before it when the position is just past a name.
     [[nodiscard]] std::optional<std::size_t> request_offset(const Position& position) const;
+
+    // Where text inserted at `written` of the document would go in the
+    // analysis text: at that byte, or just past the byte before it.
+    [[nodiscard]] std::optional<std::size_t> insertion_point(std::size_t written) const;
 
     // Where an extent Clang reported was written, when it can be traced there.
     [[nodiscard]] std::optional<Location> locate(const clangbridge::Extent& extent) const;

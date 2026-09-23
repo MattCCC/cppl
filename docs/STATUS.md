@@ -1392,6 +1392,7 @@ AI output must always be independently verified.
 | LSP: sync and diagnostics            | `PARTIAL`     |
 | LSP/CLI: canonical clause formatting | `PROTOTYPE`   |
 | LSP: case completion and hover       | `PROTOTYPE`   |
+| LSP: C++ and C++L completion         | `PROTOTYPE`   |
 | LSP: hover over C++ and C++L names   | `PROTOTYPE`   |
 | LSP: verification status in editors  | `PROTOTYPE`   |
 | LSP: code actions                    | `PROTOTYPE`   |
@@ -1451,6 +1452,15 @@ rather than guess. Elaboration runs on publish rather than per keystroke, so
 offered labels may lag the buffer by one edit. A case split in a verified body
 is served the same way, from the states the compiler recorded while elaborating
 the body.
+
+Outside a case block, completion offers what Clang would accept at the position,
+matched against what has been typed and ranked by Clang's own priority, with a
+call's parameters as snippet placeholders for a client that takes snippets, and
+never a name the projection generated. C++L's own words are offered as snippets
+where the grammar admits them: declarations at namespace scope, proof
+statements at a statement's start, the proofs, trusted Laws and assumptions a
+statement can name after `exact`, `apply`, `rewrite` or `contradiction`, and a
+declaration's clauses after its parameters.
 
 Outside a case block, hover describes any name. For C++ it shows what Clang
 reports: the declaration's kind and qualified name, the declaration without a

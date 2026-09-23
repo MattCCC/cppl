@@ -3188,6 +3188,12 @@ proof, discharges an omitted case or claims a path cannot occur. Hovering any of
 these names shows the declaration as written, so a Law reads as its `law`
 declaration and a refinement type says what it refines and erases to.
 
+Completion offers C++L's own syntax where it may be written, laid out as the
+formatter lays it out: a `law`, `proof`, `verified` function or refinement
+`type` where a declaration may begin, the proof statements inside a proof, the
+proofs and assumptions `exact` or `apply` can name, and `proves`, `expects` or
+`ensures` after a declaration's parameters.
+
 The editor also shows what the compiler concluded. A code lens over each Law,
 proof and verified function states its verdict -- `PROVEN`, `PROVEN relative to
 trusted` the Laws it rests on, `TRUSTED`, or `UNRESOLVED` and why -- and hover
