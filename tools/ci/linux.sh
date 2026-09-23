@@ -26,8 +26,9 @@ case "${profile}" in
     asan)    preset=ci-asan ;;
     ubsan)   preset=ci-ubsan ;;
     tsan)    preset=ci-tsan ;;
+    fuzz)    preset=ci-fuzz ;;
     "")
-        echo "usage: tools/ci/linux.sh <gcc|clang|quality|asan|ubsan|tsan>" >&2
+        echo "usage: tools/ci/linux.sh <gcc|clang|quality|asan|ubsan|tsan|fuzz>" >&2
         exit 2
         ;;
     *)

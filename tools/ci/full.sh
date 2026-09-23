@@ -77,6 +77,7 @@ if [ -n "${native_preset}" ]; then
     fi
     run "ci-asan (native)" ./tools/ci/native.sh ci-asan
     run "ci-ubsan (native)" ./tools/ci/native.sh ci-ubsan
+    run "ci-fuzz (native)" ./tools/ci/native.sh ci-fuzz
 else
     record_skip "native" "unsupported host '${host}'"
 fi

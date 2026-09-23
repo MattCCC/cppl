@@ -1,0 +1,2 @@
+proof p(unsigned x) proves (l(x)) { assume h : x == 1u; rewrite h; refl; }
+proof q() proves (l(1u)) { apply p(1u); exact p(1u); }

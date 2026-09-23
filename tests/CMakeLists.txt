@@ -338,6 +338,8 @@ if(CPPL_ENABLE_HARDENING AND NOT WIN32)
         TIMEOUT ${CPPL_TEST_TIMEOUT})
 endif()
 
+add_subdirectory(fuzz)
+
 # The repository checks are CMake scripts, so they run under CTest like
 # anything else. Registering them here means a plain `ctest` catches a
 # committed host path, a broken preset convention or a local CI run that no

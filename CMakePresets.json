@@ -267,6 +267,26 @@
         "CPPL_ENABLE_UBSAN": "OFF",
         "CPPL_ENABLE_TSAN": "ON"
       }
+    },
+
+    {
+      "name": "ci-fuzz",
+      "displayName": "CI / Fuzzing",
+      "description": "Fuzzing configuration: the fuzz targets only, under libFuzzer, AddressSanitizer and UndefinedBehaviorSanitizer. Mirrors the GitHub 'Fuzzing' job.",
+      "inherits": ["ci-llvm-root", "ci-base"],
+      "binaryDir": "${sourceDir}/build/ci/fuzz",
+      "condition": {
+        "type": "notEquals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "CPPL_ENABLE_HARDENING": "OFF",
+        "CPPL_BUILD_FUZZERS": "ON",
+        "CPPL_ENABLE_ASAN": "ON",
+        "CPPL_ENABLE_UBSAN": "ON",
+        "CPPL_ENABLE_TSAN": "OFF"
+      }
     }
   ],
 
@@ -323,6 +343,11 @@
     {
       "name": "ci-tsan",
       "configurePreset": "ci-tsan"
+    },
+    {
+      "name": "ci-fuzz",
+      "configurePreset": "ci-fuzz",
+      "targets": ["fuzzers"]
     }
   ],
 
@@ -403,6 +428,16 @@
       "name": "ci-tsan",
       "configurePreset": "ci-tsan",
       "inherits": "test-base"
+    },
+    {
+      "name": "ci-fuzz",
+      "configurePreset": "ci-fuzz",
+      "inherits": "test-base",
+      "filter": {
+        "include": {
+          "label": "^fuzz$"
+        }
+      }
     }
   ],
 

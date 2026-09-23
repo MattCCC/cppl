@@ -208,6 +208,41 @@ jobs:
       - name: Test
         run: ctest --preset ${{ matrix.preset }}
 
+  fuzz:
+    name: Fuzzing
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      CPPL_CI_PRESET: ci-fuzz
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Install LLVM/Clang
+        run: |
+          wget -q https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh "${CPPL_LLVM_MAJOR}"
+          sudo apt-get install -y \
+            "llvm-${CPPL_LLVM_MAJOR}-dev" \
+            "libclang-${CPPL_LLVM_MAJOR}-dev" \
+            "clang-format-${CPPL_LLVM_MAJOR}" \
+            "clang-tidy-${CPPL_LLVM_MAJOR}"
+          echo "LLVM_ROOT=/usr/lib/llvm-${CPPL_LLVM_MAJOR}" >> "$GITHUB_ENV"
+
+      - name: Configure
+        run: cmake --preset ci-fuzz
+
+      - name: Build
+        run: cmake --build --preset ci-fuzz
+
+      - name: Test
+        run: ctest --preset ci-fuzz
+
   thread-sanitizer:
     name: ThreadSanitizer
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -252,6 +287,7 @@ jobs:
       - quality
       - build-test
       - sanitizers
+      - fuzz
 
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -272,6 +308,11 @@ jobs:
 
           if [[ "${{ needs.sanitizers.result }}" != "success" ]]; then
               echo "Sanitizer checks failed."
+              exit 1
+          fi
+
+          if [[ "${{ needs.fuzz.result }}" != "success" ]]; then
+              echo "Fuzzing failed."
               exit 1
           fi
 

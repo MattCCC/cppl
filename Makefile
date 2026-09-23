@@ -65,6 +65,7 @@ endif
 	ci-quality \
 	ci-asan \
 	ci-ubsan \
+	ci-fuzz \
 	release \
 	install \
 	package \
@@ -95,6 +96,7 @@ help:
 		'  ci-quality        The Quality job, on Linux (through Docker elsewhere)' \
 		'  ci-asan           AddressSanitizer CI profile, natively' \
 		'  ci-ubsan          UndefinedBehaviorSanitizer CI profile, natively' \
+		'  ci-fuzz           Fuzzing CI profile (libFuzzer, ASan, UBSan), natively' \
 		'  ci-checks         Host-path and preset-layout checks (no build)' \
 		'  ci-clean          Remove every CI build tree' \
 		'' \
@@ -292,6 +294,10 @@ ci-asan:
 ## ci-ubsan: UndefinedBehaviorSanitizer CI profile, natively
 ci-ubsan:
 	./tools/ci/native.sh ci-ubsan
+
+## ci-fuzz: Fuzzing CI profile (libFuzzer, ASan, UBSan), natively
+ci-fuzz:
+	./tools/ci/native.sh ci-fuzz
 
 ## ci-full: Every CI environment available on this host
 ci-full:

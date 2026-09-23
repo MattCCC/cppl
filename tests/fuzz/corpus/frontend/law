@@ -1,0 +1,1 @@
+law l(unsigned x) expects (x == 1u) proves (x == 1u);

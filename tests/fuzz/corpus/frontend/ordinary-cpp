@@ -1,0 +1,4 @@
+struct law {}; law f(); int proof = 1; int verified = 2; int pure = 3;
+const char* s = R"tag(law false() proves (0 == 1); proof p() { })tag";
+// law false() proves (0 == 1);
+/* proof p() proves (q()) {refl;} */

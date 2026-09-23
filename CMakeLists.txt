@@ -103,6 +103,12 @@ option(
     OFF
 )
 
+option(
+    CPPL_BUILD_FUZZERS
+    "Link the fuzz targets in tests/fuzz with libFuzzer (LLVM Clang only)"
+    OFF
+)
+
 # -----------------------------------------------------------------------------
 # CI host-environment isolation
 # -----------------------------------------------------------------------------
@@ -284,6 +290,50 @@ endif()
 if(CPPL_ENABLE_HARDENING)
     include(Hardening)
     cppl_enable_hardening(cppl_project_options)
+endif()
+
+# -----------------------------------------------------------------------------
+# Fuzzing
+# -----------------------------------------------------------------------------
+#
+# Every component is compiled with libFuzzer's coverage instrumentation, and
+# only the fuzz targets link libFuzzer itself (tests/fuzz/CMakeLists.txt).
+# Other executables still link: the sanitizer runtimes define the coverage
+# callbacks.
+
+if(CPPL_BUILD_FUZZERS)
+    if(
+        NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang"
+        OR CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC"
+    )
+        message(
+            FATAL_ERROR
+            "CPPL_BUILD_FUZZERS needs LLVM Clang with its compiler-rt; "
+            "${CMAKE_CXX_COMPILER_ID} does not provide libFuzzer "
+            "(AppleClang ships without it)."
+        )
+    endif()
+
+    if(NOT CPPL_BUILD_TESTS)
+        message(
+            FATAL_ERROR
+            "CPPL_BUILD_FUZZERS registers the fuzz targets with the tests; "
+            "it needs CPPL_BUILD_TESTS."
+        )
+    endif()
+
+    if(CPPL_ENABLE_TSAN)
+        message(
+            FATAL_ERROR
+            "libFuzzer does not support ThreadSanitizer."
+        )
+    endif()
+
+    target_compile_options(
+        cppl_project_options
+        INTERFACE
+            -fsanitize=fuzzer-no-link
+    )
 endif()
 
 # -----------------------------------------------------------------------------

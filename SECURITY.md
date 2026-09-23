@@ -161,6 +161,10 @@ High-value fuzzing targets include:
 
 The kernel should treat malformed data as invalid, never as evidence.
 
+The harness is `tests/fuzz`, run by the `ci-fuzz` preset on every push
+(docs/CI.md, "Fuzzing"). An input that once broke a target stays in its
+corpus, so every build replays it.
+
 ---
 
 # Dependency security

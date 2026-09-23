@@ -65,6 +65,7 @@ name the same one.
 | `ci-asan` | AddressSanitizer | Linux, macOS |
 | `ci-ubsan` | UndefinedBehaviorSanitizer | Linux, macOS |
 | `ci-tsan` | ThreadSanitizer (nightly) | Linux |
+| `ci-fuzz` | Fuzzing | Linux, macOS (LLVM, not AppleClang) |
 
 A sanitizer finding fails the run. ASan stops at its first report by default;
 UBSan would print its report and let the program carry on, so a test that hit
@@ -318,3 +319,47 @@ protector. A target that stops linking `cppl_project_options` loses its flags
 without a build error; this is what notices. Windows reports its mitigations
 in a form the test does not read yet, so there the flags are set but not
 checked.
+
+---
+
+# 11. Fuzzing
+
+The code that reads bytes from outside the process has fuzz targets in
+`tests/fuzz`. Each states properties beyond "no crash and no sanitizer
+report":
+
+| Target | Reads | Properties |
+| --- | --- | --- |
+| `lsp_message` | the language server's standard input | only `json::Error` refuses a stream; no allocation above 16 MiB, whatever a header states |
+| `lsp_json` | every JSON-RPC body | only `json::Error` refuses a body; what `dump` writes parses back to itself |
+| `lsp_uri` | the `file://` URI of each document | a path holds no NUL; a path's URI converts back to the path |
+| `frontend` | any source text: lex, recognize, project, erase | tokens tile the input; projection is deterministic and only blanks characters; erasure only deletes and keeps lines |
+
+Each target runs two ways:
+
+- Every build links it with `tests/fuzz/replay.cpp` and registers
+  `fuzz_<name>_replay`, which runs it over `tests/fuzz/corpus/<name>/`. That
+  happens on every compiler and under each sanitizer preset.
+- `ci-fuzz` (the GitHub "Fuzzing" job, `make ci-fuzz`,
+  `tools/ci/linux.sh fuzz`) links libFuzzer, builds only the targets, and runs
+  `fuzz_<name>_search` under ASan and UBSan: `CPPL_FUZZ_RUNS` inputs (200000)
+  from seed `CPPL_FUZZ_SEED` (1), 10 s per input, 2 GiB of memory. A fixed
+  seed and count make a failure repeat when the run does; a change to the code
+  changes the path the search takes.
+
+When a search fails, libFuzzer writes the input under
+`build/ci/fuzz/tests/fuzz/<name>/artifacts/`. Run it with
+`build/ci/fuzz/bin/fuzz_<name> <file>`, shrink it with `-minimize_crash=1`,
+fix the cause, and add the input to `tests/fuzz/corpus/<name>/` as
+`regression-<what it broke>`: the replay test then holds the fix on every
+compiler. What a search finds otherwise stays under `build/`.
+
+For a longer run than CI's, call a target directly, for example
+`build/ci/fuzz/bin/fuzz_lsp_json -max_total_time=600 -max_len=65536 <empty dir> tests/fuzz/corpus/lsp_json`.
+A new target is a `<name>.cpp` defining `LLVMFuzzerTestOneInput` that states
+its properties with `cppl::testing::fuzz::require`, seeds in
+`corpus/<name>/`, and one `cppl_add_fuzz_target` line.
+
+libFuzzer needs LLVM Clang: AppleClang ships without it, and `ci-fuzz` uses the
+LLVM named by `LLVM_ROOT` (`tools/ci/native.sh` finds it). Windows has no
+`ci-fuzz`; the replay tests still run there.

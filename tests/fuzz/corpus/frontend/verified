@@ -1,0 +1,3 @@
+verified unsigned f(unsigned x) ensures (result == x) { unsigned y = x; return y; }
+verified pure unsigned g() ensures (result == 0u) {return 0u;}law l() proves (g() == 0u);
+namespace N { pure unsigned f(unsigned x) {return x;} law l() proves (f(0u) == 0u); }

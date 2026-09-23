@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"processId":4242,"rootUri":"file:///home/user/project","capabilities":{"textDocument":{"synchronization":{"didSave":true},"semanticTokens":{"requests":{"full":true},"tokenTypes":["keyword","type"],"formats":["relative"]}}},"trace":"off","workspaceFolders":null}}

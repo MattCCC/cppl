@@ -1,0 +1,7 @@
+# 19 "header.hpp" 1 3
+  law l()
+ proves (0u == 0u);
+#line 4294967295 "same.cpp"
+law m() ensures (0u == 0u);
+# 7 "main.cpp" 2
+#pragma once
