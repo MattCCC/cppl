@@ -97,15 +97,19 @@ BufferCompileOutcome compile_buffer(const BufferCompileRequest& request, diagnos
         return outcome;
     }
 
-    const std::optional<std::string> text = read_scratch_file(preprocessed_path);
+    std::optional<std::string> text = read_scratch_file(preprocessed_path);
     if (!text.has_value()) {
         report_internal(engine, "could not read the preprocessed form of '" + request.virtual_path + "'");
         outcome.ok = false;
         return outcome;
     }
+    // The pipeline recognizes the text in place, and the tokens and syntax it
+    // returns refer into it, so it lives as long as the outcome that carries
+    // them rather than as long as this call.
+    outcome.text = std::make_unique<const std::string>(std::move(*text));
 
     detail::PipelineRequest pipeline_request;
-    pipeline_request.preprocessed_text = *text;
+    pipeline_request.preprocessed_text = *outcome.text;
     pipeline_request.original_path = request.virtual_path;
     pipeline_request.scratch = scratch.path();
     pipeline_request.stem = stem;

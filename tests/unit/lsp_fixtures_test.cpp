@@ -14,8 +14,10 @@
 #include "cppl/testing/test.hpp"
 
 #include <fstream>
+#include <functional>
 #include <sstream>
 #include <string>
+#include <string_view>
 
 using namespace cppl;
 
@@ -68,7 +70,50 @@ std::size_t count_category(const diagnostics::Engine& engine, diagnostics::Categ
     return count;
 }
 
+// Whether `part` lies inside `whole`'s characters. Pointers into different
+// allocations have no ordering of their own, so the comparison goes through
+// std::less_equal, which is total.
+bool within(std::string_view part, const std::string& whole) {
+    const std::less_equal<> before;
+    return before(whole.data(), part.data()) && before(part.data() + part.size(), whole.data() + whole.size());
+}
+
 } // namespace
+
+// --- ownership: what the outcome hands back stays valid ----------------
+
+CPPL_TEST(the_outcome_owns_the_text_its_tokens_refer_to) {
+    // The token stream and syntax a buffer compile returns refer into the
+    // preprocessed text rather than copying it, and the server reads them
+    // after `compile_buffer` has returned, to lint and style-check them. The
+    // outcome therefore owns that text, somewhere moving the outcome cannot
+    // move it. A token stream pointing into the call's own local was a
+    // heap-use-after-free that AddressSanitizer found in `lsp_formatting_test`.
+    diagnostics::Engine engine;
+    driver::BufferCompileOutcome outcome = compile_fixture("omitted_case.cpp", engine);
+    CPPL_CHECK(outcome.tokens != nullptr);
+    CPPL_CHECK(outcome.text != nullptr);
+    if (outcome.tokens == nullptr || outcome.text == nullptr) {
+        return;
+    }
+    CPPL_CHECK(!outcome.tokens->tokens().empty());
+    CPPL_CHECK(within(outcome.tokens->text(), *outcome.text));
+
+    // Moved, as a caller returning it would move it, every view still lands in
+    // the text the outcome owns. The end-of-file token's view is empty and
+    // refers to no characters at all, so only views that span some are asked.
+    const driver::BufferCompileOutcome moved = std::move(outcome);
+    CPPL_CHECK(within(moved.tokens->text(), *moved.text));
+    std::size_t spanning = 0;
+    for (const frontend::Token& token : moved.tokens->tokens()) {
+        if (token.text.empty()) {
+            continue;
+        }
+        ++spanning;
+        CPPL_CHECK(within(token.text, *moved.text));
+    }
+    CPPL_CHECK(spanning > 0);
+}
 
 // --- valid: the primary acceptance invariant --------------------------
 

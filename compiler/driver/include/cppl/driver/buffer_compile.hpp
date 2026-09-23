@@ -46,6 +46,12 @@ struct BufferCompileOutcome {
     // (ARCHITECTURE.md 29).
     bool has_cppl = false;
 
+    // The preprocessed text `tokens` and `syntax` were recognized from. They
+    // refer into it rather than copying it, so the outcome owns it, on the
+    // heap, where moving the outcome cannot move it. Declared before them so
+    // it is destroyed after them.
+    std::unique_ptr<const std::string> text;
+
     // Set whenever recognition ran far enough to produce a result (i.e.
     // whenever preprocessing itself succeeded), independent of `has_cppl` or
     // whether later stages failed, so a caller such as the LSP's structural
