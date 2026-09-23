@@ -26,9 +26,14 @@ editors/
 | Code actions | `cppl-lsp` | yes | yes | yes | yes |
 | Syntax coloring | `editors/shared` | yes | via LSP | via LSP | yes |
 
-Hover, completion, navigation, rename and semantic tokens are **not**
-implemented by the server yet, so no client offers them. See "Currently
-unsupported" in [`tools/cppl-lsp/README.md`](../tools/cppl-lsp/README.md).
+Code actions are syntax migrations, offered as quick fixes where they would
+edit, and canonical formatting as `source.fixAll.cppl`. The server also answers
+hover and completion inside `cases` and `decompose` arm blocks, for C++L's own
+syntax only, and an editor shows them where its LSP client supports those
+features; ordinary C++ hover and completion stay with clangd. Navigation,
+rename and semantic tokens are **not** implemented by the server yet, so no
+client offers them. See "Currently unsupported" in
+[`tools/cppl-lsp/README.md`](../tools/cppl-lsp/README.md).
 
 ## The shared grammar
 

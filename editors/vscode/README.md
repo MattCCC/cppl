@@ -53,5 +53,7 @@ Diagnostics, formatting, format-on-save, format-on-type and code actions, all
 from the server. Format-on-save and format-on-type are enabled by default for
 `cppl` files only; override them in your settings under `"[cppl]"`.
 
-Hover, completion, navigation, rename and semantic tokens are not implemented
-by the server yet, so they are unavailable here.
+Inside a `cases` or `decompose` arm block the server also answers hover, with
+the subject's states, and completion, with the arms still owed. Ordinary C++
+hover and completion stay with clangd. Navigation, rename and semantic tokens
+are not implemented by the server yet, so they are unavailable here.

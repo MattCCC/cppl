@@ -4,7 +4,9 @@
 #include "cppl/lsp/server.hpp"
 #include "cppl/testing/test.hpp"
 
+#include <algorithm>
 #include <string>
+#include <string_view>
 #include <vector>
 
 using namespace cppl::lsp;
@@ -132,6 +134,76 @@ CPPL_TEST(completion_and_hover_do_not_require_a_diagnostic_publisher) {
     id.uri = "file:///nopublisher.cpp";
     CPPL_CHECK(server.text_document_completion(id, Position{0, 4}).empty());
     CPPL_CHECK(!server.text_document_hover(id, Position{0, 4}).has_value());
+}
+
+namespace {
+
+CodeActionRequest code_actions_at(const std::string& uri, Range range, std::vector<std::string> only,
+                                  bool automatic = false) {
+    CodeActionRequest request;
+    request.document.uri = uri;
+    request.range = range;
+    request.only = std::move(only);
+    request.automatic = automatic;
+    return request;
+}
+
+bool offers(const std::vector<CodeAction>& actions, std::string_view kind) {
+    return std::ranges::any_of(actions, [&](const CodeAction& action) { return action.kind == kind; });
+}
+
+} // namespace
+
+CPPL_TEST(a_syntax_migration_is_offered_where_it_would_edit) {
+    Server server;
+    TextDocumentItem item;
+    item.uri = "file:///migrate.cpp";
+    item.text = "int identity(int x) { return x; }\nlaw l(int x) ensures (identity(x) == x);\n";
+    item.version = 1;
+    server.text_document_did_open(item);
+
+    // The cursor inside `ensures`, which spans characters 13 to 20 of line 1.
+    const std::vector<CodeAction> here =
+        server.text_document_code_actions(code_actions_at(item.uri, Range{{1, 15}, {1, 15}}, {"quickfix"}));
+    CPPL_CHECK_EQ(here.size(), std::size_t{1});
+    CPPL_CHECK_EQ(here[0].title, "Replace Law 'ensures' with 'proves'");
+    CPPL_CHECK_EQ(here[0].kind, "quickfix");
+    CPPL_CHECK_EQ(here[0].edits.size(), std::size_t{1});
+    CPPL_CHECK_EQ(here[0].edits[0].range.start.line, 1u);
+    CPPL_CHECK_EQ(here[0].edits[0].range.start.character, 13u);
+    CPPL_CHECK_EQ(here[0].edits[0].range.end.character, 20u);
+    CPPL_CHECK_EQ(here[0].edits[0].newText, "proves");
+
+    // Elsewhere in the file the migration is not offered.
+    CPPL_CHECK(
+        server.text_document_code_actions(code_actions_at(item.uri, Range{{0, 4}, {0, 4}}, {"quickfix"})).empty());
+}
+
+CPPL_TEST(canonical_formatting_is_a_fix_all_computed_only_when_asked_for) {
+    // Formatting runs clang-format, so the editor's automatic requests as the
+    // cursor moves never pay for it; asking by kind or by hand does.
+    Server server;
+    TextDocumentItem item;
+    item.uri = "file:///fixall.cpp";
+    item.text = "verified int f(int x) ensures (result == x) { return x; }\n";
+    item.version = 1;
+    server.text_document_did_open(item);
+    const Range cursor{{0, 0}, {0, 0}};
+
+    CPPL_CHECK(
+        offers(server.text_document_code_actions(code_actions_at(item.uri, cursor, {"source.fixAll"})), kFixAllKind));
+    CPPL_CHECK(offers(server.text_document_code_actions(code_actions_at(item.uri, cursor, {"source"})), kFixAllKind));
+    CPPL_CHECK(offers(server.text_document_code_actions(code_actions_at(item.uri, cursor, {})), kFixAllKind));
+    CPPL_CHECK(!offers(server.text_document_code_actions(code_actions_at(item.uri, cursor, {}, true)), kFixAllKind));
+    CPPL_CHECK(
+        !offers(server.text_document_code_actions(code_actions_at(item.uri, cursor, {"quickfix"})), kFixAllKind));
+    // A kind is matched as a whole segment, not as a string prefix.
+    CPPL_CHECK(!offers(server.text_document_code_actions(code_actions_at(item.uri, cursor, {"sour"})), kFixAllKind));
+}
+
+CPPL_TEST(code_actions_on_an_unknown_document_are_empty) {
+    Server server;
+    CPPL_CHECK(server.text_document_code_actions(code_actions_at("file:///never-opened.cpp", Range{}, {})).empty());
 }
 
 CPPL_TEST(completion_on_an_unknown_document_is_empty) {

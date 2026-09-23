@@ -49,11 +49,17 @@ class Server {
     // canonical, matching how LSP distinguishes "no edits" from "no such
     // document" through a null vs. empty result.
     [[nodiscard]] std::optional<std::vector<TextEdit>> text_document_formatting(const TextDocumentIdentifier& id);
-    [[nodiscard]] std::vector<CodeAction> text_document_code_actions(const TextDocumentIdentifier& id);
     [[nodiscard]] std::optional<std::vector<TextEdit>> text_document_range_formatting(const TextDocumentIdentifier& id,
                                                                                       const Range& range);
     [[nodiscard]] std::optional<std::vector<TextEdit>> text_document_on_type_formatting(
         const TextDocumentIdentifier& id, const Position& position, const std::string& trigger_character);
+
+    // Code actions over the same formatter engine: each syntax migration whose
+    // edits touch `request.range`, as a quick fix, and canonical formatting of
+    // the whole document as a fix-all. Formatting runs clang-format, so it is
+    // computed only when asked for by kind or by the user, never as the cursor
+    // moves.
+    [[nodiscard]] std::vector<CodeAction> text_document_code_actions(const CodeActionRequest& request);
 
     // Proof-decomposition assistance.
     //

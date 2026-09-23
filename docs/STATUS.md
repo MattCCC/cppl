@@ -1203,6 +1203,7 @@ AI output must always be independently verified.
 | LSP: sync and diagnostics            | `PARTIAL`     |
 | LSP/CLI: canonical clause formatting | `PROTOTYPE`   |
 | LSP: case completion and hover       | `PROTOTYPE`   |
+| LSP: code actions                    | `PROTOTYPE`   |
 | LSP: definition, semantic tokens     | `NOT STARTED` |
 | IDE proof goals                      | `NOT STARTED` |
 | Proof navigation                     | `NOT STARTED` |
@@ -1228,7 +1229,10 @@ engine that also backs the standalone `cppl-format` CLI: `expects`, `ensures`,
 `invariant` and `proves` clauses are relocated onto their own canonically
 indented line, ordinary C++ layout is delegated to `clang-format`, and a
 `check_style` pass reuses the same clause-placement rule to add style warnings
-to `publishDiagnostics`.
+to `publishDiagnostics`. `codeActionProvider` serves the same engine's syntax
+migrations as quick fixes where their edits land, and canonical formatting as
+`source.fixAll.cppl`, computed only when asked for rather than as the cursor
+moves.
 
 `completionProvider` and `hoverProvider` are advertised and serve C++L's own
 syntax: inside a `cases`/`decompose` arm block, completion offers each state

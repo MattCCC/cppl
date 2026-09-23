@@ -5,7 +5,12 @@
 #include "cppl/lsp/decomposition_view.hpp"
 #include "cppl/lsp/position.hpp"
 
+#include <algorithm>
+#include <cstddef>
+#include <string>
+#include <string_view>
 #include <utility>
+#include <vector>
 
 namespace cppl::lsp {
 
@@ -22,6 +27,18 @@ std::vector<TextEdit> to_text_edits(const std::string& text, const std::vector<f
         result.push_back(std::move(text_edit));
     }
     return result;
+}
+
+// Whether `kind` is among the kinds a request asks for. Kinds are
+// hierarchical, so asking for `source` asks for `source.fixAll.cppl` too, and
+// asking for none asks for all (LSP: `CodeActionContext.only`).
+bool asks_for(const std::vector<std::string>& only, std::string_view kind) {
+    if (only.empty()) {
+        return true;
+    }
+    return std::ranges::any_of(only, [&](const std::string& asked) {
+        return kind == asked || (kind.starts_with(asked) && kind.size() > asked.size() && kind[asked.size()] == '.');
+    });
 }
 
 } // namespace
@@ -75,20 +92,37 @@ void Server::text_document_did_close(const TextDocumentIdentifier& id) {
     documents_.close(id);
 }
 
-std::vector<CodeAction> Server::text_document_code_actions(const TextDocumentIdentifier& id) {
-    const Document* doc = documents_.get(id.uri);
-    if (!doc)
+std::vector<CodeAction> Server::text_document_code_actions(const CodeActionRequest& request) {
+    const Document* doc = documents_.get(request.document.uri);
+    if (doc == nullptr) {
         return {};
-    formatter::FormatRequest request;
-    request.text = doc->text();
-    request.virtual_path = id.uri;
+    }
+    formatter::FormatRequest format;
+    format.text = doc->text();
+    format.virtual_path = doc->path();
+
     std::vector<CodeAction> actions;
-    for (const auto& fix : formatter::syntax_fixes(request))
-        actions.push_back({fix.title, "quickfix", to_text_edits(request.text, fix.edits)});
-    const auto formatted = formatter::format_document(request);
-    if (formatted.ok && !formatted.edits.empty())
-        actions.push_back(
-            {"Format canonical C++L syntax", "source.fixAll.cppl", to_text_edits(request.text, formatted.edits)});
+    if (asks_for(request.only, kQuickFixKind)) {
+        const PositionMapper mapper(doc->text());
+        const std::size_t from = mapper.position_to_byte_offset(request.range.start);
+        const std::size_t to = mapper.position_to_byte_offset(request.range.end);
+        for (const formatter::SyntaxFix& fix : formatter::syntax_fixes(format)) {
+            const bool touches = std::ranges::any_of(fix.edits, [&](const formatter::FormatEdit& edit) {
+                return edit.span.offset <= to && from <= edit.span.end();
+            });
+            if (touches) {
+                actions.push_back({fix.title, std::string(kQuickFixKind), to_text_edits(format.text, fix.edits)});
+            }
+        }
+    }
+    const bool fix_all_asked = request.only.empty() ? !request.automatic : asks_for(request.only, kFixAllKind);
+    if (fix_all_asked) {
+        const formatter::FormatResult formatted = formatter::format_document(format);
+        if (formatted.ok && !formatted.edits.empty()) {
+            actions.push_back({"Format canonical C++L syntax", std::string(kFixAllKind),
+                               to_text_edits(format.text, formatted.edits)});
+        }
+    }
     return actions;
 }
 

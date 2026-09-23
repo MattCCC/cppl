@@ -51,5 +51,6 @@ Diagnostics, formatting, format-on-save and code actions, all from the server.
 `*.cppl` files are registered as their own file type, and formatting is routed
 exclusively to `cppl-lsp` rather than the IDE's C++ engine.
 
-Hover, completion and navigation are not implemented by the server yet, so
-they are unavailable here.
+The server also answers hover and completion inside a `cases` or `decompose`
+arm block, which the IDE shows where its LSP client supports those features.
+Navigation is not implemented by the server yet, so it is unavailable here.

@@ -123,6 +123,50 @@ CPPL_TEST(initialize_advertises_completion_and_hover) {
     CPPL_CHECK(output.str().find("hoverProvider") != std::string::npos);
 }
 
+CPPL_TEST(initialize_advertises_both_code_action_kinds) {
+    Server server;
+    std::istringstream input(framed(R"({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}})") +
+                             framed(R"({"jsonrpc":"2.0","method":"exit"})"));
+    std::ostringstream output;
+    std::ostringstream log;
+
+    [[maybe_unused]] const int exit_code = run_transport(server, input, output, log);
+    CPPL_CHECK(output.str().find(R"("codeActionProvider":{"codeActionKinds":["quickfix","source.fixAll.cppl"]})") !=
+               std::string::npos);
+}
+
+CPPL_TEST(a_code_action_carries_its_edit_as_a_workspace_edit) {
+    Server server;
+    std::istringstream input(
+        framed(R"({"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":)"
+               R"({"uri":"file:///ca.cpp","languageId":"cpp","version":1,)"
+               R"("text":"int identity(int x) { return x; }\nlaw l(int x) ensures (identity(x) == x);\n"}}})") +
+        framed(R"({"jsonrpc":"2.0","id":2,"method":"textDocument/codeAction","params":{"textDocument":)"
+               R"({"uri":"file:///ca.cpp"},"range":{"start":{"line":1,"character":15},)"
+               R"("end":{"line":1,"character":15}},"context":{"diagnostics":[],"only":["quickfix"]}}})") +
+        framed(R"({"jsonrpc":"2.0","method":"exit"})"));
+    std::ostringstream output;
+    std::ostringstream log;
+
+    [[maybe_unused]] const int exit_code = run_transport(server, input, output, log);
+    CPPL_CHECK(output.str().find(R"("title":"Replace Law 'ensures' with 'proves'","kind":"quickfix",)"
+                                 R"("edit":{"changes":{"file:///ca.cpp":[{"range":{"start":{"line":1,"character":13},)"
+                                 R"("end":{"line":1,"character":20}},"newText":"proves"}]}})") != std::string::npos);
+}
+
+CPPL_TEST(a_code_action_request_without_a_range_is_invalid_params) {
+    Server server;
+    std::istringstream input(
+        framed(R"({"jsonrpc":"2.0","id":3,"method":"textDocument/codeAction","params":{"textDocument":)"
+               R"({"uri":"file:///ca.cpp"},"context":{"diagnostics":[]}}})") +
+        framed(R"({"jsonrpc":"2.0","method":"exit"})"));
+    std::ostringstream output;
+    std::ostringstream log;
+
+    [[maybe_unused]] const int exit_code = run_transport(server, input, output, log);
+    CPPL_CHECK(output.str().find(R"("id":3,"error":{"code":-32602)") != std::string::npos);
+}
+
 CPPL_TEST(hover_outside_a_case_block_is_answered_not_rejected) {
     // A position with no decomposition under it is an ordinary answer, not a
     // failure: ordinary C++ hover belongs to clangd.

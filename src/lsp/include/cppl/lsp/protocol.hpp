@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace cppl::lsp {
@@ -80,10 +81,25 @@ struct TextEdit {
     std::string newText;
 };
 
+// The code-action kinds this server produces (LSP: `CodeActionKind`).
+inline constexpr std::string_view kQuickFixKind = "quickfix";
+inline constexpr std::string_view kFixAllKind = "source.fixAll.cppl";
+
 struct CodeAction {
     std::string title;
     std::string kind;
     std::vector<TextEdit> edits;
+};
+
+// What a `textDocument/codeAction` request asks for (LSP: `CodeActionParams`).
+struct CodeActionRequest {
+    TextDocumentIdentifier document;
+    Range range;
+    // Kinds asked for (`context.only`); empty asks for every kind.
+    std::vector<std::string> only;
+    // The editor asked on its own, as the cursor moved, rather than because the
+    // user did (`CodeActionTriggerKind.Automatic`).
+    bool automatic = false;
 };
 
 struct FormattingOptions {

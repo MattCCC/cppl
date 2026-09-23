@@ -30,6 +30,7 @@ textDocument/rangeFormatting                scoped to the requested range
 textDocument/onTypeFormatting               scoped to the smallest safe unit
 textDocument/completion                     case labels a subject still owes
 textDocument/hover                          a case subject's state partition
+textDocument/codeAction                     syntax migrations; canonical fix-all
 ```
 
 Diagnostics come from `driver::compile_buffer` over the live buffer — the same
@@ -40,6 +41,14 @@ second time. `publishDiagnostics` also reports canonical-formatting style
 violations (severity `Warning`, category `Style`) from the same formatter
 engine used to fix them, so an editor sees a clause-placement problem before
 the user ever asks to format.
+
+Code actions come from that engine too. Each syntax migration it knows — a Law
+`ensures` that is now `proves`, a `case` that is now `cases` — is offered as a
+`quickfix` where its edit would land, not everywhere in the file. Canonical
+formatting of the whole document is offered as `source.fixAll.cppl`, which an
+editor can run on save. Formatting runs `clang-format`, so it is computed only
+when asked for by kind or by the user invoking code actions, never on the
+automatic requests an editor sends as the cursor moves.
 
 Completion and hover follow the same rule, and it is the important one: they
 answer from the states the compiler's own case engine recorded while
@@ -68,7 +77,8 @@ written syntax, and whether the claim checks is reported as a diagnostic.
 
 The server advertises `textDocumentSync`, `documentFormattingProvider`,
 `documentRangeFormattingProvider`, `documentOnTypeFormattingProvider`,
-`completionProvider` and `hoverProvider`. **Navigation and semantic tokens are
+`completionProvider`, `hoverProvider` and `codeActionProvider` (kinds
+`quickfix` and `source.fixAll.cppl`). **Navigation and semantic tokens are
 specified below but not implemented**, and are deliberately not advertised as
 capabilities: an editor is told what the server can do, never what it intends
 to do. `docs/STATUS.md` tracks this.
@@ -1141,7 +1151,7 @@ reference. Detailed pointer-state and effect hovers are not implemented.
 ## Currently unsupported
 
 Transport, document synchronization, diagnostics, canonical C++L formatting,
-and proof-decomposition completion and hover are implemented. The following are
+code actions, and proof-decomposition completion and hover are implemented. The following are
 explicitly out of scope for this milestone and are not implemented:
 
 ```text

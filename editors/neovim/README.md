@@ -63,8 +63,9 @@ actions, all from the server. Syntax coloring comes from
 [`syntax/cppl.vim`](syntax/cppl.vim), which sources the bundled C++ syntax and
 adds only the C++L contextual words.
 
-Hover, completion and navigation are not implemented by the server yet, so
-they are unavailable here — see "Currently unsupported" in the
+Inside a `cases` or `decompose` arm block the server also answers hover
+(`vim.lsp.buf.hover`) and completion. Navigation is not implemented by the
+server yet, so it is unavailable here — see "Currently unsupported" in the
 [`cppl-lsp` README](../../tools/cppl-lsp/README.md).
 
 ## Troubleshooting

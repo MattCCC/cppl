@@ -36,5 +36,7 @@ otherwise `build\dev\bin\cppl-lsp.exe` under the open folder, otherwise
 Diagnostics, formatting, format-on-save and code actions, all from the server,
 for `*.cppl` files. Ordinary `.cpp` files keep their normal C++ tooling.
 
-Hover, completion and navigation are not implemented by the server yet, so
-they are unavailable here.
+The server also answers hover and completion inside a `cases` or `decompose`
+arm block, which Visual Studio shows where its LSP client supports those
+features. Navigation is not implemented by the server yet, so it is
+unavailable here.

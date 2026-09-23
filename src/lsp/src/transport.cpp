@@ -229,6 +229,8 @@ class Dispatcher {
             handle_completion(id_value, params);
         } else if (method == "textDocument/hover") {
             handle_hover(id_value, params);
+        } else if (method == "textDocument/codeAction") {
+            handle_code_action(id_value, params);
         } else if (is_request) {
             respond_error(*id_value, kMethodNotFound, "method not found: " + method);
         } else {
@@ -301,6 +303,15 @@ class Dispatcher {
         completion.set("triggerCharacters", std::move(trigger_characters));
         capabilities.set("completionProvider", std::move(completion));
         capabilities.set("hoverProvider", json::Value(true));
+
+        // Syntax migrations as quick fixes, and canonical formatting as a
+        // fix-all an editor can run on save.
+        json::Value code_action_kinds = json::Value::array();
+        code_action_kinds.push_back(json::Value(std::string(kQuickFixKind)));
+        code_action_kinds.push_back(json::Value(std::string(kFixAllKind)));
+        json::Value code_actions = json::Value::object();
+        code_actions.set("codeActionKinds", std::move(code_action_kinds));
+        capabilities.set("codeActionProvider", std::move(code_actions));
 
         json::Value server_info = json::Value::object();
         server_info.set("name", json::Value("cppl-lsp"));
@@ -538,6 +549,48 @@ class Dispatcher {
         json::Value result = json::Value::object();
         result.set("contents", std::move(contents));
         respond_result(*id, std::move(result));
+    }
+
+    void handle_code_action(const json::Value* id, const json::Value* params) {
+        if (id == nullptr) {
+            return;
+        }
+        const json::Value* document = params != nullptr ? params->find("textDocument") : nullptr;
+        const json::Value* range_value = params != nullptr ? params->find("range") : nullptr;
+        const auto uri = document != nullptr ? document->find_string("uri") : std::nullopt;
+        const std::optional<Range> range = range_value != nullptr ? parse_range(*range_value) : std::nullopt;
+        if (!uri || !range.has_value()) {
+            respond_error(*id, kInvalidParams, "textDocument/codeAction missing 'textDocument.uri' or 'range'");
+            return;
+        }
+        CodeActionRequest request;
+        request.document.uri = *uri;
+        request.range = *range;
+        if (const json::Value* context = params->find("context")) {
+            if (const json::Value* only = context->find("only"); only != nullptr && only->is_array()) {
+                for (const json::Value& kind : only->as_array()) {
+                    if (kind.is_string()) {
+                        request.only.push_back(kind.as_string());
+                    }
+                }
+            }
+            constexpr double kAutomatic = 2.0; // CodeActionTriggerKind.Automatic
+            request.automatic = context->find_number("triggerKind") == kAutomatic;
+        }
+
+        json::Value actions = json::Value::array();
+        for (const CodeAction& action : server_.text_document_code_actions(request)) {
+            json::Value changes = json::Value::object();
+            changes.set(*uri, text_edits_to_json(action.edits));
+            json::Value edit = json::Value::object();
+            edit.set("changes", std::move(changes));
+            json::Value entry = json::Value::object();
+            entry.set("title", json::Value(action.title));
+            entry.set("kind", json::Value(action.kind));
+            entry.set("edit", std::move(edit));
+            actions.push_back(std::move(entry));
+        }
+        respond_result(*id, std::move(actions));
     }
 
     void handle_range_formatting(const json::Value* id, const json::Value* params) {
