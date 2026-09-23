@@ -423,6 +423,8 @@ The project should not claim broad language implementation before the proof sema
 | Conditional elimination              | `PROTOTYPE`   |
 | Machine-arithmetic normal form       | `PROTOTYPE`   |
 | Linear arithmetic (certificates)     | `PROTOTYPE`   |
+| Conjunction introduction/elimination | `PROTOTYPE`   |
+| Disjunction introduction/elimination | `PROTOTYPE`   |
 | Existential introduction/elimination | `NOT STARTED` |
 | Induction checking                   | `NOT STARTED` |
 | Refinement introduction/elimination  | `NOT STARTED` |
@@ -435,7 +437,7 @@ The project should not claim broad language implementation before the proof sema
 | Mechanized core calculus             | `NOT STARTED` |
 | Meta-theory / soundness proofs       | `NOT STARTED` |
 
-The kernel implements eleven rules:
+The kernel implements thirteen rules:
 
 ```text
 1. Reflexivity
@@ -449,14 +451,17 @@ The kernel implements eleven rules:
 9. Linear arithmetic
 10. Conjunction introduction
 11. Conjunction elimination (left or right)
+12. Disjunction introduction (left or right)
+13. Disjunction elimination (a case for each side)
 ```
 
 They act over propositions built from equality, universal quantification,
-implication and conjunction. The kernel's terms are variables, machine-integer literals,
-applications of admitted definitions, and primitives: wrapping addition,
-subtraction and multiplication, the six comparisons, boolean negation and
-selection. It admits no recursion, which is why it needs no termination checker
-yet (`SPEC.md` 22.2, 22.4).
+implication, conjunction and disjunction. The kernel's terms are variables,
+machine-integer literals, applications of admitted definitions, observations of
+an abstract value (at a constant position, or at an index that is itself a
+term), and primitives: wrapping addition, subtraction and multiplication, the
+six comparisons, boolean negation and selection. It admits no recursion, which
+is why it needs no termination checker yet (`SPEC.md` 22.2, 22.4).
 
 Reflexivity decides definitional equality by normalization, which puts machine
 arithmetic in polynomial normal form modulo `2^width` and comparisons in
@@ -489,7 +494,8 @@ the opposite direction, are this rule at another context; neither is primitive
 and neither is inferred.
 
 Written proof declarations added no rule of their own: `refl`, `exact`,
-`apply`, `assume` and `rewrite` elaborate into terms built from these rules.
+`apply`, `assume`, `rewrite` and `contradiction`, and the arms and omissions of
+`cases` and `decompose`, elaborate into terms built from these rules.
 
 ---
 
@@ -1646,4 +1652,5 @@ independent malformed-evidence and substitution tests. The source decomposition
 providers built on it are implemented and listed above. Nothing here promotes
 mutation analysis or the unimplemented editor capabilities to implemented
 status: `cases` is still unavailable over values that can change, and the
-language server still offers sync and diagnostics only.
+language server offers only what [Developer tooling status](#developer-tooling-status)
+lists.
