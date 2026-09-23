@@ -28,8 +28,6 @@ class PositionMapper {
     // Convert source::ByteSpan to LSP Range
     [[nodiscard]] Range byte_span_to_range(source::ByteSpan span) const;
 
-    // Convert source::SourceRange to LSP Range
-    [[nodiscard]] Range source_range_to_range(const source::SourceRange& range) const;
 
   private:
     std::string_view text_;

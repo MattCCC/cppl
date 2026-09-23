@@ -9,8 +9,10 @@
 #include "cppl/lsp/uri.hpp"
 #include "cppl/source/location.hpp"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <optional>
 #include <string>
 #include <utility>
@@ -43,6 +45,31 @@ Range include_range(const std::string& file, const PositionMapper& mapper, const
         }
     }
     return Range{};
+}
+
+// A construct's range in the document. Its end is its last token's written
+// position plus that token's length, never its byte span, which counts bytes of
+// whatever text the syntax was recognized from: for the compile's syntax, the
+// preprocessed unit rather than the document.
+Range construct_range(const source::SourceRange& range, const PositionMapper& mapper,
+                      const PublishedDocument& document) {
+    const Position start = mapper.source_location_to_position(range.begin);
+    if (document.tokens == nullptr) {
+        return Range{start, start};
+    }
+    const std::vector<frontend::Token>& tokens = document.tokens->tokens();
+    const auto after = std::ranges::lower_bound(tokens, range.span.end(), {},
+                                                [](const frontend::Token& token) { return token.span.offset; });
+    if (after == tokens.begin() || std::prev(after)->span.offset < range.span.offset) {
+        return Range{start, start};
+    }
+    const frontend::Token& last = *std::prev(after);
+    source::SourceLocation end = document.tokens->location_of(last);
+    if (!document.holds(end)) {
+        return Range{start, start};
+    }
+    end.column += static_cast<std::uint32_t>(last.span.length);
+    return Range{start, mapper.source_location_to_position(end)};
 }
 
 // A location in another file, whose text is not at hand: its byte column is
@@ -93,14 +120,14 @@ void Linter::lint_laws(const std::vector<frontend::LawDeclaration>& laws, std::v
 
         if (proves_count == 0) {
             Diagnostic diag;
-            diag.range = mapper.source_range_to_range(law.range);
+            diag.range = construct_range(law.range, mapper, document);
             diag.severity = DiagnosticSeverity::Error;
             diag.code = std::string(diagnostic_codes::law_missing_proves_clause);
             diag.message = "law '" + law.name + "' must have exactly one 'proves' clause";
             out.push_back(std::move(diag));
         } else if (proves_count > 1) {
             Diagnostic diag;
-            diag.range = mapper.source_range_to_range(law.range);
+            diag.range = construct_range(law.range, mapper, document);
             diag.severity = DiagnosticSeverity::Error;
             diag.code = std::string(diagnostic_codes::law_multiple_proves);
             diag.message =
@@ -122,7 +149,7 @@ void Linter::lint_proofs(const std::vector<frontend::ProofDeclaration>& proofs, 
         // Check that proves clause exists and is non-empty
         if (proof.proposition.length == 0) {
             Diagnostic diag;
-            diag.range = mapper.source_range_to_range(proof.range);
+            diag.range = construct_range(proof.range, mapper, document);
             diag.severity = DiagnosticSeverity::Error;
             diag.code = std::string(diagnostic_codes::proof_missing_proves);
             diag.message = "proof '" + proof.name + "' must have a 'proves' clause with a proposition";
@@ -132,7 +159,7 @@ void Linter::lint_proofs(const std::vector<frontend::ProofDeclaration>& proofs, 
         // Check that body is non-empty
         if (proof.statements.empty()) {
             Diagnostic diag;
-            diag.range = mapper.source_range_to_range(proof.range);
+            diag.range = construct_range(proof.range, mapper, document);
             diag.severity = DiagnosticSeverity::Warning;
             diag.code = std::string(diagnostic_codes::proof_empty_body);
             diag.message = "proof '" + proof.name + "' has an empty body";
@@ -166,7 +193,7 @@ void Linter::lint_refinement_types(const std::vector<frontend::RefinementType>& 
         // Check that base type is present
         if (refinement.base.length == 0) {
             Diagnostic diag;
-            diag.range = mapper.source_range_to_range(refinement.range);
+            diag.range = construct_range(refinement.range, mapper, document);
             diag.severity = DiagnosticSeverity::Error;
             diag.code = std::string(diagnostic_codes::refinement_invalid_base);
             diag.message = "refinement type '" + refinement.name + "' must have a base type";
@@ -176,7 +203,7 @@ void Linter::lint_refinement_types(const std::vector<frontend::RefinementType>& 
         // Check that predicate is present
         if (refinement.predicate.length == 0) {
             Diagnostic diag;
-            diag.range = mapper.source_range_to_range(refinement.range);
+            diag.range = construct_range(refinement.range, mapper, document);
             diag.severity = DiagnosticSeverity::Error;
             diag.code = std::string(diagnostic_codes::refinement_missing_predicate);
             diag.message = "refinement type '" + refinement.name + "' must have a 'where' clause with a predicate";

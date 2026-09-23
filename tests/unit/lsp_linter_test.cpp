@@ -8,6 +8,7 @@
 #include "cppl/lsp/protocol.hpp"
 #include "cppl/testing/test.hpp"
 
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -162,6 +163,43 @@ T identity(T x) {
     auto diags = lint_text(text);
     // Should have no C++L-specific diagnostics
     CPPL_CHECK(!has_diagnostic_with_code(diags, "cppl.syntax."));
+}
+
+CPPL_TEST(a_construct_recognized_in_preprocessed_text_is_ranged_where_it_was_written) {
+    // The compile recognizes the preprocessed unit, so a construct's byte span
+    // counts bytes of that text, not of the document. The recognizer never
+    // keeps a law without a proposition, so the syntax is built here the way
+    // the compile would hold it; a second one, from a header, is the header's.
+    const std::string document = "law l(int x);\n";
+    const std::string preprocessed = "# 1 \"/work/doc.cpp\"\n"
+                                     "# 1 \"<built-in>\" 1\n"
+                                     "# 1 \"/work/doc.cpp\" 2\n"
+                                     "law l(int x);\n";
+    const frontend::TokenStream tokens = frontend::lex(preprocessed, "/work/doc.cpp");
+    const frontend::Token& first = tokens.tokens().front();
+    const frontend::Token& last = tokens.tokens()[tokens.tokens().size() - 2]; // the `;`, before end of file
+
+    frontend::LawDeclaration law;
+    law.name = "l";
+    law.keyword_location = tokens.location_of(first);
+    law.range = {law.keyword_location, {first.span.offset, last.span.end() - first.span.offset}};
+    frontend::LawDeclaration elsewhere = law;
+    elsewhere.name = "elsewhere";
+    elsewhere.keyword_location.file = "/work/other.hpp";
+    frontend::Syntax syntax;
+    syntax.laws = {law, elsewhere};
+
+    const PositionMapper mapper(document);
+    const std::vector<Diagnostic> diags =
+        Linter{}.lint(tokens, syntax, {}, mapper, PublishedDocument{"/work/doc.cpp", "file:///work/doc.cpp"});
+    CPPL_CHECK_EQ(diags.size(), std::size_t{1});
+    if (!diags.empty()) {
+        CPPL_CHECK_EQ(diags[0].code, std::string("cppl.law.missing-proves"));
+        CPPL_CHECK_EQ(diags[0].range.start.line, 0u);
+        CPPL_CHECK_EQ(diags[0].range.start.character, 0u);
+        CPPL_CHECK_EQ(diags[0].range.end.line, 0u);
+        CPPL_CHECK_EQ(diags[0].range.end.character, 13u);
+    }
 }
 
 CPPL_TEST(contextual_keywords_as_identifiers_allowed) {

@@ -113,13 +113,6 @@ Range PositionMapper::byte_span_to_range(source::ByteSpan span) const {
     return Range{start, end};
 }
 
-Range PositionMapper::source_range_to_range(const source::SourceRange& range) const {
-    Position start = source_location_to_position(range.begin);
-    // Use the byte span to calculate the end position
-    Position end = byte_offset_to_position(range.span.end());
-    return Range{start, end};
-}
-
 std::uint32_t count_utf16_code_units(std::string_view text, std::size_t start, std::size_t end) {
     std::uint32_t count = 0;
     for (std::size_t i = start; i < end && i < text.size();) {
