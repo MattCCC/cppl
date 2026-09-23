@@ -862,6 +862,17 @@ verified int f(unsigned i) expects (i < 3u) ensures (result == 7) {
 }
 CPP
 
+# Invalidating what a write may overlap must not cost a place the fact it just
+# wrote: the second write at one term is a fact about that element afterwards.
+accept a_second_write_at_one_index_term_is_read_back <<'CPP'
+verified int f(unsigned i) expects (i < 3u) ensures (result == 7) {
+    int a[3] = {1, 1, 1};
+    a[i] = 5;
+    a[i] = 7;
+    return a[i];
+}
+CPP
+
 # Identity is of the term, not of the spelling's occurrence: a compound index
 # written twice is one term, and a local index untouched between the two
 # accesses reads at one version.

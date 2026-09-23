@@ -340,3 +340,29 @@ verified int f(int* p, unsigned n, unsigned i, unsigned j) expects (writable(p, 
     return 0;
 }
 CPP
+
+# Identity and aliasing answer opposite questions. Two selections whose indices
+# are not established equal are distinct for carrying a fact, which is not a
+# claim that they are disjoint storage: the write at `i` may be the write at
+# `j`, so it invalidates the fact written there.
+# SPEC: STORAGE-010
+reject a_write_invalidates_a_fact_at_another_index 'does not satisfy its contract' <<'CPP'
+verified int f(unsigned i, unsigned j) expects (i < 3u && j < 3u) ensures (result == 5) {
+    int a[3] = {1, 1, 1};
+    a[j] = 5;
+    a[i] = 7;
+    return a[j];
+}
+CPP
+
+# A constant index states which element it selects and a term does not, so the
+# two selections are never one place. They may still be one element, and the
+# symbolic write invalidates the constant element's fact.
+reject a_symbolic_write_invalidates_a_constant_element_fact 'does not satisfy its contract' <<'CPP'
+verified int f(unsigned i) expects (i < 3u) ensures (result == 5) {
+    int a[3] = {1, 1, 1};
+    a[0] = 5;
+    a[i] = 7;
+    return a[0];
+}
+CPP

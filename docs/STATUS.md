@@ -901,7 +901,9 @@ carry no fact between them, and an index reassigned between two accesses names
 another element at the second. The comparison is structural and errs toward
 difference: an index shape it does not decide gets its own place, which costs
 precision and never soundness. One term, including a compound one such as
-`a[i + 1]`, still names one place, so an element written is read back.
+`a[i + 1]`, still names one place, so an element written is read back. Being two
+places withholds a fact and does not make the storage disjoint, so a write at
+either still invalidates the other, including an element selected at a constant.
 
 Each subscript also owes the capability its own access needs, which is how a
 region held only as `writable(p, n)` refuses a read of an element it just

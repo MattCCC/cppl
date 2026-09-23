@@ -5300,14 +5300,18 @@ representation, solver, or TCB implementation.
   when the selected C++ semantics make the storage identity meaningful.
 - A place ceases to denote a live object when the corresponding object lifetime ends.
 
-- [STORAGE-010] An element selected at a term designates the storage that term's value selects. Two such
-  selections are the same place only where their index terms denote the same value, and an
+- [STORAGE-010] An element selected at a term designates the storage that term's value selects, and an
   index term denotes a value at the versions current where the selection is made.
-- Selections whose indices are not established equal are distinct places for the purpose of
-  transporting a fact, and may overlap for the purpose of invalidating one: a fact about one
-  does not transport to the other, while a write to either invalidates both.
-- An implementation that cannot decide whether two index terms denote one value must treat
-  the selections as distinct places, and must not transport a fact between them.
+- Two such selections of one array designate one place exactly where their index terms denote one
+  value, and a fact about one transports to the other only where that equality is established.
+- Where the equality is not established, the selections are distinct identities for transporting a
+  fact and potentially overlapping storage for invalidating one. A distinct identity withholds a
+  fact; it does not license keeping one, and a write through either invalidates facts about every
+  selection that may designate the same storage, including a selection at a constant index.
+- Where the index terms are established unequal, the selections designate disjoint storage, and a
+  write through one need not invalidate a fact about the other.
+- An implementation that establishes neither equality nor inequality must transport no fact between
+  the selections and must treat a write through either as invalidating the other.
 
 ## E.2 Lifetime start
 
