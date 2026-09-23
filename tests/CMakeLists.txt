@@ -178,6 +178,9 @@ target_link_libraries(lsp_json_test PRIVATE cppl_lsp)
 cppl_add_unit_test(lsp_transport_test unit/lsp_transport_test.cpp)
 target_link_libraries(lsp_transport_test PRIVATE cppl_lsp)
 
+cppl_add_unit_test(lsp_framing_test unit/lsp_framing_test.cpp)
+target_link_libraries(lsp_framing_test PRIVATE cppl_lsp)
+
 # Proves the LSP formatting handlers and the shared cppl::formatter engine
 # they wrap produce byte-identical output (ARCHITECTURE.md: one engine, not
 # a parallel implementation per surface).

@@ -18,10 +18,13 @@
 namespace cppl::lsp {
 
 // Reads one Content-Length-delimited JSON-RPC message body from `input`.
-// Returns std::nullopt at end of stream. Throws json::Error on a malformed
-// header block or a truncated body; the caller decides whether that is
-// fatal (main.cpp treats it as end of session, since a corrupted stream
-// cannot be recovered by skipping forward).
+// Returns std::nullopt at end of stream, including one that ends inside a
+// body. Throws json::Error on a header line over 8 KiB, and on a
+// Content-Length that is not plain decimal digits, is stated twice, or exceeds
+// 64 MiB; the caller decides whether that is fatal (main.cpp treats it as end
+// of session, since a corrupted stream cannot be recovered by skipping
+// forward). Memory grows with the bytes that arrive, never with the length a
+// header states.
 [[nodiscard]] std::optional<std::string> read_message(std::istream& input);
 
 // Writes one message with the required Content-Length header and no other

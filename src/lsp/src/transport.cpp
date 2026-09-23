@@ -5,6 +5,8 @@
 #include "cppl/lsp/semantic_tokens.hpp"
 #include "cppl/lsp/server.hpp"
 
+#include <algorithm>
+#include <charconv>
 #include <cstddef>
 #include <cstdint>
 #include <exception>
@@ -14,6 +16,7 @@
 #include <ostream>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -21,39 +24,83 @@ namespace cppl::lsp {
 
 namespace {
 
-// Reads the Content-Length header block: one or more "Name: Value\r\n"
-// lines terminated by a blank line. Only Content-Length is required by the
-// LSP base protocol; any other header (e.g. Content-Type) is accepted and
-// ignored.
+// The editor on the other end of the pipe states each message's length before
+// sending it, so these bound what a stated length can cost. A header line is a
+// name and a number. A message body is at most one document's text; one this
+// large is not a C++L source anyone edits.
+constexpr std::size_t kKiB = 1024;
+constexpr std::size_t kMaxHeaderLine = 8 * kKiB;
+constexpr std::size_t kMaxBody = 64 * kKiB * kKiB;
+constexpr std::size_t kReadChunk = 64 * kKiB;
+
+// One header line without its terminator, or nullopt at end of stream. LSP
+// ends each line with "\r\n"; a bare "\n" is accepted too.
+[[nodiscard]] std::optional<std::string> read_header_line(std::istream& input) {
+    std::string line;
+    char c = '\0';
+    while (input.get(c)) {
+        if (c == '\n') {
+            if (!line.empty() && line.back() == '\r') {
+                line.pop_back();
+            }
+            return line;
+        }
+        if (line.size() == kMaxHeaderLine) {
+            throw json::Error("message header line longer than 8 KiB");
+        }
+        line.push_back(c);
+    }
+    return std::nullopt;
+}
+
+[[nodiscard]] bool is_blank(char c) {
+    return c == ' ' || c == '\t';
+}
+
+// Decimal digits only, around optional blanks. std::stoul would also take a
+// sign (so "-1" read as the largest length), leading blanks of every kind and
+// any trailing text.
+[[nodiscard]] std::size_t parse_content_length(std::string_view value) {
+    while (!value.empty() && is_blank(value.front())) {
+        value.remove_prefix(1);
+    }
+    while (!value.empty() && is_blank(value.back())) {
+        value.remove_suffix(1);
+    }
+    std::size_t length = 0;
+    const std::from_chars_result parsed = std::from_chars(value.data(), value.data() + value.size(), length);
+    if (value.empty() || parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size()) {
+        throw json::Error("malformed Content-Length header");
+    }
+    if (length > kMaxBody) {
+        throw json::Error("Content-Length larger than 64 MiB");
+    }
+    return length;
+}
+
+// Reads the Content-Length header block: one or more "Name: Value" lines
+// ending in a blank line. Only Content-Length is required by the LSP base
+// protocol; any other header (e.g. Content-Type) is accepted and ignored, as
+// is a line with no colon. A second Content-Length is refused: believing
+// either one would read the stream differently from a peer that believed the
+// other.
 [[nodiscard]] std::optional<std::size_t> read_headers(std::istream& input) {
     std::optional<std::size_t> content_length;
-    std::string line;
-    while (std::getline(input, line)) {
-        // getline stops at '\n'; LSP headers end each line with "\r\n", so a
-        // trailing '\r' is stripped here.
-        if (!line.empty() && line.back() == '\r') {
-            line.pop_back();
-        }
-        if (line.empty()) {
-            // The blank line ending the header block.
+    while (const std::optional<std::string> line = read_header_line(input)) {
+        if (line->empty()) {
             return content_length;
         }
-        const std::size_t colon = line.find(':');
+        const std::size_t colon = line->find(':');
         if (colon == std::string::npos) {
-            continue; // malformed header line: ignore rather than abort the session
+            continue;
         }
-        std::string name = line.substr(0, colon);
-        std::string value = line.substr(colon + 1);
-        while (!value.empty() && value.front() == ' ') {
-            value.erase(value.begin());
+        if (std::string_view(*line).substr(0, colon) != "Content-Length") {
+            continue;
         }
-        if (name == "Content-Length") {
-            try {
-                content_length = static_cast<std::size_t>(std::stoul(value));
-            } catch (const std::exception&) {
-                return std::nullopt; // malformed length: nothing sound can be read
-            }
+        if (content_length.has_value()) {
+            throw json::Error("more than one Content-Length header");
         }
+        content_length = parse_content_length(std::string_view(*line).substr(colon + 1));
     }
     return std::nullopt; // end of stream before a header block completed
 }
@@ -711,10 +758,18 @@ std::optional<std::string> read_message(std::istream& input) {
     if (!length.has_value()) {
         return std::nullopt;
     }
-    std::string body(*length, '\0');
-    input.read(body.data(), static_cast<std::streamsize>(*length));
-    if (static_cast<std::size_t>(input.gcount()) != *length) {
-        return std::nullopt; // truncated body: the stream ended mid-message
+    // The body grows as its bytes arrive, so a length that is stated and never
+    // sent costs nothing.
+    std::string body;
+    std::string chunk;
+    while (body.size() < *length) {
+        chunk.resize(std::min(kReadChunk, *length - body.size()));
+        input.read(chunk.data(), static_cast<std::streamsize>(chunk.size()));
+        const auto received = static_cast<std::size_t>(input.gcount());
+        body.append(chunk, 0, received);
+        if (received != chunk.size()) {
+            return std::nullopt; // truncated body: the stream ended mid-message
+        }
     }
     return body;
 }
