@@ -1929,7 +1929,7 @@ type. `self` is contextual and has no special meaning outside that predicate.
 
 ## 17.2 Refinement introduction, construction, and semantic validity
 
-A value MUST NOT enter a refinement type unless the verifier establishes that the value satisfies the refinement's semantic validity requirements.
+[REFINE-003] A value MUST NOT enter a refinement type unless the verifier establishes that the value satisfies the refinement's semantic validity requirements.
 
 For a refinement declaration:
 
@@ -1946,7 +1946,7 @@ P[v / self]
 
 where `P[v / self]` denotes the refinement predicate with `v` substituted for `self`.
 
-This requirement applies to every operation that introduces a new logical value into refinement-bearing storage or produces a refinement-bearing result, including, as applicable:
+[REFINE-004] This requirement applies to every operation that introduces a new logical value into refinement-bearing storage or produces a refinement-bearing result, including, as applicable:
 
 ```text
 local initialization
@@ -1968,7 +1968,7 @@ temporary construction
 verified call post-state
 ```
 
-A refinement MUST NOT be acquired merely because a value has the same erased C++ representation as the refinement's base type.
+[REFINE-019] A refinement MUST NOT be acquired merely because a value has the same erased C++ representation as the refinement's base type.
 
 For example:
 
@@ -1999,7 +1999,26 @@ because no proof establishes:
 value > 0
 ```
 
-A refinement whose base is itself refined inherits the complete semantic validity requirements of its base.
+[REFINE-005] Runtime path facts may discharge the obligation. No hidden runtime validation is
+generated.
+
+For example:
+
+```cpp
+type Positive = int where (self > 0);
+
+verified Positive positive_or_one(int x)
+{
+    if (x > 0) {
+        return x;
+    }
+    return 1;
+}
+```
+
+[REFINE-006] The first return uses the branch fact; the second uses the literal value.
+
+[REFINE-020] A refinement whose base is itself refined inherits the complete semantic validity requirements of its base.
 
 For example:
 
@@ -2008,7 +2027,7 @@ type NonNegative = int where (self >= 0);
 type Percentage = NonNegative where (self <= 100);
 ```
 
-a `Percentage` value MUST satisfy both:
+[REFINE-021] a `Percentage` value MUST satisfy both:
 
 ```text
 self >= 0
@@ -2017,13 +2036,13 @@ self <= 100
 
 Refinement validity applies to logical values and logical value versions.
 
-A successful refinement introduction establishes validity for the introduced logical value version. It MUST NOT permanently attach the predicate to a source variable, memory address, object identity, or storage location independently of later mutation.
+[REFINE-022] A successful refinement introduction establishes validity for the introduced logical value version. It MUST NOT permanently attach the predicate to a source variable, memory address, object identity, or storage location independently of later mutation.
 
-If a write, aliasing event, call effect, lifetime transition, or other operation may change the relevant value, facts about the previous logical version MUST NOT automatically be reused for the new logical version.
+[REFINE-023] If a write, aliasing event, call effect, lifetime transition, or other operation may change the relevant value, facts about the previous logical version MUST NOT automatically be reused for the new logical version.
 
 Refinement validity is recursive through refinement-bearing subobjects as defined by §17.2.1.
 
-A parameter of semantic type `T` supplies:
+[REFINE-007] A parameter of semantic type `T` supplies:
 
 ```text
 Valid(T, parameter)
@@ -2031,19 +2050,19 @@ Valid(T, parameter)
 
 as an entry premise of a verified function.
 
-For a directly refined parameter, this entails the refinement predicate itself.
+[REFINE-024] For a directly refined parameter, this entails the refinement predicate itself.
 
-For an aggregate, class, array, or other object type containing refinement-bearing subobjects, the entry premise recursively entails the semantic validity requirements of those subobjects as defined by §17.2.1.
+[REFINE-025] For an aggregate, class, array, or other object type containing refinement-bearing subobjects, the entry premise recursively entails the semantic validity requirements of those subobjects as defined by §17.2.1.
 
-This is a formal precondition of the verified claim, not an ABI check and not an implicit runtime validation.
+[REFINE-026] This is a formal precondition of the verified claim, not an ABI check and not an implicit runtime validation.
 
-An ordinary or unverified caller may physically provide a representation-equivalent value that violates `Valid(T, parameter)` because refinement metadata erases at runtime.
+[REFINE-027] An ordinary or unverified caller may physically provide a representation-equivalent value that violates `Valid(T, parameter)` because refinement metadata erases at runtime.
 
 In such an execution, the verified boundary's semantic entry requirement is not met, and no C++L guarantee whose derivation depends on that entry validity applies.
 
 ## 17.2.1 Recursive semantic validity
 
-Every C++L type has a semantic validity predicate, written conceptually as:
+[REFINE-028] Every C++L type has a semantic validity predicate, written conceptually as:
 
 ```text
 Valid(T, value)
@@ -2051,7 +2070,7 @@ Valid(T, value)
 
 `Valid(T, value)` is a verification property. It has no runtime representation and does not by itself introduce runtime checks, tags, wrappers, constructors, fields, branches, metadata in the native object representation, or ABI changes.
 
-For an ordinary C++ type that contains no refinement-bearing subobjects, `Valid(T, value)` imposes no additional refinement condition.
+[REFINE-029] For an ordinary C++ type that contains no refinement-bearing subobjects, `Valid(T, value)` imposes no additional refinement condition.
 
 For a refinement declaration:
 
@@ -2068,13 +2087,13 @@ P[value / self]
 
 where `P[value / self]` denotes the refinement predicate with the candidate value substituted for `self`.
 
-For a refinement whose base is itself refined, semantic validity is recursive. Every predicate in the refinement chain MUST hold.
+[REFINE-030] For a refinement whose base is itself refined, semantic validity is recursive. Every predicate in the refinement chain MUST hold.
 
-For an object type, semantic validity recursively requires semantic validity of each live refinement-bearing base-class subobject and non-static data-member subobject.
+[REFINE-031] For an object type, semantic validity recursively requires semantic validity of each live refinement-bearing base-class subobject and non-static data-member subobject.
 
-For an array type, semantic validity recursively requires semantic validity of each live element.
+[REFINE-032] For an array type, semantic validity recursively requires semantic validity of each live element.
 
-For a union type, only the active member contributes subobject-validity obligations.
+[REFINE-033] For a union type, only the active member contributes subobject-validity obligations.
 
 Pointer semantic validity does not recursively imply semantic validity of the pointee. Pointer capabilities, pointee lifetime, bounds, initialization, provenance, readability, writability, and pointee refinement validity are governed separately by the storage and memory rules.
 
@@ -2082,7 +2101,7 @@ Reference semantic validity applies to the referred logical value version. A ref
 
 Semantic validity is attached to logical values and logical value versions, not permanently to source names or storage locations.
 
-A fact establishing `Valid(T, value)` for one logical version MUST NOT be reused for a later logical version when an intervening write, mutation, call effect, aliasing event, lifetime transition, or other operation may have changed any subobject whose validity contributes to `Valid(T, value)`.
+[REFINE-034] A fact establishing `Valid(T, value)` for one logical version MUST NOT be reused for a later logical version when an intervening write, mutation, call effect, aliasing event, lifetime transition, or other operation may have changed any subobject whose validity contributes to `Valid(T, value)`.
 
 ## 17.2.2 Refined parameters and entry validity
 
@@ -2127,19 +2146,19 @@ Valid(Positive, value.x)
 value.x > 0
 ```
 
-No proof of the historical construction path of `value` is required merely to use refinement facts implied by its established entry validity.
+[REFINE-035] No proof of the historical construction path of `value` is required merely to use refinement facts implied by its established entry validity.
 
-For a reference parameter, entry validity applies to the referred object's entry logical version.
+[REFINE-036] For a reference parameter, entry validity applies to the referred object's entry logical version.
 
-For a pointer parameter, validity of the pointer value itself does not imply validity of any pointee. Pointee validity requires the applicable storage, capability, lifetime, and refinement evidence.
+[REFINE-037] For a pointer parameter, validity of the pointer value itself does not imply validity of any pointee. Pointee validity requires the applicable storage, capability, lifetime, and refinement evidence.
 
 Parameter entry validity is a formal precondition of the verified claim. It is not an implicit runtime validation.
 
 Because refinements erase to their C++ representation, ordinary or unverified C++ may physically construct or pass a representation that does not satisfy its C++L semantic validity predicate.
 
-If such a value crosses into a verified function without satisfying the function's semantic entry requirements, the verified precondition is not met. No C++L guarantee whose derivation depends on that entry validity applies to that invocation.
+[REFINE-038] If such a value crosses into a verified function without satisfying the function's semantic entry requirements, the verified precondition is not met. No C++L guarantee whose derivation depends on that entry validity applies to that invocation.
 
-This is the same rule whether the refinement appears directly as the parameter type or recursively inside the parameter's object representation.
+[REFINE-039] This is the same rule whether the refinement appears directly as the parameter type or recursively inside the parameter's object representation.
 
 For example, these boundaries are governed uniformly:
 
@@ -2163,7 +2182,7 @@ value.x > 0
 
 because those facts follow from the semantic validity of their respective parameter types.
 
-A later mutation or possible mutation may invalidate facts derived from entry validity. Such facts MUST NOT be reused after the affected logical version has changed unless semantic validity has been re-established for the new version.
+[REFINE-040] A later mutation or possible mutation may invalidate facts derived from entry validity. Such facts MUST NOT be reused after the affected logical version has changed unless semantic validity has been re-established for the new version.
 
 ## 17.3 Elimination and flow
 
@@ -2212,11 +2231,11 @@ A `Percentage` value must establish both predicates.
 
 ## 17.6 Refined members, elements, and subobjects
 
-A refinement-bearing subobject participates in the semantic validity of its containing object as defined by §17.2.1.
+[REFINE-041] A refinement-bearing subobject participates in the semantic validity of its containing object as defined by §17.2.1.
 
-Within verification-enabled code, every operation that establishes a new logical value for an object or for a refinement-bearing subobject MUST establish the semantic validity required for that new value.
+[REFINE-012] Within verification-enabled code, every operation that establishes a new logical value for an object or for a refinement-bearing subobject MUST establish the semantic validity required for that new value.
 
-This requirement applies wherever C++ semantics create or replace such a logical value, including, as applicable:
+[REFINE-042] This requirement applies wherever C++ semantics create or replace such a logical value, including, as applicable:
 
 ```text
 aggregate initialization
@@ -2252,7 +2271,7 @@ struct S {
 };
 ```
 
-the following construction in verification-enabled code MUST be rejected:
+[REFINE-043] the following construction in verification-enabled code MUST be rejected:
 
 ```cpp
 verified S make_invalid()
@@ -2298,21 +2317,21 @@ verified int read(S value)
 
 is valid because `Valid(S, value)` is an entry premise and entails the validity of `value.x`.
 
-A refined member therefore does not require proof of its historical construction path when the semantic validity of the containing object's current logical version is already established.
+[REFINE-044] A refined member therefore does not require proof of its historical construction path when the semantic validity of the containing object's current logical version is already established.
 
 Construction provenance and current semantic validity are distinct concepts.
 
-The verifier MUST reason about current logical value versions. It MUST NOT require global proof that every historical or external construction of a C++ representation satisfied C++L refinement obligations.
+[REFINE-045] The verifier MUST reason about current logical value versions. It MUST NOT require global proof that every historical or external construction of a C++ representation satisfied C++L refinement obligations.
 
-Conversely, semantic validity MUST NOT be manufactured merely because a source declaration spells a refined member type.
+[REFINE-046] Conversely, semantic validity MUST NOT be manufactured merely because a source declaration spells a refined member type.
 
-If the current logical version of the containing object is not known to satisfy its semantic validity predicate, reading the member MUST NOT automatically recover the member's refinement fact from the declaration alone.
+[REFINE-013] If the current logical version of the containing object is not known to satisfy its semantic validity predicate, reading the member MUST NOT automatically recover the member's refinement fact from the declaration alone.
 
 Mutation follows the common place/version rules.
 
-Any write that changes a refinement-bearing subobject creates a new logical value version for the affected place and any containing aggregate validity that depends on that subobject.
+[REFINE-047] Any write that changes a refinement-bearing subobject creates a new logical value version for the affected place and any containing aggregate validity that depends on that subobject.
 
-The new value MUST satisfy the refinement predicate before the affected refined storage is considered semantically valid.
+[REFINE-048] The new value MUST satisfy the refinement predicate before the affected refined storage is considered semantically valid.
 
 For example:
 
@@ -2325,7 +2344,7 @@ verified void set_valid(S& value)
 
 is permitted when the write establishes the predicate of `Positive`.
 
-The following MUST be rejected:
+[REFINE-049] The following MUST be rejected:
 
 ```cpp
 verified void set_invalid(S& value)
@@ -2336,9 +2355,9 @@ verified void set_invalid(S& value)
 
 because the new logical value of `value.x` does not satisfy the refinement.
 
-Possible alias mutation MUST be handled conservatively.
+[REFINE-050] Possible alias mutation MUST be handled conservatively.
 
-If an operation may mutate a refinement-bearing subobject, facts derived from the previous logical version of that subobject or from the previous semantic validity of its containing object MUST be invalidated unless the operation's checked effects and postconditions re-establish them.
+[REFINE-051] If an operation may mutate a refinement-bearing subobject, facts derived from the previous logical version of that subobject or from the previous semantic validity of its containing object MUST be invalidated unless the operation's checked effects and postconditions re-establish them.
 
 For example:
 
@@ -2351,7 +2370,7 @@ verified int read_after_unknown_mutation(S& value)
 }
 ```
 
-MUST NOT use `value.x > 0` merely because `value.x` was refined on function entry when `unknown_mutation` may have changed that storage and supplies no checked postcondition re-establishing validity.
+[REFINE-052] MUST NOT use `value.x > 0` merely because `value.x` was refined on function entry when `unknown_mutation` may have changed that storage and supplies no checked postcondition re-establishing validity.
 
 After such a mutation, the verifier may use the refinement fact again only if the current version's semantic validity is established through checked reasoning.
 
@@ -2367,9 +2386,9 @@ if the generated C++ representation permits it.
 
 Such an operation does not establish `Valid(S, value)` in C++L.
 
-If that value is supplied to a verified boundary that requires semantic validity of `S`, the boundary's precondition is unsatisfied.
+[REFINE-053] If that value is supplied to a verified boundary that requires semantic validity of `S`, the boundary's precondition is unsatisfied.
 
-This does not invalidate verification of the boundary itself and does not require C++L to insert a runtime check.
+[REFINE-054] This does not invalidate verification of the boundary itself and does not require C++L to insert a runtime check.
 
 The same rules apply recursively to:
 
@@ -2383,11 +2402,11 @@ refined members of template instantiations
 indexed refinements used as members or elements
 ```
 
-A container or aggregate is semantically valid only when every live refinement-bearing subobject whose validity contributes to that aggregate's type is valid for the current logical version.
+[REFINE-055] A container or aggregate is semantically valid only when every live refinement-bearing subobject whose validity contributes to that aggregate's type is valid for the current logical version.
 
-Refined subobject validity MUST compose with the common storage model rather than using a separate member-specific proof mechanism.
+[REFINE-056] Refined subobject validity MUST compose with the common storage model rather than using a separate member-specific proof mechanism.
 
-In particular, refined members and elements MUST use the same:
+[REFINE-057] In particular, refined members and elements MUST use the same:
 
 ```text
 Place
@@ -2403,9 +2422,9 @@ refinement-crossing obligations
 
 as other refinement-bearing storage.
 
-No implementation may make refined members sound by blanket-refusing all member reads or all aggregate construction once the common storage and validity obligations are available.
+[REFINE-058] No implementation may make refined members sound by blanket-refusing all member reads or all aggregate construction once the common storage and validity obligations are available.
 
-No implementation may make refined members permissive by treating their predicates as permanent facts attached to storage independent of logical versions.
+[REFINE-059] No implementation may make refined members permissive by treating their predicates as permanent facts attached to storage independent of logical versions.
 
 The governing rule is:
 
