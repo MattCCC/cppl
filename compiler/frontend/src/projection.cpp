@@ -391,6 +391,18 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
 
         const std::string binding_helper = options.generated_prefix + "binding_type_" + suffix;
         std::string replacement = "template<class T> struct " + binding_helper + " { using type = T; };\n";
+        // Decomposing a subject needs its type complete, as a member access would
+        // (SPEC.md 20.4), but a subject reached through a reference never makes
+        // C++ instantiate a class template specialization. Asking for `sizeof` of
+        // a subject probe's result in a SFINAE context instantiates it where C++
+        // can, and answers false without an error for a type that is genuinely
+        // incomplete, which the provider then refuses by name.
+        const std::string completion_helper = options.generated_prefix + "completes_" + suffix;
+        replacement += "template<class F, class = void> struct ";
+        replacement += completion_helper;
+        replacement += " { static constexpr bool value = false; };\ntemplate<class R, class... A> struct ";
+        replacement += completion_helper;
+        replacement += "<R (*)(A...), decltype(void(sizeof(R)))> { static constexpr bool value = true; };\n";
         replacement += emit(projected.name, stream.spelling(proof.parameters), proof.proposition,
                             proof.keyword_location, proof.end_line);
 
@@ -409,6 +421,11 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
                 if (statement.kind == ProofStatementKind::Cases || statement.kind == ProofStatementKind::Decompose) {
                     expression_probe(statement.proposition, statement.location, projected.case_names, "case_");
                     const std::string subject_probe = projected.case_names.back();
+                    replacement += "static_assert(";
+                    replacement += completion_helper;
+                    replacement += "<decltype(&";
+                    replacement += subject_probe;
+                    replacement += ")>::value || true);\n";
                     for (const ProofArm& arm : statement.arms) {
                         // A label that is a C++ expression is resolved by Clang,
                         // like every other expression a proof mentions. A

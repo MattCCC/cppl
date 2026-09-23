@@ -56,4 +56,11 @@ refuse enum_top_bit_claimed_false "eq(4294967295, 4294967295) reduces to 1 while
 refuse enum_label_of_another_instantiation "this label does not name a case of 'Machine<int>::Mode'"
 grep -q "enum_label_of_another_instantiation.cpp:15:9" "$run/enum_label_of_another_instantiation.log"
 
+# SPEC: CASE-007
+# A declared but undefined class template has no specialization to instantiate,
+# so it stays incomplete and is refused by the provider rather than by C++.
+refuse decompose_undefined_template "proof decomposition unavailable for incomplete type"
+grep -q "decompose_undefined_template.cpp:12:5" "$run/decompose_undefined_template.log"
+! grep -q "cpp-semantic" "$run/decompose_undefined_template.log"
+
 echo 'each decomposition provider refuses the half of its matched pairs that does not hold'

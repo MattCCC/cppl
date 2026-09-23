@@ -494,6 +494,58 @@ proof element_subject(std::optional<int> (&a)[2])
     }
 }
 
+// SPEC: CASE-007
+// Decomposing needs the subject's type complete, as a member access would. A
+// class template specialization reached only through a reference is never
+// instantiated by C++ on its own, so nothing else in this file names
+// `Crate<Cargo>` or `Crate<long>` by value. The refused half of this matched
+// pair, a template that is declared but never defined, is
+// `fixtures/negative/decompose_undefined_template.cpp`.
+template <typename T> struct Crate {
+    T item;
+    bool sealed;
+};
+
+struct Cargo {
+    int weight;
+};
+
+proof is_cargo(Cargo c)
+    proves (Eq<bool>(true, true))
+{
+    refl;
+}
+
+proof crate_by_reference(const Crate<Cargo>& c)
+    proves (Eq<bool>(true, true))
+{
+    decompose c {
+        components(item, sealed) => {
+            exact is_cargo(item);
+        }
+    }
+}
+
+// The payload binder of an optional taken by reference is itself a reference to
+// a specialization nothing instantiated.
+proof crate_inside_optional_reference(const std::optional<Crate<long>>& o)
+    proves (Eq<bool>(true, true))
+{
+    cases o {
+        some(crate) => {
+            decompose crate {
+                components(item, sealed) => {
+                    refl;
+                }
+            }
+        }
+
+        none => {
+            refl;
+        }
+    }
+}
+
 // 33. None of this may reach the runtime.
 int main() {
     std::printf("%d\n", 7);
