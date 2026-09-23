@@ -147,6 +147,36 @@ CPPL_TEST(source_location_to_position) {
     CPPL_CHECK_EQ(pos.character, 2u);
 }
 
+CPPL_TEST(a_source_location_column_counts_bytes_and_a_position_utf16_units) {
+    // The compiler's columns are byte columns. `é` is two bytes and one UTF-16
+    // unit; `😀` is four bytes and two units.
+    std::string text = "x\n\xC3\xA9 = y;\n\xF0\x9F\x98\x80z;\n";
+    PositionMapper mapper(text);
+
+    Position pos = mapper.source_location_to_position(SourceLocation{"test.cpp", 2, 4}); // '='
+    CPPL_CHECK_EQ(pos.line, 1u);
+    CPPL_CHECK_EQ(pos.character, 2u);
+
+    pos = mapper.source_location_to_position(SourceLocation{"test.cpp", 3, 5}); // 'z'
+    CPPL_CHECK_EQ(pos.line, 2u);
+    CPPL_CHECK_EQ(pos.character, 2u);
+}
+
+CPPL_TEST(a_source_location_past_its_line_or_the_text_keeps_its_distance) {
+    std::string text = "\xC3\xA9;\n";
+    PositionMapper mapper(text);
+
+    // Two bytes past the end of `é;`: two characters past its two.
+    Position pos = mapper.source_location_to_position(SourceLocation{"test.cpp", 1, 6});
+    CPPL_CHECK_EQ(pos.line, 0u);
+    CPPL_CHECK_EQ(pos.character, 4u);
+
+    // A line the text does not have is passed through as written.
+    pos = mapper.source_location_to_position(SourceLocation{"test.cpp", 9, 7});
+    CPPL_CHECK_EQ(pos.line, 8u);
+    CPPL_CHECK_EQ(pos.character, 6u);
+}
+
 CPPL_TEST(count_utf16_code_units_ascii) {
     std::string text = "hello";
     std::uint32_t count = count_utf16_code_units(text, 0, 5);

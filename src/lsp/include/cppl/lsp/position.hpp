@@ -21,7 +21,8 @@ class PositionMapper {
     // Convert line/column (0-indexed) to byte offset
     [[nodiscard]] std::size_t position_to_byte_offset(const Position& pos) const;
 
-    // Convert source::SourceLocation to LSP Position
+    // Convert source::SourceLocation (1-indexed line, 1-indexed byte column) to
+    // LSP Position (0-indexed line, UTF-16 character)
     [[nodiscard]] Position source_location_to_position(const source::SourceLocation& loc) const;
 
     // Convert source::ByteSpan to LSP Range

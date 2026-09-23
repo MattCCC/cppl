@@ -91,11 +91,20 @@ std::size_t PositionMapper::position_to_byte_offset(const Position& pos) const {
 }
 
 Position PositionMapper::source_location_to_position(const source::SourceLocation& loc) const {
-    // SourceLocation uses 1-indexed lines and columns
     if (loc.line == 0) {
         return Position{0, 0};
     }
-    return Position{loc.line - 1, loc.column > 0 ? loc.column - 1 : 0};
+    const std::uint32_t line = loc.line - 1;
+    const std::uint32_t byte_column = loc.column > 0 ? loc.column - 1 : 0;
+    if (line >= line_starts_.size()) {
+        return Position{line, byte_column};
+    }
+    // A column counts bytes; LSP counts UTF-16 code units. Bytes past the end
+    // of the line have no characters to decode, so they count one each.
+    const std::size_t start = line_starts_[line];
+    const std::size_t line_end = line + 1 < line_starts_.size() ? line_starts_[line + 1] - 1 : text_.size();
+    const std::size_t end = std::min(start + byte_column, line_end);
+    return Position{line, count_utf16_code_units(text_, start, end) + static_cast<std::uint32_t>(start + byte_column - end)};
 }
 
 Range PositionMapper::byte_span_to_range(source::ByteSpan span) const {
