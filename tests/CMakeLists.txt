@@ -97,6 +97,11 @@ target_link_libraries(kernel_adversarial_test PRIVATE cppl_kernel)
 cppl_add_unit_test(unit_digest_test unit/digest_test.cpp)
 target_link_libraries(unit_digest_test PRIVATE cppl_source)
 
+# The crash report has to survive the fault it reports, a stack overflow
+# included, so it is exercised in a child process that really overflows.
+cppl_add_unit_test(unit_crash_report_test unit/crash_report_test.cpp)
+target_link_libraries(unit_crash_report_test PRIVATE cppl_driver)
+
 cppl_add_unit_test(unit_lexer_test unit/lexer_test.cpp)
 target_link_libraries(unit_lexer_test PRIVATE cppl_frontend)
 

@@ -138,7 +138,15 @@ const char* describe(int number) noexcept {
 // exhausted stack, before the default action can take effect, and the process
 // spins in the handler instead of dying. Giving the handler its own stack is
 // what makes a stack overflow reportable at all.
-alignas(std::max_align_t) char handler_stack[SIGSTKSZ < 65536 ? 65536 : SIGSTKSZ];
+//
+// Its size is settled when it is installed, not at compile time: glibc 2.34 and
+// later define SIGSTKSZ as a sysconf() call, not a constant, and the system's
+// own minimum can exceed any size fixed here.
+std::size_t handler_stack_size() {
+    constexpr long floor = 65536;
+    const long system = static_cast<long>(SIGSTKSZ);
+    return static_cast<std::size_t>(system > floor ? system : floor);
+}
 
 extern "C" void on_signal(int number, siginfo_t* information, void*) {
     // A second fault inside the report would re-enter this handler. The report
@@ -169,9 +177,12 @@ void install_crash_report() {
 #else
     // Install the handler's own stack first: SA_ONSTACK is what lets a stack
     // overflow be reported instead of faulting the handler too.
+    // Never freed: a signal can arrive until the process is gone, after every
+    // static destructor has run.
+    const std::size_t size = handler_stack_size();
     stack_t stack{};
-    stack.ss_sp = handler_stack;
-    stack.ss_size = sizeof(handler_stack);
+    stack.ss_sp = new std::byte[size];
+    stack.ss_size = size;
     stack.ss_flags = 0;
     static_cast<void>(::sigaltstack(&stack, nullptr));
 
