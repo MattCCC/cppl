@@ -1161,33 +1161,6 @@ std::optional<std::size_t> find_declarator_name(const std::vector<Token>& tokens
     return std::nullopt;
 }
 
-// Specification clauses on a function declarator are part of the language
-// (GRAMMAR.md 6) but are not verified by this implementation. They are
-// diagnosed rather than erased, because silently dropping a contract would
-// turn a specification into nothing at all.
-bool has_specification_clause(const std::vector<Token>& tokens, std::size_t name_index, std::size_t& clause_index) {
-    const std::size_t open = name_index + 1;
-    if (open >= tokens.size() || !tokens[open].is_punctuator("(")) {
-        return false;
-    }
-    const std::size_t close = matching_parenthesis(tokens, open);
-    if (close >= tokens.size()) {
-        return false;
-    }
-
-    for (std::size_t cursor = close + 1; cursor < tokens.size(); ++cursor) {
-        const Token& token = tokens[cursor];
-        if (token.kind == TokenKind::EndOfFile || token.is_punctuator(";") || token.is_punctuator("{")) {
-            return false;
-        }
-        if (is_specification_clause(token) && cursor + 1 < tokens.size() && tokens[cursor + 1].is_punctuator("(")) {
-            clause_index = cursor;
-            return true;
-        }
-    }
-    return false;
-}
-
 // The ordinary declarator - cv-qualifiers, ref-qualifiers, `noexcept`
 // (optionally with a parenthesized operand), a trailing return type, and
 // member markers such as `override`/`final` - stands between the parameter
@@ -1199,22 +1172,68 @@ bool has_specification_clause(const std::vector<Token>& tokens, std::size_t name
 // the declaration, keeping balanced parentheses (for `noexcept(expr)` and a
 // trailing function-type return) skipped over rather than misread as a
 // clause boundary.
+//
+// It also stops at a `,` that ends the declarator. What follows such a comma
+// declares another name, so nothing after it is a clause of this one: in
+// `int a(1), ensures(2);` the second declarator is an ordinary variable, and
+// reading it as a clause would reinterpret valid C++ (SPEC.md WORD-008). A
+// trailing return type's template arguments and an attribute list hold commas
+// of their own, so their brackets are tracked; a `<` there is never a
+// comparison, which could only stand inside parentheses.
 std::size_t skip_ordinary_declarator_suffix(const std::vector<Token>& tokens, std::size_t cursor) {
+    std::size_t nesting = 0;
     while (cursor < tokens.size()) {
         const Token& token = tokens[cursor];
         if (token.kind == TokenKind::EndOfFile || token.is_punctuator("{") || token.is_punctuator(";")) {
             break;
         }
-        if (is_specification_clause(token) && cursor + 1 < tokens.size() && tokens[cursor + 1].is_punctuator("(")) {
+        if (nesting == 0 && token.is_punctuator(",")) {
+            break;
+        }
+        if (nesting == 0 && is_specification_clause(token) && cursor + 1 < tokens.size() &&
+            tokens[cursor + 1].is_punctuator("(")) {
             break;
         }
         if (token.is_punctuator("(")) {
             cursor = matching_parenthesis(tokens, cursor) + 1;
             continue;
         }
+        if (token.is_punctuator("<") || token.is_punctuator("[")) {
+            ++nesting;
+        } else if ((token.is_punctuator(">") || token.is_punctuator("]")) && nesting > 0) {
+            --nesting;
+        } else if (token.is_punctuator(">>")) {
+            nesting = nesting > 2 ? nesting - 2 : 0;
+        }
         ++cursor;
     }
     return cursor;
+}
+
+// Specification clauses on a function declarator are part of the language
+// (GRAMMAR.md 6) but are not verified by this implementation. They are
+// diagnosed rather than erased, because silently dropping a contract would
+// turn a specification into nothing at all.
+//
+// A clause stands only where the declarator's ordinary suffix ends, so only
+// that one position is examined.
+bool has_specification_clause(const std::vector<Token>& tokens, std::size_t name_index, std::size_t& clause_index) {
+    const std::size_t open = name_index + 1;
+    if (open >= tokens.size() || !tokens[open].is_punctuator("(")) {
+        return false;
+    }
+    const std::size_t close = matching_parenthesis(tokens, open);
+    if (close >= tokens.size()) {
+        return false;
+    }
+
+    const std::size_t cursor = skip_ordinary_declarator_suffix(tokens, close + 1);
+    if (cursor + 1 < tokens.size() && is_specification_clause(tokens[cursor]) &&
+        tokens[cursor + 1].is_punctuator("(")) {
+        clause_index = cursor;
+        return true;
+    }
+    return false;
 }
 
 // Reads `expects`/`ensures`/`decreases` clauses starting at `cursor` into

@@ -309,6 +309,40 @@ CPPL_TEST(a_contract_clause_on_a_pure_function_is_refused_rather_than_erased) {
     CPPL_CHECK(result.syntax.pure_markers.empty());
 }
 
+// SPEC: WORD-008, WORD-007
+// Each name after a comma is another declarator, so `expects(11)` is a variable
+// initialized with 11, never a clause of the declarator before it. Read as a
+// clause, the formatter would rewrite it and the unit would be treated as C++L.
+CPPL_TEST(a_declarator_list_spelled_like_clauses_stays_ordinary) {
+    const std::string text = "int type(9), where(10), expects(11), ensures(12), decreases(13);\n"
+                             "static int first(1), expects_too(2), ensures(3);\n"
+                             "int f(int), expects(4);\n";
+    for (const auto mode : {cppl::frontend::RecognitionMode::Compile, cppl::frontend::RecognitionMode::Edit}) {
+        cppl::diagnostics::Engine engine;
+        const cppl::frontend::TokenStream stream = cppl::frontend::lex(text, "main.cpp");
+        const cppl::frontend::Syntax syntax = cppl::frontend::recognize(stream, engine, mode);
+        CPPL_CHECK(!engine.has_errors());
+        CPPL_CHECK(syntax.empty());
+    }
+}
+
+// The commas of an attribute list and of a trailing return type's template
+// arguments do not end the declarator, so a clause after them is still found.
+CPPL_TEST(a_clause_after_bracketed_commas_is_still_read_as_a_clause) {
+    Recognized attributed;
+    recognize("pure int f(int x) [[gnu::hot, gnu::cold]] ensures (result == x) { return x; }\n", attributed);
+    CPPL_CHECK(attributed.engine.has_errors());
+    CPPL_CHECK(attributed.syntax.pure_markers.empty());
+
+    Recognized trailing;
+    recognize("verified auto g(unsigned x) -> std::pair<unsigned, std::pair<unsigned, unsigned>>\n"
+              "    ensures (result.first == x)\n{\n    return {x, {x, x}};\n}\n",
+              trailing);
+    CPPL_CHECK(!trailing.engine.has_errors());
+    CPPL_CHECK_EQ(trailing.syntax.verified_functions.size(), std::size_t{1});
+    CPPL_CHECK_EQ(trailing.syntax.verified_functions[0].clauses.size(), std::size_t{1});
+}
+
 CPPL_TEST(a_law_inside_a_class_is_refused_rather_than_half_handled) {
     Recognized result;
     recognize("struct Account {\n    law nonnegative(int b)\n        proves (b == b);\n};\n", result);
