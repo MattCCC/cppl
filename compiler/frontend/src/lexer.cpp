@@ -394,7 +394,10 @@ using WrittenLines = std::map<std::uint32_t, std::vector<WrittenToken>>;
 
 WrittenLines written_lines(std::string_view text, const std::string& file) {
     WrittenLines lines;
-    for (const Token& token : lex(text, file).tokens()) {
+    // Named, so it outlives the loop: a range-for over a member of a temporary
+    // reads freed memory wherever C++23's lifetime extension is not implemented.
+    const TokenStream written = lex(text, file);
+    for (const Token& token : written.tokens()) {
         // A `#line` naming another file moves what follows out of this one.
         if (token.kind != TokenKind::EndOfFile && token.file == 0) {
             lines[token.line].push_back({std::string(token.text), token.column});
