@@ -11,7 +11,7 @@ namespace cppl::source {
 // A 256-bit content digest.
 //
 // Semantic identities in C++L are derived from content, never from memory
-// addresses, iteration order or wall-clock time (ARCHITECTURE.md 13, 32).
+// addresses, iteration order or wall-clock time (ARCHITECTURE.md 12, 70).
 struct Digest {
     std::array<std::uint8_t, 32> bytes{};
 

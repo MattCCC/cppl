@@ -17,7 +17,7 @@ struct Input {
 //
 // Everything C++L does not own is preserved in order and handed to Clang
 // unchanged: include paths, defines, warnings, target flags, optimization,
-// linker arguments (ARCHITECTURE.md 50).
+// linker arguments (ARCHITECTURE.md 80).
 struct Options {
     std::vector<std::string> arguments;
     std::vector<Input> inputs;

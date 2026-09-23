@@ -3,7 +3,7 @@
 #
 # VIR depends on source provenance and nothing else. It must not depend on the
 # kernel (the kernel is the authority above it), on Clang, or on any editor or
-# diagnostic presentation layer (ARCHITECTURE.md 18, 44).
+# diagnostic presentation layer (ARCHITECTURE.md 16, 95).
 add_library(cppl_vir STATIC
     src/vir.cpp)
 

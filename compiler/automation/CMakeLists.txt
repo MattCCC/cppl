@@ -2,7 +2,7 @@
 #
 # Automation is untrusted by construction: it can only hand a proof term to the
 # kernel, and the kernel decides. Solvers, tactics and search would be added
-# here, behind the same boundary (ARCHITECTURE.md 21).
+# here, behind the same boundary (ARCHITECTURE.md 54).
 add_library(cppl_automation STATIC
     src/arithmetic.cpp
     src/evidence.cpp

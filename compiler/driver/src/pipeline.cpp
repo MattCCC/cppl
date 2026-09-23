@@ -66,7 +66,7 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
     }
 
     if (syntax.empty()) {
-        // Ordinary C++: nothing to verify (ARCHITECTURE.md 29).
+        // Ordinary C++: nothing to verify (ARCHITECTURE.md 81).
         outcome.tokens = std::make_unique<frontend::TokenStream>(stream);
         outcome.syntax = std::make_unique<frontend::Syntax>(std::move(syntax));
         if (request.check_ordinary_cpp_with_clang) {

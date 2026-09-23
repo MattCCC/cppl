@@ -3,7 +3,7 @@
 #
 # The kernel is the final authority on proof validity, so it must not depend on
 # the frontend, the Clang bridge, the VIR, solvers, diagnostics rendering or
-# editor tooling (ARCHITECTURE.md 23, 44; TRUST.md 3).
+# editor tooling (ARCHITECTURE.md 56, 95; TRUST.md 5.4).
 set -euo pipefail
 
 KERNEL_SOURCE="$1"

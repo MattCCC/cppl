@@ -1,4 +1,4 @@
-# Test suites, divided by responsibility (ARCHITECTURE.md 61).
+# Test suites, divided by responsibility (ARCHITECTURE.md 82).
 #
 #   unit          isolated implementation behaviour
 #   kernel        the proof rules themselves, without the rest of the compiler
@@ -121,7 +121,7 @@ cppl_add_unit_test(unit_scoped_enum_provider_test unit/scoped_enum_provider_test
 target_link_libraries(unit_scoped_enum_provider_test PRIVATE cppl_decomposition)
 
 # cppl-lsp: the language server library, exercised directly rather than
-# through a real subprocess/stdio pipe (ARCHITECTURE.md 61's "unit" tier).
+# through a real subprocess/stdio pipe (ARCHITECTURE.md 82's "unit" tier).
 cppl_add_unit_test(lsp_document_test unit/lsp_document_test.cpp)
 target_link_libraries(lsp_document_test PRIVATE cppl_lsp)
 

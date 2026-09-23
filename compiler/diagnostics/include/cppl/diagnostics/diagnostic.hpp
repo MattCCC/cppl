@@ -16,7 +16,7 @@ enum class Severity : std::uint8_t {
 
 // What kind of failure this is. Categories are structured data: policy,
 // tooling and reports consume the category, never the rendered wording
-// (ARCHITECTURE.md 38, 40).
+// (ARCHITECTURE.md 74, 75).
 enum class Category : std::uint8_t {
     CpplSyntax,           // malformed C++L construct
     CppSemantic,          // Clang rejected the C++

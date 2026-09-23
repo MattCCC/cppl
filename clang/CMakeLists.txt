@@ -3,7 +3,7 @@
 # Clang is the authority for ordinary C++ semantics: parsing, name lookup,
 # overload resolution, conversions and target layout. This target translates
 # the facts C++L needs into C++L's own typed representation, and is the only
-# place in the project that includes a Clang header (ARCHITECTURE.md 12,
+# place in the project that includes a Clang header (ARCHITECTURE.md 11,
 # AGENTS.md 14).
 add_library(cppl_clang STATIC
     src/bridge.cpp)

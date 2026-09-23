@@ -117,7 +117,7 @@ struct RuntimeLowering {
 // `analysis` is the same text with those spans replaced by the specification
 // functions Clang needs to resolve. Both come from the same spans in the same
 // pass, so the runtime program C++L verifies and the runtime program Clang
-// compiles cannot drift apart (ARCHITECTURE.md 10, 11).
+// compiles cannot drift apart (ARCHITECTURE.md 8, 10).
 //
 // Blanking preserves every byte position and every line of the text that
 // remains. A canonical lowering preserves every line, so no line number moves,

@@ -2,7 +2,7 @@
 # The gate: configure, build and run everything.
 #
 # Developers, agents and CI run this same script, so there is no separate CI
-# build logic to drift from it (ARCHITECTURE.md 71).
+# build logic to drift from it (AGENTS.md 40, docs/CI.md).
 set -euo pipefail
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."

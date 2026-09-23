@@ -7,7 +7,7 @@
 namespace cppl::vir {
 
 // Typed identities. VIR never uses a pointer, an address or a container
-// position as a persistent identity (ARCHITECTURE.md 13, 17).
+// position as a persistent identity (ARCHITECTURE.md 12, 17).
 
 struct FunctionId {
     std::uint32_t value = 0;

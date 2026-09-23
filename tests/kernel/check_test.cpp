@@ -2,7 +2,7 @@
 //
 // Every rule is exercised with valid evidence, invalid evidence and malformed
 // evidence. These tests call the real kernel API; nothing here is mocked, and
-// no other component is involved (ARCHITECTURE.md 63).
+// no other component is involved (ARCHITECTURE.md 83).
 
 #include "cppl/kernel/check.hpp"
 #include "cppl/kernel/context.hpp"

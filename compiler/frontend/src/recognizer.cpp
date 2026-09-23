@@ -526,7 +526,7 @@ bool try_refinement_type(const TokenStream& stream, std::size_t index, diagnosti
 //
 // Only the separators are found here. Each argument is delimited, never read:
 // its bytes go to Clang through the projection, which is what keeps C++
-// expression meaning in one place (SPEC.md 7.3, ARCHITECTURE.md 11).
+// expression meaning in one place (SPEC.md 7.3, ARCHITECTURE.md 7).
 bool read_proof_arguments(const TokenStream& stream, std::size_t open, std::size_t close, diagnostics::Engine& engine,
                           std::vector<ProofArgument>& arguments) {
     const std::vector<Token>& tokens = stream.tokens();

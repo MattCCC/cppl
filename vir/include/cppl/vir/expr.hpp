@@ -13,7 +13,7 @@
 namespace cppl::vir {
 
 // Where a VIR node came from in user source. Provenance is carried, never
-// reconstructed later from text (ARCHITECTURE.md 41).
+// reconstructed later from text (ARCHITECTURE.md 17).
 struct Provenance {
     source::SourceRange range;
 

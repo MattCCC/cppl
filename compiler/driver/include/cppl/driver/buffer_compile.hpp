@@ -43,7 +43,7 @@ struct BufferCompileOutcome {
     // Whether the buffer was recognized as containing any C++L syntax at
     // all. When false, the buffer is ordinary C++ and was (or would be)
     // compiled directly by Clang with no projection involved
-    // (ARCHITECTURE.md 29).
+    // (ARCHITECTURE.md 81).
     bool has_cppl = false;
 
     // The preprocessed text `tokens` and `syntax` were recognized from. They

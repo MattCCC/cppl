@@ -9,7 +9,7 @@ namespace cppl::obligations {
 
 // Turns VIR and the Laws stated over it into explicit proof obligations, and
 // admits the definitions the kernel is allowed to unfold while checking them
-// (ARCHITECTURE.md 19).
+// (ARCHITECTURE.md 51).
 //
 // A construct that cannot be lowered produces a diagnostic and no obligation.
 // It never produces a weaker obligation than the one the Law states.

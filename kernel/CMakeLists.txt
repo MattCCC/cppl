@@ -2,7 +2,7 @@
 #
 # This target deliberately links nothing. It must not gain dependencies on the
 # frontend, the Clang bridge, VIR, solvers, diagnostics rendering or editor
-# tooling (ARCHITECTURE.md 23, TRUST.md). tests/architecture enforces this.
+# tooling (ARCHITECTURE.md 56, 95; TRUST.md 5.4). tests/architecture enforces this.
 add_library(cppl_kernel STATIC
     src/arithmetic.cpp
     src/check.cpp

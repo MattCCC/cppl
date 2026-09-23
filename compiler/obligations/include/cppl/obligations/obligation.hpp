@@ -16,7 +16,7 @@
 namespace cppl::obligations {
 
 // A content-derived identity: the same obligation, produced by any run of the
-// same compiler on the same input, has the same id (ARCHITECTURE.md 32).
+// same compiler on the same input, has the same id (ARCHITECTURE.md 53).
 struct ObligationId {
     source::Digest digest;
 

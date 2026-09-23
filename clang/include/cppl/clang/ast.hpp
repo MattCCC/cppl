@@ -18,7 +18,7 @@ namespace cppl::clangbridge {
 // Everything here is a *resolved* fact: types are canonical, calls name the
 // overload Clang selected, and references name the declaration Clang bound.
 // Nothing in this layer is recovered from source text, and no Clang data
-// structure or pointer escapes it (ARCHITECTURE.md 12).
+// structure or pointer escapes it (ARCHITECTURE.md 11).
 
 enum class TypeKind : std::uint8_t {
     Int,

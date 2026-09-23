@@ -2,7 +2,7 @@
 #
 # The driver orchestrates stages and owns the exit status. The library holds
 # the implementation so the command-line tool does not become the compiler
-# (ARCHITECTURE.md 43).
+# (ARCHITECTURE.md 5).
 add_library(cppl_driver STATIC
     src/buffer_compile.cpp
     src/crash.cpp

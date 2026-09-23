@@ -2,7 +2,7 @@
 #
 # A leaf library: every component that needs to talk about where something came
 # from uses this one, so no downstream component invents its own location or
-# identity scheme (ARCHITECTURE.md 7, 13).
+# identity scheme (ARCHITECTURE.md 6, 12).
 add_library(cppl_source STATIC
     src/digest.cpp
     src/location.cpp)

@@ -27,7 +27,7 @@ void report(diagnostics::Engine& engine, diagnostics::Category category, const s
 
 // The bridge's place, as VIR carries it. Both layers describe the same storage
 // (SPEC.md 12.10); they are separate types because the bridge boundary does not
-// let a Clang-facing structure reach the logical core (ARCHITECTURE.md 12).
+// let a Clang-facing structure reach the logical core (ARCHITECTURE.md 11).
 vir::Place convert_place(const clangbridge::Place& place) {
     using From = clangbridge::PlaceRoot::Kind;
     using To = vir::PlaceRoot::Kind;

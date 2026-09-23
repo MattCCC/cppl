@@ -72,7 +72,7 @@ std::optional<std::string> read_file(const std::filesystem::path& path) {
 
 // The user's command line with the parts that select output and inputs removed,
 // so the same configuration can drive preprocessing and semantic analysis.
-// Everything that affects C++ meaning is kept (ARCHITECTURE.md 51).
+// Everything that affects C++ meaning is kept (ARCHITECTURE.md 80).
 std::vector<std::string> base_arguments(const Options& options) {
     std::vector<bool> is_input(options.arguments.size(), false);
     for (const Input& input : options.inputs) {
