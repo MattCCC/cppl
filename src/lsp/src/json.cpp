@@ -1,5 +1,6 @@
 #include "cppl/lsp/json.hpp"
 
+#include <array>
 #include <cctype>
 #include <charconv>
 #include <cmath>
@@ -7,7 +8,6 @@
 #include <cstdint>
 #include <cstdio>
 #include <exception>
-#include <sstream>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -16,6 +16,10 @@
 namespace cppl::lsp::json {
 
 namespace {
+
+// Arrays and objects nest by recursion, so the depth bounds the stack a body
+// can consume. No JSON-RPC message an editor sends nests anywhere near this.
+constexpr std::size_t kMaxNesting = 128;
 
 class Parser {
   public:
@@ -34,6 +38,7 @@ class Parser {
   private:
     std::string_view text_;
     std::size_t position_ = 0;
+    std::size_t nesting_ = 0;
 
     [[nodiscard]] char peek() const {
         if (position_ >= text_.size()) {
@@ -74,9 +79,17 @@ class Parser {
         const char c = peek();
         switch (c) {
             case '{':
-                return parse_object();
-            case '[':
-                return parse_array();
+            case '[': {
+                // A failure abandons the parser, so the count is not restored
+                // on that path.
+                if (nesting_ == kMaxNesting) {
+                    throw Error("JSON nested more than 128 levels deep");
+                }
+                ++nesting_;
+                Value nested = c == '{' ? parse_object() : parse_array();
+                --nesting_;
+                return nested;
+            }
             case '"':
                 return {parse_string()};
             case 't':
@@ -326,9 +339,12 @@ void dump_number(double value, std::string& out) {
         out += std::to_string(static_cast<long long>(value));
         return;
     }
-    std::ostringstream stream;
-    stream << value;
-    out += stream.str();
+    // The shortest text that reads back as the same double. A stream would keep
+    // six significant digits, and a client could not match a response to a
+    // request whose id had changed on the way back.
+    std::array<char, 32> buffer{};
+    const std::to_chars_result written = std::to_chars(buffer.data(), buffer.data() + buffer.size(), value);
+    out.append(buffer.data(), written.ptr);
 }
 
 void dump_value(const Value& value, std::string& out);
