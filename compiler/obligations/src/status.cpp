@@ -3,7 +3,6 @@
 #include "cppl/kernel/substitution.hpp"
 
 #include <algorithm>
-#include <limits>
 #include <variant>
 
 namespace cppl::obligations {

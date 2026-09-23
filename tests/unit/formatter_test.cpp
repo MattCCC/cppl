@@ -26,7 +26,6 @@
 #include "cppl/frontend/token.hpp"
 #include "cppl/testing/test.hpp"
 
-#include <algorithm>
 #include <cstddef>
 #include <fstream>
 #include <sstream>

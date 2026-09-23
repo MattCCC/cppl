@@ -3,8 +3,6 @@
 #include "arithmetic.hpp"
 #include "composition.hpp"
 
-#include <variant>
-
 namespace cppl::automation {
 
 // Strategies are tried in a fixed order and each candidate is put to the
