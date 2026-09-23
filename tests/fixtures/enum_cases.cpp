@@ -123,6 +123,64 @@ proof later(State s)
     refl;
 }
 
+// SPEC: CASE-002
+// The top bit of an unsigned underlying type is part of the value, not a sign.
+// Each enumerator, each discriminator and each residual premise carries the value
+// C++ gives it, which is the value a literal of the underlying type denotes. The
+// refused half of this matched pair is
+// `fixtures/negative/enum_top_bit_claimed_false.cpp`.
+enum class Top : unsigned { top = 0xFFFFFFFFu, low = 0u };
+
+proof top_of_unsigned(Top s)
+    proves (Eq<bool>(s == Top::top, static_cast<unsigned>(s) == 4294967295u))
+{
+    cases s {
+        Top::top => {
+            assume here : s == Top::top;
+            rewrite here;
+            refl;
+        }
+
+        Top::low => {
+            assume here : s == Top::low;
+            rewrite here;
+            refl;
+        }
+
+        unnamed(value) => {
+            assume residual : value != 4294967295u && value != 0u;
+            refl;
+        }
+    }
+}
+
+// At full width the pattern and the value coincide; this pins that the fix for
+// narrower types did not disturb it.
+enum class Wide : unsigned long long { top = 18446744073709551615ull, low = 0ull };
+
+proof top_of_unsigned_long_long(Wide s)
+    proves (Eq<bool>(s == Wide::top, static_cast<unsigned long long>(s) == 18446744073709551615ull))
+{
+    cases s {
+        Wide::top => {
+            assume here : s == Wide::top;
+            rewrite here;
+            refl;
+        }
+
+        Wide::low => {
+            assume here : s == Wide::low;
+            rewrite here;
+            refl;
+        }
+
+        unnamed(value) => {
+            assume residual : value != 18446744073709551615ull && value != 0ull;
+            refl;
+        }
+    }
+}
+
 // Every underlying value is a valid scoped-enum state, including unnamed ones.
 int main() {
     auto s = static_cast<One>(37u);

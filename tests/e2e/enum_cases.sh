@@ -9,7 +9,7 @@ run=$(mktemp -d "$WORK/enum-cases.XXXXXX")
 for standard in c++17 c++20 c++23; do
     "$CPPL" "-std=$standard" "$FIXTURES/enum_cases.cpp" -o "$run/program" \
         --cppl-trust-report "--cppl-emit-projection=$run/runtime.cpp" > "$run/report"
-    grep -Eq '^Proof declarations proven: +6$' "$run/report"
+    grep -Eq '^Proof declarations proven: +8$' "$run/report"
     grep -Eq '^Laws proven: +1$' "$run/report"
     grep -Eq '^Unresolved obligations: +0$' "$run/report"
     grep -Eq '^Trusted external axioms: +0$' "$run/report"

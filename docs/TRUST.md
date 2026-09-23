@@ -699,7 +699,9 @@ For each modeled standard representation, the correspondence TCB must correctly 
 
 ```text
 scoped enum
-    every underlying-domain value, named distinct values, unnamed residual
+    every underlying-domain value, named distinct values, unnamed residual;
+    each enumerator's value read at the underlying type's width and signedness,
+    so an unsigned enumerator with its top bit set is never taken as negative
 
 std::variant
     one state per alternative index plus valueless state

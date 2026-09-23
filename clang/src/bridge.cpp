@@ -178,6 +178,15 @@ enum class ReferenceModel : std::uint8_t {
 std::expected<std::vector<Refinement>, std::string> refinements_of(CXCursor declared, CXType written,
                                                                    const std::vector<Selection::Refinement>& known);
 
+// The same 64-bit pattern an integer literal of the underlying type carries.
+// libclang's signed accessor sign-extends from the enumeration's own width, so an
+// unsigned enumerator with its top bit set would otherwise arrive negative.
+std::int64_t enumerator_value(CXCursor enumerator, bool underlying_is_signed) {
+    if (underlying_is_signed)
+        return clang_getEnumConstantDeclValue(enumerator);
+    return static_cast<std::int64_t>(clang_getEnumConstantDeclUnsignedValue(enumerator));
+}
+
 // The refinements a record's members name, so a refined member's predicate
 // reaches the member's own modeled type (SPEC.md 17.6).
 //
@@ -344,8 +353,8 @@ Type convert_type(CXType type, unsigned depth = 0, ReferenceModel references = R
             for (const CXCursor& child : children_of(definition)) {
                 if (clang_getCursorKind(child) != CXCursor_EnumConstantDecl)
                     continue;
-                enumerators.push_back(Enumerator{take(clang_getCursorSpelling(child)),
-                                                 static_cast<std::int64_t>(clang_getEnumConstantDeclValue(child))});
+                enumerators.push_back(
+                    Enumerator{take(clang_getCursorSpelling(child)), enumerator_value(child, underlying.is_signed)});
             }
             converted.kind = underlying.kind;
             converted.width = underlying.width;
@@ -1365,7 +1374,9 @@ Expr build_expression(CXCursor cursor, const std::vector<CXCursor>& parameters, 
             Expr expression;
             expression.type = convert_type(clang_getCursorType(cursor));
             expression.location = presumed_location(clang_getCursorLocation(cursor));
-            expression.node = IntLiteral{static_cast<std::int64_t>(clang_getEnumConstantDeclValue(referenced))};
+            const Type underlying =
+                convert_type(clang_getEnumDeclIntegerType(clang_getCursorSemanticParent(referenced)));
+            expression.node = IntLiteral{enumerator_value(referenced, underlying.is_signed)};
             return expression;
         }
         if (const std::optional<std::size_t> local = find_local(locals, referenced)) {
