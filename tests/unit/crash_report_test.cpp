@@ -38,7 +38,7 @@ volatile bool keep_recursing = true;
 
 } // namespace
 
-CPPL_TEST(a_stack_overflow_is_reported_and_ends_the_process) {
+CPPL_TEST(a_stack_overflow_is_reported_and_ends_the_process_by_its_signal) {
     int ends[2] = {-1, -1};
     CPPL_CHECK_EQ(::pipe(ends), 0);
     const pid_t child = ::fork();
@@ -77,10 +77,14 @@ CPPL_TEST(a_stack_overflow_is_reported_and_ends_the_process) {
     static_cast<void>(::close(ends[0]));
 
     CPPL_CHECK(ended == child);
-    const bool by_fault = WIFSIGNALED(status) && (WTERMSIG(status) == SIGSEGV || WTERMSIG(status) == SIGBUS);
-    const bool as_fault =
-        WIFEXITED(status) && (WEXITSTATUS(status) == 128 + SIGSEGV || WEXITSTATUS(status) == 128 + SIGBUS);
-    CPPL_CHECK(by_fault || as_fault);
+    // Killed by the fault itself, as a caller waiting on the process sees a
+    // crash, not an exit status chosen to resemble one.
+    CPPL_CHECK(WIFSIGNALED(status));
+    if (WIFSIGNALED(status)) {
+        const int signal = WTERMSIG(status);
+        const bool fault = signal == SIGSEGV || signal == SIGBUS;
+        CPPL_CHECK(fault);
+    }
     CPPL_CHECK(report.starts_with("cppl: internal error: "));
     CPPL_CHECK(report.find(" while overflowing the stack on purpose (code ") != std::string::npos);
 }

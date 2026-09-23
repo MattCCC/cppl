@@ -188,10 +188,16 @@ void install_crash_report() {
 
     struct sigaction action{};
     action.sa_sigaction = on_signal;
+    // SA_NODEFER leaves the signal unblocked while the handler runs, so the
+    // `raise` that ends it is delivered at once, with the default action the
+    // reset restored, and the process dies by the signal a caller waits for.
+    // Without it the signal stays pending, `raise` returns, and the process
+    // could only exit with a status that merely resembles a crash.
+    //
     // glibc types the flag macros as `unsigned` but `sa_flags` as `int`, so
     // the combination has to be narrowed explicitly. The value is a small
     // constant bitmask, so the conversion discards nothing.
-    action.sa_flags = static_cast<int>(SA_SIGINFO | SA_RESETHAND | SA_ONSTACK);
+    action.sa_flags = static_cast<int>(SA_SIGINFO | SA_RESETHAND | SA_ONSTACK | SA_NODEFER);
     sigemptyset(&action.sa_mask);
     for (const int number : {SIGSEGV, SIGBUS, SIGFPE, SIGILL, SIGABRT})
         ::sigaction(number, &action, nullptr);
