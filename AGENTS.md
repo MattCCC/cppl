@@ -1479,7 +1479,48 @@ workflow syntax; it does not establish compiler or environment parity.
 
 ---
 
-# 41. Final invariant
+# 41. Secure C++ / C++L
+
+Security requirements are release-blocking.
+
+For every task that writes, modifies, refactors, reviews, or debugs C++ or C++L code,
+read and apply:
+
+`.agents/skills/secure-cpp/SKILL.md`
+
+This is mandatory when code touches memory ownership, lifetime, buffers, parsing,
+untrusted input, arithmetic, files, serialization, concurrency, networking,
+cryptography, ABI/FFI boundaries, or `unsafe`/`trusted` C++L constructs.
+
+Treat all external data as hostile until validated.
+
+Prefer safe-by-construction APIs and types over comments asserting that unsafe code is
+correct.
+
+Never resolve a failure by weakening security. In particular, do not:
+
+- remove validation or bounds checks;
+- weaken invariants;
+- remove adversarial tests;
+- disable compiler warnings;
+- disable or suppress sanitizer findings;
+- add unchecked casts;
+- introduce owning raw pointers unnecessarily;
+- add `unsafe`, `trusted`, axioms, or equivalent escape hatches merely to bypass a
+  proof or compiler obligation.
+
+Every new low-level unsafe boundary must be minimal, explicitly justified, isolated,
+tested, and independently reviewable.
+
+For parsers and hostile-input code, require bounded memory/work and add adversarial
+tests or fuzz coverage where appropriate.
+
+Normal unit-test success alone is not sufficient evidence of C++ memory safety or
+security.
+
+---
+
+# 42. Final invariant
 
 For every Law reported as `PROVEN`, the project must be able to answer:
 
