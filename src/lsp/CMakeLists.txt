@@ -11,6 +11,7 @@ add_library(cppl_lsp STATIC
     src/proof_names.cpp
     src/semantic_tokens.cpp
     src/server.cpp
+    src/symbols.cpp
     src/transport.cpp
     src/uri.cpp
     src/verification.cpp
@@ -28,6 +29,7 @@ add_library(cppl_lsp STATIC
     include/cppl/lsp/protocol.hpp
     include/cppl/lsp/semantic_tokens.hpp
     include/cppl/lsp/server.hpp
+    include/cppl/lsp/symbols.hpp
     include/cppl/lsp/transport.hpp
     include/cppl/lsp/uri.hpp
     include/cppl/lsp/verification.hpp

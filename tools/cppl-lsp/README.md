@@ -42,6 +42,8 @@ textDocument/references                     across every open document
 textDocument/documentHighlight              declarations, reads and writes
 textDocument/codeLens                       each Law's, proof's, function's verdict
 textDocument/signatureHelp                  the call being written, from Clang
+textDocument/documentSymbol                 C++ from Clang; Laws, proofs,
+                                            refinement types from the frontend
 ```
 
 Diagnostics come from `driver::compile_buffer` over the live buffer — the same
@@ -165,8 +167,8 @@ The server advertises `textDocumentSync`, `documentFormattingProvider`,
 `quickfix` and `source.fixAll.cppl`), `semanticTokensProvider` (whole
 document, one token type, `keyword`), `definitionProvider`,
 `declarationProvider`, `typeDefinitionProvider`, `implementationProvider`,
-`referencesProvider`, `documentHighlightProvider`, `codeLensProvider` and
-`signatureHelpProvider`.
+`referencesProvider`, `documentHighlightProvider`, `codeLensProvider`,
+`signatureHelpProvider` and `documentSymbolProvider`.
 The rest of navigation specified below, and the semantic-token categories
 beyond proof-statement keywords, are not implemented and not advertised: an
 editor is told what the server can do, never what it intends to do.
@@ -699,6 +701,25 @@ earlier declaration, as clangd does; `auto` leads to the type it was deduced
 as; an `#include` leads to the file it includes; an overloaded operator leads to
 the operator called. Implementation answers every override of a virtual method
 and every class derived from a class, within the unit.
+
+### Outline
+
+The document's outline follows the same split. Clang outlines the C++: every
+declaration whose name the document writes outside a function body --
+namespaces, classes, structs, unions, enums and their enumerators, functions,
+methods, constructors, fields, variables, aliases, macros and concepts -- nested
+as declared, a member defined outside its class named with its class. An entry
+is kept only when its name is text the projection kept where it was written, so
+nothing the projection generated appears, whether its name is generated or
+copied from C++L. The C++L frontend supplies the rest from the syntax the
+compiler recognizes: each Law (`law` or `trusted law`), each proof with what it
+proves, and each refinement type with what it refines, placed inside the
+innermost namespace or type written around it. A verified or pure function is
+Clang's entry, marked `verified` or `pure`.
+
+A client that cannot nest an outline
+(`hierarchicalDocumentSymbolSupport` unset) gets the same entries as a flat
+list, each naming the entry it is nested in.
 
 ---
 

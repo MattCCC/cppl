@@ -1400,6 +1400,7 @@ AI output must always be independently verified.
 | LSP: proof-keyword semantic tokens   | `PROTOTYPE`   |
 | LSP: definition and declaration      | `PROTOTYPE`   |
 | LSP: references and highlights       | `PROTOTYPE`   |
+| LSP: document outline                | `PROTOTYPE`   |
 | LSP: other token kinds               | `NOT STARTED` |
 | IDE proof goals                      | `PROTOTYPE`   |
 | Proof navigation                     | `PROTOTYPE`   |
@@ -1466,6 +1467,13 @@ declaration's clauses after its parameters.
 `signatureHelpProvider` shows, while a call's arguments are written, every
 declaration Clang says the call could resolve to, with the argument being
 written marked.
+
+`documentSymbolProvider` outlines the document: every declaration Clang finds
+whose name the document writes outside a function body, nested as declared,
+with each Law, proof and refinement type the compiler's recognizer finds placed
+among them where it is written. A declaration the projection generated is never
+in it. A client that cannot nest an outline gets a flat list naming each
+entry's container.
 
 Outside a case block, hover describes any name. For C++ it shows what Clang
 reports: the declaration's kind and qualified name, the declaration without a

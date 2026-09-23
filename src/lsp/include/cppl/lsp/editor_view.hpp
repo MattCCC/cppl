@@ -88,6 +88,12 @@ class EditorView {
     // outside a call's parentheses.
     [[nodiscard]] std::optional<SignatureHelp> signature_help(const Position& position) const;
 
+    // The document's outline: each declaration Clang finds whose name the
+    // author wrote as C++, nested as it is declared, and each C++L declaration
+    // among them where it is written (symbols.hpp). A declaration the
+    // projection generated is never in it.
+    [[nodiscard]] std::vector<DocumentSymbol> outline() const;
+
     // The number of refreshes that had to parse the unit from scratch, for
     // tests that check an edit reuses what Clang kept.
     [[nodiscard]] std::size_t parses() const noexcept {

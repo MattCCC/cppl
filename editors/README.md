@@ -31,6 +31,7 @@ editors/
 | Declaration, type definition, implementation | `cppl-lsp` | yes | unverified | unverified | yes |
 | Find references, highlight occurrences | `cppl-lsp` | yes | unverified | unverified | yes |
 | Verification status (code lens) | `cppl-lsp` | yes | unverified | unverified | yes |
+| Outline (document symbols) | `cppl-lsp` | yes | unverified | unverified | yes |
 | Syntax coloring | `editors/shared` | yes | — | — | yes |
 | Proof-statement coloring | `cppl-lsp` | yes | unverified | unverified | yes |
 

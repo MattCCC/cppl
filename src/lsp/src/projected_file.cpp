@@ -131,4 +131,16 @@ std::optional<std::size_t> ProjectedFile::to_written(std::size_t analysis) const
     return std::nullopt;
 }
 
+std::optional<std::size_t> ProjectedFile::kept(std::size_t analysis) const {
+    if (projection_ == nullptr) {
+        return analysis < text_.size() ? std::optional<std::size_t>{analysis} : std::nullopt;
+    }
+    for (const frontend::Projection::Segment& segment : projection_->segments) {
+        if (analysis >= segment.analysis && analysis < segment.analysis + segment.length) {
+            return segment.original + (analysis - segment.analysis);
+        }
+    }
+    return std::nullopt;
+}
+
 } // namespace cppl::lsp

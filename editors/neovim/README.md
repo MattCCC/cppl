@@ -92,7 +92,9 @@ turns this off.
 client attached, `CTRL-]` jumps to the definition too, through Neovim's LSP
 `tagfunc`. `vim.lsp.buf.references()` (`grr` in Neovim 0.11) covers every open
 C++L buffer and the headers each includes, and `vim.lsp.buf.document_highlight()`
-marks each occurrence of the name under the cursor. Rename is not implemented by
+marks each occurrence of the name under the cursor. `vim.lsp.buf.document_symbol()`
+(`gO` in Neovim 0.11) lists the document's outline: its C++ declarations and its
+Laws, proofs and refinement types. Rename is not implemented by
 the server yet — see "Currently unsupported" in the
 [`cppl-lsp` README](../../tools/cppl-lsp/README.md).
 

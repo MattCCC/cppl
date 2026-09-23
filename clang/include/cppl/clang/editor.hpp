@@ -138,6 +138,36 @@ struct Signature {
     std::string documentation;
 };
 
+// One declaration of the main file's outline, with the declarations nested in
+// it.
+struct Symbol {
+    enum class Kind : std::uint8_t {
+        Namespace,
+        Class,
+        Struct,
+        Union,
+        Enum,
+        Enumerator,
+        Function,
+        Method,
+        Constructor,
+        Field,
+        Variable,
+        TypeAlias,
+        Macro,
+        Concept,
+    };
+    Kind kind = Kind::Function;
+    std::string name;
+    // Its type, or a function's signature.
+    std::string detail;
+    // Where its name is written: for an unnamed namespace or type, which has
+    // none, an empty extent at its first byte.
+    Extent name_extent;
+    Extent extent;
+    std::vector<Symbol> children;
+};
+
 // What encloses a position, as far as what may be declared there goes.
 enum class Scope : std::uint8_t {
     Namespace,
@@ -235,6 +265,11 @@ class EditorUnit {
 
     // What encloses `offset`: a namespace, a class, a function body.
     [[nodiscard]] Scope scope_at(std::size_t offset) const;
+
+    // Every declaration whose name the main file writes outside a function
+    // body -- namespaces, types, functions, variables, fields, enumerators,
+    // aliases, macros, concepts -- nested as they are declared.
+    [[nodiscard]] std::vector<Symbol> outline() const;
 
   private:
     struct State;

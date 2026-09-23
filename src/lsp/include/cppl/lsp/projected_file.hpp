@@ -72,6 +72,11 @@ class ProjectedFile {
     // the name the author wrote.
     [[nodiscard]] std::optional<std::size_t> to_written(std::size_t analysis) const;
 
+    // Where the byte at `analysis` was written, when the projection kept it
+    // where it was: never a byte of a generated declaration, even one copied
+    // from what was written.
+    [[nodiscard]] std::optional<std::size_t> kept(std::size_t analysis) const;
+
   private:
     std::string path_;
     // The tokens refer into it, which is why a projected file never moves.

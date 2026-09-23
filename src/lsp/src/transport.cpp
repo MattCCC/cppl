@@ -309,6 +309,8 @@ class Dispatcher {
             handle_code_lens(id_value, params);
         } else if (method == "textDocument/signatureHelp") {
             handle_signature_help(id_value, params);
+        } else if (method == "textDocument/documentSymbol") {
+            handle_document_symbol(id_value, params);
         } else if (is_request) {
             respond_error(*id_value, kMethodNotFound, "method not found: " + method);
         } else {
@@ -361,6 +363,12 @@ class Dispatcher {
         if (const json::Value* snippets = item != nullptr ? item->find("snippetSupport") : nullptr;
             snippets != nullptr && snippets->is_boolean()) {
             capabilities.snippets = snippets->as_boolean();
+        }
+        const json::Value* symbols = document != nullptr ? document->find("documentSymbol") : nullptr;
+        if (const json::Value* nested =
+                symbols != nullptr ? symbols->find("hierarchicalDocumentSymbolSupport") : nullptr;
+            nested != nullptr && nested->is_boolean()) {
+            capabilities.hierarchical_symbols = nested->as_boolean();
         }
         return capabilities;
     }
@@ -438,6 +446,9 @@ class Dispatcher {
         capabilities.set("implementationProvider", json::Value(true));
         capabilities.set("referencesProvider", json::Value(true));
         capabilities.set("documentHighlightProvider", json::Value(true));
+        json::Value document_symbols = json::Value::object();
+        document_symbols.set("label", json::Value(std::string("C++L")));
+        capabilities.set("documentSymbolProvider", std::move(document_symbols));
 
         // What became of each Law's, proof's and verified function's
         // obligations, stated over its name; a lens runs no command.
@@ -849,6 +860,71 @@ class Dispatcher {
         result.set("activeSignature", json::Value(help->active_signature));
         result.set("activeParameter", json::Value(help->active_parameter));
         respond_result(*id, std::move(result));
+    }
+
+    static json::Value document_symbol_to_json(const DocumentSymbol& symbol) {
+        json::Value result = json::Value::object();
+        result.set("name", json::Value(symbol.name));
+        if (!symbol.detail.empty()) {
+            result.set("detail", json::Value(symbol.detail));
+        }
+        result.set("kind", json::Value(static_cast<int>(symbol.kind)));
+        result.set("range", range_to_json(symbol.range));
+        result.set("selectionRange", range_to_json(symbol.selection));
+        if (!symbol.children.empty()) {
+            json::Value children = json::Value::array();
+            for (const DocumentSymbol& child : symbol.children) {
+                children.push_back(document_symbol_to_json(child));
+            }
+            result.set("children", std::move(children));
+        }
+        return result;
+    }
+
+    // A client that cannot nest an outline is sent every entry in order, each
+    // naming the entry it is nested in (LSP `SymbolInformation`).
+    static void flatten_symbols(const std::vector<DocumentSymbol>& symbols, const std::string& uri,
+                                const std::string& container, json::Value& into) {
+        for (const DocumentSymbol& symbol : symbols) {
+            json::Value item = json::Value::object();
+            item.set("name", json::Value(symbol.name));
+            item.set("kind", json::Value(static_cast<int>(symbol.kind)));
+            item.set("location", location_to_json(Location{uri, symbol.range}));
+            if (!container.empty()) {
+                item.set("containerName", json::Value(container));
+            }
+            into.push_back(std::move(item));
+            flatten_symbols(symbol.children, uri, container.empty() ? symbol.name : container + "::" + symbol.name,
+                            into);
+        }
+    }
+
+    void handle_document_symbol(const json::Value* id, const json::Value* params) {
+        if (id == nullptr) {
+            return;
+        }
+        const json::Value* document = params != nullptr ? params->find("textDocument") : nullptr;
+        const auto uri = document != nullptr ? document->find_string("uri") : std::nullopt;
+        if (!uri) {
+            respond_error(*id, kInvalidParams, "textDocument/documentSymbol missing 'textDocument.uri'");
+            return;
+        }
+        TextDocumentIdentifier document_id;
+        document_id.uri = *uri;
+        const std::optional<std::vector<DocumentSymbol>> symbols = server_.text_document_document_symbol(document_id);
+        if (!symbols.has_value()) {
+            respond_result(*id, json::Value(nullptr));
+            return;
+        }
+        json::Value items = json::Value::array();
+        if (server_.client_capabilities().hierarchical_symbols) {
+            for (const DocumentSymbol& symbol : *symbols) {
+                items.push_back(document_symbol_to_json(symbol));
+            }
+        } else {
+            flatten_symbols(*symbols, *uri, std::string(), items);
+        }
+        respond_result(*id, std::move(items));
     }
 
     void handle_code_lens(const json::Value* id, const json::Value* params) {

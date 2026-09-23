@@ -71,7 +71,9 @@ for the C++L declarations the projection stands for: a Law named in a proof, a
 parameter named in a clause, a refinement type. Find All References covers
 every open C++L file and the headers each includes, and the editor highlights
 each occurrence of the name under the cursor, marking writes apart from reads.
-Rename is not implemented by the server yet.
+The Outline view, the breadcrumbs and Go to Symbol in Editor
+(`Ctrl+Shift+O`) list the file's C++ declarations and its Laws, proofs and
+refinement types. Rename is not implemented by the server yet.
 
 Proof statements spelled like C++ declarations, such as `exact h;` and
 `contradiction name;`, are colored from the server's semantic tokens, since

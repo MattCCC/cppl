@@ -292,6 +292,42 @@ CPPL_TEST(signature_help_answers_with_parameter_ranges) {
     CPPL_CHECK(output.str().find(R"("id":3,"result":null)") != std::string::npos);
 }
 
+CPPL_TEST(an_outline_is_nested_only_for_a_client_that_nests_it) {
+    const auto outlined = [](const std::string& capabilities) {
+        Server server;
+        std::istringstream input(
+            framed(R"({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":)" + capabilities + "}}") +
+            framed(R"({"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":)"
+                   R"({"uri":"file:///outline.cpp","languageId":"cpp","version":1,)"
+                   R"("text":"namespace shapes {\nint area(int side);\n}\n"}}})") +
+            framed(R"({"jsonrpc":"2.0","id":2,"method":"textDocument/documentSymbol","params":{"textDocument":)"
+                   R"({"uri":"file:///outline.cpp"}}})") +
+            framed(R"({"jsonrpc":"2.0","id":3,"method":"textDocument/documentSymbol","params":{}})") +
+            framed(R"({"jsonrpc":"2.0","method":"exit"})"));
+        std::ostringstream output;
+        std::ostringstream log;
+        [[maybe_unused]] const int exit_code = run_transport(server, input, output, log);
+        return output.str();
+    };
+    const std::string nested =
+        outlined(R"({"textDocument":{"documentSymbol":{"hierarchicalDocumentSymbolSupport":true}}})");
+    CPPL_CHECK(nested.find(R"("documentSymbolProvider":{"label":"C++L"})") != std::string::npos);
+    CPPL_CHECK(
+        nested.find(R"json("id":2,"result":[{"name":"shapes","kind":3,)json"
+                    R"json("range":{"start":{"line":0,"character":0},"end":{"line":2,"character":1}},)json"
+                    R"json("selectionRange":{"start":{"line":0,"character":10},"end":{"line":0,"character":16}},)json"
+                    R"json("children":[{"name":"area","detail":"int (int)","kind":12,)json") != std::string::npos);
+    CPPL_CHECK(nested.find(R"("id":3,"error":{"code":-32602)") != std::string::npos);
+    // A client that cannot nest is told each entry's container instead.
+    const std::string flat = outlined("{}");
+    CPPL_CHECK(
+        flat.find(R"json("id":2,"result":[{"name":"shapes","kind":3,"location":{"uri":"file:///outline.cpp",)json") !=
+        std::string::npos);
+    CPPL_CHECK(flat.find(R"json({"name":"area","kind":12,"location":{"uri":"file:///outline.cpp","range":)json"
+                         R"json({"start":{"line":1,"character":0},"end":{"line":1,"character":18}}},)json"
+                         R"json("containerName":"shapes"})json") != std::string::npos);
+}
+
 CPPL_TEST(semantic_tokens_answer_with_the_encoded_keywords) {
     Server server;
     std::istringstream input(

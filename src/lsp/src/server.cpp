@@ -263,6 +263,14 @@ std::optional<std::vector<Location>> Server::text_document_navigate(clangbridge:
     return locations;
 }
 
+std::optional<std::vector<DocumentSymbol>> Server::text_document_document_symbol(const TextDocumentIdentifier& id) {
+    EditorView* view = view_for(id.uri);
+    if (view == nullptr) {
+        return std::nullopt;
+    }
+    return view->outline();
+}
+
 std::vector<CodeAction> Server::text_document_code_actions(const CodeActionRequest& request) {
     const Document* doc = documents_.get(request.document.uri);
     if (doc == nullptr) {

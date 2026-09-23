@@ -7,6 +7,7 @@
 #include "cppl/lsp/position.hpp"
 #include "cppl/lsp/projected_file.hpp"
 #include "cppl/lsp/protocol.hpp"
+#include "cppl/lsp/symbols.hpp"
 #include "cppl/lsp/uri.hpp"
 
 #include <algorithm>
@@ -251,7 +252,71 @@ bool same_location(const Location& lhs, const Location& rhs) {
            lhs.range.end.character == rhs.range.end.character;
 }
 
+bool before(const Position& lhs, const Position& rhs) {
+    return lhs.line < rhs.line || (lhs.line == rhs.line && lhs.character < rhs.character);
+}
+
+// A declaration Clang outlined, over the text as written. Its name must be
+// one the projection kept where it was written: anything else is a
+// declaration the projection generated, whether its name is generated or
+// copied from C++L that the outline shows as written instead.
+std::optional<DocumentSymbol> outline_entry(const ProjectedFile& file, const PositionMapper& mapper,
+                                            const clangbridge::Symbol& symbol) {
+    const std::size_t length = symbol.name_extent.end.offset - symbol.name_extent.begin.offset;
+    const std::optional<std::size_t> name = file.kept(symbol.name_extent.begin.offset);
+    if (!name.has_value() || symbol.name_extent.end.offset < symbol.name_extent.begin.offset ||
+        (length > 0 && file.kept(symbol.name_extent.end.offset - 1) != *name + length - 1)) {
+        return std::nullopt;
+    }
+    DocumentSymbol entry;
+    entry.name = symbol.name;
+    entry.kind = symbol_kind(symbol.kind);
+    entry.detail = symbol.detail;
+    if (entry.kind == SymbolKind::Function || entry.kind == SymbolKind::Method) {
+        entry.detail = specifiers_of(file, *name) + entry.detail;
+    }
+    entry.selection = Range{mapper.byte_offset_to_position(*name), mapper.byte_offset_to_position(*name + length)};
+    const std::optional<std::size_t> begin = file.to_written(symbol.extent.begin.offset);
+    const std::optional<std::size_t> end = file.to_written(symbol.extent.end.offset);
+    entry.range = begin.has_value() && end.has_value() && *begin <= *end
+                      ? Range{mapper.byte_offset_to_position(*begin), mapper.byte_offset_to_position(*end)}
+                      : entry.selection;
+    // The name is part of what is selected as the declaration, whatever the
+    // projection left of the text around it.
+    if (before(entry.selection.start, entry.range.start)) {
+        entry.range.start = entry.selection.start;
+    }
+    if (before(entry.range.end, entry.selection.end)) {
+        entry.range.end = entry.selection.end;
+    }
+    for (const clangbridge::Symbol& child : symbol.children) {
+        if (std::optional<DocumentSymbol> nested = outline_entry(file, mapper, child)) {
+            entry.children.push_back(std::move(*nested));
+        }
+    }
+    return entry;
+}
+
 } // namespace
+
+std::vector<DocumentSymbol> EditorView::outline() const {
+    std::vector<DocumentSymbol> outline;
+    if (main_ == nullptr) {
+        return outline;
+    }
+    if (unit_ != nullptr) {
+        const PositionMapper mapper(main_->text());
+        for (const clangbridge::Symbol& symbol : unit_->outline()) {
+            if (std::optional<DocumentSymbol> entry = outline_entry(*main_, mapper, symbol)) {
+                outline.push_back(std::move(*entry));
+            }
+        }
+    }
+    for (DocumentSymbol& symbol : cppl_symbols(*main_)) {
+        place_symbol(outline, std::move(symbol));
+    }
+    return outline;
+}
 
 std::optional<EditorView::Target> EditorView::target_at(const Position& position) const {
     if (unit_ == nullptr || main_ == nullptr) {

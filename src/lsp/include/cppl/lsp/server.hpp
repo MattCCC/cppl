@@ -125,6 +125,18 @@ class Server {
     [[nodiscard]] std::optional<std::vector<DocumentHighlight>> text_document_document_highlight(
         const TextDocumentIdentifier& id, const Position& position);
 
+    // The document's outline: every C++ declaration Clang finds whose name
+    // the document writes, outside function bodies, nested as declared, and
+    // every Law, proof and refinement type among them (LSP
+    // `textDocument/documentSymbol`). `std::nullopt` means the document is
+    // unknown.
+    [[nodiscard]] std::optional<std::vector<DocumentSymbol>> text_document_document_symbol(
+        const TextDocumentIdentifier& id);
+
+    [[nodiscard]] const ClientCapabilities& client_capabilities() const noexcept {
+        return client_;
+    }
+
     // Diagnostics
     using DiagnosticPublisher = std::function<void(const std::string& uri, std::vector<Diagnostic>)>;
     void set_diagnostic_publisher(DiagnosticPublisher publisher) {

@@ -394,6 +394,13 @@ struct EditorUnit::State {
         return CXChildVisit_Recurse;
     }
 
+    struct OutlineWalk {
+        const State* state = nullptr;
+        std::vector<Symbol>* into = nullptr;
+    };
+
+    static CXChildVisitResult outline_visit(CXCursor cursor, CXCursor, CXClientData data);
+
     [[nodiscard]] std::vector<Occurrence> walk(const std::vector<std::string>* usrs, std::string_view name) const {
         Walk walk;
         walk.state = this;
@@ -1256,6 +1263,122 @@ Scope EditorUnit::scope_at(std::size_t offset) const {
         }
     }
     return Scope::Other;
+}
+
+namespace {
+
+std::optional<Symbol::Kind> symbol_kind(CXCursorKind kind) {
+    switch (kind) {
+        case CXCursor_Namespace:
+            return Symbol::Kind::Namespace;
+        case CXCursor_ClassDecl:
+        case CXCursor_ClassTemplate:
+        case CXCursor_ClassTemplatePartialSpecialization:
+            return Symbol::Kind::Class;
+        case CXCursor_StructDecl:
+            return Symbol::Kind::Struct;
+        case CXCursor_UnionDecl:
+            return Symbol::Kind::Union;
+        case CXCursor_EnumDecl:
+            return Symbol::Kind::Enum;
+        case CXCursor_EnumConstantDecl:
+            return Symbol::Kind::Enumerator;
+        case CXCursor_FunctionDecl:
+        case CXCursor_FunctionTemplate:
+            return Symbol::Kind::Function;
+        case CXCursor_CXXMethod:
+        case CXCursor_Destructor:
+        case CXCursor_ConversionFunction:
+            return Symbol::Kind::Method;
+        case CXCursor_Constructor:
+            return Symbol::Kind::Constructor;
+        case CXCursor_FieldDecl:
+            return Symbol::Kind::Field;
+        case CXCursor_VarDecl:
+            return Symbol::Kind::Variable;
+        case CXCursor_TypedefDecl:
+        case CXCursor_TypeAliasDecl:
+        case CXCursor_TypeAliasTemplateDecl:
+            return Symbol::Kind::TypeAlias;
+        case CXCursor_MacroDefinition:
+            return Symbol::Kind::Macro;
+        case CXCursor_ConceptDecl:
+            return Symbol::Kind::Concept;
+        default:
+            return std::nullopt;
+    }
+}
+
+bool nests(Symbol::Kind kind) {
+    return kind == Symbol::Kind::Namespace || kind == Symbol::Kind::Class || kind == Symbol::Kind::Struct ||
+           kind == Symbol::Kind::Union || kind == Symbol::Kind::Enum;
+}
+
+} // namespace
+
+CXChildVisitResult EditorUnit::State::outline_visit(CXCursor cursor, CXCursor, CXClientData data) {
+    const OutlineWalk& walk = *static_cast<OutlineWalk*>(data);
+    const State& state = *walk.state;
+    // Every header's declarations are the unit's too; only the main file's are
+    // its outline.
+    if (clang_Location_isFromMainFile(clang_getCursorLocation(cursor)) == 0) {
+        return CXChildVisit_Continue;
+    }
+    const CXCursorKind kind = clang_getCursorKind(cursor);
+    if (kind == CXCursor_LinkageSpec) {
+        return CXChildVisit_Recurse; // `extern "C" { ... }` declares into its enclosing scope
+    }
+    const std::optional<Symbol::Kind> symbol_kind_of = symbol_kind(kind);
+    if (!symbol_kind_of.has_value() || (kind == CXCursor_MacroDefinition && clang_Cursor_isMacroBuiltin(cursor) != 0)) {
+        return CXChildVisit_Continue;
+    }
+    const CXSourceRange range = clang_getCursorExtent(cursor);
+    const Extent extent{state.place(clang_getRangeStart(range)), state.place(clang_getRangeEnd(range))};
+    // Clang spells an unnamed namespace or type as where it is written; it has
+    // no name, so it is selected at its first byte.
+    const bool anonymous = clang_Cursor_isAnonymous(cursor) != 0;
+    const std::optional<Extent> name = anonymous ? Extent{extent.begin, extent.begin} : state.name_extent(cursor);
+    if (!name.has_value() || !name->begin.in_main_file) {
+        return CXChildVisit_Continue;
+    }
+    Symbol symbol;
+    symbol.kind = *symbol_kind_of;
+    symbol.name = anonymous ? std::string() : take(clang_getCursorSpelling(cursor));
+    if (symbol.name.empty()) {
+        symbol.name = "(anonymous)";
+    }
+    // A member defined outside its class is named with its class.
+    const CXCursor semantic = clang_getCursorSemanticParent(cursor);
+    const CXCursor lexical = clang_getCursorLexicalParent(cursor);
+    if (!is_null(semantic) && !same(semantic, lexical) && symbol.kind != Symbol::Kind::Namespace &&
+        clang_getCursorKind(semantic) != CXCursor_TranslationUnit) {
+        const std::string owner = take(clang_getCursorSpelling(semantic));
+        if (!owner.empty()) {
+            symbol.name = owner + "::" + symbol.name;
+        }
+    }
+    if (kind == CXCursor_TypedefDecl || kind == CXCursor_TypeAliasDecl) {
+        symbol.detail = take(clang_getTypeSpelling(clang_getTypedefDeclUnderlyingType(cursor)));
+    } else if (kind != CXCursor_MacroDefinition && !nests(symbol.kind)) {
+        symbol.detail = take(clang_getTypeSpelling(clang_getCursorType(cursor)));
+    }
+    symbol.name_extent = *name;
+    symbol.extent = extent;
+    if (nests(symbol.kind)) {
+        OutlineWalk inner{&state, &symbol.children};
+        clang_visitChildren(cursor, outline_visit, &inner);
+    }
+    walk.into->push_back(std::move(symbol));
+    return CXChildVisit_Continue;
+}
+
+std::vector<Symbol> EditorUnit::outline() const {
+    std::vector<Symbol> symbols;
+    if (state_->unit != nullptr) {
+        State::OutlineWalk walk{state_.get(), &symbols};
+        clang_visitChildren(clang_getTranslationUnitCursor(state_->unit), State::outline_visit, &walk);
+    }
+    return symbols;
 }
 
 std::vector<std::string> EditorUnit::included_files() const {
