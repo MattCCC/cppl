@@ -494,28 +494,58 @@ refuse variable_index_write 'does not satisfy its contract' <<'CPP'
 verified int f(unsigned i) expects (i < 3u) ensures (result == 1) { int a[3]{1, 2, 3}; a[i] = 5; return a[0]; }
 CPP
 
-# A member that is itself an aggregate needs a place path, not one field index.
-# The refusal says that, rather than calling the member's type unmodeled: the
-# same type is modeled perfectly well as a local of its own.
-refuse nested_aggregate_member 'is itself an aggregate' <<'CPP'
+# A member that is itself an aggregate is the places its own members are, not
+# one value: `o.i.v` is a place reached by a longer path, exactly as `o.a` is.
+accept nested_aggregate_member <<'CPP'
 struct Inner { int v; };
 struct Outer { Inner i; };
 verified int f() ensures (result == 5) { Outer o{{5}}; return o.i.v; }
 CPP
 
-# The same limit, and the same reason, when the record is a specialization:
-# this is a limit of the aggregate-local path, not of class templates.
-refuse nested_aggregate_member_of_a_specialization 'is itself an aggregate' <<'CPP'
+# The same for a specialization, decomposed from its resolved type.
+accept nested_aggregate_member_of_a_specialization <<'CPP'
 struct Inner { int v; };
 template <typename T> struct Outer { Inner i; };
 verified int f() ensures (result == 5) { Outer<int> o{{5}}; return o.i.v; }
 CPP
 
-# An array member is the same case: a standalone local array is tracked, but an
-# array *inside* a tracked aggregate has no place of its own.
-refuse array_member_of_an_aggregate 'is itself an aggregate' <<'CPP'
+# An array member is the same case: its elements are places of the object, at
+# element steps rather than field steps.
+accept array_member_of_an_aggregate <<'CPP'
 struct Holder { int items[3]; };
 verified int f() ensures (result == 1) { Holder h{{1, 2, 3}}; return h.items[0]; }
+CPP
+
+# Each leaf is its own place, so a write reaches exactly the member written and
+# leaves a sibling at depth alone (SPEC.md 12.10).
+accept nested_write_leaves_a_sibling_alone <<'CPP'
+struct Inner { int v; };
+struct Outer { Inner a; Inner b; };
+verified int f() ensures (result == 2) { Outer o{{1}, {2}}; o.a.v = 7; return o.b.v; }
+CPP
+
+# A nested leaf carries its own declared refinement, so the write into it owes
+# that predicate where the value enters (SPEC.md 17.6).
+accept nested_leaf_owes_its_refinement <<'CPP'
+type Positive = int where (self > 0);
+struct Inner { Positive v; };
+struct Outer { Inner i; };
+verified int f(int x) expects (x > 0) ensures (result > 0) { Outer o{{1}}; o.i.v = x; return o.i.v; }
+CPP
+
+refuse nested_leaf_refinement_unproven 'does not satisfy its contract' <<'CPP'
+type Positive = int where (self > 0);
+struct Inner { Positive v; };
+struct Outer { Inner i; };
+verified int f(int x) ensures (result > 0) { Outer o{{1}}; o.i.v = x; return o.i.v; }
+CPP
+
+# Construction must still be fully visible at every level: a nested member with
+# fewer values than members is partial initialization, not a tracked object.
+refuse nested_partial_initialization 'partial aggregate initialization' <<'CPP'
+struct Inner { int v; int w; };
+struct Outer { Inner i; };
+verified int f() ensures (result == 1) { Outer o{{1}}; return o.i.v; }
 CPP
 
 # --- Gaps: refused today, and the reason must stay visible -------------------

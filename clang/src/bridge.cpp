@@ -37,6 +37,12 @@ constexpr std::size_t kMaxReturnPaths = 128;
 // A condition's operators nest, and each `&&`/`||` places its second operand on
 // a further route, so elaboration is bounded as expression depth is.
 constexpr unsigned kMaxConditionDepth = 64;
+// An aggregate's members may themselves be aggregates, so one declaration can
+// establish many places. Both the nesting and the total are bounded: products
+// multiply, and a deeply nested array of arrays would otherwise ask for more
+// versions than a proof can carry (SPEC.md 12.10).
+constexpr std::size_t kMaxPlaceDepth = 8;
+constexpr std::size_t kMaxTrackedLeaves = 256;
 
 class ScopedString {
   public:
@@ -2947,86 +2953,118 @@ struct BodyLowering {
     // Only a form whose construction is fully visible is admitted. Anything else
     // is refused rather than tracked, because an untracked member would read as
     // an unconstrained value while still carrying its declared refinement.
-    std::optional<Expr> lower_aggregate(CXCursor declaration, const std::string& name, const Type& type,
-                                        const std::vector<CXCursor>& declared, std::size_t index,
-                                        const Continuation& next, const Locals& locals, unsigned depth) {
+    // One storage leaf of an aggregate's initialization: the path reaching it
+    // from the object, the type it was declared with, and the initializer
+    // element supplying its first value.
+    struct AggregateLeaf {
+        std::vector<PlaceStep> path;
+        Type type;
+        CXCursor initializer;
+        std::string spelling;
+    };
+
+    // The scalar places an aggregate initializer establishes, in declaration
+    // order, following members that are themselves aggregates into their own
+    // members (SPEC.md 12.10).
+    //
+    // A nested member is not one value: it is the places its own members are,
+    // reached by a longer path. `s.i.v` and `s.items[0]` are places exactly as
+    // `s.a` is, which is why this collects leaves rather than stopping at the
+    // first structural member. Returns the reason on refusal.
+    std::optional<std::string> collect_leaves(const Type& type, CXCursor initializer, const std::string& written,
+                                              const std::vector<PlaceStep>& prefix,
+                                              std::vector<AggregateLeaf>& leaves) {
         const auto& components = type.representation.components;
         const bool array = type.representation.kind == source::RepresentationKind::Array;
-        // An array is a record whose members are its elements, so a constant
-        // index names a place exactly as a field name does. A variable index
-        // does not: which place it names is not decided here, and deciding it
-        // needs the extent obligation the capability model supplies.
         if ((type.representation.kind != source::RepresentationKind::Record && !array) || components.empty() ||
             type.projections.size() != components.size()) {
-            return reject("local '" + name + "' has type '" + type.spelling + "', which is not modeled");
+            return "'" + written + "' has type '" + type.spelling + "', which is not modeled";
+        }
+        if (prefix.size() >= kMaxPlaceDepth) {
+            return "'" + written + "' nests deeper than this implementation tracks";
         }
         for (const auto& component : components) {
             if (!component.accessible) {
-                return reject("local '" + name + "' has type '" + type.spelling +
-                              "' with an inaccessible member, whose construction this body cannot check");
+                return "'" + written + "' has type '" + type.spelling +
+                       "' with an inaccessible member, whose construction this body cannot check";
             }
         }
         // Only a form whose effect on every member is visible here can be
         // tracked. Default initialization, a constructor call and any other
         // form leave at least one member holding a value this body cannot
         // state, and a tracked member at an unconstrained value would read as
-        // though it held one.
-        const CXCursor initializer = clang_Cursor_getVarDeclInitializer(declaration);
+        // though it held one. That applies at every level, so a nested member
+        // needs its own braces rather than an elided initializer.
         if (clang_Cursor_isNull(initializer) != 0 || clang_getCursorKind(initializer) != CXCursor_InitListExpr) {
-            return reject("local '" + name + "' of type '" + type.spelling +
-                          "' is not initialized by an aggregate initializer, so this body cannot state what each "
-                          "member holds");
+            return "'" + written + "' of type '" + type.spelling +
+                   "' is not initialized by an aggregate initializer, so this body cannot state what each member holds";
         }
         const std::vector<CXCursor> elements = children_of(initializer);
         if (elements.size() != components.size()) {
-            return reject("local '" + name + "' of type '" + type.spelling + "' is initialized with " +
-                          std::to_string(elements.size()) + " values for " + std::to_string(components.size()) +
-                          " members; partial aggregate initialization is not modeled");
+            return "'" + written + "' of type '" + type.spelling + "' is initialized with " +
+                   std::to_string(elements.size()) + " values for " + std::to_string(components.size()) +
+                   " members; partial aggregate initialization is not modeled";
         }
+        for (std::size_t member = 0; member < components.size(); ++member) {
+            if (leaves.size() >= kMaxTrackedLeaves) {
+                return "'" + written + "' has more tracked members than the proof resource limit allows";
+            }
+            const Type& member_type = type.projections[member];
+            const std::string member_written =
+                array ? written + "[" + components[member].name + "]" : written + "." + components[member].name;
+            std::vector<PlaceStep> path = prefix;
+            path.push_back(PlaceStep{array ? PlaceStep::Kind::Element : PlaceStep::Kind::Field,
+                                     static_cast<std::uint32_t>(member)});
+            if (member_type.kind == TypeKind::Value) {
+                if (auto refusal = collect_leaves(member_type, elements[member], member_written, path, leaves)) {
+                    return refusal;
+                }
+                continue;
+            }
+            if (member_type.kind == TypeKind::Unsupported) {
+                return "member '" + member_written + "' has type '" + member_type.spelling + "', which is not modeled";
+            }
+            leaves.push_back(AggregateLeaf{std::move(path), member_type, elements[member], member_written});
+        }
+        return std::nullopt;
+    }
 
-        const auto written = [&](std::size_t member) {
-            return array ? name + "[" + components[member].name + "]" : name + "." + components[member].name;
-        };
+    std::optional<Expr> lower_aggregate(CXCursor declaration, const std::string& name, const Type& type,
+                                        const std::vector<CXCursor>& declared, std::size_t index,
+                                        const Continuation& next, const Locals& locals, unsigned depth) {
+        // An array is a record whose members are its elements, so a constant
+        // index names a place exactly as a field name does. A variable index
+        // does not: which place it names is not decided here, and deciding it
+        // needs the extent obligation the capability model supplies.
+        std::vector<AggregateLeaf> leaves;
+        if (auto refusal = collect_leaves(type, clang_Cursor_getVarDeclInitializer(declaration), name, {}, leaves)) {
+            return reject("local " + *refusal);
+        }
 
         Locals declaring = locals;
         std::vector<std::uint32_t> versions;
         std::vector<Expr> values;
-        for (std::size_t member = 0; member < components.size(); ++member) {
-            const Type& member_type = type.projections[member];
-            // A member that is itself an aggregate is a different refusal from
-            // one whose type has no model at all: this path states one version
-            // per scalar member, so a nested aggregate has no place of its own
-            // here even though its type is modeled elsewhere (AGENTS.md 35).
-            if (member_type.kind == TypeKind::Value) {
-                return reject("member '" + written(member) + "' of type '" + member_type.spelling +
-                              "' is itself an aggregate; this implementation tracks one version per scalar member, so "
-                              "a nested aggregate has no place of its own");
-            }
-            if (member_type.kind == TypeKind::Unsupported) {
-                return reject("member '" + written(member) + "' has type '" + member_type.spelling +
-                              "', which is not modeled");
-            }
+        for (const AggregateLeaf& leaf : leaves) {
             std::vector<std::size_t> invalidated;
-            auto evaluated = evaluate(elements[member], declaring, invalidated);
+            auto evaluated = evaluate(leaf.initializer, declaring, invalidated);
             if (!evaluated)
                 return std::nullopt;
             if (!invalidated.empty())
-                return reject("initializing '" + written(member) +
-                              "' has uncertain aliases; use a separate call statement");
+                return reject("initializing '" + leaf.spelling +
+                              "' has uncertain aliases; use a separate call "
+                              "statement");
             if (!std::holds_alternative<Unsupported>(evaluated->node) &&
-                !same_modeled_value(member_type, evaluated->type)) {
-                return reject("initializing '" + written(member) + "' of type '" + member_type.spelling + "' from '" +
+                !same_modeled_value(leaf.type, evaluated->type)) {
+                return reject("initializing '" + leaf.spelling + "' of type '" + leaf.type.spelling + "' from '" +
                               evaluated->type.spelling + "' is a conversion that is not modeled");
             }
             versions.push_back(next_version++);
             values.push_back(std::move(*evaluated));
-            const PlaceStep step{array ? PlaceStep::Kind::Element : PlaceStep::Kind::Field,
-                                 static_cast<std::uint32_t>(member)};
             declaring.push_back(Local{.declaration = declaration,
                                       .version = versions.back(),
-                                      .type = member_type,
-                                      .path = {step},
-                                      .spelling = written(member)});
+                                      .type = leaf.type,
+                                      .path = leaf.path,
+                                      .spelling = leaf.spelling});
         }
 
         std::optional<Expr> body = lower_declaration(declared, index + 1, next, declaring, depth);
@@ -3034,9 +3072,9 @@ struct BodyLowering {
             return std::nullopt;
         // Innermost member last, so each member's version is established before
         // the body that reads it and the version order matches the binding order.
-        for (std::size_t member = components.size(); member > 0; --member) {
-            body = bind(versions[member - 1], place_of(declaring, locals.size() + member - 1),
-                        std::move(values[member - 1]), std::move(*body), declaration, type.projections[member - 1]);
+        for (std::size_t leaf = leaves.size(); leaf > 0; --leaf) {
+            body = bind(versions[leaf - 1], place_of(declaring, locals.size() + leaf - 1), std::move(values[leaf - 1]),
+                        std::move(*body), declaration, leaves[leaf - 1].type);
         }
         return body;
     }

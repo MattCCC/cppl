@@ -727,11 +727,18 @@ no predicate travels with the argument. Formal identity is semantic rather than
 spelling-only (`SPEC.md` 43), so such a program fails to prove rather than
 quietly reading a predicate that is not there.
 
-An array or a record as a member of a *tracked local* is not modeled: the
-aggregate-local path states one version per scalar member, so a nested aggregate
-is refused by name. The refusal is the same for an ordinary record and for a
-specialization, so it is a limit of that path rather than of templates. Writing
-a member of a by-value aggregate parameter is refused for the same reason.
+A member that is itself an aggregate is the places its own members are, not one
+value: an aggregate local is tracked as one version per scalar leaf, reached by
+a path of field and element steps. `o.i.v` and `h.items[0]` are places exactly
+as `o.a` is, so a write reaches the leaf written and leaves a sibling at depth
+alone, and a refined leaf owes its predicate where the value enters it. Nesting
+is bounded at eight levels and 256 leaves per declaration, and construction must
+stay fully visible at every level: partial initialization, default
+initialization and a union member are each refused by name.
+
+Writing a member of a by-value aggregate *parameter* is still refused: the
+parameter is not tracked storage, so the write has no modeled effect. The
+refusal is the same for an ordinary record and for a specialization.
 
 A contract may name types a template supplies, including dependent names
 spelled through one, because each clause is projected under the header its
