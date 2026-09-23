@@ -137,6 +137,13 @@ grep -q "proof 'false_after_rewriting_holds' does not establish law" \
 # A tactic this implementation does not have is refused, not ignored.
 refuse unsupported_proof_body
 grep -q "does not begin a proof statement" "$run/unsupported_proof_body.log"
+# The note names every statement there is, so it never steers an author away
+# from one that would have worked.
+for statement in "'refl;'" "'exact <evidence>;'" "'apply <evidence>;'" "'rewrite <evidence>;'" \
+    "'contradiction <evidence>;'" "'assume <name> : <proposition>;'" "'cases <subject> { ... }'" \
+    "'decompose <subject> { ... }'"; do
+    grep -qF "$statement" "$run/unsupported_proof_body.log"
+done
 
 # Circular evidence is not evidence.
 refuse cyclic_proofs

@@ -985,9 +985,10 @@ bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std
                    "' does not begin a proof statement this "
                    "implementation supports",
                "the supported proof statements are 'refl;', 'exact <evidence>;', "
-               "'apply <evidence>;', 'rewrite <evidence>;' and "
-               "'assume <name> : <proposition>;'. Evidence may be instantiated at arguments, "
-               "as in 'exact <proof>(<expression>);'");
+               "'apply <evidence>;', 'rewrite <evidence>;', 'contradiction <evidence>;', "
+               "'assume <name> : <proposition>;', and 'cases <subject> { ... }' and "
+               "'decompose <subject> { ... }' with an arm for each state. Evidence may be "
+               "instantiated at arguments, as in 'exact <proof>(<expression>);'");
         return false;
     }
 
