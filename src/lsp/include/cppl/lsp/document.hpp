@@ -116,6 +116,12 @@ class DocumentManager {
     [[nodiscard]] Document* get(const std::string& uri);
     [[nodiscard]] const Document* get(const std::string& uri) const;
 
+    template <typename Visit> void for_each(Visit&& visit) const {
+        for (const auto& [uri, document] : documents_) {
+            visit(static_cast<const Document&>(*document));
+        }
+    }
+
   private:
     std::unordered_map<std::string, std::unique_ptr<Document>> documents_;
 };

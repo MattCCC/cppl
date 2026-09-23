@@ -32,6 +32,10 @@ textDocument/completion                     case labels a subject still owes
 textDocument/hover                          a case subject's state partition
 textDocument/codeAction                     syntax migrations; canonical fix-all
 textDocument/semanticTokens/full            proof-statement keywords
+textDocument/definition                     Clang, over the document's projection
+textDocument/declaration                    the first declaration
+textDocument/typeDefinition                 through pointers, references, `auto`
+textDocument/implementation                 overrides and derived classes
 ```
 
 Diagnostics come from `driver::compile_buffer` over the live buffer — the same
@@ -92,14 +96,50 @@ a case split on the same terms (SPEC.md WORD-012): it and the keywords in its
 arms are reported only when that compile recognized splits, and a claim in an
 arm is reported once, as the split's.
 
+Navigation is Clang's answer, read back through the projection. Each document
+gets an editor unit: the analysis projection the compiler makes
+(`frontend::project`), made from the buffer as written rather than from the
+preprocessed unit, parsed by libclang and kept with a precompiled preamble, so
+the request after an edit costs a reparse of the document and not of its
+headers. Because the projection is made from the text as written, its
+`#include`s stay directives: Clang reads the headers themselves, and a position
+it reports in one is exact. A header that holds C++L is read as its projection
+too, and so is every other open buffer, as the editor holds it.
+
+What Clang reports is shown only where it can be traced to text an author
+wrote. The projection records every run of the written text it kept in place
+(`Projection::segments`) and every run it copied into a declaration it
+generated (`Projection::copies`): a Law's and a proof's parameters, the
+expression a clause states, a refinement's predicate. So a name inside a Law's
+proposition leads to the C++ it names, a Law's parameter used in its
+proposition leads to the parameter as written, and a verified function's
+parameter named in its `expects` or `ensures` leads to that parameter. The
+declaration generated for a Law stands for the Law's name and the alias
+generated for a refinement type for the refinement's, so a proof's `proves`
+clause leads to the Law, and a use of a refinement type to its declaration.
+Anything else Clang reports in generated text, such as `result` or a probe, has
+no written position and is not shown: no answer is better than one pointing at
+text nobody wrote. Proof statements (`exact`, `apply`) are not C++ and Clang
+says nothing about them.
+
+The editor unit reads text as written, which is what makes its positions exact,
+and it is also its one limit: a C++L construct spelled through a macro, such as
+`#define V verified`, is recognized by the compiler, which reads the
+preprocessed unit, but not here. The unit Clang parses then keeps the
+construct's clauses as written, Clang recovers around them, and navigation near
+them finds what that recovery left. Diagnostics are unaffected: they come from
+the compile, never from the editor unit.
+
 The server advertises `textDocumentSync`, `documentFormattingProvider`,
 `documentRangeFormattingProvider`, `documentOnTypeFormattingProvider`,
 `completionProvider`, `hoverProvider`, `codeActionProvider` (kinds
-`quickfix` and `source.fixAll.cppl`) and `semanticTokensProvider` (whole
-document, one token type, `keyword`). **Navigation is specified below but not
-implemented**, nor are the semantic-token categories beyond proof-statement
-keywords, and neither is advertised: an editor is told what the server can do,
-never what it intends to do. `docs/STATUS.md` tracks this.
+`quickfix` and `source.fixAll.cppl`), `semanticTokensProvider` (whole
+document, one token type, `keyword`), and `definitionProvider`,
+`declarationProvider`, `typeDefinitionProvider` and `implementationProvider`.
+The rest of navigation specified below, and the semantic-token categories
+beyond proof-statement keywords, are not implemented and not advertised: an
+editor is told what the server can do, never what it intends to do.
+`docs/STATUS.md` tracks this.
 
 ---
 
@@ -585,6 +625,13 @@ Ordinary C++ symbol navigation uses Clang semantics.
 
 C++L relationships are supplied by the C++L frontend.
 
+Implemented today: definition, declaration, type definition and implementation
+(see Implementation status). A definition request at a definition answers the
+earlier declaration, as clangd does; `auto` leads to the type it was deduced
+as; an `#include` leads to the file it includes; an overloaded operator leads to
+the operator called. Implementation answers every override of a virtual method
+and every class derived from a class, within the unit.
+
 ---
 
 ## Completion
@@ -892,6 +939,14 @@ That does not cause `cppl-lsp` to implement the semantics of this program itself
 
 It routes the relevant semantic work to Clang.
 
+A file with no C++L at all is handed to Clang exactly as written, so every
+editor service works on plain C++ as it does on C++L. Which files the server
+owns is still the editor's choice, made per file or per project: the clients
+register it for the `cppl` language only, and a project that wants its `.cpp`
+files served by `cppl-lsp` maps them to that language. It never claims every
+C++ file by default, since two servers on one file would publish two
+diagnostic streams for it (see "Why `cppl-lsp` owns the whole file").
+
 ---
 
 ## Relationship to the compiler
@@ -1190,12 +1245,14 @@ reference. Detailed pointer-state and effect hovers are not implemented.
 ## Currently unsupported
 
 Transport, document synchronization, diagnostics, canonical C++L formatting,
-code actions, proof-decomposition completion and hover, and semantic tokens for proof-statement
-keywords are implemented. The following are
-explicitly out of scope for this milestone and are not implemented:
+code actions, proof-decomposition completion and hover, semantic tokens for
+proof-statement keywords, and definition, declaration, type definition and
+implementation are implemented. The following are explicitly out of scope for
+this milestone and are not implemented:
 
 ```text
-go-to-definition / references
+references
+navigation from a proof statement (`exact`, `apply`) to what it names
 rename
 semantic tokens beyond proof-statement keywords
 proof search / interactive proof state

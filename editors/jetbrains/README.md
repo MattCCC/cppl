@@ -53,7 +53,10 @@ exclusively to `cppl-lsp` rather than the IDE's C++ engine.
 
 The server also answers hover and completion inside a `cases` or `decompose`
 arm block, which the IDE shows where its LSP client supports those features.
-Navigation is not implemented by the server yet, so it is unavailable here.
+Go to Declaration (Ctrl/Cmd-click) asks the server for the definition, which
+Clang answers over the file's projection, for C++ and for the C++L declarations
+the projection stands for. References and rename are not implemented by the
+server yet.
 
 The plugin loads no grammar: all coloring is the server's. The server reports
 only proof-statement keywords, as `keyword` semantic tokens, and whether this

@@ -1,10 +1,12 @@
 #include "cppl/lsp/server.hpp"
 
+#include "cppl/clang/editor.hpp"
 #include "cppl/diagnostics/diagnostic.hpp"
 #include "cppl/driver/buffer_compile.hpp"
 #include "cppl/formatter/format.hpp"
 #include "cppl/lsp/decomposition_view.hpp"
 #include "cppl/lsp/document.hpp"
+#include "cppl/lsp/editor_view.hpp"
 #include "cppl/lsp/linter.hpp"
 #include "cppl/lsp/position.hpp"
 #include "cppl/lsp/protocol.hpp"
@@ -13,6 +15,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -52,7 +55,8 @@ bool asks_for(const std::vector<std::string>& only, std::string_view kind) {
 
 Server::Server(std::string clang, std::vector<std::string> clang_arguments)
     : clang_(std::move(clang)),
-      clang_arguments_(std::move(clang_arguments)) {}
+      clang_arguments_(std::move(clang_arguments)),
+      driver_(resolve_driver(clang_.empty() ? std::string{CPPL_DEFAULT_CLANG} : clang_)) {}
 
 void Server::initialize() {
     // Server is now initialized
@@ -73,6 +77,7 @@ void Server::exit() {
 
 void Server::text_document_did_open(const TextDocumentItem& item) {
     documents_.open(item);
+    ++generation_;
 
     // Publish diagnostics for the newly opened document
     if (const auto* doc = documents_.get(item.uri)) {
@@ -83,6 +88,7 @@ void Server::text_document_did_open(const TextDocumentItem& item) {
 void Server::text_document_did_change(const VersionedTextDocumentIdentifier& id,
                                       const std::vector<TextDocumentContentChangeEvent>& changes) {
     documents_.change(id, changes);
+    ++generation_;
 
     // Publish updated diagnostics
     if (const auto* doc = documents_.get(id.uri)) {
@@ -97,6 +103,41 @@ void Server::text_document_did_close(const TextDocumentIdentifier& id) {
     }
 
     documents_.close(id);
+    views_.erase(id.uri);
+    ++generation_;
+}
+
+EditorView* Server::view_for(const std::string& uri) {
+    const Document* document = documents_.get(uri);
+    if (document == nullptr) {
+        return nullptr;
+    }
+    View& entry = views_[uri];
+    if (entry.view == nullptr) {
+        entry.view = std::make_unique<EditorView>();
+    }
+    if (entry.generation != generation_) {
+        std::vector<OpenBuffer> open;
+        documents_.for_each([&open](const Document& buffer) {
+            open.push_back(OpenBuffer{buffer.uri(), buffer.path(), &buffer.text()});
+        });
+        EditorView::Options options;
+        options.driver = driver_;
+        options.arguments = clang_arguments_;
+        entry.view->refresh(OpenBuffer{document->uri(), document->path(), &document->text()}, open, options);
+        entry.generation = generation_;
+    }
+    return entry.view.get();
+}
+
+std::optional<std::vector<Location>> Server::text_document_navigate(clangbridge::Destination destination,
+                                                                    const TextDocumentIdentifier& id,
+                                                                    const Position& position) {
+    EditorView* view = view_for(id.uri);
+    if (view == nullptr) {
+        return std::nullopt;
+    }
+    return view->navigate(destination, position);
 }
 
 std::vector<CodeAction> Server::text_document_code_actions(const CodeActionRequest& request) {

@@ -1394,7 +1394,8 @@ AI output must always be independently verified.
 | LSP: case completion and hover       | `PROTOTYPE`   |
 | LSP: code actions                    | `PROTOTYPE`   |
 | LSP: proof-keyword semantic tokens   | `PROTOTYPE`   |
-| LSP: definition, other token kinds   | `NOT STARTED` |
+| LSP: definition and declaration      | `PROTOTYPE`   |
+| LSP: references, other token kinds   | `NOT STARTED` |
 | IDE proof goals                      | `NOT STARTED` |
 | Proof navigation                     | `NOT STARTED` |
 | Counterexample UI                    | `NOT STARTED` |
@@ -1458,9 +1459,22 @@ that names `contradiction` makes the statement ordinary C++ (WORD-002). A case
 split in a verified body, with the keywords of its arms, is reported on the same
 terms, when the compile of the whole unit recognized splits (WORD-012).
 
-Go-to-definition, the other semantic-token categories and incremental sync are
-designed in `tools/cppl-lsp/README.md` but not implemented, and are deliberately
-not advertised as capabilities.
+`definitionProvider`, `declarationProvider`, `typeDefinitionProvider` and
+`implementationProvider` are answered by Clang, through libclang, over an
+editor unit per document: the analysis projection the compiler makes, made from
+the buffer as written so that its `#include`s stay directives, kept with a
+precompiled preamble and reparsed after an edit. A header that holds C++L, and
+every other open buffer, is read as its projection. The projection records
+where it kept written text in place and where it copied written text into a
+declaration it generated, so a name inside a Law's proposition, a Law's
+parameter, a parameter named in a contract, a Law named by a proof's `proves`
+clause and a refinement type all lead to what was written; a position Clang
+reports in generated text that stands for nothing written is not shown. A proof
+statement's reference (`exact p;`) is not C++ and is not navigable yet.
+
+References, rename, the other semantic-token categories and incremental sync
+are designed in `tools/cppl-lsp/README.md` but not implemented, and are
+deliberately not advertised as capabilities.
 
 ---
 

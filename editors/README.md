@@ -24,6 +24,8 @@ editors/
 | Format on save | editor config | yes | yes | yes | yes |
 | Format on type | `cppl-lsp` | yes | yes | yes | — |
 | Code actions | `cppl-lsp` | yes | yes | yes | yes |
+| Go to definition | `cppl-lsp` | yes | yes | yes | yes |
+| Declaration, type definition, implementation | `cppl-lsp` | yes | unverified | unverified | yes |
 | Syntax coloring | `editors/shared` | yes | — | — | yes |
 | Proof-statement coloring | `cppl-lsp` | yes | unverified | unverified | yes |
 
@@ -31,10 +33,25 @@ Code actions are syntax migrations, offered as quick fixes where they would
 edit, and canonical formatting as `source.fixAll.cppl`. The server also answers
 hover and completion inside `cases` and `decompose` arm blocks, for C++L's own
 syntax only, and an editor shows them where its LSP client supports those
-features; ordinary C++ hover and completion stay with clangd. Navigation and
-rename are **not** implemented by the server yet, so no client offers them. See
-"Currently unsupported" in
+features.
+
+Navigation is answered by Clang over each document's projection, for ordinary
+C++ and for the C++L declarations the projection stands for: a Law named in a
+proof, a Law's parameter in its proposition, a function parameter in a
+contract, a refinement type. "Unverified" means the IDE's own LSP client
+documents the request but nobody has checked it against this server. References
+and rename are **not** implemented yet. See "Currently unsupported" in
 [`tools/cppl-lsp/README.md`](../tools/cppl-lsp/README.md).
+
+### Plain C++ files
+
+Every client registers the server for the `cppl` language only: `.cppl` files,
+and whatever a project maps to that language. The server handles plain C++
+exactly as Clang does, since C++ is C++L with no Laws in it, so a C++L project
+can hand it its `.cpp` files too. It never claims C++ files on its own: two
+language servers on one file publish two diagnostic streams for it, so a file
+has one owner, chosen by the project. Where `cppl-lsp` owns a project's C++,
+turn off the other C++ extension's IntelliSense for those files.
 
 The server's semantic tokens color what the grammar cannot: a proof statement
 spelled like a C++ declaration, such as `exact h;` or `contradiction name;`,

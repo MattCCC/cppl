@@ -2709,6 +2709,42 @@ C++L-specific services include:
 
 **[ARCH-LSP-001]** Editor clients may change presentation, never theorem meaning.
 
+Ordinary C++ intelligence comes from Clang through libclang, over an editor
+unit per open document:
+
+```text
+buffer as written
+    │  frontend::lex / recognize / project      (the compiler's projector)
+    ▼
+analysis projection, #includes kept as directives
+    │  + headers holding C++L, and other open buffers, as their projections
+    ▼
+clangbridge::EditorUnit                          (libclang, precompiled preamble)
+    │  cursor, reference, definition, type, override
+    ▼
+extent in the projection
+    │  Projection::segments   written text kept in place
+    │  Projection::copies     written text copied into a generated declaration
+    │  generated Law / refinement name → the name written
+    ▼
+position in the text as written, or none
+```
+
+The editor unit is made from the buffer as written, not from the preprocessed
+unit the compile reads, so the headers Clang reads are the files themselves and
+the positions it reports in them are exact. `clang/` stays the only component
+that includes a Clang header: `EditorUnit` knows nothing of C++L, and mapping
+what it reports back to written text is `src/lsp`'s.
+
+**[ARCH-LSP-002]** An editor service reports a position only where the source
+map traces it to text an author wrote. A position in generated text that stands
+for nothing written is not reported, never approximated.
+
+**[ARCH-LSP-003]** Diagnostics come from the compile of the buffer
+(`driver::compile_buffer`) alone. The editor unit answers editor requests and
+never contributes a diagnostic, so it cannot report a program the compiler
+accepts as wrong or the reverse.
+
 ---
 
 # 79. Formatter architecture

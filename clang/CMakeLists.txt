@@ -6,7 +6,8 @@
 # place in the project that includes a Clang header (ARCHITECTURE.md 11,
 # AGENTS.md 14).
 add_library(cppl_clang STATIC
-    src/bridge.cpp)
+    src/bridge.cpp
+    src/editor.cpp)
 
 target_include_directories(cppl_clang PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)

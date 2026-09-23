@@ -4,8 +4,8 @@
     <vendor>C++L</vendor>
 
     <description><![CDATA[
-        C++L language support for JetBrains IDEs: diagnostics, canonical
-        formatting and syntax highlighting, provided by the
+        C++L language support for JetBrains IDEs: diagnostics, navigation,
+        canonical formatting and syntax highlighting, provided by the
         <code>cppl-lsp</code> language server.
         <br/><br/>
         Requires <code>cppl-lsp</code> on PATH or built at

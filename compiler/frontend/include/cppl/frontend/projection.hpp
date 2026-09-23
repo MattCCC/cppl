@@ -197,6 +197,28 @@ struct Projection {
     };
     std::vector<DeclarationOffset> declaration_offsets;
     [[nodiscard]] std::optional<std::size_t> declaration_offset(std::size_t original) const;
+
+    // Each run of the scanned text copied into `analysis` unchanged, in order.
+    // A position in one text maps to the other only through these: anything
+    // else in `analysis` was generated, and names the text it stands for only
+    // through its line directives.
+    struct Segment {
+        std::size_t original = 0;
+        std::size_t analysis = 0;
+        std::size_t length = 0;
+    };
+    std::vector<Segment> segments;
+
+    // Each run of the scanned text copied byte for byte into a declaration the
+    // projector generated -- a Law's or a proof's parameters, the expression a
+    // clause states -- at the analysis offset it was copied to, in the order the
+    // projector wrote them. A run can be copied more than once: a proof's
+    // parameters are copied into every probe it has.
+    struct Copy {
+        std::size_t analysis = 0;
+        source::ByteSpan original;
+    };
+    std::vector<Copy> copies;
 };
 
 struct ProjectionOptions {

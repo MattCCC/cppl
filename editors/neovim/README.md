@@ -67,9 +67,13 @@ server's semantic tokens instead, as `@lsp.type.keyword.cppl`, which
 `setup()` links to `Statement` like the syntax file's own proof words.
 
 Inside a `cases` or `decompose` arm block the server also answers hover
-(`vim.lsp.buf.hover`) and completion. Navigation is not implemented by the
-server yet, so it is unavailable here — see "Currently unsupported" in the
-[`cppl-lsp` README](../../tools/cppl-lsp/README.md).
+(`vim.lsp.buf.hover`) and completion.
+
+`vim.lsp.buf.definition()`, `declaration()`, `type_definition()` and
+`implementation()` are answered by Clang over the file's projection; with the
+client attached, `CTRL-]` jumps to the definition too, through Neovim's LSP
+`tagfunc`. References and rename are not implemented by the server yet — see
+"Currently unsupported" in the [`cppl-lsp` README](../../tools/cppl-lsp/README.md).
 
 ## Troubleshooting
 

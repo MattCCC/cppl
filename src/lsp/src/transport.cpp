@@ -1,5 +1,6 @@
 #include "cppl/lsp/transport.hpp"
 
+#include "cppl/clang/editor.hpp"
 #include "cppl/lsp/json.hpp"
 #include "cppl/lsp/protocol.hpp"
 #include "cppl/lsp/semantic_tokens.hpp"
@@ -292,6 +293,14 @@ class Dispatcher {
             handle_code_action(id_value, params);
         } else if (method == "textDocument/semanticTokens/full") {
             handle_semantic_tokens(id_value, params);
+        } else if (method == "textDocument/definition") {
+            handle_navigate(id_value, params, clangbridge::Destination::Definition, method);
+        } else if (method == "textDocument/declaration") {
+            handle_navigate(id_value, params, clangbridge::Destination::Declaration, method);
+        } else if (method == "textDocument/typeDefinition") {
+            handle_navigate(id_value, params, clangbridge::Destination::TypeDefinition, method);
+        } else if (method == "textDocument/implementation") {
+            handle_navigate(id_value, params, clangbridge::Destination::Implementation, method);
         } else if (is_request) {
             respond_error(*id_value, kMethodNotFound, "method not found: " + method);
         } else {
@@ -386,6 +395,13 @@ class Dispatcher {
         semantic_tokens.set("legend", std::move(legend));
         semantic_tokens.set("full", json::Value(true));
         capabilities.set("semanticTokensProvider", std::move(semantic_tokens));
+
+        // Navigation over ordinary C++ and the C++L declarations the
+        // projection stands for, answered by Clang.
+        capabilities.set("definitionProvider", json::Value(true));
+        capabilities.set("declarationProvider", json::Value(true));
+        capabilities.set("typeDefinitionProvider", json::Value(true));
+        capabilities.set("implementationProvider", json::Value(true));
 
         json::Value server_info = json::Value::object();
         server_info.set("name", json::Value("cppl-lsp"));
@@ -623,6 +639,66 @@ class Dispatcher {
         json::Value result = json::Value::object();
         result.set("contents", std::move(contents));
         respond_result(*id, std::move(result));
+    }
+
+    // The document and position a `TextDocumentPositionParams` names.
+    static std::optional<std::pair<TextDocumentIdentifier, Position>> position_params(const json::Value* params) {
+        const json::Value* document = params != nullptr ? params->find("textDocument") : nullptr;
+        const json::Value* position_value = params != nullptr ? params->find("position") : nullptr;
+        const auto uri = document != nullptr ? document->find_string("uri") : std::nullopt;
+        const std::optional<Position> position =
+            position_value != nullptr ? parse_position(*position_value) : std::nullopt;
+        if (!uri || !position.has_value()) {
+            return std::nullopt;
+        }
+        TextDocumentIdentifier document_id;
+        document_id.uri = *uri;
+        return std::pair{document_id, *position};
+    }
+
+    static json::Value range_to_json(const Range& range) {
+        json::Value start = json::Value::object();
+        start.set("line", json::Value(range.start.line));
+        start.set("character", json::Value(range.start.character));
+        json::Value end = json::Value::object();
+        end.set("line", json::Value(range.end.line));
+        end.set("character", json::Value(range.end.character));
+        json::Value result = json::Value::object();
+        result.set("start", std::move(start));
+        result.set("end", std::move(end));
+        return result;
+    }
+
+    static json::Value location_to_json(const Location& location) {
+        json::Value result = json::Value::object();
+        result.set("uri", json::Value(location.uri));
+        result.set("range", range_to_json(location.range));
+        return result;
+    }
+
+    // An empty list is an ordinary answer: nothing is named there, or nothing
+    // Clang found can be traced to text an author wrote.
+    void handle_navigate(const json::Value* id, const json::Value* params, clangbridge::Destination destination,
+                         const std::string& method) {
+        if (id == nullptr) {
+            return;
+        }
+        const auto request = position_params(params);
+        if (!request.has_value()) {
+            respond_error(*id, kInvalidParams, method + " missing 'textDocument.uri' or 'position'");
+            return;
+        }
+        const std::optional<std::vector<Location>> locations =
+            server_.text_document_navigate(destination, request->first, request->second);
+        if (!locations.has_value()) {
+            respond_result(*id, json::Value(nullptr));
+            return;
+        }
+        json::Value items = json::Value::array();
+        for (const Location& location : *locations) {
+            items.push_back(location_to_json(location));
+        }
+        respond_result(*id, std::move(items));
     }
 
     void handle_semantic_tokens(const json::Value* id, const json::Value* params) {

@@ -1,13 +1,17 @@
 #pragma once
 
+#include "cppl/clang/editor.hpp"
 #include "cppl/lsp/document.hpp"
+#include "cppl/lsp/editor_view.hpp"
 #include "cppl/lsp/linter.hpp"
 #include "cppl/lsp/protocol.hpp"
 
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -82,6 +86,16 @@ class Server {
     [[nodiscard]] std::optional<std::vector<std::uint32_t>> text_document_semantic_tokens(
         const TextDocumentIdentifier& id) const;
 
+    // Where the name at `position` is defined, declared, typed or overridden,
+    // as `destination` asks (LSP `textDocument/definition`, `declaration`,
+    // `typeDefinition`, `implementation`). Clang answers, over the document's
+    // projection, and only positions traced back to text an author wrote are
+    // returned (tools/cppl-lsp/README.md, "Navigation"). `std::nullopt` means
+    // the document is unknown.
+    [[nodiscard]] std::optional<std::vector<Location>> text_document_navigate(clangbridge::Destination destination,
+                                                                              const TextDocumentIdentifier& id,
+                                                                              const Position& position);
+
     // Diagnostics
     using DiagnosticPublisher = std::function<void(const std::string& uri, std::vector<Diagnostic>)>;
     void set_diagnostic_publisher(DiagnosticPublisher publisher) {
@@ -95,7 +109,20 @@ class Server {
   private:
     void publish_diagnostics(const Document& doc);
 
+    // The document's view, brought up to date with every open buffer first;
+    // null when the document is unknown.
+    EditorView* view_for(const std::string& uri);
+
     DocumentManager documents_;
+    // One view per open document, each with the buffer generation it was last
+    // refreshed at. Any edit to any open buffer can change what another
+    // document's unit reads, so every edit starts a new generation.
+    struct View {
+        std::unique_ptr<EditorView> view;
+        std::uint64_t generation = 0;
+    };
+    std::unordered_map<std::string, View> views_;
+    std::uint64_t generation_ = 1;
     Linter linter_;
     DiagnosticPublisher diagnostic_publisher_;
     TextDocumentSyncKind sync_kind_ = TextDocumentSyncKind::Full;
@@ -103,6 +130,9 @@ class Server {
     bool should_exit_ = false;
     std::string clang_;
     std::vector<std::string> clang_arguments_;
+    // The Clang driver by path, for the editor units: Clang finds the standard
+    // library and system headers relative to it.
+    std::string driver_;
 };
 
 } // namespace cppl::lsp

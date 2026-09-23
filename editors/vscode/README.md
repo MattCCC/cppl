@@ -54,9 +54,13 @@ from the server. Format-on-save and format-on-type are enabled by default for
 `cppl` files only; override them in your settings under `"[cppl]"`.
 
 Inside a `cases` or `decompose` arm block the server also answers hover, with
-the subject's states, and completion, with the arms still owed. Ordinary C++
-hover and completion stay with clangd. Navigation and rename are not
-implemented by the server yet, so they are unavailable here.
+the subject's states, and completion, with the arms still owed.
+
+Go to Definition, Go to Declaration, Go to Type Definition and Go to
+Implementations are answered by Clang over the file's projection, for C++ and
+for the C++L declarations the projection stands for: a Law named in a proof, a
+parameter named in a clause, a refinement type. References and rename are not
+implemented by the server yet.
 
 Proof statements spelled like C++ declarations, such as `exact h;` and
 `contradiction name;`, are colored from the server's semantic tokens, since

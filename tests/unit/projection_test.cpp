@@ -16,6 +16,10 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <filesystem>
+#include <fstream>
+#include <ios>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -54,6 +58,47 @@ const std::string kUnit = "# 1 \"main.cpp\"\n"
 
 std::size_t count_newlines(std::string_view text) {
     return static_cast<std::size_t>(std::ranges::count(text, '\n'));
+}
+
+// The source map editors read the analysis text through: every run it says was
+// kept or copied spells, where it says it now is, exactly what was written, and
+// what was kept is in order and never overlaps what was generated.
+bool maps_exactly(const std::string& text, const std::string& name) {
+    cppl::diagnostics::Engine engine;
+    const auto stream = cppl::frontend::lex(text, name);
+    const auto syntax = cppl::frontend::recognize(stream, engine);
+    const auto projection = cppl::frontend::project(stream, syntax, {});
+    std::size_t kept_to = 0;
+    std::size_t written_to = 0;
+    for (const auto& segment : projection.segments) {
+        if (segment.analysis < kept_to || segment.original < written_to || segment.length == 0 ||
+            projection.analysis.compare(segment.analysis, segment.length, text, segment.original, segment.length) !=
+                0) {
+            return false;
+        }
+        kept_to = segment.analysis + segment.length;
+        written_to = segment.original + segment.length;
+    }
+    for (const auto& copy : projection.copies) {
+        if (copy.original.length == 0 || projection.analysis.compare(copy.analysis, copy.original.length, text,
+                                                                     copy.original.offset, copy.original.length) != 0) {
+            return false;
+        }
+        for (const auto& segment : projection.segments) {
+            if (copy.analysis < segment.analysis + segment.length &&
+                segment.analysis < copy.analysis + copy.original.length) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+std::string read_fixture(const std::filesystem::path& path) {
+    std::ifstream stream(path, std::ios::binary);
+    std::ostringstream buffer;
+    buffer << stream.rdbuf();
+    return buffer.str();
 }
 
 } // namespace
@@ -746,4 +791,57 @@ CPPL_TEST(a_claim_that_a_path_cannot_occur_leaves_an_empty_statement_behind) {
         }
     }
     CPPL_CHECK(found);
+}
+
+CPPL_TEST(every_kept_and_copied_run_spells_what_was_written) {
+    CPPL_CHECK(maps_exactly(kUnit, "main.cpp"));
+    CPPL_CHECK(maps_exactly("type Index(unsigned n) = unsigned where (self < n);\n"
+                            "verified unsigned clamp(unsigned x, unsigned limit)\n"
+                            "    expects (limit > 0u)\n"
+                            "    ensures (result < limit)\n"
+                            "{\n"
+                            "    unsigned y = x;\n"
+                            "    while (y >= limit)\n"
+                            "        invariant (y >= 0u)\n"
+                            "        decreases (y)\n"
+                            "    {\n"
+                            "        y = y - limit;\n"
+                            "    }\n"
+                            "    return y;\n"
+                            "}\n",
+                            "clamp.cpp"));
+    // Every fixture, read as written, as an editor reads it.
+    std::size_t read = 0;
+    for (const auto& entry : std::filesystem::directory_iterator(CPPL_TEST_FIXTURES_DIR)) {
+        if (entry.path().extension() == ".cpp") {
+            CPPL_CHECK(maps_exactly(read_fixture(entry.path()), entry.path().filename().string()));
+            ++read;
+        }
+    }
+    CPPL_CHECK(read > 20);
+}
+
+CPPL_TEST(the_parameters_and_expressions_of_a_formal_declaration_are_copies) {
+    cppl::diagnostics::Engine engine;
+    const auto stream = cppl::frontend::lex(kUnit, "main.cpp");
+    const auto syntax = cppl::frontend::recognize(stream, engine);
+    const auto projection = cppl::frontend::project(stream, syntax, {});
+    const auto copies_of = [&projection](const cppl::source::ByteSpan& span) {
+        return std::ranges::count_if(projection.copies, [&span](const auto& copy) { return copy.original == span; });
+    };
+    const auto& law = syntax.laws[2];
+    CPPL_CHECK_EQ(law.name, std::string("identity_under_a_premise"));
+    // The parameters stand in the declaration for the Law and in its premise's,
+    // first in the Law's own, which is the one an editor maps a parameter to.
+    CPPL_CHECK_EQ(copies_of(law.parameters), 2);
+    const auto first =
+        std::ranges::find_if(projection.copies, [&law](const auto& copy) { return copy.original == law.parameters; });
+    CPPL_CHECK(first->analysis > projection.specification_functions[2].analysis_offset);
+    CPPL_CHECK(first->analysis < projection.specification_functions[2].analysis_offset + law.name.size() + 2);
+    // A proof's parameters stand in its own declaration and in every probe
+    // it has: here, one assumption.
+    const auto& proof = syntax.proofs[2];
+    CPPL_CHECK_EQ(copies_of(proof.parameters), 2);
+    // A proof that takes no parameters has nothing copied for them.
+    CPPL_CHECK_EQ(copies_of(syntax.proofs[1].parameters), 0);
 }

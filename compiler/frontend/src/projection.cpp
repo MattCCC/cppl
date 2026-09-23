@@ -34,12 +34,52 @@ void blank(std::string& buffer, const source::ByteSpan& span) {
     }
 }
 
+// Generated analysis text, and every run of it copied byte for byte from the
+// scanned text, at offsets relative to the start of `text`.
+struct Generated {
+    std::string text;
+    std::vector<Projection::Copy> copies;
+
+    Generated& operator+=(std::string_view plain) {
+        text += plain;
+        return *this;
+    }
+    Generated& operator+=(const Generated& more) {
+        for (const Projection::Copy& copy : more.copies) {
+            copies.push_back(Projection::Copy{text.size() + copy.analysis, copy.original});
+        }
+        text += more.text;
+        return *this;
+    }
+    // Appends the scanned text of `span`, recorded as a copy of it.
+    void copy(const TokenStream& stream, const source::ByteSpan& span) {
+        if (span.length != 0) {
+            copies.push_back(Projection::Copy{text.size(), span});
+        }
+        text += stream.spelling(span);
+    }
+    [[nodiscard]] std::size_t size() const noexcept {
+        return text.size();
+    }
+    [[nodiscard]] bool empty() const noexcept {
+        return text.empty();
+    }
+};
+
 struct Edit {
     source::ByteSpan span;
     std::string replacement;
     std::optional<std::size_t> specification_index = std::nullopt;
     std::optional<std::size_t> refinement_index = std::nullopt;
+    std::vector<Projection::Copy> copies = {};
 };
+
+Edit generated_edit(const source::ByteSpan& span, Generated replacement,
+                    std::optional<std::size_t> specification_index = std::nullopt,
+                    std::optional<std::size_t> refinement_index = std::nullopt) {
+    return Edit{span, std::move(replacement.text), specification_index, refinement_index,
+                std::move(replacement.copies)};
+}
 
 // An expression the author wrote, copied on a line of its own that starts at the
 // line and column its first token was written at, so a diagnostic anywhere
@@ -47,21 +87,24 @@ struct Edit {
 // declaration around it. The bytes are copied verbatim, so every later token
 // keeps its column too. Without a file to name in a line directive, or with no
 // token to anchor on, the text is copied in place.
-std::string at_written_position(const TokenStream& stream, const source::ByteSpan& expression) {
+Generated at_written_position(const TokenStream& stream, const source::ByteSpan& expression) {
+    Generated text;
     const std::vector<Token>& tokens = stream.tokens();
     const auto first =
         std::ranges::lower_bound(tokens, expression.offset, {}, [](const Token& token) { return token.span.offset; });
     if (first == tokens.end() || first->kind == TokenKind::EndOfFile || first->span.offset >= expression.end()) {
-        return std::string(stream.spelling(expression));
+        text.copy(stream, expression);
+        return text;
     }
     const source::SourceLocation at = stream.location_of(*first);
     const std::string directive = line_directive(at.line, at.file);
     if (directive.empty()) {
-        return std::string(stream.spelling(expression));
+        text.copy(stream, expression);
+        return text;
     }
-    std::string text = "\n" + directive;
-    text.append(at.column > 1 ? at.column - 1 : 0, ' ');
-    text += stream.spelling(source::ByteSpan{first->span.offset, expression.end() - first->span.offset});
+    text += "\n" + directive;
+    text += std::string(at.column > 1 ? at.column - 1 : 0, ' ');
+    text.copy(stream, source::ByteSpan{first->span.offset, expression.end() - first->span.offset});
     text += "\n";
     return text;
 }
@@ -276,11 +319,12 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
     // carries, emitted where the declaration stood. Everything after this point
     // in the analysis text is C++ that Clang resolves on its own.
     const auto emit = [&stream, &projection, &options, &declaration_prefix](
-                          std::string_view name, std::string_view parameters, const source::ByteSpan& expression,
+                          std::string_view name, const Generated& parameters, const source::ByteSpan& expression,
                           const source::SourceLocation& begin, std::uint32_t end_line,
                           std::size_t* name_offset = nullptr, std::string* proposition_name = nullptr) {
         const std::string prefix = declaration_prefix();
-        std::string replacement = "\n";
+        Generated replacement;
+        replacement += "\n";
         replacement += line_directive(begin.line, begin.file);
         replacement += prefix + "bool ";
         if (name_offset != nullptr)
@@ -351,7 +395,8 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         // it a name Clang resolves rather than one C++L invents (SPEC.md 17.1).
         parameters += spelled_tokens(stream, refinement.base) + " self";
 
-        std::string replacement = "\n";
+        Generated replacement;
+        replacement += "\n";
         replacement += line_directive(refinement.keyword_location.line, refinement.keyword_location.file);
         probe.alias_offset = replacement.size() + lowering.find("using ") + 6;
         replacement += lowering.substr(0, lowering.find_last_of(';') + 1);
@@ -371,15 +416,17 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         probe.shape = formula.shape;
         // A plain predicate is the author's own text, so it is copied where it
         // was written; a formal one is rewritten and has no such position.
-        replacement += " { return (" +
-                       (formula.shape.kind == source::ProjectionKind::Expression
-                            ? at_written_position(stream, refinement.predicate)
-                            : formula.expression) +
-                       "); }\n";
+        replacement += " { return (";
+        if (formula.shape.kind == source::ProjectionKind::Expression) {
+            replacement += at_written_position(stream, refinement.predicate);
+        } else {
+            replacement += formula.expression;
+        }
+        replacement += "); }\n";
         replacement += line_directive(refinement.end_line, refinement.keyword_location.file);
 
         projection.refinement_probes.push_back(std::move(probe));
-        edits.push_back(Edit{refinement.range.span, std::move(replacement), std::nullopt, index});
+        edits.push_back(generated_edit(refinement.range.span, std::move(replacement), std::nullopt, index));
     }
 
     for (std::size_t index = 0; index < syntax.laws.size(); ++index) {
@@ -392,9 +439,10 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         }
 
         SpecificationFunction projected{law.name, index, {}};
-        std::string replacement =
-            emit(law.name, stream.spelling(law.parameters), proposition->expression, law.keyword_location, law.end_line,
-                 &projected.analysis_offset, &projected.proposition_probe);
+        Generated parameters;
+        parameters.copy(stream, law.parameters);
+        Generated replacement = emit(law.name, parameters, proposition->expression, law.keyword_location, law.end_line,
+                                     &projected.analysis_offset, &projected.proposition_probe);
 
         // A precondition is a specification expression of the Law's own
         // parameters, so it is projected exactly like the conclusion, under a
@@ -402,11 +450,12 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         if (const Clause* premise = law.premise(); premise != nullptr) {
             projected.premise_name = options.generated_prefix + "premise_" + std::to_string(index) +
                                      (options.unit_key.empty() ? "" : "_" + options.unit_key);
-            replacement += emit(projected.premise_name, stream.spelling(law.parameters), premise->expression,
-                                premise->location, law.end_line);
+            replacement +=
+                emit(projected.premise_name, parameters, premise->expression, premise->location, law.end_line);
         }
 
-        edits.push_back(Edit{law.range.span, std::move(replacement), projection.specification_functions.size()});
+        edits.push_back(
+            generated_edit(law.range.span, std::move(replacement), projection.specification_functions.size()));
         projection.specification_functions.push_back(std::move(projected));
     }
 
@@ -414,9 +463,10 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
     // proof's own scope, so it is projected as a function returning it. The
     // deduced return type is the type Clang gives the expression, with no
     // conversion imposed on the way out.
-    const auto emit_expression = [&stream](std::string_view name, std::string_view parameters,
+    const auto emit_expression = [&stream](std::string_view name, const Generated& parameters,
                                            const source::ByteSpan& expression) {
-        std::string head = "[[maybe_unused]] static decltype(auto) ";
+        Generated head;
+        head += "[[maybe_unused]] static decltype(auto) ";
         head += name;
         head += "(";
         head += parameters;
@@ -437,7 +487,8 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         projected.proof_index = index;
 
         const std::string binding_helper = options.generated_prefix + "binding_type_" + suffix;
-        std::string replacement = "template<class T> struct " + binding_helper + " { using type = T; };\n";
+        Generated replacement;
+        replacement += "template<class T> struct " + binding_helper + " { using type = T; };\n";
         // Decomposing a subject needs its type complete, as a member access would
         // (SPEC.md 20.4), but a subject reached through a reference never makes
         // C++ instantiate a class template specialization. Asking for `sizeof` of
@@ -450,11 +501,13 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         replacement += " { static constexpr bool value = false; };\ntemplate<class R, class... A> struct ";
         replacement += completion_helper;
         replacement += "<R (*)(A...), decltype(void(sizeof(R)))> { static constexpr bool value = true; };\n";
-        replacement += emit(projected.name, stream.spelling(proof.parameters), proof.proposition,
-                            proof.keyword_location, proof.end_line);
+        Generated proof_parameters;
+        proof_parameters.copy(stream, proof.parameters);
+        replacement +=
+            emit(projected.name, proof_parameters, proof.proposition, proof.keyword_location, proof.end_line);
 
         const auto emit_steps = [&](auto&& self, const std::vector<ProofStatement>& statements,
-                                    const std::string& parameters) -> void {
+                                    const Generated& parameters) -> void {
             for (const ProofStatement& statement : statements) {
                 const auto expression_probe = [&](const source::ByteSpan& span, const source::SourceLocation& at,
                                                   std::vector<std::string>& names, std::string_view kind) {
@@ -480,7 +533,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
                         // so there is nothing to resolve.
                         if (!arm.keyword_label)
                             expression_probe(arm.label, arm.location, projected.case_names, "case_");
-                        std::string scoped = parameters;
+                        Generated scoped = parameters;
                         for (std::size_t binding = 0; binding < arm.binders.size(); ++binding) {
                             const std::string key = options.generated_prefix + "binding_" + suffix + "_" +
                                                     std::to_string(projection.binding_probes.size());
@@ -521,9 +574,9 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
                 projected.assumption_names.push_back(std::move(name));
             }
         };
-        emit_steps(emit_steps, proof.statements, std::string(stream.spelling(proof.parameters)));
+        emit_steps(emit_steps, proof.statements, proof_parameters);
 
-        edits.push_back(Edit{proof.range.span, std::move(replacement)});
+        edits.push_back(generated_edit(proof.range.span, std::move(replacement)));
         projection.proof_functions.push_back(std::move(projected));
     }
 
@@ -556,18 +609,22 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
             parameters = {};
         }
         const bool has_parameters = parameters.find_first_not_of(" \t\r\n") != std::string_view::npos;
+        Generated parameter_list;
+        if (!parameters.empty()) {
+            parameter_list.copy(stream, verified.parameters);
+        }
 
-        std::string result_parameter;
+        Generated result_parameter;
         if (has_parameters) {
-            result_parameter += parameters;
+            result_parameter += parameter_list;
             result_parameter += ", ";
         }
         const bool void_result =
             options.void_functions.contains(index) || spelled_tokens(stream, verified.return_type) == "void";
         if (void_result) {
-            result_parameter = std::string(parameters);
+            result_parameter = parameter_list;
         } else {
-            result_parameter += stream.spelling(verified.return_type);
+            result_parameter.copy(stream, verified.return_type);
             result_parameter += " result";
         }
 
@@ -577,26 +634,29 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
 
         // Absence of an explicit ensures is legal only when elaboration resolves
         // a refined result. Membership supplies the actual postcondition there.
-        std::string replacement =
-            postcondition != nullptr
-                ? emit(projected.postcondition_name, result_parameter, postcondition->expression,
-                       postcondition->location, verified.body_end_line)
-                : "\n" + line_directive(verified.function_location.line, verified.function_location.file) +
-                      declaration_prefix() + "bool " + projected.postcondition_name + "(" + result_parameter +
-                      ") { return true; }\n";
+        Generated replacement;
+        if (postcondition != nullptr) {
+            replacement = emit(projected.postcondition_name, result_parameter, postcondition->expression,
+                               postcondition->location, verified.body_end_line);
+        } else {
+            replacement += "\n" + line_directive(verified.function_location.line, verified.function_location.file) +
+                           declaration_prefix() + "bool " + projected.postcondition_name + "(";
+            replacement += result_parameter;
+            replacement += ") { return true; }\n";
+        }
         for (const Clause* precondition : verified.preconditions()) {
             std::string name = options.generated_prefix + "expects_" + suffix;
             if (!projected.precondition_names.empty()) {
                 name += "_" + std::to_string(projected.precondition_names.size());
             }
             replacement +=
-                emit(name, parameters, precondition->expression, precondition->location, verified.body_end_line);
+                emit(name, parameter_list, precondition->expression, precondition->location, verified.body_end_line);
             projected.precondition_names.push_back(std::move(name));
         }
 
         replacement += line_directive(verified.body_end_line, verified.keyword_location.file);
-        replacement.append(verified.body_end_column - 1, ' ');
-        edits.push_back(Edit{source::ByteSpan{verified.body_end, 0}, std::move(replacement)});
+        replacement += std::string(verified.body_end_column - 1, ' ');
+        edits.push_back(generated_edit(source::ByteSpan{verified.body_end, 0}, std::move(replacement)));
 
         // A templated function's probes are templates, and nothing has used
         // them: the specializations that would carry this specialization's
@@ -624,7 +684,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
                 declared += "bool ";
                 declared += projected.postcondition_name;
                 declared += "(";
-                declared += result_parameter;
+                declared += result_parameter.text;
                 declared += ");";
                 for (const std::string& precondition : projected.precondition_names) {
                     declared += " ";
@@ -673,7 +733,8 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         edits.push_back(
             Edit{loop.clause_region, projection.runtime.substr(loop.clause_region.offset, loop.clause_region.length)});
 
-        std::string replacement = "\n";
+        Generated replacement;
+        replacement += "\n";
         for (std::size_t position = 0; position < loop.invariants.size(); ++position) {
             if (detail::contains_formal_syntax(stream, loop.invariants[position].expression)) {
                 diagnostics::Diagnostic diagnostic;
@@ -725,8 +786,8 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
             projection.loop_invariants.push_back(std::move(marker));
         }
         replacement += line_directive(loop.body_open_line, loop.keyword_location.file);
-        replacement.append(loop.body_open_column - 1, ' ');
-        edits.push_back(Edit{source::ByteSpan{loop.body_open, 0}, std::move(replacement)});
+        replacement += std::string(loop.body_open_column - 1, ' ');
+        edits.push_back(generated_edit(source::ByteSpan{loop.body_open, 0}, std::move(replacement)));
     }
 
     // A claim that a path cannot occur is proof syntax in runtime code. The
@@ -740,12 +801,13 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
     };
     const auto claim_block = [&stream](const std::string& name, const ProofStatement& statement) {
         const std::string& file = statement.location.file;
-        std::string block = "{\n";
+        Generated block;
+        block += "{\n";
         block += line_directive(statement.location.line, file);
         // Starting the declaration at the keyword's column is what makes a
         // diagnostic about the claim point at the `contradiction` written.
         if (statement.location.column > 1) {
-            block.append(statement.location.column - 1, ' ');
+            block += std::string(statement.location.column - 1, ' ');
         }
         block += "[[maybe_unused]] bool " + name + " = true;\n";
         for (std::size_t position = 0; position < statement.arguments.size(); ++position) {
@@ -775,10 +837,10 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
             continue;
         }
         blank(projection.runtime, claim.erased);
-        std::string replacement = claim_block(marker.name, claim.statement);
+        Generated replacement = claim_block(marker.name, claim.statement);
         replacement += line_directive(claim.end_line, claim.statement.location.file);
-        replacement.append(claim.end_column - 1, ' ');
-        edits.push_back(Edit{claim.span, std::move(replacement)});
+        replacement += std::string(claim.end_column - 1, ' ');
+        edits.push_back(generated_edit(claim.span, std::move(replacement)));
         projection.path_contradictions.push_back(std::move(marker));
     }
 
@@ -830,7 +892,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
 
         const std::string& file = split.statement.location.file;
         std::size_t next_claim = 0;
-        std::string replacement;
+        Generated replacement;
         const auto emit_split = [&](auto&& self, const ProofStatement& statement, const std::string& marker,
                                     const std::vector<std::uint32_t>& route) -> void {
             projection.path_splits.push_back(
@@ -838,7 +900,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
             replacement += "{\n";
             replacement += line_directive(statement.location.line, file);
             if (statement.location.column > 1) {
-                replacement.append(statement.location.column - 1, ' ');
+                replacement += std::string(statement.location.column - 1, ' ');
             }
             replacement += "[[maybe_unused]] bool ";
             replacement += marker;
@@ -921,8 +983,8 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
                        (options.unit_key.empty() ? "" : "_" + options.unit_key),
                    {});
         replacement += line_directive(split.end_line, file);
-        replacement.append(split.end_column - 1, ' ');
-        edits.push_back(Edit{split.span, std::move(replacement)});
+        replacement += std::string(split.end_column - 1, ' ');
+        edits.push_back(generated_edit(split.span, std::move(replacement)));
     }
 
     // An explicit instantiation instantiates a body in this unit, but Clang's
@@ -995,6 +1057,9 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
                     Projection::DeclarationOffset{original, projection.analysis.size() + original - cursor});
             }
         }
+        if (end > cursor) {
+            projection.segments.push_back(Projection::Segment{cursor, projection.analysis.size(), end - cursor});
+        }
         projection.analysis.append(text.substr(cursor, end - cursor));
     };
     for (const Edit& edit : edits) {
@@ -1009,6 +1074,9 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         }
         if (edit.refinement_index.has_value()) {
             projection.refinement_probes[*edit.refinement_index].alias_offset += projection.analysis.size();
+        }
+        for (const Projection::Copy& copy : edit.copies) {
+            projection.copies.push_back(Projection::Copy{projection.analysis.size() + copy.analysis, copy.original});
         }
         projection.analysis.append(edit.replacement);
         cursor = edit.span.end();

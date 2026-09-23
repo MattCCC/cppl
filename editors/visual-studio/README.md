@@ -38,8 +38,9 @@ for `*.cppl` files. Ordinary `.cpp` files keep their normal C++ tooling.
 
 The server also answers hover and completion inside a `cases` or `decompose`
 arm block, which Visual Studio shows where its LSP client supports those
-features. Navigation is not implemented by the server yet, so it is
-unavailable here.
+features. Go To Definition is answered by Clang over the file's projection,
+for C++ and for the C++L declarations the projection stands for. References and
+rename are not implemented by the server yet.
 
 The extension loads no grammar: all coloring is the server's. The server
 reports only proof-statement keywords, as `keyword` semantic tokens, and

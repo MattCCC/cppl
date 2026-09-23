@@ -110,6 +110,8 @@ target_link_libraries(unit_recognizer_test PRIVATE cppl_frontend cppl_diagnostic
 
 cppl_add_unit_test(unit_projection_test unit/projection_test.cpp)
 target_link_libraries(unit_projection_test PRIVATE cppl_frontend cppl_erasure cppl_diagnostics)
+target_compile_definitions(unit_projection_test PRIVATE
+    CPPL_TEST_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
 
 cppl_add_unit_test(unit_frontend_property_test unit/frontend_property_test.cpp)
 target_link_libraries(unit_frontend_property_test PRIVATE cppl_frontend cppl_erasure cppl_diagnostics)
@@ -214,6 +216,14 @@ target_compile_definitions(lsp_fixtures_test PRIVATE
 cppl_add_unit_test(lsp_semantic_tokens_test unit/lsp_semantic_tokens_test.cpp)
 target_link_libraries(lsp_semantic_tokens_test PRIVATE cppl_lsp)
 target_compile_definitions(lsp_semantic_tokens_test PRIVATE
+    CPPL_TEST_FIXTURES_DIR="${CPPL_TEST_FIXTURES}"
+    CPPL_TEST_DEFAULT_CLANG="${CPPL_DEFAULT_CLANG}")
+
+# Navigation, answered by Clang over each document's projection, including
+# headers under the fixtures' include directory.
+cppl_add_unit_test(lsp_navigation_test unit/lsp_navigation_test.cpp)
+target_link_libraries(lsp_navigation_test PRIVATE cppl_lsp)
+target_compile_definitions(lsp_navigation_test PRIVATE
     CPPL_TEST_FIXTURES_DIR="${CPPL_TEST_FIXTURES}"
     CPPL_TEST_DEFAULT_CLANG="${CPPL_DEFAULT_CLANG}")
 

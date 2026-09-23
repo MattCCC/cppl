@@ -3172,6 +3172,14 @@ statement. A `contradiction` claim in a verified body stays uncolored while any
 part of the translation unit, an included header too, uses the word as a C++
 name, because there the statement declares a variable.
 
+Navigation follows the compiler's reading too. Go to definition on a name in a
+Law's proposition, a contract clause, a loop invariant or a refinement
+predicate asks Clang, which resolved that same expression for the compiler; a
+Law named in a proof's `proves` clause leads to the Law, a parameter named in a
+clause to the parameter written, and a refinement type to its `type`
+declaration. A name Clang resolves to something nobody wrote, such as `result`,
+leads nowhere rather than into generated code.
+
 No fix may:
 
 ```text
