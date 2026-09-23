@@ -160,6 +160,8 @@ BufferCompileOutcome compile_buffer(const BufferCompileRequest& request, diagnos
     outcome.syntax = std::move(result.syntax);
     outcome.subject_states = std::move(result.subject_states);
     outcome.names = std::move(result.names);
+    outcome.verified = result.verified;
+    outcome.obligations = std::move(result.obligations);
     return outcome;
 }
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cppl/diagnostics/diagnostic.hpp"
+#include "cppl/driver/buffer_compile.hpp"
 #include "cppl/elaboration/elaborate.hpp"
 #include "cppl/frontend/syntax.hpp"
 #include "cppl/frontend/token.hpp"
@@ -81,6 +82,24 @@ class Document {
         resolved_names_ = std::move(names);
     }
 
+    // What became of each obligation the last full compile verified, whether
+    // that compile reached verification at all, and the buffer version it
+    // compiled. A reader shows these only for the version they describe.
+    [[nodiscard]] const std::vector<driver::ObligationRecord>& obligations() const noexcept {
+        return obligations_;
+    }
+    [[nodiscard]] bool verified() const noexcept {
+        return verified_;
+    }
+    [[nodiscard]] std::int32_t verified_version() const noexcept {
+        return verified_version_;
+    }
+    void set_verification(bool verified, std::vector<driver::ObligationRecord> obligations, std::int32_t version) {
+        verified_ = verified;
+        obligations_ = std::move(obligations);
+        verified_version_ = version;
+    }
+
     // Whether the last full compile of this buffer recognized a `contradiction`
     // statement in a verified body as a claim that its path cannot occur. That
     // depends on every use of the word in the translation unit, headers
@@ -113,6 +132,9 @@ class Document {
     std::vector<diagnostics::Diagnostic> diagnostics_;
     std::vector<elaboration::SubjectStates> subject_states_;
     std::vector<elaboration::ResolvedName> resolved_names_;
+    std::vector<driver::ObligationRecord> obligations_;
+    bool verified_ = false;
+    std::int32_t verified_version_ = -1;
     bool path_claims_recognized_ = false;
     bool path_splits_recognized_ = false;
 };

@@ -324,7 +324,7 @@ const ProjectedFile* EditorView::file_for(const std::string& uri) const {
     return nullptr;
 }
 
-std::optional<std::string> EditorView::cppl_markdown_at(const Location& location) const {
+std::optional<CpplDeclaration> EditorView::cppl_declaration_at(const Location& location) const {
     const ProjectedFile* file = file_for(location.uri);
     if (file == nullptr || !file->projected()) {
         return std::nullopt;
@@ -333,7 +333,7 @@ std::optional<std::string> EditorView::cppl_markdown_at(const Location& location
     return describe_cppl(file->tokens(), file->syntax(), file->text(), offset);
 }
 
-std::optional<Hover> EditorView::hover(const Position& position) const {
+std::optional<EditorView::HoverAnswer> EditorView::hover(const Position& position) const {
     if (unit_ == nullptr || main_ == nullptr) {
         return std::nullopt;
     }
@@ -346,10 +346,10 @@ std::optional<Hover> EditorView::hover(const Position& position) const {
     if (!description.has_value()) {
         return std::nullopt;
     }
-    Hover hover;
+    HoverAnswer answer;
     if (description->named.has_value()) {
         if (const std::optional<Location> named = locate(*description->named)) {
-            hover.range = named->range;
+            answer.hover.range = named->range;
         }
     }
     const std::optional<Location> declared =
@@ -360,13 +360,14 @@ std::optional<Hover> EditorView::hover(const Position& position) const {
         if (!implicit.has_value()) {
             return std::nullopt;
         }
-        hover.contents = *implicit;
-        return hover;
+        answer.hover.contents = *implicit;
+        return answer;
     }
     if (declared.has_value()) {
-        if (std::optional<std::string> markdown = cppl_markdown_at(*declared)) {
-            hover.contents = std::move(*markdown);
-            return hover;
+        if (std::optional<CpplDeclaration> written = cppl_declaration_at(*declared)) {
+            answer.hover.contents = written->markdown;
+            answer.declaration = std::move(*written);
+            return answer;
         }
     }
     std::string declared_in;
@@ -375,8 +376,8 @@ std::optional<Hover> EditorView::hover(const Position& position) const {
         declared_in = declared->uri.substr(slash == std::string::npos ? 0 : slash + 1) + ":" +
                       std::to_string(declared->range.start.line + 1);
     }
-    hover.contents = describe_cpp(*description, declared_in);
-    return hover;
+    answer.hover.contents = describe_cpp(*description, declared_in);
+    return answer;
 }
 
 std::vector<Location> EditorView::navigate(clangbridge::Destination destination, const Position& position) const {

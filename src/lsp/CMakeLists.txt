@@ -12,6 +12,7 @@ add_library(cppl_lsp STATIC
     src/server.cpp
     src/transport.cpp
     src/uri.cpp
+    src/verification.cpp
     include/cppl/lsp/decomposition_view.hpp
     include/cppl/lsp/diagnostic_codes.hpp
     include/cppl/lsp/document.hpp
@@ -27,6 +28,7 @@ add_library(cppl_lsp STATIC
     include/cppl/lsp/server.hpp
     include/cppl/lsp/transport.hpp
     include/cppl/lsp/uri.hpp
+    include/cppl/lsp/verification.hpp
 )
 
 target_include_directories(cppl_lsp PUBLIC

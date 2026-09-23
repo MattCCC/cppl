@@ -4,6 +4,9 @@
 #include "cppl/elaboration/elaborate.hpp"
 #include "cppl/frontend/syntax.hpp"
 #include "cppl/frontend/token.hpp"
+#include "cppl/obligations/obligation.hpp"
+#include "cppl/obligations/status.hpp"
+#include "cppl/source/location.hpp"
 
 #include <memory>
 #include <string>
@@ -31,6 +34,33 @@ struct BufferCompileRequest {
     // minus input/output selection, which this request supplies itself.
     std::string clang;
     std::vector<std::string> clang_arguments;
+};
+
+// What became of one proof obligation, as an editor shows it. A copy of the
+// verdict's facts in words, taken after the kernel decided: nothing reads it
+// back, and it can say PROVEN only where the verdict does.
+struct ObligationRecord {
+    obligations::Origin origin = obligations::Origin::LawProposition;
+    // What it is about: a Law's or a proof's name, a verified function's.
+    std::string subject;
+    // Where the obligation is stated: a Law's or a proof's name, a clause, a
+    // call.
+    source::SourceLocation location;
+    obligations::Status status = obligations::Status::Unresolved;
+    // Why it is not proven, when it is not.
+    std::string reason;
+    // What produced the evidence the kernel accepted, when it did.
+    std::string strategy;
+    // The trusted Laws a proven claim rests on, by name.
+    std::vector<std::string> premises;
+    // For a Law's obligation: the written proof whose evidence was submitted
+    // for it, which the verdict accepted or refused, and every proof that names
+    // the Law. Such a proof has no obligation of its own; the Law's verdict is
+    // what became of it.
+    std::string written_proof;
+    std::vector<std::string> naming_proofs;
+    // The proposition the kernel was asked to accept.
+    std::string goal;
 };
 
 struct BufferCompileOutcome {
@@ -71,6 +101,11 @@ struct BufferCompileOutcome {
     // Law or `assume` it names and where that is declared. Empty when the
     // pipeline stopped before elaboration.
     std::vector<elaboration::ResolvedName> names;
+
+    // Whether the pipeline reached verification, and what became of every
+    // obligation it verified, in the order it verified them.
+    bool verified = false;
+    std::vector<ObligationRecord> obligations;
 };
 
 // Runs preprocess -> recognize -> project -> Clang parse -> elaborate ->

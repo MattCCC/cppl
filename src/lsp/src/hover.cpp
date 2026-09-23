@@ -61,18 +61,26 @@ bool names_at(std::string_view text, const source::SourceLocation& location, con
            text.substr(*start, name.size()) == name;
 }
 
-std::optional<std::string> describe_assumption(const std::vector<frontend::ProofStatement>& statements,
-                                               std::string_view text, std::size_t offset) {
+std::optional<CpplDeclaration> describe_assumption(const std::vector<frontend::ProofStatement>& statements,
+                                                   std::string_view text, std::size_t offset) {
     for (const frontend::ProofStatement& statement : statements) {
         if (statement.kind == frontend::ProofStatementKind::Assume &&
             names_at(text, statement.reference_location, statement.reference, offset)) {
-            return "**assumption** `" + statement.reference + "`\n\n" +
-                   code_block("assume " + statement.reference + " : " +
-                              written(text, statement.proposition.offset, statement.proposition.end()) + ";") +
-                   "\nA premise the proof supposes from here to the end of the block it is written in.";
+            CpplDeclaration declaration;
+            declaration.kind = CpplDeclaration::Kind::Assumption;
+            declaration.name = statement.reference;
+            declaration.name_location = statement.reference_location;
+            declaration.first_line = statement.location.line;
+            declaration.last_line = statement.location.line;
+            declaration.markdown =
+                "**assumption** `" + statement.reference + "`\n\n" +
+                code_block("assume " + statement.reference + " : " +
+                           written(text, statement.proposition.offset, statement.proposition.end()) + ";") +
+                "\nA premise the proof supposes from here to the end of the block it is written in.";
+            return declaration;
         }
         for (const frontend::ProofArm& arm : statement.arms) {
-            if (std::optional<std::string> found = describe_assumption(arm.statements, text, offset)) {
+            if (std::optional<CpplDeclaration> found = describe_assumption(arm.statements, text, offset)) {
                 return found;
             }
         }
@@ -124,33 +132,44 @@ std::optional<std::string> describe_implicit(const clangbridge::Description& des
     return std::nullopt;
 }
 
-std::optional<std::string> describe_cppl(const frontend::TokenStream& tokens, const frontend::Syntax& syntax,
-                                         std::string_view text, std::size_t name_offset) {
+std::optional<CpplDeclaration> describe_cppl(const frontend::TokenStream& tokens, const frontend::Syntax& syntax,
+                                             std::string_view text, std::size_t name_offset) {
     for (const frontend::LawDeclaration& law : syntax.laws) {
         if (!names_at(text, law.name_location, law.name, name_offset)) {
             continue;
         }
-        std::string markdown = std::string(law.trusted ? "**trusted law**" : "**law**") + " `" + law.name + "`\n\n" +
+        CpplDeclaration declaration;
+        declaration.kind = law.trusted ? CpplDeclaration::Kind::TrustedLaw : CpplDeclaration::Kind::Law;
+        declaration.name = law.name;
+        declaration.name_location = law.name_location;
+        declaration.first_line = law.keyword_location.line;
+        declaration.last_line = law.end_line;
+        declaration.markdown = std::string(law.trusted ? "**trusted law**" : "**law**") + " `" + law.name + "`\n\n" +
                                code_block(written(text, law.range.span.offset, law.range.span.end()));
         if (law.trusted) {
-            markdown += "\nAn explicit assumption: nothing proves it, and every claim that rests on it is reported "
-                        "relative to it.";
+            declaration.markdown += "\nAn explicit assumption: nothing proves it, and every claim that rests on it is "
+                                    "reported relative to it.";
         }
-        return markdown;
+        return declaration;
     }
     for (const frontend::ProofDeclaration& proof : syntax.proofs) {
-        if (proof.inline_law.has_value()) {
+        if (proof.inline_law.has_value() || !names_at(text, proof.name_location, proof.name, name_offset)) {
             continue;
         }
-        if (names_at(text, proof.name_location, proof.name, name_offset)) {
-            const std::size_t body = text.find('{', proof.proposition.end());
-            return "**proof** `" + proof.name + "`\n\n" +
-                   code_block(written(text, proof.range.span.offset,
-                                      body == std::string_view::npos ? proof.range.span.end() : body));
-        }
+        const std::size_t body = text.find('{', proof.proposition.end());
+        CpplDeclaration declaration;
+        declaration.kind = CpplDeclaration::Kind::Proof;
+        declaration.name = proof.name;
+        declaration.name_location = proof.name_location;
+        declaration.first_line = proof.keyword_location.line;
+        declaration.last_line = proof.end_line;
+        declaration.markdown = "**proof** `" + proof.name + "`\n\n" +
+                               code_block(written(text, proof.range.span.offset,
+                                                  body == std::string_view::npos ? proof.range.span.end() : body));
+        return declaration;
     }
     for (const frontend::ProofDeclaration& proof : syntax.proofs) {
-        if (std::optional<std::string> assumption = describe_assumption(proof.statements, text, name_offset)) {
+        if (std::optional<CpplDeclaration> assumption = describe_assumption(proof.statements, text, name_offset)) {
             return assumption;
         }
     }
@@ -160,12 +179,23 @@ std::optional<std::string> describe_cppl(const frontend::TokenStream& tokens, co
             continue;
         }
         const std::string base = written(text, refinement.base.offset, refinement.base.end());
-        std::string markdown = "**refinement type** `" + refinement.name + "`\n\n";
-        markdown += code_block(written(text, refinement.range.span.offset, refinement.range.span.end()));
-        markdown += "\nA value of `" + base + "` for which `";
-        markdown += written(text, refinement.predicate.offset, refinement.predicate.end());
-        markdown += "` holds. It erases to `" + base + "`: nothing of the refinement exists at run time.";
-        return markdown;
+        CpplDeclaration declaration;
+        declaration.kind = CpplDeclaration::Kind::RefinementType;
+        declaration.name = refinement.name;
+        for (const frontend::Token& token : tokens.tokens()) {
+            if (token.span.offset == name->offset) {
+                declaration.name_location = tokens.location_of(token);
+                break;
+            }
+        }
+        declaration.first_line = refinement.keyword_location.line;
+        declaration.last_line = refinement.end_line;
+        declaration.markdown = "**refinement type** `" + refinement.name + "`\n\n";
+        declaration.markdown += code_block(written(text, refinement.range.span.offset, refinement.range.span.end()));
+        declaration.markdown += "\nA value of `" + base + "` for which `";
+        declaration.markdown += written(text, refinement.predicate.offset, refinement.predicate.end());
+        declaration.markdown += "` holds. It erases to `" + base + "`: nothing of the refinement exists at run time.";
+        return declaration;
     }
     for (const frontend::VerifiedFunction& verified : syntax.verified_functions) {
         if (name_offset < verified.function_offset ||
@@ -177,7 +207,15 @@ std::optional<std::string> describe_cppl(const frontend::TokenStream& tokens, co
             verified.template_header.length != 0 ? verified.template_header.offset : verified.keyword.offset;
         const std::size_t to =
             verified.clause_region.length != 0 ? verified.clause_region.end() : verified.parameters.end() + 1;
-        return "**verified function** `" + verified.function_name + "`\n\n" + code_block(written(text, from, to));
+        CpplDeclaration declaration;
+        declaration.kind = CpplDeclaration::Kind::VerifiedFunction;
+        declaration.name = verified.function_name;
+        declaration.name_location = verified.function_location;
+        declaration.first_line = verified.keyword_location.line;
+        declaration.last_line = verified.body_end_line;
+        declaration.markdown =
+            "**verified function** `" + verified.function_name + "`\n\n" + code_block(written(text, from, to));
+        return declaration;
     }
     return std::nullopt;
 }

@@ -50,6 +50,8 @@ require("cppl").setup({
   -- Forwarded as repeated `--clang-arg`.
   clang_arguments = { "-std=c++20" },
   format_on_save = true,
+  -- Verification status over each Law, proof and verified function.
+  code_lens = true,
 })
 ```
 
@@ -67,8 +69,14 @@ server's semantic tokens instead, as `@lsp.type.keyword.cppl`, which
 `setup()` links to `Statement` like the syntax file's own proof words.
 
 `vim.lsp.buf.hover()` (`K`) shows what Clang knows of a name, or a C++L
-declaration as written; inside a `cases` or `decompose` arm block it shows the
-subject's states, and completion offers the arms still owed.
+declaration as written with what became of its obligations; inside a `cases`
+or `decompose` arm block it shows the subject's states, and completion offers
+the arms still owed.
+
+Each Law, proof and verified function shows its verification status as a code
+lens over its name -- `PROVEN`, `TRUSTED`, `UNRESOLVED` and why -- refreshed
+when the buffer is entered, left insert mode or written; `code_lens = false`
+turns this off.
 
 `vim.lsp.buf.definition()`, `declaration()`, `type_definition()` and
 `implementation()` are answered by Clang over the file's projection; with the

@@ -148,4 +148,11 @@ struct DocumentHighlight {
     DocumentHighlightKind kind = DocumentHighlightKind::Text;
 };
 
+// A line of text an editor shows above a range (LSP `CodeLens`), here only
+// ever to state something: it runs no command.
+struct CodeLens {
+    Range range;
+    std::string title;
+};
+
 } // namespace cppl::lsp

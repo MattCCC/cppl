@@ -2751,6 +2751,15 @@ it, records the resolution (`elaboration::ResolvedName`, carried out through
 server navigates by those records. Neither record is read back by any compiler
 stage, so neither can change which proofs are accepted.
 
+Verification status reaches editors the same way: after the kernel has decided,
+the compile copies each obligation's verdict into a `driver::ObligationRecord`,
+which the server shows as a code lens over the declaration it belongs to and
+in hover. Nothing reads a record back.
+
+**[ARCH-LSP-005]** An editor shows a verification status only as the verdict a
+compile of that exact buffer version produced. It never infers, carries over or
+upgrades one: text edited since shows no status until it is compiled again.
+
 **[ARCH-LSP-004]** An editor service treats two declarations as one name only
 where Clang gives them one identity (USR), or where the projection repeated one
 written declaration into several generated ones, such as a proof's parameters

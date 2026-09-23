@@ -1393,12 +1393,13 @@ AI output must always be independently verified.
 | LSP/CLI: canonical clause formatting | `PROTOTYPE`   |
 | LSP: case completion and hover       | `PROTOTYPE`   |
 | LSP: hover over C++ and C++L names   | `PROTOTYPE`   |
+| LSP: verification status in editors  | `PROTOTYPE`   |
 | LSP: code actions                    | `PROTOTYPE`   |
 | LSP: proof-keyword semantic tokens   | `PROTOTYPE`   |
 | LSP: definition and declaration      | `PROTOTYPE`   |
 | LSP: references and highlights       | `PROTOTYPE`   |
 | LSP: other token kinds               | `NOT STARTED` |
-| IDE proof goals                      | `NOT STARTED` |
+| IDE proof goals                      | `PROTOTYPE`   |
 | Proof navigation                     | `PROTOTYPE`   |
 | Counterexample UI                    | `NOT STARTED` |
 | Structured diagnostics               | `PROTOTYPE`   |
@@ -1459,6 +1460,17 @@ For a name that stands for a C++L declaration -- a Law, a proof, a refinement
 type, a verified function, a name `assume` binds -- it shows the declaration as
 written rather than what the projection generated for it. `result` and `self`
 are explained, not shown as the generated parameters they are to Clang.
+
+`codeLensProvider` states, over each Law, proof and verified function the
+document writes, what became of its obligations in the last compile, and hover
+over any of them lists each obligation's status, goal, trusted premises and
+evidence, or why it is not proven. The compile copies these out of the
+verdicts after the kernel has decided (`driver::ObligationRecord`), so an
+editor says `PROVEN` only where the trust report would; a verdict is shown only
+for the buffer version it was computed for. This is the goal of each
+obligation, not an interactive proof state: the goal a proof has reached after
+each of its statements is not reported. Counterexamples are not reported
+because nothing in the compiler produces one.
 
 `semanticTokensProvider` reports, as `keyword` tokens, the proof statements
 the editors' TextMate grammar cannot tell from C++ declarations, such as

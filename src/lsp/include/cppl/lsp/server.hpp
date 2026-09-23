@@ -83,6 +83,11 @@ class Server {
     // C++L declaration it stands for (tools/cppl-lsp/README.md, "Hover").
     [[nodiscard]] std::optional<Hover> text_document_hover(const TextDocumentIdentifier& id, const Position& position);
 
+    // A lens over every Law, proof and verified function the document writes,
+    // stating what became of its obligations in the last compile (LSP
+    // `textDocument/codeLens`). `std::nullopt` means the document is unknown.
+    [[nodiscard]] std::optional<std::vector<CodeLens>> text_document_code_lens(const TextDocumentIdentifier& id) const;
+
     // The proof-statement keywords a spelling-based grammar cannot color, as
     // encoded semantic tokens (semantic_tokens.hpp). `std::nullopt` means the
     // document is unknown.

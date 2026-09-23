@@ -15,6 +15,7 @@
 // installed and no other library includes it.
 
 #include "cppl/diagnostics/diagnostic.hpp"
+#include "cppl/driver/buffer_compile.hpp"
 #include "cppl/elaboration/elaborate.hpp"
 #include "cppl/frontend/syntax.hpp"
 #include "cppl/frontend/token.hpp"
@@ -102,6 +103,10 @@ struct PipelineOutcome {
     // What each name a proof statement uses resolved to, for editors to
     // navigate by. Like `subject_states`, a byproduct nothing reads back.
     std::vector<elaboration::ResolvedName> names;
+
+    // What became of every obligation verification decided, for editors.
+    bool verified = false;
+    std::vector<ObligationRecord> obligations;
 
     // The runtime program's scratch path, when one was produced (has_cppl
     // and not failed before erasure). Empty otherwise.

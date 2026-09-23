@@ -15,6 +15,9 @@ local defaults = {
   -- Extra flags forwarded as repeated `--clang-arg`.
   clang_arguments = {},
   format_on_save = true,
+  -- Show, over each Law, proof and verified function, what became of its
+  -- obligations in the last compile.
+  code_lens = true,
 }
 
 M.options = vim.deepcopy(defaults)
@@ -101,6 +104,29 @@ function M.setup(options)
       start(event.buf)
     end,
   })
+
+  -- Neovim shows code lenses only once asked to fetch them, and again after
+  -- each change to the buffer they describe.
+  if M.options.code_lens then
+    vim.api.nvim_create_autocmd("LspAttach", {
+      group = group,
+      callback = function(event)
+        local client = vim.lsp.get_client_by_id(event.data.client_id)
+        if client == nil or client.name ~= "cppl-lsp" then
+          return
+        end
+        local function refresh()
+          vim.lsp.codelens.refresh({ bufnr = event.buf })
+        end
+        refresh()
+        vim.api.nvim_create_autocmd({ "BufEnter", "InsertLeave", "BufWritePost" }, {
+          group = group,
+          buffer = event.buf,
+          callback = refresh,
+        })
+      end,
+    })
+  end
 
   if M.options.format_on_save then
     vim.api.nvim_create_autocmd("BufWritePre", {

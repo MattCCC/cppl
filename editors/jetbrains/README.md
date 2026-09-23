@@ -52,8 +52,10 @@ Diagnostics, formatting, format-on-save and code actions, all from the server.
 exclusively to `cppl-lsp` rather than the IDE's C++ engine.
 
 The server answers hover over any name -- what Clang knows of a C++ name, a
-C++L declaration as written -- and completion inside a `cases` or `decompose`
-arm block, which the IDE shows where its LSP client supports those features.
+C++L declaration as written with what became of its obligations -- code lenses
+stating each Law's, proof's and verified function's verdict, and completion
+inside a `cases` or `decompose` arm block, which the IDE shows where its LSP
+client supports those features.
 Go to Declaration (Ctrl/Cmd-click) asks the server for the definition, which
 Clang answers over the file's projection, for C++ and for the C++L declarations
 the projection stands for. The server also answers references and document

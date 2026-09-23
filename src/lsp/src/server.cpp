@@ -7,11 +7,13 @@
 #include "cppl/lsp/decomposition_view.hpp"
 #include "cppl/lsp/document.hpp"
 #include "cppl/lsp/editor_view.hpp"
+#include "cppl/lsp/hover.hpp"
 #include "cppl/lsp/linter.hpp"
 #include "cppl/lsp/position.hpp"
 #include "cppl/lsp/proof_names.hpp"
 #include "cppl/lsp/protocol.hpp"
 #include "cppl/lsp/semantic_tokens.hpp"
+#include "cppl/lsp/verification.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -391,19 +393,40 @@ std::optional<Hover> Server::text_document_hover(const TextDocumentIdentifier& i
     if (view == nullptr) {
         return std::nullopt;
     }
+    // A C++L declaration is shown as written, with what became of its
+    // obligations in the last compile.
+    const auto with_status = [doc](const CpplDeclaration& declaration, Hover hover) {
+        hover.contents += verification_markdown(*doc, declaration);
+        return hover;
+    };
     // A name a proof statement uses, shown as the declaration the compiler
     // resolved it to.
     const ProofNames names(documents_);
     if (const std::optional<ProofNames::Declaration> named = names.declaration_at(*doc, position)) {
         if (const std::optional<Location> declared = names.locate(*named)) {
-            if (std::optional<std::string> markdown = view->cppl_markdown_at(*declared)) {
+            if (std::optional<CpplDeclaration> written = view->cppl_declaration_at(*declared)) {
                 Hover hover;
-                hover.contents = std::move(*markdown);
-                return hover;
+                hover.contents = written->markdown;
+                return with_status(*written, std::move(hover));
             }
         }
     }
-    return view->hover(position);
+    std::optional<EditorView::HoverAnswer> answer = view->hover(position);
+    if (!answer.has_value()) {
+        return std::nullopt;
+    }
+    if (answer->declaration.has_value()) {
+        return with_status(*answer->declaration, std::move(answer->hover));
+    }
+    return std::move(answer->hover);
+}
+
+std::optional<std::vector<CodeLens>> Server::text_document_code_lens(const TextDocumentIdentifier& id) const {
+    const Document* doc = documents_.get(id.uri);
+    if (doc == nullptr) {
+        return std::nullopt;
+    }
+    return verification_lenses(*doc);
 }
 
 std::optional<std::vector<std::uint32_t>> Server::text_document_semantic_tokens(
@@ -448,6 +471,7 @@ void Server::publish_diagnostics(const Document& doc) {
     if (mutable_doc != nullptr) {
         mutable_doc->set_subject_states(std::move(outcome.subject_states));
         mutable_doc->set_resolved_names(std::move(outcome.names));
+        mutable_doc->set_verification(outcome.verified, std::move(outcome.obligations), doc.version());
         mutable_doc->set_path_claims_recognized(outcome.syntax != nullptr &&
                                                 !outcome.syntax->path_contradictions.empty());
         mutable_doc->set_path_splits_recognized(outcome.syntax != nullptr && !outcome.syntax->path_splits.empty());

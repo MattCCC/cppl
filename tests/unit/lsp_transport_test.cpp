@@ -217,6 +217,29 @@ CPPL_TEST(references_and_highlights_answer_over_the_wire) {
     CPPL_CHECK(output.str().find(R"("id":4,"error":{"code":-32602)") != std::string::npos);
 }
 
+CPPL_TEST(a_code_lens_states_a_verdict_and_runs_nothing) {
+    Server server;
+    std::istringstream input(
+        framed(R"({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}})") +
+        framed(R"({"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":)"
+               R"({"uri":"file:///lens.cpp","languageId":"cpp","version":1,)"
+               R"("text":"pure unsigned same(unsigned x) {\n    return x;\n}\nlaw same_is_same(unsigned x)\n)"
+               R"(    proves (same(x) == x);\n"}}})") +
+        framed(R"({"jsonrpc":"2.0","id":2,"method":"textDocument/codeLens","params":{"textDocument":)"
+               R"({"uri":"file:///lens.cpp"}}})") +
+        framed(R"({"jsonrpc":"2.0","id":3,"method":"textDocument/codeLens","params":{}})") +
+        framed(R"({"jsonrpc":"2.0","method":"exit"})"));
+    std::ostringstream output;
+    std::ostringstream log;
+
+    [[maybe_unused]] const int exit_code = run_transport(server, input, output, log);
+    CPPL_CHECK(output.str().find(R"("codeLensProvider":{"resolveProvider":false})") != std::string::npos);
+    CPPL_CHECK(output.str().find(R"("id":2,"result":[{"range":{"start":{"line":3,"character":4},)"
+                                 R"("end":{"line":3,"character":16}},"command":{"title":"PROVEN","command":""}}])") !=
+               std::string::npos);
+    CPPL_CHECK(output.str().find(R"("id":3,"error":{"code":-32602)") != std::string::npos);
+}
+
 CPPL_TEST(semantic_tokens_answer_with_the_encoded_keywords) {
     Server server;
     std::istringstream input(

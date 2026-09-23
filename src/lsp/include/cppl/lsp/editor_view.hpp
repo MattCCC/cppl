@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cppl/clang/editor.hpp"
+#include "cppl/lsp/hover.hpp"
 #include "cppl/lsp/projected_file.hpp"
 #include "cppl/lsp/protocol.hpp"
 
@@ -64,14 +65,19 @@ class EditorView {
     // is the target too.
     [[nodiscard]] std::vector<Mention> mentions(const Target& target) const;
 
-    // What hover shows for the name at `position`. A name that stands for a
-    // C++L declaration is shown as that declaration, never as what the
-    // projection generated for it; a name only generated code declares shows
-    // what it means (`result`, `self`) or nothing.
-    [[nodiscard]] std::optional<Hover> hover(const Position& position) const;
+    // What hover shows for the name at `position`, and the C++L declaration it
+    // shows when the name stands for one. Such a name is shown as that
+    // declaration, never as what the projection generated for it; a name only
+    // generated code declares shows what it means (`result`, `self`) or
+    // nothing.
+    struct HoverAnswer {
+        Hover hover;
+        std::optional<CpplDeclaration> declaration;
+    };
+    [[nodiscard]] std::optional<HoverAnswer> hover(const Position& position) const;
 
-    // The C++L declaration whose name is written at `location`, as markdown.
-    [[nodiscard]] std::optional<std::string> cppl_markdown_at(const Location& location) const;
+    // The C++L declaration whose name is written at `location`.
+    [[nodiscard]] std::optional<CpplDeclaration> cppl_declaration_at(const Location& location) const;
 
     // The number of refreshes that had to parse the unit from scratch, for
     // tests that check an edit reuses what Clang kept.

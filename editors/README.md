@@ -28,6 +28,7 @@ editors/
 | Go to definition | `cppl-lsp` | yes | yes | yes | yes |
 | Declaration, type definition, implementation | `cppl-lsp` | yes | unverified | unverified | yes |
 | Find references, highlight occurrences | `cppl-lsp` | yes | unverified | unverified | yes |
+| Verification status (code lens) | `cppl-lsp` | yes | unverified | unverified | yes |
 | Syntax coloring | `editors/shared` | yes | — | — | yes |
 | Proof-statement coloring | `cppl-lsp` | yes | unverified | unverified | yes |
 
@@ -36,7 +37,10 @@ edit, and canonical formatting as `source.fixAll.cppl`. The server also answers
 completion inside `cases` and `decompose` arm blocks, for C++L's own syntax.
 
 Hover shows what Clang knows of a C++ name, and a C++L declaration -- a Law, a
-proof, a refinement type, a verified function's contract -- as it is written.
+proof, a refinement type, a verified function's contract -- as it is written,
+with what became of its obligations. A code lens over each Law, proof and
+verified function states its verdict: `PROVEN`, `TRUSTED`, or `UNRESOLVED` and
+why.
 Navigation is answered by Clang over each document's projection, for ordinary
 C++ and for the C++L declarations the projection stands for: a Law named in a
 proof, a Law's parameter in its proposition, a function parameter in a

@@ -305,6 +305,8 @@ class Dispatcher {
             handle_references(id_value, params);
         } else if (method == "textDocument/documentHighlight") {
             handle_document_highlight(id_value, params);
+        } else if (method == "textDocument/codeLens") {
+            handle_code_lens(id_value, params);
         } else if (is_request) {
             respond_error(*id_value, kMethodNotFound, "method not found: " + method);
         } else {
@@ -408,6 +410,12 @@ class Dispatcher {
         capabilities.set("implementationProvider", json::Value(true));
         capabilities.set("referencesProvider", json::Value(true));
         capabilities.set("documentHighlightProvider", json::Value(true));
+
+        // What became of each Law's, proof's and verified function's
+        // obligations, stated over its name; a lens runs no command.
+        json::Value code_lens = json::Value::object();
+        code_lens.set("resolveProvider", json::Value(false));
+        capabilities.set("codeLensProvider", std::move(code_lens));
 
         json::Value server_info = json::Value::object();
         server_info.set("name", json::Value("cppl-lsp"));
@@ -761,6 +769,38 @@ class Dispatcher {
             json::Value item = json::Value::object();
             item.set("range", range_to_json(highlight.range));
             item.set("kind", json::Value(static_cast<int>(highlight.kind)));
+            items.push_back(std::move(item));
+        }
+        respond_result(*id, std::move(items));
+    }
+
+    void handle_code_lens(const json::Value* id, const json::Value* params) {
+        if (id == nullptr) {
+            return;
+        }
+        const json::Value* document = params != nullptr ? params->find("textDocument") : nullptr;
+        const auto uri = document != nullptr ? document->find_string("uri") : std::nullopt;
+        if (!uri) {
+            respond_error(*id, kInvalidParams, "textDocument/codeLens missing 'textDocument.uri'");
+            return;
+        }
+        TextDocumentIdentifier document_id;
+        document_id.uri = *uri;
+        const std::optional<std::vector<CodeLens>> lenses = server_.text_document_code_lens(document_id);
+        if (!lenses.has_value()) {
+            respond_result(*id, json::Value(nullptr));
+            return;
+        }
+        json::Value items = json::Value::array();
+        for (const CodeLens& lens : *lenses) {
+            // An empty command is a statement, not an action: an editor shows
+            // the title and runs nothing.
+            json::Value command = json::Value::object();
+            command.set("title", json::Value(lens.title));
+            command.set("command", json::Value(std::string()));
+            json::Value item = json::Value::object();
+            item.set("range", range_to_json(lens.range));
+            item.set("command", std::move(command));
             items.push_back(std::move(item));
         }
         respond_result(*id, std::move(items));

@@ -55,7 +55,10 @@ from the server. Format-on-save and format-on-type are enabled by default for
 
 Hovering a name shows what Clang knows of it -- declaration, type, value, size,
 its comment -- or, for a Law, a proof, a refinement type or a verified
-function, the declaration as written. Inside a `cases` or `decompose` arm block
+function, the declaration as written with each obligation's status and goal. A
+code lens over each Law, proof and verified function states its verdict:
+`PROVEN`, `TRUSTED`, or `UNRESOLVED` and why (`editor.codeLens` turns lenses on
+and off). Inside a `cases` or `decompose` arm block
 hover shows the subject's states, and completion offers the arms still owed.
 
 Go to Definition, Go to Declaration, Go to Type Definition and Go to

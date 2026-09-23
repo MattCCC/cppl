@@ -5,12 +5,14 @@
 #include "cppl/clang/ast.hpp"
 #include "cppl/clang/bridge.hpp"
 #include "cppl/diagnostics/diagnostic.hpp"
+#include "cppl/driver/buffer_compile.hpp"
 #include "cppl/driver/scratch.hpp"
 #include "cppl/elaboration/elaborate.hpp"
 #include "cppl/erasure/erase.hpp"
 #include "cppl/frontend/projection.hpp"
 #include "cppl/frontend/syntax.hpp"
 #include "cppl/frontend/token.hpp"
+#include "cppl/kernel/proposition.hpp"
 #include "cppl/obligations/contracts.hpp"
 #include "cppl/obligations/generate.hpp"
 #include "cppl/obligations/obligation.hpp"
@@ -18,6 +20,7 @@
 #include "cppl/obligations/trust.hpp"
 #include "cppl/source/digest.hpp"
 #include "cppl/source/location.hpp"
+#include "cppl/vir/module.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -255,6 +258,37 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
         report(engine, diagnostics::Category::Internal, "not every written proof produced explicit evidence");
     }
     const std::vector<obligations::ObligationResult> results = automation::verify(program, engine);
+
+    // The verdicts in words, for editors. Taken from each verdict as the kernel
+    // left it; nothing below reads them.
+    outcome.verified = true;
+    outcome.obligations.reserve(results.size());
+    for (const obligations::ObligationResult& result : results) {
+        ObligationRecord record;
+        record.origin = result.obligation.origin;
+        record.subject = result.obligation.subject;
+        record.location = result.obligation.range.begin;
+        record.status = result.verdict.status();
+        if (!result.verdict.is_proven()) {
+            record.reason = result.verdict.reason();
+        }
+        record.strategy = result.strategy;
+        for (const obligations::TrustedPremise& premise : result.verdict.premises()) {
+            record.premises.push_back(premise.name);
+        }
+        if (const obligations::WrittenProof* written = program.proof_for(result.obligation)) {
+            record.written_proof = written->name;
+        }
+        if (result.obligation.origin == obligations::Origin::LawProposition && result.obligation.law.has_value()) {
+            for (const vir::Proof& proof : elaborated.module.proofs) {
+                if (proof.law == result.obligation.law) {
+                    record.naming_proofs.push_back(proof.name);
+                }
+            }
+        }
+        record.goal = kernel::describe(result.obligation.goal);
+        outcome.obligations.push_back(std::move(record));
+    }
 
     outcome.counters.laws += elaborated.module.laws.size();
     std::size_t declaration_obligations = 0;

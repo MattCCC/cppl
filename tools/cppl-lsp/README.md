@@ -39,6 +39,7 @@ textDocument/typeDefinition                 through pointers, references, `auto`
 textDocument/implementation                 overrides and derived classes
 textDocument/references                     across every open document
 textDocument/documentHighlight              declarations, reads and writes
+textDocument/codeLens                       each Law's, proof's, function's verdict
 ```
 
 Diagnostics come from `driver::compile_buffer` over the live buffer — the same
@@ -162,7 +163,7 @@ The server advertises `textDocumentSync`, `documentFormattingProvider`,
 `quickfix` and `source.fixAll.cppl`), `semanticTokensProvider` (whole
 document, one token type, `keyword`), `definitionProvider`,
 `declarationProvider`, `typeDefinitionProvider`, `implementationProvider`,
-`referencesProvider` and `documentHighlightProvider`.
+`referencesProvider`, `documentHighlightProvider` and `codeLensProvider`.
 The rest of navigation specified below, and the semantic-token categories
 beyond proof-statement keywords, are not implemented and not advertised: an
 editor is told what the server can do, never what it intends to do.
@@ -608,6 +609,29 @@ The exact editor presentation is separate from the language semantics.
 The compiler determines what is true.
 
 The LSP determines how that information is presented.
+
+Implemented today: the compile of the buffer copies out, after the kernel has
+decided, what became of every obligation it verified -- its origin, where it
+is stated, its status, the trusted Laws a proven claim rests on, the goal the
+kernel was given, what produced the evidence, why it is not proven when it is
+not, and the proof written for a Law (`driver::ObligationRecord`). The server
+shows these and decides nothing:
+
+- a code lens over each Law, proof and verified function the document writes
+  states its verdict: `PROVEN`, `PROVEN relative to trusted a, b`, `TRUSTED`,
+  `UNRESOLVED` and why, or for a verified function how many of its obligations
+  are proven. A proof of a Law has no obligation of its own, so its lens states
+  the Law's verdict on the evidence it supplied, or the verdict of the Law it
+  names when another proof's evidence decided it. A compile that stopped before
+  verification says so rather than showing nothing;
+- hover over any of these, or over a name that stands for one, lists each of
+  its obligations with its status, its goal, and its evidence or the reason it
+  is not proven.
+
+A lens runs no command. A verdict is shown only for the version of the buffer
+it was computed for, so text edited since the last compile shows none rather
+than one that no longer applies. Counterexamples are not shown: no part of the
+compiler produces one.
 
 ---
 

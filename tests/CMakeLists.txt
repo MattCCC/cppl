@@ -245,6 +245,13 @@ target_compile_definitions(lsp_hover_test PRIVATE
     CPPL_TEST_FIXTURES_DIR="${CPPL_TEST_FIXTURES}"
     CPPL_TEST_DEFAULT_CLANG="${CPPL_DEFAULT_CLANG}")
 
+# Verification status, copied from the kernel's verdicts into lenses and hover.
+cppl_add_unit_test(lsp_verification_test unit/lsp_verification_test.cpp)
+target_link_libraries(lsp_verification_test PRIVATE cppl_lsp)
+target_compile_definitions(lsp_verification_test PRIVATE
+    CPPL_TEST_FIXTURES_DIR="${CPPL_TEST_FIXTURES}"
+    CPPL_TEST_DEFAULT_CLANG="${CPPL_DEFAULT_CLANG}")
+
 # Driver-level suites invoke the real compiler on real fixtures and write what
 # it produces into the work tree, so each one runs under the same limits.
 function(cppl_add_script_test name script)
