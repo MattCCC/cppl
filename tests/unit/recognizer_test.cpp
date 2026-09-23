@@ -442,3 +442,58 @@ CPPL_TEST(case_nesting_is_bounded_before_recursive_projection) {
     recognize(text, result);
     CPPL_CHECK(result.engine.has_errors());
 }
+
+// The limits docs/STATUS.md states, pinned at the boundary on both sides so
+// that moving one is a deliberate change rather than a silent one.
+CPPL_TEST(arms_nest_at_most_thirty_two_deep) {
+    const auto nested = [](unsigned depth) {
+        std::string text = "proof p(E s) proves (true) {";
+        for (unsigned i = 0; i < depth; ++i) {
+            text += " cases s { E::a => {";
+        }
+        text += " refl;";
+        for (unsigned i = 0; i < depth; ++i) {
+            text += " } }";
+        }
+        return text + " }";
+    };
+    Recognized deepest;
+    recognize(nested(32), deepest);
+    CPPL_CHECK(!deepest.engine.has_errors());
+
+    Recognized deeper;
+    recognize(nested(33), deeper);
+    CPPL_CHECK(deeper.engine.has_errors());
+    CPPL_CHECK(!deeper.engine.diagnostics().empty());
+    CPPL_CHECK(deeper.engine.diagnostics()[0].message == "proof arms nest deeper than the supported limit");
+}
+
+CPPL_TEST(a_cases_statement_reads_at_most_sixty_four_arms_counting_omissions) {
+    const auto statement = [](unsigned arms, unsigned omissions) {
+        std::string text = "proof p(E s) proves (true) { cases s {";
+        for (unsigned i = 0; i < arms; ++i) {
+            text += " E::a" + std::to_string(i) + " => { refl; }";
+        }
+        for (unsigned i = 0; i < omissions; ++i) {
+            text += " omit E::b" + std::to_string(i) + " by contradiction e;";
+        }
+        return text + " } }";
+    };
+    const auto arm_count_refused = [](const std::string& text) {
+        Recognized result;
+        recognize(text, result);
+        return !result.engine.diagnostics().empty() &&
+               result.engine.diagnostics()[0].message.starts_with("cases requires 1 to 64 arms");
+    };
+    const auto accepted = [](const std::string& text) {
+        Recognized result;
+        recognize(text, result);
+        return !result.engine.has_errors() && result.syntax.proofs.size() == 1;
+    };
+    CPPL_CHECK(accepted(statement(64, 0)));
+    CPPL_CHECK(arm_count_refused(statement(65, 0)));
+    // An omission accounts for a case in place of an arm, so it takes an arm's
+    // place in the count too.
+    CPPL_CHECK(accepted(statement(63, 1)));
+    CPPL_CHECK(arm_count_refused(statement(64, 1)));
+}
