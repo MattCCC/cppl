@@ -2,8 +2,6 @@
 
 #include "cppl/clang/editor.hpp"
 #include "cppl/frontend/syntax.hpp"
-#include "cppl/frontend/token.hpp"
-#include "cppl/lsp/projected_file.hpp"
 #include "cppl/source/location.hpp"
 
 #include <algorithm>
@@ -132,10 +130,13 @@ std::optional<std::string> describe_implicit(const clangbridge::Description& des
     return std::nullopt;
 }
 
-std::optional<CpplDeclaration> describe_cppl(const frontend::TokenStream& tokens, const frontend::Syntax& syntax,
-                                             std::string_view text, std::size_t name_offset) {
+std::optional<CpplDeclaration> describe_cppl(const frontend::Syntax& syntax, std::string_view text,
+                                             std::size_t name_offset) {
+    const auto names = [name_offset](const source::ByteSpan& name) {
+        return name.length != 0 && name_offset >= name.offset && name_offset < name.end();
+    };
     for (const frontend::LawDeclaration& law : syntax.laws) {
-        if (!names_at(text, law.name_location, law.name, name_offset)) {
+        if (!names(law.name_span)) {
             continue;
         }
         CpplDeclaration declaration;
@@ -153,10 +154,9 @@ std::optional<CpplDeclaration> describe_cppl(const frontend::TokenStream& tokens
         return declaration;
     }
     for (const frontend::ProofDeclaration& proof : syntax.proofs) {
-        if (proof.inline_law.has_value() || !names_at(text, proof.name_location, proof.name, name_offset)) {
+        if (proof.inline_law.has_value() || !names(proof.name_span)) {
             continue;
         }
-        const std::size_t body = text.find('{', proof.proposition.end());
         CpplDeclaration declaration;
         declaration.kind = CpplDeclaration::Kind::Proof;
         declaration.name = proof.name;
@@ -165,7 +165,7 @@ std::optional<CpplDeclaration> describe_cppl(const frontend::TokenStream& tokens
         declaration.last_line = proof.end_line;
         declaration.markdown = "**proof** `" + proof.name + "`\n\n" +
                                code_block(written(text, proof.range.span.offset,
-                                                  body == std::string_view::npos ? proof.range.span.end() : body));
+                                                  proof.body.length != 0 ? proof.body.offset : proof.range.span.end()));
         return declaration;
     }
     for (const frontend::ProofDeclaration& proof : syntax.proofs) {
@@ -174,20 +174,15 @@ std::optional<CpplDeclaration> describe_cppl(const frontend::TokenStream& tokens
         }
     }
     for (const frontend::RefinementType& refinement : syntax.refinement_types) {
-        const std::optional<source::ByteSpan> name = declared_name(tokens, refinement.range.span, refinement.name);
-        if (!name.has_value() || name_offset < name->offset || name_offset >= name->end()) {
+        if (!names(refinement.name_span)) {
             continue;
         }
         const std::string base = written(text, refinement.base.offset, refinement.base.end());
         CpplDeclaration declaration;
         declaration.kind = CpplDeclaration::Kind::RefinementType;
         declaration.name = refinement.name;
-        for (const frontend::Token& token : tokens.tokens()) {
-            if (token.span.offset == name->offset) {
-                declaration.name_location = tokens.location_of(token);
-                break;
-            }
-        }
+        // The recognizer states a refinement type's range from its name.
+        declaration.name_location = refinement.range.begin;
         declaration.first_line = refinement.keyword_location.line;
         declaration.last_line = refinement.end_line;
         declaration.markdown = "**refinement type** `" + refinement.name + "`\n\n";

@@ -2765,6 +2765,23 @@ where Clang gives them one identity (USR), or where the projection repeated one
 written declaration into several generated ones, such as a proof's parameters
 copied into each of its probes. It never identifies names by spelling alone.
 
+C++L as an editor sees it is the recognizer's too, including text not yet
+written whole. `frontend::recognize` in `RecognitionMode::Draft` keeps what a
+compile refuses and what the formatter's `Edit` mode already keeps, and also a
+Law or a proof still being written -- a head with no clause yet, a claim with no
+body, a body with no `}` (`Completeness`) -- and reads on past a proof statement
+it cannot read (`ProofStatementKind::Unread`). `frontend::admissible_at` answers
+from that draft what may be written at a position: a declaration, a clause and
+which, a proof statement, the evidence a statement names. Completion offers
+from that answer, and the outline, hover and the source map take each C++L
+name, body and statement from the spans the recognizer records.
+
+**[ARCH-LSP-006]** An editor service never reads C++L's grammar itself: every
+C++L construct, whole or still being written, and every position where one may
+be written, is the compiler frontend's answer. Where an editor needs what the
+frontend does not say, the frontend is extended. A draft never reaches a
+compile.
+
 ---
 
 # 79. Formatter architecture

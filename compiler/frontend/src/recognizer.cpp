@@ -3,6 +3,7 @@
 #include "cppl/frontend/syntax.hpp"
 #include "cppl/frontend/token.hpp"
 #include "cppl/source/location.hpp"
+#include "recognition.hpp"
 
 #include <algorithm>
 #include <array>
@@ -249,21 +250,30 @@ void report(diagnostics::Engine& engine, const TokenStream& stream, const Token&
     report(engine, stream.location_of(token), category, std::move(message), std::move(note));
 }
 
+// Why a clause of `kind` may not follow the clauses `seen`, or nothing when it
+// may: each kind is written once, and `expects` precedes the conclusion.
+// `check_clause_sequence` refuses what this names, and `clauses_admitted`
+// offers only what it does not.
+std::optional<std::string> out_of_sequence(ClauseKind kind, const std::vector<ClauseKind>& seen, bool conclusion) {
+    if (std::ranges::find(seen, kind) != seen.end()) {
+        return "use one '" + describe(kind) + "' clause; combine conjoined predicates with '&&'";
+    }
+    if (kind == ClauseKind::Expects && conclusion) {
+        return "'expects' must precede the conclusion clause";
+    }
+    return std::nullopt;
+}
+
 void check_clause_sequence(const std::vector<Clause>& clauses, diagnostics::Engine& engine) {
     std::vector<ClauseKind> seen;
     bool conclusion = false;
     for (const auto& clause : clauses) {
-        std::string message;
-        if (std::ranges::find(seen, clause.kind) != seen.end())
-            message = "use one '" + describe(clause.kind) + "' clause; combine conjoined predicates with '&&'";
-        else if (clause.kind == ClauseKind::Expects && conclusion)
-            message = "'expects' must precede the conclusion clause";
-        if (!message.empty()) {
+        if (std::optional<std::string> message = out_of_sequence(clause.kind, seen, conclusion)) {
             diagnostics::Diagnostic diagnostic;
             diagnostic.severity = diagnostics::Severity::Error;
             diagnostic.category = diagnostics::Category::CpplSyntax;
             diagnostic.location = clause.location;
-            diagnostic.message = std::move(message);
+            diagnostic.message = std::move(*message);
             engine.report(std::move(diagnostic));
         }
         seen.push_back(clause.kind);
@@ -276,7 +286,20 @@ void check_clause_sequence(const std::vector<Clause>& clauses, diagnostics::Engi
 // returning a type named `law`, for instance), so nothing is reinterpreted
 // until the clause makes the ordinary C++ reading impossible (SPEC.md 3.1).
 bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std::size_t body_close,
-                           diagnostics::Engine& engine, std::vector<ProofStatement>& statements, unsigned nesting = 0);
+                           diagnostics::Engine& engine, std::vector<ProofStatement>& statements, unsigned nesting = 0,
+                           bool draft = false);
+
+// Reads the statements of the block from `body_open` to `body_close`, as
+// `read_proof_statements` does. In a draft, a statement it cannot read is kept
+// as `Unread` -- up to the `;` that ends it, or the `}` closing a block it
+// opens -- and reading resumes after it, so the block is always read to its end.
+bool read_block(const TokenStream& stream, std::size_t body_open, std::size_t body_close, diagnostics::Engine& engine,
+                std::vector<ProofStatement>& statements, unsigned nesting, bool draft);
+
+// A span from the first byte of `first` through the last byte of `last`.
+source::ByteSpan tokens_span(const Token& first, const Token& last) {
+    return source::ByteSpan{first.span.offset, last.span.end() - first.span.offset};
+}
 
 bool try_law(const TokenStream& stream, std::size_t index, diagnostics::Engine& engine, LawDeclaration& law,
              std::size_t& next_index, ProofDeclaration& body, RecognitionMode mode) {
@@ -294,17 +317,29 @@ bool try_law(const TokenStream& stream, std::size_t index, diagnostics::Engine& 
         return false;
     }
 
+    const bool draft = mode == RecognitionMode::Draft;
+    const auto head = [&] {
+        law.name = std::string(tokens[index + 1].text);
+        law.name_location = stream.location_of(tokens[index + 1]);
+        law.name_span = tokens[index + 1].span;
+        law.range.begin = law.name_location;
+        law.keyword_location = stream.location_of(tokens[index]);
+        law.parameters =
+            source::ByteSpan{tokens[index + 2].span.end(), tokens[close].span.offset - tokens[index + 2].span.end()};
+    };
+
     std::size_t cursor = close + 1;
     if (cursor >= tokens.size() || !clause_kind(tokens[cursor]).has_value()) {
-        return false; // still ordinary C++
+        // Still ordinary C++. A draft keeps where a clause would make it a Law.
+        if (draft) {
+            head();
+            law.range.span = tokens_span(tokens[index], tokens[close]);
+            law.completeness = Completeness::AwaitingClause;
+        }
+        return false;
     }
 
-    law.name = std::string(tokens[index + 1].text);
-    law.name_location = stream.location_of(tokens[index + 1]);
-    law.range.begin = law.name_location;
-    law.keyword_location = stream.location_of(tokens[index]);
-    law.parameters =
-        source::ByteSpan{tokens[index + 2].span.end(), tokens[close].span.offset - tokens[index + 2].span.end()};
+    head();
 
     bool malformed = false;
     while (cursor < tokens.size()) {
@@ -359,6 +394,10 @@ bool try_law(const TokenStream& stream, std::size_t index, diagnostics::Engine& 
     if (cursor >= tokens.size() || (!tokens[cursor].is_punctuator(";") && !has_body)) {
         report(engine, stream, tokens[index], diagnostics::Category::CpplSyntax,
                "a law declaration ends with ';' or an explicit proof body");
+        if (draft) {
+            law.range.span = tokens_span(tokens[index], tokens[cursor - 1]);
+            law.completeness = Completeness::AwaitingBody;
+        }
         next_index = cursor;
         return true;
     }
@@ -368,16 +407,25 @@ bool try_law(const TokenStream& stream, std::size_t index, diagnostics::Engine& 
     next_index = cursor + 1;
 
     if (has_body) {
-        const std::size_t end = matching_brace(tokens, cursor);
+        std::size_t end = matching_brace(tokens, cursor);
         if (end >= tokens.size()) {
             report(engine, stream, tokens[cursor], diagnostics::Category::CpplSyntax, "unterminated Law proof body");
-            law.name.clear();
-            return true;
+            if (!draft) {
+                law.name.clear();
+                return true;
+            }
+            // A draft reads the body to the end of the text, and reads on
+            // inside it for whatever else is written there.
+            end = tokens.size() - 1;
+            law.completeness = Completeness::UnterminatedBody;
+            body.completeness = Completeness::UnterminatedBody;
         }
         body.name = law.name;
         body.name_location = law.name_location;
+        body.name_span = law.name_span;
         body.range = law.range;
-        body.range.span = {tokens[cursor].span.offset, tokens[end].span.end() - tokens[cursor].span.offset};
+        body.range.span = tokens_span(tokens[cursor], tokens[end]);
+        body.body = body.range.span;
         body.keyword_location = law.keyword_location;
         body.parameters = law.parameters;
         body.end_line = tokens[end].line;
@@ -386,7 +434,12 @@ bool try_law(const TokenStream& stream, std::size_t index, diagnostics::Engine& 
             body.proposition_location = conclusion->location;
         }
         law.range.span.length = tokens[cursor].span.offset - law.range.span.offset;
-        if (!read_proof_statements(stream, cursor, end, engine, body.statements) || body.statements.empty()) {
+        if (body.completeness == Completeness::UnterminatedBody) {
+            read_block(stream, cursor, end, engine, body.statements, 0, true);
+            next_index = cursor + 1;
+            return true;
+        }
+        if (!read_block(stream, cursor, end, engine, body.statements, 0, draft) || body.statements.empty()) {
             report(engine, stream, tokens[cursor], diagnostics::Category::ProofFailure,
                    "a Law proof body must supply evidence closing its goal");
             malformed = true;
@@ -480,6 +533,7 @@ bool try_refinement_type(const TokenStream& stream, std::size_t index, diagnosti
     }
 
     refinement.name = std::string(tokens[index + 1].text);
+    refinement.name_span = tokens[index + 1].span;
     refinement.range.begin = stream.location_of(tokens[index + 1]);
     refinement.keyword_location = stream.location_of(tokens[index]);
     refinement.base_location = stream.location_of(tokens[equals + 1]);
@@ -592,7 +646,8 @@ bool read_proof_arguments(const TokenStream& stream, std::size_t open, std::size
 // here: the proposition a proof discharges is resolved by Clang from the
 // projected text, never by this recognizer.
 bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std::size_t body_close,
-                           diagnostics::Engine& engine, std::vector<ProofStatement>& statements, unsigned nesting) {
+                           diagnostics::Engine& engine, std::vector<ProofStatement>& statements, unsigned nesting,
+                           bool draft) {
     const std::vector<Token>& tokens = stream.tokens();
     if (nesting > 32) {
         report(engine, stream, tokens[body_open], diagnostics::Category::CpplSyntax,
@@ -781,7 +836,7 @@ bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std
                     break;
                 cursor += 2;
                 const std::size_t close = matching_brace(tokens, cursor);
-                if (close >= end || !read_proof_statements(stream, cursor, close, engine, arm.statements, nesting + 1))
+                if (close >= end || !read_block(stream, cursor, close, engine, arm.statements, nesting + 1, draft))
                     return false;
                 arm.body_span = {tokens[cursor].span.offset, tokens[close].span.end() - tokens[cursor].span.offset};
                 arm.span = {tokens[start].span.offset, tokens[close].span.end() - tokens[start].span.offset};
@@ -795,6 +850,7 @@ bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std
                        "or omissions of the form 'omit label by contradiction evidence;'");
                 return false;
             }
+            statement.span = tokens_span(token, tokens[end]);
             statements.push_back(std::move(statement));
             cursor = end + 1;
             continue;
@@ -828,6 +884,7 @@ bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std
             if (subject + 1 < body_close && tokens[subject + 1].is_punctuator(";")) {
                 // Short form: automation is requested for every case: no arms
                 // to recognize.
+                statement.span = tokens_span(token, tokens[subject + 1]);
                 statements.push_back(std::move(statement));
                 cursor = subject + 2;
                 continue;
@@ -882,7 +939,7 @@ bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std
                     break;
                 cursor += 2;
                 const std::size_t close = matching_brace(tokens, cursor);
-                if (close >= end || !read_proof_statements(stream, cursor, close, engine, arm.statements, nesting + 1))
+                if (close >= end || !read_block(stream, cursor, close, engine, arm.statements, nesting + 1, draft))
                     return false;
                 arm.body_span = {tokens[cursor].span.offset, tokens[close].span.end() - tokens[cursor].span.offset};
                 arm.span = {tokens[start].span.offset, tokens[close].span.end() - tokens[start].span.offset};
@@ -895,6 +952,7 @@ bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std
                        "induction requires 1 to 64 arms of the form 'label(binders) => { proof statements }'");
                 return false;
             }
+            statement.span = tokens_span(token, tokens[end]);
             statements.push_back(std::move(statement));
             cursor = end + 1;
             continue;
@@ -905,6 +963,7 @@ bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std
             statement.kind = ProofStatementKind::Reflexivity;
             statement.keyword = token.span;
             statement.location = stream.location_of(token);
+            statement.span = tokens_span(token, tokens[cursor + 1]);
             statements.push_back(std::move(statement));
             cursor += 2;
             continue;
@@ -947,29 +1006,27 @@ bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std
             statement.proposition_location = stream.location_of(tokens[cursor + 3]);
             statement.keyword = token.span;
             statement.location = stream.location_of(token);
+            statement.span = tokens_span(token, tokens[terminator]);
             statements.push_back(std::move(statement));
             cursor = terminator + 1;
             continue;
         }
 
-        const bool is_exact = token.is_identifier("exact");
-        const bool is_rewrite = token.is_identifier("rewrite");
         // Like every proof-statement word, `contradiction` means this only here,
         // at the start of a statement in a proof body (SPEC.md WORD-002).
-        const bool is_contradiction = token.is_identifier("contradiction");
-        if ((is_exact || is_rewrite || is_contradiction || token.is_identifier("apply")) && cursor + 2 < body_close &&
+        const std::optional<ProofStatementKind> named =
+            token.kind == TokenKind::Identifier ? statement_keyword(token.text) : std::nullopt;
+        if (named.has_value() && names_evidence(*named) && cursor + 2 < body_close &&
             tokens[cursor + 1].kind == TokenKind::Identifier) {
             ProofStatement statement;
-            statement.kind = is_exact           ? ProofStatementKind::Exact
-                             : is_rewrite       ? ProofStatementKind::Rewrite
-                             : is_contradiction ? ProofStatementKind::Contradiction
-                                                : ProofStatementKind::Apply;
+            statement.kind = *named;
             statement.reference = std::string(tokens[cursor + 1].text);
             statement.reference_location = stream.location_of(tokens[cursor + 1]);
             statement.keyword = token.span;
             statement.location = stream.location_of(token);
 
             if (tokens[cursor + 2].is_punctuator(";")) {
+                statement.span = tokens_span(token, tokens[cursor + 2]);
                 statements.push_back(std::move(statement));
                 cursor += 3;
                 continue;
@@ -990,6 +1047,7 @@ bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std
                            "a proof statement ends with ';'");
                     return false;
                 }
+                statement.span = tokens_span(token, tokens[close + 1]);
                 statements.push_back(std::move(statement));
                 cursor = close + 2;
                 continue;
@@ -1011,6 +1069,59 @@ bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std
     return true;
 }
 
+bool read_block(const TokenStream& stream, std::size_t body_open, std::size_t body_close, diagnostics::Engine& engine,
+                std::vector<ProofStatement>& statements, unsigned nesting, bool draft) {
+    if (!draft) {
+        return read_proof_statements(stream, body_open, body_close, engine, statements, nesting);
+    }
+    const std::vector<Token>& tokens = stream.tokens();
+    std::size_t from = body_open;
+    while (from + 1 < body_close) {
+        const std::size_t kept = statements.size();
+        if (read_proof_statements(stream, from, body_close, engine, statements, nesting, true)) {
+            return true;
+        }
+        // The reader stops at the first statement it cannot read, keeping
+        // every statement before it; that statement starts after the last one.
+        std::size_t start = from + 1;
+        if (statements.size() > kept) {
+            const std::size_t read_to = statements.back().span.end();
+            while (start < body_close && tokens[start].span.offset < read_to) {
+                ++start;
+            }
+        }
+        if (start >= body_close) {
+            return true;
+        }
+        std::size_t last = start;
+        std::size_t depth = 0;
+        for (std::size_t at = start; at < body_close; ++at) {
+            last = at;
+            const Token& token = tokens[at];
+            if (token.is_punctuator("(") || token.is_punctuator("[") || token.is_punctuator("{")) {
+                ++depth;
+            } else if (token.is_punctuator(")") || token.is_punctuator("]") || token.is_punctuator("}")) {
+                if (depth > 0) {
+                    --depth;
+                    if (depth == 0 && token.is_punctuator("}")) {
+                        break;
+                    }
+                }
+            } else if (depth == 0 && token.is_punctuator(";")) {
+                break;
+            }
+        }
+        ProofStatement unread;
+        unread.kind = ProofStatementKind::Unread;
+        unread.keyword = tokens[start].span;
+        unread.location = stream.location_of(tokens[start]);
+        unread.span = tokens_span(tokens[start], tokens[last]);
+        statements.push_back(std::move(unread));
+        from = last;
+    }
+    return true;
+}
+
 // `proof` introduces a proof declaration only when `proves` follows the
 // parameter list. Until then the token sequence is still ordinary C++ - a
 // function returning a type named `proof`, for instance (SPEC.md 3.1).
@@ -1025,9 +1136,26 @@ bool try_proof(const TokenStream& stream, std::size_t index, diagnostics::Engine
         return false;
     }
 
+    const bool draft = mode == RecognitionMode::Draft;
     const std::size_t close = matching_parenthesis(tokens, index + 2);
+    const auto head = [&] {
+        proof.name = std::string(tokens[index + 1].text);
+        proof.name_location = stream.location_of(tokens[index + 1]);
+        proof.name_span = tokens[index + 1].span;
+        proof.range.begin = proof.name_location;
+        proof.keyword_location = stream.location_of(tokens[index]);
+        proof.parameters =
+            source::ByteSpan{tokens[index + 2].span.end(), tokens[close].span.offset - tokens[index + 2].span.end()};
+    };
     if (close >= tokens.size() || close + 1 >= tokens.size() || !tokens[close + 1].is_identifier("proves")) {
-        return false; // still ordinary C++
+        // Still ordinary C++. A draft keeps where `proves` would make it a
+        // proof.
+        if (draft && close < tokens.size()) {
+            head();
+            proof.range.span = tokens_span(tokens[index], tokens[close]);
+            proof.completeness = Completeness::AwaitingClause;
+        }
+        return false;
     }
 
     const std::size_t proves = close + 1;
@@ -1045,10 +1173,22 @@ bool try_proof(const TokenStream& stream, std::size_t index, diagnostics::Engine
         next_index = proves + 2;
         return true;
     }
+    const auto claim = [&] {
+        proof.proves_keyword = tokens[proves].span;
+        proof.proposition = source::ByteSpan{tokens[proves + 1].span.end(),
+                                             tokens[proves_close].span.offset - tokens[proves + 1].span.end()};
+        proof.proposition_location = stream.location_of(tokens[proves]);
+    };
 
     if (proves_close + 1 >= tokens.size() || !tokens[proves_close + 1].is_punctuator("{")) {
         report(engine, stream, tokens[index], diagnostics::Category::CpplSyntax, "a proof declaration has a body",
                "a proof constructs evidence, so it ends with '{ ... }' rather than ';'");
+        if (draft) {
+            head();
+            claim();
+            proof.range.span = tokens_span(tokens[index], tokens[proves_close]);
+            proof.completeness = Completeness::AwaitingBody;
+        }
         next_index = proves_close + 1;
         return true;
     }
@@ -1057,32 +1197,36 @@ bool try_proof(const TokenStream& stream, std::size_t index, diagnostics::Engine
     const std::size_t body_close = matching_brace(tokens, body_open);
     if (body_close >= tokens.size()) {
         report(engine, stream, tokens[body_open], diagnostics::Category::CpplSyntax, "unterminated proof body");
+        if (draft) {
+            // The body runs to the end of the text, and what is written
+            // after the `{` is read on as well.
+            head();
+            claim();
+            const std::size_t end = tokens.size() - 1;
+            proof.range.span = tokens_span(tokens[index], tokens[end]);
+            proof.body = tokens_span(tokens[body_open], tokens[end]);
+            proof.completeness = Completeness::UnterminatedBody;
+            read_block(stream, body_open, end, engine, proof.statements, 0, true);
+        }
         next_index = body_open + 1;
         return true;
     }
 
     next_index = body_close + 1;
 
-    proof.name = std::string(tokens[index + 1].text);
-    proof.name_location = stream.location_of(tokens[index + 1]);
-    proof.range.begin = proof.name_location;
+    head();
+    claim();
     proof.range.span =
         source::ByteSpan{tokens[index].span.offset, tokens[body_close].span.end() - tokens[index].span.offset};
-    proof.keyword_location = stream.location_of(tokens[index]);
+    proof.body = tokens_span(tokens[body_open], tokens[body_close]);
     proof.end_line = tokens[body_close].line;
-    proof.parameters =
-        source::ByteSpan{tokens[index + 2].span.end(), tokens[close].span.offset - tokens[index + 2].span.end()};
-    proof.proves_keyword = tokens[proves].span;
-    proof.proposition = source::ByteSpan{tokens[proves + 1].span.end(),
-                                         tokens[proves_close].span.offset - tokens[proves + 1].span.end()};
-    proof.proposition_location = stream.location_of(tokens[proves]);
 
     bool malformed = stream.spelling(proof.proposition).find_first_not_of(" \t\r\n") == std::string_view::npos;
     if (malformed) {
         report(engine, stream, tokens[proves], diagnostics::Category::CpplSyntax, "'proves' requires a proposition");
     }
 
-    if (!read_proof_statements(stream, body_open, body_close, engine, proof.statements)) {
+    if (!read_block(stream, body_open, body_close, engine, proof.statements, 0, draft)) {
         malformed = true;
     } else if (proof.statements.empty()) {
         report(engine, stream, tokens[index], diagnostics::Category::ProofFailure,
@@ -1925,8 +2069,78 @@ std::string describe(ProofStatementKind kind) {
             return "decompose";
         case ProofStatementKind::Induction:
             return "induction";
+        case ProofStatementKind::Unread:
+            return "unread";
     }
     return "unknown";
+}
+
+std::optional<ProofStatementKind> statement_keyword(std::string_view word) {
+    for (const ProofStatementKind kind :
+         {ProofStatementKind::Reflexivity, ProofStatementKind::Exact, ProofStatementKind::Apply,
+          ProofStatementKind::Assume, ProofStatementKind::Rewrite, ProofStatementKind::Contradiction,
+          ProofStatementKind::Cases, ProofStatementKind::Decompose, ProofStatementKind::Induction}) {
+        if (describe(kind) == word) {
+            return kind;
+        }
+    }
+    return std::nullopt;
+}
+
+bool names_evidence(ProofStatementKind kind) {
+    return kind == ProofStatementKind::Exact || kind == ProofStatementKind::Apply ||
+           kind == ProofStatementKind::Rewrite || kind == ProofStatementKind::Contradiction;
+}
+
+std::vector<ClauseKind> clauses_admitted(ClauseOwner owner, const std::vector<Clause>& written, std::size_t at) {
+    // What each declaration reads as a clause at all: `try_law` refuses
+    // `ensures` and `decreases`, a proof has only its claim, and a verified
+    // function refuses `proves` and does not verify `decreases`.
+    std::vector<ClauseKind> accepted;
+    switch (owner) {
+        case ClauseOwner::Law:
+            accepted = {ClauseKind::Expects, ClauseKind::Proves};
+            break;
+        case ClauseOwner::Proof:
+            accepted = {ClauseKind::Proves};
+            break;
+        case ClauseOwner::VerifiedFunction:
+            accepted = {ClauseKind::Expects, ClauseKind::Ensures};
+            break;
+    }
+    // A kind is admitted where the clauses with it written there pass the
+    // check `check_clause_sequence` makes.
+    std::vector<ClauseKind> admitted;
+    for (const ClauseKind kind : accepted) {
+        std::vector<ClauseKind> sequence;
+        for (const Clause& clause : written) {
+            if (clause.keyword.offset < at) {
+                sequence.push_back(clause.kind);
+            }
+        }
+        sequence.push_back(kind);
+        for (const Clause& clause : written) {
+            if (clause.keyword.offset >= at) {
+                sequence.push_back(clause.kind);
+            }
+        }
+        std::vector<ClauseKind> seen;
+        bool conclusion = false;
+        const bool in_order = std::ranges::all_of(sequence, [&](ClauseKind next) {
+            const bool fits = !out_of_sequence(next, seen, conclusion).has_value();
+            seen.push_back(next);
+            conclusion = conclusion || next == ClauseKind::Ensures || next == ClauseKind::Proves;
+            return fits;
+        });
+        if (in_order) {
+            admitted.push_back(kind);
+        }
+    }
+    return admitted;
+}
+
+bool detail::declaration_may_begin(const std::vector<Token>& tokens, std::size_t index) {
+    return at_declaration_start(tokens, index);
 }
 
 const Clause* LawDeclaration::proposition() const {
@@ -1985,6 +2199,8 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
         return std::ranges::all_of(
             scopes, [](ScopeKind kind) { return kind == ScopeKind::Namespace || kind == ScopeKind::Class; });
     };
+    // Edit and Draft keep what Compile refuses; Draft keeps more still.
+    const bool tolerant = mode != RecognitionMode::Compile;
 
     // The token range of each verified body, so a loop's clauses can be tied to
     // the function whose obligations they become.
@@ -2150,6 +2366,15 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
                 index = next;
                 continue;
             }
+            // A draft's `trusted law name(...)` with no clause yet. The tokens
+            // are still ordinary C++, so recognition goes on through them.
+            if (law.completeness == Completeness::AwaitingClause && at_namespace_scope()) {
+                law.trusted = true;
+                law.keyword_location = stream.location_of(tokens[index]);
+                law.range.span =
+                    source::ByteSpan{tokens[index].span.offset, law.range.span.end() - tokens[index].span.offset};
+                syntax.laws.push_back(std::move(law));
+            }
         }
 
         if (tokens[index].is_identifier("law")) {
@@ -2163,7 +2388,7 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
                                "law '" + law.name + "' is declared outside namespace scope",
                                "this implementation recognizes laws at namespace scope only");
                     }
-                    if (at_namespace_scope() || (mode == RecognitionMode::Edit && at_layout_scope())) {
+                    if (at_namespace_scope() || (tolerant && at_layout_scope())) {
                         if (!body.name.empty()) {
                             body.inline_law = syntax.laws.size();
                             syntax.proofs.push_back(std::move(body));
@@ -2173,6 +2398,9 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
                 }
                 index = next;
                 continue;
+            }
+            if (law.completeness == Completeness::AwaitingClause && at_layout_scope()) {
+                syntax.laws.push_back(std::move(law));
             }
         }
 
@@ -2187,12 +2415,15 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
                                "proof '" + proof.name + "' is declared outside namespace scope",
                                "this implementation recognizes proofs at namespace scope only");
                     }
-                    if (at_namespace_scope() || (mode == RecognitionMode::Edit && at_layout_scope())) {
+                    if (at_namespace_scope() || (tolerant && at_layout_scope())) {
                         syntax.proofs.push_back(std::move(proof));
                     }
                 }
                 index = next;
                 continue;
+            }
+            if (proof.completeness == Completeness::AwaitingClause && at_layout_scope()) {
+                syntax.proofs.push_back(std::move(proof));
             }
         }
 
@@ -2215,7 +2446,7 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
                            "'verified' is applied outside namespace scope",
                            "this implementation verifies functions at namespace scope only");
                 }
-                if (at_namespace_scope() || (mode == RecognitionMode::Edit && at_layout_scope())) {
+                if (at_namespace_scope() || (tolerant && at_layout_scope())) {
                     // `verified pure` is both: the contract is discharged here,
                     // and the function is still a candidate definition for the
                     // formal core.

@@ -2,7 +2,6 @@
 
 #include "cppl/clang/editor.hpp"
 #include "cppl/frontend/syntax.hpp"
-#include "cppl/frontend/token.hpp"
 #include "cppl/source/location.hpp"
 
 #include <cstddef>
@@ -40,9 +39,9 @@ struct CpplDeclaration {
 // The C++L declaration whose name is written at `name_offset` of a file -- a
 // Law, a proof, a refinement type, a verified function or a name an `assume`
 // binds -- presented as it is written, since what it means is the compiler's to
-// decide. Nothing when no C++L declaration's name is there.
-[[nodiscard]] std::optional<CpplDeclaration> describe_cppl(const frontend::TokenStream& tokens,
-                                                           const frontend::Syntax& syntax, std::string_view text,
+// decide. Nothing when no C++L declaration's name is there. Where each name is
+// written is the recognizer's to say (`syntax`).
+[[nodiscard]] std::optional<CpplDeclaration> describe_cppl(const frontend::Syntax& syntax, std::string_view text,
                                                            std::size_t name_offset);
 
 // Markdown for a name only generated code declares, which is what hover shows

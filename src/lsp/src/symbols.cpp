@@ -61,19 +61,16 @@ bool encloses(SymbolKind kind) {
     return kind == SymbolKind::Namespace || kind == SymbolKind::Class || kind == SymbolKind::Struct;
 }
 
-std::optional<DocumentSymbol> written_symbol(const ProjectedFile& file, const PositionMapper& mapper,
-                                             source::ByteSpan range, std::string_view name, SymbolKind kind,
-                                             std::string detail) {
-    const std::optional<source::ByteSpan> spelled = declared_name(file.tokens(), range, name);
-    if (!spelled.has_value()) {
-        return std::nullopt;
-    }
+// A declaration the recognizer found, with its name where the recognizer
+// found it.
+DocumentSymbol written_symbol(const PositionMapper& mapper, source::ByteSpan range, source::ByteSpan name,
+                              const std::string& spelled, SymbolKind kind, std::string detail) {
     DocumentSymbol symbol;
-    symbol.name = std::string(name);
+    symbol.name = spelled;
     symbol.detail = std::move(detail);
     symbol.kind = kind;
     symbol.range = mapper.byte_span_to_range(range);
-    symbol.selection = mapper.byte_span_to_range(*spelled);
+    symbol.selection = mapper.byte_span_to_range(name);
     return symbol;
 }
 
@@ -129,10 +126,8 @@ std::vector<DocumentSymbol> cppl_symbols(const ProjectedFile& file) {
                 range.length = proof.range.span.end() - range.offset;
             }
         }
-        if (std::optional<DocumentSymbol> symbol = written_symbol(file, mapper, range, law.name, SymbolKind::Interface,
-                                                                  law.trusted ? "trusted law" : "law")) {
-            symbols.push_back(std::move(*symbol));
-        }
+        symbols.push_back(written_symbol(mapper, range, law.name_span, law.name, SymbolKind::Interface,
+                                         law.trusted ? "trusted law" : "law"));
     }
     for (const frontend::ProofDeclaration& proof : syntax.proofs) {
         if (proof.inline_law.has_value()) {
@@ -140,19 +135,13 @@ std::vector<DocumentSymbol> cppl_symbols(const ProjectedFile& file) {
         }
         const std::string proposition =
             one_line(std::string_view(file.text().data() + proof.proposition.offset, proof.proposition.length));
-        if (std::optional<DocumentSymbol> symbol =
-                written_symbol(file, mapper, proof.range.span, proof.name, SymbolKind::Function,
-                               proposition.empty() ? "proof" : "proves (" + proposition + ")")) {
-            symbols.push_back(std::move(*symbol));
-        }
+        symbols.push_back(written_symbol(mapper, proof.range.span, proof.name_span, proof.name, SymbolKind::Function,
+                                         proposition.empty() ? "proof" : "proves (" + proposition + ")"));
     }
     for (const frontend::RefinementType& refinement : syntax.refinement_types) {
         const std::string_view base(file.text().data() + refinement.base.offset, refinement.base.length);
-        if (std::optional<DocumentSymbol> symbol =
-                written_symbol(file, mapper, refinement.range.span, refinement.name, SymbolKind::Class,
-                               "refinement of " + one_line(base))) {
-            symbols.push_back(std::move(*symbol));
-        }
+        symbols.push_back(written_symbol(mapper, refinement.range.span, refinement.name_span, refinement.name,
+                                         SymbolKind::Class, "refinement of " + one_line(base)));
     }
     return symbols;
 }

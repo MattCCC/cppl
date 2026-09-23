@@ -1459,10 +1459,13 @@ Outside a case block, completion offers what Clang would accept at the position,
 matched against what has been typed and ranked by Clang's own priority, with a
 call's parameters as snippet placeholders for a client that takes snippets, and
 never a name the projection generated. C++L's own words are offered as snippets
-where the grammar admits them: declarations at namespace scope, proof
-statements at a statement's start, the proofs, trusted Laws and assumptions a
-statement can name after `exact`, `apply`, `rewrite` or `contradiction`, and a
-declaration's clauses after its parameters.
+where the compiler's recognizer says they may be written: declarations at
+namespace scope, proof statements at a statement's start, the assumptions in
+scope, trusted Laws and proofs a statement can name after `exact`, `apply`,
+`rewrite` or `contradiction`, and the clauses a declaration may still take.
+The recognizer reads text still being written through its draft mode, which
+keeps a Law or a proof not yet written whole and reads past a statement it
+cannot read; the server reads no C++L grammar of its own.
 
 `signatureHelpProvider` shows, while a call's arguments are written, every
 declaration Clang says the call could resolve to, with the argument being

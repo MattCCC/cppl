@@ -327,6 +327,9 @@ void Linter::check_proof_statements(const std::vector<frontend::ProofStatement>&
 
             case frontend::ProofStatementKind::Reflexivity:
             case frontend::ProofStatementKind::Rewrite:
+            // Only a draft holds an unread statement; the linter reads what
+            // the compile recognized.
+            case frontend::ProofStatementKind::Unread:
                 // These have no additional requirements
                 break;
         }

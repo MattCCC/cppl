@@ -12,27 +12,10 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
 namespace cppl::lsp {
-
-std::optional<source::ByteSpan> declared_name(const frontend::TokenStream& tokens, const source::ByteSpan& range,
-                                              std::string_view name) {
-    for (const frontend::Token& token : tokens.tokens()) {
-        if (token.span.offset < range.offset) {
-            continue;
-        }
-        if (token.span.offset >= range.end() || token.kind == frontend::TokenKind::EndOfFile) {
-            break;
-        }
-        if (token.is_identifier(name)) {
-            return token.span;
-        }
-    }
-    return std::nullopt;
-}
 
 ProjectedFile::ProjectedFile(std::string path, std::string text) : path_(std::move(path)), text_(std::move(text)) {
     tokens_ = std::make_unique<frontend::TokenStream>(frontend::lex(text_, path_));
@@ -51,19 +34,13 @@ ProjectedFile::ProjectedFile(std::string path, std::string text) : path_(std::mo
         if (function.law_index >= syntax_->laws.size()) {
             continue;
         }
-        const frontend::LawDeclaration& law = syntax_->laws[function.law_index];
-        if (const auto name = declared_name(*tokens_, law.range.span, law.name)) {
-            anchors_.push_back(Anchor{function.analysis_offset, *name});
-        }
+        anchors_.push_back(Anchor{function.analysis_offset, syntax_->laws[function.law_index].name_span});
     }
     for (const frontend::RefinementProbe& probe : projection_->refinement_probes) {
         if (probe.refinement_index >= syntax_->refinement_types.size()) {
             continue;
         }
-        const frontend::RefinementType& refinement = syntax_->refinement_types[probe.refinement_index];
-        if (const auto name = declared_name(*tokens_, refinement.range.span, refinement.name)) {
-            anchors_.push_back(Anchor{probe.alias_offset, *name});
-        }
+        anchors_.push_back(Anchor{probe.alias_offset, syntax_->refinement_types[probe.refinement_index].name_span});
     }
 }
 

@@ -760,23 +760,29 @@ offered, and neither is a reserved name (`__x`) unless what was typed starts
 with an underscore. At most 150 items are sent; a longer list is marked
 incomplete, so the client asks again as the user types more.
 
-C++L's own words are offered where the grammar admits them, as snippets laid
-out as the formatter lays them out: `law`, `trusted law`, `proof`, `verified`,
-`type` and `pure` where a declaration may begin at namespace scope; the proof
-statements at the start of a statement in a proof body; after `exact`,
-`apply`, `rewrite` or `contradiction`, the other proofs, the trusted Laws and
-the names this body has assumed so far; `proves` and `expects` after a Law's
-or a proof's parameters; `expects` and `ensures` between a verified function's
-parameters and its body. A proof being written does not parse, so these
-positions are found from the tokens as written. Nothing here resolves a name:
-a suggestion the compiler would reject is only a suggestion.
+C++L's own words are offered where the compiler's recognizer says they may be
+written, as snippets laid out as the formatter lays them out: `law`,
+`trusted law`, `proof`, `verified`, `type` and `pure` where a declaration may
+begin at namespace scope; the proof statements where a statement may begin in
+a proof body; after `exact`, `apply`, `rewrite` or `contradiction`, the
+evidence it may name, looked for as elaboration looks for it -- the premises
+this body assumed in scope, innermost first, then the trusted Laws, then the
+other proofs; the clauses a Law, a proof or a verified function may still take
+after its parameters or one of its clauses, in the order the recognizer
+checks. Text being written seldom parses whole, so the server asks the
+recognizer's draft of it (`RecognitionMode::Draft`, `frontend::admissible_at`),
+which keeps a Law or a proof still being written and reads past a statement it
+cannot read. The server holds no copy of C++L's grammar: each statement's and
+clause's word is the recognizer's own, and a test checks that every snippet
+offered is what the recognizer reads it as. Nothing here resolves a name: a
+suggestion the compiler would reject is only a suggestion.
 
 Signature help shows, while a call's arguments are written, every declaration
-Clang says it could resolve to, with the argument being written marked. The
-call is the innermost `(` the tokens as written leave open after a name; the
-argument is the one Clang names, or the one the commas before the cursor
-count. A call inside a Law's proposition or a contract is helped like any
-other.
+Clang says it could resolve to, with the argument being written marked. Clang
+decides all of it: whether the position is inside a call's argument list, which
+overloads can still take the arguments written, best first, and which
+parameter the argument being written stands for. A call inside a Law's
+proposition or a contract is helped like any other.
 
 ### Case arms
 

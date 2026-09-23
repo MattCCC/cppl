@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace cppl::frontend {
@@ -29,11 +30,48 @@ struct Clause {
     source::SourceLocation location;
 };
 
+// What a clause is written on.
+enum class ClauseOwner : std::uint8_t {
+    Law,
+    Proof,
+    VerifiedFunction,
+};
+
+// The clauses that may be written at byte `at` of a declaration of `owner`
+// that already has `written`, in the order the grammar has them: each kind at
+// most once, and `expects` before the conclusion (GRAMMAR.md 3, 4, 6), exactly
+// as the recognizer checks a declaration's clauses. A Law takes `expects` and
+// `proves`, a proof `proves`, a verified function `expects` and `ensures`:
+// `decreases` is refused there, since termination is not verified by this
+// implementation.
+[[nodiscard]] std::vector<ClauseKind> clauses_admitted(ClauseOwner owner, const std::vector<Clause>& written,
+                                                       std::size_t at);
+
+// How much of a Law or a proof has been written.
+//
+// A compiled unit only ever holds whole declarations. A draft
+// (RecognitionMode::Draft) also holds one still being written, so that an
+// editor reads where the author is from the recognizer rather than from the
+// tokens: the recognizer is the one authority for what C++L is.
+enum class Completeness : std::uint8_t {
+    Whole,
+    // `law name(parameters)` or `proof name(parameters)` and no clause after
+    // it yet. It is ordinary C++ until a clause is written (SPEC.md 3.1); a
+    // draft records it because a clause may be written there.
+    AwaitingClause,
+    // Its clauses, and neither a Law's `;` nor a body after them yet.
+    AwaitingBody,
+    // A body whose closing `}` is not written: it runs to the end of the text.
+    UnterminatedBody,
+};
+
 // law name(parameters) proves (proposition);   (SPEC.md 10.1, GRAMMAR.md 3)
 struct LawDeclaration {
     std::string name;
     source::SourceLocation name_location;
-    source::SourceRange range; // the whole declaration, including its ';'
+    source::ByteSpan name_span; // the name as written
+    source::SourceRange range;  // the whole declaration, including its ';'
+    Completeness completeness = Completeness::Whole;
     source::SourceLocation keyword_location;
     std::uint32_t end_line = 0; // presumed line of the terminating ';'
     source::ByteSpan parameters;
@@ -71,9 +109,22 @@ enum class ProofStatementKind : std::uint8_t {
     // rejects it exactly as it rejected the previously-unparsed spelling -
     // structural recognition here must never be read as semantic support.
     Induction,
+    // A statement the recognizer could not read, up to the `;` that ends it or
+    // the `}` that closes a block it opened. Only a draft
+    // (RecognitionMode::Draft) records one, so that what follows it is read
+    // still; a compiled unit refuses the proof instead.
+    Unread,
 };
 
+// The word a statement of `kind` begins with (`refl`, `exact`, ...).
 std::string describe(ProofStatementKind kind);
+
+// The statement a word begins, where it begins one: the inverse of `describe`.
+[[nodiscard]] std::optional<ProofStatementKind> statement_keyword(std::string_view word);
+
+// Whether a statement of `kind` names evidence after its keyword: `exact`,
+// `apply`, `rewrite` and `contradiction` (GRAMMAR.md 5.2, 5.3, 5.5, 5.6).
+[[nodiscard]] bool names_evidence(ProofStatementKind kind);
 
 // One term a referenced proof is instantiated at. The span is ordinary C++ and
 // is never read here: it is handed to Clang through the projection, like every
@@ -101,6 +152,9 @@ struct ProofStatement {
 
     source::ByteSpan keyword; // the statement's keyword itself, e.g. 'contradiction'
     source::SourceLocation location;
+    // The whole statement: its keyword through its `;`, or through the `}`
+    // that closes its arms.
+    source::ByteSpan span;
     std::vector<ProofArm> arms;
 
     // The '{' ... '}' enclosing `arms`, for Cases/Decompose/Induction only
@@ -153,7 +207,12 @@ struct ProofDeclaration {
     std::optional<std::size_t> inline_law;
     std::string name;
     source::SourceLocation name_location;
-    source::SourceRange range; // the whole declaration, including its body
+    source::ByteSpan name_span; // the name as written
+    source::SourceRange range;  // the whole declaration, including its body
+    // The body, `{` through `}`, or through the end of the text while the `}`
+    // is not written. Empty until a body is written.
+    source::ByteSpan body;
+    Completeness completeness = Completeness::Whole;
     source::SourceLocation keyword_location;
     std::uint32_t end_line = 0; // presumed line of the closing '}'
     source::ByteSpan parameters;
@@ -295,7 +354,8 @@ struct PathCaseSplit {
 // value of the base type, like every other specification expression.
 struct RefinementType {
     std::string name;
-    source::SourceRange range; // the whole declaration, including its ';'
+    source::ByteSpan name_span; // the name as written
+    source::SourceRange range;  // the whole declaration, including its ';'
     source::SourceLocation keyword_location;
     std::uint32_t end_line = 0; // presumed line of the terminating ';'
 
@@ -379,7 +439,14 @@ struct Syntax {
 // complete grammatical context makes the ordinary C++ reading impossible
 // (SPEC.md 3, 3.1). Ordinary declarations such as `int law = 1;` are left
 // untouched.
-enum class RecognitionMode : std::uint8_t { Compile, Edit };
+//
+// Compile keeps only what compiles. Edit also keeps a malformed declaration,
+// and one outside namespace scope, for the formatter to lay out. Draft is Edit
+// for text still being written: it also keeps a Law or a proof the author has
+// not finished (Completeness), and reads past a proof statement it cannot read
+// (ProofStatementKind::Unread), so an editor asks the recognizer where the
+// author is rather than reading the grammar itself.
+enum class RecognitionMode : std::uint8_t { Compile, Edit, Draft };
 
 [[nodiscard]] Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine,
                                RecognitionMode mode = RecognitionMode::Compile);

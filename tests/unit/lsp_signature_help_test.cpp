@@ -99,4 +99,21 @@ CPPL_TEST(outside_a_call_there_is_no_help) {
     CPPL_CHECK(!help_at("int main() { if (true) { |return 0; } }\n").has_value());
     // Parentheses that are not a call's.
     CPPL_CHECK(!help_at("int main() { return (1 + |2); }\n").has_value());
+    // A call already closed.
+    CPPL_CHECK(!help_at("int add(int a, int b);\nint main() { return add(1, 2)|; }\n").has_value());
+}
+
+CPPL_TEST(the_active_signature_is_the_one_that_takes_the_argument_being_written) {
+    const std::optional<SignatureHelp> help = help_at("void put(int value);\n"
+                                                      "void put(double value, int times);\n"
+                                                      "int main() { put(1.0, |); }\n");
+    CPPL_CHECK(help.has_value());
+    if (help.has_value()) {
+        CPPL_CHECK_EQ(help->active_parameter, 1u);
+        CPPL_CHECK(help->active_signature < help->signatures.size());
+        if (help->active_signature < help->signatures.size()) {
+            CPPL_CHECK_EQ(help->signatures[help->active_signature].label,
+                          std::string("void put(double value, int times)"));
+        }
+    }
 }

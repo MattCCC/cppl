@@ -108,6 +108,9 @@ target_link_libraries(unit_lexer_test PRIVATE cppl_frontend)
 cppl_add_unit_test(unit_recognizer_test unit/recognizer_test.cpp)
 target_link_libraries(unit_recognizer_test PRIVATE cppl_frontend cppl_diagnostics)
 
+cppl_add_unit_test(unit_draft_recognition_test unit/draft_recognition_test.cpp)
+target_link_libraries(unit_draft_recognition_test PRIVATE cppl_frontend cppl_diagnostics)
+
 cppl_add_unit_test(unit_projection_test unit/projection_test.cpp)
 target_link_libraries(unit_projection_test PRIVATE cppl_frontend cppl_erasure cppl_diagnostics)
 target_compile_definitions(unit_projection_test PRIVATE

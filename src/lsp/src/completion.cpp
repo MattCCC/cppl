@@ -1,6 +1,7 @@
 #include "cppl/lsp/completion.hpp"
 
 #include "cppl/clang/editor.hpp"
+#include "cppl/frontend/admissible.hpp"
 #include "cppl/frontend/syntax.hpp"
 #include "cppl/frontend/token.hpp"
 #include "cppl/lsp/protocol.hpp"
@@ -8,8 +9,8 @@
 #include <algorithm>
 #include <cctype>
 #include <cstddef>
+#include <iterator>
 #include <optional>
-#include <ranges>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -96,48 +97,16 @@ CompletionItemKind item_kind(clangbridge::Completion::Kind kind) {
     return CompletionItemKind::Text;
 }
 
-// The identifier token that ends before `offset`, skipping space.
-std::optional<std::string_view> word_before(const frontend::TokenStream& tokens, std::size_t offset) {
-    const frontend::Token* last = nullptr;
-    for (const frontend::Token& token : tokens.tokens()) {
-        if (token.kind == frontend::TokenKind::EndOfFile || token.span.end() > offset) {
-            break;
-        }
-        last = &token;
-    }
-    if (last == nullptr || last->kind != frontend::TokenKind::Identifier) {
-        return std::nullopt;
-    }
-    return last->text;
-}
-
-// The last character before `offset` that is not space.
-char last_written(std::string_view text, std::size_t offset) {
-    while (offset > 0) {
-        --offset;
-        if (std::isspace(static_cast<unsigned char>(text[offset])) == 0) {
-            return text[offset];
-        }
-    }
-    return '\0';
-}
-
-struct Snippet {
-    std::string_view label;
-    std::string_view detail;
-    std::string_view body;  // in snippet syntax
-    std::string_view plain; // what is inserted without snippets
-};
-
-CompletionItem snippet_item(const Snippet& snippet, bool snippets) {
+// C++L's own words where they apply, ahead of Clang's.
+CompletionItem snippet_item(std::string label, std::string_view detail, std::string body, std::string plain,
+                            bool snippets) {
     CompletionItem item;
-    item.label = std::string(snippet.label);
+    item.label = std::move(label);
     item.kind = CompletionItemKind::Snippet;
-    item.detail = std::string(snippet.detail);
-    item.insertText = std::string(snippets ? snippet.body : snippet.plain);
+    item.detail = std::string(detail);
+    item.insertText = snippets ? std::move(body) : std::move(plain);
     item.snippet = snippets;
     item.filterText = item.label;
-    // C++L's own words where they apply, ahead of Clang's.
     item.sortText = "0" + item.label;
     return item;
 }
@@ -148,7 +117,16 @@ void add_matching(std::vector<CompletionItem>& items, CompletionItem item, std::
     }
 }
 
-constexpr Snippet kDeclarations[] = {
+// A declaration, laid out as the formatter lays it out. Each is checked to be
+// what the recognizer reads as that declaration (lsp_completion_test).
+struct Declaration {
+    std::string_view label;
+    std::string_view detail;
+    std::string_view body;  // in snippet syntax
+    std::string_view plain; // what is inserted without snippets
+};
+
+constexpr Declaration kDeclarations[] = {
     {"law", "C++L: a Law", "law ${1:name}(${2:parameters})\n    proves (${3:proposition});", "law"},
     {"trusted law", "C++L: an explicit assumption",
      "trusted law ${1:name}(${2:parameters})\n    proves (${3:proposition});", "trusted law"},
@@ -160,127 +138,53 @@ constexpr Snippet kDeclarations[] = {
     {"pure", "C++L: a function the formal core may unfold", "pure ", "pure"},
 };
 
-constexpr Snippet kStatements[] = {
-    {"refl", "C++L: both sides are definitionally equal", "refl;", "refl;"},
-    {"exact", "C++L: the goal is what a proof proves", "exact ${1:proof};", "exact"},
-    {"apply", "C++L: a proof's conclusion, applied", "apply ${1:proof};", "apply"},
-    {"rewrite", "C++L: rewrite the goal by an equality", "rewrite ${1:h};", "rewrite"},
-    {"assume", "C++L: name a premise", "assume ${1:h} : ${2:proposition};", "assume"},
-    {"contradiction", "C++L: the context cannot occur", "contradiction ${1:evidence};", "contradiction"},
-    {"cases", "C++L: one arm per state of a subject", "cases ${1:subject} {\n    $0\n}", "cases"},
-    {"decompose", "C++L: a subject's components", "decompose ${1:subject} {\n    $0\n}", "decompose"},
+// A proof statement, spelled with the recognizer's own word for it: what
+// follows the word, with and without snippets.
+struct Statement {
+    frontend::ProofStatementKind kind;
+    std::string_view detail;
+    std::string_view after;
+    std::string_view plain_after;
 };
 
-constexpr Snippet kContractClauses[] = {
-    {"expects", "C++L: a precondition", "expects (${1:condition})", "expects"},
-    {"ensures", "C++L: a postcondition", "ensures (${1:result == 0})", "ensures"},
+constexpr Statement kStatements[] = {
+    {frontend::ProofStatementKind::Reflexivity, "C++L: both sides are definitionally equal", ";", ";"},
+    {frontend::ProofStatementKind::Exact, "C++L: the goal is what a proof proves", " ${1:proof};", ""},
+    {frontend::ProofStatementKind::Apply, "C++L: a proof's conclusion, applied", " ${1:proof};", ""},
+    {frontend::ProofStatementKind::Rewrite, "C++L: rewrite the goal by an equality", " ${1:h};", ""},
+    {frontend::ProofStatementKind::Assume, "C++L: name a premise", " ${1:h} : ${2:proposition};", ""},
+    {frontend::ProofStatementKind::Contradiction, "C++L: the context cannot occur", " ${1:evidence};", ""},
+    {frontend::ProofStatementKind::Cases, "C++L: one arm per state of a subject", " ${1:subject} {\n    $0\n}", ""},
+    {frontend::ProofStatementKind::Decompose, "C++L: a subject's components", " ${1:subject} {\n    $0\n}", ""},
 };
 
-constexpr Snippet kLawClauses[] = {
-    {"proves", "C++L: what it states", "proves (${1:proposition})", "proves"},
-    {"expects", "C++L: the premise it is stated under", "expects (${1:condition})", "expects"},
+// A clause, spelled with the recognizer's own word for it, and what its
+// parentheses hold until the author writes it.
+struct ClauseText {
+    frontend::ClauseOwner owner;
+    frontend::ClauseKind kind;
+    std::string_view detail;
+    std::string_view placeholder;
 };
 
-// The tokens that end at or before `offset`.
-std::vector<const frontend::Token*> tokens_before(const frontend::TokenStream& tokens, std::size_t offset) {
-    std::vector<const frontend::Token*> before;
-    for (const frontend::Token& token : tokens.tokens()) {
-        if (token.kind == frontend::TokenKind::EndOfFile || token.span.end() > offset) {
-            break;
-        }
-        before.push_back(&token);
-    }
-    return before;
-}
-
-// The `(` that the `)` at `close` closes, or nothing.
-std::optional<std::size_t> opening(const std::vector<const frontend::Token*>& tokens, std::size_t close) {
-    int depth = 0;
-    for (std::size_t index = close + 1; index > 0; --index) {
-        const frontend::Token& token = *tokens[index - 1];
-        if (token.is_punctuator(")")) {
-            ++depth;
-        } else if (token.is_punctuator("(") && --depth == 0) {
-            return index - 1;
-        }
-    }
-    return std::nullopt;
-}
-
-// A proof body still open at `offset`, found from the tokens alone: a proof
-// being written does not parse, so it is not in the recognized syntax. The
-// body is the innermost `{` not yet closed that follows
-// `proof name(...) proves (...)`.
-struct OpenProof {
-    std::string_view name;
-    std::size_t open = 0; // the body's `{`, as an index into the tokens
+constexpr ClauseText kClauses[] = {
+    {frontend::ClauseOwner::Law, frontend::ClauseKind::Expects, "C++L: the premise it is stated under", "condition"},
+    {frontend::ClauseOwner::Law, frontend::ClauseKind::Proves, "C++L: what it states", "proposition"},
+    {frontend::ClauseOwner::Proof, frontend::ClauseKind::Proves, "C++L: what it proves", "proposition"},
+    {frontend::ClauseOwner::VerifiedFunction, frontend::ClauseKind::Expects, "C++L: a precondition", "condition"},
+    {frontend::ClauseOwner::VerifiedFunction, frontend::ClauseKind::Ensures, "C++L: a postcondition", "result == 0"},
 };
 
-std::optional<OpenProof> open_proof_at(const std::vector<const frontend::Token*>& before) {
-    const auto proof_head = [&before](std::size_t brace) -> std::optional<OpenProof> {
-        if (brace == 0 || !before[brace - 1]->is_punctuator(")")) {
-            return std::nullopt;
-        }
-        const std::optional<std::size_t> claim = opening(before, brace - 1);
-        if (!claim.has_value() || *claim < 2 || !before[*claim - 1]->is_identifier("proves") ||
-            !before[*claim - 2]->is_punctuator(")")) {
-            return std::nullopt;
-        }
-        const std::optional<std::size_t> parameters = opening(before, *claim - 2);
-        if (!parameters.has_value() || *parameters < 2 ||
-            before[*parameters - 1]->kind != frontend::TokenKind::Identifier ||
-            !before[*parameters - 2]->is_identifier("proof")) {
-            return std::nullopt;
-        }
-        return OpenProof{before[*parameters - 1]->text, brace};
-    };
-    std::vector<std::optional<OpenProof>> open;
-    for (std::size_t index = 0; index < before.size(); ++index) {
-        if (before[index]->is_punctuator("{")) {
-            open.push_back(proof_head(index));
-        } else if (before[index]->is_punctuator("}") && !open.empty()) {
-            open.pop_back();
-        }
+std::string_view evidence_detail(frontend::Evidence::Kind kind) {
+    switch (kind) {
+        case frontend::Evidence::Kind::Assumption:
+            return "assumption";
+        case frontend::Evidence::Kind::TrustedLaw:
+            return "trusted law";
+        case frontend::Evidence::Kind::Proof:
+            return "proof";
     }
-    for (const std::optional<OpenProof>& enclosing : std::views::reverse(open)) {
-        if (enclosing.has_value()) {
-            return enclosing;
-        }
-    }
-    return std::nullopt;
-}
-
-// Whether the tokens before `offset` end a Law's or a proof's name and
-// parameters with no clause yet: `law name(...)`, `trusted law name(...)`.
-std::optional<std::string_view> declaration_head_before(const frontend::TokenStream& tokens, std::size_t offset) {
-    std::vector<const frontend::Token*> before;
-    for (const frontend::Token& token : tokens.tokens()) {
-        if (token.kind == frontend::TokenKind::EndOfFile || token.span.end() > offset) {
-            break;
-        }
-        before.push_back(&token);
-    }
-    if (before.empty() || !before.back()->is_punctuator(")")) {
-        return std::nullopt;
-    }
-    int depth = 0;
-    std::size_t index = before.size();
-    while (index > 0) {
-        --index;
-        if (before[index]->is_punctuator(")")) {
-            ++depth;
-        } else if (before[index]->is_punctuator("(") && --depth == 0) {
-            break;
-        }
-    }
-    if (depth != 0 || index < 2 || before[index - 1]->kind != frontend::TokenKind::Identifier) {
-        return std::nullopt;
-    }
-    const std::string_view keyword = before[index - 2]->text;
-    if (keyword == "law" || keyword == "proof") {
-        return keyword;
-    }
-    return std::nullopt;
+    return "proof";
 }
 
 } // namespace
@@ -338,87 +242,56 @@ CompletionList cpp_completions(std::vector<clangbridge::Completion> completions,
     return list;
 }
 
-std::vector<CompletionItem> cppl_completions(const frontend::TokenStream& tokens, const frontend::Syntax& syntax,
-                                             std::string_view text, std::size_t offset, std::string_view prefix,
-                                             clangbridge::Scope scope, bool snippets) {
+std::vector<CompletionItem> cppl_completions(const frontend::TokenStream& tokens, const frontend::Syntax& draft,
+                                             std::size_t start, std::string_view prefix, clangbridge::Scope scope,
+                                             bool snippets) {
     std::vector<CompletionItem> items;
-    const std::size_t start = offset - prefix.size();
-    const char before = last_written(text, start);
+    const frontend::Admissible here = frontend::admissible_at(tokens, draft, start);
 
-    const std::vector<const frontend::Token*> written = tokens_before(tokens, start);
-    if (const std::optional<OpenProof> proof = open_proof_at(written)) {
-        // After `exact`, `apply`, `rewrite` or `contradiction`: what it can
-        // name -- another proof, a trusted Law, a name this body assumed.
-        const std::optional<std::string_view> word = word_before(tokens, start);
-        if (word.has_value() &&
-            (*word == "exact" || *word == "apply" || *word == "rewrite" || *word == "contradiction")) {
-            std::vector<std::string> offered;
-            const auto offer = [&](std::string_view name, std::string_view detail, CompletionItemKind kind) {
-                if (name == proof->name || std::ranges::find(offered, name) != offered.end()) {
-                    return;
-                }
-                offered.emplace_back(name);
-                CompletionItem item;
-                item.label = std::string(name);
-                item.kind = kind;
-                item.detail = std::string(detail);
-                item.sortText = "0" + item.label;
-                add_matching(items, std::move(item), prefix);
-            };
-            const std::vector<frontend::Token>& all = tokens.tokens();
-            for (std::size_t index = 0; index + 1 < all.size(); ++index) {
-                if (all[index].is_identifier("proof") && all[index + 1].kind == frontend::TokenKind::Identifier) {
-                    offer(all[index + 1].text, "proof", CompletionItemKind::Reference);
-                } else if (index + 2 < all.size() && all[index].is_identifier("trusted") &&
-                           all[index + 1].is_identifier("law") &&
-                           all[index + 2].kind == frontend::TokenKind::Identifier) {
-                    offer(all[index + 2].text, "trusted law", CompletionItemKind::Reference);
-                }
-            }
-            for (std::size_t index = proof->open; index + 2 < written.size(); ++index) {
-                if (written[index]->is_identifier("assume") &&
-                    written[index + 1]->kind == frontend::TokenKind::Identifier &&
-                    written[index + 2]->is_punctuator(":")) {
-                    offer(written[index + 1]->text, "assumption", CompletionItemKind::Variable);
-                }
-            }
-            return items;
-        }
-        // At the start of a statement: the statements.
-        if (before == '{' || before == ';' || before == '}') {
-            for (const Snippet& snippet : kStatements) {
-                add_matching(items, snippet_item(snippet, snippets), prefix);
-            }
+    if (here.evidence_for.has_value() && here.proof.has_value()) {
+        for (const frontend::Evidence& evidence : frontend::evidence_at(draft, *here.proof, start)) {
+            CompletionItem item;
+            item.label = evidence.name;
+            item.kind = evidence.kind == frontend::Evidence::Kind::Assumption ? CompletionItemKind::Variable
+                                                                              : CompletionItemKind::Reference;
+            item.detail = std::string(evidence_detail(evidence.kind));
+            item.sortText = "0" + item.label;
+            add_matching(items, std::move(item), prefix);
         }
         return items;
     }
-
-    // After a Law's or a proof's parameters: its clauses.
-    if (const std::optional<std::string_view> head = declaration_head_before(tokens, start)) {
-        for (const Snippet& snippet : kLawClauses) {
-            if (*head == "proof" && snippet.label == "expects") {
-                continue;
-            }
-            add_matching(items, snippet_item(snippet, snippets), prefix);
+    if (here.statement) {
+        for (const Statement& statement : kStatements) {
+            const std::string word = frontend::describe(statement.kind);
+            add_matching(items,
+                         snippet_item(word, statement.detail, word + std::string(statement.after),
+                                      word + std::string(statement.plain_after), snippets),
+                         prefix);
         }
         return items;
     }
-
-    // Between a verified function's parameters and its body: its contract.
-    for (const frontend::VerifiedFunction& verified : syntax.verified_functions) {
-        if (start > verified.parameters.end() && start < verified.body_open && before == ')') {
-            for (const Snippet& snippet : kContractClauses) {
-                add_matching(items, snippet_item(snippet, snippets), prefix);
-            }
-            return items;
+    for (const frontend::ClauseKind kind : here.clauses) {
+        const auto* text = std::ranges::find_if(kClauses, [&](const ClauseText& candidate) {
+            return candidate.owner == here.owner && candidate.kind == kind;
+        });
+        if (text == std::ranges::end(kClauses)) {
+            continue;
         }
+        const std::string word = frontend::describe(kind);
+        add_matching(
+            items,
+            snippet_item(word, text->detail, word + " (${1:" + std::string(text->placeholder) + "})", word, snippets),
+            prefix);
     }
-
-    // At the start of a declaration at namespace scope: C++L's declarations.
-    if (scope == clangbridge::Scope::Namespace &&
-        (before == '\0' || before == ';' || before == '}' || before == '{' || before == '>' || before == '"')) {
-        for (const Snippet& snippet : kDeclarations) {
-            add_matching(items, snippet_item(snippet, snippets), prefix);
+    if (!here.clauses.empty()) {
+        return items;
+    }
+    if (here.declaration && scope == clangbridge::Scope::Namespace) {
+        for (const Declaration& declaration : kDeclarations) {
+            add_matching(items,
+                         snippet_item(std::string(declaration.label), declaration.detail, std::string(declaration.body),
+                                      std::string(declaration.plain), snippets),
+                         prefix);
         }
     }
     return items;
