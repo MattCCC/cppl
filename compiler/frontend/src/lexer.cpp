@@ -74,6 +74,7 @@ class Lexer {
     Lexer(std::string_view text, std::string_view initial_file) : text_(text) {
         files_.emplace_back(initial_file);
         system_files_.push_back(false);
+        include_sites_.emplace_back();
     }
 
     TokenStream run() {
@@ -107,7 +108,7 @@ class Lexer {
         end.column = column();
         tokens_.push_back(end);
 
-        return {text_, std::move(tokens_), std::move(files_), std::move(system_files_)};
+        return {text_, std::move(tokens_), std::move(files_), std::move(system_files_), std::move(include_sites_)};
     }
 
   private:
@@ -200,7 +201,9 @@ class Lexer {
             }
         }
 
-        // The flags after the file name; 3 says the file is a system header.
+        // The flags after the file name: 1 says the file is being entered from
+        // the current line, and 3 that it is a system header.
+        bool entering = false;
         bool system = false;
         while (cursor < text_.size() && text_[cursor] != '\n') {
             if (std::isdigit(static_cast<unsigned char>(text_[cursor])) == 0) {
@@ -212,6 +215,7 @@ class Lexer {
                 flag = flag * 10 + static_cast<std::uint32_t>(text_[cursor] - '0');
                 ++cursor;
             }
+            entering = entering || flag == 1;
             system = system || flag == 3;
         }
 
@@ -226,13 +230,19 @@ class Lexer {
         at_line_start_ = true;
 
         if (is_marker) {
-            presumed_line_ = stated_line;
             if (has_file) {
-                file_index_ = intern(stated_file);
+                const std::uint32_t entered = intern(stated_file);
+                // Entered from the line this marker stands on, which is the
+                // line of the `#include` it replaces.
+                if (entering && !include_sites_[entered].has_value()) {
+                    include_sites_[entered] = IncludeSite{file_index_, presumed_line_};
+                }
+                file_index_ = entered;
                 if (system) {
                     system_files_[file_index_] = true;
                 }
             }
+            presumed_line_ = stated_line;
         } else {
             ++presumed_line_;
         }
@@ -247,6 +257,7 @@ class Lexer {
         }
         files_.push_back(file);
         system_files_.push_back(false);
+        include_sites_.emplace_back();
         return static_cast<std::uint32_t>(files_.size() - 1);
     }
 
@@ -365,6 +376,7 @@ class Lexer {
     std::vector<Token> tokens_;
     std::vector<std::string> files_;
     std::vector<bool> system_files_;
+    std::vector<std::optional<IncludeSite>> include_sites_;
     std::size_t offset_ = 0;
     std::size_t line_start_ = 0;
     std::uint32_t presumed_line_ = 1;
@@ -411,6 +423,18 @@ void adopt_written_columns(std::vector<Token>& tokens, std::size_t begin, std::s
 }
 
 } // namespace
+
+std::optional<source::SourceLocation> TokenStream::included_at(std::string_view file) const {
+    for (std::size_t index = 0; index < files_.size() && index < include_sites_.size(); ++index) {
+        if (files_[index] != file) {
+            continue;
+        }
+        if (const std::optional<IncludeSite>& site = include_sites_[index]; site.has_value()) {
+            return source::SourceLocation{files_[site->file], site->line, 1};
+        }
+    }
+    return std::nullopt;
+}
 
 source::SourceLocation TokenStream::location_of(const Token& token) const {
     source::SourceLocation location;

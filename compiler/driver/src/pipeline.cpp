@@ -80,7 +80,12 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
     PipelineOutcome outcome;
 
     frontend::TokenStream stream = frontend::lex(request.preprocessed_text, request.original_path);
-    stream.use_written_columns(written_text);
+    stream.use_written_columns([&request](const std::string& file) -> std::optional<std::string> {
+        if (request.original_text.has_value() && file == request.original_path) {
+            return std::string(*request.original_text);
+        }
+        return written_text(file);
+    });
     frontend::Syntax syntax = frontend::recognize(stream, engine);
 
     if (engine.has_errors()) {

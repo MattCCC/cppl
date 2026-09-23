@@ -402,6 +402,22 @@ original source location
 
 Users should see one coherent diagnostic stream regardless of which subsystem discovered the problem.
 
+### Where a diagnostic is shown
+
+The buffer is compiled from a scratch copy, which a `#line` directive names by
+the document's own path, so every location the compile reports names the
+document or a file it includes, never the copy. A location in the document is
+shown where it was written, at the column its author wrote it at, counted in
+UTF-16 as LSP requires. A location in an included header is shown on the
+document's `#include` that brought the header in, directly or through other
+headers, as `in included file: <message>`, with the header's own location as
+related information. A note links to its own location, in the document or in
+the header it names.
+
+A header's C++L structure and layout are the header's to report, where it is
+itself open, so the structural linter and the style check report only the
+document's own constructs.
+
 ---
 
 ## Refinement types

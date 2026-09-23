@@ -37,6 +37,11 @@ struct PipelineRequest {
     std::string_view preprocessed_text;
     std::string original_path;
 
+    // What `original_path` holds when that is not the file on disk: a live
+    // editor buffer. Tokens take the columns written there (the CLI leaves it
+    // empty and the file is read).
+    std::optional<std::string_view> original_text;
+
     // Where scratch projections may be written (already created).
     std::filesystem::path scratch;
     std::string stem; // basename used for scratch file names

@@ -6,38 +6,83 @@
 #include "cppl/lsp/diagnostic_codes.hpp"
 #include "cppl/lsp/position.hpp"
 #include "cppl/lsp/protocol.hpp"
+#include "cppl/lsp/uri.hpp"
+#include "cppl/source/location.hpp"
 
 #include <cstddef>
+#include <cstdint>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
 namespace cppl::lsp {
 
+namespace {
+
+// Where a header's diagnostic is shown: the whole `#include` line in the
+// document that brought the header in, or the document's start when no
+// include of it is known.
+Range include_range(const std::string& file, const PositionMapper& mapper, const PublishedDocument& document) {
+    if (document.tokens != nullptr) {
+        std::string current = file;
+        // Each step moves to a file entered earlier, so this ends; the bound
+        // only guards against a stream that says otherwise.
+        for (std::size_t step = 0; step < document.tokens->files().size(); ++step) {
+            const std::optional<source::SourceLocation> site = document.tokens->included_at(current);
+            if (!site.has_value()) {
+                break;
+            }
+            if (site->file == document.path) {
+                const Position start{site->line - 1, 0};
+                const Position end =
+                    mapper.byte_offset_to_position(mapper.position_to_byte_offset(Position{start.line, UINT32_MAX}));
+                return Range{start, end};
+            }
+            current = site->file;
+        }
+    }
+    return Range{};
+}
+
+// A location in another file, whose text is not at hand: its byte column is
+// the best character there is.
+Position elsewhere(const source::SourceLocation& location) {
+    return Position{location.line > 0 ? location.line - 1 : 0, location.column > 0 ? location.column - 1 : 0};
+}
+
+} // namespace
+
 std::vector<Diagnostic> Linter::lint(const frontend::TokenStream& tokens, const frontend::Syntax& syntax,
                                      const std::vector<diagnostics::Diagnostic>& parse_diagnostics,
-                                     const PositionMapper& mapper) const {
+                                     const PositionMapper& mapper, const PublishedDocument& document) const {
     std::vector<Diagnostic> diagnostics;
+    PublishedDocument read = document;
+    read.tokens = &tokens;
 
     // Convert frontend diagnostics first
     diagnostics.reserve(parse_diagnostics.size());
     for (const auto& diag : parse_diagnostics) {
-        diagnostics.push_back(convert_diagnostic(diag, mapper));
+        diagnostics.push_back(convert_diagnostic(diag, mapper, read));
     }
 
-    // Lint each construct type
-    lint_laws(syntax.laws, diagnostics, mapper);
-    lint_proofs(syntax.proofs, diagnostics, mapper);
-    lint_verified_functions(syntax.verified_functions, diagnostics, mapper);
-    lint_refinement_types(syntax.refinement_types, diagnostics, mapper);
-    lint_loops(syntax.loops, diagnostics, mapper);
+    // Lint each construct type. A header's constructs are the header's to
+    // report, where it is itself open.
+    lint_laws(syntax.laws, diagnostics, mapper, read);
+    lint_proofs(syntax.proofs, diagnostics, mapper, read);
+    lint_verified_functions(syntax.verified_functions, diagnostics, mapper, read);
+    lint_refinement_types(syntax.refinement_types, diagnostics, mapper, read);
+    lint_loops(syntax.loops, diagnostics, mapper, read);
 
     return diagnostics;
 }
 
 void Linter::lint_laws(const std::vector<frontend::LawDeclaration>& laws, std::vector<Diagnostic>& out,
-                       const PositionMapper& mapper) const {
+                       const PositionMapper& mapper, const PublishedDocument& document) const {
     for (const auto& law : laws) {
+        if (!document.holds(law.keyword_location)) {
+            continue;
+        }
         // Check for exactly one proves clause
         std::size_t proves_count = 0;
         for (const auto& clause : law.clauses) {
@@ -69,8 +114,11 @@ void Linter::lint_laws(const std::vector<frontend::LawDeclaration>& laws, std::v
 }
 
 void Linter::lint_proofs(const std::vector<frontend::ProofDeclaration>& proofs, std::vector<Diagnostic>& out,
-                         const PositionMapper& mapper) const {
+                         const PositionMapper& mapper, const PublishedDocument& document) const {
     for (const auto& proof : proofs) {
+        if (!document.holds(proof.keyword_location)) {
+            continue;
+        }
         // Check that proves clause exists and is non-empty
         if (proof.proposition.length == 0) {
             Diagnostic diag;
@@ -97,8 +145,11 @@ void Linter::lint_proofs(const std::vector<frontend::ProofDeclaration>& proofs, 
 }
 
 void Linter::lint_verified_functions(const std::vector<frontend::VerifiedFunction>& functions,
-                                     std::vector<Diagnostic>& out, const PositionMapper& mapper) const {
+                                     std::vector<Diagnostic>& out, const PositionMapper& mapper, const PublishedDocument& document) const {
     for (const auto& func : functions) {
+        if (!document.holds(func.keyword_location)) {
+            continue;
+        }
         // A refined return supplies a postcondition without an ensures clause.
         // Only shared semantic analysis can decide that from the resolved type.
         // Check clause validity
@@ -107,8 +158,11 @@ void Linter::lint_verified_functions(const std::vector<frontend::VerifiedFunctio
 }
 
 void Linter::lint_refinement_types(const std::vector<frontend::RefinementType>& refinements,
-                                   std::vector<Diagnostic>& out, const PositionMapper& mapper) const {
+                                   std::vector<Diagnostic>& out, const PositionMapper& mapper, const PublishedDocument& document) const {
     for (const auto& refinement : refinements) {
+        if (!document.holds(refinement.keyword_location)) {
+            continue;
+        }
         // Check that base type is present
         if (refinement.base.length == 0) {
             Diagnostic diag;
@@ -132,8 +186,11 @@ void Linter::lint_refinement_types(const std::vector<frontend::RefinementType>& 
 }
 
 void Linter::lint_loops(const std::vector<frontend::LoopSpecification>& loops, std::vector<Diagnostic>& out,
-                        const PositionMapper& mapper) const {
+                        const PositionMapper& mapper, const PublishedDocument& document) const {
     for (const auto& loop : loops) {
+        if (!document.holds(loop.keyword_location)) {
+            continue;
+        }
         // Check that invariants are non-empty
         if (loop.invariants.empty()) {
             Position keyword_pos = mapper.source_location_to_position(loop.keyword_location);
@@ -247,7 +304,8 @@ void Linter::check_proof_statements(const std::vector<frontend::ProofStatement>&
     }
 }
 
-Diagnostic Linter::convert_diagnostic(const diagnostics::Diagnostic& diag, const PositionMapper& mapper) const {
+Diagnostic Linter::convert_diagnostic(const diagnostics::Diagnostic& diag, const PositionMapper& mapper,
+                                      const PublishedDocument& document) const {
     Diagnostic lsp_diag;
 
     // Map severity
@@ -296,17 +354,30 @@ Diagnostic Linter::convert_diagnostic(const diagnostics::Diagnostic& diag, const
 
     lsp_diag.message = diag.message;
 
-    // Convert location to range
-    Position pos = mapper.source_location_to_position(diag.location);
-    lsp_diag.range = Range{pos, pos};
+    if (document.holds(diag.location)) {
+        const Position pos = mapper.source_location_to_position(diag.location);
+        lsp_diag.range = Range{pos, pos};
+    } else {
+        lsp_diag.range = include_range(diag.location.file, mapper, document);
+        lsp_diag.message = "in included file: " + diag.message;
+        DiagnosticRelatedInformation where;
+        where.message = diag.message;
+        where.location.uri = path_to_uri(diag.location.file);
+        where.location.range = Range{elsewhere(diag.location), elsewhere(diag.location)};
+        lsp_diag.relatedInformation.push_back(std::move(where));
+    }
 
-    // Convert notes to related information
     for (const auto& note : diag.notes) {
         DiagnosticRelatedInformation related;
         related.message = note.message;
-        Position note_pos = mapper.source_location_to_position(note.location);
-        related.location.uri = diag.location.file;
-        related.location.range = Range{note_pos, note_pos};
+        if (document.holds(note.location)) {
+            const Position pos = mapper.source_location_to_position(note.location);
+            related.location.uri = document.uri;
+            related.location.range = Range{pos, pos};
+        } else {
+            related.location.uri = path_to_uri(note.location.file);
+            related.location.range = Range{elsewhere(note.location), elsewhere(note.location)};
+        }
         lsp_diag.relatedInformation.push_back(std::move(related));
     }
 

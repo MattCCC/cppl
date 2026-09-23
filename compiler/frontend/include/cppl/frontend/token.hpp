@@ -43,15 +43,23 @@ struct Token {
     }
 };
 
+// Where a line marker says a file was entered from: the file, by index, and the
+// line of its `#include`.
+struct IncludeSite {
+    std::uint32_t file = 0;
+    std::uint32_t line = 0;
+};
+
 // A lexed buffer together with the file names its line markers referred to.
 class TokenStream {
   public:
     TokenStream(std::string_view text, std::vector<Token> tokens, std::vector<std::string> files,
-                std::vector<bool> system_files = {})
+                std::vector<bool> system_files = {}, std::vector<std::optional<IncludeSite>> include_sites = {})
         : text_(text),
           tokens_(std::move(tokens)),
           files_(std::move(files)),
-          system_files_(std::move(system_files)) {}
+          system_files_(std::move(system_files)),
+          include_sites_(std::move(include_sites)) {}
 
     // The scanned buffer. The stream does not own it; it stays valid only as
     // long as the buffer passed to lex() does.
@@ -75,6 +83,10 @@ class TokenStream {
         return file < system_files_.size() && system_files_[file];
     }
 
+    // The `#include` that first entered `file`, as the file and line it is
+    // written at, or nothing for a file no marker says was included.
+    [[nodiscard]] std::optional<source::SourceLocation> included_at(std::string_view file) const;
+
     [[nodiscard]] source::SourceLocation location_of(const Token& token) const;
 
     // A file's text as its author wrote it, or nothing when it cannot be read.
@@ -95,6 +107,7 @@ class TokenStream {
     std::vector<Token> tokens_;
     std::vector<std::string> files_;
     std::vector<bool> system_files_;
+    std::vector<std::optional<IncludeSite>> include_sites_;
 };
 
 // Lexes preprocessed C++ text.

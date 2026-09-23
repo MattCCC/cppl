@@ -108,6 +108,47 @@ CPPL_TEST(a_marker_flagged_three_enters_a_system_header) {
     CPPL_CHECK(!stream.is_system(find(stream, "again")->file));
 }
 
+CPPL_TEST(a_file_entered_by_a_marker_knows_the_include_that_entered_it) {
+    // What `clang -E` writes for a buffer named by `#line` that includes a
+    // header, which includes another.
+    const std::string text = "# 1 \"/scratch/copy.cpp\"\n"
+                             "# 1 \"<built-in>\" 1\n"
+                             "# 1 \"<built-in>\" 3\n"
+                             "# 554 \"<built-in>\" 3\n"
+                             "# 1 \"<command line>\" 1\n"
+                             "# 1 \"<built-in>\" 2\n"
+                             "# 1 \"/scratch/copy.cpp\" 2\n"
+                             "# 1 \"/work/doc.cpp\"\n"
+                             "int before;\n"
+                             "\n"
+                             "# 1 \"/work/inner.hpp\" 1\n"
+                             "\n"
+                             "int inner_value;\n"
+                             "# 1 \"/work/deep.hpp\" 1\n"
+                             "\n"
+                             "int deep_value = ;\n"
+                             "# 4 \"/work/inner.hpp\" 2\n"
+                             "# 4 \"/work/doc.cpp\" 2\n"
+                             "int after;\n";
+
+    const TokenStream stream = cppl::frontend::lex(text, "/work/doc.cpp");
+
+    const std::optional<cppl::source::SourceLocation> inner = stream.included_at("/work/inner.hpp");
+    CPPL_CHECK(inner.has_value());
+    CPPL_CHECK_EQ(inner->file, std::string("/work/doc.cpp"));
+    CPPL_CHECK_EQ(inner->line, 3u);
+
+    const std::optional<cppl::source::SourceLocation> deep = stream.included_at("/work/deep.hpp");
+    CPPL_CHECK(deep.has_value());
+    CPPL_CHECK_EQ(deep->file, std::string("/work/inner.hpp"));
+    CPPL_CHECK_EQ(deep->line, 3u);
+
+    // The document itself was entered by no include, and a returning marker
+    // records nothing.
+    CPPL_CHECK(!stream.included_at("/work/doc.cpp").has_value());
+    CPPL_CHECK_EQ(stream.location_of(*find(stream, "after")).line, 4u);
+}
+
 CPPL_TEST(tokens_take_the_columns_they_were_written_at) {
     // The preprocessor keeps a line's first column and writes every later run
     // of whitespace, and a comment, as one space.

@@ -159,6 +159,10 @@ target_link_libraries(lsp_position_test PRIVATE cppl_lsp)
 
 cppl_add_unit_test(lsp_server_test unit/lsp_server_test.cpp)
 target_link_libraries(lsp_server_test PRIVATE cppl_lsp)
+# Compiles documents that include fixture headers, as an editor would.
+target_compile_definitions(lsp_server_test PRIVATE
+    CPPL_TEST_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
+    CPPL_TEST_DEFAULT_CLANG="${CPPL_DEFAULT_CLANG}")
 
 cppl_add_unit_test(lsp_uri_test unit/lsp_uri_test.cpp)
 target_link_libraries(lsp_uri_test PRIVATE cppl_lsp)

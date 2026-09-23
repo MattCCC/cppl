@@ -1333,8 +1333,12 @@ machine-readable form yet, and it prints no proposition or evidence hashes
 pipeline over the live buffer (`driver::compile_buffer`), so the server has no
 decomposition, exhaustiveness or verification engine of its own; a structural
 linter adds contextual C++L checks over the same recognized syntax rather than
-re-recognizing it. Transport is separate from analysis, and the library is
-tested without an editor. The server also advertises
+re-recognizing it. The buffer compile names the buffer by the document's own
+path, so a diagnostic is shown where it was written, at the column its author
+wrote it at, and one located in an included header is shown on the document's
+`#include` that brought the header in, with the header's location as related
+information. Transport is separate from analysis, and the library is tested
+without an editor. The server also advertises
 `documentFormattingProvider`, `documentRangeFormattingProvider` and
 `documentOnTypeFormattingProvider`, backed by one shared `compiler/formatter`
 engine that also backs the standalone `cppl-format` CLI: `expects`, `ensures`,

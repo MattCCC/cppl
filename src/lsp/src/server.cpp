@@ -5,6 +5,7 @@
 #include "cppl/formatter/format.hpp"
 #include "cppl/lsp/decomposition_view.hpp"
 #include "cppl/lsp/document.hpp"
+#include "cppl/lsp/linter.hpp"
 #include "cppl/lsp/position.hpp"
 #include "cppl/lsp/protocol.hpp"
 #include "cppl/lsp/semantic_tokens.hpp"
@@ -286,15 +287,19 @@ void Server::publish_diagnostics(const Document& doc) {
             }
         }
 
-        lsp_diagnostics = linter_.lint(*outcome.tokens, *outcome.syntax, syntax_diagnostics, mapper);
+        const PublishedDocument published{doc.path(), doc.uri(), outcome.tokens.get()};
+        lsp_diagnostics = linter_.lint(*outcome.tokens, *outcome.syntax, syntax_diagnostics, mapper, published);
         for (const diagnostics::Diagnostic& diagnostic : other_diagnostics) {
-            lsp_diagnostics.push_back(linter_.convert_diagnostic(diagnostic, mapper));
+            lsp_diagnostics.push_back(linter_.convert_diagnostic(diagnostic, mapper, published));
         }
         // The same clause-placement rule the formatter enforces, reported as
         // Style warnings; cheap (no clang-format subprocess) so it runs on
-        // every publish rather than only when the user asks to format.
+        // every publish rather than only when the user asks to format. A
+        // header's layout is the header's own to report.
         for (const diagnostics::Diagnostic& diagnostic : formatter::check_style(*outcome.tokens, *outcome.syntax)) {
-            lsp_diagnostics.push_back(linter_.convert_diagnostic(diagnostic, mapper));
+            if (published.holds(diagnostic.location)) {
+                lsp_diagnostics.push_back(linter_.convert_diagnostic(diagnostic, mapper, published));
+            }
         }
     } else {
         // The pipeline could not even preprocess the buffer (missing clang,
@@ -302,14 +307,15 @@ void Server::publish_diagnostics(const Document& doc) {
         // structural parse, if it has one, so the editor still sees
         // whatever C++L-aware diagnostics are available, and report every
         // engine diagnostic (preprocessing failures) directly.
+        const PublishedDocument published{doc.path(), doc.uri(), doc.tokens()};
         if (doc.tokens() && doc.syntax()) {
-            lsp_diagnostics = linter_.lint(*doc.tokens(), *doc.syntax(), doc.diagnostics(), mapper);
+            lsp_diagnostics = linter_.lint(*doc.tokens(), *doc.syntax(), doc.diagnostics(), mapper, published);
             for (const diagnostics::Diagnostic& diagnostic : formatter::check_style(*doc.tokens(), *doc.syntax())) {
-                lsp_diagnostics.push_back(linter_.convert_diagnostic(diagnostic, mapper));
+                lsp_diagnostics.push_back(linter_.convert_diagnostic(diagnostic, mapper, published));
             }
         }
         for (const diagnostics::Diagnostic& diagnostic : engine.diagnostics()) {
-            lsp_diagnostics.push_back(linter_.convert_diagnostic(diagnostic, mapper));
+            lsp_diagnostics.push_back(linter_.convert_diagnostic(diagnostic, mapper, published));
         }
     }
 

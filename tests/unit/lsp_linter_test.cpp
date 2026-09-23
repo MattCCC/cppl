@@ -23,7 +23,7 @@ std::vector<Diagnostic> lint_text(const std::string& text) {
 
     PositionMapper mapper(text);
     Linter linter;
-    return linter.lint(tokens, syntax, engine.diagnostics(), mapper);
+    return linter.lint(tokens, syntax, engine.diagnostics(), mapper, PublishedDocument{"test.cpp", "file:///test.cpp"});
 }
 
 bool has_diagnostic_with_code(const std::vector<Diagnostic>& diags, std::string_view code) {

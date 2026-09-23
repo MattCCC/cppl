@@ -16,6 +16,7 @@
 #include "cppl/testing/test.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <fstream>
 #include <functional>
 #include <ios>
@@ -384,6 +385,31 @@ CPPL_TEST(ordinary_cpp_syntax_error_is_reported) {
     CPPL_CHECK(outcome.ok);
     CPPL_CHECK(!outcome.has_cppl);
     CPPL_CHECK(engine.has_errors());
+}
+
+// --- a buffer is named by its document's path, not its scratch copy's ---
+
+CPPL_TEST(a_buffer_is_named_by_its_own_path_however_that_path_is_spelled) {
+    // The compile reads a scratch copy, which a line directive names by the
+    // document's path; a quote and a backslash must survive being spelled in
+    // it. Both a C++L refusal and a Clang error are located in the document.
+    const auto located = [](const std::string& text, std::uint32_t line, std::uint32_t column) {
+        diagnostics::Engine engine;
+        driver::BufferCompileRequest request;
+        request.virtual_path = "/virtual/we\"ird\\dir/named.cpp";
+        request.text = text;
+        request.clang = CPPL_TEST_DEFAULT_CLANG;
+        request.clang_arguments = {"-std=c++20"};
+        [[maybe_unused]] const auto outcome = driver::compile_buffer(request, engine);
+        CPPL_CHECK(engine.has_errors());
+        for (const diagnostics::Diagnostic& diagnostic : engine.diagnostics()) {
+            CPPL_CHECK_EQ(diagnostic.location.file, request.virtual_path);
+            CPPL_CHECK_EQ(diagnostic.location.line, line);
+            CPPL_CHECK_EQ(diagnostic.location.column, column);
+        }
+    };
+    located("proof p(int a)\n    proves (a == a)\n{\n    frobnicate a;\n}\n", 4, 5);
+    located("int value = 1;\nint broken = ;\n", 2, 14);
 }
 
 // --- preprocessing failure must not crash, must produce a diagnostic ---

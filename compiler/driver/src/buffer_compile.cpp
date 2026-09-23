@@ -37,6 +37,28 @@ std::optional<std::string> read_scratch_file(const std::filesystem::path& path) 
     return buffer.str();
 }
 
+// A `#line` naming the buffer by the document's own path, so every location the
+// compile reports names the document rather than the scratch copy Clang reads.
+// Quoted includes still resolve against the copy's directory, where they
+// resolved before. Empty when the path cannot be spelled in a line directive.
+std::string naming_line(const std::string& path) {
+    if (path.empty()) {
+        return {};
+    }
+    std::string directive = "#line 1 \"";
+    for (const char character : path) {
+        if (character == '\n' || character == '\r') {
+            return {};
+        }
+        if (character == '\\' || character == '"') {
+            directive.push_back('\\');
+        }
+        directive.push_back(character);
+    }
+    directive += "\"\n";
+    return directive;
+}
+
 } // namespace
 
 BufferCompileOutcome compile_buffer(const BufferCompileRequest& request, diagnostics::Engine& engine) {
@@ -69,7 +91,7 @@ BufferCompileOutcome compile_buffer(const BufferCompileRequest& request, diagnos
     // clang_arguments (e.g. -I<directory of virtual_path>), which the caller
     // is responsible for supplying when the buffer's directory matters.
     const std::filesystem::path source_path = scratch.path() / stem;
-    if (!write_scratch_file(source_path, request.text)) {
+    if (!write_scratch_file(source_path, naming_line(request.virtual_path) + request.text)) {
         report_internal(engine, "could not write a scratch copy of '" + request.virtual_path + "'");
         outcome.ok = false;
         return outcome;
@@ -119,6 +141,7 @@ BufferCompileOutcome compile_buffer(const BufferCompileRequest& request, diagnos
     detail::PipelineRequest pipeline_request;
     pipeline_request.preprocessed_text = *outcome.text;
     pipeline_request.original_path = request.virtual_path;
+    pipeline_request.original_text = request.text;
     pipeline_request.scratch = scratch.path();
     pipeline_request.stem = stem;
     pipeline_request.clang = clang;
