@@ -221,6 +221,12 @@ struct UnknownVersion {
     Place place;
     Type value_type;
     std::vector<Expr> operands; // continuation
+
+    // Whether the fresh value still inhabits `value_type`, which lets the walk
+    // suppose the type's predicate of it. Set only where every write that could
+    // reach the place was modeled in this body and owed that predicate.
+    bool confined = false;
+
     friend bool operator==(const UnknownVersion&, const UnknownVersion&) = default;
 };
 

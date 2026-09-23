@@ -2073,6 +2073,12 @@ Refinement validity applies to logical values and logical value versions.
 
 [REFINE-023] If a write, aliasing event, call effect, lifetime transition, or other operation may change the relevant value, facts about the previous logical version MUST NOT automatically be reused for the new logical version.
 
+[REFINE-060] A logical value version read from a storage location satisfies that location's declared semantic validity where every operation able to establish a version of the location is modeled by the verifier and each was required to establish that same validity. This does not attach the predicate to the location in the sense REFINE-022 forbids, and it reuses no fact about a previous version in the sense REFINE-023 forbids: the predicate is re-derived from the obligations charged at the operations that write the location, and it ceases to hold the moment an operation able to reach the location is not among them.
+
+[REFINE-061] An implementation MUST NOT apply REFINE-060 to a location that an operation outside the modeled body can write. A location whose address escapes the body, a location designated by a parameter that may alias caller storage, and a location reached through a pointer are each writable in that way. A pointer in particular carries no such evidence, because a pointer to a refined type erases to a pointer to its representation and so says nothing about what the pointee holds (REFINE-019).
+
+[REFINE-062] REFINE-060 states a supposition and never an obligation. The predicate MUST NOT be demanded again where the value is read, because the obligation for it was already charged where the value was written, and charging it at both ends would make a body owe one crossing twice.
+
 Refinement validity is recursive through refinement-bearing subobjects as defined by §17.2.1.
 
 [REFINE-007] A parameter of semantic type `T` supplies:
@@ -5312,6 +5318,13 @@ representation, solver, or TCB implementation.
   write through one need not invalidate a fact about the other.
 - An implementation that establishes neither equality nor inequality must transport no fact between
   the selections and must treat a write through either as invalidating the other.
+
+- [STORAGE-011] A parameter passed by value designates storage of the callee, and its subobjects are
+  places of the callee exactly as a local's subobjects are places of the body that declares it.
+- A write to such a place has no effect any caller can observe and reaches no storage a caller
+  names, so it is modeled as an ordinary write to the callee's own storage.
+- A parameter that may designate caller storage is not such a place. Another reference may designate
+  the same object, so what a write through it reaches is not decided by the callee alone.
 
 ## E.2 Lifetime start
 

@@ -1664,6 +1664,71 @@ std::unordered_set<unsigned> escaped_locals(CXCursor body) {
     return escaped;
 }
 
+// The locals some write outside this body's model could reach.
+//
+// This asks a stricter question than `escaped_locals` and the two must not be
+// confused. `escaped_locals` answers "could a pointer in this body point here",
+// and to that end it counts every array-to-pointer decay -- including the one
+// every subscript performs on its own base. That is the right answer for
+// aliasing and a useless one here, because it marks every array that is ever
+// indexed.
+//
+// The decay a subscript performs on its own base is not an escape: the pointer
+// selects one element, does not outlive the expression, and the access it
+// serves goes through the place machinery, which charges the element type's
+// refinement on every write. Every other appearance of an array is an escape --
+// a decay as a call argument, a decay into pointer arithmetic, binding the
+// array to a reference -- as is taking the address of the object or of anything
+// inside it (RFC 0014 §4, §6).
+std::unordered_set<unsigned> unconfined_locals(CXCursor body) {
+    std::unordered_set<unsigned> escaped;
+    const auto record = [&escaped](CXCursor operand) {
+        operand = strip_parens(operand);
+        if (const auto access = resolve_access(operand)) {
+            const auto declaration = clang_getCursorReferenced(access->object);
+            if (clang_getCursorKind(declaration) == CXCursor_VarDecl ||
+                clang_getCursorKind(declaration) == CXCursor_ParmDecl) {
+                escaped.insert(clang_hashCursor(declaration));
+            }
+        }
+    };
+    // Recursive rather than `clang_visitChildren`: whether a decay escapes
+    // depends on what consumes it, and only the parent knows that.
+    const auto walk = [&record](auto&& self, CXCursor cursor) -> void {
+        const auto kind = clang_getCursorKind(cursor);
+        if (kind == CXCursor_ArraySubscriptExpr) {
+            const auto children = children_of(cursor);
+            if (children.size() == 2) {
+                // The base's own decay is consumed here. Anything further
+                // inside it is not, so a base that is not a plain array name
+                // is walked as usual.
+                const auto base = strip_parens(children[0]);
+                if (clang_getCursorKind(base) != CXCursor_DeclRefExpr ||
+                    clang_getCanonicalType(clang_getCursorType(base)).kind != CXType_ConstantArray) {
+                    self(self, children[0]);
+                }
+                self(self, children[1]);
+                return;
+            }
+        }
+        if (kind == CXCursor_UnaryOperator && clang_getCursorUnaryOperatorKind(cursor) == CXUnaryOperator_AddrOf) {
+            const auto children = children_of(cursor);
+            if (children.size() == 1) {
+                record(children[0]);
+            }
+        }
+        if (kind == CXCursor_DeclRefExpr &&
+            clang_getCanonicalType(clang_getCursorType(cursor)).kind == CXType_ConstantArray) {
+            record(cursor);
+        }
+        for (const auto child : children_of(cursor)) {
+            self(self, child);
+        }
+    };
+    walk(walk, body);
+    return escaped;
+}
+
 std::optional<std::size_t> written_storage(CXCursor declaration, const Locals& locals, unsigned depth = 0) {
     if (const auto local = find_local(locals, declaration))
         return local;
@@ -1734,6 +1799,19 @@ void mark_write(CXCursor cursor, const WriteScan& scan) {
         target = inner[0];
     }
     if (clang_getCursorKind(target) != CXCursor_DeclRefExpr) {
+        // Writing a member or an element writes the object it belongs to, so
+        // the entries tracking that object are the ones this reaches. Which of
+        // them the write lands on is decided when the statement is lowered;
+        // here it is only a question of which entries must be kept, and keeping
+        // one that turns out untouched costs nothing.
+        if (const auto access = resolve_access(target)) {
+            const auto declaration = clang_getCursorReferenced(access->object);
+            for (std::size_t index = 0; index < scan.locals->size(); ++index) {
+                if (clang_equalCursors((*scan.locals)[index].declaration, declaration) != 0) {
+                    (*scan.written)[index] = true;
+                }
+            }
+        }
         return;
     }
     if (const auto local = written_storage(clang_getCursorReferenced(target), *scan.locals)) {
@@ -1871,6 +1949,10 @@ struct BodyLowering {
     // pointer formed on one path may be written through on another.
     std::unordered_set<unsigned> escaped;
 
+    // Locals some unmodeled write could reach, which is a stricter question
+    // than `escaped` answers. See `unconfined_locals`.
+    std::unordered_set<unsigned> unconfined;
+
     // Dereference places formed while lowering the statement in hand, awaiting
     // the binding that gives each one an entry value.
     //
@@ -1886,10 +1968,30 @@ struct BodyLowering {
     // Wrap `body` in an opaque binding for each dereference place formed while
     // the statement was lowered, outermost first so each version is bound
     // before anything reads it.
+    // Whether the value bound for a newly formed place is still known to
+    // inhabit the place's declared type, so the walk may suppose that type's
+    // refinement of it.
+    //
+    // Only a symbolic element of a local this body never let escape qualifies.
+    // Every value that reached such an element was written here, and each of
+    // those writes owed the element type's refinement where it happened, so the
+    // element holds some value of that type even though which one is undecided.
+    //
+    // A dereference never qualifies: a pointer to a refined type erases to a
+    // pointer to its representation, so the pointee's declared type is not
+    // evidence about what the pointee holds. A reference parameter never
+    // qualifies either, because the caller may write the same storage through
+    // another reference to it. An address-taken local never qualifies, because
+    // a write through the escaped pointer is a write this body did not model.
+    [[nodiscard]] bool confined_element(const Local& entry) const {
+        return entry.symbolic && !entry.is_deref() && !entry.external &&
+               !unconfined.contains(clang_hashCursor(entry.declaration));
+    }
+
     Expr bind_formed_derefs(Expr body, CXCursor at) {
         for (const Local& entry : std::ranges::reverse_view(formed_derefs)) {
             Locals one{entry};
-            body = unknown(one, 0, std::move(body), at);
+            body = unknown(one, 0, std::move(body), at, confined_element(entry));
             // A symbolic element owes `index < extent` where it was formed. The
             // bound wraps the binding, so the obligation stands whether or not
             // the element's value is ever used.
@@ -2294,12 +2396,12 @@ struct BodyLowering {
 
     // Havoc uses the same version namespace as exact writes. No premise is
     // inherited for the new value; old facts still name only old versions.
-    Expr unknown(const Locals& state, std::size_t entry, Expr body, CXCursor at) {
+    Expr unknown(const Locals& state, std::size_t entry, Expr body, CXCursor at, bool confined = false) {
         Expr result;
         result.type = body.type;
         result.location = presumed_location(clang_getCursorLocation(at));
-        result.node =
-            UnknownVersion{state[entry].version, place_of(state, entry), state[entry].type, {std::move(body)}};
+        result.node = UnknownVersion{
+            state[entry].version, place_of(state, entry), state[entry].type, {std::move(body)}, confined};
         return result;
     }
 
@@ -3133,6 +3235,59 @@ struct BodyLowering {
         return std::nullopt;
     }
 
+    // The scalar places a value of `type` occupies, in declaration order, with
+    // no initializer to supply them.
+    //
+    // A by-value parameter arrives already holding a value the caller
+    // established, so what is enumerated here is where that value lives rather
+    // than how it was built -- which is the whole difference from
+    // `collect_leaves`. The structural rules are otherwise the same: a member
+    // that is itself an aggregate is followed into its own members, and a type
+    // this implementation does not model is refused rather than tracked, since
+    // an untracked member would read as an unconstrained value while still
+    // carrying its declared refinement.
+    std::optional<std::string> collect_type_leaves(const Type& type, const std::string& written,
+                                                   const std::vector<PlaceStep>& prefix,
+                                                   std::vector<AggregateLeaf>& leaves) {
+        const auto& components = type.representation.components;
+        const bool array = type.representation.kind == source::RepresentationKind::Array;
+        if ((type.representation.kind != source::RepresentationKind::Record && !array) || components.empty() ||
+            type.projections.size() != components.size()) {
+            return "'" + written + "' has type '" + type.spelling + "', which is not modeled";
+        }
+        if (prefix.size() >= kMaxPlaceDepth) {
+            return "'" + written + "' nests deeper than this implementation tracks";
+        }
+        for (const auto& component : components) {
+            if (!component.accessible) {
+                return "'" + written + "' has type '" + type.spelling +
+                       "' with an inaccessible member, whose value this body cannot state";
+            }
+        }
+        for (std::size_t member = 0; member < components.size(); ++member) {
+            if (leaves.size() >= kMaxTrackedLeaves) {
+                return "'" + written + "' has more tracked members than the proof resource limit allows";
+            }
+            const Type& member_type = type.projections[member];
+            const std::string member_written =
+                array ? written + "[" + components[member].name + "]" : written + "." + components[member].name;
+            std::vector<PlaceStep> path = prefix;
+            path.push_back(PlaceStep{array ? PlaceStep::Kind::Element : PlaceStep::Kind::Field,
+                                     static_cast<std::uint32_t>(member)});
+            if (member_type.kind == TypeKind::Value) {
+                if (auto refusal = collect_type_leaves(member_type, member_written, path, leaves)) {
+                    return refusal;
+                }
+                continue;
+            }
+            if (member_type.kind == TypeKind::Unsupported) {
+                return "member '" + member_written + "' has type '" + member_type.spelling + "', which is not modeled";
+            }
+            leaves.push_back(AggregateLeaf{std::move(path), member_type, clang_getNullCursor(), member_written});
+        }
+        return std::nullopt;
+    }
+
     std::optional<Expr> lower_aggregate(CXCursor declaration, const std::string& name, const Type& type,
                                         const std::vector<CXCursor>& declared, std::size_t index,
                                         const Continuation& next, const Locals& locals, unsigned depth) {
@@ -3526,14 +3681,41 @@ void extract_body(Function& function, CXCursor cursor, const std::vector<CXCurso
                           .capabilities = capabilities};
     lowering.completion_location = presumed_location(clang_getRangeEnd(clang_getCursorExtent(members[body_index])));
     lowering.escaped = escaped_locals(members[body_index]);
+    lowering.unconfined = unconfined_locals(members[body_index]);
     Locals candidates;
     for (std::size_t index = 0; index < parameters.size(); ++index) {
         const auto& parameter = function.parameters[index];
-        if (executable_state && (parameter.type.kind == TypeKind::Int || parameter.type.kind == TypeKind::Bool))
+        if (!executable_state) {
+            continue;
+        }
+        if (parameter.type.kind == TypeKind::Int || parameter.type.kind == TypeKind::Bool) {
             candidates.push_back(Local{.declaration = parameters[index],
                                        .type = parameter.type,
                                        .external = source::aliases_storage(parameter.passing),
                                        .spelling = take(clang_getCursorSpelling(parameters[index]))});
+            continue;
+        }
+        // A by-value aggregate parameter is the callee's own copy of the
+        // caller's value, so its members are ordinary storage of this body and
+        // writing one has the same modeled effect as writing a local's member.
+        // A parameter that aliases caller storage is not: another reference may
+        // designate the same object, so what a write there reaches is not
+        // decided here (RFC 0014 §4).
+        //
+        // A type whose members cannot all be enumerated is left untracked, and
+        // a write to it is refused where it is written, as before.
+        if (parameter.type.kind == TypeKind::Value && !source::aliases_storage(parameter.passing)) {
+            std::vector<BodyLowering::AggregateLeaf> leaves;
+            const std::string name = take(clang_getCursorSpelling(parameters[index]));
+            if (!lowering.collect_type_leaves(parameter.type, name, {}, leaves)) {
+                for (BodyLowering::AggregateLeaf& leaf : leaves) {
+                    candidates.push_back(Local{.declaration = parameters[index],
+                                               .type = leaf.type,
+                                               .path = std::move(leaf.path),
+                                               .spelling = std::move(leaf.spelling)});
+                }
+            }
+        }
     }
     std::vector<bool> needed(candidates.size(), lowering.has_post_state());
     mark_writes(members[body_index], candidates, needed);
@@ -3563,11 +3745,32 @@ void extract_body(Function& function, CXCursor cursor, const std::vector<CXCurso
             const Local& local = entry[index - 1];
             const auto parameter = std::ranges::find_if(
                 parameters, [&](CXCursor cursor) { return clang_equalCursors(cursor, local.declaration); });
+            const auto position = static_cast<std::uint32_t>(parameter - parameters.begin());
             Expr value;
-            value.type = local.type;
+            value.type = function.parameters[position].type;
             value.location = function.location;
-            value.node = ParameterRef{static_cast<std::uint32_t>(parameter - parameters.begin()),
-                                      take(clang_getCursorSpelling(local.declaration))};
+            value.node = ParameterRef{position, take(clang_getCursorSpelling(local.declaration))};
+            // A member entry holds a projection of the parameter's value rather
+            // than the whole of it: the parameter arrives as one value, and its
+            // members are the places inside that value.
+            bool projected = true;
+            for (const PlaceStep& step : local.path) {
+                if (step.index >= value.type.projections.size()) {
+                    projected = false;
+                    break;
+                }
+                Expr component;
+                component.type = value.type.projections[step.index];
+                component.location = value.location;
+                component.node = Projection{step.index, {std::move(value)}};
+                value = std::move(component);
+            }
+            if (!projected) {
+                function.returned_value.reset();
+                lowering.rejection = "parameter '" + take(clang_getCursorSpelling(local.declaration)) +
+                                     "' has a member this implementation cannot state as a projection of it";
+                break;
+            }
             *function.returned_value = lowering.bind(local.version, place_of(entry, index - 1), std::move(value),
                                                      std::move(*function.returned_value), cursor);
         }

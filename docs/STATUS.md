@@ -910,6 +910,37 @@ region held only as `writable(p, n)` refuses a read of an element it just
 wrote: `writable` does not entail `readable`, and writing an element first does
 not earn it.
 
+A symbolic element read now supplies the element type's refinement (`SPEC.md`
+REFINE-060 to REFINE-062, `TRUST.md` TCB-REFINE-009). The value is unknown, but
+it is unknown *within* the declared type: every value that reached an element of
+a local array was written in this body and owed the predicate where it was
+written, so an element holds some value of its type even though which element is
+undecided. The predicate is supposed and never charged again — demanding it at
+the read would make the body pay for one crossing twice. `a[i]` of a
+`Positive[3]` therefore proves `result > 0`, and a refinement of a refinement
+supplies both predicates and no third one.
+
+This rests on every write being modeled, so it is withheld wherever one might
+not be: from a pointee, because a pointer to a refined type erases to a pointer
+to its representation and says nothing about what is there; from storage a
+reference parameter designates, because the caller may hold another reference to
+it; and from a local whose address escapes. The escape test is deliberately
+stricter than the one aliasing uses — the array-to-pointer decay a subscript
+performs on its own base is not an escape, while a decay into a call argument or
+into pointer arithmetic is. Of these three conditions only the pointee one is
+observable today: the other two describe bodies this implementation already
+refuses for containing an unmodeled `&` or decay, so they are the soundness
+contract for when those forms are modeled rather than gates that currently fire.
+
+A parameter passed by value is the callee's own copy, so its members are places
+of the callee and writing one is an ordinary write (`SPEC.md` STORAGE-011).
+`s.x = 5; return s.x;` verifies, a sibling keeps the value it arrived with
+without becoming known, and a refined member owes its predicate on the way in
+exactly as a local's does. A parameter that may designate caller storage gets
+none of this and is refused where it is written. A member array of a by-value
+parameter is tracked only once something writes it, so reading one at a symbolic
+index is still refused for an unknown extent.
+
 The extent is a term rather than a count. A constant extent canonicalizes to a
 literal, and the extent a capability states does not: `readable(a, n)` bounds a
 region by a runtime value that no enumeration of elements can recover. A

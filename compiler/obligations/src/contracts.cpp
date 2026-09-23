@@ -896,6 +896,18 @@ class Conditions {
             scope.opaque.emplace(unknown->version, scope.binders.size());
             scope.binders.push_back(*type);
             scope.events.emplace_back(*type);
+            // A confined havoc keeps the one fact the place's type states: the
+            // value is unknown within that type rather than unknown outright.
+            // The predicate is supposed here and never owed -- whatever put a
+            // value in that storage owed it where the write was modeled, so
+            // demanding it again would charge the body twice for one crossing.
+            if (unknown->confined) {
+                auto inhabits = membership(program_, unknown->value_type, kernel::Term::variable(kernel::VarIndex{0}));
+                if (!inhabits)
+                    return std::unexpected(inhabits.error());
+                if (*inhabits)
+                    scope.events.emplace_back(std::move(**inhabits));
+            }
             return walk(unknown->operands.front(), std::move(scope), loops);
         }
         if (const auto* completed = std::get_if<vir::ReturnState>(&expression.node)) {

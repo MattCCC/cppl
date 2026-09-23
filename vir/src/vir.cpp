@@ -183,8 +183,8 @@ std::string describe(const Expr& expr) {
                 return text + ")";
             } else if constexpr (std::is_same_v<Node, UnknownVersion>) {
                 return node.operands.size() == 1
-                           ? "havoc " + describe(node.place) + "#" + std::to_string(node.version) + " in " +
-                                 describe(node.operands.front())
+                           ? std::string(node.confined ? "havoc-in-type " : "havoc ") + describe(node.place) + "#" +
+                                 std::to_string(node.version) + " in " + describe(node.operands.front())
                            : "<malformed-mutation>";
             } else if constexpr (std::is_same_v<Node, ElementBound>) {
                 return node.operands.size() == 2 && node.extent.size() == 1

@@ -326,6 +326,15 @@ struct UnknownVersion {
     Place place;
     Type value_type;
     std::vector<Expr> operands; // continuation
+
+    // Whether the fresh value is still known to inhabit `value_type`.
+    //
+    // A havoc inherits no fact, which is right wherever the new value could
+    // have come from outside this body. Where the storage is a local the body
+    // never let escape, every write that could have reached it was modeled
+    // here and owed the place's refinement, so the value is unknown *within*
+    // that type rather than unknown outright.
+    bool confined = false;
 };
 
 struct Unsupported {

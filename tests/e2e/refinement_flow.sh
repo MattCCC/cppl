@@ -893,4 +893,174 @@ verified int f(unsigned i) expects (i < 3u) ensures (result == 7) {
 }
 CPP
 
+# A symbolic element read supplies the element type's predicate. Every value
+# that reached an element of a local array was written here and owed that
+# predicate where it was written, so the element holds a value of its type even
+# though which element is undecided. This supposes a fact and charges no new
+# obligation: the crossing was already paid for at the write (SPEC.md 17.2).
+# SPEC: REFINE-060, REFINE-062
+accept a_symbolic_element_supplies_the_element_predicate <<'CPP'
+type Positive = int where (self > 0);
+verified int f(unsigned i) expects (i < 3u) ensures (result > 0) {
+    Positive a[3] = {1, 2, 3};
+    return a[i];
+}
+CPP
+
+# The same after a write, which owed the predicate itself.
+accept a_symbolic_element_supplies_it_after_a_write <<'CPP'
+type Positive = int where (self > 0);
+verified int f(unsigned i, unsigned j) expects (i < 3u && j < 3u) ensures (result > 0) {
+    Positive a[3] = {1, 2, 3};
+    a[i] = 5;
+    return a[j];
+}
+CPP
+
+# Every predicate the type states is supplied, and a refinement of a refinement
+# states both (SPEC.md 17.5).
+accept a_symbolic_element_supplies_every_stated_predicate <<'CPP'
+type Positive = int where (self > 0);
+type Small = Positive where (self < 10);
+verified int f(unsigned i) expects (i < 3u) ensures (result > 0 && result < 10) {
+    Small a[3] = {1, 2, 3};
+    return a[i];
+}
+CPP
+
+# ...and no more than it states.
+refuse a_symbolic_element_supplies_no_more 'does not satisfy its contract' <<'CPP'
+type Positive = int where (self > 0);
+type Small = Positive where (self < 10);
+verified int f(unsigned i) expects (i < 3u) ensures (result < 5) {
+    Small a[3] = {1, 2, 3};
+    return a[i];
+}
+CPP
+
+# Each array supplies its own predicate and not its neighbour's. Reading the
+# other one of the pair must flip the verdict, which a predicate supposed of the
+# wrong value would not do.
+accept each_array_supplies_its_own_predicate <<'CPP'
+type Small = int where (self < 10);
+type Big = int where (self > 100);
+verified int f(unsigned i, unsigned j) expects (i < 3u && j < 3u) ensures (result == 1) {
+    Small a[3] = {1, 2, 3};
+    Big b[3] = {101, 102, 103};
+    return b[j] > a[i] ? 1 : 0;
+}
+CPP
+
+refuse the_other_ordering_is_not_supplied 'does not satisfy its contract' <<'CPP'
+type Small = int where (self < 10);
+type Big = int where (self > 100);
+verified int f(unsigned i, unsigned j) expects (i < 3u && j < 3u) ensures (result == 1) {
+    Small a[3] = {1, 2, 3};
+    Big b[3] = {101, 102, 103};
+    return a[i] > b[j] ? 1 : 0;
+}
+CPP
+
+# An unrefined array beside a refined one is supplied nothing.
+# SPEC: REFINE-019
+refuse a_plain_array_supplies_no_predicate 'does not satisfy its contract' <<'CPP'
+type Small = int where (self < 10);
+verified int f(unsigned i, unsigned j) expects (i < 3u && j < 3u) ensures (result == 1) {
+    Small a[3] = {1, 2, 3};
+    int c[3] = {1, 2, 3};
+    return a[i] < 10 ? (c[j] < 10 ? 1 : 0) : 0;
+}
+CPP
+
+# A pointee is supplied nothing: a pointer to a refined type erases to a pointer
+# to its representation, so the declared type says nothing about what is there,
+# and a caller may write the region through another pointer.
+# SPEC: REFINE-061
+refuse a_pointee_element_supplies_no_predicate 'does not satisfy its contract' <<'CPP'
+type Positive = int where (self > 0);
+verified int f(Positive* p, unsigned n, unsigned i) expects (readable(p, n)) ensures (result > 0) {
+    if (i < n) { return p[i]; }
+    return 1;
+}
+CPP
+
+# An array a reference parameter designates is caller storage, which another
+# reference may designate too.
+refuse a_reference_parameter_array_supplies_no_predicate 'does not satisfy its contract' <<'CPP'
+type Positive = int where (self > 0);
+verified int f(Positive (&a)[3], unsigned i) expects (i < 3u) ensures (result > 0) {
+    return a[i];
+}
+CPP
+
+# A parameter passed by value is the callee's own copy, so its members are
+# places of this body and writing one is an ordinary write (SPEC.md E.1).
+# SPEC: STORAGE-011
+accept a_by_value_parameter_member_is_written_and_read <<'CPP'
+struct S { int x; int y; };
+verified int f(S s) ensures (result == 5) {
+    s.x = 5;
+    return s.x;
+}
+CPP
+
+# The sibling keeps the value it arrived with rather than becoming unknown.
+accept a_by_value_parameter_sibling_survives_the_write <<'CPP'
+struct S { int x; int y; };
+verified int f(S s) ensures (result == result) {
+    s.x = 5;
+    return s.y;
+}
+CPP
+
+# ...and is not invented: nothing says what the caller passed.
+refuse a_by_value_parameter_sibling_is_not_invented 'does not satisfy its contract' <<'CPP'
+struct S { int x; int y; };
+verified int f(S s) ensures (result == 5) {
+    s.x = 5;
+    return s.y;
+}
+CPP
+
+# A member nested one level deeper is reached by a longer path.
+accept a_nested_parameter_member_is_written_and_read <<'CPP'
+struct Inner { int v; };
+struct Outer { Inner i; int w; };
+verified int f(Outer o) ensures (result == 5) {
+    o.i.v = 5;
+    return o.i.v;
+}
+CPP
+
+# A member of a by-value parameter owes its refinement on the way in, exactly as
+# a local's member does.
+refuse a_refined_parameter_member_write_owes_its_predicate 'not shown to satisfy refinement type' <<'CPP'
+type Positive = int where (self > 0);
+struct S { Positive p; };
+verified int f(S s) ensures (result > 0) {
+    s.p = 0;
+    return s.p;
+}
+CPP
+
+accept a_refined_parameter_member_write_satisfying_it <<'CPP'
+type Positive = int where (self > 0);
+struct S { Positive p; };
+verified int f(S s) ensures (result > 0) {
+    s.p = 7;
+    return s.p;
+}
+CPP
+
+# A parameter that may designate caller storage gets none of this: a write
+# through it reaches storage the callee does not own.
+# SPEC: STORAGE-011
+refuse a_reference_parameter_member_is_not_callee_storage 'not tracked storage|cannot state as a value' <<'CPP'
+struct S { int x; int y; };
+verified int f(S& s) ensures (result == 5) {
+    s.x = 5;
+    return s.x;
+}
+CPP
+
 echo 'refinement flow: proven crossings and refused crossings both hold'

@@ -309,8 +309,8 @@ class ExpressionElaborator {
             auto body = convert(unknown->operands.front());
             if (!body)
                 return std::nullopt;
-            result.node =
-                vir::UnknownVersion{unknown->version, convert_place(unknown->place), *value_type, {std::move(*body)}};
+            result.node = vir::UnknownVersion{
+                unknown->version, convert_place(unknown->place), *value_type, {std::move(*body)}, unknown->confined};
             return result;
         }
 

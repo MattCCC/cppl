@@ -613,6 +613,8 @@ Refinement types have verification identity but erase to their base representati
 
 **[TCB-REFINE-008]** A declaration collision caused by refinement erasure MUST be diagnosed rather than relying on an ABI distinction that does not exist.
 
+**[TCB-REFINE-009]** Supposing that a value read from storage satisfies that storage's declared type MUST rest on having charged the same requirement at every operation able to write the storage, and the set of such operations MUST be established rather than assumed. A location whose address escapes, one a parameter may alias, and one reached through a pointer each admit a writer the body never modeled, and for them the supposition is unfounded: the declared type of a pointee is not evidence about the pointee, exactly as equal erased representation is not evidence of a refinement (`TCB-REFINE-005`). The supposition is also never an obligation — demanding the predicate again where the value is read would charge one crossing twice and silently turn a supposed fact into a proof burden the writer already met (`SPEC.md` REFINE-060, REFINE-061, REFINE-062).
+
 ---
 
 # 17. Arithmetic, conversions and undefined behavior
