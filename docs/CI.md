@@ -57,7 +57,7 @@ name the same one.
 
 | Preset | GitHub job | Runs locally on |
 | --- | --- | --- |
-| `ci-quality` | Quality | Linux, macOS |
+| `ci-quality` | Quality | Linux, or Docker; macOS for a native preview |
 | `ci-linux-gcc` | Build & test / Linux GCC | Linux, or Docker |
 | `ci-linux-clang` | Build & test / Linux Clang | Linux, or Docker |
 | `ci-macos-llvm` | Build & test / macOS LLVM | macOS |
@@ -66,13 +66,30 @@ name the same one.
 | `ci-ubsan` | UndefinedBehaviorSanitizer | Linux, macOS |
 | `ci-tsan` | ThreadSanitizer (nightly) | Linux |
 
-Every one of them is three commands:
+Every build-and-test preset is three commands:
 
 ```sh
 cmake --preset ci-macos-llvm
 cmake --build --preset ci-macos-llvm
 ctest --preset ci-macos-llvm
 ```
+
+The Quality job builds nothing. It runs the repository checks, configures, and
+runs the formatting check and static analysis:
+
+```sh
+cmake -P cmake/ci/CheckHostPaths.cmake
+cmake -P cmake/ci/CheckPresetLayout.cmake
+cmake --preset ci-quality
+cmake --build --preset ci-quality --target format-check
+cmake --build --preset ci-quality --target lint
+```
+
+`tools/ci/run-preset.sh` holds these commands, once, as the workflow runs them.
+`tools/ci/native.sh` and `tools/ci/linux.sh` both run it, so neither a native
+run nor a container run can do something different from GitHub. The
+`ci_workflowsteps` test (`cmake/ci/CheckWorkflowSteps.cmake`) fails when the
+script and `.github/workflows/ci.yml` disagree about any job's commands.
 
 Each preset builds in its own directory, `build/ci/<name>`, so no compiler ever
 reads another compiler's cache. `cmake/ci/CheckPresetLayout.cmake` enforces
@@ -139,7 +156,13 @@ only -- it says nothing about macOS or Windows.
 ```sh
 make ci-linux-gcc
 make ci-linux-clang
+make ci-quality
 ```
+
+`make ci-quality` runs the Quality job where GitHub runs it, on Linux: natively
+on a Linux host, and through Docker anywhere else. Lint reads the system
+headers, and Linux declares POSIX names in different internal headers than
+macOS, so a macOS lint passing does not show the Linux one would.
 
 The container runs the same presets as everything else:
 

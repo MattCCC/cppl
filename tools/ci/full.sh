@@ -70,6 +70,11 @@ esac
 
 if [ -n "${native_preset}" ]; then
     run "${native_preset} (native)" ./tools/ci/native.sh "${native_preset}"
+    # GitHub runs the Quality job on Linux only: its lint reads the Linux
+    # system headers, so another host runs it through Docker below.
+    if [ "${host}" = "Linux" ]; then
+        run "ci-quality (native)" ./tools/ci/native.sh ci-quality
+    fi
     run "ci-asan (native)" ./tools/ci/native.sh ci-asan
     run "ci-ubsan (native)" ./tools/ci/native.sh ci-ubsan
 else
@@ -91,12 +96,16 @@ fi
 if [ -n "${docker_reason}" ]; then
     record_skip "ci-linux-gcc" "${docker_reason}"
     record_skip "ci-linux-clang" "${docker_reason}"
+    if [ "${host}" != "Linux" ]; then
+        record_skip "ci-quality" "${docker_reason}"
+    fi
 elif [ "${host}" = "Linux" ]; then
     # Already covered natively above; a container would retest the same ABI.
     run "ci-linux-gcc (docker)" ./tools/ci/linux.sh gcc
 else
     run "ci-linux-gcc (docker)" ./tools/ci/linux.sh gcc
     run "ci-linux-clang (docker)" ./tools/ci/linux.sh clang
+    run "ci-quality (docker)" ./tools/ci/linux.sh quality
 fi
 
 # -----------------------------------------------------------------------------

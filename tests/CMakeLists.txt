@@ -314,9 +314,10 @@ set_tests_properties(architecture_dependency_boundaries PROPERTIES
 
 # The repository checks are CMake scripts, so they run under CTest like
 # anything else. Registering them here means a plain `ctest` catches a
-# committed host path or a broken preset convention, rather than that
+# committed host path, a broken preset convention or a local CI run that no
+# longer runs what the workflow runs, rather than that
 # depending on someone remembering to run `make ci-checks` (AGENTS.md 40).
-foreach(check IN ITEMS HostPaths PresetLayout)
+foreach(check IN ITEMS HostPaths PresetLayout WorkflowSteps)
     string(TOLOWER "ci_${check}" check_test)
 
     add_test(NAME ${check_test}

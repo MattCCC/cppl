@@ -57,6 +57,7 @@ endif
 	ci-native \
 	ci-linux-gcc \
 	ci-linux-clang \
+	ci-quality \
 	ci-asan \
 	ci-ubsan \
 	release \
@@ -86,6 +87,7 @@ help:
 		'  ci-full           Every CI environment available on this machine' \
 		'  ci-linux-gcc      Linux GCC CI, through Docker' \
 		'  ci-linux-clang    Linux Clang CI, through Docker' \
+		'  ci-quality        The Quality job, on Linux (through Docker elsewhere)' \
 		'  ci-asan           AddressSanitizer CI profile, natively' \
 		'  ci-ubsan          UndefinedBehaviorSanitizer CI profile, natively' \
 		'  ci-checks         Host-path and preset-layout checks (no build)' \
@@ -268,6 +270,15 @@ ci-linux-gcc:
 ## ci-linux-clang: Linux Clang CI, reproduced through Docker
 ci-linux-clang:
 	./tools/ci/linux.sh clang
+
+## ci-quality: The Quality job (repository checks, formatting, static analysis)
+## on Linux, where GitHub runs it: natively on a Linux host, else through Docker
+ci-quality:
+ifeq ($(UNAME_S),Linux)
+	./tools/ci/native.sh ci-quality
+else
+	./tools/ci/linux.sh quality
+endif
 
 ## ci-asan: AddressSanitizer CI profile, natively
 ci-asan:

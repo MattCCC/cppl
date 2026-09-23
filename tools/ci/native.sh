@@ -12,12 +12,10 @@
 #   tools/ci/native.sh ci-asan
 #
 # This script holds no build policy. It resolves the toolchain the selected
-# environment requires, clears ambient compiler flags, and then calls the same
-# three commands a developer or a workflow calls:
-#
-#   cmake --preset <preset>
-#   cmake --build --preset <preset>
-#   ctest --preset <preset>
+# environment requires, clears ambient compiler flags, and then runs the
+# commands the workflow's job for that preset runs (tools/ci/run-preset.sh):
+# configure, build and test, or, for ci-quality, the repository checks, the
+# formatting check and static analysis.
 #
 # Anything about how the project is compiled belongs in CMakePresets.json.
 
@@ -123,9 +121,4 @@ exec env \
     -u LDFLAGS \
     -u LIBRARY_PATH \
     -u CPATH \
-    sh -c '
-        set -eu
-        cmake --preset "$1"
-        cmake --build --preset "$1"
-        ctest --preset "$1"
-    ' sh "${preset}"
+    sh "${root}/tools/ci/run-preset.sh" "${preset}"

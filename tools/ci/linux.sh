@@ -10,9 +10,10 @@
 #   tools/ci/linux.sh asan
 #
 # Docker needs host-level commands, which is the only reason this script
-# exists. It builds the image, mounts the repository, and runs the same three
-# commands GitHub runs. It contains no compiler flags and no test list -- a
-# difference between this and the workflow would defeat its purpose.
+# exists. It builds the image, mounts the repository, and runs the commands
+# GitHub runs for that job (tools/ci/run-preset.sh). It contains no compiler
+# flags and no test list -- a difference between this and the workflow would
+# defeat its purpose.
 
 set -eu
 
@@ -89,7 +90,5 @@ exec docker run \
     sh -c '
         set -eu
         cmake -E rm -rf "build/ci/${1#ci-}"
-        cmake --preset "$1"
-        cmake --build --preset "$1"
-        ctest --preset "$1"
+        sh tools/ci/run-preset.sh "$1"
     ' sh "${preset}"
