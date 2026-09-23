@@ -33,6 +33,15 @@ belong to `make ci`.
 
 Use `make check-full` for the `check` set with whole-repository lint.
 
+Every test runs under `tests/support/bounded.sh`, locally and on every runner:
+no file a test writes may grow past 256 MiB and no process it starts may use
+more than 1800 CPU seconds. A runaway writer is stopped with `SIGXFSZ` and a
+spinning process with `SIGXCPU`, so a test that goes wrong fails rather than
+filling the disk, and a process left behind by an interrupted run does not keep
+going. `make test` runs CTest itself under the same limits, which caps the log
+it keeps. Windows has no such limit to set, so there the CTest timeout is the
+only bound.
+
 ---
 
 # 2. What each CI preset corresponds to

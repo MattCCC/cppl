@@ -38,13 +38,31 @@ function(cppl_test_tier name out_var)
     endif()
 endfunction()
 
+# Every test runs under hard resource limits (support/bounded.sh): a file it
+# writes is capped and every process it starts has a CPU budget, so a test that
+# goes wrong fails instead of filling the disk or outliving an interrupted run.
+# The wall-clock bound is CTest's own timeout, set on every test.
+set(CPPL_BOUNDED "${CMAKE_CURRENT_SOURCE_DIR}/support/bounded.sh")
+set(CPPL_TEST_TIMEOUT 600)
+
+# The prefix a test command that is not itself a bash script runs under. Windows
+# has no limit the wrapper could set, so such a test runs there directly; a bash
+# script test is wrapped everywhere, since bash is already required for it.
+if(WIN32)
+    set(CPPL_BOUNDED_PREFIX)
+else()
+    set(CPPL_BOUNDED_PREFIX bash "${CPPL_BOUNDED}")
+endif()
+
 function(cppl_add_unit_test name)
     add_executable(${name} ${ARGN})
     target_link_libraries(${name} PRIVATE cppl_testing cppl_project_options)
-    add_test(NAME ${name} COMMAND ${name})
+    add_test(NAME ${name} COMMAND ${CPPL_BOUNDED_PREFIX} $<TARGET_FILE:${name}>)
 
     cppl_test_tier(${name} tier)
-    set_tests_properties(${name} PROPERTIES LABELS "${tier}")
+    set_tests_properties(${name} PROPERTIES
+        LABELS "${tier}"
+        TIMEOUT ${CPPL_TEST_TIMEOUT})
 endfunction()
 
 cppl_add_unit_test(kernel_value_model_test kernel/value_model_test.cpp)
@@ -174,31 +192,28 @@ target_compile_definitions(lsp_fixtures_test PRIVATE
     CPPL_TEST_FIXTURES_DIR="${CPPL_TEST_FIXTURES}"
     CPPL_TEST_DEFAULT_CLANG="${CPPL_DEFAULT_CLANG}")
 
-# Driver-level suites invoke the real compiler on real fixtures, so they are
-# slower than the in-process unit tiers and are given an explicit timeout
-# rather than inheriting CTest's default.
-set(CPPL_SCRIPT_TEST_TIMEOUT 600)
-
+# Driver-level suites invoke the real compiler on real fixtures and write what
+# it produces into the work tree, so each one runs under the same limits.
 function(cppl_add_script_test name script)
     add_test(NAME ${name}
-             COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/${script}"
+             COMMAND bash "${CPPL_BOUNDED}" bash "${CMAKE_CURRENT_SOURCE_DIR}/${script}"
                      $<TARGET_FILE:cppl> "${CPPL_TEST_FIXTURES}" "${CPPL_TEST_WORK}"
                      "${CPPL_DEFAULT_CLANG}")
 
     cppl_test_tier(${name} tier)
     set_tests_properties(${name} PROPERTIES
         LABELS "${tier};script"
-        TIMEOUT ${CPPL_SCRIPT_TEST_TIMEOUT})
+        TIMEOUT ${CPPL_TEST_TIMEOUT})
 endfunction()
 
 # cppl-format: the CLI surface of compiler/formatter (--check/-i), exercised
 # as an installed command exactly as a developer or CI would invoke it.
 add_test(NAME format_check
-         COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/format/format_check.sh"
+         COMMAND bash "${CPPL_BOUNDED}" bash "${CMAKE_CURRENT_SOURCE_DIR}/format/format_check.sh"
                  $<TARGET_FILE:cppl-format> "${CPPL_TEST_FIXTURES}" "${CPPL_TEST_WORK}")
 set_tests_properties(format_check PROPERTIES
     LABELS "format;script"
-    TIMEOUT ${CPPL_SCRIPT_TEST_TIMEOUT})
+    TIMEOUT ${CPPL_TEST_TIMEOUT})
 
 cppl_add_script_test(conformance_ordinary_cpp conformance/ordinary_cpp.sh)
 cppl_add_script_test(conformance_contextual_identifiers conformance/contextual_identifiers.sh)
@@ -206,11 +221,11 @@ cppl_add_script_test(conformance_target_standard_isolation conformance/target_st
 
 # The documented examples are compiled by the compiler they document.
 add_test(NAME conformance_readme_examples
-         COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/conformance/readme_examples.sh"
+         COMMAND bash "${CPPL_BOUNDED}" bash "${CMAKE_CURRENT_SOURCE_DIR}/conformance/readme_examples.sh"
                  $<TARGET_FILE:cppl> "${CMAKE_SOURCE_DIR}/README.md" "${CPPL_TEST_WORK}")
 set_tests_properties(conformance_readme_examples PROPERTIES
     LABELS "conformance;script"
-    TIMEOUT ${CPPL_SCRIPT_TEST_TIMEOUT})
+    TIMEOUT ${CPPL_TEST_TIMEOUT})
 
 cppl_add_script_test(e2e_valid_law e2e/valid_law.sh)
 cppl_add_script_test(e2e_invalid_law e2e/invalid_law.sh)
@@ -263,11 +278,11 @@ cppl_add_script_test(integration_parallel_verification integration/parallel_veri
 cppl_add_script_test(integration_signalled_compiler integration/signalled_compiler.sh)
 
 add_test(NAME architecture_dependency_boundaries
-         COMMAND bash "${CMAKE_CURRENT_SOURCE_DIR}/architecture/dependency_boundaries.sh"
+         COMMAND bash "${CPPL_BOUNDED}" bash "${CMAKE_CURRENT_SOURCE_DIR}/architecture/dependency_boundaries.sh"
                  "${CMAKE_SOURCE_DIR}/kernel" "$<TARGET_FILE:cppl_kernel>")
 set_tests_properties(architecture_dependency_boundaries PROPERTIES
     LABELS "architecture;script"
-    TIMEOUT ${CPPL_SCRIPT_TEST_TIMEOUT})
+    TIMEOUT ${CPPL_TEST_TIMEOUT})
 
 # The repository checks are CMake scripts, so they run under CTest like
 # anything else. Registering them here means a plain `ctest` catches a
@@ -277,10 +292,12 @@ foreach(check IN ITEMS HostPaths PresetLayout)
     string(TOLOWER "ci_${check}" check_test)
 
     add_test(NAME ${check_test}
-             COMMAND "${CMAKE_COMMAND}" -P
+             COMMAND ${CPPL_BOUNDED_PREFIX} "${CMAKE_COMMAND}" -P
                      "${CMAKE_SOURCE_DIR}/cmake/ci/Check${check}.cmake")
 
-    set_tests_properties(${check_test} PROPERTIES LABELS "ci;repository")
+    set_tests_properties(${check_test} PROPERTIES
+        LABELS "ci;repository"
+        TIMEOUT ${CPPL_TEST_TIMEOUT})
 endforeach()
 
 # The editors' shared TextMate grammar decides what is colored as C++L. Its
@@ -289,7 +306,9 @@ endforeach()
 find_program(CPPL_NODE_EXECUTABLE NAMES node)
 if(CPPL_NODE_EXECUTABLE)
     add_test(NAME editors_grammar
-             COMMAND "${CPPL_NODE_EXECUTABLE}"
+             COMMAND ${CPPL_BOUNDED_PREFIX} "${CPPL_NODE_EXECUTABLE}"
                      "${CMAKE_SOURCE_DIR}/editors/shared/test-grammar.js")
-    set_tests_properties(editors_grammar PROPERTIES LABELS "editors;repository")
+    set_tests_properties(editors_grammar PROPERTIES
+        LABELS "editors;repository"
+        TIMEOUT ${CPPL_TEST_TIMEOUT})
 endif()

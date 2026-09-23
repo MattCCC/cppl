@@ -1430,6 +1430,10 @@ Required:
   stale assumptions, undeclared dependencies and missing generated files.
 - Tests are registered with CTest, with their labels and timeouts. A list of
   test executables maintained in a workflow is a defect.
+- Every test runs under the limits of `tests/support/bounded.sh`: each file it
+  writes is capped and each process has a CPU budget, so a test that goes wrong
+  fails instead of filling the disk or outliving an interrupted run. A test
+  registered without them is a defect.
 - An environment that cannot run on a host is reported unavailable. Reporting
   an unrun environment as passing is a defect.
 - Docker reproduces Linux only. It is never presented as macOS or Windows

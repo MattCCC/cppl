@@ -148,22 +148,26 @@ build: configure
 ## rebuild: Clean and rebuild selected preset
 rebuild: clean build
 
+# CTest itself runs under the same resource limits as every test it starts, so
+# the log it keeps of their output is capped as well (tests/support/bounded.sh).
+BOUNDED := bash tests/support/bounded.sh
+
 ## test: Build and run all tests
 test: build
-	$(CTEST) --test-dir $(BUILD_DIR) \
+	$(BOUNDED) $(CTEST) --test-dir $(BUILD_DIR) \
 		--output-on-failure \
 		$(if $(JOBS),--parallel $(JOBS),)
 
 ## test-unit: Run unit tests
 test-unit: build
-	$(CTEST) --test-dir $(BUILD_DIR) \
+	$(BOUNDED) $(CTEST) --test-dir $(BUILD_DIR) \
 		--output-on-failure \
 		-L unit \
 		$(if $(JOBS),--parallel $(JOBS),)
 
 ## test-integration: Run integration tests
 test-integration: build
-	$(CTEST) --test-dir $(BUILD_DIR) \
+	$(BOUNDED) $(CTEST) --test-dir $(BUILD_DIR) \
 		--output-on-failure \
 		-L integration \
 		$(if $(JOBS),--parallel $(JOBS),)
