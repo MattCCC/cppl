@@ -17,9 +17,29 @@ namespace cppl::erasure {
 
 namespace {
 
-bool inside(const std::vector<source::ByteSpan>& spans, std::size_t offset) {
-    return std::ranges::any_of(
-        spans, [offset](const source::ByteSpan& span) { return offset >= span.offset && offset < span.end(); });
+// The proof-only spans as disjoint intervals in source order, so the walk below
+// decides whether a byte was erased without searching every span for it.
+std::vector<source::ByteSpan> disjoint(std::vector<source::ByteSpan> spans) {
+    std::ranges::sort(spans,
+                      [](const source::ByteSpan& lhs, const source::ByteSpan& rhs) { return lhs.offset < rhs.offset; });
+    std::vector<source::ByteSpan> merged;
+    for (const source::ByteSpan& span : spans) {
+        if (span.length == 0) {
+            continue;
+        }
+        if (!merged.empty() && span.offset <= merged.back().end()) {
+            merged.back().length = std::max(merged.back().end(), span.end()) - merged.back().offset;
+            continue;
+        }
+        merged.push_back(span);
+    }
+    return merged;
+}
+
+// What an erased byte must read as in the runtime program: a space, except that
+// a newline stays so no line below it moves.
+char blanked(char original) {
+    return original == '\n' ? '\n' : ' ';
 }
 
 // A runtime-bearing declaration and the canonical C++ it must have become.
@@ -78,10 +98,24 @@ Erased erase(const frontend::TokenStream& stream, const frontend::Syntax& syntax
     report.lowered_spans = lowerings.size();
 
     // Walks both texts together. Outside a lowering the two must agree byte for
-    // byte, except where a proof-only span was blanked; a lowering must be
-    // exactly the canonical C++ its declaration means.
+    // byte, except inside a proof-only span, where every byte must be blank and
+    // only its newlines may remain; a lowering must be exactly the canonical C++
+    // its declaration means. Checking that a span is blank, and not merely that
+    // what changed lies inside one, is what stops proof syntax the projector
+    // failed to remove from reaching Clang as runtime code (SPEC.md ERASE-005,
+    // ERASE-007, ERASE-016; TRUST.md TCB-ERASE-006).
+    const std::vector<source::ByteSpan> erased = disjoint(spans);
     bool only_deletions = true;
+    bool spans_erased = std::ranges::all_of(
+        erased, [&original](const source::ByteSpan& span) { return span.end() <= original.size(); });
     bool lowerings_canonical = true;
+    std::size_t next_erased = 0; // the first erased span not wholly before the walk
+    const auto erased_at = [&erased, &next_erased](std::size_t offset) {
+        while (next_erased < erased.size() && erased[next_erased].end() <= offset) {
+            ++next_erased;
+        }
+        return next_erased < erased.size() && erased[next_erased].offset <= offset;
+    };
     std::size_t source_offset = 0;
     std::size_t runtime_offset = 0;
     const auto compare_until = [&](std::size_t source_end) {
@@ -90,13 +124,22 @@ Erased erase(const frontend::TokenStream& stream, const frontend::Syntax& syntax
                 only_deletions = false;
                 return;
             }
-            if (runtime[runtime_offset] != original[source_offset]) {
-                const bool blanked = runtime[runtime_offset] == ' ' && original[source_offset] != '\n';
-                if (!blanked || !inside(spans, source_offset)) {
+            const char kept = runtime[runtime_offset];
+            const char written = original[source_offset];
+            if (erased_at(source_offset)) {
+                if (kept == blanked(written)) {
+                    if (kept != written) {
+                        ++report.erased_bytes;
+                    }
+                } else if (kept == written) {
+                    spans_erased = false; // proof-only text left in the program
+                } else {
                     only_deletions = false;
                     return;
                 }
-                ++report.erased_bytes;
+            } else if (kept != written) {
+                only_deletions = false;
+                return;
             }
             ++source_offset;
             ++runtime_offset;
@@ -110,6 +153,13 @@ Erased erase(const frontend::TokenStream& stream, const frontend::Syntax& syntax
         }
         compare_until(lowering.span.offset);
         if (!only_deletions) {
+            break;
+        }
+        // A runtime-bearing declaration is never also proof-only: its bytes are
+        // replaced, not blanked, so a span reaching into it cannot be checked.
+        if (erased_at(lowering.span.offset) ||
+            (next_erased < erased.size() && erased[next_erased].offset < lowering.span.end())) {
+            lowerings_canonical = false;
             break;
         }
         if (runtime.substr(runtime_offset, lowering.expected.size()) != lowering.expected) {
@@ -132,9 +182,10 @@ Erased erase(const frontend::TokenStream& stream, const frontend::Syntax& syntax
     };
     report.lines_preserved = count_lines(original) == count_lines(runtime);
     report.only_deletions = only_deletions;
+    report.spans_erased = spans_erased;
     report.lowerings_canonical = lowerings_canonical;
 
-    if (!report.only_deletions || !report.lines_preserved || !report.lowerings_canonical) {
+    if (!report.preserved()) {
         diagnostics::Diagnostic diagnostic;
         diagnostic.severity = diagnostics::Severity::Error;
         diagnostic.category = diagnostics::Category::Internal;

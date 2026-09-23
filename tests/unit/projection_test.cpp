@@ -10,6 +10,7 @@
 #include "cppl/frontend/projection.hpp"
 #include "cppl/frontend/syntax.hpp"
 #include "cppl/frontend/token.hpp"
+#include "cppl/source/location.hpp"
 #include "cppl/source/projection.hpp"
 #include "cppl/testing/test.hpp"
 
@@ -17,6 +18,8 @@
 #include <cstddef>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 namespace {
 
@@ -462,6 +465,180 @@ CPPL_TEST(a_clause_expression_keeps_its_written_position_in_the_analysis) {
     }
     CPPL_CHECK(result_found);
     CPPL_CHECK(parameter_found);
+}
+
+namespace {
+
+// One construct of every erased kind, and a refinement last so that the runtime
+// program shares its byte offsets with this text up to the lowering.
+const std::string kErasedKinds = "# 1 \"erased.cpp\"\n"
+                                 "pure unsigned id(unsigned x) { return x; }\n"
+                                 "law id_is_identity(unsigned x)\n"
+                                 "    proves (id(x) == x);\n"
+                                 "trusted law assumed(unsigned x)\n"
+                                 "    proves (x == x);\n"
+                                 "proof pinned(unsigned v)\n"
+                                 "    proves (v == v)\n"
+                                 "{\n"
+                                 "    refl;\n"
+                                 "}\n"
+                                 "verified unsigned f(unsigned x)\n"
+                                 "    expects (x < 5u)\n"
+                                 "    ensures (result == x)\n"
+                                 "{\n"
+                                 "    unsigned i = 0u;\n"
+                                 "    while (i < x)\n"
+                                 "        invariant (i <= x)\n"
+                                 "        decreases (x - i)\n"
+                                 "    {\n"
+                                 "        i = i + 1u;\n"
+                                 "    }\n"
+                                 "    if (x >= 5u)\n"
+                                 "        contradiction pinned(x + 1u);\n"
+                                 "    return i;\n"
+                                 "}\n"
+                                 "type Small = unsigned\n"
+                                 "    where (self < 10u);\n";
+
+struct ErasedUnit {
+    cppl::frontend::TokenStream stream;
+    cppl::frontend::Syntax syntax;
+    cppl::frontend::Projection projection;
+};
+
+ErasedUnit erased_unit() {
+    cppl::diagnostics::Engine engine;
+    cppl::frontend::TokenStream stream = cppl::frontend::lex(kErasedKinds, "erased.cpp");
+    cppl::frontend::Syntax syntax = cppl::frontend::recognize(stream, engine);
+    CPPL_CHECK(!engine.has_errors());
+    cppl::frontend::Projection projection = cppl::frontend::project(stream, syntax, {});
+    return ErasedUnit{std::move(stream), std::move(syntax), std::move(projection)};
+}
+
+// Every span the syntax says the runtime program must not contain.
+std::vector<cppl::source::ByteSpan> proof_only_spans(const cppl::frontend::Syntax& syntax) {
+    std::vector<cppl::source::ByteSpan> spans;
+    spans.reserve(syntax.laws.size() + syntax.proofs.size() + syntax.pure_markers.size() +
+                  2 * syntax.verified_functions.size() + syntax.loops.size() + syntax.path_contradictions.size());
+    for (const auto& law : syntax.laws)
+        spans.push_back(law.range.span);
+    for (const auto& proof : syntax.proofs)
+        spans.push_back(proof.range.span);
+    for (const auto& marker : syntax.pure_markers)
+        spans.push_back(marker.keyword);
+    for (const auto& verified : syntax.verified_functions) {
+        spans.push_back(verified.keyword);
+        spans.push_back(verified.clause_region);
+    }
+    for (const auto& loop : syntax.loops)
+        spans.push_back(loop.clause_region);
+    for (const auto& claim : syntax.path_contradictions)
+        spans.push_back(claim.erased);
+    return spans;
+}
+
+// Checks a runtime program erasure must refuse, and returns what it reported.
+cppl::erasure::Report refused(const ErasedUnit& unit, std::string runtime) {
+    cppl::frontend::Projection projection = unit.projection;
+    projection.runtime = std::move(runtime);
+    cppl::diagnostics::Engine engine;
+    const auto erased = cppl::erasure::erase(unit.stream, unit.syntax, projection, engine);
+    CPPL_CHECK(!erased.report.preserved());
+    CPPL_CHECK(engine.has_errors());
+    return erased.report;
+}
+
+} // namespace
+
+// SPEC: ERASE-005, ERASE-007, ERASEMATRIX-001
+// TRUST.md TCB-ERASE-001, TCB-ERASE-006; ARCHITECTURE.md ARCH-ERASE-002
+CPPL_TEST(the_projector_erases_every_kind_of_proof_only_span) {
+    const ErasedUnit unit = erased_unit();
+    CPPL_CHECK_EQ(unit.syntax.laws.size(), std::size_t{2});
+    CPPL_CHECK_EQ(unit.syntax.proofs.size(), std::size_t{1});
+    CPPL_CHECK_EQ(unit.syntax.pure_markers.size(), std::size_t{1});
+    CPPL_CHECK_EQ(unit.syntax.verified_functions.size(), std::size_t{1});
+    CPPL_CHECK_EQ(unit.syntax.loops.size(), std::size_t{1});
+    CPPL_CHECK_EQ(unit.syntax.path_contradictions.size(), std::size_t{1});
+    CPPL_CHECK_EQ(unit.syntax.refinement_types.size(), std::size_t{1});
+
+    cppl::diagnostics::Engine engine;
+    const auto erased = cppl::erasure::erase(unit.stream, unit.syntax, unit.projection, engine);
+    CPPL_CHECK(erased.report.preserved());
+    CPPL_CHECK(erased.report.spans_erased);
+    CPPL_CHECK_EQ(erased.report.erased_spans, proof_only_spans(unit.syntax).size());
+    CPPL_CHECK_EQ(erased.report.lowered_spans, std::size_t{1});
+    CPPL_CHECK(!engine.has_errors());
+}
+
+// Erasure checks that each proof-only span is gone, not only that whatever
+// changed lies inside one. A span the projector left in place would otherwise
+// reach Clang as runtime code.
+CPPL_TEST(a_proof_only_span_left_in_the_runtime_program_is_refused) {
+    const ErasedUnit unit = erased_unit();
+    const std::vector<cppl::source::ByteSpan> spans = proof_only_spans(unit.syntax);
+    CPPL_CHECK_EQ(spans.size(), std::size_t{8});
+    for (const auto& span : spans) {
+        std::string runtime = unit.projection.runtime;
+        runtime.replace(span.offset, span.length, kErasedKinds, span.offset, span.length);
+        const auto report = refused(unit, std::move(runtime));
+        CPPL_CHECK(!report.spans_erased);
+        CPPL_CHECK(report.only_deletions);
+    }
+
+    // One byte of a span surviving is enough.
+    const auto& keyword = unit.syntax.verified_functions[0].keyword;
+    std::string runtime = unit.projection.runtime;
+    runtime[keyword.offset] = kErasedKinds[keyword.offset];
+    CPPL_CHECK(!refused(unit, std::move(runtime)).spans_erased);
+}
+
+CPPL_TEST(a_runtime_program_changed_beyond_erasure_is_refused) {
+    const ErasedUnit unit = erased_unit();
+
+    // Inside an erased span, anything but a blank is an addition.
+    const auto& clauses = unit.syntax.verified_functions[0].clause_region;
+    std::string altered = unit.projection.runtime;
+    altered[clauses.offset + 1] = 'X';
+    CPPL_CHECK(!refused(unit, std::move(altered)).only_deletions);
+
+    // Outside one, no byte may change at all.
+    std::string rewritten = unit.projection.runtime;
+    const std::size_t returned = rewritten.find("return i;");
+    CPPL_CHECK(returned != std::string::npos);
+    rewritten[returned + 7] = '0';
+    CPPL_CHECK(!refused(unit, std::move(rewritten)).only_deletions);
+
+    // A claim keeps its `;`: erasing it too would make the `return` the body of
+    // the unbraced `if` above it (ERASE-016).
+    const auto& claim = unit.syntax.path_contradictions[0];
+    std::string unterminated = unit.projection.runtime;
+    CPPL_CHECK_EQ(unterminated[claim.span.end() - 1], ';');
+    unterminated[claim.span.end() - 1] = ' ';
+    CPPL_CHECK(!refused(unit, std::move(unterminated)).only_deletions);
+
+    // A newline blanked away moves every line below it.
+    std::string joined = unit.projection.runtime;
+    joined[clauses.end() - 1] = ' ';
+    CPPL_CHECK(!refused(unit, std::move(joined)).preserved());
+}
+
+// SPEC: ERASE-004, ERASE-010, ABI-002
+// TRUST.md TCB-ERASE-002, TCB-ERASE-007
+CPPL_TEST(a_refinement_lowered_to_anything_but_its_base_alias_is_refused) {
+    const ErasedUnit unit = erased_unit();
+    const std::string canonical = "using Small = unsigned;";
+    CPPL_CHECK(unit.projection.runtime.find(canonical + "\n") != std::string::npos);
+
+    // A different representation, a wrapper, or the predicate kept as a check:
+    // each changes what the program computes or how it is laid out.
+    for (const std::string& lowering :
+         {std::string("using Small = unsigned long;"), std::string("struct Small { unsigned value; };"),
+          std::string("using Small = unsigned; static_assert(true);")}) {
+        std::string runtime = unit.projection.runtime;
+        runtime.replace(runtime.find(canonical), canonical.size(), lowering);
+        CPPL_CHECK(!refused(unit, std::move(runtime)).lowerings_canonical);
+    }
 }
 
 // SPEC: VERIFIED-045, ERASE-016

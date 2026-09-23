@@ -19,11 +19,16 @@ struct Report {
     std::size_t lowered_spans = 0;
     std::size_t lowered_bytes = 0;
 
-    // The checked properties. All three must hold for the runtime program to be
+    // The checked properties. All four must hold for the runtime program to be
     // accepted for code generation.
     bool only_deletions = false;      // outside a lowering, no byte was added or altered
+    bool spans_erased = false;        // every proof-only span is blank, keeping only its newlines
     bool lines_preserved = false;     // every line of the remaining program is where it was
     bool lowerings_canonical = false; // each lowering is exactly what its declaration means
+
+    [[nodiscard]] bool preserved() const noexcept {
+        return only_deletions && spans_erased && lines_preserved && lowerings_canonical;
+    }
 };
 
 struct Erased {
@@ -36,7 +41,8 @@ struct Erased {
 // The property checked here is stronger than "the formal syntax is gone". C++L
 // syntax falls into two classes (TRUST.md 29):
 //
-//   - proof-only syntax is blanked, so no byte is added or altered;
+//   - proof-only syntax is blanked, so no byte is added or altered, and none of
+//     it is left behind;
 //   - a runtime-bearing declaration is replaced by the canonical C++ it means,
 //     which this function recomputes from the declaration itself rather than
 //     taking the projector's word for it.
