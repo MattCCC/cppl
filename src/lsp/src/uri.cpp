@@ -98,7 +98,8 @@ std::string path_to_uri(const std::string& path) {
         encoded.push_back('/');
     }
 
-    for (const unsigned char c : path) {
+    for (const char character : path) {
+        const auto c = static_cast<unsigned char>(character);
         if (c == '\\') {
             encoded.push_back('/');
         } else if (is_unreserved(c)) {

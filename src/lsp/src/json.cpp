@@ -282,7 +282,8 @@ class Parser {
 
 void dump_string(const std::string& text, std::string& out) {
     out.push_back('"');
-    for (const unsigned char c : text) {
+    for (const char character : text) {
+        const auto c = static_cast<unsigned char>(character);
         switch (c) {
             case '"':
                 out += "\\\"";

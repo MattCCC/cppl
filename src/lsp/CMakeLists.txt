@@ -33,6 +33,8 @@ target_link_libraries(cppl_lsp PUBLIC
     cppl_formatter
 )
 
+target_link_libraries(cppl_lsp PRIVATE cppl_project_options)
+
 target_compile_features(cppl_lsp PUBLIC cxx_std_20)
 
 # Each header is analyzed on its own (cmake/HeaderChecks.cmake).

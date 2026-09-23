@@ -65,7 +65,6 @@ json::Value make_error(int code, const std::string& message) {
     return error;
 }
 
-constexpr int kParseError = -32700;
 constexpr int kInvalidRequest = -32600;
 constexpr int kMethodNotFound = -32601;
 constexpr int kInvalidParams = -32602;
