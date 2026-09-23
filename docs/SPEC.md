@@ -5300,6 +5300,15 @@ representation, solver, or TCB implementation.
   when the selected C++ semantics make the storage identity meaningful.
 - A place ceases to denote a live object when the corresponding object lifetime ends.
 
+- [STORAGE-010] An element selected at a term designates the storage that term's value selects. Two such
+  selections are the same place only where their index terms denote the same value, and an
+  index term denotes a value at the versions current where the selection is made.
+- Selections whose indices are not established equal are distinct places for the purpose of
+  transporting a fact, and may overlap for the purpose of invalidating one: a fact about one
+  does not transport to the other, while a write to either invalidates both.
+- An implementation that cannot decide whether two index terms denote one value must treat
+  the selections as distinct places, and must not transport a fact between them.
+
 ## E.2 Lifetime start
 
 - [STORAGE-003] An object may be read as that object only after its lifetime has begun under C++.

@@ -541,6 +541,8 @@ A **place** identifies proof-relevant C++ storage. A **logical version** identif
 
 **[TCB-ALIAS-005]** Repeated actual arguments that alias the same storage MUST share one post-state model.
 
+**[TCB-ALIAS-006]** Two places MUST be treated as potentially distinct unless C++ semantics and checked evidence establish that they are the same place. Identity and aliasing are separate questions with opposite conservative answers, and both require evidence: treating distinct places as one transports a fact from storage that never held it, exactly as treating aliasing places as disjoint keeps a fact that a write destroyed (`TCB-ALIAS-001`). Where a place is selected by a computed value, its identity includes that value, so selections whose selectors are not established equal are distinct for transporting a fact while remaining potentially aliasing for invalidating one.
+
 ## 14.2 Effects
 
 **[TCB-EFFECT-001]** A verified effect summary MUST be derived from checked semantics and bound to the exact callable identity.

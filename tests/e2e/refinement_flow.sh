@@ -850,4 +850,36 @@ verified int const_pointee_survives(const int* p, int* q)
 }
 CPP
 
+# One index term names one place, so a write at it is read back at it. This is
+# the completeness side of keeping `a[i]` and `a[j]` apart: telling places apart
+# by their index term must still recognize the same term as the same place, or
+# an element could never be read back after being written (RFC 0014 §4).
+accept one_index_term_names_one_place <<'CPP'
+verified int f(unsigned i) expects (i < 3u) ensures (result == 7) {
+    int a[3] = {1, 1, 1};
+    a[i] = 7;
+    return a[i];
+}
+CPP
+
+# Identity is of the term, not of the spelling's occurrence: a compound index
+# written twice is one term, and a local index untouched between the two
+# accesses reads at one version.
+accept a_compound_index_term_names_one_place <<'CPP'
+verified unsigned f(unsigned i) expects (i < 2u) ensures (result == 7u) {
+    unsigned a[3] = {1u, 1u, 1u};
+    a[i + 1u] = 7u;
+    return a[i + 1u];
+}
+CPP
+
+accept an_untouched_local_index_names_one_place <<'CPP'
+verified int f(unsigned i) expects (i < 3u) ensures (result == 7) {
+    int a[3] = {1, 1, 1};
+    unsigned k = i;
+    a[k] = 7;
+    return a[k];
+}
+CPP
+
 echo 'refinement flow: proven crossings and refused crossings both hold'

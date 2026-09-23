@@ -259,3 +259,84 @@ CPP
 reject a_capability_does_not_combine_by_disjunction "combines only with '&&'" <<'CPP'
 verified int f(int* p, int* q) expects (readable(p) || readable(q)) ensures (result == result) { return *p; }
 CPP
+
+# A symbolic element place is the storage its index selects, so two subscripts
+# are one place only when their indices are one value. A path records that a
+# step was symbolic and not which element it chose, so matching on the path
+# alone would make every symbolic subscript of one array the same place: a write
+# at `i` would become a fact about `j`, which is false wherever they differ
+# (RFC 0014 §4, SPEC.md 12.10).
+# SPEC: STORAGE-010
+reject a_write_at_one_index_is_not_a_fact_at_another 'does not satisfy its contract' <<'CPP'
+verified int f(unsigned i, unsigned j) expects (i < 3u && j < 3u) ensures (result == 7) {
+    int a[3] = {1, 1, 1};
+    a[i] = 7;
+    return a[j];
+}
+CPP
+
+# The same holds at depth: an array that is a member is reached by a longer
+# path, and the symbolic step at its end identifies an element no differently.
+reject a_member_element_write_is_not_a_fact_at_another 'does not satisfy its contract' <<'CPP'
+struct Holder { int items[3]; };
+verified int f(unsigned i, unsigned j) expects (i < 3u && j < 3u) ensures (result == 7) {
+    Holder h = {{1, 1, 1}};
+    h.items[i] = 7;
+    return h.items[j];
+}
+CPP
+
+# Nothing relates two symbolic reads of one array either: distinct indices may
+# select distinct elements, so their values are not known equal.
+reject two_symbolic_reads_are_not_known_equal 'does not satisfy its contract' <<'CPP'
+verified int f(unsigned i, unsigned j) expects (i < 3u && j < 3u) ensures (result == 0) {
+    int a[3] = {1, 2, 3};
+    return a[i] == a[j] ? 0 : 1;
+}
+CPP
+
+# The index is a term read at the versions current where the subscript stands,
+# so writing the index names a different element afterwards. A place matched by
+# spelling would survive the write and carry the old element's value.
+reject a_reassigned_index_names_another_element 'does not satisfy its contract' <<'CPP'
+verified int f(unsigned i) expects (i < 3u) ensures (result == 7) {
+    int a[3] = {1, 1, 1};
+    a[i] = 7;
+    i = 0u;
+    return a[i];
+}
+CPP
+
+# The same holds through a capability: `p[i]` and `p[j]` are two places of the
+# pointee region, so a write through one proves nothing about the other.
+reject a_pointee_write_at_one_index_is_not_a_fact_at_another 'does not satisfy its contract' <<'CPP'
+verified int f(int* p, unsigned n, unsigned i, unsigned j)
+    expects (writable(p, n) && readable(p, n))
+    ensures (result == 7)
+{
+    if (i < n) {
+        if (j < n) {
+            p[i] = 7;
+            return p[j];
+        }
+    }
+    return 7;
+}
+CPP
+
+# Each subscript forms its own place and owes the capability its own access
+# needs. Writing `p[i]` establishes nothing about `p[j]`, so reading that
+# element is a read of storage this body never wrote and requires `readable`,
+# which `writable` does not entail.
+# SPEC: VERIFIED-037, VERIFIED-043
+reject a_written_element_does_not_grant_a_read_of_another "requires 'readable" <<'CPP'
+verified int f(int* p, unsigned n, unsigned i, unsigned j) expects (writable(p, n)) ensures (result == result) {
+    if (i < n) {
+        if (j < n) {
+            p[i] = 7;
+            return p[j];
+        }
+    }
+    return 0;
+}
+CPP
