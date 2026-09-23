@@ -97,7 +97,7 @@ CPPL_TEST(an_empty_body_is_a_message) {
     const auto body = read("Content-Length: 0\r\n\r\n", refused);
     CPPL_CHECK(!refused);
     CPPL_CHECK(body.has_value());
-    CPPL_CHECK_EQ(body.value_or("x"), "");
+    CPPL_CHECK(body.value_or("x").empty());
 }
 
 CPPL_TEST(a_body_longer_than_one_read_arrives_whole) {
