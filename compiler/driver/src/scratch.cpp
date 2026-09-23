@@ -13,7 +13,10 @@
 #include <cstdint>
 #include <random>
 #else
-#include <unistd.h>
+// mkdtemp is declared in <stdlib.h> by glibc, as POSIX specifies, and in
+// <unistd.h> by macOS. Both are included so each platform finds its own.
+#include <stdlib.h> // IWYU pragma: keep
+#include <unistd.h> // IWYU pragma: keep
 #endif
 
 namespace cppl::driver {

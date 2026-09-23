@@ -18,6 +18,11 @@
 #include <cerrno>
 #include <fcntl.h>
 #include <spawn.h>
+// glibc defines the wait-status macros in whichever of <stdlib.h> and
+// <sys/wait.h> is read first, and a standard header has always read <stdlib.h>
+// by then; macOS defines them in <sys/wait.h> alone. Both are included so each
+// platform finds its own.
+#include <stdlib.h> // IWYU pragma: keep
 #include <sys/wait.h>
 #include <system_error>
 #include <unistd.h>

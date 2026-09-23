@@ -1192,7 +1192,12 @@ not advised:
   (`sys/`, `bits/`, `mach/`, ...) whose public POSIX header is the portable
   spelling. A standard or project header is never added to it.
 - `// IWYU pragma: keep` is for an include whose use the analysis cannot see,
-  such as `<compare>` for a defaulted `<=>`, and nothing else.
+  such as `<compare>` for a defaulted `<=>`, and for a POSIX name that glibc
+  and macOS declare in different public headers (`mkdtemp`, the wait-status
+  macros). There, each platform's header is included and kept, with a comment
+  naming which platform needs which. Nothing else is kept.
+- The Quality job lints on Linux, whose headers differ from macOS's, so a
+  change to platform code is linted there too (`make ci-quality`, docs/CI.md).
 
 ---
 

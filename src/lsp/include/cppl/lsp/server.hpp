@@ -4,7 +4,6 @@
 #include "cppl/lsp/linter.hpp"
 #include "cppl/lsp/protocol.hpp"
 
-#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <optional>
