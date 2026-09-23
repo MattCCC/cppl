@@ -79,6 +79,12 @@ class Server {
     // own words where the grammar admits them (completion.hpp).
     [[nodiscard]] CompletionList text_document_completion(const TextDocumentIdentifier& id, const Position& position);
 
+    // The declarations the call being written at `position` could resolve to,
+    // from Clang (LSP `textDocument/signatureHelp`). Nothing outside a call, or
+    // for an unknown document.
+    [[nodiscard]] std::optional<SignatureHelp> text_document_signature_help(const TextDocumentIdentifier& id,
+                                                                            const Position& position);
+
     // Hover: inside a `cases`/`decompose` block, the subject's states, as
     // above; on a name a proof statement uses, the declaration the compiler
     // resolved it to; on any other name, Clang's description of it, or the

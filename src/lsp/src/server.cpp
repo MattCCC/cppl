@@ -382,6 +382,15 @@ CompletionList Server::text_document_completion(const TextDocumentIdentifier& id
     return view->complete(position, client_.snippets);
 }
 
+std::optional<SignatureHelp> Server::text_document_signature_help(const TextDocumentIdentifier& id,
+                                                                  const Position& position) {
+    EditorView* view = view_for(id.uri);
+    if (view == nullptr) {
+        return std::nullopt;
+    }
+    return view->signature_help(position);
+}
+
 std::optional<Hover> Server::text_document_hover(const TextDocumentIdentifier& id, const Position& position) {
     const Document* doc = documents_.get(id.uri);
     if (doc == nullptr) {

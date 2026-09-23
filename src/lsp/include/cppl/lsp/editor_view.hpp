@@ -83,6 +83,11 @@ class EditorView {
     // own words where the grammar admits them (completion.hpp).
     [[nodiscard]] CompletionList complete(const Position& position, bool snippets) const;
 
+    // The declarations the call whose arguments are being written at
+    // `position` could resolve to, and the argument being written. Nothing
+    // outside a call's parentheses.
+    [[nodiscard]] std::optional<SignatureHelp> signature_help(const Position& position) const;
+
     // The number of refreshes that had to parse the unit from scratch, for
     // tests that check an edit reuses what Clang kept.
     [[nodiscard]] std::size_t parses() const noexcept {

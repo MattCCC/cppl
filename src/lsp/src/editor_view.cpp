@@ -1,6 +1,7 @@
 #include "cppl/lsp/editor_view.hpp"
 
 #include "cppl/clang/editor.hpp"
+#include "cppl/frontend/token.hpp"
 #include "cppl/lsp/completion.hpp"
 #include "cppl/lsp/hover.hpp"
 #include "cppl/lsp/position.hpp"
@@ -11,6 +12,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -372,6 +374,87 @@ CompletionList EditorView::complete(const Position& position, bool snippets) con
         cppl_completions(main_->tokens(), main_->syntax(), text, cursor, prefix, scope, snippets);
     list.items.insert(list.items.begin(), std::make_move_iterator(own.begin()), std::make_move_iterator(own.end()));
     return list;
+}
+
+std::optional<SignatureHelp> EditorView::signature_help(const Position& position) const {
+    if (unit_ == nullptr || main_ == nullptr) {
+        return std::nullopt;
+    }
+    const std::string& text = main_->text();
+    const std::size_t cursor = PositionMapper(text).position_to_byte_offset(position);
+
+    // The innermost call still open at the cursor, from the tokens as written:
+    // the `(` no `)` closes, after a name, and how many of its arguments the
+    // commas say come before the cursor. A statement's end, or a block, is
+    // never inside an argument list.
+    std::vector<const frontend::Token*> before;
+    for (const frontend::Token& token : main_->tokens().tokens()) {
+        if (token.kind == frontend::TokenKind::EndOfFile || token.span.end() > cursor) {
+            break;
+        }
+        before.push_back(&token);
+    }
+    int depth = 0;
+    std::uint32_t commas = 0;
+    std::optional<std::size_t> open;
+    for (std::size_t index = before.size(); index > 0 && !open.has_value(); --index) {
+        const frontend::Token& token = *before[index - 1];
+        if (token.is_punctuator(")") || token.is_punctuator("]")) {
+            ++depth;
+        } else if (token.is_punctuator("(") || token.is_punctuator("[")) {
+            if (depth == 0) {
+                if (!token.is_punctuator("(")) {
+                    return std::nullopt;
+                }
+                open = index - 1;
+            } else {
+                --depth;
+            }
+        } else if (depth == 0 && token.is_punctuator(",")) {
+            ++commas;
+        } else if (depth == 0 && (token.is_punctuator(";") || token.is_punctuator("{") || token.is_punctuator("}"))) {
+            return std::nullopt;
+        }
+    }
+    if (!open.has_value() || *open == 0) {
+        return std::nullopt;
+    }
+    const frontend::Token& callee = *before[*open - 1];
+    if (callee.kind != frontend::TokenKind::Identifier && !callee.is_punctuator(">")) {
+        return std::nullopt;
+    }
+    const std::optional<std::size_t> analysis = insertion_point(cursor);
+    if (!analysis.has_value()) {
+        return std::nullopt;
+    }
+    std::vector<clangbridge::Signature> signatures = unit_->signatures(*analysis);
+    if (signatures.empty()) {
+        return std::nullopt;
+    }
+
+    SignatureHelp help;
+    // Clang says which parameter the argument being written stands for; where
+    // it says nothing, the commas do.
+    help.active_parameter = signatures.front().active.value_or(commas);
+    for (std::size_t index = 0; index < signatures.size(); ++index) {
+        const clangbridge::Signature& signature = signatures[index];
+        SignatureInformation information;
+        information.label = signature.label;
+        information.documentation = signature.documentation;
+        for (const auto& [start, end] : signature.parameters) {
+            // A parameter is a range of the label in UTF-16 code units, as LSP
+            // counts characters.
+            information.parameters.emplace_back(count_utf16_code_units(signature.label, 0, start),
+                                                count_utf16_code_units(signature.label, 0, end));
+        }
+        // The first overload that has the parameter being written.
+        if (help.active_signature == 0 && index != 0 && signatures.front().parameters.size() <= commas &&
+            signature.parameters.size() > commas) {
+            help.active_signature = static_cast<std::uint32_t>(index);
+        }
+        help.signatures.push_back(std::move(information));
+    }
+    return help;
 }
 
 std::optional<EditorView::HoverAnswer> EditorView::hover(const Position& position) const {

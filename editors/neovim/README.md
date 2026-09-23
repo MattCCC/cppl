@@ -78,7 +78,9 @@ the arms still owed. Elsewhere completion offers what Clang would accept, and
 C++L's declarations, proof statements and clauses where the grammar admits
 them. On Neovim 0.11 and newer `setup()` turns on Neovim's own LSP completion
 for C++L buffers (`completion = false` leaves it to a completion plugin, which
-reads the same answers through `vim.lsp`).
+reads the same answers through `vim.lsp`). `vim.lsp.buf.signature_help()`
+(`<C-s>` in insert mode on Neovim 0.11) shows the signatures of the call being
+written.
 
 Each Law, proof and verified function shows its verification status as a code
 lens over its name -- `PROVEN`, `TRUSTED`, `UNRESOLVED` and why -- refreshed

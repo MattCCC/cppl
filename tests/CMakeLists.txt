@@ -257,6 +257,11 @@ target_link_libraries(lsp_completion_test PRIVATE cppl_lsp)
 target_compile_definitions(lsp_completion_test PRIVATE
     CPPL_TEST_DEFAULT_CLANG="${CPPL_DEFAULT_CLANG}")
 
+cppl_add_unit_test(lsp_signature_help_test unit/lsp_signature_help_test.cpp)
+target_link_libraries(lsp_signature_help_test PRIVATE cppl_lsp)
+target_compile_definitions(lsp_signature_help_test PRIVATE
+    CPPL_TEST_DEFAULT_CLANG="${CPPL_DEFAULT_CLANG}")
+
 # Driver-level suites invoke the real compiler on real fixtures and write what
 # it produces into the work tree, so each one runs under the same limits.
 function(cppl_add_script_test name script)

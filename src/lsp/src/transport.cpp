@@ -307,6 +307,8 @@ class Dispatcher {
             handle_document_highlight(id_value, params);
         } else if (method == "textDocument/codeLens") {
             handle_code_lens(id_value, params);
+        } else if (method == "textDocument/signatureHelp") {
+            handle_signature_help(id_value, params);
         } else if (is_request) {
             respond_error(*id_value, kMethodNotFound, "method not found: " + method);
         } else {
@@ -394,6 +396,17 @@ class Dispatcher {
         completion.set("triggerCharacters", std::move(trigger_characters));
         capabilities.set("completionProvider", std::move(completion));
         capabilities.set("hoverProvider", json::Value(true));
+
+        // The declarations a call being written could resolve to, from Clang.
+        json::Value signature_help = json::Value::object();
+        json::Value signature_triggers = json::Value::array();
+        signature_triggers.push_back(json::Value(std::string("(")));
+        signature_triggers.push_back(json::Value(std::string(",")));
+        signature_help.set("triggerCharacters", std::move(signature_triggers));
+        json::Value signature_retriggers = json::Value::array();
+        signature_retriggers.push_back(json::Value(std::string(")")));
+        signature_help.set("retriggerCharacters", std::move(signature_retriggers));
+        capabilities.set("signatureHelpProvider", std::move(signature_help));
 
         // Syntax migrations as quick fixes, and canonical formatting as a
         // fix-all an editor can run on save.
@@ -796,6 +809,46 @@ class Dispatcher {
             items.push_back(std::move(item));
         }
         respond_result(*id, std::move(items));
+    }
+
+    void handle_signature_help(const json::Value* id, const json::Value* params) {
+        if (id == nullptr) {
+            return;
+        }
+        const auto request = position_params(params);
+        if (!request.has_value()) {
+            respond_error(*id, kInvalidParams, "textDocument/signatureHelp missing 'textDocument.uri' or 'position'");
+            return;
+        }
+        const std::optional<SignatureHelp> help = server_.text_document_signature_help(request->first, request->second);
+        if (!help.has_value()) {
+            respond_result(*id, json::Value(nullptr));
+            return;
+        }
+        json::Value signatures = json::Value::array();
+        for (const SignatureInformation& signature : help->signatures) {
+            json::Value entry = json::Value::object();
+            entry.set("label", json::Value(signature.label));
+            if (!signature.documentation.empty()) {
+                entry.set("documentation", json::Value(signature.documentation));
+            }
+            json::Value parameters = json::Value::array();
+            for (const auto& [start, end] : signature.parameters) {
+                json::Value label = json::Value::array();
+                label.push_back(json::Value(start));
+                label.push_back(json::Value(end));
+                json::Value parameter = json::Value::object();
+                parameter.set("label", std::move(label));
+                parameters.push_back(std::move(parameter));
+            }
+            entry.set("parameters", std::move(parameters));
+            signatures.push_back(std::move(entry));
+        }
+        json::Value result = json::Value::object();
+        result.set("signatures", std::move(signatures));
+        result.set("activeSignature", json::Value(help->active_signature));
+        result.set("activeParameter", json::Value(help->active_parameter));
+        respond_result(*id, std::move(result));
     }
 
     void handle_code_lens(const json::Value* id, const json::Value* params) {

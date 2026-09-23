@@ -1393,6 +1393,7 @@ AI output must always be independently verified.
 | LSP/CLI: canonical clause formatting | `PROTOTYPE`   |
 | LSP: case completion and hover       | `PROTOTYPE`   |
 | LSP: C++ and C++L completion         | `PROTOTYPE`   |
+| LSP: signature help                  | `PROTOTYPE`   |
 | LSP: hover over C++ and C++L names   | `PROTOTYPE`   |
 | LSP: verification status in editors  | `PROTOTYPE`   |
 | LSP: code actions                    | `PROTOTYPE`   |
@@ -1461,6 +1462,10 @@ where the grammar admits them: declarations at namespace scope, proof
 statements at a statement's start, the proofs, trusted Laws and assumptions a
 statement can name after `exact`, `apply`, `rewrite` or `contradiction`, and a
 declaration's clauses after its parameters.
+
+`signatureHelpProvider` shows, while a call's arguments are written, every
+declaration Clang says the call could resolve to, with the argument being
+written marked.
 
 Outside a case block, hover describes any name. For C++ it shows what Clang
 reports: the declaration's kind and qualified name, the declaration without a

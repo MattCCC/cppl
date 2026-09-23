@@ -62,7 +62,8 @@ and off). Inside a `cases` or `decompose` arm block
 hover shows the subject's states, and completion offers the arms still owed.
 Everywhere else completion offers what Clang would accept, with a call's
 parameters as tab stops, and C++L's declarations, proof statements and clauses
-where the grammar admits them.
+where the grammar admits them. Typing `(` or `,` in a call shows the
+signatures it could resolve to.
 
 Go to Definition, Go to Declaration, Go to Type Definition and Go to
 Implementations are answered by Clang over the file's projection, for C++ and

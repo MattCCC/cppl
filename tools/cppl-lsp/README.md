@@ -41,6 +41,7 @@ textDocument/implementation                 overrides and derived classes
 textDocument/references                     across every open document
 textDocument/documentHighlight              declarations, reads and writes
 textDocument/codeLens                       each Law's, proof's, function's verdict
+textDocument/signatureHelp                  the call being written, from Clang
 ```
 
 Diagnostics come from `driver::compile_buffer` over the live buffer — the same
@@ -164,7 +165,8 @@ The server advertises `textDocumentSync`, `documentFormattingProvider`,
 `quickfix` and `source.fixAll.cppl`), `semanticTokensProvider` (whole
 document, one token type, `keyword`), `definitionProvider`,
 `declarationProvider`, `typeDefinitionProvider`, `implementationProvider`,
-`referencesProvider`, `documentHighlightProvider` and `codeLensProvider`.
+`referencesProvider`, `documentHighlightProvider`, `codeLensProvider` and
+`signatureHelpProvider`.
 The rest of navigation specified below, and the semantic-token categories
 beyond proof-statement keywords, are not implemented and not advertised: an
 editor is told what the server can do, never what it intends to do.
@@ -747,6 +749,13 @@ or a proof's parameters; `expects` and `ensures` between a verified function's
 parameters and its body. A proof being written does not parse, so these
 positions are found from the tokens as written. Nothing here resolves a name:
 a suggestion the compiler would reject is only a suggestion.
+
+Signature help shows, while a call's arguments are written, every declaration
+Clang says it could resolve to, with the argument being written marked. The
+call is the innermost `(` the tokens as written leave open after a name; the
+argument is the one Clang names, or the one the commas before the cursor
+count. A call inside a Law's proposition or a contract is helped like any
+other.
 
 ### Case arms
 

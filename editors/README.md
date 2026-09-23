@@ -26,6 +26,7 @@ editors/
 | Code actions | `cppl-lsp` | yes | yes | yes | yes |
 | Hover | `cppl-lsp` | yes | unverified | yes | yes |
 | Completion | `cppl-lsp` | yes | unverified | yes | yes |
+| Signature help | `cppl-lsp` | yes | unverified | yes | yes |
 | Go to definition | `cppl-lsp` | yes | yes | yes | yes |
 | Declaration, type definition, implementation | `cppl-lsp` | yes | unverified | unverified | yes |
 | Find references, highlight occurrences | `cppl-lsp` | yes | unverified | unverified | yes |

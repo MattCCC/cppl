@@ -268,6 +268,30 @@ CPPL_TEST(a_completion_is_a_snippet_only_for_a_client_that_takes_snippets) {
     CPPL_CHECK(plain.find(R"("insertTextFormat")") == std::string::npos);
 }
 
+CPPL_TEST(signature_help_answers_with_parameter_ranges) {
+    Server server;
+    std::istringstream input(
+        framed(R"({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}})") +
+        framed(R"({"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":)"
+               R"({"uri":"file:///call.cpp","languageId":"cpp","version":1,)"
+               R"("text":"int add(int a, int b);\nint main() { return add(1, ); }\n"}}})") +
+        framed(R"({"jsonrpc":"2.0","id":2,"method":"textDocument/signatureHelp","params":{"textDocument":)"
+               R"({"uri":"file:///call.cpp"},"position":{"line":1,"character":27}}})") +
+        framed(R"({"jsonrpc":"2.0","id":3,"method":"textDocument/signatureHelp","params":{"textDocument":)"
+               R"({"uri":"file:///call.cpp"},"position":{"line":0,"character":0}}})") +
+        framed(R"({"jsonrpc":"2.0","method":"exit"})"));
+    std::ostringstream output;
+    std::ostringstream log;
+
+    [[maybe_unused]] const int exit_code = run_transport(server, input, output, log);
+    CPPL_CHECK(output.str().find(R"json("signatureHelpProvider":{"triggerCharacters":["(",","],)json"
+                                 R"json("retriggerCharacters":[")"]})json") != std::string::npos);
+    CPPL_CHECK(output.str().find(R"json("id":2,"result":{"signatures":[{"label":"int add(int a, int b)",)json"
+                                 R"json("parameters":[{"label":[8,13]},{"label":[15,20]}]}],"activeSignature":0,)json"
+                                 R"json("activeParameter":1})json") != std::string::npos);
+    CPPL_CHECK(output.str().find(R"("id":3,"result":null)") != std::string::npos);
+}
+
 CPPL_TEST(semantic_tokens_answer_with_the_encoded_keywords) {
     Server server;
     std::istringstream input(
