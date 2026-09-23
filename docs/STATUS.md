@@ -70,8 +70,9 @@ declares Laws it:
 6. submits the author's evidence, or its own when none was written, to the
    trusted kernel;
 7. reports `PROVEN` only on kernel acceptance, and fails the build otherwise;
-8. checks that erasure blanked proof-only text and lowered each runtime-bearing
-   declaration to exactly the C++ it means, and hands the runtime program to Clang.
+8. checks that erasure blanked all proof-only text and nothing else, and lowered
+   each runtime-bearing declaration to exactly the C++ it means, and hands the
+   text it checked to Clang as the runtime program.
 
 The verified fragment is deliberately small: a Law states a modeled proposition
 over built-in integer expressions, optionally under one `expects`
@@ -1153,17 +1154,32 @@ Foreign code must not automatically count as verified.
 | Dependent argument erasure       | `SPECIFIED`   |
 | Erasure implementation           | `PROTOTYPE`   |
 | Runtime-equivalence tests        | `PARTIAL`     |
-| ABI-equivalence tests            | `NOT STARTED` |
+| ABI-equivalence tests            | `PARTIAL`     |
 | Formal erasure correctness proof | `NOT STARTED` |
 
-Erasure currently removes law declarations, proofs, contracts, loop invariants and
-the `pure` specifier, and lowers a refinement type declaration to the alias it
-means. The implementation checks a strong property rather than asserting success:
-the runtime program must be the analysed program with proof-only spans blanked and
-each runtime-bearing declaration replaced by the canonical C++ recomputed from that
-declaration, with line numbering unchanged (`TRUST.md` 29). Equivalence is
-therefore established structurally for the constructs implemented, not proven in
-general.
+Erasure currently removes law and trusted-law declarations, proofs, contracts,
+loop invariants and measures, and the `verified` and `pure` specifiers; reduces a
+claim that a path cannot occur to the empty statement its `;` leaves; and lowers
+a refinement type declaration to the alias it means. The implementation checks a
+strong property rather than asserting success: the runtime program must be the
+analysed program with every proof-only span blanked, keeping only its newlines,
+each runtime-bearing declaration replaced by the canonical C++ recomputed from
+that declaration, and nothing else changed, with line numbering unchanged
+(`TRUST.md` 29). The text Clang compiles is written only after that check, from
+the text checked. Equivalence is therefore established structurally for the
+constructs implemented, not proven in general.
+
+The check trusts the recognizer's spans. What shows a span wrong is comparison
+with programs written without C++L: each construct family has a C++L fixture and
+its erasure written by hand, and the two must print the same and compile to
+identical assembly at `-O0` and `-O2` in `c++17`, `c++20` and `c++23`
+(`tests/e2e/erasure_equivalence.sh`). ABI equivalence is tested the same way for
+a library whose interface uses refinements and contracts, and by linking an
+ordinary C++ client, compiled by Clang alone, against it
+(`tests/e2e/abi_equivalence.sh`). Both are `PARTIAL`: they cover the constructs
+this implementation accepts, on the host's ABI; ghost state, `unsafe` and
+cross-translation-unit verification metadata are not implemented, and are
+refused rather than erased (`tests/negative/erasure.sh`).
 
 C++L's intended mature pipeline is:
 

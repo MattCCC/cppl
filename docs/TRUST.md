@@ -941,6 +941,10 @@ An implementation SHOULD independently validate erasure/lowering where practical
 
 Such validation can reduce the trusted erasure implementation only to the extent that the validator checks the complete semantic property needed for runtime preservation.
 
+This implementation's validator (`compiler/erasure/`) checks the runtime text against the analysed text byte by byte. Outside the recognized proof-only spans and runtime-bearing declarations nothing may differ; inside a proof-only span every byte must be blank except a newline, so no proof-only text is left behind; each refinement must be exactly the canonical alias recomputed from its declaration; and the line count must be unchanged. The driver writes the program Clang compiles only after this check passes, and from the text it checked. A failed check is an internal error (`TCB-ERASE-006`).
+
+What the validator does not establish is that the recognized spans are the right ones. It takes each span from the recognizer, so a span that also covered runtime text, such as a `static` beside a `verified` specifier, would be blanked with the validator's approval. The recognizer therefore stays in the correspondence TCB (`TCB-SOURCE-002`). Its spans are checked from outside by tests rather than by the validator: fixtures erased by hand as `SPEC.md` Annex M prescribes must compile to the same assembly as their C++L originals, in every supported standard, and an ordinary C++ client compiled without C++L must link against and call a library written with refinements and contracts. Those tests are evidence about the constructs they exercise; they do not remove the recognizer from the TCB.
+
 ---
 
 # 30. Native compiler, linker, ABI and execution trust

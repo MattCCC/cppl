@@ -23,7 +23,8 @@ run=$(mktemp -d "$WORK/format_check.XXXXXX")
 # defect under test (it reorders a law's `decreases` after its `proves`), so
 # they are held byte-for-byte as written.
 uncanonical=""
-for fixture in "$FIXTURES"/*.cpp "$FIXTURES"/include/*.hpp; do
+for fixture in "$FIXTURES"/*.cpp "$FIXTURES"/include/*.hpp "$FIXTURES"/equivalence/*.cpp \
+    "$FIXTURES"/equivalence/tampered/*.cpp; do
     [ -e "$fixture" ] || continue
     if ! "$CPPL_FORMAT" --check "$fixture" > /dev/null 2>&1; then
         uncanonical="$uncanonical $fixture"

@@ -76,8 +76,8 @@ section numbers move and rule IDs do not.
 
 | Feature | Rule families | SPEC | Grammar | Foundations | Trust |
 | --- | --- | --- | --- | --- | --- |
-| Erasure | `ERASE-*`, `ERASEMATRIX-*`, `IRRELEVANCE-*` | §36, §55, Annex M | — | — | §10, §11 |
-| ABI semantics | `ABI-*` | §37 | — | — | §10 |
+| Erasure | `ERASE-*`, `ERASEMATRIX-*`, `IRRELEVANCE-*` | §36, §55, Annex M | — | — | §8.1, §29 |
+| ABI semantics | `ABI-*` | §37 | — | — | §30, §31 |
 | Calls from verified code | `CALL-*`, `BOUNDARY-*` | §40, §41 | — | — | §17 |
 | Templates | `TEMPLATE-*` | §42, Annex G | — | — | — |
 | Translation units and modules | `TU-*`, `MODULE-*`, `TUBOUND-*` | §44, §45, Annex L | — | — | §18 |

@@ -270,9 +270,12 @@ cppl_add_script_test(e2e_verified_locals e2e/verified_locals.sh)
 cppl_add_script_test(e2e_verified_arithmetic e2e/verified_arithmetic.sh)
 cppl_add_script_test(e2e_verified_loops e2e/verified_loops.sh)
 
-# Erasure keeps the runtime program's lines, columns and debug information on
-# the user's source.
+# Erasure against programs written without C++L: runtime behaviour and code,
+# native ABI across a translation-unit boundary, and source positions.
+cppl_add_script_test(e2e_erasure_equivalence e2e/erasure_equivalence.sh)
+cppl_add_script_test(e2e_abi_equivalence e2e/abi_equivalence.sh)
 cppl_add_script_test(e2e_erasure_source_mapping e2e/erasure_source_mapping.sh)
+cppl_add_script_test(negative_erasure negative/erasure.sh)
 
 cppl_add_script_test(negative_broken_implementation negative/broken_implementation.sh)
 cppl_add_script_test(negative_unproven_dependencies negative/unproven_dependencies.sh)

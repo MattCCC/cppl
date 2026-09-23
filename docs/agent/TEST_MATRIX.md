@@ -126,6 +126,29 @@ Manifest: `features/trust-propagation.yaml`
 | Erasure | erasure | covered (`e2e/trust_closure.sh`) |
 | Trusted memory proposition | positive, negative | not built (`TRUSTED-003`) |
 
+### erasure and ABI
+
+Rules: `ERASE-*`, `ERASEMATRIX-*`, `ABI-*` (see `FEATURE_INDEX.md`, Lowering).
+Every C++L fixture in `tests/fixtures/equivalence/` has a `.reference.cpp` twin,
+the same program erased by hand as SPEC.md Annex M prescribes, so a wrong span
+or a wrong lowering is caught even where the compiler's own erasure check
+agrees with it.
+
+| Required case | Category | Status |
+| --- | --- | --- |
+| Validator refuses a span left behind | erasure, adversarial | covered — each of the eight kinds of proof-only span restored in turn, one byte of one, a byte added inside a span, a byte changed outside every span, a claim's `;` removed, a newline joined, and three non-canonical lowerings; disabling either check is caught (`unit/projection_test.cpp` citing `ERASE-005`, `ERASE-007`, `ERASE-004`; `erasure-span-blank` and `erasure-lowering-canonical` in `scripts/test-mutations.sh`) |
+| Proof-only constructs leave no code | erasure | covered — laws, a trusted law, an inline proof, `refl`, `exact`, `apply`, `assume`, `rewrite`, `cases` with omissions, `decompose` and `contradiction`: identical output and identical assembly at `-O0` and `-O2` against the reference, in `c++17`, `c++20` and `c++23` (`e2e/erasure_equivalence.sh` citing `ERASE-002`, `ERASEMATRIX-001`) |
+| Runtime-bearing code is kept | erasure | covered — contracts, `verified pure`, `static`, `inline`, `noexcept`, template specializations, loop invariants and measures, and claims reduced to `;` under an unbraced `if` (`e2e/erasure_equivalence.sh` citing `ERASE-003`, `ERASE-016`) |
+| Refinements lower to their base | erasure, ABI | covered — plain, chained, indexed and class-type refinements, refined members, a base whose construction and destruction are counted, `typeid` and layout printed (`e2e/erasure_equivalence.sh` citing `ERASE-004`, `ERASE-010`) |
+| Comparison sees hidden artifacts | adversarial | covered — a hidden check and a hidden field are each told apart from the erased program at both levels (`fixtures/equivalence/tampered/`, `e2e/erasure_equivalence.sh`) |
+| A recognizer span that swallows runtime text | adversarial | covered — a `verified` span widened over `static` passes every other test and the internal validator, and fails the reference comparison (`verified-specifier-span` in `scripts/test-mutations.sh`, `e2e/erasure_equivalence.sh`) |
+| Contextual words beside erased constructs | erasure, conformance | covered — every word of SPEC.md §3 as a variable, member or function in a unit that also uses the words as C++L, including a declarator list spelled like clauses, which is neither laid out as a clause nor routed through C++L (`e2e/erasure_equivalence.sh`, `unit/recognizer_test.cpp` citing `WORD-008`; `declarator-list-ends-clauses` in `scripts/test-mutations.sh`) |
+| Native ABI across translation units | ABI | covered — an ordinary client compiled by Clang alone links against a C++L library and calls it with records in registers and in memory, by value and by reference, a record return and a C-linkage function; both sides agree on size, alignment and offsets; the library matches its hand erasure in assembly (`e2e/abi_equivalence.sh` citing `ABI-001`, `ABI-002`, `ABI-003`) |
+| Source positions survive erasure | erasure | covered — `__builtin_LINE()` after every multi-line construct kind, a Clang warning's column on a line that lost `verified`, the line count of the program, debug information naming the user's file, and byte-identical `-g` objects across builds (`e2e/erasure_source_mapping.sh` citing `ERASEMATRIX-003`, `ARCH-ERASE-003`) |
+| Refusal leaves no runtime program | negative | covered — ghost state, `unsafe`, `old`, `induction` and misplaced loop clauses refused for their reason, then every refused fixture swept: no executable and no runtime projection (`negative/erasure.sh` citing `ERASE-006`, `ERASE-011`) |
+| Ghost erasure | erasure | not built — ghost state is not implemented and is refused (`ERASE-011`) |
+| Verification metadata across units | ABI | not built — no metadata is exported, so a use in another unit is not verified (`ABI-004`, `ABI-005`) |
+
 Status here describes test coverage, not implementation maturity.
 `docs/STATUS.md` is authoritative for the latter, and neither weakens what
 `docs/SPEC.md` requires.
