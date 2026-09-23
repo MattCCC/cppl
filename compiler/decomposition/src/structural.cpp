@@ -1,7 +1,5 @@
 #include "cppl/decomposition/providers.hpp"
 
-#include <algorithm>
-
 namespace cppl::decomposition {
 namespace {
 using K = source::RepresentationKind;

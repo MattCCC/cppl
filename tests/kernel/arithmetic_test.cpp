@@ -6,7 +6,6 @@
 // must agree on every assignment. That is the property definitional equality
 // relies on, tested exhaustively rather than by example.
 
-#include "cppl/kernel/arithmetic.hpp"
 #include "cppl/kernel/check.hpp"
 #include "cppl/kernel/linear.hpp"
 #include "cppl/testing/test.hpp"

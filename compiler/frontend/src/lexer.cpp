@@ -1,6 +1,5 @@
 #include "cppl/frontend/token.hpp"
 
-#include <algorithm>
 #include <array>
 #include <cctype>
 

@@ -3,8 +3,6 @@
 #include "cppl/decomposition/decomposition.hpp"
 #include "cppl/elaboration/elaborate.hpp"
 
-#include <algorithm>
-
 namespace cppl::analysis {
 namespace {
 void select(clangbridge::ParseRequest& request, const frontend::Projection& projection,

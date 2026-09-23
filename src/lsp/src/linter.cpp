@@ -3,8 +3,6 @@
 #include "cppl/lsp/diagnostic_codes.hpp"
 #include "cppl/lsp/position.hpp"
 
-#include <unordered_set>
-
 namespace cppl::lsp {
 
 std::vector<Diagnostic> Linter::lint(const frontend::TokenStream& tokens, const frontend::Syntax& syntax,

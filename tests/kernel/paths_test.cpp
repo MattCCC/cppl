@@ -1,5 +1,4 @@
 #include "cppl/kernel/check.hpp"
-#include "cppl/kernel/substitution.hpp"
 #include "cppl/testing/test.hpp"
 
 #include <limits>

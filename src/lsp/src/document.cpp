@@ -3,8 +3,6 @@
 #include "cppl/frontend/token.hpp"
 #include "cppl/lsp/uri.hpp"
 
-#include <algorithm>
-
 namespace cppl::lsp {
 
 Document::Document(std::string uri, std::string text, std::int32_t version)

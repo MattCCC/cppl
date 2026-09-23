@@ -4,7 +4,6 @@
 #include "cppl/frontend/projection.hpp"
 #include "cppl/testing/test.hpp"
 
-#include <algorithm>
 #include <cstdint>
 #include <string>
 #include <vector>
