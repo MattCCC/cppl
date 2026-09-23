@@ -55,10 +55,16 @@ enum class ProofStatementKind : std::uint8_t {
     Apply,
     Assume,
     Rewrite,
+    // "contradiction" evidence-reference ";" (GRAMMAR.md 5.6). Closes the goal
+    // from evidence that the context cannot occur (SPEC.md CASE-011). Written
+    // after `omit label by`, it is how a case is accounted for without an arm
+    // (CASE-004). The evidence is checked like any other: this is a spelling for
+    // existing rules, not a new one.
+    Contradiction,
     Cases,
     Decompose,
     // "induction" identifier ";" | "induction" identifier "{" proof-arm... "}"
-    // (GRAMMAR.md 5.7). Recognized at the syntax level like `Cases`/
+    // (GRAMMAR.md 5.8). Recognized at the syntax level like `Cases`/
     // `Decompose` so the formatter can lay out its arms; this implementation's
     // formal core has no induction rule (SPEC.md 21/24.2), so elaboration
     // rejects it exactly as it rejected the previously-unparsed spelling -
@@ -99,7 +105,7 @@ struct ProofStatement {
     source::ByteSpan arms_span;
 };
 
-// One arm of a `cases` statement (GRAMMAR.md 5.6).
+// One arm of a `cases` statement (GRAMMAR.md 5.7).
 //
 // The recognizer reads arm syntax without knowing what the subject is. Which
 // case a label denotes, how many binders the case supplies, and whether the
@@ -115,6 +121,13 @@ struct ProofArm {
     // The label is a name a representation reserves for a state that has no C++
     // expression, rather than an expression for Clang to resolve.
     bool keyword_label = false;
+    // `omit label by contradiction ev;` (GRAMMAR.md 5.7): the case is accounted
+    // for without an arm body. `statements` holds the single contradiction
+    // statement, checked under this case's discriminator premise. Kept explicit
+    // rather than inferred from the body's shape, because CASE-004 requires a
+    // case to be covered by exactly one of an arm or an omission, so the two
+    // must stay distinguishable even when a real arm's body is one statement.
+    bool omitted = false;
     std::vector<std::string> binders;
     std::vector<ProofStatement> statements;
 
@@ -123,6 +136,10 @@ struct ProofArm {
     source::ByteSpan span;
     // The '{' ... '}' body alone, for the same reason.
     source::ByteSpan body_span;
+    // For an omission, the `contradiction evidence;` statement after `by`, as
+    // written. Layout-only too: the formatter copies it verbatim, as it copies
+    // every primitive proof statement.
+    source::ByteSpan discharge_span;
 };
 
 // proof name(parameters) proves (proposition) { statements }   (GRAMMAR.md 4)

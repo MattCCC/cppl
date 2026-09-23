@@ -108,6 +108,12 @@ struct PipelineOutcome {
         // because they are what makes a loop total rather than partial
         // (SPEC.md 23, CORRECT-006).
         std::size_t loop_measures_proven = 0;
+        // Impossibility claims, each counted under its own origin: one checked
+        // contradiction mechanism discharges both, but an omitted case and an
+        // unreachable runtime path are different claims (SPEC.md CASE-012,
+        // CASE-016).
+        std::size_t omitted_cases_proven = 0;
+        std::size_t impossible_paths_proven = 0;
         std::size_t call_preconditions_proven = 0;
         std::size_t proven_by_written_proof = 0;
         std::size_t proofs_proven = 0;

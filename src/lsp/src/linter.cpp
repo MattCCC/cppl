@@ -166,6 +166,7 @@ void Linter::check_proof_statements(const std::vector<frontend::ProofStatement>&
         switch (stmt.kind) {
             case frontend::ProofStatementKind::Exact:
             case frontend::ProofStatementKind::Apply:
+            case frontend::ProofStatementKind::Contradiction:
                 if (stmt.reference.empty()) {
                     Position loc_pos = mapper.source_location_to_position(stmt.location);
                     Diagnostic diag;

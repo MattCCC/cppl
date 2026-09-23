@@ -31,6 +31,8 @@ struct Summary {
     std::size_t partial_contracts_proven = 0;
     std::size_t loop_invariants_proven = 0;
     std::size_t loop_measures_proven = 0;
+    std::size_t omitted_cases_proven = 0;
+    std::size_t impossible_paths_proven = 0;
     std::size_t call_preconditions_proven = 0;
     std::size_t proven_by_written_proof = 0;
     std::size_t proofs_proven = 0;
@@ -194,6 +196,8 @@ UnitOutcome compile_unit(const Options& options, const Input& input, const std::
     summary.partial_contracts_proven += result.counters.partial_contracts_proven;
     summary.loop_invariants_proven += result.counters.loop_invariants_proven;
     summary.loop_measures_proven += result.counters.loop_measures_proven;
+    summary.omitted_cases_proven += result.counters.omitted_cases_proven;
+    summary.impossible_paths_proven += result.counters.impossible_paths_proven;
     summary.call_preconditions_proven += result.counters.call_preconditions_proven;
     summary.proven_by_written_proof += result.counters.proven_by_written_proof;
     summary.proofs_proven += result.counters.proofs_proven;
@@ -223,6 +227,8 @@ void print_trust_report(const Options& options, const Summary& summary) {
     std::cout << "Call preconditions proven:   " << summary.call_preconditions_proven << "\n";
     std::cout << "Loop invariants proven:      " << summary.loop_invariants_proven << "\n";
     std::cout << "Loop measures proven:        " << summary.loop_measures_proven << "\n";
+    std::cout << "Omitted cases proven:        " << summary.omitted_cases_proven << "\n";
+    std::cout << "Impossible paths proven:     " << summary.impossible_paths_proven << "\n";
     std::cout << "Unresolved obligations:      " << summary.unresolved << "\n\n";
     std::cout << "Unsafe regions:              0\n";
     std::cout << "Runtime validation sites:    0\n";

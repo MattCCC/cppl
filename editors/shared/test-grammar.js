@@ -160,6 +160,21 @@ const cases = [
   // favour of the C++ reading. See the modifier rule's comment.
   { line: "    ghost int shadow = x;", expect: true, why: "ghost local with a type" },
 
+  // A case omission is colored only as the whole form, which is never valid C++
+  // (docs/GRAMMAR.md 5.7). Its words are ordinary names everywhere else, and a
+  // bare `contradiction name;` is spelled exactly like a C++ declaration, so it
+  // is left to the C++ reading, as `ghost value;` is
+  // (tests/fixtures/contextual_omission_words.cpp).
+  { line: "        omit State::idle by contradiction is_running;", expect: true, why: "case omission" },
+  { line: "        omit unnamed by contradiction impossible;", expect: true, why: "residual case omission" },
+  { line: "        omit omit::idle by contradiction contradiction;", expect: true, why: "omission using its words as names" },
+  { line: "int omit = 0;", expect: false, why: "omit as a variable name" },
+  { line: "int by(int value) {", expect: false, why: "by as a function name" },
+  { line: "struct contradiction {};", expect: false, why: "contradiction as a struct name" },
+  { line: "    contradiction verdict;", expect: false, why: "declaring a variable of type contradiction" },
+  { line: "    omit = by(omit) + verdict.by;", expect: false, why: "omit and by in an expression" },
+  { line: "        omit::running => {", expect: false, why: "a case label that begins with omit" },
+
   // Comments and strings must never be reinterpreted as C++L.
   { line: "// law identity(int x) in a comment", expect: false, why: "C++L syntax inside a line comment" },
   { line: '    const char* s = "law identity(int x)";', expect: false, why: "C++L syntax inside a string" },

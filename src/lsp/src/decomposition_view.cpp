@@ -136,8 +136,9 @@ std::optional<Hover> case_site_hover(const CaseSite& site) {
     text += states.provider + ".\n\n";
 
     for (const elaboration::SubjectStates::State& state : states.states) {
-        const bool written = std::ranges::any_of(
+        const auto arm = std::ranges::find_if(
             site.statement->arms, [&](const frontend::ProofArm& arm) { return arm.spelling == state.label; });
+        const bool written = arm != site.statement->arms.end();
         text += written ? "- [x] `" : "- [ ] `";
         text += state.label;
         if (!state.binders.empty()) {
@@ -153,6 +154,11 @@ std::optional<Hover> case_site_hover(const CaseSite& site) {
         text += "`";
         if (state.residual) {
             text += " — residual";
+        }
+        // Accounted for, but by a claim that it cannot occur rather than by an
+        // arm (SPEC.md CASE-004), so the checklist says which.
+        if (written && arm->omitted) {
+            text += " — omitted, shown impossible by contradiction";
         }
         text += "\n";
     }

@@ -6,6 +6,7 @@
 add_library(cppl_obligations STATIC
     src/generate.cpp
     src/contracts.cpp
+    src/contradiction.cpp
     src/status.cpp)
 
 target_include_directories(cppl_obligations PUBLIC
@@ -13,6 +14,6 @@ target_include_directories(cppl_obligations PUBLIC
 
 target_link_libraries(cppl_obligations
     PUBLIC cppl_kernel cppl_vir cppl_decomposition cppl_elaboration cppl_source cppl_diagnostics
-    PRIVATE cppl_project_options)
+    PRIVATE cppl_refutation cppl_project_options)
 
 add_library(cppl::obligations ALIAS cppl_obligations)

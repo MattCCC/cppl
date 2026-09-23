@@ -190,6 +190,7 @@ exact
 apply
 assume
 rewrite
+contradiction
 cases
 decompose
 induction
@@ -260,6 +261,13 @@ member access.
 
 [WORD-008] C++L MUST NOT globally reinterpret contextual identifiers or operators outside
 their defined grammatical contexts.
+
+[WORD-010] `omit` and `by` have special meaning only in a case omission, `omit label by
+contradiction evidence;`, written directly inside a `cases` statement (§20.2).
+`omit` begins one only where a case label followed by `by` comes after it; a
+case label whose first name is `omit`, such as `omit::State::idle`, is an
+ordinary label. Anywhere else both words, and `contradiction` outside a proof
+statement, are ordinary C++ identifiers.
 
 ---
 
@@ -2640,19 +2648,25 @@ is ill-formed C++L proof syntax for that subject.
 ## 20.2 Exhaustiveness and impossible cases
 
 [CASE-004] A `cases` statement MUST account for every semantic case. A case is accounted for
-when either:
+when exactly one of the following holds:
 
 1. an arm is present for it; or
-2. the current proof context establishes that the case discriminator is
-   impossible.
+2. the `cases` statement contains an omitted-case discharge naming it
+   (`omit label by contradiction evidence;`, GRAMMAR.md 5.7), and that evidence
+   establishes the case is impossible under the proof context that would hold in
+   it, including the case's own discriminator premise.
 
 There is no wildcard arm. `_` is not a C++L proof catch-all. Adding a new semantic
 state therefore makes an older proof non-exhaustive unless that state is
 independently proved impossible.
 
-[CASE-005] Omission by impossibility requires checked contradiction evidence from the
-current proof context; it MUST NOT be inferred from heuristics or assumed by the
-case partition itself.
+[CASE-005] Exhaustiveness is syntactic over the provider's complete partition: every case
+MUST carry either an arm or an omitted-case discharge. An implementation MUST NOT
+infer that an absent arm was an intentional omission, and MUST NOT treat a case
+as impossible because proof search, automation or a scan of the surrounding
+context failed to find a reachable state. Evidence named by an omitted-case
+discharge is checked like any other evidence; a failure to check it is an
+unproven obligation, never an impossibility.
 
 ## 20.3 Arm binders and premises
 
@@ -2718,6 +2732,48 @@ between each C++ representation and its logical partition is a trust-sensitive
 language correspondence described by `TRUST.md`; a bug in that correspondence can
 be a soundness bug and MUST NOT be treated as harmless merely because the
 resulting internal proof term is locally well-typed.
+
+[CASE-011] Contradiction evidence is written `contradiction evidence;` (GRAMMAR.md 5.6) in
+a proof context claimed to be unreachable, and `omit label by contradiction
+evidence;` (GRAMMAR.md 5.7) for a case omitted from a `cases` statement.
+
+[CASE-013] The named evidence MUST be ordinary checked evidence. Together with the
+hypotheses already in force at that point, including any case discriminator or
+runtime path premises, it MUST allow the checker to derive a contradiction under
+the existing formal logic. An omitted case's evidence is checked under that
+case's discriminator premise, exactly as an arm's body would be, even though the
+case has no arm body.
+
+[CASE-014] The implementation MUST validate the named evidence and the contradictory
+relationship using the same checked logical and arithmetic/equality machinery
+used elsewhere. `contradiction`:
+
+* introduces no axiom;
+* introduces no trusted assumption;
+* does not make an unproved proposition false;
+* does not permit the implementation to declare a path impossible merely because
+  it cannot satisfy the path;
+* does not permit failed proof search, solver `unknown`, timeout, unsupported
+  semantics, or compiler recovery to count as contradiction.
+
+Once contradiction has been checked, the current proof obligation is discharged
+by contradiction elimination according to the formal logic defined by
+`FOUNDATIONS.md`.
+
+[CASE-015] If contradiction cannot be established, the obligation remains unproven.
+
+[CASE-012] Discharging an omitted structural case and discharging an unreachable runtime
+path ([VERIFIED-023]) use the same checked contradiction mechanism, but they
+state different source-level claims and MUST remain distinct obligations. An
+omitted structural case claims the omitted state cannot occur under the
+case-analysis context; an unreachable runtime path claims the path condition is
+inconsistent with the facts established on entry to that path.
+
+[CASE-016] The implementation MUST assign them distinct obligation origins, source
+provenance, diagnostics, identities and reporting categories even when both are
+discharged by the same contradiction evidence. A proof artifact, diagnostic,
+cache entry or verification report MUST NOT reclassify one origin as the other
+merely because their final proof terms have the same shape.
 
 `cases`, `decompose`, their binders and their proof branches erase completely.
 

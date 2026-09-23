@@ -185,6 +185,34 @@ CPPL_TEST(hover_marks_written_and_residual_states) {
     CPPL_CHECK(hover->contents.find("- [ ] `valueless` — residual") != std::string::npos);
 }
 
+// SPEC: CASE-004
+CPPL_TEST(omitted_state_is_accounted_for_but_not_presented_as_an_arm) {
+    // `omit valueless by contradiction e;` accounts for the state (CASE-004),
+    // so completion must not offer it again. It is accounted for by a claim
+    // that the state cannot occur, not by an arm, and the hover says so.
+    ProofStatement statement = cases_statement(100, 50, 7, {"alternative<0>"});
+    ProofArm omission;
+    omission.spelling = "valueless";
+    omission.location = location_at(7);
+    omission.omitted = true;
+    statement.arms.push_back(std::move(omission));
+    const Syntax syntax = syntax_with({std::move(statement)});
+    const std::vector<SubjectStates> recorded{variant_record(7)};
+    const auto site = enclosing_case_site(syntax, recorded, 120);
+    CPPL_CHECK(site.has_value());
+
+    const std::vector<CompletionItem> items = missing_case_completions(*site);
+    CPPL_CHECK(items.size() == 1);
+    CPPL_CHECK(items[0].label == "alternative<1>");
+
+    const std::optional<Hover> hover = case_site_hover(*site);
+    CPPL_CHECK(hover.has_value());
+    CPPL_CHECK(hover->contents.find("- [x] `valueless` — residual — omitted, shown impossible by contradiction") !=
+               std::string::npos);
+    // An ordinary arm is not described as omitted.
+    CPPL_CHECK(hover->contents.find("`alternative<0>(value)` — omitted") == std::string::npos);
+}
+
 CPPL_TEST(product_hover_names_components_not_alternatives) {
     // A product is not a sum. Its one `components(...)` arm must not be
     // presented as a state partition (`AGENTS.md` 39).

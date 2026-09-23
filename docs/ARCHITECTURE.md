@@ -2009,6 +2009,16 @@ meaning.
 **[ARCH-AUTO-002]** Producer resource exhaustion yields unresolved evidence, not
 acceptance.
 
+The arithmetic refutation search is its own library, `compiler/refutation`,
+below both obligations and automation and depending only on the kernel's types.
+Automation uses it to close arithmetic goals; obligation generation uses it to
+find the combination behind a written `contradiction`, whether a statement or a
+case omission (`SPEC.md` `CASE-011`), without depending on automation, which
+depends on obligation generation. It proposes certificates and nothing more: the
+kernel states the constraint system itself and checks every certificate, and a
+search that runs out of budget returns no certificate, which is an unproven
+claim, never a finding that the facts are satisfiable (`CASE-015`).
+
 ---
 
 # 55. Solver isolation
@@ -3043,6 +3053,7 @@ flowchart TD
     DECOMP["Decomposition providers"]
     OBL["Obligations"]
     AUTO["Automation"]
+    REFUTE["Refutation search"]
     CORE["Formal core"]
     KERNEL["Kernel/checkers"]
 
@@ -3059,8 +3070,11 @@ flowchart TD
     DECOMP --> OBL
     OBL --> AUTO
     OBL --> CORE
+    OBL --> REFUTE
     AUTO --> CORE
     AUTO --> KERNEL
+    AUTO --> REFUTE
+    REFUTE --> CORE
     KERNEL --> CORE
 ```
 
@@ -3096,6 +3110,7 @@ compiler/
     elaboration/
     obligations/
     automation/
+    refutation/
     erasure/
     diagnostics/
     artifacts/

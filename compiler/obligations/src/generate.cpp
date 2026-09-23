@@ -1,5 +1,6 @@
 #include "cppl/obligations/generate.hpp"
 
+#include "contradiction.hpp"
 #include "cppl/decomposition/decomposition.hpp"
 #include "cppl/kernel/check.hpp"
 #include "cppl/kernel/substitution.hpp"
@@ -9,6 +10,7 @@
 
 #include <algorithm>
 #include <expected>
+#include <iterator>
 #include <limits>
 #include <map>
 #include <optional>
@@ -21,7 +23,12 @@ namespace cppl::obligations {
 
 namespace {
 
+using detail::absurdity;
+using detail::arithmetic_fact;
 using detail::Failure;
+using detail::from_absurdity;
+using detail::refute_facts;
+using detail::Unestablished;
 
 std::unexpected<Failure> fail(std::string reason, const source::SourceLocation& location) {
     return std::unexpected(Failure{std::move(reason), location, {}});
@@ -1203,6 +1210,53 @@ struct Body {
     std::size_t depth = 0;
     const std::vector<vir::ProofStep>* steps = &proof.steps;
     source::SourceLocation body_location = proof.range.begin;
+
+    // The types of those binders, outermost first, so `depth` is always their
+    // count. A claim made inside the proof but checked on its own, an omitted
+    // case (SPEC.md CASE-016), is closed over them.
+    std::vector<kernel::Type> binders = {};
+
+    // The omitted cases this body has established, each an obligation of its
+    // own. They are submitted with the proof only once the proof is admitted,
+    // so a refused proof leaves none behind.
+    std::vector<Obligation>* omissions = nullptr;
+};
+
+// Introduces binders in front of everything a body stands under, for as long as
+// this lives: its depth, its binder types, and every premise already standing,
+// which the kernel sees shifted past the new binders (check.cpp). Every premise
+// in `Body::assumptions` is therefore stated at `Body::depth`, which is what
+// lets a statement use any of them - and what lets `contradiction` state all of
+// them as facts - without knowing where each was assumed.
+class Underneath {
+  public:
+    Underneath(Body& body, const std::vector<kernel::Type>& binders)
+        : body_(body),
+          depth_(body.depth),
+          count_(body.binders.size()),
+          assumptions_(body.assumptions) {
+        const auto added = static_cast<std::uint32_t>(binders.size());
+        body.depth += binders.size();
+        body.binders.insert(body.binders.end(), binders.begin(), binders.end());
+        for (auto& assumption : body.assumptions) {
+            assumption.second = kernel::shift(assumption.second, added);
+        }
+    }
+    ~Underneath() {
+        body_.depth = depth_;
+        body_.binders.resize(count_);
+        body_.assumptions = std::move(assumptions_);
+    }
+    Underneath(const Underneath&) = delete;
+    Underneath& operator=(const Underneath&) = delete;
+    Underneath(Underneath&&) = delete;
+    Underneath& operator=(Underneath&&) = delete;
+
+  private:
+    Body& body_;
+    std::size_t depth_;
+    std::size_t count_;
+    std::vector<std::pair<std::uint32_t, kernel::Proposition>> assumptions_;
 };
 
 std::optional<kernel::ProofTerm> prove(Body& body, const kernel::Proposition& goal, diagnostics::Engine& engine);
@@ -1257,11 +1311,14 @@ std::optional<kernel::ProofTerm> suppose(Body& body, const vir::ProofStep& step,
         return std::nullopt;
     }
 
-    body.assumptions.emplace_back(position, *implication->premise);
-    const std::size_t enclosing = std::exchange(body.depth, depth);
-    std::optional<kernel::ProofTerm> rest = prove(body, *implication->conclusion, engine);
-    body.depth = enclosing;
-    body.assumptions.pop_back();
+    std::optional<kernel::ProofTerm> rest;
+    {
+        // The premise is stated underneath the binders just introduced, so it
+        // joins the standing premises after they have been shifted past them.
+        const Underneath introduced(body, binders);
+        body.assumptions.emplace_back(position, *implication->premise);
+        rest = prove(body, *implication->conclusion, engine);
+    }
     if (!rest.has_value()) {
         return std::nullopt;
     }
@@ -1340,9 +1397,11 @@ std::optional<kernel::ProofTerm> transport(Body& body, const vir::ProofStep& ste
     }
 
     const kernel::Proposition remaining = kernel::instantiate(*motive, equality->rhs);
-    const std::size_t enclosing = std::exchange(body.depth, depth);
-    std::optional<kernel::ProofTerm> rest = prove(body, remaining, engine);
-    body.depth = enclosing;
+    std::optional<kernel::ProofTerm> rest;
+    {
+        const Underneath introduced(body, binders);
+        rest = prove(body, remaining, engine);
+    }
     if (!rest.has_value()) {
         return std::nullopt;
     }
@@ -1350,6 +1409,161 @@ std::optional<kernel::ProofTerm> transport(Body& body, const vir::ProofStep& ste
     return quantify(binders, kernel::ProofTerm::equality_elimination(equality->type, equality->lhs, equality->rhs,
                                                                      std::move(*motive), std::move(instantiated->term),
                                                                      std::move(*rest)));
+}
+
+// Records an established omission as the obligation CASE-012 and CASE-016
+// require, with an origin, provenance and identity of its own and a goal that
+// stands apart from the proof it was written in: that the premises standing in
+// the omitted case, closed over the binders they stand under, cannot all hold.
+// Its evidence is the refutation `absurd`, which the kernel checks against that
+// goal on its own.
+//
+// Every premise in `body` is stated at the body's depth (`Underneath`), so they
+// are introduced after all the binders, in the order they were assumed; that
+// keeps each hypothesis the refutation names at the same position it had where
+// the refutation was built.
+void record_omission(const Body& body, const vir::CaseArm& arm, const kernel::ProofTerm& absurd) {
+    kernel::Proposition goal = absurdity();
+    kernel::ProofTerm evidence = absurd;
+    for (std::size_t index = body.assumptions.size(); index > 0; --index) {
+        const kernel::Proposition& premise = body.assumptions[index - 1].second;
+        goal = kernel::Proposition::implication(premise, std::move(goal));
+        evidence = kernel::ProofTerm::implication_introduction(premise, std::move(evidence));
+    }
+    for (const kernel::Type& binder : std::views::reverse(body.binders)) {
+        goal = kernel::Proposition::for_all(binder, std::move(goal));
+        evidence = kernel::ProofTerm::forall_introduction(binder, std::move(evidence));
+    }
+
+    Obligation obligation;
+    obligation.origin = Origin::OmittedCase;
+    obligation.subject = "case '" + arm.label + "' of proof '" + body.proof.name + "'";
+    obligation.goal = std::move(goal);
+    obligation.evidence = std::move(evidence);
+    obligation.range = source::SourceRange{arm.location, {}};
+
+    obligation.id = identify_impossibility(Origin::OmittedCase, body.context, obligation.subject, obligation.goal,
+                                           body.omissions->size());
+    body.omissions->push_back(std::move(obligation));
+}
+
+// `contradiction e;` closes the goal from evidence that the context cannot
+// occur (GRAMMAR.md 5.6, SPEC.md CASE-011), and `omit label by contradiction e;`
+// accounts for an omitted case the same way (GRAMMAR.md 5.7, CASE-004).
+//
+// The contradiction is between the named evidence and every premise standing
+// here, which for an omitted case includes that case's own discriminator
+// (CASE-013). It is established on its own, before the goal is looked at: the
+// premises are refuted into `absurdity()`, whose negation holds outright, and
+// only then is the goal closed from that. A goal that merely follows from the premises
+// therefore establishes nothing here, so neither form can close a case whose
+// goal happened to be provable while claiming the case cannot occur.
+//
+// Both steps are ordinary linear arithmetic (contradiction.hpp), so this adds
+// no rule and asserts nothing: the kernel states and refutes the constraints
+// itself (CASE-014), and a context not shown contradictory is an ordinary
+// unproven claim (CASE-005, CASE-015), never an impossibility.
+std::optional<kernel::ProofTerm> prove_contradiction(Body& body, const vir::ProofStep& step,
+                                                     const vir::ContradictionStep& contradiction,
+                                                     const kernel::Proposition& goal, diagnostics::Engine& engine,
+                                                     const vir::CaseArm* omitted = nullptr) {
+    // The goal's own quantifiers come first, as for every statement that names
+    // evidence, because an argument may mention them.
+    std::vector<kernel::Type> binders;
+    const kernel::Proposition* inner = under_quantifiers(goal, binders);
+    const Underneath introduced(body, binders);
+
+    const std::string& name = contradiction.evidence.name;
+    std::optional<Instantiation> evidence = named_evidence(body, step, contradiction.evidence, engine);
+    if (!evidence.has_value()) {
+        return std::nullopt;
+    }
+
+    std::optional<Instantiation> instantiated = instantiate_evidence(
+        body.proof, name, std::move(*evidence), contradiction.arguments, body.depth, body.definitions, engine);
+    if (!instantiated.has_value()) {
+        return std::nullopt;
+    }
+
+    if (!std::holds_alternative<kernel::Eq>(instantiated->proposition.node)) {
+        report(engine, diagnostics::Category::ProofFailure, step.location,
+               "'" + name + "' does not establish an equality, so it cannot state a contradiction",
+               "it establishes " + kernel::describe(instantiated->proposition));
+        return std::nullopt;
+    }
+    if (!arithmetic_fact(body.context, instantiated->proposition)) {
+        report(engine, diagnostics::Category::ProofFailure, step.location,
+               "'" + name +
+                   "' establishes an equality linear arithmetic cannot state, so it cannot state a "
+                   "contradiction",
+               "it establishes " + kernel::describe(instantiated->proposition));
+        return std::nullopt;
+    }
+
+    // The named evidence, then every standing premise from the innermost out.
+    // An omitted case's discriminator is the innermost, so it is never the one
+    // left out if the core's limit on facts is reached. A conjunction - a
+    // residual case's exclusions - contributes each conjunct. A premise linear
+    // arithmetic cannot state takes no part: leaving it out can only fail to
+    // find a contradiction, never make one appear.
+    const kernel::CoreLimits limits{};
+    const kernel::Proposition established = instantiated->proposition;
+    std::vector<kernel::ArithmeticFact> facts;
+    facts.push_back(kernel::ArithmeticFact{established, kernel::Box<kernel::ProofTerm>{std::move(instantiated->term)}});
+    const auto state = [&](auto&& self, const kernel::Proposition& proposition, kernel::ProofTerm term) -> void {
+        if (facts.size() >= limits.max_arithmetic_facts) {
+            return;
+        }
+        if (const auto* conjunction = std::get_if<kernel::And>(&proposition.node)) {
+            self(self, *conjunction->left, kernel::ProofTerm::conjunction_elimination(proposition, term, false));
+            self(self, *conjunction->right,
+                 kernel::ProofTerm::conjunction_elimination(proposition, std::move(term), true));
+            return;
+        }
+        if (arithmetic_fact(body.context, proposition)) {
+            facts.push_back(kernel::ArithmeticFact{proposition, kernel::Box<kernel::ProofTerm>{std::move(term)}});
+        }
+    };
+    for (std::size_t index = body.assumptions.size(); index > 0; --index) {
+        state(state, body.assumptions[index - 1].second,
+              kernel::ProofTerm::hypothesis(
+                  kernel::HypothesisIndex{static_cast<std::uint32_t>(body.assumptions.size() - index)}));
+    }
+
+    std::expected<kernel::ProofTerm, Unestablished> absurd = refute_facts(body.context, std::move(facts));
+    if (!absurd.has_value()) {
+        if (absurd.error().kind == Unestablished::Kind::Unreadable) {
+            report(engine, diagnostics::Category::ProofFailure, step.location,
+                   "the premises standing here cannot be stated as linear arithmetic, so no contradiction can be "
+                   "read from them",
+                   absurd.error().detail);
+        } else if (omitted != nullptr) {
+            report(engine, diagnostics::Category::ProofFailure, omitted->location,
+                   "omitted case '" + omitted->label + "' is not shown to be impossible",
+                   "'" + name + "' establishes " + kernel::describe(established) +
+                       ", and no contradiction with the premises standing in that case, including its own "
+                       "discriminator, was found");
+        } else {
+            report(engine, diagnostics::Category::ProofFailure, step.location,
+                   "'" + name + "' does not state a contradiction",
+                   "it establishes " + kernel::describe(established) +
+                       ", and no contradiction with the premises standing here was found");
+        }
+        return std::nullopt;
+    }
+
+    if (omitted != nullptr && body.omissions != nullptr) {
+        record_omission(body, *omitted, *absurd);
+    }
+
+    std::expected<kernel::ProofTerm, Unestablished> closed = from_absurdity(body.context, std::move(*absurd), *inner);
+    if (!closed.has_value()) {
+        report(engine, diagnostics::Category::ProofFailure, step.location,
+               "a contradiction closes a goal only where that goal is built from equalities of integers",
+               "the goal here is " + kernel::describe(*inner) + ": " + closed.error().detail);
+        return std::nullopt;
+    }
+    return quantify(binders, std::move(*closed));
 }
 
 // At most this many arms in one statement, so malformed VIR cannot make
@@ -1373,6 +1587,7 @@ std::optional<kernel::ProofTerm> prove_cases(Body& body, const vir::ProofStep& s
     const auto* inner = under_quantifiers(goal, binders);
     Body scoped = body;
     scoped.depth += binders.size();
+    scoped.binders.insert(scoped.binders.end(), binders.begin(), binders.end());
     for (auto& assumption : scoped.assumptions)
         assumption.second = kernel::shift(assumption.second, static_cast<std::uint32_t>(binders.size()));
 
@@ -1438,6 +1653,20 @@ std::optional<kernel::ProofTerm> prove_cases(Body& body, const vir::ProofStep& s
         context.steps = &arm.steps;
         context.cursor = 0;
         context.body_location = arm.location;
+        // An omitted case is discharged by one contradiction and nothing else
+        // (CASE-004 clause 2). The case's discriminator already stands in this
+        // context, so the evidence is checked under it exactly as an arm's body
+        // would be (CASE-013), and the omission is recorded as an obligation of
+        // its own (CASE-016).
+        if (arm.omitted) {
+            const auto* discharge =
+                arm.steps.size() == 1 ? std::get_if<vir::ContradictionStep>(&arm.steps[0].node) : nullptr;
+            if (discharge == nullptr) {
+                report(engine, diagnostics::Category::ProofFailure, arm.location, "malformed omitted case");
+                return std::nullopt;
+            }
+            return prove_contradiction(context, arm.steps[0], *discharge, *inner, engine, &arm);
+        }
         auto evidence = prove(context, *inner, engine);
         if (evidence && context.cursor != arm.steps.size()) {
             report(engine, diagnostics::Category::ProofFailure, arm.steps[context.cursor].location,
@@ -1543,6 +1772,10 @@ std::optional<kernel::ProofTerm> prove(Body& body, const kernel::Proposition& go
         return transport(body, step, *rewritten, goal, engine);
     }
 
+    if (const auto* contradiction = std::get_if<vir::ContradictionStep>(&step.node)) {
+        return prove_contradiction(body, step, *contradiction, goal, engine);
+    }
+
     const auto* exact = std::get_if<vir::ExactStep>(&step.node);
     const vir::Reference& reference = exact != nullptr ? exact->evidence : std::get<vir::ApplyStep>(step.node).evidence;
     const std::vector<vir::Expr>& arguments =
@@ -1600,25 +1833,26 @@ std::optional<kernel::ProofTerm> prove(Body& body, const kernel::Proposition& go
 
     kernel::ProofTerm term = std::move(instantiated->term);
     kernel::Proposition current = std::move(instantiated->proposition);
-    // A premise left by the reading that introduced the goal's quantifiers is
-    // stated underneath them.
-    const std::size_t enclosing = std::exchange(body.depth, binders.empty() ? body.depth : depth);
-    for (std::size_t remaining = *discharge; remaining > 0; --remaining) {
-        const auto& implication = std::get<kernel::Implies>(current.node);
-        kernel::Proposition premise = *implication.premise;
-        kernel::Proposition conclusion = *implication.conclusion;
+    {
+        // A premise left by the reading that introduced the goal's quantifiers is
+        // stated underneath them.
+        const Underneath introduced(body, binders);
+        for (std::size_t remaining = *discharge; remaining > 0; --remaining) {
+            const auto& implication = std::get<kernel::Implies>(current.node);
+            kernel::Proposition premise = *implication.premise;
+            kernel::Proposition conclusion = *implication.conclusion;
 
-        // The premise this application leaves is a goal like any other, and the
-        // statements that follow are what close it.
-        std::optional<kernel::ProofTerm> discharged = prove(body, premise, engine);
-        if (!discharged.has_value()) {
-            body.depth = enclosing;
-            return std::nullopt;
+            // The premise this application leaves is a goal like any other, and
+            // the statements that follow are what close it.
+            std::optional<kernel::ProofTerm> discharged = prove(body, premise, engine);
+            if (!discharged.has_value()) {
+                return std::nullopt;
+            }
+            term =
+                kernel::ProofTerm::implication_elimination(std::move(current), std::move(term), std::move(*discharged));
+            current = std::move(conclusion);
         }
-        term = kernel::ProofTerm::implication_elimination(std::move(current), std::move(term), std::move(*discharged));
-        current = std::move(conclusion);
     }
-    body.depth = enclosing;
 
     const auto& target = binders.empty() ? goal : *inner;
     if (convertible_equality(body.context, current, target)) {
@@ -1659,6 +1893,9 @@ void lower_proofs(const vir::Module& module, const elaboration::Result& elaborat
 
     std::map<std::uint32_t, std::size_t> lowered; // proof id -> index in program.proofs
     std::set<std::uint32_t> refused;
+    // The omitted cases admitted proofs established. They join the program's
+    // obligations only after the loop, which holds pointers into that list.
+    std::vector<Obligation> established_omissions;
 
     bool progress = true;
     while (progress) {
@@ -1701,6 +1938,8 @@ void lower_proofs(const vir::Module& module, const elaboration::Result& elaborat
                     reference = &applied->evidence;
                 } else if (const auto* rewritten = std::get_if<vir::RewriteStep>(&step.node)) {
                     reference = &rewritten->evidence;
+                } else if (const auto* refuted = std::get_if<vir::ContradictionStep>(&step.node)) {
+                    reference = &refuted->evidence;
                 }
                 if (reference == nullptr) {
                     continue;
@@ -1739,7 +1978,9 @@ void lower_proofs(const vir::Module& module, const elaboration::Result& elaborat
                 continue;
             }
 
+            std::vector<Obligation> omissions;
             Body body{proof, program.context, definitions, program.proofs, lowered, {}, 0, 0};
+            body.omissions = &omissions;
             std::optional<kernel::ProofTerm> term = prove(body, *claimed, engine);
 
             if (term.has_value() && body.cursor < proof.steps.size()) {
@@ -1787,6 +2028,7 @@ void lower_proofs(const vir::Module& module, const elaboration::Result& elaborat
 
             lowered.emplace(proof.id.value, program.proofs.size());
             program.proofs.push_back(std::move(written));
+            std::ranges::move(omissions, std::back_inserter(established_omissions));
 
             candidate = pending.erase(candidate);
             progress = true;
@@ -1836,6 +2078,9 @@ void lower_proofs(const vir::Module& module, const elaboration::Result& elaborat
         if (proof.law)
             program.refused_proofs.push_back(*proof.law);
     }
+
+    // Last, because `goals` and `direct_goals` point into this list.
+    std::ranges::move(established_omissions, std::back_inserter(program.obligations));
 }
 
 } // namespace
@@ -1866,6 +2111,16 @@ std::expected<kernel::Proposition, detail::Failure> detail::lower_predicate(cons
 ObligationId detail::identify_goal(const kernel::Context& context, const std::string& subject,
                                    const kernel::Proposition& goal) {
     return identify(context, subject, goal);
+}
+
+ObligationId identify_impossibility(Origin origin, const kernel::Context& context, const std::string& subject,
+                                    const kernel::Proposition& goal, std::uint64_t position) {
+    source::Hasher hasher;
+    hasher.update_field("impossibility-v1");
+    hasher.update_field(describe(origin));
+    hasher.update_field(identify(context, subject, goal).digest.to_short_hex(64));
+    hasher.update_u64(position);
+    return ObligationId{hasher.finish()};
 }
 
 Program generate(const vir::Module& module, const elaboration::Result& elaborated, diagnostics::Engine& engine) {

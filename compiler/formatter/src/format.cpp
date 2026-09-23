@@ -510,7 +510,7 @@ bool spans_overlap(source::ByteSpan lhs, source::ByteSpan rhs) {
     return lhs.offset < rhs.end() && rhs.offset < lhs.end();
 }
 
-// Proof-arm layout (GRAMMAR.md 5.6-5.8): `cases`/`decompose`/`induction`
+// Proof-arm layout (GRAMMAR.md 5.7-5.9): `cases`/`decompose`/`induction`
 // share one canonical arm block - `label(bindings) => { ... }`, one blank
 // line between consecutive arms, nested arms indented one level deeper than
 // their enclosing arm - collected the same way clause regions are: one
@@ -659,6 +659,20 @@ std::string canonical_arm_block(std::string_view text, const frontend::ProofStat
         const frontend::ProofArm& arm = statement.arms[i];
         block += '\n';
         block += arm_indent;
+        // An omitted case has no body and no braces, so it is one line
+        // (GRAMMAR.md 5.7) rather than a header/body/close. The statement after
+        // `by` is copied as written, like every primitive proof statement, so
+        // its evidence reference and arguments survive unchanged.
+        if (arm.omitted) {
+            block += "omit ";
+            block += text.substr(arm.label.offset, arm.label.length);
+            block += " by ";
+            block += text.substr(arm.discharge_span.offset, arm.discharge_span.length);
+            if (i + 1 < statement.arms.size()) {
+                block += "\n";
+            }
+            continue;
+        }
         block += canonical_arm_header(text, arm);
         const std::string arm_body = canonical_arm_body(text, arm, declaration_column + 2 * kIndentWidth);
         if (!arm_body.empty()) {

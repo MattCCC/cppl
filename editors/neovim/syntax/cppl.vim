@@ -37,6 +37,13 @@ syntax match cpplContract "\<old\>\ze\s*("
 syntax match cpplProof "\<\%(exact\|apply\|assume\|rewrite\|cases\|decompose\|induction\)\>\ze\s*[(<]"
 syntax match cpplProof "\<refl\>\ze\s*;"
 
+" A case omission, `omit label by contradiction evidence;` (section 5.7), is
+" colored only as the whole form, which is never valid C++. Its words are
+" ordinary names anywhere else, and a bare `contradiction name;` is spelled like
+" a C++ declaration, so it is left to the C++ reading, as `ghost value;` is.
+syntax match cpplOmission "\<omit\s\+\%(::\)\=\h\w*\%(\s*::\s*\h\w*\)*\%(\s*<[^;{}]*>\)\=\s\+by\s\+contradiction\>" contains=cpplOmissionWord
+syntax match cpplOmissionWord "\<\%(omit\|by\|contradiction\)\>" contained
+
 " `result` and `self` have meaning only inside a postcondition or a refinement
 " predicate, so they are matched within that clause rather than everywhere.
 syntax region cpplClauseBody matchgroup=cpplClause
@@ -49,6 +56,7 @@ highlight default link cpplModifier StorageClass
 highlight default link cpplClause Keyword
 highlight default link cpplQuantifier Keyword
 highlight default link cpplProof Statement
+highlight default link cpplOmissionWord Statement
 highlight default link cpplContract Identifier
 highlight default link cpplContractWord Identifier
 

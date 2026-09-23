@@ -96,7 +96,14 @@ std::vector<obligations::ObligationResult> verify(const obligations::Program& pr
 
         std::optional<Evidence> evidence;
         std::string failure = "no strategy in this implementation produced candidate evidence";
-        if (written != nullptr) {
+        if (obligation.evidence.has_value()) {
+            // A claim made inside a written proof - an omitted case - carries the
+            // evidence its author wrote. Like a written proof, it is submitted as
+            // it is and never replaced by a strategy: an impossibility is only
+            // ever what the author's contradiction establishes (SPEC.md CASE-005,
+            // CASE-015).
+            evidence = Evidence{*obligation.evidence, "written contradiction"};
+        } else if (written != nullptr) {
             evidence = Evidence{written->term, "written proof '" + written->name + "'"};
         } else if (composition.owns(index)) {
             auto proposed = composition.propose(index);
@@ -137,8 +144,14 @@ std::vector<obligations::ObligationResult> verify(const obligations::Program& pr
             diagnostic.category =
                 evidence.has_value() ? diagnostics::Category::KernelRejection : diagnostics::Category::ProofFailure;
             // A contract is not a law an author can write a proof for: it is
-            // discharged from the function's own body or not at all.
-            if (written != nullptr) {
+            // discharged from the function's own body or not at all. The two
+            // impossibility claims share one mechanism but are reported under
+            // their own names, never as each other (SPEC.md CASE-012, CASE-016).
+            if (obligation.origin == obligations::Origin::OmittedCase) {
+                diagnostic.message = "omitted " + obligation.subject + " is not shown to be impossible";
+            } else if (obligation.origin == obligations::Origin::ImpossiblePath) {
+                diagnostic.message = "runtime path '" + obligation.subject + "' is not shown to be unreachable";
+            } else if (written != nullptr) {
                 diagnostic.message =
                     obligation.proof
                         ? "proof '" + written->name + "' does not establish its proposition"

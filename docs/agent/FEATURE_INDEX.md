@@ -33,7 +33,8 @@ section numbers move and rule IDs do not.
 | `pure` | `PURE-*` | §13 | §9 | — | — |
 | Specification expressions | `SPECEXPR-*`, `ADMISSIBLE-*` | §14, Annex U | §6 | — | — |
 | Proof declarations | `PROOF-*`, `PROOFSRC-*` | §15, Annex H | §4, §5 | Curry–Howard | §4, §13 |
-| Case analysis | `CASE-*` | §20 | §18 | — | §4 |
+| Case analysis | `CASE-*` | §20 | §5.7, §18 | — | §4, §19 |
+| Checked contradiction and case omission | `CASE-004`, `CASE-005`, `CASE-011`–`CASE-016`, `VERIFIED-023`, `WORD-002`, `WORD-010` | §20.2, §20.6, §12.7, §3 | §1, §5.6, §5.7 | Contradiction and explosion | §6, §19 |
 | Induction | `INDUCT-*` | §21 | — | Induction | §4 |
 | Ghost state | `GHOST-*` | §25 | §21 | — | §10 |
 

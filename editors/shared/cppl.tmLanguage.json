@@ -114,6 +114,15 @@
           "comment": "`refl` is a complete proof statement on its own",
           "match": "\\b(refl)\\b(?=\\s*;)",
           "name": "keyword.other.proof.cppl"
+        },
+        {
+          "comment": "A case omission, `omit label by contradiction evidence;` (docs/GRAMMAR.md section 5.7). Only the whole form is colored, because it is never valid C++. `omit`, `by` and `contradiction` are ordinary names anywhere else, and a bare `contradiction name;` is spelled like a C++ declaration, so it is left to the C++ reading exactly as `ghost value;` and `exact h;` are.",
+          "match": "\\b(omit)\\s+(?:::)?[A-Za-z_][A-Za-z0-9_]*(?:\\s*::\\s*[A-Za-z_][A-Za-z0-9_]*)*(?:\\s*<[^;{}]*>)?\\s+(by)\\s+(contradiction)\\b",
+          "captures": {
+            "1": { "name": "keyword.other.proof.cppl" },
+            "2": { "name": "keyword.other.proof.cppl" },
+            "3": { "name": "keyword.other.proof.cppl" }
+          }
         }
       ]
     },

@@ -198,6 +198,42 @@ alias the program keeps, and make membership an obligation at every site a value
 enters the type. Refined parameters supply their predicate to the body and refined
 results are proven on every return. The boundary is in `SPEC.md` 17.3.1.
 
+`contradiction e;` is `PROTOTYPE`: a proof statement that closes the goal from
+evidence that the context where it is written cannot occur (`GRAMMAR.md` 5.6,
+`SPEC.md` `CASE-011`, `CASE-013`). The named evidence and every premise standing
+there are first refuted into `0 == 1`, which the goal takes no part in, and only
+then is the goal closed from that, so a goal that merely follows from the
+premises establishes nothing. Both steps are ordinary linear arithmetic whose
+certificates the kernel checks against constraints it states itself. The
+certificates are found by the same bounded refutation search automation uses
+(`compiler/refutation`), which is untrusted: when it finds nothing, the claim is
+unproven, never an impossibility (`CASE-015`). No kernel rule, axiom or trusted
+mechanism is added. The goal may have any shape: its quantifiers, premises,
+conjuncts and one disjunct are introduced by the ordinary rules.
+
+Omitting a case is `PROTOTYPE`: `omit label by contradiction e;` inside a
+`cases` statement accounts for a case without an arm (`GRAMMAR.md` 5.7,
+`SPEC.md` `CASE-004`) and is the only way a case goes uncovered. An absent arm
+with no omission stays non-exhaustive, and the engine never searches the
+surrounding context to decide that a missing arm was meant (`CASE-005`), so an
+accidental omission and a proved impossibility stay distinguishable. The
+evidence is checked under the omitted case's own discriminator premise, residual
+cases included. Each omission is an obligation of its own (`CASE-012`,
+`CASE-016`): origin `OmittedCase`, an identity that includes that origin, a goal
+stated apart from the proof it is written in, and evidence the kernel checks
+against that goal. The trust report counts them as `Omitted cases proven`, apart
+from the laws they occur in.
+
+What is not built. A contradiction closes a goal only where the goal is built
+from equalities of integers, which includes booleans, enumerations and pointer
+observations. An equality of structured values, such as two records, cannot be
+derived from a false fact by any existing kernel rule, so such a goal is refused
+by name rather than closed by a new rule. Runtime path discharge (`VERIFIED-023`)
+has no source form: its origin (`ImpossiblePath`), identity and diagnostics are
+distinct from an omission's and are exercised below the surface, but nothing in a
+verified body can yet claim a path impossible, so the trust report's `Impossible
+paths proven` line reads 0.
+
 Proof-side `cases` is `IMPLEMENTED` as a representation-independent engine:
 subject analysis, arm matching, binders and scope, nesting, exhaustiveness,
 evidence construction, dependency checking, diagnostics and erasure are shared
@@ -320,6 +356,7 @@ The project should not claim broad language implementation before the proof sema
 | `expects` clauses on laws     | `PROTOTYPE`   |
 | `assume`                      | `PROTOTYPE`   |
 | `rewrite`                     | `PROTOTYPE`   |
+| `contradiction`               | `PROTOTYPE`   |
 | multi-statement proof bodies  | `PROTOTYPE`   |
 | proof `let`                   | `SPECIFIED`   |
 | proof case analysis `cases`   | `PROTOTYPE`   |
@@ -336,7 +373,8 @@ The project should not claim broad language implementation before the proof sema
 | refinement types              | `PROTOTYPE`   |
 | algebraic data types          | `NOT PLANNED` |
 | runtime pattern matching      | `NOT PLANNED` |
-| impossible-state elimination  | `SPECIFIED`   |
+| impossible-state elimination  | `PROTOTYPE`   |
+| impossible runtime paths      | `SPECIFIED`   |
 | definitional equality         | `PROTOTYPE`   |
 | propositional equality        | `PROTOTYPE`   |
 | normalization                 | `PROTOTYPE`   |

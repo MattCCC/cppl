@@ -10,11 +10,13 @@ for alternatives. Whitespace separates tokens; canonical layout is section 49.
 
 `law`, `proof`, `proves`, `pure`, `verified`, `ghost`, `unsafe`, `trusted`, `type`,
 `where`, `expects`, `ensures`, `decreases`, `invariant`, `forall`, and `exists`
-are contextual words. `refl`, `exact`, `apply`, `assume`, `rewrite`, `cases`,
-`decompose`, and `induction` are contextual proof statements. `result`, `old`,
-and `self` have only the scopes defined below. C++ keywords take precedence;
-`case` remains a runtime switch label. None of these additions globally reserves
-an ordinary C++ identifier.
+are contextual words. `refl`, `exact`, `apply`, `assume`, `rewrite`,
+`contradiction`, `cases`, `decompose`, and `induction` are contextual proof
+statements. `omit` and `by` have meaning only in a case omission (section 5.7),
+and `omit` begins one only where a case label followed by `by` comes after it.
+`result`, `old`, and `self` have only the scopes defined below. C++ keywords take
+precedence; `case` remains a runtime switch label. None of these additions
+globally reserves an ordinary C++ identifier.
 
 ## 2. Extended declarations
 
@@ -71,6 +73,7 @@ proof-statement ::= "refl" ";"
                   | "apply" evidence-reference ";"
                   | "rewrite" evidence-reference ";"
                   | "assume" identifier ":" specification-expression ";"
+                  | "contradiction" evidence-reference ";"
                   | cases-statement | decompose-statement | induction-statement
 evidence-reference ::= qualified-id ["(" [argument-expression-list] ")"]
 ```
@@ -100,21 +103,39 @@ hypotheses. No arbitrary-proposition `assume (P);` form exists.
 `rewrite equality;` uses checked equality evidence, left to right, to transform
 the goal. The transformed goal must still be proven; a nonmatching rewrite fails.
 
-### 5.6 `cases` and product decomposition
+### 5.6 `contradiction`
+
+`contradiction evidence;` closes the goal, whatever its shape, from evidence that
+the context where it is written cannot occur. The named evidence must establish
+an equality that cannot hold together with the premises standing there; it is
+checked like any other evidence and introduces no trust (SPEC `CASE-011`,
+`CASE-013`). The same statement, written as the `omit` clause below, accounts for
+an omitted case, which is a claim of its own and is reported as one (SPEC
+`CASE-012`).
+
+### 5.7 `cases` and product decomposition
 
 ```ebnf
-cases-statement ::= "cases" specification-expression "{" {proof-arm} "}"
+cases-statement ::= "cases" specification-expression "{" {proof-arm | case-omission} "}"
+case-omission ::= "omit" proof-arm-label "by" "contradiction" evidence-reference ";"
 decompose-statement ::= "decompose" specification-expression "{" proof-arm "}"
 ```
 
 Providers define states, discriminators and labels; the engine owns arms and
 exhaustiveness. `decompose` uses `components(bindings)` for products. Bindings
-are logical projections or aliases, never new runtime objects. Cases may be
-omitted only with checked evidence that their discriminator contradicts the
-context. The engine derives a residual discriminator by negating named states.
-There is no wildcard and `_` is not a proof catch-all. See SPEC section 20.
+are logical projections or aliases, never new runtime objects. The engine derives
+a residual discriminator by negating named states. There is no wildcard and `_`
+is not a proof catch-all. See SPEC section 20.
 
-### 5.7 `induction`
+A case is covered by an arm or by an `omit` clause naming it, never by both and
+never by the absence of both (SPEC `CASE-004`). `omit` states the claim at the
+site where the label has meaning, and its evidence is checked under that case's
+own discriminator premise, exactly as an arm's body would be. The engine never
+searches the surrounding context to decide that a missing arm was intentional
+(SPEC `CASE-005`). A case omission has no binders, because it has no body to
+bind them in.
+
+### 5.8 `induction`
 
 ```ebnf
 induction-statement ::= "induction" identifier ";"
@@ -126,7 +147,7 @@ settled domain labels, including `zero` and `successor(pred)` for unsigned
 machine induction. The principle supplies its range premise and induction
 hypothesis; `assume` names them. A domain needs a well-founded principle.
 
-### 5.8 Proof arms
+### 5.9 Proof arms
 
 ```ebnf
 proof-arm ::= proof-arm-label ["(" proof-binder-list ")"] "=>" proof-body
@@ -472,7 +493,9 @@ Use the shared `cppl-format` engine through CLI, LSP or CI. Clauses require one
 space before `(`, occur on continuation lines, and use one clause of each kind
 in grammar order. A contracted body's `{` is on the next line at declaration
 indentation. Other braces follow `.clang-format`. Proof arms are expanded,
-with `label(bindings) => {` and one blank line between arms. `where` stays on the
+with `label(bindings) => {` and one blank line between arms. A case omission is
+one line, `omit label by contradiction evidence;`, separated from its neighbours
+the same way, with the statement after `by` kept as written. `where` stays on the
 refinement declaration subject to normal ColumnLimit wrapping. Predicates use
 the same indentation and line-width configuration as C++ expressions.
 

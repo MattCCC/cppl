@@ -277,8 +277,13 @@ What decomposition still does not do:
    can be assigned requires case facts to participate in the same mutation and
    alias invalidation framework as every other proof fact; a provider must never
    be given an invalidation mechanism of its own (`SPEC.md` 20.5).
-2. **Omitted impossible cases.** An arm that cannot occur must still be
-   discharged by the ordinary proof system rather than guessed by a provider.
+2. **Omitted impossible cases.** At `PROTOTYPE`: `omit label by contradiction
+   e;` (`GRAMMAR.md` 5.7) discharges a case through the ordinary proof system
+   rather than letting a provider guess it, as an obligation of its own. What
+   remains in this phase is a source form for unreachable runtime paths
+   (`VERIFIED-023`), which reuses the same mechanism under its own obligation
+   origin (`SPEC.md` `CASE-012`), and closing goals that equate structured
+   values, which the current core cannot derive from a contradiction.
 
 Neither delivers induction or recursive proof admission.
 
@@ -286,7 +291,7 @@ Implement, over ordinary C++ types:
 
 - exhaustive case analysis (`cases`)
 - induction (`induction`) for machine integers and well-founded C++ structures
-- impossible cases
+- impossible runtime paths (omitted cases are at `PROTOTYPE`)
 - recursive proofs
 - termination checking
 - residual cases (`unnamed`, `valueless`, `empty`, `nonnull`), with no wildcard arm

@@ -1034,6 +1034,17 @@ derivation of any proposition:
 C++L need not expose `False` as a special surface keyword for the principle to
 matter.
 
+The current formal core has no `False` constant and no rule of its own for
+False-E. `False` is carried by an equality no value satisfies, `0 == 1` over
+booleans, and False-E is derived rather than primitive: linear arithmetic refutes
+`F1 /\ ... /\ Fn /\ not G`, and a fact that no value satisfies refutes that system
+whatever `G` is. What that derives is a goal built from equalities of integers,
+which is every goal linear arithmetic can state; introducing the goal's
+quantifiers, premises, conjuncts and one disjunct first reaches the rest of the
+propositions whose equalities are of integers. An equality of structured values
+is not reached this way, and reaching it would take a primitive False-E: a new
+kernel rule, not a derivation (`SPEC.md` `CASE-011`).
+
 The crucial soundness condition is that contradiction itself must be derived from
 valid premises.
 

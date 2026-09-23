@@ -163,6 +163,22 @@ struct RewriteStep {
     friend bool operator==(const RewriteStep&, const RewriteStep&) = default;
 };
 
+// `contradiction p;` - p's evidence, instantiated at `arguments`, together with
+// the premises standing where it is written, cannot all hold; that closes the
+// goal whatever its shape (GRAMMAR.md 5.6, SPEC.md CASE-011, CASE-013).
+//
+// This is a distinct step rather than an `apply` of a false premise because what
+// it claims is distinct: that this context cannot occur. Written as an omitted
+// case's discharge (`CaseArm::omitted`), that claim becomes an obligation of its
+// own, recorded under its own origin so it is never reported as an unreachable
+// runtime path (SPEC.md CASE-012, CASE-016).
+struct ContradictionStep {
+    Reference evidence;
+    std::vector<Expr> arguments;
+
+    friend bool operator==(const ContradictionStep&, const ContradictionStep&) = default;
+};
+
 struct CaseArm;
 
 // `cases s { ... }` - proof-side reasoning over the states of an ordinary C++
@@ -185,7 +201,9 @@ struct ProductStep {
 };
 
 struct ProofStep {
-    std::variant<ReflexivityStep, ExactStep, ApplyStep, AssumeStep, RewriteStep, CasesStep, ProductStep> node;
+    std::variant<ReflexivityStep, ExactStep, ApplyStep, AssumeStep, RewriteStep, ContradictionStep, CasesStep,
+                 ProductStep>
+        node;
     source::SourceLocation location;
 };
 
@@ -196,6 +214,13 @@ struct CaseArm {
 
     // The label as the provider spells it, for diagnostics only.
     std::string label;
+
+    // The case was omitted and discharged by contradiction (SPEC.md 20.2
+    // CASE-004 clause 2) rather than proven by an arm body. `steps` holds the
+    // single contradiction step, checked under this case's discriminator
+    // premise; the branch's goal is then closed from that contradiction, never
+    // from the goal being provable on its own.
+    bool omitted = false;
 
     std::vector<ProofStep> steps;
     source::SourceLocation location;

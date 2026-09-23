@@ -191,13 +191,76 @@ diagnostics, because a proof-side omitted case and a runtime control-flow path
 are different claims about different things, and conflating their provenance
 would make a diagnostic name the wrong one.
 
-The elimination needs no new kernel rule. The proposition language has no
-falsity constant -- `Eq` is its only atom -- so absurdity is an equality the
-kernel knows to be false, and `EqualityElimination` transports a goal along it.
-`LinearArithmetic` deliberately cannot do this itself: it restricts its goal to
-an equality, so contradictory facts do not let it conclude an arbitrary
-proposition. Relaxing that restriction would be the wrong fix, growing the
-trusted surface to buy what the existing rules already derive.
+The elimination needs no new kernel rule, but it is not the transport it first
+looks like. The proposition language has no falsity constant -- `Eq` is its only
+atom -- so absurdity is an equality the kernel knows to be false. Eliminating it
+with `EqualityElimination` does not work: transport needs evidence of the goal
+at the equality's other side, and with a constant motive that is the goal again.
+Transport can only conclude the contradiction itself, not an arbitrary goal.
+
+What discharges the case is the rule that already reasons from a set of facts.
+`LinearArithmetic` refutes `F1 /\ ... /\ Fn /\ not G`, and it is used in two
+steps. The first refutes the named evidence and every premise standing at that
+point -- for an omitted case, including its own discriminator -- into `0 == 1`,
+whose negation holds outright, so the certificate can only be refuting the
+facts. The second closes the goal from `0 == 1`. The split is not cosmetic. A
+single step against the real goal also succeeds when the goal merely follows
+from the premises, and an omission judged that way accepts `omit C by
+contradiction e;` for a perfectly possible case `C` whenever `C`'s goal happens
+to be provable. Separating the steps makes "the context cannot occur" the
+content of a checked proof term rather than an inference drawn from one.
+
+A goal with structure is taken apart by the introduction rules -- quantifiers,
+premises, conjuncts, one disjunct -- and each equality left is closed from the
+contradiction. Those equalities must be of integers, because linear arithmetic
+states nothing else and no other rule derives an equality of structured values
+from a false one. That is a real limit of the core rather than an oversight, and
+such a goal is refused by name: closing it would need a new rule, growing the
+trusted surface to buy convenience.
+
+Finding a certificate is search, and it is the search automation already runs
+for arithmetic goals, moved below both layers into `compiler/refutation` so that
+obligations can use it without depending on automation. It is untrusted: the
+kernel states the constraints and checks every certificate itself, and a search
+that finds nothing leaves the claim unproven rather than showing the context is
+satisfiable.
+
+The surface form is `contradiction evidence;` (GRAMMAR.md 5.6), an ordinary
+proof statement rather than a second kind of arm. Keeping it a statement is what
+lets the same construct discharge a runtime path later.
+
+Omitting a case is spelled `omit label by contradiction evidence;` inside the
+`cases` statement (GRAMMAR.md 5.7). The label only has meaning relative to that
+one decomposition, so the discharge belongs lexically at the site rather than
+before it. Three alternatives were rejected. Writing the contradiction in an arm
+body for the case leaves an arm present, which is CASE-004 clause 1, so there
+would be no omitted case at all and clause 2 should have been deleted instead.
+Letting the engine scan the surrounding context for a refutation when an arm is
+missing makes an accidental omission and an intentional impossibility
+indistinguishable, which is what CASE-005 forbids. Putting the discharge before
+the `cases` statement separates the label from the partition that gives it
+meaning.
+
+An omission is not an arm with a shorter body: it binds nothing, has no body,
+and is recorded as omitted rather than inferred from its shape, because CASE-004
+accounts for a case by exactly one of the two and a real arm's body can also be
+a single statement. Its evidence is still checked under the case's own
+discriminator premise, so the check is the one an arm would have received.
+
+Each omission that holds is an obligation of its own (CASE-012, CASE-016):
+origin `OmittedCase`, a goal stating that the premises standing in the case,
+closed over the binders they stand under, entail `0 == 1`, the refutation as its
+evidence, and an identity that includes its origin, so an unreachable runtime
+path stating the same proposition never shares it. The kernel checks it apart
+from the proof it occurs in, and the trust report counts it apart from laws. A
+runtime path would record under `ImpossiblePath` through the same identity and
+diagnostic machinery; it has no source form yet.
+
+`omit` is recognized only where a case label followed by `by` comes after it, so
+it stays an ordinary name everywhere else, including as the first name of a
+label such as `omit::State::idle` (WORD-010). The statement after `by` is read
+by the same parser as every other proof statement, so its evidence reference
+takes arguments exactly as `exact` does.
 
 ## Validation
 
@@ -232,6 +295,22 @@ is what shows the discriminator reached the kernel rather than being trusted.
 Source tests cover the read paths a subject can arrive by, a member and a
 built-in array element as well as a parameter, so CASE-008 is not satisfied
 merely because every subject in the corpus is an identifier.
+
+Omission is pinned by a matched pair: one law, one premise, one piece of
+evidence, differing only in whether the omitted case is the one the premise
+contradicts or the one it agrees with. The accepted half omits the first case
+the partition splits on, so its own discriminator is the only case fact in its
+branch, and the refused half's goal is provable in the omitted branch. Two
+mutations are therefore each caught: withholding the omitted case's
+discriminator fails the accepted half, and judging an omission by whether its
+goal follows accepts the refused half. Beside that pair: an omission under a
+provable goal, under a satisfiable premise, of an unknown label, together with
+an arm for the same case, and a case simply left out while the evidence that
+would discharge it is in scope. Unit tests corrupt an omission's evidence -- its
+facts, its certificate, a fact's stated proposition -- and check it against the
+wrong claim, and every corruption is refused. The same evidence claimed under
+`OmittedCase` and `ImpossiblePath` stays two obligations with two identities,
+and is reported under each claim's own name when refused.
 
 ## Abstract observation signature
 

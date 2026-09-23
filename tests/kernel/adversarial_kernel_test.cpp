@@ -6,7 +6,12 @@
 
 #include "cppl/kernel/check.hpp"
 #include "cppl/kernel/context.hpp"
+#include "cppl/kernel/linear.hpp"
 #include "cppl/testing/test.hpp"
+
+#include <algorithm>
+#include <iterator>
+#include <vector>
 
 namespace {
 using cppl::kernel::CoreLimits;
@@ -762,16 +767,21 @@ CPPL_TEST(u64_arithmetic_limited_by_int64_literal_range) {
 //
 // The proposition language has no falsity constant: `Eq` is its only atom
 // (proposition.hpp). So absurdity is `Eq(0, 1)` at a type where the kernel
-// knows those are distinct, and the elimination is the existing
-// `EqualityElimination`: transporting a goal along `0 = 1` turns a proof at
-// one literal into a proof at the other. Nothing is added to the trusted
-// surface.
+// knows those are distinct.
+//
+// Transport along it is NOT the mechanism, and these tests pin why. Equality
+// elimination needs evidence of the goal at the equality's other side, so with
+// a constant motive it needs the goal to prove the goal: it can conclude the
+// contradiction itself and nothing else. What actually discharges an omitted
+// case is `LinearArithmetic`, used twice: the premises are first refuted into
+// `0 = 1`, and the goal is then closed from that fact, because a fact no value
+// satisfies refutes any system it stands in, whatever the goal is. Either way
+// nothing is added to the trusted surface.
 
 CPPL_TEST(a_contradictory_premise_closes_any_goal) {
-    // The derivation an omitted case will use. `0 = 1` is the premise, which a
-    // real omission gets from a checked refutation rather than by assumption;
-    // here it is introduced as a hypothesis so the test is about the
-    // elimination alone.
+    // Transport along an absurd premise, the derivation an omitted case might
+    // have been expected to use and does not. `0 = 1` is introduced as a
+    // hypothesis so the test is about the elimination alone.
     cppl::kernel::Context ctx;
 
     // An arbitrary goal, unrelated to the premise: `7 = 7` is provable, so it
@@ -799,9 +809,9 @@ CPPL_TEST(a_contradictory_premise_closes_any_goal) {
 }
 
 CPPL_TEST(transport_along_a_contradiction_is_the_ex_falso_shape) {
-    // The same elimination used the way an omitted case really would: the
-    // goal's own term is what gets transported, so the branch closes without
-    // the arm proving anything about the subject.
+    // The same elimination where it does work: the goal's own term is what gets
+    // transported, so it closes without proving anything about the subject. It
+    // works only because the goal is the contradiction itself.
     cppl::kernel::Context ctx;
 
     // Premise `0 = 1`. Motive `h. h = 1`. At `1` the goal is `1 = 1`, closed
@@ -815,8 +825,11 @@ CPPL_TEST(transport_along_a_contradiction_is_the_ex_falso_shape) {
     const auto result = cppl::kernel::check(ctx, goal, ProofTerm::implication_introduction(absurd, evidence), {});
 
     // Accepted: every step is an existing rule, and the conclusion is only
-    // reached under the absurd premise. This is the shape a discharged case
-    // must produce -- and it needs no new kernel rule.
+    // reached under the absurd premise. Note what this does NOT show: the goal
+    // here is the contradiction itself, so transport closes it only because the
+    // goal's own terms are the ones being transported. An unrelated goal is not
+    // reachable this way, which is why a discharged case goes through linear
+    // arithmetic instead.
     CPPL_CHECK(result.has_value());
 }
 
@@ -829,6 +842,75 @@ CPPL_TEST(a_case_cannot_be_omitted_without_evidence_of_its_impossibility) {
     const auto result = cppl::kernel::check(ctx, goal, ProofTerm::reflexivity(), {});
     CPPL_CHECK(!result.has_value());
     CPPL_CHECK(result.error().kind == RejectionKind::NotDefinitionallyEqual);
+}
+
+CPPL_TEST(contradictory_facts_close_an_unrelated_goal_through_arithmetic) {
+    // The step a discharged case closes its goal with. The fact `0 = 1` is
+    // contradictory on its own, and the goal `5 = 9` is unrelated to it and
+    // false, so nothing about the goal can be closing it.
+    //
+    // The kernel states the constraints from the facts and the negated goal
+    // itself. A fact no value satisfies leaves a constraint with no variable
+    // and a positive constant, which refutes the system whatever the goal
+    // contributed, so a certificate naming that one constraint is enough.
+    cppl::kernel::Context ctx;
+    const auto absurd = eq(0, 1);
+    const auto unrelated = Proposition::equality(u32(), literal(5), literal(9));
+
+    const Proposition facts[] = {absurd};
+    const auto system = cppl::kernel::arithmetic_system(ctx, facts, unrelated, cppl::kernel::CoreLimits{});
+    CPPL_CHECK(system.has_value());
+
+    const auto contradictory = std::ranges::find_if(
+        system->constraints, [](const auto& entry) { return entry.terms.empty() && entry.constant > 0; });
+    CPPL_CHECK(contradictory != system->constraints.end());
+
+    cppl::kernel::FarkasSum refutation;
+    refutation.multipliers.emplace_back(
+        static_cast<std::uint32_t>(std::distance(system->constraints.begin(), contradictory)), cppl::kernel::Wide{1});
+
+    std::vector<cppl::kernel::ArithmeticFact> stated;
+    stated.push_back(cppl::kernel::ArithmeticFact{absurd, cppl::kernel::Box<ProofTerm>{ProofTerm::hypothesis({0})}});
+    const auto evidence =
+        ProofTerm::linear_arithmetic(std::move(stated), cppl::kernel::ArithmeticCertificate{refutation});
+    const auto goal = Proposition::implication(absurd, unrelated);
+    const auto result = cppl::kernel::check(ctx, goal, ProofTerm::implication_introduction(absurd, evidence), {});
+
+    // Accepted, and only under the absurd premise: the same term without the
+    // premise in scope has no hypothesis to check its fact against.
+    CPPL_CHECK(result.has_value());
+    CPPL_CHECK(!cppl::kernel::check(ctx, unrelated, evidence, {}).has_value());
+}
+
+CPPL_TEST(a_satisfiable_fact_closes_nothing) {
+    // The soundness direction of the rule above. `0 = 0` is true, so it is not
+    // a contradiction, and the system it states with the negated goal has a
+    // solution. No certificate over it can refute anything.
+    cppl::kernel::Context ctx;
+    const auto satisfiable = eq(0, 0);
+    const auto unrelated = Proposition::equality(u32(), literal(5), literal(9));
+
+    const Proposition facts[] = {satisfiable};
+    const auto system = cppl::kernel::arithmetic_system(ctx, facts, unrelated, cppl::kernel::CoreLimits{});
+    CPPL_CHECK(system.has_value());
+
+    // No constraint is contradictory on its own.
+    const auto contradictory = std::ranges::find_if(
+        system->constraints, [](const auto& entry) { return entry.terms.empty() && entry.constant > 0; });
+    CPPL_CHECK(contradictory == system->constraints.end());
+
+    // Proposing one anyway is refused: every single-constraint sum fails.
+    for (std::size_t index = 0; index < system->constraints.size(); ++index) {
+        cppl::kernel::FarkasSum forged;
+        forged.multipliers.emplace_back(static_cast<std::uint32_t>(index), cppl::kernel::Wide{1});
+        std::vector<cppl::kernel::ArithmeticFact> stated;
+        stated.push_back(
+            cppl::kernel::ArithmeticFact{satisfiable, cppl::kernel::Box<ProofTerm>{ProofTerm::hypothesis({0})}});
+        const auto evidence =
+            ProofTerm::linear_arithmetic(std::move(stated), cppl::kernel::ArithmeticCertificate{forged});
+        const auto goal = Proposition::implication(satisfiable, unrelated);
+        CPPL_CHECK(!cppl::kernel::check(ctx, goal, ProofTerm::implication_introduction(satisfiable, evidence), {}));
+    }
 }
 
 CPPL_TEST(a_hypothesis_that_is_not_in_scope_cannot_supply_the_contradiction) {

@@ -77,6 +77,27 @@ Manifest: `features/refinement-types.yaml`
 | ABI equivalence | erasure | covered — the C++L source and the erased source compile to byte-identical objects across `c++17`, `c++20` and `c++23`, and no refinement name reaches the symbol table (`e2e/refinement_types.sh`) |
 | No hidden runtime validation | erasure, adversarial | covered — identical object code is compared rather than identical output, so a check that happens to pass on the test input would still be caught (`e2e/refinement_types.sh`) |
 
+### checked-contradiction
+
+Manifest: `features/checked-contradiction.yaml`
+
+| Required case | Category | Status |
+| --- | --- | --- |
+| Matched pair differing only in the omitted case | positive, negative, adversarial | covered — the accepted half omits the first case the partition splits on, so its own discriminator is the only case fact in its branch; withholding that discriminator fails it, and judging an omission by its goal accepts the refused half, whose goal is provable there (`fixtures/omitted_case.cpp`, `negative/contradictions.sh` citing `CASE-013`) |
+| Omission under a provable goal | negative, adversarial | covered — `refl` would close the omitted arm, and the omission is still refused because nothing contradicts the case (`negative/contradictions.sh` citing `CASE-005`, `CASE-013`) |
+| Omission under a satisfiable premise | negative | covered (`negative/contradictions.sh` citing `CASE-015`) |
+| Absent arm with the evidence in scope | negative | covered — non-exhaustive, never an intentional omission (`negative/contradictions.sh` citing `CASE-005`) |
+| Arm and omission for one case, unknown label | negative | covered (`negative/contradictions.sh` citing `CASE-004`) |
+| Residual case omitted by its discriminator | positive | covered — enumeration and pointer residuals, refuted through disequalities (`fixtures/omitted_case.cpp`) |
+| Omission under a quantifier | positive | covered — the obligation is closed over the parameter and the goal's own binder (`fixtures/omitted_case.cpp`) |
+| Statement under flat and structured goals | positive, negative | covered — a quantifier, a conjunction and an implication are closed from one contradiction; a satisfiable premise and non-equality evidence are refused (`fixtures/contradiction.cpp`, `negative/contradictions.sh` citing `CASE-011`) |
+| Corrupted evidence | adversarial | covered — facts, certificate and a fact's stated proposition each corrupted, and the evidence checked against another claim; every one refused by the kernel (`unit/contradiction_test.cpp` citing `CASE-014`, `CASE-015`) |
+| One contradiction under two origins | adversarial | covered — two obligations, two identities, two reporting names, two diagnostics, and no strategy replaces refused evidence (`unit/contradiction_test.cpp` citing `CASE-012`, `CASE-016`) |
+| Contextual words | positive, conformance | covered — the words as types, variables, functions and labels, in C++ and inside proofs, across `c++17`, `c++20`, `c++23` (`conformance/contextual_identifiers.sh` citing `WORD-002`, `WORD-010`) |
+| Erasure | erasure | covered (`e2e/omitted_case.sh`, `e2e/contradiction.sh`) |
+| Structured-value goal | negative | recorded limit — refused by name, since no existing rule derives such an equality from a contradiction (`negative/contradictions.sh` citing `CASE-014`) |
+| Unreachable runtime path from source | positive, negative | not built — no source form yet (`VERIFIED-023`); origin, identity and diagnostics are exercised below the surface |
+
 Status here describes test coverage, not implementation maturity.
 `docs/STATUS.md` is authoritative for the latter, and neither weakens what
 `docs/SPEC.md` requires.

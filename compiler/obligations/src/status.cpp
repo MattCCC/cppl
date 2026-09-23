@@ -48,6 +48,10 @@ std::string describe(Origin origin) {
             return "refinement membership";
         case Origin::ElementBounds:
             return "element index within extent";
+        case Origin::OmittedCase:
+            return "omitted case is impossible";
+        case Origin::ImpossiblePath:
+            return "runtime path is unreachable";
     }
     return "obligation";
 }

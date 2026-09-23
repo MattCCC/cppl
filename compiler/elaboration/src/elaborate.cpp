@@ -838,6 +838,7 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
                 for (const auto& arm : statement.arms) {
                     vir::CaseArm converted;
                     converted.location = arm.location;
+                    converted.omitted = arm.omitted;
 
                     // A reserved label names the residual state, so it is
                     // matched against the partition's own residual label rather
@@ -894,6 +895,20 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
                         converted.descriptor = static_cast<std::uint32_t>(*index);
                         converted.label = descriptor.label.text;
                         bindings = &descriptor.bindings;
+                    }
+
+                    // An omitted case has no body, so it binds nothing and
+                    // introduces no binder scope. Its contradiction statement
+                    // still elaborates here, under the enclosing scope, and the
+                    // obligation layer checks it under the case's own
+                    // discriminator premise (CASE-013).
+                    if (arm.omitted) {
+                        auto discharge = self(self, arm.statements);
+                        if (!discharge)
+                            return std::nullopt;
+                        converted.steps = std::move(*discharge);
+                        cases.arms.push_back(std::move(converted));
+                        continue;
                     }
 
                     // A case supplies exactly the bindings its provider
@@ -960,7 +975,7 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
                 continue;
             }
 
-            // The syntax recognizes 'induction' (GRAMMAR.md 5.7) so the
+            // The syntax recognizes 'induction' (GRAMMAR.md 5.8) so the
             // formatter can lay out its arms, but this formal core has no
             // induction rule (SPEC.md 21) - the same rejection every other
             // self-referential proof dependency already receives below, made
@@ -1070,6 +1085,9 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
                     break;
                 case frontend::ProofStatementKind::Rewrite:
                     step.node = vir::RewriteStep{std::move(*evidence), std::move(arguments)};
+                    break;
+                case frontend::ProofStatementKind::Contradiction:
+                    step.node = vir::ContradictionStep{std::move(*evidence), std::move(arguments)};
                     break;
                 default:
                     step.node = vir::ApplyStep{std::move(*evidence), std::move(arguments)};

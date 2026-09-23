@@ -28,6 +28,8 @@ create alternate syntax.
 | `apply`                                       | None                              | Removed with proof                                                         |
 | `assume`                                      | None                              | Removed with proof                                                         |
 | `rewrite`                                     | None                              | Removed with proof                                                         |
+| `contradiction`                               | None                              | Removed with proof                                                         |
+| `omit ... by contradiction ...`               | None                              | Removed with the `cases` statement                                         |
 | `forall`                                      | None                              | Removed with specification/proof                                           |
 | `exists`                                      | None                              | Removed with specification/proof                                           |
 | `cases`                                       | None                              | Removed with proof                                                         |
@@ -825,6 +827,29 @@ law zero_identity(unsigned x)
 }
 ```
 
+Use `contradiction` when the evidence you name cannot hold together with the
+premises standing where you write it. The goal is then closed whatever it says:
+
+```cpp
+pure unsigned zero() {
+    return 0u;
+}
+
+law nothing_reaches_a_false_premise(unsigned x)
+    expects (zero() == 1u)
+    proves (x == 7u)
+{
+    assume impossible : zero() == 1u;
+    contradiction impossible;
+}
+```
+
+`x == 7u` is false for most `x`, but no `x` reaches it, because no value makes
+`zero() == 1u` true. The contradiction is established from the premises alone,
+before the goal is looked at, and the kernel checks it. A premise that has merely
+not been proven is not a contradiction, and neither is a failure to find a state
+that reaches the goal.
+
 Use `cases` when a proof depends on which state a value occupies.
 
 Use `induction` when the proof depends on a recursively smaller predecessor and
@@ -844,6 +869,9 @@ have a theorem that can reduce the goal to premises
 
 have an equality that should transform the goal
     -> rewrite
+
+have evidence the premises here cannot hold together with
+    -> contradiction
 
 need to split finite/logical states
     -> cases
@@ -1711,16 +1739,32 @@ law known_null(int* pointer)
         null => {
             refl;
         }
+
+        omit non_null by contradiction is_null;
     }
 }
 ```
 
-Omitting `non_null` requires checked evidence of contradiction between the entry
-premise and that state's discriminator.
+A case goes without an arm only through an `omit` clause naming it
+(`GRAMMAR.md` 5.7). Its evidence is checked under that case's own discriminator
+premise, so omitting `non_null` requires checked evidence of contradiction
+between the entry premise and that state's discriminator.
 
-There is no heuristic omission.
+An omission is a claim about the case, not about the goal. The contradiction must
+hold whatever the arm would have had to prove, so writing `omit null by
+contradiction is_null;` above is refused, even though `refl` would close that
+arm's goal: `pointer == nullptr` agrees with `null`, and nothing contradicts it.
 
-If the verifier cannot establish that contradiction, the omitted arm is an error.
+There is no heuristic omission. Dropping the `omit` line above does not make the
+case impossible; it makes the `cases` statement non-exhaustive, even though the
+premise that would discharge it is in scope. The verifier never searches the
+context to decide that a missing arm was intentional, so an accidental omission
+cannot pass as a proved one.
+
+If the verifier cannot establish that contradiction, the omission is an error
+naming the omitted case. When it can, the omission is an obligation of its own,
+checked by the kernel apart from the proof it is written in and counted in the
+trust report as `Omitted cases proven`.
 
 ## 10. Induction
 
@@ -3476,6 +3520,7 @@ only when separately named reusable evidence is useful.
 | `apply theorem;`          | Apply evidence/theorem and reduce the goal to remaining premises |
 | `assume h : P;`           | Name a premise already supplied by the proof context             |
 | `rewrite h;`              | Rewrite the current goal using checked equality evidence         |
+| `contradiction h;`        | Close the goal because the context here cannot occur             |
 | `cases value { ... }`     | Split proof by possible states                                   |
 | `decompose value { ... }` | Expose product components                                        |
 | `induction value { ... }` | Prove recursively using an induction hypothesis                  |
@@ -3495,8 +3540,14 @@ have theorem P -> Q and goal Q
 have equality useful for transforming goal
     -> rewrite
 
+have evidence the context here cannot hold together with
+    -> contradiction
+
 need state split
     -> cases
+
+a state cannot occur under the premises
+    -> omit label by contradiction evidence; inside the cases
 
 need field/product projections
     -> decompose

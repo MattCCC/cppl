@@ -35,7 +35,8 @@ v::Proof proof() {
     result.proposition.type = v::Type::proposition();
     result.proposition.node = v::FormalEquality{representation(), {subject(), subject()}};
     const v::ProofStep refl{v::ReflexivityStep{}, {}};
-    result.steps = {{v::CasesStep{subject(), {{0U, "E::a", {refl}, {}}, {std::nullopt, "unnamed", {refl}, {}}}}, {}}};
+    result.steps = {
+        {v::CasesStep{subject(), {{0U, "E::a", false, {refl}, {}}, {std::nullopt, "unnamed", false, {refl}, {}}}}, {}}};
     return result;
 }
 cppl::obligations::Program lower(v::Proof proof, cppl::diagnostics::Engine& engine) {

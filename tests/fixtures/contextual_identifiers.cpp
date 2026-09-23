@@ -78,17 +78,32 @@ int decompose = 0;
 
 int induction = 0;
 
+// The contradiction statement and the words of a case omission (GRAMMAR.md
+// 5.6, 5.7). `contradiction verdict;` in `main` is spelled exactly like the
+// proof statement `contradiction evidence;`, so like `ghost value;` it pins the
+// precedence rule: outside a proof body it declares a variable of type
+// `contradiction`.
+struct contradiction {};
+
+int omit = 0;
+
+int by(int value) {
+    return value;
+}
+
 int sum_of_contextual_names() {
     return pure + type + expects + ensures + invariant + decreases + where + forall + exists + result + old + self +
-           refl + exact + apply + assume + rewrite + cases + decompose + induction;
+           refl + exact + apply + assume + rewrite + cases + decompose + induction + omit + by(0);
 }
 
 int main() {
     proof();
     ghost value;
     law_tag tag;
+    contradiction verdict;
     (void)value;
     (void)tag;
+    (void)verdict;
     (void)verified;
     (void)trusted;
     return law - 1 + sum_of_contextual_names() + shadowing() - 1;

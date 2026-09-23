@@ -16,6 +16,7 @@ elaboration     compiler/elaboration/       formal elaboration
 obligations     compiler/obligations/       obligation generation, contracts, status
 analysis        compiler/analysis/          semantic analysis
 automation      compiler/automation/        proof search, evidence
+refutation      compiler/refutation/        arithmetic refutation search, untrusted
 decomposition   compiler/decomposition/     case and product decomposition
 erasure         compiler/erasure/           lowering to ordinary C++
 diagnostics     compiler/diagnostics/       failure explanation
@@ -109,6 +110,70 @@ tests/negative/refinement_types.sh       refinements that must be refused
 tests/negative/verified_storage.sh       storage crossings
 tests/fixtures/verified_storage.cpp
 ```
+
+---
+
+## checked-contradiction
+
+Manifest: `features/checked-contradiction.yaml`
+
+Normative sources: `CASE-004`, `CASE-005`, `CASE-011`–`CASE-016` (SPEC §20.2,
+§20.6), `VERIFIED-023` (SPEC §12.7), `WORD-002`, `WORD-010` (SPEC §3).
+
+### Components
+
+| Component | Responsibility | Paths |
+| --- | --- | --- |
+| frontend | Recognize `contradiction evidence;` at a statement's start in a proof body, and `omit label by contradiction evidence;` inside `cases` only where a label followed by `by` comes after `omit`. Read the statement after `by` with the ordinary statement parser. | `compiler/frontend/src/recognizer.cpp`, `compiler/frontend/include/cppl/frontend/syntax.hpp` |
+| elaboration | Resolve an omission's label through the same path as an arm's, so a case is accounted for exactly once. | `compiler/elaboration/src/elaborate.cpp` |
+| vir | Carry `ContradictionStep` and mark an omitted `CaseArm` explicitly, never by its shape. | `vir/include/cppl/vir/module.hpp` |
+| obligations | State the named evidence and every standing premise, refute them into `0 == 1`, close the goal from that, and record each omission as an obligation of its own with an origin-bearing identity. Keep every standing premise at the current depth. | `compiler/obligations/src/contradiction.cpp`, `compiler/obligations/src/generate.cpp`, `compiler/obligations/include/cppl/obligations/obligation.hpp` |
+| refutation | Propose certificates; never decide. | `compiler/refutation/src/refute.cpp` |
+| automation | Submit an omission's own evidence and nothing else; name each origin in its own diagnostic. | `compiler/automation/src/evidence.cpp` |
+| driver | Count omitted cases and impossible paths apart from laws and from each other. | `compiler/driver/src/pipeline.cpp`, `compiler/driver/src/driver.cpp` |
+| formatter, lsp, editors | Lay out an omission as one line; present it as omitted, not as an arm; color only the whole omission form. | `compiler/formatter/src/format.cpp`, `src/lsp/src/decomposition_view.cpp`, `editors/shared/cppl.tmLanguage.json`, `editors/neovim/syntax/cppl.vim` |
+
+### Required behavior
+
+```text
+contradiction            is established from the premises alone, before the
+                         goal is considered; a goal that merely follows
+                         establishes nothing
+an omitted case          is checked under its own discriminator, residual
+                         cases included
+a missing arm            is non-exhaustive, never an intentional omission
+a failed search          is an unproven claim, never an impossibility
+an omission              is an obligation of its own: origin OmittedCase, its
+                         own identity, goal and kernel-checked evidence
+an impossible path       would record under ImpossiblePath; the two never
+                         share an origin, identity, diagnostic or report line
+omit, by, contradiction  stay ordinary names outside their grammar positions
+the construct            erases completely
+```
+
+### Interactions
+
+```text
+omission x every decomposition provider    CASE-*, TCB-DECOMP-*
+contradiction x quantified goals           FORALL-*
+contradiction x structured goals           CASE-014 (equalities of integers only)
+premises x quantifiers introduced later    PROOF-*
+words x ordinary C++ identifiers           WORD-*, CXX-*
+omission x erasure                         ERASE-*
+```
+
+### Existing surface
+
+```text
+tests/fixtures/omitted_case.cpp           accepted omissions, and the accepted half of the matched pair
+tests/fixtures/contradiction.cpp          the statement under flat and structured goals
+tests/negative/contradictions.sh          every rejection, written out in tests/fixtures/negative/
+tests/unit/contradiction_test.cpp         evidence shape, corruption, and the two origins
+```
+
+Not built: a source form for an unreachable runtime path (`VERIFIED-023`), and
+closing a goal that equates structured values, which no existing kernel rule
+derives from a contradiction.
 
 ---
 

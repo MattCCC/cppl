@@ -40,10 +40,27 @@ enum class Origin : std::uint8_t {
     // A subscript's index is within its array's extent (SPEC.md 12.10
     // VERIFIED-038). This is a proposition about values, so the kernel proves
     // it; only the capability part of an access is tracked contextually.
-    ElementBounds
+    ElementBounds,
+    // A case omitted from a `cases` statement cannot occur (SPEC.md 20.2
+    // CASE-004). Distinct from ImpossiblePath even though the same checked
+    // contradiction discharges both: they claim different things, and CASE-012
+    // and CASE-016 forbid reporting one as the other.
+    OmittedCase,
+    // A runtime path is unreachable (SPEC.md 12.7 VERIFIED-023).
+    ImpossiblePath
 };
 
 std::string describe(Origin origin);
+
+// The identity of a claim that a context cannot occur: an omitted case, or an
+// unreachable runtime path (SPEC.md CASE-016). The origin is part of it, so the
+// two never share an identity even when they state the same proposition and are
+// discharged by the same evidence. `position` separates two claims with the
+// same subject and goal by the order they were written in, which, unlike a line
+// number, survives unrelated edits.
+[[nodiscard]] ObligationId identify_impossibility(Origin origin, const kernel::Context& context,
+                                                  const std::string& subject, const kernel::Proposition& goal,
+                                                  std::uint64_t position);
 
 struct Obligation {
     ObligationId id;
@@ -66,6 +83,12 @@ struct Obligation {
 
     kernel::Proposition goal;
     source::SourceRange range;
+
+    // Evidence built while lowering what the author wrote, for a claim that is
+    // made inside a proof but stands as an obligation of its own: an omitted
+    // case. It is submitted to the kernel against `goal` like any other
+    // evidence and believed no more than any other.
+    std::optional<kernel::ProofTerm> evidence;
 };
 
 // Evidence an author wrote, lowered to a kernel proof term.

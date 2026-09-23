@@ -1,0 +1,145 @@
+# Machine-readable manifest for the checked-contradiction feature.
+#
+# Rule IDs are anchors in docs/SPEC.md, the canonical specification. Extract the
+# normative text with:
+#
+#     cppl-spec-rules extract --feature checked-contradiction
+
+feature: checked-contradiction
+
+summary: >
+  One checked-contradiction mechanism for every claim that a context cannot
+  occur: the `contradiction evidence;` proof statement, and a case omitted from
+  `cases` as `omit label by contradiction evidence;`. The named evidence and the
+  premises standing where it is written, an omitted case's own discriminator
+  included, are refuted into an equality no value satisfies before the goal is
+  considered, by ordinary kernel-checked linear arithmetic. An omission is an
+  obligation of its own, kept distinct from an unreachable runtime path.
+
+normative_sources:
+  spec:
+    - "§3 Contextual C++L words"
+    - "§12.7 Path-sensitive control flow"
+    - "§20.2 Exhaustiveness and impossible cases"
+    - "§20.6 Evidence and erasure"
+  grammar:
+    - "§1 Lexical rule"
+    - "§5.6 contradiction"
+    - "§5.7 cases and product decomposition"
+    - "§49 Canonical formatting"
+  foundations:
+    - "Contradiction and explosion"
+  trust:
+    - "§6 Untrusted proof producers"
+    - "§19 Case analysis, decomposition and representation models"
+
+rule_families:
+  - CASE
+
+# The rules this feature realizes, within that family and outside it.
+# `cppl-spec-rules extract --feature` reads only the families above; extract
+# VERIFIED-023, WORD-002 and WORD-010 by ID.
+rules:
+  - CASE-004
+  - CASE-005
+  - CASE-011
+  - CASE-012
+  - CASE-013
+  - CASE-014
+  - CASE-015
+  - CASE-016
+  - VERIFIED-023
+  - WORD-002
+  - WORD-010
+
+depends_on:
+  - case-analysis
+  - linear-arithmetic
+  - obligation-identity
+
+implementation:
+  frontend:
+    - compiler/frontend/src/recognizer.cpp
+    - compiler/frontend/include/cppl/frontend/syntax.hpp
+  elaboration:
+    - compiler/elaboration/src/elaborate.cpp
+  vir:
+    - vir/include/cppl/vir/module.hpp
+  obligations:
+    - compiler/obligations/src/contradiction.hpp
+    - compiler/obligations/src/contradiction.cpp
+    - compiler/obligations/src/generate.cpp
+    - compiler/obligations/include/cppl/obligations/obligation.hpp
+    - compiler/obligations/src/status.cpp
+  refutation:
+    - compiler/refutation/include/cppl/refutation/refute.hpp
+    - compiler/refutation/src/refute.cpp
+  automation:
+    - compiler/automation/src/evidence.cpp
+  driver:
+    - compiler/driver/src/pipeline.cpp
+    - compiler/driver/src/driver.cpp
+  formatter:
+    - compiler/formatter/src/format.cpp
+  lsp:
+    - src/lsp/src/decomposition_view.cpp
+    - src/lsp/src/linter.cpp
+  editors:
+    - editors/shared/cppl.tmLanguage.json
+    - editors/neovim/syntax/cppl.vim
+
+interactions:
+  - case analysis and every decomposition provider
+  - quantified and structured goals
+  - premises assumed under quantifiers
+  - contextual C++ identifiers
+  - erasure
+  - obligation identity and reporting
+
+tests:
+  positive:
+    - tests/fixtures/omitted_case.cpp
+    - tests/fixtures/contradiction.cpp
+    - tests/fixtures/contextual_omission_words.cpp
+  negative:
+    - tests/negative/contradictions.sh
+    - tests/fixtures/negative/rejected_omissions.cpp
+    - tests/fixtures/negative/omission_under_a_provable_goal.cpp
+    - tests/fixtures/negative/omission_without_contradiction.cpp
+    - tests/fixtures/negative/omission_of_unknown_case.cpp
+    - tests/fixtures/negative/omission_absent.cpp
+    - tests/fixtures/negative/omission_and_arm.cpp
+    - tests/fixtures/negative/contradiction_satisfiable.cpp
+    - tests/fixtures/negative/contradiction_not_an_equality.cpp
+    - tests/fixtures/negative/contradiction_structured_value_goal.cpp
+  unit:
+    - tests/unit/contradiction_test.cpp
+    - tests/unit/lsp_decomposition_view_test.cpp
+  end_to_end:
+    - tests/e2e/omitted_case.sh
+    - tests/e2e/contradiction.sh
+  conformance:
+    - tests/conformance/contextual_identifiers.sh
+
+required_test_categories:
+  - matched pair differing only in the omitted case
+  - omission under a provable goal
+  - omission under a satisfiable premise
+  - absent arm with the discharging evidence in scope
+  - arm and omission for one case
+  - residual case omitted by its discriminator
+  - omission under a quantifier the cases statement introduces
+  - corrupted omission evidence
+  - one contradiction under two origins
+  - contextual words as ordinary identifiers
+  - erasure
+
+completion_requires:
+  - an omission is justified only by a contradiction among the premises, never by its goal
+  - the omitted case's own discriminator reaches the check
+  - a missing arm is never read as an intentional omission
+  - every certificate is checked by the kernel; an absent one is an unproven claim
+  - an omission is an obligation of its own, with its own origin and identity
+  - omitted cases and impossible paths never share an origin, identity or report line
+  - the words stay contextual and ordinary C++ using them is unaffected
+  - the construct erases completely

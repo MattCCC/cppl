@@ -625,32 +625,55 @@ bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std
             }
             statement.arms_span = {tokens[open].span.offset, tokens[end].span.end() - tokens[open].span.offset};
             cursor = open + 1;
+            // Where a case label starting at `from` ends: the index just past
+            // it, or `from` itself when no label starts there.
+            const auto label_end = [&](std::size_t from) {
+                std::size_t at = from;
+                if (at < end && tokens[at].is_punctuator("::"))
+                    ++at;
+                if (at >= end || tokens[at].kind != TokenKind::Identifier)
+                    return from;
+                ++at;
+                while (at + 1 < end && tokens[at].is_punctuator("::") && tokens[at + 1].kind == TokenKind::Identifier)
+                    at += 2;
+                if (at < end && tokens[at].is_punctuator("<")) {
+                    unsigned angles = 0;
+                    do {
+                        if (tokens[at].is_punctuator("<"))
+                            ++angles;
+                        if (tokens[at].is_punctuator(">"))
+                            --angles;
+                        if (tokens[at].is_punctuator(">>"))
+                            angles = angles >= 2 ? angles - 2 : 0;
+                        ++at;
+                    } while (at < end && angles != 0);
+                }
+                return at;
+            };
             bool malformed = false;
             while (cursor < end) {
                 malformed = true;
                 ProofArm arm;
                 arm.location = stream.location_of(tokens[cursor]);
-                const std::size_t start = cursor;
-                if (tokens[cursor].is_punctuator("::"))
+                const std::size_t omit_start = cursor;
+                // `omit label by contradiction evidence;` (GRAMMAR.md 5.7).
+                // `omit` means this only where that whole form follows, so it
+                // stays an ordinary name everywhere else, including as the first
+                // part of a label such as `omit::State::idle` (SPEC.md
+                // WORD-010). Only `cases` has omissions: a product has one
+                // state, so `decompose` has nothing to omit.
+                const std::size_t omitted_label_end = label_end(cursor + 1);
+                const bool omitting = statement.kind == ProofStatementKind::Cases &&
+                                      tokens[cursor].is_identifier("omit") && omitted_label_end > cursor + 1 &&
+                                      omitted_label_end < end && tokens[omitted_label_end].is_identifier("by");
+                if (omitting) {
+                    arm.omitted = true;
                     ++cursor;
-                if (cursor >= end || tokens[cursor].kind != TokenKind::Identifier)
-                    break;
-                ++cursor;
-                while (cursor + 1 < end && tokens[cursor].is_punctuator("::") &&
-                       tokens[cursor + 1].kind == TokenKind::Identifier)
-                    cursor += 2;
-                if (cursor < end && tokens[cursor].is_punctuator("<")) {
-                    unsigned angles = 0;
-                    do {
-                        if (tokens[cursor].is_punctuator("<"))
-                            ++angles;
-                        if (tokens[cursor].is_punctuator(">"))
-                            --angles;
-                        if (tokens[cursor].is_punctuator(">>"))
-                            angles = angles >= 2 ? angles - 2 : 0;
-                        ++cursor;
-                    } while (cursor < end && angles != 0);
                 }
+                const std::size_t start = cursor;
+                cursor = label_end(start);
+                if (cursor == start)
+                    break;
                 arm.label = {tokens[start].span.offset, tokens[cursor - 1].span.end() - tokens[start].span.offset};
                 arm.spelling = std::string(stream.spelling(arm.label));
                 // Which kind of label this is belongs to the representation, not
@@ -673,6 +696,43 @@ bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std
                            "a case label must be qualified, as in 'State::idle', unless it is a "
                            "name the representation reserves");
                     return false;
+                }
+                if (omitting) {
+                    // No binders: an omitted case has no body to bind them in.
+                    // What follows `by` is an ordinary `contradiction` statement,
+                    // evidence reference and arguments included, so it is read by
+                    // the parser every other proof statement goes through.
+                    const std::size_t by = cursor;
+                    std::size_t terminator = by + 1;
+                    int depth = 0;
+                    for (; terminator < end; ++terminator) {
+                        const Token& at = tokens[terminator];
+                        if (depth == 0 && at.is_punctuator(";"))
+                            break;
+                        if (at.is_punctuator("(") || at.is_punctuator("[") || at.is_punctuator("{"))
+                            ++depth;
+                        else if (at.is_punctuator(")") || at.is_punctuator("]") || at.is_punctuator("}"))
+                            --depth;
+                    }
+                    const auto malformed_omission = [&] {
+                        report(engine, stream, tokens[omit_start], diagnostics::Category::CpplSyntax,
+                               "an omitted case is written 'omit label by contradiction evidence;'");
+                        return false;
+                    };
+                    if (terminator >= end || by + 1 >= terminator || !tokens[by + 1].is_identifier("contradiction"))
+                        return malformed_omission();
+                    if (!read_proof_statements(stream, by, terminator + 1, engine, arm.statements, nesting + 1))
+                        return false;
+                    if (arm.statements.size() != 1 || arm.statements[0].kind != ProofStatementKind::Contradiction)
+                        return malformed_omission();
+                    arm.discharge_span = {tokens[by + 1].span.offset,
+                                          tokens[terminator].span.end() - tokens[by + 1].span.offset};
+                    arm.span = {tokens[omit_start].span.offset,
+                                tokens[terminator].span.end() - tokens[omit_start].span.offset};
+                    statement.arms.push_back(std::move(arm));
+                    malformed = false;
+                    cursor = terminator + 1;
+                    continue;
                 }
                 if (cursor < end && tokens[cursor].is_punctuator("(")) {
                     ++cursor;
@@ -709,7 +769,8 @@ bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std
             }
             if (malformed || cursor != end || statement.arms.empty() || statement.arms.size() > 64) {
                 report(engine, stream, tokens[cursor], diagnostics::Category::CpplSyntax,
-                       "cases requires 1 to 64 arms of the form 'label(binders) => { proof statements }'");
+                       "cases requires 1 to 64 arms of the form 'label(binders) => { proof statements }' "
+                       "or omissions of the form 'omit label by contradiction evidence;'");
                 return false;
             }
             statements.push_back(std::move(statement));
@@ -718,7 +779,7 @@ bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std
         }
 
         // induction identifier ";"                              (short form)
-        // induction identifier "{" proof-arm {proof-arm} "}"    (GRAMMAR.md 5.7)
+        // induction identifier "{" proof-arm {proof-arm} "}"    (GRAMMAR.md 5.8)
         //
         // Recognized the same way `cases`/`decompose` are, syntax only: which
         // labels a domain's induction principle actually admits (`zero`,
@@ -867,12 +928,16 @@ bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std
 
         const bool is_exact = token.is_identifier("exact");
         const bool is_rewrite = token.is_identifier("rewrite");
-        if ((is_exact || is_rewrite || token.is_identifier("apply")) && cursor + 2 < body_close &&
+        // Like every proof-statement word, `contradiction` means this only here,
+        // at the start of a statement in a proof body (SPEC.md WORD-002).
+        const bool is_contradiction = token.is_identifier("contradiction");
+        if ((is_exact || is_rewrite || is_contradiction || token.is_identifier("apply")) && cursor + 2 < body_close &&
             tokens[cursor + 1].kind == TokenKind::Identifier) {
             ProofStatement statement;
-            statement.kind = is_exact     ? ProofStatementKind::Exact
-                             : is_rewrite ? ProofStatementKind::Rewrite
-                                          : ProofStatementKind::Apply;
+            statement.kind = is_exact           ? ProofStatementKind::Exact
+                             : is_rewrite       ? ProofStatementKind::Rewrite
+                             : is_contradiction ? ProofStatementKind::Contradiction
+                                                : ProofStatementKind::Apply;
             statement.reference = std::string(tokens[cursor + 1].text);
             statement.location = stream.location_of(token);
 
@@ -1582,6 +1647,8 @@ std::string describe(ProofStatementKind kind) {
             return "assume";
         case ProofStatementKind::Rewrite:
             return "rewrite";
+        case ProofStatementKind::Contradiction:
+            return "contradiction";
         case ProofStatementKind::Cases:
             return "cases";
         case ProofStatementKind::Decompose:

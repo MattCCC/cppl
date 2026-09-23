@@ -300,6 +300,12 @@ optimization of proof terms
 
 **[TCB-PRODUCER-003]** If an automation engine is trusted directly, it becomes part of the appropriate TCB and that direct trust MUST appear in the trust report.
 
+The arithmetic refutation search (`compiler/refutation`) is such a producer. It
+serves automation and the written `contradiction` alike, and it only proposes
+certificates: the kernel states the constraint system itself and checks every
+one, and a search that finds nothing, or runs out of budget, leaves the claim
+unproven.
+
 ## 6.1 SMT and SAT solvers
 
 Preferred architecture:
@@ -648,6 +654,20 @@ Structural proof features can be logically sound while still depending on a repr
 **[TCB-DECOMP-004]** Payload bindings MUST denote the actual logical subobject/observation represented by the arm; they MUST NOT be invented values.
 
 **[TCB-DECOMP-005]** Pointer case decomposition MUST establish only null/non-null state unless additional capability/lifetime facts are independently available.
+
+A case omission, `omit label by contradiction evidence;` (`SPEC.md` `CASE-004`,
+`CASE-011`), adds nothing to this TCB. Its claim is discharged by ordinary kernel
+evidence: the named evidence and the premises standing in the case, including the
+discriminator the provider supplies, are refuted into `0 == 1` by linear
+arithmetic whose certificate the kernel checks, and the claim is recorded and
+checked as an obligation of its own. Kernel rules added: 0. Axioms: 0.
+Assumptions: 0. The certificate search is an untrusted producer (§6). What an
+omission rests on is what an arm rests on: that the provider's discriminator for
+the omitted case is the right one (TCB-DECOMP-002). A discriminator that stated
+the wrong condition could make a possible state look contradictory, exactly as
+it could hand an arm a false premise. Omission therefore adds no correspondence
+of its own, and a provider defect is as much a soundness defect for it as for an
+arm.
 
 ## 19.1 Standard representation obligations
 

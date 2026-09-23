@@ -13,6 +13,6 @@ target_include_directories(cppl_automation PUBLIC
 
 target_link_libraries(cppl_automation
     PUBLIC cppl_kernel cppl_obligations cppl_diagnostics
-    PRIVATE cppl_project_options)
+    PRIVATE cppl_refutation cppl_project_options)
 
 add_library(cppl::automation ALIAS cppl_automation)
