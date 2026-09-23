@@ -2,6 +2,7 @@
 #include <array>
 #include <cctype>
 #include <cstddef>
+#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -812,11 +813,9 @@ void print_usage() {
                  "  extract --feature=NAME  print every rule for a feature manifest\n";
 }
 
-} // namespace
-
 // Assigns and validates stable normative rule IDs in docs/SPEC.md, which
 // remains the single canonical specification (docs/agent/README.md).
-int main(int argc, char** argv) {
+int run(int argc, char** argv) {
     std::string spec_path = "docs/SPEC.md";
     std::filesystem::path repo = ".";
     std::string command;
@@ -877,4 +876,19 @@ int main(int argc, char** argv) {
     std::cerr << "cppl-spec-rules: unknown command '" << command << "'\n";
     print_usage();
     return 2;
+}
+
+} // namespace
+
+// An escaped exception would end the process through std::terminate; it is
+// reported and fails the run, never passes it.
+int main(int argc, char** argv) {
+    try {
+        return run(argc, argv);
+    } catch (const std::exception& error) {
+        std::cerr << "cppl-spec-rules: " << error.what() << '\n';
+    } catch (...) {
+        std::cerr << "cppl-spec-rules: unknown internal error\n";
+    }
+    return 1;
 }

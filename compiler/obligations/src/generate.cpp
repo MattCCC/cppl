@@ -1308,9 +1308,11 @@ class Underneath {
             assumption.second = kernel::shift(assumption.second, added);
         }
     }
+    // Only ever shrinks: erasing the binders it added cannot allocate, where
+    // resize() has a growing path that can throw out of a destructor.
     ~Underneath() {
         body_.depth = depth_;
-        body_.binders.resize(count_);
+        body_.binders.erase(body_.binders.begin() + static_cast<std::ptrdiff_t>(count_), body_.binders.end());
         body_.assumptions = std::move(assumptions_);
     }
     Underneath(const Underneath&) = delete;

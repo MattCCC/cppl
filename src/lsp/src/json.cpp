@@ -6,7 +6,6 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <cstdio>
 #include <exception>
 #include <string>
 #include <string_view>
@@ -321,11 +320,10 @@ void dump_string(const std::string& text, std::string& out) {
                 break;
             default:
                 if (c < 0x20) {
-                    char buffer[8];
-                    // The buffer is always large enough for a 4-hex-digit
-                    // escape of a byte value; there is no failure to check.
-                    static_cast<void>(std::snprintf(buffer, sizeof(buffer), "\\u%04x", c));
-                    out += buffer;
+                    constexpr std::string_view hex = "0123456789abcdef";
+                    out += "\\u00";
+                    out.push_back(hex[static_cast<std::size_t>(c >> 4)]);
+                    out.push_back(hex[static_cast<std::size_t>(c & 0xF)]);
                 } else {
                     out.push_back(static_cast<char>(c));
                 }

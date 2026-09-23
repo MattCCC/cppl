@@ -30,6 +30,7 @@
 // glibc declares `environ` in <unistd.h> when _GNU_SOURCE is defined, as it is
 // for C++; POSIX leaves the declaration to the program everywhere else.
 #if !(defined(__GLIBC__) && defined(__USE_GNU))
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables): the C library's, as POSIX declares it
 extern char** environ;
 #endif
 #endif
@@ -227,7 +228,7 @@ ProcessResult run_capturing_stdout(const std::string& executable, const std::vec
     std::vector<std::string> words;
     const std::vector<char*> argv = build_argv(executable, arguments, words);
 
-    posix_spawn_file_actions_t actions;
+    posix_spawn_file_actions_t actions{};
     if (posix_spawn_file_actions_init(&actions) != 0) {
         return ProcessResult{false, -1, "could not prepare to run '" + executable + "'"};
     }

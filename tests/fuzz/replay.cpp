@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <ios>
@@ -18,7 +19,9 @@
 
 extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size);
 
-int main(int argc, char** argv) {
+namespace {
+
+int replay(int argc, char** argv) {
     const std::span<char*> arguments(argv, static_cast<std::size_t>(argc));
 
     std::vector<std::filesystem::path> inputs;
@@ -58,4 +61,19 @@ int main(int argc, char** argv) {
 
     std::cout << "replayed " << inputs.size() << " inputs\n";
     return 0;
+}
+
+} // namespace
+
+// An exception out of a target is a failure of that input, reported as one
+// rather than as std::terminate.
+int main(int argc, char** argv) {
+    try {
+        return replay(argc, argv);
+    } catch (const std::exception& error) {
+        std::cerr << "uncaught exception: " << error.what() << '\n';
+    } catch (...) {
+        std::cerr << "uncaught exception\n";
+    }
+    return 1;
 }

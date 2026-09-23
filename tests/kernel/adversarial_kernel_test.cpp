@@ -16,6 +16,7 @@
 #include "cppl/testing/test.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <iterator>
@@ -1075,7 +1076,7 @@ CPPL_TEST(false_elimination_needs_evidence_for_false_itself) {
 CPPL_TEST(false_has_no_introduction) {
     // `False` on its own, with nothing in scope, is never established.
     const cppl::kernel::Context ctx;
-    const ProofTerm attempts[] = {
+    const std::array attempts{
         ProofTerm::reflexivity(),
         ProofTerm::conjunction_introduction(ProofTerm::reflexivity(), ProofTerm::reflexivity()),
         ProofTerm::disjunction_introduction(ProofTerm::reflexivity(), false),

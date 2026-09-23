@@ -1,5 +1,6 @@
 #include "cppl/driver/crash.hpp"
 
+#include <array>
 #include <atomic>
 #include <bit>
 #include <cstddef>
@@ -27,9 +28,12 @@ namespace cppl::driver {
 namespace {
 
 // A handler runs where the process is already broken, so the report allocates
-// nothing, formats nothing and reads only these two pointers.
+// nothing, formats nothing and reads only these two pointers. They are global
+// because a signal handler can reach nothing else.
+// NOLINTBEGIN(cppcoreguidelines-avoid-non-const-global-variables)
 std::atomic<const char*> current_stage{"starting up"};
 std::atomic<const char*> current_input{nullptr};
+// NOLINTEND(cppcoreguidelines-avoid-non-const-global-variables)
 
 void write_text(const char* text) noexcept {
     if (text == nullptr) {
@@ -51,7 +55,7 @@ void write_text(const char* text) noexcept {
 }
 
 void write_hex(std::uint64_t value) noexcept {
-    char text[19] = "0x";
+    std::array<char, 19> text{'0', 'x'};
     std::size_t length = 2;
     bool started = false;
     for (int shift = 60; shift >= 0; shift -= 4) {
@@ -63,7 +67,7 @@ void write_hex(std::uint64_t value) noexcept {
         text[length++] = "0123456789abcdef"[digit];
     }
     text[length] = '\0';
-    write_text(text);
+    write_text(text.data());
 }
 
 void report(const char* kind, std::uint64_t code, const void* address) noexcept {
@@ -151,6 +155,7 @@ std::size_t handler_stack_size() {
 // Never freed: a signal can arrive until the process is gone, after every
 // static destructor has run. Only the kernel would otherwise know where it is,
 // and a leak checker would report the stack still in use as lost.
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 std::byte* handler_stack = nullptr;
 
 extern "C" void on_signal(int number, siginfo_t* information, void*) {
@@ -183,6 +188,9 @@ void install_crash_report() {
     // Install the handler's own stack first: SA_ONSTACK is what lets a stack
     // overflow be reported instead of faulting the handler too.
     const std::size_t size = handler_stack_size();
+    // Owned by the process for its whole life, never by an object: see
+    // handler_stack.
+    // NOLINTNEXTLINE(cppcoreguidelines-owning-memory)
     handler_stack = new std::byte[size];
     stack_t stack{};
     stack.ss_sp = handler_stack;

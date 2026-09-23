@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <exception>
 #include <fstream>
 #include <iostream>
 #include <optional>
@@ -74,12 +75,10 @@ std::string apply_edits(std::string text, std::vector<cppl::formatter::FormatEdi
     return text;
 }
 
-} // namespace
-
 // A CLI over cppl::formatter, the same engine cppl-lsp's document/range/
 // on-type formatting requests call: this tool and the editor always agree
 // (tools/cppl-lsp/README.md, tools/cppl-format/README.md).
-int main(int argc, char** argv) {
+int format_files(int argc, char** argv) {
     const CommandLine command_line = parse_arguments(argc, argv);
     if (command_line.errors) {
         return 2;
@@ -141,4 +140,19 @@ int main(int argc, char** argv) {
         return 1;
     }
     return 0;
+}
+
+} // namespace
+
+// An escaped exception would end the process through std::terminate; it is
+// reported and fails the run like any file that could not be formatted.
+int main(int argc, char** argv) {
+    try {
+        return format_files(argc, argv);
+    } catch (const std::exception& error) {
+        std::cerr << "cppl-format: " << error.what() << '\n';
+    } catch (...) {
+        std::cerr << "cppl-format: unknown internal error\n";
+    }
+    return 1;
 }

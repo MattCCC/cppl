@@ -2,6 +2,7 @@
 #include "cppl/lsp/transport.hpp"
 
 #include <cstdlib>
+#include <exception>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -40,9 +41,7 @@ CommandLine parse_arguments(int argc, char** argv) {
     return result;
 }
 
-} // namespace
-
-int main(int argc, char** argv) {
+int serve(int argc, char** argv) {
 #ifdef _WIN32
     // stdin/stdout must be binary: Windows' default text-mode translation
     // would corrupt the exact byte counts Content-Length promises.
@@ -56,6 +55,21 @@ int main(int argc, char** argv) {
     // stdout is the JSON-RPC channel exclusively; every diagnostic message
     // this process itself wants to report (malformed input, internal
     // errors) goes to stderr instead (tools/cppl-lsp/README.md, task spec).
-    const int exit_code = cppl::lsp::run_transport(server, std::cin, std::cout, std::cerr);
-    return exit_code;
+    return cppl::lsp::run_transport(server, std::cin, std::cout, std::cerr);
+}
+
+} // namespace
+
+// An exception that escaped would end the process through std::terminate,
+// with no word to the editor about why. 1 is the LSP exit code for a session
+// that did not end with shutdown.
+int main(int argc, char** argv) {
+    try {
+        return serve(argc, argv);
+    } catch (const std::exception& error) {
+        std::cerr << "cppl-lsp: " << error.what() << '\n';
+    } catch (...) {
+        std::cerr << "cppl-lsp: unknown internal error\n";
+    }
+    return 1;
 }

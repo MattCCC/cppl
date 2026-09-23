@@ -132,7 +132,8 @@ std::pair<std::size_t, std::size_t> token_range(const TokenStream& stream, sourc
 
 std::size_t matching(const std::vector<Token>& tokens, std::size_t begin, std::size_t end) {
     const auto open = tokens[begin].text;
-    const auto close = open == "(" ? ")" : open == "{" ? "}" : "]";
+    using namespace std::string_view_literals;
+    const std::string_view close = open == "(" ? ")"sv : open == "{" ? "}"sv : "]"sv;
     unsigned depth = 0;
     for (std::size_t index = begin; index < end; ++index) {
         if (tokens[index].text == open)

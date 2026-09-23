@@ -530,7 +530,7 @@ bool same_term(const Expr& lhs, const Expr& rhs);
 // a single value, because a structural value has components instead of the one
 // modeled value a version can denote.
 struct Local {
-    CXCursor declaration;
+    CXCursor declaration = clang_getNullCursor();
     std::uint32_t version = 0;
     Type type;
     std::optional<std::size_t> referent = std::nullopt;

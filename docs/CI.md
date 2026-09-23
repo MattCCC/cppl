@@ -363,3 +363,30 @@ its properties with `cppl::testing::fuzz::require`, seeds in
 libFuzzer needs LLVM Clang: AppleClang ships without it, and `ci-fuzz` uses the
 LLVM named by `LLVM_ROOT` (`tools/ci/native.sh` finds it). Windows has no
 `ci-fuzz`; the replay tests still run there.
+
+---
+
+# 12. Static analysis
+
+`lint` runs `.clang-tidy` over every translation unit and header, and every
+finding is an error. Beyond the analyzer, `bugprone`, `cert`, `concurrency`,
+`performance` and `portability`, it enforces the checks that guard ownership
+(`owning-memory`, `no-malloc`), lifetime (`missing-std-forward`, the coroutine
+capture checks, `misc-coroutine-hostile-raii`), bounds
+(`pro-bounds-array-to-pointer-decay`), initialization (`init-variables`,
+`pro-type-member-init`), exception safety (`bugprone-exception-escape`), C
+varargs (`pro-type-vararg`), mutable globals and misleading or confusable
+source text (`misc-misleading-bidirectional`, `misc-confusable-identifiers`).
+
+A check is adopted by measuring it first, never by enabling it and suppressing
+what it finds:
+
+```sh
+run-clang-tidy -p build/dev -checks='-*,<check>' -quiet
+```
+
+Its findings are fixed in the same change. Where a construct is genuinely
+required, as in the crash handler's signal-safe globals, a
+`NOLINTNEXTLINE(<check>)` names the check beside the comment stating why. The
+checks measured and left off are listed, with the reason, at the top of
+`.clang-tidy`.

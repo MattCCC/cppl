@@ -9,6 +9,7 @@
 
 #include "cppl/driver/crash.hpp"
 
+#include <array>
 #include <chrono>
 #include <csignal>
 #include <cstddef>
@@ -27,6 +28,8 @@
 
 namespace {
 
+// Global and volatile so the compiler cannot prove the recursion ends.
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
 volatile bool keep_recursing = true;
 
 // Each frame keeps a page of its own, so the stack runs out quickly and the
@@ -43,8 +46,8 @@ volatile bool keep_recursing = true;
 } // namespace
 
 CPPL_TEST(a_stack_overflow_is_reported_and_ends_the_process_by_its_signal) {
-    int ends[2] = {-1, -1};
-    CPPL_CHECK_EQ(::pipe(ends), 0);
+    std::array<int, 2> ends{-1, -1};
+    CPPL_CHECK_EQ(::pipe(ends.data()), 0);
     const pid_t child = ::fork();
     CPPL_CHECK(child >= 0);
     if (child == 0) {
@@ -73,10 +76,10 @@ CPPL_TEST(a_stack_overflow_is_reported_and_ends_the_process_by_its_signal) {
     }
 
     std::string report;
-    char buffer[512];
-    for (ssize_t read = ::read(ends[0], buffer, sizeof buffer); read > 0;
-         read = ::read(ends[0], buffer, sizeof buffer)) {
-        report.append(buffer, static_cast<std::size_t>(read));
+    std::array<char, 512> buffer{};
+    for (ssize_t read = ::read(ends[0], buffer.data(), buffer.size()); read > 0;
+         read = ::read(ends[0], buffer.data(), buffer.size())) {
+        report.append(buffer.data(), static_cast<std::size_t>(read));
     }
     static_cast<void>(::close(ends[0]));
 
