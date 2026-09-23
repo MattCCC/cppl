@@ -236,7 +236,7 @@ satisfiable.
 
 The surface form is `contradiction evidence;` (GRAMMAR.md 5.6), an ordinary
 proof statement rather than a second kind of arm. Keeping it a statement is what
-lets the same construct discharge a runtime path later.
+lets the same construct discharge a runtime path, below.
 
 Omitting a case is spelled `omit label by contradiction evidence;` inside the
 `cases` statement (GRAMMAR.md 5.7). The label only has meaning relative to that
@@ -261,15 +261,68 @@ origin `OmittedCase`, a goal stating that the premises standing in the case,
 closed over the binders they stand under, entail `False`, the refutation as its
 evidence, and an identity that includes its origin, so an unreachable runtime
 path stating the same proposition never shares it. The kernel checks it apart
-from the proof it occurs in, and the trust report counts it apart from laws. A
-runtime path would record under `ImpossiblePath` through the same identity and
-diagnostic machinery; it has no source form yet.
+from the proof it occurs in, and the trust report counts it apart from laws.
 
 `omit` is recognized only where a case label followed by `by` comes after it, so
 it stays an ordinary name everywhere else, including as the first name of a
 label such as `omit::State::idle` (WORD-010). The statement after `by` is read
 by the same parser as every other proof statement, so its evidence reference
 takes arguments exactly as `exact` does.
+
+## Claiming a runtime path cannot occur
+
+VERIFIED-023 lets a path be discharged as impossible from checked contradiction
+evidence. Its source form is the same statement, `contradiction evidence;`,
+written in a verified function's body (VERIFIED-045). A second spelling was
+rejected: one construct with one meaning, "the context where this stands cannot
+occur", is what CASE-012 asks for, and what differs between a proof and a runtime
+path is the context, which is exactly what the obligation's origin records.
+
+The claim is checked where it stands. The context is the path's own: every
+fresh value it binds and every fact it supposes - preconditions, branch
+conditions, loop invariants and the postconditions of verified calls already
+made - which are precisely what the path's partial-correctness conditions state
+(RFC 0007). The claim is one more such condition: the path's facts closed over
+`False`, of origin `ImpossiblePath`, with an identity that includes that origin.
+Its evidence is the refutation an omitted case uses, the named proof instantiated
+at its arguments and every fact refuted into `False`, so no frontend heuristic
+ever decides that a path is unreachable. The path ends at the claim, so what
+follows it on that path owes nothing: that is the point of the claim, and it is
+sound only because the claim itself is proven.
+
+The evidence is built after the written proofs are lowered, because the claim
+names one, and a claim that cannot be given evidence carries its refusal and is
+reported once, where it was written. Nothing else may establish it. Automation
+could often prove `False` from a contradictory path on its own, which is exactly
+the inference CASE-005 forbids, so a claim is never offered to a strategy, and
+one resting on a callee's postcondition is not accepted until that callee's
+contract is.
+
+The statement is proof syntax inside runtime code, which raises two questions
+C++L's other constructs do not. First, `contradiction name;` is a valid C++
+declaration wherever `contradiction` names a type, and only Clang knows what a
+name denotes. The recognizer runs before Clang, so it takes the claim only where
+the translation unit uses the word for nothing else outside laws and proofs;
+there the statement cannot be C++, and anywhere else C++ keeps it and a warning
+says so (WORD-011). Second, the statement stands where C++ needs a statement.
+Erasing it entirely would make `if (c) contradiction e; return x;` return under
+the `if`, so it erases to an empty statement: its words go and its `;` stays
+(ERASE-016). Clang is given a block at the same point, a marker declaration and
+one declaration per argument, so the arguments are resolved in the scope the
+statement sees and read at the versions current there.
+
+A claim is verified only as part of a verified body. In an ordinary function
+nothing would check it, so it is refused rather than erased unchecked.
+
+Validation is a matched pair differing only in the branch condition that leads
+to a claim, the same claim across branches, a loop, a verified call, a local's
+versions and an unbraced `if`, and rejections for a reachable claim under a
+provable goal, evidence that is unknown, refused, mistyped, over-instantiated or
+not an equality, a claim resting on an unproven callee, and a claim outside a
+verified function. The spelling is kept as a C++ declaration where the word
+names a type. Mutations that drop the C++-first rule, erase the `;`, refute
+without the path's facts, accept written evidence before its callees are proven,
+or let a strategy establish an impossibility are each caught.
 
 ## Validation
 

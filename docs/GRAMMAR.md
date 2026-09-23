@@ -12,7 +12,9 @@ for alternatives. Whitespace separates tokens; canonical layout is section 49.
 `where`, `expects`, `ensures`, `decreases`, `invariant`, `forall`, and `exists`
 are contextual words. `refl`, `exact`, `apply`, `assume`, `rewrite`,
 `contradiction`, `cases`, `decompose`, and `induction` are contextual proof
-statements. `omit` and `by` have meaning only in a case omission (section 5.7),
+statements; `contradiction` also begins a statement in a verified function's body
+where the translation unit gives the word no other meaning (section 5.6). `omit`
+and `by` have meaning only in a case omission (section 5.7),
 and `omit` begins one only where a case label followed by `by` comes after it.
 `result`, `old`, and `self` have only the scopes defined below. C++ keywords take
 precedence; `case` remains a runtime switch label. None of these additions
@@ -112,6 +114,18 @@ checked like any other evidence and introduces no trust (SPEC `CASE-011`,
 `CASE-013`). The same statement, written as the `omit` clause below, accounts for
 an omitted case, which is a claim of its own and is reported as one (SPEC
 `CASE-012`).
+
+```ebnf
+path-contradiction ::= "contradiction" evidence-reference ";"
+```
+
+Written as a statement of a verified function's body, the same form claims that
+no execution reaches it (SPEC `VERIFIED-045`). The facts established on the path
+to it and the named evidence, whose arguments are read where the statement
+stands, must contradict each other; the path ends there. It is ordinary C++
+wherever the translation unit gives `contradiction` any other meaning, such as a
+type, and in a function that is not verified it is ill-formed (SPEC
+`WORD-011`). It erases to an empty statement: its `;` stays (SPEC `ERASE-016`).
 
 ### 5.7 `cases` and product decomposition
 

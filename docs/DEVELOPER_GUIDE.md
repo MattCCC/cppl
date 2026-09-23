@@ -29,6 +29,7 @@ create alternate syntax.
 | `assume`                                      | None                              | Removed with proof                                                         |
 | `rewrite`                                     | None                              | Removed with proof                                                         |
 | `contradiction`                               | None                              | Removed with proof                                                         |
+| `contradiction` in a verified body            | Empty statement                   | Words removed; the `;` stays, so control flow is unchanged                 |
 | `omit ... by contradiction ...`               | None                              | Removed with the `cases` statement                                         |
 | `forall`                                      | None                              | Removed with specification/proof                                           |
 | `exists`                                      | None                              | Removed with specification/proof                                           |
@@ -854,6 +855,37 @@ The goal's shape does not matter. The contradiction is evidence for `False`, and
 the kernel closes any goal from that, so `Eq<Pair>(p, q)` for two arbitrary
 records closes exactly as `x == 7u` does.
 
+The same statement written in a verified function's body claims that no
+execution reaches it:
+
+```cpp
+proof nothing()
+    proves (zero() == 0u)
+{
+    refl;
+}
+
+verified unsigned below_five(unsigned x)
+    expects (x < 5u)
+    ensures (result < 5u)
+{
+    if (x >= 5u) {
+        contradiction nothing;
+    }
+    return x;
+}
+```
+
+The precondition and the branch condition cannot both hold, so the claim is
+proven from them, and the path ends there: nothing written after the claim on
+that path is verified or needs to be. The facts a claim is checked against are
+everything established on the path to it: preconditions, branch conditions,
+loop invariants and the postconditions of verified calls already made. A claim
+that some execution can reach is an error, never an assumption. At runtime the
+claim is an empty statement. If your translation unit uses the name
+`contradiction` for anything else, the statement is ordinary C++ and the
+compiler warns that it is not a claim.
+
 Use `cases` when a proof depends on which state a value occupies.
 
 Use `induction` when the proof depends on a recursively smaller predecessor and
@@ -876,6 +908,9 @@ have an equality that should transform the goal
 
 have evidence the premises here cannot hold together with
     -> contradiction
+
+a path in a verified body cannot be taken
+    -> contradiction, written as a statement of the body
 
 need to split finite/logical states
     -> cases

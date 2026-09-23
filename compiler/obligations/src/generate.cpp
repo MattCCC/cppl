@@ -414,6 +414,12 @@ class TermLowering {
                         location);
         }
 
+        if (std::holds_alternative<vir::PathContradiction>(expr.node)) {
+            return fail("a path claimed not to occur has no value: the claim is an obligation of its own, never a "
+                        "term",
+                        location);
+        }
+
         return fail("this expression has no core representation", location);
     }
 
@@ -2079,6 +2085,132 @@ void lower_proofs(const vir::Module& module, const elaboration::Result& elaborat
     std::ranges::move(established_omissions, std::back_inserter(program.obligations));
 }
 
+// Builds the evidence each claim that a runtime path cannot occur names
+// (SPEC.md VERIFIED-023, CASE-013).
+//
+// A claim's goal is its path's fresh values and supposed facts closed over
+// `False`. Its evidence introduces them in turn and, beneath all of them,
+// refutes the named proof's conclusion together with every fact into `False`:
+// the mechanism an omitted case and a `contradiction` statement use, applied to
+// the facts of a path rather than to the premises of a proof. A claim that
+// cannot be given evidence is reported once, here, and stands unproven; nothing
+// looks for other evidence for it (CASE-005, CASE-015).
+void discharge_path_claims(Program& program, diagnostics::Engine& engine) {
+    for (PathClaim& claim : program.path_claims) {
+        Obligation& obligation = program.obligations[claim.obligation];
+        const auto refuse = [&](std::string message, std::string note) {
+            obligation.refusal = message;
+            report(engine, diagnostics::Category::ProofFailure, claim.location, std::move(message), std::move(note));
+        };
+
+        // A name no proof declares was reported where it was resolved.
+        if (!claim.proof.has_value()) {
+            obligation.refusal = "'" + claim.evidence + "' names no proof declaration";
+            continue;
+        }
+        const auto proof = std::ranges::find(program.proofs, *claim.proof, &WrittenProof::id);
+        if (proof == program.proofs.end()) {
+            refuse("proof '" + claim.evidence + "' was not admitted, so the claim that runtime path '" +
+                       obligation.subject + "' cannot occur has no evidence",
+                   "the reason it was not admitted is reported above");
+            continue;
+        }
+
+        kernel::Proposition named = proof->goal;
+        kernel::ProofTerm term = proof->term;
+        bool instantiated = true;
+        for (std::size_t index = 0; index < claim.arguments.size() && instantiated; ++index) {
+            const auto* quantified = std::get_if<kernel::Forall>(&named.node);
+            if (quantified == nullptr) {
+                refuse("proof '" + claim.evidence + "' is instantiated at more arguments than it quantifies over",
+                       "at this argument it establishes " + kernel::describe(named) +
+                           ", which quantifies over nothing");
+                instantiated = false;
+            } else if (!(quantified->binder == claim.argument_types[index])) {
+                refuse("proof '" + claim.evidence + "' quantifies over '" + kernel::describe(quantified->binder) +
+                           "' and cannot be instantiated at a term of type '" +
+                           kernel::describe(claim.argument_types[index]) + "'",
+                       "argument " + std::to_string(index + 1) + " of '" + claim.evidence + "'");
+                instantiated = false;
+            } else {
+                kernel::Proposition eliminated = kernel::instantiate(*quantified->body, claim.arguments[index]);
+                term = kernel::ProofTerm::forall_elimination(std::move(named), std::move(term), claim.arguments[index]);
+                named = std::move(eliminated);
+            }
+        }
+        if (!instantiated) {
+            continue;
+        }
+        if (!std::holds_alternative<kernel::Eq>(named.node)) {
+            refuse("'" + claim.evidence + "' does not establish an equality, so it cannot state a contradiction",
+                   "it establishes " + kernel::describe(named));
+            continue;
+        }
+        if (!arithmetic_fact(program.context, named)) {
+            refuse("'" + claim.evidence +
+                       "' establishes an equality linear arithmetic cannot state, so it cannot state a contradiction",
+                   "it establishes " + kernel::describe(named));
+            continue;
+        }
+
+        // The goal's introductions, outermost first, and the premises they put
+        // in scope, each with the number of binders standing where it is.
+        struct Introduction {
+            const kernel::Proposition* premise = nullptr; // null for a binder
+            const kernel::Type* binder = nullptr;
+            std::size_t binders = 0;
+        };
+        std::vector<Introduction> introductions;
+        std::size_t binders = 0;
+        const kernel::Proposition* current = &obligation.goal;
+        while (true) {
+            if (const auto* quantified = std::get_if<kernel::Forall>(&current->node)) {
+                introductions.push_back(Introduction{nullptr, &quantified->binder, binders++});
+                current = &*quantified->body;
+            } else if (const auto* implication = std::get_if<kernel::Implies>(&current->node)) {
+                introductions.push_back(Introduction{&*implication->premise, nullptr, binders});
+                current = &*implication->conclusion;
+            } else {
+                break;
+            }
+        }
+
+        // Every fact of the path, innermost first, restated beneath all the
+        // binders, where the refutation stands.
+        std::vector<Standing> standing;
+        std::uint32_t hypothesis = 0;
+        for (const Introduction& introduced : std::views::reverse(introductions)) {
+            if (introduced.premise == nullptr) {
+                continue;
+            }
+            standing.push_back(
+                Standing{kernel::shift(*introduced.premise, static_cast<std::uint32_t>(binders - introduced.binders)),
+                         kernel::ProofTerm::hypothesis(kernel::HypothesisIndex{hypothesis++})});
+        }
+
+        std::expected<kernel::ProofTerm, Unestablished> absurd = detail::refute(
+            program.context, kernel::ArithmeticFact{named, kernel::Box<kernel::ProofTerm>{std::move(term)}}, standing);
+        if (!absurd.has_value()) {
+            refuse("runtime path '" + obligation.subject + "' is not shown to be unreachable",
+                   absurd.error().kind == Unestablished::Kind::Unreadable
+                       ? "the facts established on that path cannot be stated as linear arithmetic: " +
+                             absurd.error().detail
+                       : "'" + claim.evidence + "' establishes " + kernel::describe(named) +
+                             ", and no contradiction with the facts established on that path was found");
+            continue;
+        }
+
+        kernel::ProofTerm evidence = std::move(*absurd);
+        for (const Introduction& introduced : std::views::reverse(introductions)) {
+            evidence = introduced.premise != nullptr
+                           ? kernel::ProofTerm::implication_introduction(*introduced.premise, std::move(evidence))
+                           : kernel::ProofTerm::forall_introduction(*introduced.binder, std::move(evidence));
+        }
+        obligation.evidence = std::move(evidence);
+    }
+    program.path_claims.clear();
+}
+
 } // namespace
 
 std::optional<kernel::Proposition> rewrite_context(const kernel::Proposition& goal, const kernel::Term& target) {
@@ -2361,6 +2493,7 @@ Program generate(const vir::Module& module, const elaboration::Result& elaborate
     }
 
     lower_proofs(module, elaborated, definitions, program, engine);
+    discharge_path_claims(program, engine);
     return program;
 }
 

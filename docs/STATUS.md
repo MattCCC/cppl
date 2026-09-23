@@ -227,10 +227,26 @@ stated apart from the proof it is written in, and evidence the kernel checks
 against that goal. The trust report counts them as `Omitted cases proven`, apart
 from the laws they occur in.
 
-What is not built. Runtime path discharge (`VERIFIED-023`) has no source form: its origin (`ImpossiblePath`), identity and diagnostics are
-distinct from an omission's and are exercised below the surface, but nothing in a
-verified body can yet claim a path impossible, so the trust report's `Impossible
-paths proven` line reads 0.
+Claiming a runtime path impossible is `PROTOTYPE`: `contradiction e;` written as
+a statement of a verified body claims that no execution reaches it (`GRAMMAR.md`
+5.6, `SPEC.md` `VERIFIED-023`, `VERIFIED-045`). The claim is checked where it
+stands: the named proof, instantiated at arguments read at the versions current
+there, and every fact of the path - preconditions, branch conditions, loop
+invariants, callee postconditions - are refuted into `False` by the same
+mechanism a proof uses. The path ends at the claim, so what follows it owes
+nothing. Each claim is an obligation of its own (`CASE-012`, `CASE-016`): origin
+`ImpossiblePath`, an identity that includes that origin, the path's facts closed
+over `False` as its goal, and evidence built only once the proof it names has
+been admitted. It is never proven any other way, and one resting on a callee's
+postcondition waits for that callee to be proven. The trust report counts them
+as `Impossible paths proven`. A function with a claim has partial-correctness
+conditions, since a path ending in one returns no value. C++ comes first
+(`WORD-011`): where the translation unit gives `contradiction` any other
+meaning, the statement stays ordinary C++ and a warning says so. In a function
+that is not verified it is refused. The statement erases to an empty statement,
+so an unbraced `if` whose body it was keeps one (`ERASE-016`). The evidence is a
+proof declaration; a law without a written proof cannot be named, exactly as in
+a proof body.
 
 Proof-side `cases` is `IMPLEMENTED` as a representation-independent engine:
 subject analysis, arm matching, binders and scope, nesting, exhaustiveness,
@@ -373,7 +389,7 @@ The project should not claim broad language implementation before the proof sema
 | algebraic data types          | `NOT PLANNED` |
 | runtime pattern matching      | `NOT PLANNED` |
 | impossible-state elimination  | `PROTOTYPE`   |
-| impossible runtime paths      | `SPECIFIED`   |
+| impossible runtime paths      | `PROTOTYPE`   |
 | definitional equality         | `PROTOTYPE`   |
 | propositional equality        | `PROTOTYPE`   |
 | normalization                 | `PROTOTYPE`   |

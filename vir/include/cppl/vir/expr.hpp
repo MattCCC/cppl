@@ -6,6 +6,7 @@
 #include "cppl/vir/types.hpp"
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <variant>
 #include <vector>
@@ -223,13 +224,29 @@ struct UnknownVersion {
     friend bool operator==(const UnknownVersion&, const UnknownVersion&) = default;
 };
 
+// `contradiction evidence;` written on a runtime path of a verified body
+// (SPEC.md VERIFIED-023): the claim that no execution reaches this point. It
+// ends the path and has no value; what it owes is an impossibility obligation,
+// discharged only by the named proof and the facts established on the path.
+//
+// `proof` is absent when the name resolves to no proof declaration. That is
+// reported where the name is resolved, and the claim stays an unproven one
+// rather than being dropped.
+struct PathContradiction {
+    std::optional<ProofId> proof;
+    std::string evidence;       // the name as written
+    std::vector<Expr> operands; // the arguments the proof is instantiated at
+
+    friend bool operator==(const PathContradiction&, const PathContradiction&) = default;
+};
+
 struct Expr {
     ExprId id;
     Type type;
     Provenance provenance;
     std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, PlaceVersion, PlaceRef, Loop, Iterate,
                  Projection, Element, FormalEquality, Universal, Implication, Connective, ReturnState, UnknownVersion,
-                 ElementBound>
+                 ElementBound, PathContradiction>
         node;
 
     friend bool operator==(const Expr&, const Expr&) = default;
@@ -245,7 +262,7 @@ struct Expr {
 // alternative fail here first, so the author has to visit every dispatch site
 // and decide what the new node means to each (AGENTS.md 7 "exhaustive
 // handling"). Update the count only together with those sites.
-static_assert(std::variant_size_v<decltype(Expr::node)> == 19,
+static_assert(std::variant_size_v<decltype(Expr::node)> == 20,
               "a VIR expression alternative was added or removed: review every dispatch over Expr::node, "
               "including describe() in vir.cpp, lowering in obligations/generate.cpp, the walk in "
               "obligations/contracts.cpp, and conversion in elaboration/elaborate.cpp");

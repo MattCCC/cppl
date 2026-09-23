@@ -277,13 +277,14 @@ What decomposition still does not do:
    can be assigned requires case facts to participate in the same mutation and
    alias invalidation framework as every other proof fact; a provider must never
    be given an invalidation mechanism of its own (`SPEC.md` 20.5).
-2. **Omitted impossible cases.** At `PROTOTYPE`: `omit label by contradiction
-   e;` (`GRAMMAR.md` 5.7) discharges a case through the ordinary proof system
-   rather than letting a provider guess it, as an obligation of its own. What
-   remains in this phase is a source form for unreachable runtime paths
-   (`VERIFIED-023`), which reuses the same mechanism under its own obligation
-   origin (`SPEC.md` `CASE-012`). A contradiction closes a goal of any shape,
-   structured-value equalities included, by falsity elimination.
+2. **Omitted impossible cases and impossible runtime paths.** At `PROTOTYPE`:
+   `omit label by contradiction e;` (`GRAMMAR.md` 5.7) discharges a case through
+   the ordinary proof system rather than letting a provider guess it, and
+   `contradiction e;` in a verified body claims a runtime path cannot occur
+   (`VERIFIED-045`). Each is an obligation of its own, under its own origin
+   (`SPEC.md` `CASE-012`), discharged by one mechanism. A contradiction closes a
+   goal of any shape, structured-value equalities included, by falsity
+   elimination.
 
 Neither delivers induction or recursive proof admission.
 
@@ -291,7 +292,7 @@ Implement, over ordinary C++ types:
 
 - exhaustive case analysis (`cases`)
 - induction (`induction`) for machine integers and well-founded C++ structures
-- impossible runtime paths (omitted cases are at `PROTOTYPE`)
+- impossible runtime paths beyond the `PROTOTYPE` claim (`VERIFIED-045`), such as a claim over values a path learns through a pointer
 - recursive proofs
 - termination checking
 - residual cases (`unnamed`, `valueless`, `empty`, `nonnull`), with no wildcard arm

@@ -200,7 +200,16 @@ std::expected<Evidence, std::string> Composition::propose_condition(const Condit
             return std::unexpected("callee '" + program_.contracts[callee].name + "' is not proven");
         }
     }
-    const auto candidate = automation::propose(program_.context, program_.obligations[obligation].goal);
+    // A path claimed not to occur is established by the contradiction written
+    // for it, never by a strategy (SPEC.md VERIFIED-023, CASE-005).
+    const obligations::Obligation& stated = program_.obligations[obligation];
+    if (stated.evidence.has_value()) {
+        return Evidence{*stated.evidence, "written contradiction"};
+    }
+    if (stated.origin == obligations::Origin::ImpossiblePath) {
+        return std::unexpected("a runtime path is shown not to occur only by the contradiction written for it");
+    }
+    const auto candidate = automation::propose(program_.context, stated.goal);
     if (!candidate.has_value()) {
         return std::unexpected("no strategy produced candidate evidence");
     }

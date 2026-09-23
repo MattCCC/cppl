@@ -301,6 +301,16 @@ struct Iterate {
     std::vector<Expr> operands;
 };
 
+// The end of a path the source claims cannot be taken: the projector's block
+// for `contradiction evidence;`, read where the statement stood (SPEC.md
+// VERIFIED-023). `marker` names the block and `operands` are the evidence's
+// arguments, each read at the versions current there. Nothing after it on the
+// path is lowered, because the claim is that nothing after it is reached.
+struct PathContradiction {
+    std::string marker;
+    std::vector<Expr> operands;
+};
+
 // A construct Clang resolved but C++L does not model. Carrying the reason
 // keeps the failure explainable instead of silently dropping the expression.
 // Completion carries the value and the parameter values in the post-state.
@@ -326,7 +336,7 @@ struct Expr {
     source::SourceLocation location;
     std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, PlaceVersion, PlaceRef, Loop, Iterate,
                  Projection, Element, FormalEquality, Universal, Implication, Connective, ReturnState, UnknownVersion,
-                 ElementBound, Unsupported>
+                 ElementBound, PathContradiction, Unsupported>
         node;
 };
 
@@ -393,6 +403,11 @@ struct Function {
     // The generated invariant declarations the body lowering attached to a
     // loop. Every one the projector emitted for this function must be here.
     std::vector<std::string> loop_invariants;
+
+    // The blocks of the claims that a path cannot occur which the body lowering
+    // read as the end of a path. Every one the projector emitted for this
+    // function must be here.
+    std::vector<std::string> path_contradictions;
 };
 
 enum class Severity : std::uint8_t {

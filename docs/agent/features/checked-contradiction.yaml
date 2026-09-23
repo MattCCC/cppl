@@ -9,13 +9,15 @@ feature: checked-contradiction
 
 summary: >
   One checked-contradiction mechanism for every claim that a context cannot
-  occur: the `contradiction evidence;` proof statement, and a case omitted from
-  `cases` as `omit label by contradiction evidence;`. The named evidence and the
+  occur: the `contradiction evidence;` proof statement, a case omitted from
+  `cases` as `omit label by contradiction evidence;`, and the same statement in a
+  verified body claiming a runtime path cannot occur. The named evidence and the
   premises standing where it is written, an omitted case's own discriminator
   included, are refuted into `False` before the goal is considered, by ordinary
   kernel-checked linear arithmetic, and the goal is then closed from `False` by
-  falsity elimination, whatever its shape. An omission is an obligation of its
-  own, kept distinct from an unreachable runtime path.
+  falsity elimination, whatever its shape. An omission and a runtime claim are
+  each an obligation of their own, under distinct origins; a claim ends its path
+  and erases to an empty statement.
 
 normative_sources:
   spec:
@@ -23,6 +25,7 @@ normative_sources:
     - "§12.7 Path-sensitive control flow"
     - "§20.2 Exhaustiveness and impossible cases"
     - "§20.6 Evidence and erasure"
+    - "§36 Erasure"
   grammar:
     - "§1 Lexical rule"
     - "§5.6 contradiction"
@@ -41,7 +44,7 @@ rule_families:
 
 # The rules this feature realizes, within that family and outside it.
 # `cppl-spec-rules extract --feature` reads only the families above; extract
-# VERIFIED-023, WORD-002 and WORD-010 by ID.
+# the VERIFIED, WORD and ERASE rules by ID.
 rules:
   - CASE-004
   - CASE-005
@@ -52,8 +55,11 @@ rules:
   - CASE-015
   - CASE-016
   - VERIFIED-023
+  - VERIFIED-045
   - WORD-002
   - WORD-010
+  - WORD-011
+  - ERASE-016
 
 depends_on:
   - case-analysis
@@ -69,14 +75,23 @@ implementation:
   frontend:
     - compiler/frontend/src/recognizer.cpp
     - compiler/frontend/include/cppl/frontend/syntax.hpp
+    - compiler/frontend/src/projection.cpp
+    - compiler/frontend/include/cppl/frontend/projection.hpp
+  erasure:
+    - compiler/erasure/src/erase.cpp
+  bridge:
+    - clang/src/bridge.cpp
+    - clang/include/cppl/clang/ast.hpp
   elaboration:
     - compiler/elaboration/src/elaborate.cpp
   vir:
     - vir/include/cppl/vir/module.hpp
+    - vir/include/cppl/vir/expr.hpp
   obligations:
     - compiler/obligations/src/contradiction.hpp
     - compiler/obligations/src/contradiction.cpp
     - compiler/obligations/src/generate.cpp
+    - compiler/obligations/src/contracts.cpp
     - compiler/obligations/include/cppl/obligations/obligation.hpp
     - compiler/obligations/src/status.cpp
   refutation:
@@ -85,6 +100,7 @@ implementation:
   automation:
     - compiler/automation/src/evidence.cpp
     - compiler/automation/src/arithmetic.cpp
+    - compiler/automation/src/composition.cpp
   driver:
     - compiler/driver/src/pipeline.cpp
     - compiler/driver/src/driver.cpp
@@ -102,16 +118,20 @@ interactions:
   - quantified and structured goals
   - premises assumed under quantifiers
   - contextual C++ identifiers
-  - erasure
+  - erasure, including a claim's empty statement
   - obligation identity and reporting
+  - runtime control flow, loops and verified calls on a claimed path
 
 tests:
   positive:
     - tests/fixtures/omitted_case.cpp
     - tests/fixtures/contradiction.cpp
     - tests/fixtures/contextual_omission_words.cpp
+    - tests/fixtures/impossible_path.cpp
+    - tests/fixtures/contradiction_as_a_cpp_name.cpp
   negative:
     - tests/negative/contradictions.sh
+    - tests/negative/impossible_paths.sh
     - tests/fixtures/negative/rejected_omissions.cpp
     - tests/fixtures/negative/omission_under_a_provable_goal.cpp
     - tests/fixtures/negative/omission_without_contradiction.cpp
@@ -121,14 +141,26 @@ tests:
     - tests/fixtures/negative/contradiction_satisfiable.cpp
     - tests/fixtures/negative/contradiction_not_an_equality.cpp
     - tests/fixtures/negative/contradiction_structured_goal_satisfiable.cpp
+    - tests/fixtures/negative/impossible_path_reachable.cpp
+    - tests/fixtures/negative/impossible_path_under_a_provable_goal.cpp
+    - tests/fixtures/negative/impossible_path_unknown_proof.cpp
+    - tests/fixtures/negative/impossible_path_argument_type.cpp
+    - tests/fixtures/negative/impossible_path_too_many_arguments.cpp
+    - tests/fixtures/negative/impossible_path_not_an_equality.cpp
+    - tests/fixtures/negative/impossible_path_refused_proof.cpp
+    - tests/fixtures/negative/impossible_path_unproven_callee.cpp
+    - tests/fixtures/negative/impossible_path_outside_verified.cpp
   kernel:
     - tests/kernel/adversarial_kernel_test.cpp
   unit:
     - tests/unit/contradiction_test.cpp
     - tests/unit/lsp_decomposition_view_test.cpp
+    - tests/unit/recognizer_test.cpp
+    - tests/unit/projection_test.cpp
   end_to_end:
     - tests/e2e/omitted_case.sh
     - tests/e2e/contradiction.sh
+    - tests/e2e/impossible_path.sh
   conformance:
     - tests/conformance/contextual_identifiers.sh
 
@@ -144,8 +176,16 @@ required_test_categories:
   - a goal equating structured values, closed and refused as a matched pair
   - falsity elimination over evidence that does not establish False
   - one contradiction under two origins
+  - a runtime claim across branches, loops, verified calls and local versions
+  - matched pair differing only in the condition that reaches a claim
+  - a reachable claim under a provable goal
+  - a claim whose evidence is unknown, refused, mistyped, over-instantiated or not an equality
+  - a claim resting on an unproven callee
+  - a claim outside a verified function
+  - the claim's spelling kept as C++ where the word names a type
+  - an impossibility never established by a strategy
   - contextual words as ordinary identifiers
-  - erasure
+  - erasure, including a claim as the body of an unbraced if
 
 completion_requires:
   - an omission is justified only by a contradiction among the premises, never by its goal
@@ -154,5 +194,6 @@ completion_requires:
   - every certificate is checked by the kernel; an absent one is an unproven claim
   - an omission is an obligation of its own, with its own origin and identity
   - omitted cases and impossible paths never share an origin, identity or report line
+  - a claim is checked against every fact of its path, ends it, and rests on a callee only once it is proven
   - the words stay contextual and ordinary C++ using them is unaffected
-  - the construct erases completely
+  - the construct erases completely, a claim to an empty statement

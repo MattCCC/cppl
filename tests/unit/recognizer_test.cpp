@@ -370,6 +370,84 @@ CPPL_TEST(a_verified_declaration_without_a_body_owns_no_later_body) {
     CPPL_CHECK_EQ(result.syntax.verified_functions.size(), std::size_t{1});
 }
 
+// SPEC: VERIFIED-045, WORD-011
+CPPL_TEST(a_contradiction_statement_in_a_verified_body_is_a_claim) {
+    Recognized result;
+    recognize("proof pinned(unsigned v) proves (v == v) { refl; }\n"
+              "verified unsigned f(unsigned x) ensures (result == x) {\n"
+              "    if (x > x) contradiction pinned(x);\n"
+              "    return x;\n"
+              "}\n",
+              result);
+    CPPL_CHECK(!result.engine.has_errors());
+    CPPL_CHECK(result.engine.diagnostics().empty());
+    CPPL_CHECK_EQ(result.syntax.path_contradictions.size(), std::size_t{1});
+    const auto& claim = result.syntax.path_contradictions[0];
+    CPPL_CHECK_EQ(claim.function_index, std::size_t{0});
+    CPPL_CHECK(claim.statement.kind == cppl::frontend::ProofStatementKind::Contradiction);
+    CPPL_CHECK_EQ(claim.statement.reference, "pinned");
+    CPPL_CHECK_EQ(claim.statement.arguments.size(), std::size_t{1});
+    // What is erased stops short of the `;`, which the program keeps.
+    CPPL_CHECK_EQ(claim.span.offset, claim.erased.offset);
+    CPPL_CHECK_EQ(claim.span.length, claim.erased.length + 1);
+    CPPL_CHECK_EQ(claim.statement.location.line, 3u);
+    CPPL_CHECK_EQ(claim.statement.location.column, 16u);
+}
+
+// SPEC: WORD-002, WORD-011
+CPPL_TEST(contradiction_named_anywhere_else_keeps_the_statement_ordinary_cpp) {
+    // `contradiction v(x);` declares `v` wherever `contradiction` names a type.
+    Recognized result;
+    recognize("using contradiction = unsigned;\n"
+              "verified unsigned f(unsigned x) ensures (result == x) { contradiction v(x); return v; }\n",
+              result);
+    CPPL_CHECK(!result.engine.has_errors());
+    CPPL_CHECK(result.syntax.path_contradictions.empty());
+    CPPL_CHECK_EQ(result.engine.diagnostics().size(), std::size_t{1});
+    CPPL_CHECK(result.engine.diagnostics()[0].severity == cppl::diagnostics::Severity::Warning);
+}
+
+// SPEC: WORD-002, WORD-011
+CPPL_TEST(contradiction_inside_a_proof_leaves_the_word_to_cppl) {
+    // The word's uses inside proofs are C++L's own, so they do not make a claim
+    // in a verified body ordinary C++.
+    Recognized result;
+    recognize("law l(unsigned x) expects (x > x) proves (x == 0u) {\n"
+              "    assume impossible : x > x;\n"
+              "    contradiction impossible;\n"
+              "}\n"
+              "proof pinned(unsigned v) proves (v == v) { refl; }\n"
+              "verified unsigned f(unsigned x) ensures (result == x) { if (x > x) { contradiction pinned(x); } "
+              "return x; }\n",
+              result);
+    CPPL_CHECK(!result.engine.has_errors());
+    CPPL_CHECK(result.engine.diagnostics().empty());
+    CPPL_CHECK_EQ(result.syntax.path_contradictions.size(), std::size_t{1});
+}
+
+// SPEC: VERIFIED-045, WORD-011
+CPPL_TEST(a_claim_outside_a_verified_body_is_refused) {
+    Recognized result;
+    recognize("unsigned f(unsigned x) { if (x > x) { contradiction pinned; } return x; }\n", result);
+    CPPL_CHECK(result.engine.has_errors());
+    CPPL_CHECK(result.syntax.path_contradictions.empty());
+}
+
+// SPEC: WORD-002, WORD-011
+CPPL_TEST(contradiction_where_no_statement_begins_is_not_a_claim) {
+    // Inside a `for` header, and in a shape the statement never has: neither is
+    // a claim, and each is left to C++ to accept or refuse.
+    Recognized result;
+    recognize("verified unsigned f(unsigned x) ensures (result == x) {\n"
+              "    for (unsigned i = 0u; contradiction h; ++i) {}\n"
+              "    contradiction = 3;\n"
+              "    return x;\n"
+              "}\n",
+              result);
+    CPPL_CHECK(!result.engine.has_errors());
+    CPPL_CHECK(result.syntax.path_contradictions.empty());
+}
+
 CPPL_TEST(a_loop_termination_measure_is_recognized_as_a_clause) {
     Recognized result;
     recognize("verified unsigned f(unsigned n) ensures (result == n) { unsigned i = 0u;\n"

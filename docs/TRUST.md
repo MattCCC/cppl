@@ -469,6 +469,10 @@ Verified path reasoning depends on correct modeling of the C++ control-flow grap
 
 **[TCB-CFG-005]** Facts from one mutually exclusive path MUST NOT leak into another path unless a valid join rule establishes them.
 
+A claim that a path cannot occur (`SPEC.md` `VERIFIED-045`) ends its path in the control-flow model, so nothing after it on that path owes an obligation. The kernel checks the claim's evidence, but only against the facts the model says hold where the claim stands, and so which facts those are, and where the path ends, is correspondence TCB like every other edge. The claim adds no rule and no assumption; its evidence is built by the same refutation an omitted case uses (§19).
+
+**[TCB-CFG-006]** A claim that a path cannot occur MUST be checked against exactly the facts established on the path to the point where it is written, read at the versions current there, and MUST end only that path.
+
 ## 12.1 Loops
 
 When loop correctness is established through generated verification conditions rather than a kernel-native loop theorem, the loop-rule implementation is correspondence TCB.
@@ -918,6 +922,8 @@ for every accepted program within the supported semantics.
 **[TCB-ERASE-005]** Ghost initialization/destruction may be erased only when the source semantics guarantee that no observable runtime behavior depends on them.
 
 **[TCB-ERASE-006]** A mismatch between the analyzed program and the runtime program MUST be an internal verification failure, never a successful weaker assurance result.
+
+**[TCB-ERASE-010]** Erasing a claim that a path cannot occur (`SPEC.md` `ERASE-016`) MUST leave its `;` as an empty statement, so that a statement it was the body of keeps one and no control flow changes. Erasing the `;` with the claim's words would silently make the next statement that body.
 
 ## 29.1 Refinement lowering
 

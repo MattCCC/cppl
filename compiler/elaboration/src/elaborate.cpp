@@ -150,9 +150,19 @@ vir::BinaryOp convert_operator(clangbridge::BinaryOp op) {
 //
 // Every expression C++L cannot represent stops the conversion with a reason at
 // a source location. Nothing is dropped silently.
+// What a claim that a path cannot occur names, by the marker of its block: the
+// proof declaration, or nothing when no proof has that name.
+struct ResolvedClaim {
+    std::optional<vir::ProofId> proof;
+    std::string evidence;
+};
+using ResolvedClaims = std::map<std::string, ResolvedClaim, std::less<>>;
+
 class ExpressionElaborator {
   public:
-    explicit ExpressionElaborator(std::uint32_t& next_id) : next_id_(next_id) {}
+    explicit ExpressionElaborator(std::uint32_t& next_id, const ResolvedClaims* claims = nullptr)
+        : next_id_(next_id),
+          claims_(claims) {}
 
     struct Failure {
         std::string reason;
@@ -451,6 +461,32 @@ class ExpressionElaborator {
             result.node = std::move(converted);
             return result;
         }
+
+        // A claim that this path cannot occur (SPEC.md VERIFIED-023). Only a
+        // verified body has one, so only its conversion is given the names.
+        if (const auto* claim = std::get_if<clangbridge::PathContradiction>(&expr.node)) {
+            const ResolvedClaim* resolved = nullptr;
+            if (claims_ != nullptr) {
+                if (const auto found = claims_->find(claim->marker); found != claims_->end()) {
+                    resolved = &found->second;
+                }
+            }
+            if (resolved == nullptr) {
+                failure_ = Failure{"a claim that a path cannot occur is written where this implementation does not "
+                                   "read one",
+                                   expr.location};
+                return std::nullopt;
+            }
+            vir::PathContradiction converted{resolved->proof, resolved->evidence, {}};
+            for (const auto& operand : claim->operands) {
+                auto value = convert(operand);
+                if (!value)
+                    return std::nullopt;
+                converted.operands.push_back(std::move(*value));
+            }
+            result.node = std::move(converted);
+            return result;
+        }
         // Every other node kind is refused by name rather than assumed to be
         // `Unsupported`. A kind added to the bridge with no handler here used
         // to reach `std::get` and throw `bad_variant_access` out of the
@@ -470,6 +506,7 @@ class ExpressionElaborator {
 
   private:
     std::uint32_t& next_id_;
+    const ResolvedClaims* claims_;
     std::optional<Failure> failure_;
 };
 
@@ -510,6 +547,12 @@ void collect_callees(const vir::Expr& expr, std::vector<vir::SymbolId>& callees)
     }
     if (const auto* next = std::get_if<vir::Iterate>(&expr.node)) {
         for (const auto& operand : next->operands)
+            collect_callees(operand, callees);
+    }
+    // A claim's arguments are never evaluated, but a function they call must
+    // still be one the formal core can state.
+    if (const auto* claim = std::get_if<vir::PathContradiction>(&expr.node)) {
+        for (const auto& operand : claim->operands)
             collect_callees(operand, callees);
     }
 }
@@ -1124,6 +1167,21 @@ void elaborate_contract(const Request& request, const frontend::VerifiedFunction
         return;
     }
 
+    // Every claim that a path cannot occur written in this body must have ended
+    // a path of it. One that did not stands in a lambda or a local class, whose
+    // body is not this function's, and dropping it would drop an obligation.
+    for (const frontend::PathContradictionMarker& marker : request.projection.path_contradictions) {
+        if (marker.function_index == projected.function_index &&
+            std::ranges::find(function.path_contradictions, marker.name) == function.path_contradictions.end()) {
+            report(engine, diagnostics::Category::UnsupportedSemantics, marker.location,
+                   "this claim that a path cannot occur is not on a runtime path of verified function '" +
+                       function.qualified_name + "'",
+                   "a contradiction is checked as a statement of the function's own body, not inside a lambda "
+                   "or a local class");
+            return;
+        }
+    }
+
     // Every invariant written in this body must have become an invariant of a
     // lowered loop. One that did not would be an obligation silently dropped.
     for (const frontend::LoopInvariantMarker& marker : request.projection.loop_invariants) {
@@ -1510,6 +1568,27 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
         verified_symbols.insert(function->usr);
     }
 
+    // What each claim that a path cannot occur names. A name no proof declares
+    // is reported once, here, where it was written; the claim still reaches the
+    // verifier, as one with no evidence, so it is never silently dropped.
+    ResolvedClaims claims;
+    for (const frontend::PathContradictionMarker& marker : request.projection.path_contradictions) {
+        const frontend::PathContradiction& written = request.syntax.path_contradictions[marker.claim_index];
+        ResolvedClaim resolved{std::nullopt, written.statement.reference};
+        const auto declared = std::ranges::find_if(request.syntax.proofs, [&](const frontend::ProofDeclaration& proof) {
+            return proof.name == written.statement.reference;
+        });
+        if (declared == request.syntax.proofs.end()) {
+            report(engine, diagnostics::Category::Elaboration, written.statement.location,
+                   "no proof named '" + written.statement.reference + "' is in scope here",
+                   "a claim that a path cannot occur names a proof declaration as its evidence");
+        } else {
+            resolved.proof =
+                vir::ProofId{static_cast<std::uint32_t>(std::distance(request.syntax.proofs.begin(), declared))};
+        }
+        claims.emplace(marker.name, std::move(resolved));
+    }
+
     for (const Candidate& candidate : candidates) {
         const clangbridge::Function* function = candidate.function;
         vir::Function converted;
@@ -1545,7 +1624,7 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
         }
 
         if (rejection.empty()) {
-            ExpressionElaborator elaborator(next_expression_id);
+            ExpressionElaborator elaborator(next_expression_id, candidate.contract != nullptr ? &claims : nullptr);
             std::optional<vir::Expr> body = elaborator.convert(*function->returned_value);
             if (!body.has_value()) {
                 const auto& failure = elaborator.failure();
@@ -1572,7 +1651,8 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
                            !std::holds_alternative<vir::Conditional>(converted.returned_value->node) &&
                            !std::holds_alternative<vir::PlaceVersion>(converted.returned_value->node) &&
                            !std::holds_alternative<vir::Loop>(converted.returned_value->node) &&
-                           !std::holds_alternative<vir::ReturnState>(converted.returned_value->node)) {
+                           !std::holds_alternative<vir::ReturnState>(converted.returned_value->node) &&
+                           !std::holds_alternative<vir::PathContradiction>(converted.returned_value->node)) {
                     converted.purity = vir::Purity::Pure;
                 } else if (candidate.pure && candidate.contract == nullptr) {
                     rejection = "pure specification helpers require a single return expression";

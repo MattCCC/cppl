@@ -231,6 +231,23 @@ struct LoopSpecification {
     std::uint32_t body_open_column = 0;
 };
 
+// contradiction evidence;   written as a statement of a verified function's body
+//                                             (GRAMMAR.md 5.6, SPEC.md VERIFIED-023)
+//
+// A claim that no execution reaches this point: the facts established on the
+// path to it, together with the named evidence, cannot all hold. It is proof
+// syntax inside runtime code, so the runtime program keeps only the statement's
+// `;`, an empty statement standing where it was written, and Clang is given
+// declarations at the same point that resolve the evidence's arguments in scope.
+struct PathContradiction {
+    std::size_t function_index = 0; // the verified function whose body holds it
+    ProofStatement statement;       // read by the proof-statement parser
+    source::ByteSpan span;          // `contradiction` through the terminating `;`
+    source::ByteSpan erased;        // the same, less the `;` the program keeps
+    std::uint32_t end_line = 0;     // presumed position just past the `;`
+    std::uint32_t end_column = 0;
+};
+
 // type name [(index parameters)] = base-type where (predicate);
 //                                            (SPEC.md 17, 18; GRAMMAR.md 14, 16)
 //
@@ -273,6 +290,7 @@ struct Syntax {
     std::vector<PureMarker> pure_markers;
     std::vector<VerifiedFunction> verified_functions;
     std::vector<LoopSpecification> loops;
+    std::vector<PathContradiction> path_contradictions;
     std::vector<RefinementType> refinement_types;
 
     // A specification clause written on a function that is not 'verified'
@@ -287,7 +305,7 @@ struct Syntax {
 
     [[nodiscard]] bool empty() const noexcept {
         return laws.empty() && proofs.empty() && pure_markers.empty() && verified_functions.empty() && loops.empty() &&
-               refinement_types.empty() && unchecked_clauses.empty();
+               path_contradictions.empty() && refinement_types.empty() && unchecked_clauses.empty();
     }
 };
 

@@ -1617,6 +1617,57 @@ LoopClauses try_loop_clauses(const TokenStream& stream, std::size_t index, std::
     return outcome;
 }
 
+// Where a `contradiction` statement beginning at `index` ends: the index of its
+// `;`, when the tokens have the statement's one shape, `contradiction name;` or
+// `contradiction name(arguments);` (GRAMMAR.md 5.6).
+std::optional<std::size_t> contradiction_statement_end(const std::vector<Token>& tokens, std::size_t index) {
+    if (index + 2 >= tokens.size() || tokens[index + 1].kind != TokenKind::Identifier) {
+        return std::nullopt;
+    }
+    if (tokens[index + 2].is_punctuator(";")) {
+        return index + 2;
+    }
+    if (!tokens[index + 2].is_punctuator("(")) {
+        return std::nullopt;
+    }
+    const std::size_t close = matching_parenthesis(tokens, index + 2);
+    if (close + 1 >= tokens.size() || !tokens[close + 1].is_punctuator(";")) {
+        return std::nullopt;
+    }
+    return close + 1;
+}
+
+// Whether a statement can begin at `index`: what precedes it ends a statement
+// or opens a block or a statement's body, and no parenthesis is open around it,
+// as one is in a `for` header.
+bool at_statement_start(const std::vector<Token>& tokens, std::size_t index) {
+    if (index == 0) {
+        return false;
+    }
+    const Token& previous = tokens[index - 1];
+    if (!previous.is_punctuator("{") && !previous.is_punctuator("}") && !previous.is_punctuator(";") &&
+        !previous.is_punctuator(":") && !previous.is_punctuator(")") && !previous.is_identifier("else") &&
+        !previous.is_identifier("do")) {
+        return false;
+    }
+    std::size_t closed = 0;
+    for (std::size_t cursor = index; cursor > 0; --cursor) {
+        const Token& token = tokens[cursor - 1];
+        if (token.is_punctuator("{") || token.is_punctuator("}")) {
+            return true;
+        }
+        if (token.is_punctuator(")")) {
+            ++closed;
+        } else if (token.is_punctuator("(")) {
+            if (closed == 0) {
+                return false;
+            }
+            --closed;
+        }
+    }
+    return false;
+}
+
 } // namespace
 
 std::string describe(ClauseKind kind) {
@@ -1725,6 +1776,15 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
     };
     std::vector<VerifiedBody> verified_bodies;
 
+    // Statements spelled `contradiction name;` or `contradiction name(...);` in
+    // a function body. Which of them are claims is decided once the whole unit
+    // has been read, because that depends on every other use of the word.
+    struct Written {
+        std::size_t keyword = 0;
+        std::size_t terminator = 0;
+    };
+    std::vector<Written> written_contradictions;
+
     std::size_t index = 0;
     while (index < tokens.size() && tokens[index].kind != TokenKind::EndOfFile) {
         if (tokens[index].is_punctuator("{")) {
@@ -1783,6 +1843,15 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
                     syntax.loops.push_back(std::move(loop));
                 }
                 index = next;
+                continue;
+            }
+        }
+
+        if (tokens[index].is_identifier("contradiction") && !scopes.empty() && scopes.back() == ScopeKind::Block &&
+            at_statement_start(tokens, index)) {
+            if (const std::optional<std::size_t> terminator = contradiction_statement_end(tokens, index)) {
+                written_contradictions.push_back(Written{index, *terminator});
+                index = *terminator + 1;
                 continue;
             }
         }
@@ -2007,6 +2076,72 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
         }
 
         ++index;
+    }
+
+    // C++ first (SPEC.md 3.1, WORD-002). `contradiction name;` declares a
+    // variable wherever `contradiction` names a type, and only Clang knows what
+    // a name denotes. So a statement of that spelling is a claim only in a unit
+    // that uses the word for nothing else, where it cannot be ordinary C++. The
+    // word's uses inside laws and proofs are C++L's own and do not count; any
+    // other use, a declaration in a header included, does.
+    if (!written_contradictions.empty()) {
+        const auto in_proof = [&syntax](const Token& token) {
+            const auto covers = [&token](const source::ByteSpan& span) {
+                return token.span.offset >= span.offset && token.span.offset < span.end();
+            };
+            return std::ranges::any_of(syntax.proofs,
+                                       [&covers](const ProofDeclaration& proof) { return covers(proof.range.span); }) ||
+                   std::ranges::any_of(syntax.laws,
+                                       [&covers](const LawDeclaration& law) { return covers(law.range.span); });
+        };
+        std::optional<std::size_t> other;
+        for (std::size_t at = 0; at < tokens.size() && !other.has_value(); ++at) {
+            if (tokens[at].is_identifier("contradiction") && !in_proof(tokens[at]) &&
+                std::ranges::none_of(written_contradictions,
+                                     [at](const Written& written) { return written.keyword == at; })) {
+                other = at;
+            }
+        }
+
+        for (const Written& written : written_contradictions) {
+            const auto body = std::ranges::find_if(verified_bodies, [&written](const VerifiedBody& candidate) {
+                return candidate.open < written.keyword && written.keyword < candidate.close;
+            });
+            if (other.has_value()) {
+                if (body != verified_bodies.end()) {
+                    diagnostics::Diagnostic diagnostic;
+                    diagnostic.severity = diagnostics::Severity::Warning;
+                    diagnostic.category = diagnostics::Category::CpplSyntax;
+                    diagnostic.message = "'contradiction' is also a name in this translation unit, so this statement "
+                                         "is ordinary C++, not a claim that the path cannot occur";
+                    diagnostic.location = stream.location_of(tokens[written.keyword]);
+                    diagnostic.notes.push_back(
+                        diagnostics::Note{"the name is used here", stream.location_of(tokens[*other])});
+                    engine.report(std::move(diagnostic));
+                }
+                continue;
+            }
+            if (body == verified_bodies.end()) {
+                report(engine, stream, tokens[written.keyword], diagnostics::Category::UnsupportedSemantics,
+                       "a claim that a path cannot occur is checked only in a verified function",
+                       "mark the enclosing function 'verified' so its contradiction becomes an obligation");
+                continue;
+            }
+            std::vector<ProofStatement> statements;
+            if (!read_proof_statements(stream, written.keyword - 1, written.terminator + 1, engine, statements, 0)) {
+                continue;
+            }
+            const Token& keyword = tokens[written.keyword];
+            const Token& terminator = tokens[written.terminator];
+            PathContradiction claim;
+            claim.function_index = body->function;
+            claim.statement = std::move(statements.front());
+            claim.span = source::ByteSpan{keyword.span.offset, terminator.span.end() - keyword.span.offset};
+            claim.erased = source::ByteSpan{keyword.span.offset, terminator.span.offset - keyword.span.offset};
+            claim.end_line = terminator.line;
+            claim.end_column = terminator.column + 1;
+            syntax.path_contradictions.push_back(std::move(claim));
+        }
     }
 
     return syntax;

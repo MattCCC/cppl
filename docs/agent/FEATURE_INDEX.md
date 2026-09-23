@@ -34,7 +34,7 @@ section numbers move and rule IDs do not.
 | Specification expressions | `SPECEXPR-*`, `ADMISSIBLE-*` | §14, Annex U | §6 | — | — |
 | Proof declarations | `PROOF-*`, `PROOFSRC-*` | §15, Annex H | §4, §5 | Curry–Howard | §4, §13 |
 | Case analysis | `CASE-*` | §20 | §5.7, §18 | — | §4, §19 |
-| Checked contradiction and case omission | `CASE-004`, `CASE-005`, `CASE-011`–`CASE-016`, `VERIFIED-023`, `WORD-002`, `WORD-010` | §20.2, §20.6, §12.7, §3 | §1, §5.6, §5.7 | Contradiction and explosion | §6, §19 |
+| Checked contradiction, case omission and impossible runtime paths | `CASE-004`, `CASE-005`, `CASE-011`–`CASE-016`, `VERIFIED-023`, `VERIFIED-045`, `WORD-002`, `WORD-010`, `WORD-011`, `ERASE-016` | §20.2, §20.6, §12.7, §3, §36 | §1, §5.6, §5.7 | Contradiction and explosion | §5.1, §6, §19 |
 | Induction | `INDUCT-*` | §21 | — | Induction | §4 |
 | Ghost state | `GHOST-*` | §25 | §21 | — | §10 |
 

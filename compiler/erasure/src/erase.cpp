@@ -47,6 +47,11 @@ Erased erase(const frontend::TokenStream& stream, const frontend::Syntax& syntax
     for (const frontend::LoopSpecification& loop : syntax.loops) {
         spans.push_back(loop.clause_region);
     }
+    // A claim that a path cannot occur leaves its `;` behind as an empty
+    // statement, so only the words before it are erased.
+    for (const frontend::PathContradiction& claim : syntax.path_contradictions) {
+        spans.push_back(claim.erased);
+    }
 
     // A refinement type is runtime-bearing: what must stand in its place is the
     // alias it means, recomputed here from the declaration so that nothing the

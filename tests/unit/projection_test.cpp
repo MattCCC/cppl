@@ -435,3 +435,52 @@ CPPL_TEST(a_loop_measure_leaves_the_runtime_and_reaches_clang_as_a_value) {
     }
     CPPL_CHECK_EQ(measures, std::size_t{1});
 }
+
+// SPEC: VERIFIED-045, ERASE-016
+// TRUST.md TCB-ERASE-010
+CPPL_TEST(a_claim_that_a_path_cannot_occur_leaves_an_empty_statement_behind) {
+    // An unbraced `if` whose body is the claim: if the `;` went with the words,
+    // the `return` after it would become the `if`'s body.
+    const std::string text = "proof pinned(unsigned v) proves (v == v) { refl; }\n"
+                             "verified unsigned f(unsigned x) expects (x < 5u) ensures (result == x) {\n"
+                             "    if (x >= 5u) contradiction pinned(x + 1u);\n"
+                             "    return x;\n"
+                             "}\n";
+    cppl::diagnostics::Engine engine;
+    const auto stream = cppl::frontend::lex(text, "claims.cpp");
+    const auto syntax = cppl::frontend::recognize(stream, engine);
+    CPPL_CHECK(!engine.has_errors());
+    CPPL_CHECK_EQ(syntax.path_contradictions.size(), std::size_t{1});
+    const auto projection = cppl::frontend::project(stream, syntax, {});
+    const auto erased = cppl::erasure::erase(stream, syntax, projection, engine);
+    CPPL_CHECK(!engine.has_errors());
+    CPPL_CHECK(erased.report.only_deletions);
+    CPPL_CHECK(erased.report.lines_preserved);
+
+    // The runtime keeps the `;` in the byte it stood at, and nothing else of
+    // the claim.
+    const auto& claim = syntax.path_contradictions[0];
+    CPPL_CHECK_EQ(projection.runtime[claim.span.end() - 1], ';');
+    CPPL_CHECK(projection.runtime.find("contradiction") == std::string::npos);
+    CPPL_CHECK(projection.runtime.find("pinned(x") == std::string::npos);
+    CPPL_CHECK(projection.runtime.find("    return x;") != std::string::npos);
+
+    // Clang is given a block where the claim stood: the claim's marker, then one
+    // declaration per argument, resolved in the scope the statement sees.
+    CPPL_CHECK_EQ(projection.path_contradictions.size(), std::size_t{1});
+    const std::string& name = projection.path_contradictions[0].name;
+    CPPL_CHECK(projection.analysis.find("bool " + name + " = true;") != std::string::npos);
+    CPPL_CHECK(projection.analysis.find("decltype(auto) " + name + "_argument_0 = (") != std::string::npos);
+    CPPL_CHECK(projection.analysis.find("x + 1u);") != std::string::npos);
+
+    // The text after the claim keeps its line and column in the analysis.
+    const auto analysis = cppl::frontend::lex(projection.analysis, "claims.cpp");
+    bool found = false;
+    for (const auto& token : analysis.tokens()) {
+        if (token.text == "return" && analysis.location_of(token).line == 4 &&
+            analysis.location_of(token).column == 5) {
+            found = true;
+        }
+    }
+    CPPL_CHECK(found);
+}

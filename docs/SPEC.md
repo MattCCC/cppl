@@ -182,7 +182,7 @@ and `contains` have proof-intrinsic meaning only for the mathematical domains
 defined in §19.1. Outside those formal contexts, identically spelled names remain
 ordinary C++ identifiers.
 
-[WORD-002] The following words have special meaning only as proof statements inside a proof body (§15):
+[WORD-002] The following words have special meaning only as proof statements inside a proof body (§15), except that `contradiction` also begins a claim that a path cannot occur in a verified function's body (WORD-011):
 
 ```text
 refl
@@ -267,7 +267,18 @@ contradiction evidence;`, written directly inside a `cases` statement (§20.2).
 `omit` begins one only where a case label followed by `by` comes after it; a
 case label whose first name is `omit`, such as `omit::State::idle`, is an
 ordinary label. Anywhere else both words, and `contradiction` outside a proof
-statement, are ordinary C++ identifiers.
+statement or a claim that a path cannot occur (WORD-011), are ordinary C++
+identifiers.
+
+[WORD-011] In a verified function's body, a statement `contradiction name;` or
+`contradiction name(arguments);` is a claim that a path cannot occur (§12.7,
+VERIFIED-045) only where the translation unit uses `contradiction` for nothing
+outside laws and proofs. There the statement cannot be ordinary C++. Where the
+word names or is used as any C++ entity, the statement keeps its ordinary C++
+meaning, such as the declaration of a local when `contradiction` names a type,
+and the implementation SHOULD warn that it is not a claim. The same statement in
+a function that is not verified is ill-formed C++L rather than an unchecked
+claim.
 
 ---
 
@@ -1378,6 +1389,28 @@ cover every runtime path relevant to the claimed property.
 [VERIFIED-023] A path may be discharged as impossible only from checked contradiction evidence.
 Syntactic unreachability heuristics, proof-search timeout or failure to enumerate a path
 MUST NOT be treated as proof of impossibility.
+
+[VERIFIED-045] A path is claimed impossible by writing `contradiction evidence;` as a statement of
+a verified function's body (GRAMMAR.md 5.6), with the evidence instantiated at
+arguments as for any proof statement. The claim is checked where it is written:
+the named evidence, instantiated at arguments read at the versions current
+there, together with every fact established on the path to that point -
+preconditions, branch conditions, loop invariants and the postconditions of
+verified calls already made - MUST allow the checker to derive a contradiction
+(CASE-013). The claim ends the path: no statement after it on that path owes an
+obligation. It is an obligation of its own, of origin `ImpossiblePath`, distinct
+from an omitted case (CASE-012, CASE-016). A callee postcondition it rests on
+MUST itself be established before the claim is (VERIFIED-014).
+
+```cpp
+verified void f(int x)
+    expects (x >= 0)
+{
+    if (x < 0) {
+        contradiction evidence;
+    }
+}
+```
 
 [VERIFIED-024] A call, write or operation may use only facts established before that operation on
 the same path and facts that remain valid under intervening effects and aliasing.
@@ -2754,7 +2787,9 @@ resulting internal proof term is locally well-typed.
 
 [CASE-011] Contradiction evidence is written `contradiction evidence;` (GRAMMAR.md 5.6) in
 a proof context claimed to be unreachable, and `omit label by contradiction
-evidence;` (GRAMMAR.md 5.7) for a case omitted from a `cases` statement.
+evidence;` (GRAMMAR.md 5.7) for a case omitted from a `cases` statement. The same
+statement written in a verified function's body claims a runtime path cannot
+occur (VERIFIED-045).
 
 [CASE-013] The named evidence MUST be ordinary checked evidence. Together with the
 hypotheses already in force at that point, including any case discriminator or
@@ -3647,6 +3682,8 @@ exact
 apply
 assume
 rewrite
+contradiction
+omit ... by contradiction
 cases
 decompose
 induction
@@ -3671,6 +3708,10 @@ erases while the ordinary C++ runtime operations inside the unsafe boundary rema
 
 [ERASE-004] A refinement declaration may require canonical lowering to its underlying C++
 representation rather than simple token deletion.
+
+[ERASE-016] A claim that a path cannot occur (VERIFIED-045) erases to an empty statement: its
+words are removed and its `;` remains. A statement it was the body of, such as
+an unbraced `if`, therefore still has one, and the claim changes no control flow.
 
 ---
 

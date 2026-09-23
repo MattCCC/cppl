@@ -636,6 +636,52 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         edits.push_back(Edit{source::ByteSpan{loop.body_open, 0}, std::move(replacement)});
     }
 
+    // A claim that a path cannot occur is proof syntax in runtime code. The
+    // program keeps its `;`, so an empty statement stands where it was written
+    // and whatever statement it was the body of still has one. Clang is given a
+    // block at the same point instead, which resolves the evidence's arguments
+    // in the scope the statement sees (SPEC.md VERIFIED-023).
+    for (std::size_t index = 0; index < syntax.path_contradictions.size(); ++index) {
+        const PathContradiction& claim = syntax.path_contradictions[index];
+        blank(projection.runtime, claim.erased);
+
+        PathContradictionMarker marker;
+        marker.name = options.generated_prefix + "contradiction_" + std::to_string(index) +
+                      (options.unit_key.empty() ? "" : "_" + options.unit_key);
+        marker.claim_index = index;
+        marker.function_index = claim.function_index;
+        marker.location = claim.statement.location;
+
+        const std::string& file = claim.statement.location.file;
+        std::string replacement = "{\n";
+        replacement += line_directive(claim.statement.location.line, file);
+        // Starting the declaration at the keyword's column is what makes a
+        // diagnostic about the claim point at the `contradiction` written.
+        if (claim.statement.location.column > 1) {
+            replacement.append(claim.statement.location.column - 1, ' ');
+        }
+        replacement += "[[maybe_unused]] bool " + marker.name + " = true;\n";
+        for (std::size_t position = 0; position < claim.statement.arguments.size(); ++position) {
+            const ProofArgument& argument = claim.statement.arguments[position];
+            replacement += line_directive(argument.location.line, file);
+            // `decltype(auto)` over a parenthesized argument binds it as it is,
+            // an lvalue by reference, so nothing is copied or converted.
+            std::string head =
+                "[[maybe_unused]] decltype(auto) " + marker.name + "_argument_" + std::to_string(position) + " = (";
+            if (argument.location.column > head.size() + 1) {
+                head.append(argument.location.column - 1 - head.size(), ' ');
+            }
+            replacement += head;
+            replacement += stream.spelling(argument.span);
+            replacement += ");\n";
+        }
+        replacement += "}\n";
+        replacement += line_directive(claim.end_line, file);
+        replacement.append(claim.end_column - 1, ' ');
+        edits.push_back(Edit{claim.span, std::move(replacement)});
+        projection.path_contradictions.push_back(std::move(marker));
+    }
+
     // The runtime text is otherwise the scanned text with proof-only spans
     // blanked, so the lowerings are applied last and from the back, where no
     // offset recorded above them has moved yet.

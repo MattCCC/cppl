@@ -118,19 +118,21 @@ tests/fixtures/verified_storage.cpp
 Manifest: `features/checked-contradiction.yaml`
 
 Normative sources: `CASE-004`, `CASE-005`, `CASE-011`–`CASE-016` (SPEC §20.2,
-§20.6), `VERIFIED-023` (SPEC §12.7), `WORD-002`, `WORD-010` (SPEC §3).
+§20.6), `VERIFIED-023`, `VERIFIED-045` (SPEC §12.7), `WORD-002`, `WORD-010`,
+`WORD-011` (SPEC §3), `ERASE-016` (SPEC §36).
 
 ### Components
 
 | Component | Responsibility | Paths |
 | --- | --- | --- |
-| frontend | Recognize `contradiction evidence;` at a statement's start in a proof body, and `omit label by contradiction evidence;` inside `cases` only where a label followed by `by` comes after `omit`. Read the statement after `by` with the ordinary statement parser. | `compiler/frontend/src/recognizer.cpp`, `compiler/frontend/include/cppl/frontend/syntax.hpp` |
-| elaboration | Resolve an omission's label through the same path as an arm's, so a case is accounted for exactly once. | `compiler/elaboration/src/elaborate.cpp` |
-| vir | Carry `ContradictionStep` and mark an omitted `CaseArm` explicitly, never by its shape. | `vir/include/cppl/vir/module.hpp` |
+| frontend | Recognize `contradiction evidence;` at a statement's start in a proof body, and `omit label by contradiction evidence;` inside `cases` only where a label followed by `by` comes after `omit`. Read the statement after `by` with the ordinary statement parser. In a function body, read `contradiction name;` or `contradiction name(...);` at a statement's start as a claim only when the unit uses the word nowhere else outside laws and proofs, and only in a verified body; warn when C++ keeps it. Erase a claim's words and keep its `;`, and give Clang a block of marker declarations where it stood. | `compiler/frontend/src/recognizer.cpp`, `compiler/frontend/include/cppl/frontend/syntax.hpp`, `compiler/frontend/src/projection.cpp`, `compiler/erasure/src/erase.cpp` |
+| bridge | Read a claim's block as the end of its path, its arguments at the versions current there, and nothing after it on that path. | `clang/src/bridge.cpp`, `clang/include/cppl/clang/ast.hpp` |
+| elaboration | Resolve an omission's label through the same path as an arm's, so a case is accounted for exactly once. Resolve a claim's evidence name to a proof declaration, reporting a name no proof declares once, where it is written. Refuse a verified body that did not read every claim written in it. | `compiler/elaboration/src/elaborate.cpp` |
+| vir | Carry `ContradictionStep` and mark an omitted `CaseArm` explicitly, never by its shape. Carry a claim as `PathContradiction`, a path end with no value. | `vir/include/cppl/vir/module.hpp`, `vir/include/cppl/vir/expr.hpp` |
 | kernel | `False` with no introduction rule; falsity elimination closes any goal from evidence for it; linear arithmetic concludes `False` from facts alone. | `kernel/include/cppl/kernel/proposition.hpp`, `kernel/include/cppl/kernel/proof.hpp`, `kernel/src/check.cpp`, `kernel/src/linear.cpp` |
-| obligations | State the named evidence and every standing premise, refute them into `False`, eliminate that into the goal, and record each omission as an obligation of its own with an origin-bearing identity. Keep every standing premise at the current depth. | `compiler/obligations/src/contradiction.cpp`, `compiler/obligations/src/generate.cpp`, `compiler/obligations/include/cppl/obligations/obligation.hpp` |
+| obligations | State the named evidence and every standing premise, refute them into `False`, eliminate that into the goal, and record each omission as an obligation of its own with an origin-bearing identity. Keep every standing premise at the current depth. State a claim as a partial-correctness condition, the path's facts closed over `False`, and build its evidence by the same refutation once the proofs are lowered; a claim that cannot be given evidence carries its refusal. | `compiler/obligations/src/contradiction.cpp`, `compiler/obligations/src/generate.cpp`, `compiler/obligations/src/contracts.cpp`, `compiler/obligations/include/cppl/obligations/obligation.hpp` |
 | refutation | Propose certificates; never decide. | `compiler/refutation/src/refute.cpp` |
-| automation | Submit an omission's own evidence and nothing else; name each origin in its own diagnostic. | `compiler/automation/src/evidence.cpp` |
+| automation | Submit an impossibility's own evidence and nothing else, never a strategy's, and a claim resting on a callee only once that callee is proven; name each origin in its own diagnostic. | `compiler/automation/src/evidence.cpp`, `compiler/automation/src/composition.cpp` |
 | driver | Count omitted cases and impossible paths apart from laws and from each other. | `compiler/driver/src/pipeline.cpp`, `compiler/driver/src/driver.cpp` |
 | formatter, lsp, editors | Lay out an omission as one line; present it as omitted, not as an arm; color only the whole omission form. | `compiler/formatter/src/format.cpp`, `src/lsp/src/decomposition_view.cpp`, `editors/shared/cppl.tmLanguage.json`, `editors/neovim/syntax/cppl.vim` |
 
@@ -146,10 +148,17 @@ a missing arm            is non-exhaustive, never an intentional omission
 a failed search          is an unproven claim, never an impossibility
 an omission              is an obligation of its own: origin OmittedCase, its
                          own identity, goal and kernel-checked evidence
-an impossible path       would record under ImpossiblePath; the two never
-                         share an origin, identity, diagnostic or report line
-omit, by, contradiction  stay ordinary names outside their grammar positions
-the construct            erases completely
+an impossible path       is an obligation of its own under ImpossiblePath; it
+                         and an omission never share an origin, identity,
+                         diagnostic or report line
+a claim on a path        is checked against every fact of the path and ends it;
+                         nothing after it on that path owes anything
+a claim's evidence       is only the contradiction written for it, and waits
+                         for every callee postcondition it rests on
+omit, by, contradiction  stay ordinary names outside their grammar positions,
+                         and a claim's spelling stays C++ wherever the word
+                         means anything else in the unit
+the construct            erases completely; a claim leaves its `;`
 ```
 
 ### Interactions
@@ -161,6 +170,8 @@ contradiction x structured goals           CASE-014, TCB-CORE-017 (any goal, by 
 premises x quantifiers introduced later    PROOF-*
 words x ordinary C++ identifiers           WORD-*, CXX-*
 omission x erasure                         ERASE-*
+claim x control flow and erasure           ERASE-016
+claim x loops and verified calls           VERIFIED-014, LOOP-*
 ```
 
 ### Existing surface
@@ -171,9 +182,15 @@ tests/fixtures/contradiction.cpp          the statement under flat and structure
 tests/negative/contradictions.sh          every rejection, written out in tests/fixtures/negative/
 tests/unit/contradiction_test.cpp         evidence shape, corruption, and the two origins
 tests/kernel/adversarial_kernel_test.cpp  falsity elimination and how False may be established
+tests/fixtures/impossible_path.cpp        claims across branches, loops, calls, versions and an unbraced if
+tests/fixtures/contradiction_as_a_cpp_name.cpp  the claim's spelling kept as a C++ declaration
+tests/e2e/impossible_path.sh              claims counted, program run, erasure to an empty statement
+tests/negative/impossible_paths.sh        every refused claim, written out in tests/fixtures/negative/
 ```
 
-Not built: a source form for an unreachable runtime path (`VERIFIED-023`).
+Not built: coloring a claim in the editors. A grammar cannot tell whether the
+unit gives `contradiction` another meaning, so it leaves the runtime form
+uncolored rather than color a C++ declaration.
 
 ---
 

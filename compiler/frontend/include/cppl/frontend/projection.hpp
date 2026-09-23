@@ -77,6 +77,20 @@ struct LoopInvariantMarker {
     source::SourceLocation location;
 };
 
+// The declarations a claim that a path cannot occur is projected into
+// (SPEC.md VERIFIED-023): a block standing where the statement was written,
+// holding a `bool` named `name` and then one declaration per argument of the
+// evidence, `name` followed by `_argument_` and its position, initialized with
+// that argument. Clang resolves each argument in the scope the statement sees,
+// and the bridge reads the block back as the end of the path rather than as
+// statements of the body. It exists only in the analysis text.
+struct PathContradictionMarker {
+    std::string name;
+    std::size_t claim_index = 0; // into Syntax::path_contradictions
+    std::size_t function_index = 0;
+    source::SourceLocation location;
+};
+
 // A formal equality is never represented by a C++ operator== or a fabricated
 // Eq template. Its analysis-only probe asks Clang to resolve a two-parameter
 // lambda call at the stated type. The bridge reads the resolved arguments,
@@ -139,6 +153,7 @@ struct Projection {
     std::vector<ProofFunction> proof_functions;
     std::vector<ContractFunctions> contract_functions;
     std::vector<LoopInvariantMarker> loop_invariants;
+    std::vector<PathContradictionMarker> path_contradictions;
     std::vector<PropositionProbe> proposition_probes;
     std::vector<RefinementProbe> refinement_probes;
     std::vector<RuntimeLowering> runtime_lowerings;

@@ -2,6 +2,7 @@
 #include "lowering.hpp"
 
 #include <algorithm>
+#include <iterator>
 #include <ranges>
 #include <variant>
 
@@ -191,7 +192,9 @@ bool requires_conditions(const vir::Expr& expression) {
         std::holds_alternative<vir::ReturnState>(expression.node) ||
         std::holds_alternative<vir::UnknownVersion>(expression.node) ||
         // A bound states an obligation, which only the path walk emits.
-        std::holds_alternative<vir::ElementBound>(expression.node)) {
+        std::holds_alternative<vir::ElementBound>(expression.node) ||
+        // So does a path claimed not to occur, which also has no value.
+        std::holds_alternative<vir::PathContradiction>(expression.node)) {
         return true;
     }
     if (const auto* bound = std::get_if<vir::PlaceVersion>(&expression.node)) {
@@ -708,6 +711,7 @@ class Conditions {
 
     std::vector<Obligation> obligations;
     std::vector<VerificationCondition> conditions;
+    std::vector<PathClaim> claims;
 
   private:
     // After the parameters, a path binds fresh values and supposes facts, in
@@ -1003,7 +1007,65 @@ class Conditions {
             return iterate(*next, expression, scope, loops);
         }
 
+        if (const auto* claim = std::get_if<vir::PathContradiction>(&expression.node)) {
+            return impossible(*claim, expression, scope);
+        }
+
         return returned(expression, std::move(scope));
+    }
+
+    // `contradiction evidence;` on this path (SPEC.md VERIFIED-023). The path
+    // ends here, so nothing after it owes anything; what it owes instead is the
+    // claim itself, that the facts established on the way here cannot all hold.
+    // That is a condition like any other: every fresh value and supposed fact of
+    // the path, closed over `False`. Its identity carries its origin, so it is
+    // never mistaken for an omitted case stating the same proposition
+    // (CASE-012, CASE-016).
+    //
+    // The evidence's arguments are specification terms and are never evaluated,
+    // so a call in one is not a call this body makes: it is lowered as a term
+    // like any other, and a call the core cannot state is refused rather than
+    // proven where it stands.
+    std::expected<void, Failure> impossible(const vir::PathContradiction& claim, const vir::Expr& expression,
+                                            const Scope& scope) {
+        PathClaim written;
+        written.proof = claim.proof;
+        written.evidence = claim.evidence;
+        written.location = expression.provenance.range.begin;
+        for (const vir::Expr& argument : claim.operands) {
+            auto term = lower(argument, scope);
+            if (!term) {
+                return std::unexpected(term.error());
+            }
+            const std::optional<kernel::Type> type = core_type(argument.type);
+            if (!type.has_value()) {
+                return fail("an argument of '" + claim.evidence + "' has a type the formal core does not represent",
+                            argument.provenance.range.begin);
+            }
+            written.arguments.push_back(std::move(*term));
+            written.argument_types.push_back(*type);
+        }
+
+        Obligation obligation;
+        obligation.origin = Origin::ImpossiblePath;
+        obligation.subject = function_.qualified_name + " path " + std::to_string(++paths_);
+        obligation.range = expression.provenance.range;
+        obligation.goal = close(scope, kernel::Proposition::falsity());
+        source::Hasher hasher;
+        hasher.update_field("partial-correctness-v1");
+        hasher.update_field(identify_impossibility(Origin::ImpossiblePath, program_.context, obligation.subject,
+                                                   obligation.goal, impossibilities_++)
+                                .digest.to_short_hex(64));
+        for (const std::size_t callee : scope.relied_on) {
+            hasher.update_field(identity_of(callee));
+        }
+        obligation.id = ObligationId{hasher.finish()};
+
+        written.obligation = program_.obligations.size() + obligations.size();
+        conditions.push_back(VerificationCondition{written.obligation, scope.relied_on});
+        obligations.push_back(std::move(obligation));
+        claims.push_back(std::move(written));
+        return {};
     }
 
     [[nodiscard]] std::string invariant_subject(const vir::Expr& loop, std::uint32_t position) const {
@@ -1224,6 +1286,7 @@ class Conditions {
     const Program& program_;
     std::size_t steps_ = 0;
     std::size_t paths_ = 0;
+    std::size_t impossibilities_ = 0;
 };
 
 std::expected<ContractVerification, Failure> build_partial(const vir::Function& function, const Contracts& contracts,
@@ -1253,6 +1316,7 @@ std::expected<ContractVerification, Failure> build_partial(const vir::Function& 
     for (Obligation& obligation : generated.obligations) {
         program.obligations.push_back(std::move(obligation));
     }
+    std::ranges::move(generated.claims, std::back_inserter(program.path_claims));
     return plan;
 }
 

@@ -286,3 +286,47 @@ CPPL_TEST(one_contradiction_claimed_under_two_origins_stays_two_claims) {
                "omitted case 'unnamed' of proof 'omitting' is not shown to be impossible");
     CPPL_CHECK(refused.diagnostics()[1].message == "runtime path 'else branch of f' is not shown to be unreachable");
 }
+
+// SPEC: VERIFIED-023, CASE-005, CASE-015
+CPPL_TEST(a_claimed_impossibility_is_never_established_by_a_strategy) {
+    // A path whose facts contradict each other: `x == 0` and `x == 1`. A
+    // strategy would prove `False` from them, which is exactly what a claim may
+    // not rest on. Only the contradiction written for it establishes it.
+    const auto u32 = k::Type::integer(32, k::Signedness::Unsigned);
+    const auto x = k::Term::variable(k::VarIndex{0});
+    const auto is = [&](std::int64_t value) {
+        return k::Proposition::equality(u32, x, k::Term::literal(u32.integer_type(), value));
+    };
+    const auto goal = k::Proposition::for_all(
+        u32, k::Proposition::implication(is(0), k::Proposition::implication(is(1), k::Proposition::falsity())));
+
+    o::Program program;
+    const auto automatic = cppl::automation::propose(program.context, goal);
+    CPPL_CHECK(automatic.has_value());
+    if (!automatic.has_value()) {
+        return;
+    }
+    CPPL_CHECK(k::check(program.context, goal, automatic->proof, {}).has_value());
+
+    for (const o::Origin origin : {o::Origin::ImpossiblePath, o::Origin::OmittedCase}) {
+        o::Obligation claim;
+        claim.origin = origin;
+        claim.subject = "f path 1";
+        claim.goal = goal;
+        claim.id = o::identify_impossibility(origin, program.context, claim.subject, claim.goal, 0);
+        program.obligations = {claim};
+
+        // No evidence written: unproven, and said so.
+        cppl::diagnostics::Engine unwritten;
+        const auto open = cppl::automation::verify(program, unwritten);
+        CPPL_CHECK(!open[0].verdict.is_proven());
+        CPPL_CHECK_EQ(unwritten.diagnostics().size(), std::size_t{1});
+
+        // Evidence refused where it was built: unproven, and not reported twice.
+        program.obligations[0].refusal = "the reason, reported where it was found";
+        cppl::diagnostics::Engine refused;
+        const auto still_open = cppl::automation::verify(program, refused);
+        CPPL_CHECK(!still_open[0].verdict.is_proven());
+        CPPL_CHECK(refused.diagnostics().empty());
+    }
+}

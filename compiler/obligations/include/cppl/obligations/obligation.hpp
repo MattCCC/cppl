@@ -3,6 +3,8 @@
 #include "cppl/kernel/context.hpp"
 #include "cppl/kernel/proof.hpp"
 #include "cppl/kernel/proposition.hpp"
+#include "cppl/kernel/term.hpp"
+#include "cppl/kernel/types.hpp"
 #include "cppl/obligations/contracts.hpp"
 #include "cppl/source/digest.hpp"
 #include "cppl/source/location.hpp"
@@ -46,7 +48,8 @@ enum class Origin : std::uint8_t {
     // contradiction discharges both: they claim different things, and CASE-012
     // and CASE-016 forbid reporting one as the other.
     OmittedCase,
-    // A runtime path is unreachable (SPEC.md 12.7 VERIFIED-023).
+    // A runtime path is unreachable: `contradiction evidence;` written in a
+    // verified body (SPEC.md 12.7 VERIFIED-023, VERIFIED-045).
     ImpossiblePath
 };
 
@@ -84,11 +87,35 @@ struct Obligation {
     kernel::Proposition goal;
     source::SourceRange range;
 
-    // Evidence built while lowering what the author wrote, for a claim that is
-    // made inside a proof but stands as an obligation of its own: an omitted
-    // case. It is submitted to the kernel against `goal` like any other
+    // Evidence built from what the author wrote, for a claim that stands as an
+    // obligation of its own: an omitted case, or a runtime path claimed not to
+    // occur. It is submitted to the kernel against `goal` like any other
     // evidence and believed no more than any other.
     std::optional<kernel::ProofTerm> evidence;
+
+    // Why the evidence written for such a claim could not be built. The reason
+    // was reported where it was found, so the claim stands unproven and is
+    // never offered to a strategy that might establish it some other way
+    // (SPEC.md CASE-005, CASE-015).
+    std::optional<std::string> refusal;
+};
+
+// A claim that a runtime path cannot occur, `contradiction evidence;` written
+// in a verified body (SPEC.md VERIFIED-023), awaiting the evidence it names.
+//
+// Its obligation is generated with the body's other conditions, as the path's
+// facts closed over `False`. The evidence can be built only once the proof the
+// claim names has been, so the claim is recorded here and discharged after the
+// written proofs are lowered.
+struct PathClaim {
+    std::size_t obligation = 0; // into Program::obligations
+    std::optional<vir::ProofId> proof;
+    std::string evidence; // the name as written
+    // The terms the proof is instantiated at, stated beneath every binder of
+    // the obligation's goal, with their types.
+    std::vector<kernel::Term> arguments;
+    std::vector<kernel::Type> argument_types;
+    source::SourceLocation location;
 };
 
 // Evidence an author wrote, lowered to a kernel proof term.
@@ -133,6 +160,10 @@ struct Program {
     std::vector<WrittenProof> proofs;
     std::vector<ContractVerification> contracts;
     std::vector<RefinementPredicate> refinements;
+
+    // Claims that a runtime path cannot occur whose evidence is built once the
+    // written proofs have been lowered. Empty after generation completes.
+    std::vector<PathClaim> path_claims;
 
     // The predicate a refinement name states, or null when nothing declares it.
     [[nodiscard]] const RefinementPredicate* refinement(std::string_view name) const;

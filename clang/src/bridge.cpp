@@ -1692,12 +1692,15 @@ struct StatedCapability {
 struct BodyLowering {
     const std::vector<CXCursor>& parameters;
     Type result_type;
-    std::string invariant_prefix; // the projector's generated invariant declarations
+    // The projector's generated prefix, which every declaration it puts in a
+    // body carries: loop clauses, contradiction blocks, instantiation markers.
+    std::string invariant_prefix;
     const std::vector<Selection::Refinement>* refinements = nullptr;
     std::uint32_t next_version = 0;
     std::uint32_t next_loop = 0;
     std::vector<const LoopFrame*> frames;
     std::vector<std::string> consumed_invariants;
+    std::vector<std::string> consumed_contradictions;
     std::string rejection;
     bool executable_state = true;
     source::SourceLocation completion_location = {};
@@ -2370,6 +2373,9 @@ struct BodyLowering {
             return lower_statements(*from.outer, locals, depth + 1);
         }
         const CXCursor statement = (*from.statements)[from.index];
+        if (const std::optional<std::string> marker = contradiction_marker(statement)) {
+            return lower_contradiction(*marker, *from.statements, from.index, locals);
+        }
         const Continuation next{from.outer, from.statements, from.index + 1};
         if (next.index != from.statements->size() && terminates(statement, 0)) {
             return reject("unreachable trailing statements are not modeled");
@@ -2501,6 +2507,54 @@ struct BodyLowering {
         Continuation entered;
         entered.header = &header;
         return lower_statement(*parts->initialization, entered, locals, depth);
+    }
+
+    // The name of the block the projector emitted for a claim that this path
+    // cannot occur, if `statement` is the declaration that opens one
+    // (SPEC.md VERIFIED-023).
+    [[nodiscard]] std::optional<std::string> contradiction_marker(CXCursor statement) const {
+        if (invariant_prefix.empty() || clang_getCursorKind(statement) != CXCursor_DeclStmt) {
+            return std::nullopt;
+        }
+        const std::vector<CXCursor> declared = children_of(statement);
+        if (declared.size() != 1 || clang_getCursorKind(declared[0]) != CXCursor_VarDecl) {
+            return std::nullopt;
+        }
+        std::string name = take(clang_getCursorSpelling(declared[0]));
+        if (!name.starts_with(invariant_prefix + "contradiction_") || name.find("_argument_") != std::string::npos) {
+            return std::nullopt;
+        }
+        return name;
+    }
+
+    // `contradiction evidence;` written here: this path ends. What follows it
+    // is not lowered, because the claim is that nothing after it is reached; the
+    // claim itself is the obligation. The evidence's arguments are the block's
+    // remaining declarations, each read at the versions current here.
+    std::optional<Expr> lower_contradiction(const std::string& marker, const std::vector<CXCursor>& statements,
+                                            std::size_t index, const Locals& locals) {
+        PathContradiction claim;
+        claim.marker = marker;
+        for (std::size_t position = index + 1; position < statements.size(); ++position) {
+            const std::vector<CXCursor> declared = children_of(statements[position]);
+            const std::string expected = marker + "_argument_" + std::to_string(position - index - 1);
+            if (clang_getCursorKind(statements[position]) != CXCursor_DeclStmt || declared.size() != 1 ||
+                clang_getCursorKind(declared[0]) != CXCursor_VarDecl ||
+                take(clang_getCursorSpelling(declared[0])) != expected) {
+                return reject("the arguments of this contradiction were not resolved");
+            }
+            const CXCursor initializer = clang_Cursor_getVarDeclInitializer(declared[0]);
+            if (clang_Cursor_isNull(initializer) != 0) {
+                return reject("an argument of this contradiction was not resolved");
+            }
+            claim.operands.push_back(build_expression(initializer, parameters, locals, 0));
+        }
+        consumed_contradictions.push_back(marker);
+        Expr ended;
+        ended.type = result_type;
+        ended.location = presumed_location(clang_getCursorLocation(statements[index]));
+        ended.node = std::move(claim);
+        return ended;
     }
 
     // The generated declaration a loop invariant was projected into, if the
@@ -2926,7 +2980,11 @@ struct BodyLowering {
                           take(clang_getCursorKindSpelling(clang_getCursorKind(declaration))) + "'");
         }
         // An invariant the loop lowering did not take is never read as a
-        // statement of the body: that would drop it without a word.
+        // statement of the body: that would drop it without a word. Nor is a
+        // contradiction's block read anywhere but where it opens.
+        if (!invariant_prefix.empty() && name.starts_with(invariant_prefix + "contradiction_")) {
+            return reject("a claim that a path cannot occur was not read where it was written");
+        }
         if (!invariant_prefix.empty() && name.starts_with(invariant_prefix)) {
             return reject("a loop invariant is attached only to a while or for loop whose body is a block");
         }
@@ -3303,6 +3361,7 @@ void extract_body(Function& function, CXCursor cursor, const std::vector<CXCurso
         function.body_rejection = lowering.rejection.empty() ? "every path must return a value" : lowering.rejection;
     }
     function.loop_invariants = std::move(lowering.consumed_invariants);
+    function.path_contradictions = std::move(lowering.consumed_contradictions);
 }
 
 std::size_t physical_offset(CXCursor cursor) {

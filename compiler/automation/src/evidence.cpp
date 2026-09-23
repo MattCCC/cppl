@@ -92,9 +92,29 @@ std::vector<obligations::ObligationResult> verify(const obligations::Program& pr
             continue;
         }
 
+        // Likewise a claim whose written contradiction could not be given
+        // evidence: it was reported where that was found, and it is not proven
+        // some other way (SPEC.md CASE-005, CASE-015).
+        if (obligation.refusal.has_value()) {
+            results.push_back(
+                obligations::ObligationResult{obligation, obligations::Verdict::unresolved(*obligation.refusal), {}});
+            continue;
+        }
+
         std::optional<Evidence> evidence;
         std::string failure = "no strategy in this implementation produced candidate evidence";
-        if (obligation.evidence.has_value()) {
+        if (composition.owns(index)) {
+            // A condition of a verified body, which is proposed evidence only once
+            // the contracts it supposes are established. One that carries
+            // written evidence - a runtime path claimed not to occur - is offered
+            // exactly that evidence and nothing else.
+            auto proposed = composition.propose(index);
+            if (proposed) {
+                evidence = std::move(*proposed);
+            } else {
+                failure = proposed.error();
+            }
+        } else if (obligation.evidence.has_value()) {
             // A claim made inside a written proof - an omitted case - carries the
             // evidence its author wrote. Like a written proof, it is submitted as
             // it is and never replaced by a strategy: an impossibility is only
@@ -103,13 +123,12 @@ std::vector<obligations::ObligationResult> verify(const obligations::Program& pr
             evidence = Evidence{*obligation.evidence, "written contradiction"};
         } else if (written != nullptr) {
             evidence = Evidence{written->term, "written proof '" + written->name + "'"};
-        } else if (composition.owns(index)) {
-            auto proposed = composition.propose(index);
-            if (proposed) {
-                evidence = std::move(*proposed);
-            } else {
-                failure = proposed.error();
-            }
+        } else if (obligation.origin == obligations::Origin::OmittedCase ||
+                   obligation.origin == obligations::Origin::ImpossiblePath) {
+            // A claim that a context cannot occur with no written evidence. The
+            // facts it rests on may well be contradictory, but that is for the
+            // author's contradiction to show, never for a strategy to find.
+            failure = "an impossibility is established only by the contradiction written for it";
         } else {
             evidence = propose(program.context, obligation.goal);
         }

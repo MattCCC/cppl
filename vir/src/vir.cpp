@@ -191,6 +191,12 @@ std::string describe(const Expr& expr) {
                     text += (index != 0 ? ", " : "") + describe(node.operands[index]);
                 }
                 return text + ")";
+            } else if constexpr (std::is_same_v<Node, PathContradiction>) {
+                std::string text = "contradiction " + node.evidence + "(";
+                for (std::size_t index = 0; index < node.operands.size(); ++index) {
+                    text += (index != 0 ? ", " : "") + describe(node.operands[index]);
+                }
+                return text + ")";
             } else {
                 if (node.operands.size() != 2) {
                     return "<malformed-binary>";
