@@ -357,6 +357,19 @@ CPPL_TEST(a_loop_invariant_outside_a_verified_function_is_refused) {
     CPPL_CHECK(result.syntax.loops.empty());
 }
 
+CPPL_TEST(a_verified_declaration_without_a_body_owns_no_later_body) {
+    // The declaration carries a contract and no body. The function after it is
+    // not verified, so its loop invariant is outside every verified body, and
+    // must be refused rather than attributed to the declaration before it.
+    Recognized result;
+    recognize("verified unsigned f(unsigned n) ensures (result == n);\n"
+              "unsigned g(unsigned n) { unsigned i = 0u; while (i < n) invariant (i <= n) { ++i; } return i; }\n",
+              result);
+    CPPL_CHECK(result.engine.has_errors());
+    CPPL_CHECK(result.syntax.loops.empty());
+    CPPL_CHECK_EQ(result.syntax.verified_functions.size(), std::size_t{1});
+}
+
 CPPL_TEST(a_loop_termination_measure_is_recognized_as_a_clause) {
     Recognized result;
     recognize("verified unsigned f(unsigned n) ensures (result == n) { unsigned i = 0u;\n"

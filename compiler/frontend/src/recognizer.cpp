@@ -1917,8 +1917,12 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
                         syntax.pure_markers.push_back(std::move(marker));
                     }
                     syntax.verified_functions.push_back(std::move(verified));
-                    verified_bodies.push_back(
-                        VerifiedBody{next, matching_brace(tokens, next), syntax.verified_functions.size() - 1});
+                    // A declaration without a body owns none. `next` is then past
+                    // its `;`, and the braces after it are another function's.
+                    if (next < tokens.size() && tokens[next].is_punctuator("{")) {
+                        verified_bodies.push_back(
+                            VerifiedBody{next, matching_brace(tokens, next), syntax.verified_functions.size() - 1});
+                    }
                 }
             }
             index = next;
