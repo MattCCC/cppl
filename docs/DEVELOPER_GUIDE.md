@@ -691,7 +691,8 @@ proof use_same(int x)
 
 Commands are statements, not calls such as `exact(same);`.
 
-An evidence reference may itself have arguments.
+An evidence reference may itself have arguments. It names a `proof`, a premise
+named by `assume`, or a `trusted law`, which the proof then rests on (§12.2).
 
 `assume` never asserts an arbitrary proposition:
 
@@ -2082,6 +2083,99 @@ TRUSTED
 Do not replace a runtime check with `trusted law` simply to make an obligation
 disappear.
 
+### 12.2. Using a trusted law, and what rests on it
+
+A proof uses a trusted law by naming it, exactly as it names a proof
+(`SPEC.md` TRUSTED-006, PROOFSRC-005):
+
+<!-- cppl-example: verify -->
+
+```cpp
+pure unsigned zero() {
+    return 0u;
+}
+
+trusted law sensor_identity(unsigned x)
+    proves (x + zero() == x);
+
+trusted law device_bound(unsigned x)
+    expects (x == 3u)
+    proves (x + 1u == 4u);
+
+proof first_link(unsigned y)
+    proves (y + zero() == y)
+{
+    exact sensor_identity(y);
+}
+
+proof second_link(unsigned y)
+    proves (y + zero() == y)
+{
+    exact first_link(y);
+}
+
+law bound_after_identity(unsigned x)
+    expects (x == 3u)
+    proves (x + zero() + 1u == 4u)
+{
+    assume is_three : x == 3u;
+    rewrite sensor_identity(x);
+    apply device_bound(x);
+    exact is_three;
+}
+```
+
+Every claim here is `PROVEN`, relative to the trusted laws it rests on
+(`SPEC.md` STATUS-002). The kernel checks each one with those laws supposed as
+premises, so a claim cannot use an assumption it is not reported as resting on.
+`second_link` never names `sensor_identity`, but it uses a proof that does, so
+it rests on it too. `apply device_bound(x)` does not assume `x == 3u`: the
+premise is still owed (TRUSTED-007), and `exact is_three` pays it.
+
+A trusted law is used only where a statement names it (TRUSTED-008). It is not a
+premise standing in the proof, so `assume` cannot name it and `contradiction`
+does not reason from it unless it is the evidence named. A name that is both a
+proof and a trusted law, or two overloaded trusted laws, is refused rather than
+resolved (TRUSTED-009).
+
+`--cppl-trust-report` then says what every proven claim rests on:
+
+```text
+Laws proven:                 1
+  by a written proof:        1
+  assumption-free:           0
+  relative to trusted laws:  1
+Proof declarations proven:   2
+  assumption-free:           0
+  relative to trusted laws:  2
+...
+Trust-dependent claims:      3
+  law bound_after_identity (guide.cpp:24)
+    rests on sensor_identity (guide.cpp:5), named directly
+    rests on device_bound (guide.cpp:8), named directly
+  proof first_link (guide.cpp:12)
+    rests on sensor_identity (guide.cpp:5), named directly
+  proof second_link (guide.cpp:18)
+    rests on sensor_identity (guide.cpp:5), through a proof it uses
+Unused trusted laws:         0
+```
+
+Each kind of proven claim is split into what is proven outright and what rests
+on trusted laws, and the two always add up to the count above them. The same
+split is given for function contracts, and for omitted cases and impossible
+paths, which are never counted as each other or as the proof they occur in. An
+omitted case rests on every trusted law of the proof it is written in. A runtime
+path claimed not to occur rests on those of the proof it names, and so does the
+contract of the function it is written in, and the contract of every function
+that calls that one. A trusted law nothing rests on
+is listed under `Unused trusted laws`, so an audit can see which assumptions a
+build could drop without changing any result. Each `assumed:` line also gives
+the law's identity, derived from what it states, so the same assumption
+included into several translation units is recognizable as one.
+
+If the report cannot account for a dependency, the build fails with an internal
+error rather than printing a shorter list (`TRUST.md` 2.10).
+
 ## 13. References, pointers and memory validity
 
 References and pointers retain C++ binding, aliasing and lifetime semantics.
@@ -3449,7 +3543,7 @@ explicit rather than implicitly extending sequential proofs.
 | Split proof states                  | `cases value { ... }`                                 |                 No | Proof-only sum/state decomposition                                       |
 | Decompose product fields            | `decompose value { ... }`                             |                 No | Proof-only product decomposition                                         |
 | Prove by induction                  | `induction value { ... }`                             |                 No | Proof using base/step cases and induction hypothesis                     |
-| Admit an explicit trusted theorem   | `trusted law L(...) proves (...);`                    |                 No | Adds an explicit trust dependency                                        |
+| Admit an explicit trusted theorem   | `trusted law L(...) proves (...);`                    |                 No | Assumption proofs use by name; the trust report lists what rests on it   |
 | Mark unchecked runtime operations   | `unsafe { ... }`                                      | Operations execute | Runtime code executes; verifier does not infer correctness from `unsafe` |
 | Validate runtime input              | ordinary runtime validator                            |                Yes | Runtime check that may establish evidence for verified code              |
 
@@ -3563,6 +3657,10 @@ only when separately named reusable evidence is useful.
 | `cases value { ... }`     | Split proof by possible states                                   |
 | `decompose value { ... }` | Expose product components                                        |
 | `induction value { ... }` | Prove recursively using an induction hypothesis                  |
+
+The evidence `exact`, `apply`, `rewrite` and `contradiction` name is a `proof`,
+a premise named by `assume`, or a `trusted law`. Naming a trusted law makes the
+proof rest on it, and so everything that uses that proof in turn (§12.2).
 
 Quick choice:
 

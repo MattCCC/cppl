@@ -3,6 +3,7 @@
 #include "cppl/kernel/substitution.hpp"
 
 #include <algorithm>
+#include <ranges>
 #include <variant>
 
 namespace cppl::obligations {
@@ -53,6 +54,13 @@ std::string describe(Origin origin) {
             return "runtime path is unreachable";
     }
     return "obligation";
+}
+
+kernel::Proposition relative_to(const std::vector<TrustedPremise>& premises, kernel::Proposition goal) {
+    for (const TrustedPremise& premise : std::views::reverse(premises)) {
+        goal = kernel::Proposition::implication(premise.proposition, std::move(goal));
+    }
+    return goal;
 }
 
 const RefinementPredicate* Program::refinement(std::string_view name) const {
@@ -275,13 +283,16 @@ kernel::ProofTerm automatic_evidence(const kernel::Proposition& goal, bool prefe
     return shaped_evidence(goal, shaping, 0);
 }
 
-Verdict Verdict::proven(const kernel::Acceptance& acceptance, const Obligation& obligation) {
-    // The acceptance must be for this obligation's goal. Holding an acceptance
-    // for some other proposition establishes nothing about this one.
-    if (!(acceptance.proposition() == obligation.goal)) {
+Verdict Verdict::proven(const kernel::Acceptance& acceptance, const Obligation& obligation,
+                        std::vector<TrustedPremise> premises) {
+    // The acceptance must be for this obligation's goal, under exactly the
+    // premises the verdict will name. Holding an acceptance for some other
+    // proposition establishes nothing about this one, and one under premises
+    // the verdict does not name would report fewer assumptions than it rests on.
+    if (!(acceptance.proposition() == relative_to(premises, obligation.goal))) {
         return {Status::Unresolved, "the kernel accepted a different proposition than this obligation states"};
     }
-    return {Status::Proven, {}};
+    return {Status::Proven, {}, std::move(premises)};
 }
 
 Verdict Verdict::trusted(std::string declaration) {

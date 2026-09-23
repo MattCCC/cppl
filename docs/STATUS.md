@@ -246,7 +246,9 @@ meaning, the statement stays ordinary C++ and a warning says so. In a function
 that is not verified it is refused. The statement erases to an empty statement,
 so an unbraced `if` whose body it was keeps one (`ERASE-016`). The evidence is a
 proof declaration; a law without a written proof cannot be named, exactly as in
-a proof body.
+a proof body, and neither can a trusted law, which a proof body may name
+(`TRUSTED-006`). A claim naming a proof that rests on a trusted law rests on it
+too, and so do its function's contract and every caller's.
 
 Proof-side `cases` is `IMPLEMENTED` as a representation-independent engine:
 subject analysis, arm matching, binders and scope, nesting, exhaustiveness,
@@ -279,8 +281,9 @@ so no case fact can go stale; they are not yet available over values that can
 change. That extension is sequenced in `ROADMAP.md`.
 
 This slice does **not** implement induction, loop termination, ghost state,
-`unsafe`, `trusted`, proof `let`, solvers, proof caching, or any verification of
-the C++ memory model. Those remain `SPECIFIED` below.
+`unsafe`, proof `let`, solvers, proof caching, or any verification of the C++
+memory model. Those remain `SPECIFIED` below. `trusted law` is implemented and
+described under [Unsafe and trusted boundary status](#unsafe-and-trusted-boundary-status).
 
 ---
 
@@ -408,7 +411,7 @@ The project should not claim broad language implementation before the proof sema
 | partial-correctness contracts | `PROTOTYPE`   |
 | `ghost`                       | `SPECIFIED`   |
 | `unsafe`                      | `SPECIFIED`   |
-| `trusted`                     | `SPECIFIED`   |
+| `trusted`                     | `PARTIAL`     |
 | `decreases`                   | `SPECIFIED`   |
 | proof erasure                 | `PROTOTYPE`   |
 
@@ -1070,10 +1073,11 @@ facility of the roadmap, which is not the same as C++ unsigned arithmetic.
 | ----------------------------------- | ------------- |
 | `unsafe` syntax                     | `SPECIFIED`   |
 | `trusted law`                       | `IMPLEMENTED` |
+| Trusted memory propositions         | `NOT STARTED` |
 | Unsafe-to-verified transition rules | `SPECIFIED`   |
-| Trust propagation                   | `SPECIFIED`   |
-| Assumption closure                  | `SPECIFIED`   |
-| Trust reporting                     | `SPECIFIED`   |
+| Trust propagation                   | `IMPLEMENTED` |
+| Assumption closure                  | `IMPLEMENTED` |
+| Trust reporting                     | `PARTIAL`     |
 | Trust report implementation         | `PARTIAL`     |
 
 The intended verification statuses are:
@@ -1089,10 +1093,36 @@ UNRESOLVED
 
 `PROVEN` and `TRUSTED` are distinct implemented states, and `UNRESOLVED` is the
 fail-closed default. A `trusted law` is assumed rather than proved and is named
-in the trust report with its location; writing a proof for one is refused, since
-the declaration would ask both to assume and to prove it. Trust propagation and
-per-Law assumption closure are not implemented: the report enumerates the
-assumptions a build makes, not which proofs depend on which of them.
+in the trust report with its location and a content-derived identity; writing a
+proof for one is refused, since the declaration would ask both to assume and to
+prove it.
+
+A proof uses a trusted law by naming it in `exact`, `apply`, `rewrite` or
+`contradiction` (`SPEC.md` TRUSTED-006 to TRUSTED-009, PROOFSRC-005). The proof
+is then established relative to it: its evidence is closed over the law's
+proposition as a premise, and the kernel checks the claim under exactly the
+premises its verdict names, so a claim cannot use an assumption it is not
+reported as resting on. The law's own premise is still owed, and the law is not
+a premise anywhere it is not named. A proof that uses such a proof rests on the
+same laws, an omitted case rests on those of the proof it is written in, a
+runtime path claimed not to occur rests on those of the proof it names, and a
+verified function's contract rests on those of the obligations of its body and
+of every contract it calls, closed to a fixed point over recursive calls. Each
+proven law, proof declaration, proof of a law instance, contract, omitted case
+and impossible path is reported with its closure, marked as named directly or
+reached through what it uses, and each category is split into
+`assumption-free` and `relative to trusted laws`. Trusted laws nothing rests on
+are listed as unused. A dependency the report cannot attribute is an internal
+error, not an omission.
+
+A runtime path claim is the one way a trusted premise enters a verified body, so
+a contract rests on a trusted law only through one, in its own body or in a
+function it calls. Recursive call graphs, which no source program here yet
+produces with a trusted premise, are exercised by
+`tests/unit/trust_closure_test.cpp`. Trust is propagated within one translation
+unit: no proof artifact or cache carries a closure across units yet.
+A trusted law cannot yet admit a memory proposition such as `readable(p)`
+(`SPEC.md` TRUSTED-003); one is refused.
 
 ---
 
@@ -1233,7 +1263,11 @@ AI output must always be independently verified.
 The driver is Clang-compatible rather than subcommand-based: `cppl` takes the
 arguments `clang++` takes. Trust reporting exists as `--cppl-trust-report`; the
 subcommand forms above are not implemented. The report counts partial-
-correctness contracts and loop-invariant obligations separately.
+correctness contracts and loop-invariant obligations separately, lists every
+proven claim that rests on a trusted law with each law it rests on, and lists
+the trusted laws nothing rests on. It is text only: there is no
+machine-readable form yet, and it prints no proposition or evidence hashes
+(`TRUST.md` 36.1).
 
 `cppl-lsp` implements `initialize`, `shutdown`, `exit`, full-document
 `textDocument/didOpen`, `didChange` and `didClose`, and
@@ -1327,10 +1361,10 @@ Until concurrency semantics exist, concurrency must not be silently treated usin
 | Explicit TCB model          | `PROTOTYPE`   |
 | Small-kernel architecture   | `PROTOTYPE`   |
 | Hidden axioms forbidden     | `PROTOTYPE`   |
-| Trust transitivity          | `SPECIFIED`   |
+| Trust transitivity          | `IMPLEMENTED` |
 | Solver trust reporting      | `SPECIFIED`   |
 | FFI trust reporting         | `NOT STARTED` |
-| Per-Law assumption closure  | `NOT STARTED` |
+| Per-Law assumption closure  | `IMPLEMENTED` |
 | Trust-report implementation | `PARTIAL`     |
 
 The TCB is stated in `TRUST.md` 4 and 5. There are no axioms. A
@@ -1341,6 +1375,13 @@ trust report with its source location. Declaring a law trusted and also writing
 a proof for it is refused. A build with no such declaration reports zero trusted
 axioms, because that is true of it. The trust report prints counts it can
 substantiate, and says _not analysed_ where C++L does not yet look.
+
+Transitivity and per-claim closure are described under
+[Unsafe and trusted boundary status](#unsafe-and-trusted-boundary-status). The
+closure of a claim is the set of premises the kernel checked it relative to,
+joined across verified calls; the reporting code that computes and prints it is
+reporting TCB (`TRUST.md` TCB-REPORT-006) and fails the build rather than
+report a claim it cannot account for.
 
 See [TRUST.md](./TRUST.md).
 

@@ -1,0 +1,161 @@
+# Machine-readable manifest for the trust-propagation feature.
+#
+# Rule IDs are anchors in docs/SPEC.md, the canonical specification. Extract the
+# normative text with:
+#
+#     cppl-spec-rules extract --feature trust-propagation
+
+feature: trust-propagation
+
+summary: >
+  A proof may name a `trusted law` as evidence wherever it may name a proof. It
+  is then established relative to that law: its evidence is closed over the
+  law's proposition as an implication premise, and the kernel checks the claim
+  under exactly the premises its verdict names. Proofs that use it, omitted
+  cases written in it, and contracts that call functions resting on it inherit
+  the dependency. The trust report gives every proven claim its trusted-
+  assumption closure, splits each category into assumption-free and relative to
+  trusted laws, and lists trusted laws nothing rests on. A dependency the report
+  cannot attribute fails the build.
+
+normative_sources:
+  spec:
+    - "§12.4 Trusted dependencies"
+    - "§15.6 Proof statement semantics"
+    - "§27 trusted"
+    - "§27.4 Using a trusted Law"
+    - "§38 Verification statuses"
+    - "§39 No implicit status promotion"
+    - "Annex H.12 Law application"
+    - "Annex V.14 trusted Law + verified proof"
+  grammar:
+    - "§5 Proof statements"
+    - "§24 Trusted declarations"
+  foundations:
+    - "§7.3 Trusted-assumption environment"
+    - "§98 Trusted Laws"
+    - "§130 Trust-relative theorem validity"
+  trust:
+    - "§3.2 Unconditional and assumption-relative confidence"
+    - "§25 Trusted Laws and explicit assumptions"
+    - "§35 Trust propagation and provenance"
+    - "§36 Assurance statuses and reporting integrity"
+
+rule_families:
+  - TRUSTED
+
+# The rules this feature realizes, within that family and outside it.
+# `cppl-spec-rules extract --feature` reads only the families above; extract
+# the others by ID.
+rules:
+  - TRUSTED-001
+  - TRUSTED-002
+  - TRUSTED-004
+  - TRUSTED-005
+  - TRUSTED-006
+  - TRUSTED-007
+  - TRUSTED-008
+  - TRUSTED-009
+  - PROOFSRC-005
+  - PROOFSRC-006
+  - PROOFSRC-007
+  - STATUS-001
+  - STATUS-002
+  - STATUSPROMO-001
+  - STATUSPROMO-002
+  - VERIFIED-004
+  - VERIFIED-005
+  - INTERACT-020
+
+# TRUSTED-003 (a trusted law admitting a memory proposition such as
+# `readable(p)`) is not realized: such a law is refused. See STATUS.md.
+
+depends_on:
+  - trusted-law-declarations
+  - written-proofs
+  - checked-contradiction
+  - verified-call-composition
+
+implementation:
+  elaboration:
+    - compiler/elaboration/src/elaborate.cpp
+  vir:
+    - vir/include/cppl/vir/module.hpp
+  obligations:
+    - compiler/obligations/include/cppl/obligations/obligation.hpp
+    - compiler/obligations/include/cppl/obligations/status.hpp
+    - compiler/obligations/include/cppl/obligations/trust.hpp
+    - compiler/obligations/src/generate.cpp
+    - compiler/obligations/src/status.cpp
+    - compiler/obligations/src/trust.cpp
+  automation:
+    - compiler/automation/src/evidence.cpp
+    - compiler/automation/src/composition.cpp
+  driver:
+    - compiler/driver/src/pipeline.hpp
+    - compiler/driver/src/pipeline.cpp
+    - compiler/driver/src/driver.cpp
+
+interactions:
+  - written proofs using proofs that rest on trusted laws
+  - apply over a trusted law with an expects premise
+  - rewrite and contradiction naming a trusted law
+  - omitted cases inside a proof that rests on trusted laws
+  - runtime path claims naming a proof that rests on trusted laws
+  - verified-call composition, including recursive call graphs
+  - proofs of a law instance
+  - circular proofs
+  - erasure
+  - several translation units including one assumption
+
+tests:
+  positive:
+    - tests/fixtures/trust_closure.cpp
+  negative:
+    - tests/negative/trusted_dependencies.sh
+    - tests/fixtures/negative/trusted_premise_still_owed.cpp
+    - tests/fixtures/negative/trusted_law_misapplied.cpp
+    - tests/fixtures/negative/trusted_law_only_where_named.cpp
+    - tests/fixtures/negative/trusted_law_and_proof_share_a_name.cpp
+    - tests/fixtures/negative/trusted_law_overloaded.cpp
+    - tests/fixtures/negative/trusted_law_unstated.cpp
+    - tests/fixtures/negative/trusted_law_in_a_cycle.cpp
+  unit:
+    - tests/unit/trust_closure_test.cpp
+    - tests/unit/verdict_test.cpp
+  end_to_end:
+    - tests/e2e/trust_closure.sh
+    - tests/e2e/trusted_assumptions.sh
+    - tests/e2e/omitted_case.sh
+
+required_test_categories:
+  - direct trust
+  - transitive trust through a chain of proofs
+  - several trusted laws in one claim
+  - a trusted law nothing uses
+  - a chain joining an assumption-free proof and a trust-dependent one
+  - a false trusted law proves anything, only relative to it
+  - the premise of a trusted law is still owed
+  - matched pair: a trusted law is a premise only where named
+  - ambiguous names refused
+  - an assumption the formal core cannot state is not supposed
+  - circular proofs refused whatever they name
+  - omitted cases inherit the closure of their proof
+  - a runtime path claim puts its proof's closure into its function's contract
+  - contract closure through verified calls, including cycles
+  - every fault in attribution fails closed
+  - zero-trust report unchanged
+  - deterministic report
+  - one assumption included into two translation units has one identity
+  - erasure
+
+completion_requires:
+  - a proof's closure is exactly the premises the kernel checked it relative to
+  - a verdict can never name fewer premises than its evidence was checked under
+  - a proof that uses another rests on every law the other rests on
+  - a trusted law is never counted among proven laws
+  - every proven claim has a closure, and an unattributable dependency is an internal error
+  - assumption-free and trust-dependent claims are reported apart in every category
+  - omitted cases and impossible paths are never reported as each other
+  - a unit with no trusted law reports none
+  - trusted laws erase completely

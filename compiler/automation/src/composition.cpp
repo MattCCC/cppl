@@ -314,10 +314,15 @@ std::expected<Evidence, std::string> Composition::propose(std::size_t obligation
 
 std::expected<void, std::string> Composition::accept(std::size_t obligation, const kernel::ProofTerm& proof,
                                                      const kernel::Acceptance& acceptance) {
-    if (!(acceptance.proposition() == program_.obligations[obligation].goal)) {
-        return std::unexpected("the kernel accepted a different contract obligation");
-    }
+    const obligations::Obligation& stated = program_.obligations[obligation];
     if (const auto condition = conditions_.find(obligation); condition != conditions_.end()) {
+        // The written evidence of a runtime path claimed not to occur may rest
+        // on trusted laws, and is accepted relative to exactly those (SPEC.md
+        // TRUSTED-006). A condition's evidence is only ever counted, never
+        // composed into another obligation's, so it is never used as more.
+        if (!(acceptance.proposition() == obligations::relative_to(stated.assumptions, stated.goal))) {
+            return std::unexpected("the kernel accepted a different contract obligation");
+        }
         proven_.emplace(obligation, proof);
         const auto& contract = program_.contracts[condition->second.contract];
         if (std::ranges::all_of(contract.conditions, [this](const obligations::VerificationCondition& each) {
@@ -326,6 +331,11 @@ std::expected<void, std::string> Composition::accept(std::size_t obligation, con
             partial_established_.insert(condition->second.contract);
         }
         return {};
+    }
+    // A stage's evidence is composed into the evidence of the stages after it,
+    // so it establishes its goal outright or not at all.
+    if (!(acceptance.proposition() == stated.goal)) {
+        return std::unexpected("the kernel accepted a different contract obligation");
     }
     const auto& stage = stages_.at(obligation);
     if (obligation == stage.function->obligation) {

@@ -102,9 +102,9 @@ struct ReflexivityStep {
     friend bool operator==(const ReflexivityStep&, const ReflexivityStep&) = default;
 };
 
-// Evidence a step names: a proof declared in this unit, or a premise this proof
-// has assumed. Which of the two it is is settled when the name is resolved, and
-// is never re-decided from the spelling afterwards.
+// Evidence a step names: a proof declared in this unit, a premise this proof
+// has assumed, or a trusted law. Which of them it is is settled when the name is
+// resolved, and is never re-decided from the spelling afterwards.
 struct ProofRef {
     ProofId proof;
 
@@ -117,8 +117,18 @@ struct HypothesisRef {
     friend bool operator==(const HypothesisRef&, const HypothesisRef&) = default;
 };
 
+// A trusted law used as evidence (SPEC.md PROOFSRC-005, TRUSTED-002). There is
+// no evidence for it to build: the proof naming it is established relative to
+// it, so its proposition is a premise of what the kernel checks and the
+// dependency cannot be lost on the way to the trust report.
+struct TrustedLawRef {
+    LawId law;
+
+    friend bool operator==(const TrustedLawRef&, const TrustedLawRef&) = default;
+};
+
 struct Reference {
-    std::variant<ProofRef, HypothesisRef> node;
+    std::variant<ProofRef, HypothesisRef, TrustedLawRef> node;
     std::string name;
 
     friend bool operator==(const Reference&, const Reference&) = default;

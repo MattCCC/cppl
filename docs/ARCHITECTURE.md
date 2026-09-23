@@ -2124,6 +2124,32 @@ trust mechanism.
 **[ARCH-TRUST-001]** No internal compiler stage may synthesize a trusted Law to
 recover from unsupported verification.
 
+The realized flow of a trusted Law through a proof and into the report:
+
+```text
+elaboration   a proof statement naming a trusted Law resolves to
+              vir::TrustedLawRef, never by preference over a proof of the
+              same name
+obligations   a written proof collects the trusted Laws it names and those of
+              every proof it uses; its evidence is closed over their
+              propositions as implication premises (WrittenProof::assumptions),
+              and so is the evidence of every omitted case written in it and
+              of every runtime path claim that names it
+automation    evidence is checked against the goal relative to those premises,
+              and the verdict names them (Verdict::premises)
+obligations   close_trust gives each proven claim its closure and joins
+              contracts across verified calls to a fixed point (TrustClosure)
+driver        --cppl-trust-report prints every claim's closure and the
+              trusted Laws nothing rests on
+```
+
+A proof's closure is not inferred from source proximity: it is exactly the set of
+premises the kernel checked its evidence relative to, so evidence cannot use an
+assumption its verdict does not name (`TRUST.md` TCB-PROV-001). Joining contracts
+across calls is not kernel-checked; it is reporting TCB, and an obligation whose
+premises no reported claim accounts for, or a proven claim with no closure, fails
+the build as an internal error rather than shortening the report.
+
 ## 58.1 Unsafe-boundary architecture
 
 `unsafe` is a runtime verification boundary, not a trust-admission mechanism.

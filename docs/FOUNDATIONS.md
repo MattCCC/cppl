@@ -2820,6 +2820,23 @@ Any theorem derived from it carries that dependency transitively.
 
 This is not the same as kernel-derived proof.
 
+The realization adds no rule and no constant `trust_L`. A derivation of `G` that
+uses trusted Laws `L1 : P1, ..., Ln : Pn` is presented to the checker as
+evidence for
+
+```text
+P1 -> ... -> Pn -> G
+```
+
+built by implication introduction, and each use of `trust_Li` is the hypothesis
+that introduction supplies. The accepted proposition is then literally the
+`Deps(e) ⊨ G` of §130, with `Deps(e)` as its premises: the checker has verified
+the derivation relative to exactly those, and evidence that used any other
+assumption would name a hypothesis not in scope and be refused. Reusing such a
+theorem inside another derivation eliminates each of its premises with that
+derivation's own hypothesis for the same Law, so the dependency is carried by
+evidence the checker sees rather than by bookkeeping beside it.
+
 The source restriction that `trusted` is only the production trusted-Law surface
 is defined by `SPEC.md`.
 

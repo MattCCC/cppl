@@ -7,6 +7,8 @@
 #include "cppl/driver/process.hpp"
 #include "cppl/driver/scratch.hpp"
 #include "cppl/kernel/version.hpp"
+#include "cppl/obligations/obligation.hpp"
+#include "cppl/obligations/trust.hpp"
 #include "pipeline.hpp"
 
 #include <algorithm>
@@ -37,7 +39,13 @@ struct Summary {
     std::size_t proven_by_written_proof = 0;
     std::size_t proofs_proven = 0;
     std::size_t unresolved = 0;
-    std::vector<std::string> trusted; // one entry per explicit assumption
+
+    // Every explicit assumption, and every proven claim with the trusted laws
+    // it rests on, unit by unit in the order the units were given.
+    std::vector<obligations::TrustedPremise> trusted;
+    std::vector<obligations::ClaimClosure> claims;
+    // Trusted laws no proven claim of their own unit rests on.
+    std::vector<obligations::TrustedPremise> unused;
 };
 
 struct UnitOutcome {
@@ -202,7 +210,20 @@ UnitOutcome compile_unit(const Options& options, const Input& input, const std::
     summary.proven_by_written_proof += result.counters.proven_by_written_proof;
     summary.proofs_proven += result.counters.proofs_proven;
     summary.unresolved += result.counters.unresolved;
-    summary.trusted.insert(summary.trusted.end(), result.counters.trusted.begin(), result.counters.trusted.end());
+
+    // A law's identity is only meaningful within the unit that declares it, so
+    // whether anything rests on it is decided here, before units are merged.
+    const obligations::TrustClosure& closure = result.counters.closure;
+    for (const obligations::TrustedPremise& assumption : closure.assumptions) {
+        const bool used = std::ranges::any_of(closure.claims, [&assumption](const obligations::ClaimClosure& claim) {
+            return std::ranges::contains(claim.premises, assumption.law, &obligations::TrustedPremise::law);
+        });
+        if (!used) {
+            summary.unused.push_back(assumption);
+        }
+    }
+    summary.trusted.insert(summary.trusted.end(), closure.assumptions.begin(), closure.assumptions.end());
+    summary.claims.insert(summary.claims.end(), closure.claims.begin(), closure.claims.end());
 
     return outcome;
 }
@@ -213,23 +234,104 @@ void print_diagnostics(const diagnostics::Engine& engine) {
     }
 }
 
+// A trusted law as the report names it: where it is declared, so the
+// assumption can be audited there.
+std::string declared_at(const obligations::TrustedPremise& premise) {
+    return premise.name + " (" + premise.location.file + ":" + std::to_string(premise.location.line) + ")";
+}
+
+std::string claim_name(const obligations::ClaimClosure& claim) {
+    const std::string where = " (" + claim.location.file + ":" + std::to_string(claim.location.line) + ")";
+    switch (claim.kind) {
+        case obligations::ClaimKind::Law:
+            return "law " + claim.subject + where;
+        case obligations::ClaimKind::Proof:
+            return "proof " + claim.subject + where;
+        case obligations::ClaimKind::LawInstance:
+            return "proof " + claim.subject + " of a law instance" + where;
+        case obligations::ClaimKind::Contract:
+            return "contract of " + claim.subject + where;
+        case obligations::ClaimKind::OmittedCase:
+            return "omitted " + claim.subject + where;
+        case obligations::ClaimKind::ImpossiblePath:
+            return "unreachable runtime path " + claim.subject + where;
+    }
+    return claim.subject + where;
+}
+
+// How a trusted law reaches a claim that does not name it itself.
+std::string reached_through(obligations::ClaimKind kind) {
+    switch (kind) {
+        case obligations::ClaimKind::OmittedCase:
+            return "through the proof it is written in";
+        case obligations::ClaimKind::Contract:
+            return "through a proof or verified call it uses";
+        case obligations::ClaimKind::Law:
+        case obligations::ClaimKind::Proof:
+        case obligations::ClaimKind::LawInstance:
+        case obligations::ClaimKind::ImpossiblePath:
+            return "through a proof it uses";
+    }
+    return "through what it uses";
+}
+
+// The proven claims of one kind that rest on no trusted law, and those that
+// rest on at least one. Both are PROVEN; only the first is proven outright
+// (TRUST.md 3.2).
+void print_closure_counts(const Summary& summary, obligations::ClaimKind kind) {
+    const auto relative = std::ranges::count_if(summary.claims, [kind](const obligations::ClaimClosure& claim) {
+        return claim.kind == kind && !claim.premises.empty();
+    });
+    const auto outright = std::ranges::count(summary.claims, kind, &obligations::ClaimClosure::kind) - relative;
+    std::cout << "  assumption-free:           " << outright << "\n";
+    std::cout << "  relative to trusted laws:  " << relative << "\n";
+}
+
 void print_trust_report(const Options& options, const Summary& summary) {
     std::cout << "C++L Trust Report\n\n";
     std::cout << "Laws proven:                 " << summary.proven << "\n";
     std::cout << "  by a written proof:        " << summary.proven_by_written_proof << "\n";
+    print_closure_counts(summary, obligations::ClaimKind::Law);
     std::cout << "Proof declarations proven:   " << summary.proofs_proven << "\n";
+    print_closure_counts(summary, obligations::ClaimKind::Proof);
     std::cout << "Laws trusted:                " << summary.trusted.size() << "\n";
-    for (const std::string& assumption : summary.trusted) {
-        std::cout << "  assumed:                 " << assumption << "\n";
+    for (const obligations::TrustedPremise& assumption : summary.trusted) {
+        std::cout << "  assumed:                 " << declared_at(assumption) << ", identity "
+                  << assumption.identity.text() << "\n";
     }
     std::cout << "Function contracts proven:   " << summary.contracts_proven << "\n";
     std::cout << "  partial correctness only:  " << summary.partial_contracts_proven << "\n";
+    print_closure_counts(summary, obligations::ClaimKind::Contract);
     std::cout << "Call preconditions proven:   " << summary.call_preconditions_proven << "\n";
     std::cout << "Loop invariants proven:      " << summary.loop_invariants_proven << "\n";
     std::cout << "Loop measures proven:        " << summary.loop_measures_proven << "\n";
     std::cout << "Omitted cases proven:        " << summary.omitted_cases_proven << "\n";
+    print_closure_counts(summary, obligations::ClaimKind::OmittedCase);
     std::cout << "Impossible paths proven:     " << summary.impossible_paths_proven << "\n";
+    print_closure_counts(summary, obligations::ClaimKind::ImpossiblePath);
     std::cout << "Unresolved obligations:      " << summary.unresolved << "\n\n";
+
+    // Each claim that is proven only relative to trusted laws, with every one
+    // of them (TRUST.md TCB-REPORT-002, 36.2), and each trusted law nothing
+    // rests on, which an audit can remove without changing any result.
+    const auto relative = std::ranges::count_if(
+        summary.claims, [](const obligations::ClaimClosure& claim) { return !claim.premises.empty(); });
+    std::cout << "Trust-dependent claims:      " << relative << "\n";
+    for (const obligations::ClaimClosure& claim : summary.claims) {
+        if (claim.premises.empty()) {
+            continue;
+        }
+        std::cout << "  " << claim_name(claim) << "\n";
+        for (const obligations::TrustedPremise& premise : claim.premises) {
+            std::cout << "    rests on " << declared_at(premise) << ", "
+                      << (premise.direct ? "named directly" : reached_through(claim.kind)) << "\n";
+        }
+    }
+    std::cout << "Unused trusted laws:         " << summary.unused.size() << "\n";
+    for (const obligations::TrustedPremise& assumption : summary.unused) {
+        std::cout << "  unused:                  " << declared_at(assumption) << "\n";
+    }
+    std::cout << "\n";
     std::cout << "Unsafe regions:              0\n";
     std::cout << "Runtime validation sites:    0\n";
     std::cout << "Unverified FFI boundaries:   not analysed\n\n";

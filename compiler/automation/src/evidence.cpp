@@ -133,15 +133,25 @@ std::vector<obligations::ObligationResult> verify(const obligations::Program& pr
             evidence = propose(program.context, obligation.goal);
         }
 
+        // Written evidence may rest on trusted laws. It is checked relative to
+        // exactly those, and the verdict names them (SPEC.md TRUSTED-002); no
+        // strategy ever supposes one.
+        static const std::vector<obligations::TrustedPremise> outright;
+        const std::vector<obligations::TrustedPremise>& premises = obligation.evidence.has_value()
+                                                                       ? obligation.assumptions
+                                                                   : written != nullptr ? written->assumptions
+                                                                                        : outright;
+
         obligations::Verdict verdict = obligations::Verdict::unresolved(failure);
         std::string strategy;
 
         if (evidence.has_value()) {
             strategy = evidence->strategy;
             const kernel::CheckResult checked =
-                kernel::check(program.context, obligation.goal, evidence->proof, kernel::CoreLimits{});
+                kernel::check(program.context, obligations::relative_to(premises, obligation.goal), evidence->proof,
+                              kernel::CoreLimits{});
             if (checked.has_value()) {
-                verdict = obligations::Verdict::proven(*checked, obligation);
+                verdict = obligations::Verdict::proven(*checked, obligation, premises);
                 if (composition.owns(index)) {
                     auto recorded = composition.accept(index, evidence->proof, *checked);
                     if (!recorded) {

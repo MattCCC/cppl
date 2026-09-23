@@ -1244,7 +1244,28 @@ struct Body {
     // own. They are submitted with the proof only once the proof is admitted,
     // so a refused proof leaves none behind.
     std::vector<Obligation>* omissions = nullptr;
+
+    // The trusted laws the whole proof rests on, supposed outside everything
+    // else in it, the first outermost (SPEC.md TRUSTED-006). They are not
+    // standing premises: `assume` cannot name one and `contradiction` does not
+    // reason from one unless a statement names it as evidence (TRUSTED-008).
+    const std::vector<TrustedPremise>* trusted = nullptr;
 };
+
+// Where a trusted premise stands among the hypotheses in scope. The trusted
+// premises are introduced before anything the body assumes, so each counts back
+// past every standing premise.
+std::optional<kernel::HypothesisIndex> trusted_hypothesis(const Body& body, vir::LawId law) {
+    if (body.trusted == nullptr)
+        return std::nullopt;
+    const auto found =
+        std::ranges::find_if(*body.trusted, [law](const TrustedPremise& premise) { return premise.law == law; });
+    if (found == body.trusted->end())
+        return std::nullopt;
+    const auto position = static_cast<std::size_t>(std::distance(body.trusted->begin(), found));
+    return kernel::HypothesisIndex{
+        static_cast<std::uint32_t>(body.assumptions.size() + (body.trusted->size() - 1 - position))};
+}
 
 // Introduces binders in front of everything a body stands under, for as long as
 // this lives: its depth, its binder types, and every premise already standing,
@@ -1371,9 +1392,45 @@ std::optional<Instantiation> named_evidence(const Body& body, const vir::ProofSt
         return Instantiation{found->second, kernel::ProofTerm::hypothesis(kernel::HypothesisIndex{position})};
     }
 
+    // Every trusted law this proof rests on was collected from its statements
+    // before it was lowered, so a law missing here is a fault in that
+    // collection. It is refused rather than left out of what the kernel checks.
+    const auto unaccounted = [&](const std::string& law) {
+        report(engine, diagnostics::Category::Internal, step.location,
+               "trusted law '" + law + "' is used by proof '" + body.proof.name + "' but is not among its premises");
+        return std::nullopt;
+    };
+
+    if (const auto* trusted = std::get_if<vir::TrustedLawRef>(&reference.node)) {
+        const std::optional<kernel::HypothesisIndex> index = trusted_hypothesis(body, trusted->law);
+        if (!index.has_value()) {
+            return unaccounted(reference.name);
+        }
+        const auto& premise = *std::ranges::find_if(
+            *body.trusted, [&trusted](const TrustedPremise& candidate) { return candidate.law == trusted->law; });
+        return Instantiation{premise.proposition, kernel::ProofTerm::hypothesis(*index)};
+    }
+
     const auto source = body.built_index.find(std::get<vir::ProofRef>(reference.node).proof.value);
     const WrittenProof& used = body.built[source->second];
-    return Instantiation{used.goal, used.term};
+
+    // A proof established relative to trusted laws is used relative to the
+    // same ones: each premise it supposes is discharged by this body's own
+    // supposition of that law, so the dependency carries over and is never
+    // dropped on the way (TRUST.md TCB-TRUST-003).
+    kernel::ProofTerm term = used.term;
+    kernel::Proposition current = relative_to(used.assumptions, used.goal);
+    for (const TrustedPremise& premise : used.assumptions) {
+        const std::optional<kernel::HypothesisIndex> index = trusted_hypothesis(body, premise.law);
+        if (!index.has_value()) {
+            return unaccounted(premise.name);
+        }
+        kernel::Proposition conclusion = *std::get<kernel::Implies>(current.node).conclusion;
+        term = kernel::ProofTerm::implication_elimination(std::move(current), std::move(term),
+                                                          kernel::ProofTerm::hypothesis(*index));
+        current = std::move(conclusion);
+    }
+    return Instantiation{used.goal, std::move(term)};
 }
 
 // `rewrite e;` transforms the goal with an equality and leaves what it
@@ -1459,7 +1516,18 @@ void record_omission(const Body& body, const vir::CaseArm& arm, const kernel::Pr
         evidence = kernel::ProofTerm::forall_introduction(binder, std::move(evidence));
     }
 
+    // The refutation may name a trusted law, whose hypothesis stands outside
+    // everything closed over above. The claim is therefore made relative to
+    // every trusted law of the proof it is written in: more than the refutation
+    // may need, never less.
     Obligation obligation;
+    if (body.trusted != nullptr) {
+        obligation.assumptions = *body.trusted;
+        for (TrustedPremise& premise : std::views::reverse(obligation.assumptions)) {
+            premise.direct = false;
+            evidence = kernel::ProofTerm::implication_introduction(premise.proposition, std::move(evidence));
+        }
+    }
     obligation.origin = Origin::OmittedCase;
     obligation.subject = "case '" + arm.label + "' of proof '" + body.proof.name + "'";
     obligation.goal = std::move(goal);
@@ -1919,6 +1987,14 @@ void lower_proofs(const vir::Module& module, const elaboration::Result& elaborat
             // is what keeps circular evidence from ever producing one.
             bool admitted = true;
             bool ready = true;
+            // The trusted laws this proof rests on: those it names, and those
+            // every proof it uses rests on. Keyed by law, so they are supposed
+            // in declaration order whatever order they are met in.
+            std::map<vir::LawId, TrustedPremise> premises;
+            const auto rests_on = [&premises](const TrustedPremise& premise, bool direct) {
+                auto [entry, added] = premises.emplace(premise.law, premise);
+                entry->second.direct = added ? direct : entry->second.direct || direct;
+            };
             std::vector<const vir::ProofStep*> dependencies;
             const auto collect = [&](auto&& self, const std::vector<vir::ProofStep>& steps) -> void {
                 for (const auto& step : steps) {
@@ -1946,6 +2022,25 @@ void lower_proofs(const vir::Module& module, const elaboration::Result& elaborat
                 if (reference == nullptr) {
                     continue;
                 }
+                if (const auto* trusted = std::get_if<vir::TrustedLawRef>(&reference->node)) {
+                    // Only a law that is itself an explicit assumption may be
+                    // one, and it is supposed as exactly the proposition it
+                    // states (TRUST.md TCB-TRUST-009). Anything else named here
+                    // would be reported as trust it is not, so it is refused.
+                    const auto law = goals.find(trusted->law.value);
+                    if (law == goals.end() || !law->second->trusted) {
+                        report(engine, diagnostics::Category::ProofFailure, step.location,
+                               "trusted law '" + reference->name + "' has no stated proposition, so proof '" +
+                                   proof.name + "' has no evidence",
+                               "the reason the law was not stated is reported above");
+                        admitted = false;
+                        break;
+                    }
+                    rests_on(TrustedPremise{trusted->law, law->second->subject, law->second->id,
+                                            law->second->range.begin, law->second->goal},
+                             true);
+                    continue;
+                }
                 const auto* named = std::get_if<vir::ProofRef>(&reference->node);
                 if (named == nullptr) {
                     continue; // a premise, which needs nothing built
@@ -1961,6 +2056,9 @@ void lower_proofs(const vir::Module& module, const elaboration::Result& elaborat
                 if (!lowered.contains(named->proof.value)) {
                     ready = false;
                     break;
+                }
+                for (const TrustedPremise& premise : program.proofs[lowered.at(named->proof.value)].assumptions) {
+                    rests_on(premise, false);
                 }
             }
 
@@ -1980,10 +2078,24 @@ void lower_proofs(const vir::Module& module, const elaboration::Result& elaborat
                 continue;
             }
 
+            std::vector<TrustedPremise> assumptions;
+            assumptions.reserve(premises.size());
+            for (auto& [law, premise] : premises) {
+                assumptions.push_back(std::move(premise));
+            }
+
             std::vector<Obligation> omissions;
             Body body{proof, program.context, definitions, program.proofs, lowered, {}, 0, 0};
             body.omissions = &omissions;
+            body.trusted = &assumptions;
             std::optional<kernel::ProofTerm> term = prove(body, *claimed, engine);
+            // The proof is closed over the trusted laws it rests on, so what the
+            // kernel checks is its claim relative to exactly those.
+            if (term.has_value()) {
+                for (const TrustedPremise& premise : std::views::reverse(assumptions)) {
+                    term = kernel::ProofTerm::implication_introduction(premise.proposition, std::move(*term));
+                }
+            }
 
             if (term.has_value() && body.cursor < proof.steps.size()) {
                 report(engine, diagnostics::Category::ProofFailure, proof.steps[body.cursor].location,
@@ -2002,6 +2114,7 @@ void lower_proofs(const vir::Module& module, const elaboration::Result& elaborat
             written.law = proof.law;
             written.goal = *claimed;
             written.closes_law = proof.law.has_value() && *claimed == obligation.goal;
+            written.assumptions = std::move(assumptions);
             written.term = std::move(*term);
             written.range = proof.range;
 
@@ -2011,7 +2124,8 @@ void lower_proofs(const vir::Module& module, const elaboration::Result& elaborat
             // is never left standing without the kernel having seen it.
             if (!written.closes_law) {
                 const kernel::CheckResult checked =
-                    kernel::check(program.context, written.goal, written.term, kernel::CoreLimits{});
+                    kernel::check(program.context, relative_to(written.assumptions, written.goal), written.term,
+                                  kernel::CoreLimits{});
                 if (!checked.has_value()) {
                     diagnostics::Diagnostic diagnostic;
                     diagnostic.severity = diagnostics::Severity::Error;
@@ -2116,8 +2230,32 @@ void discharge_path_claims(Program& program, diagnostics::Engine& engine) {
             continue;
         }
 
-        kernel::Proposition named = proof->goal;
+        // A proof established relative to trusted laws is used relative to the
+        // same ones (SPEC.md TRUSTED-006). They are supposed outside everything
+        // the claim's goal introduces, so each stands past every fact of the
+        // path, and each premise of the proof is discharged by its supposition.
+        std::uint32_t facts = 0;
+        for (const kernel::Proposition* walk = &obligation.goal;;) {
+            if (const auto* quantified = std::get_if<kernel::Forall>(&walk->node)) {
+                walk = &*quantified->body;
+            } else if (const auto* implication = std::get_if<kernel::Implies>(&walk->node)) {
+                ++facts;
+                walk = &*implication->conclusion;
+            } else {
+                break;
+            }
+        }
+        const std::vector<TrustedPremise>& trusted = proof->assumptions;
         kernel::ProofTerm term = proof->term;
+        kernel::Proposition named = relative_to(trusted, proof->goal);
+        for (std::size_t position = 0; position < trusted.size(); ++position) {
+            kernel::Proposition conclusion = *std::get<kernel::Implies>(named.node).conclusion;
+            term = kernel::ProofTerm::implication_elimination(
+                std::move(named), std::move(term),
+                kernel::ProofTerm::hypothesis(
+                    kernel::HypothesisIndex{facts + static_cast<std::uint32_t>(trusted.size() - 1 - position)}));
+            named = std::move(conclusion);
+        }
         bool instantiated = true;
         for (std::size_t index = 0; index < claim.arguments.size() && instantiated; ++index) {
             const auto* quantified = std::get_if<kernel::Forall>(&named.node);
@@ -2205,6 +2343,11 @@ void discharge_path_claims(Program& program, diagnostics::Engine& engine) {
             evidence = introduced.premise != nullptr
                            ? kernel::ProofTerm::implication_introduction(*introduced.premise, std::move(evidence))
                            : kernel::ProofTerm::forall_introduction(*introduced.binder, std::move(evidence));
+        }
+        obligation.assumptions = trusted;
+        for (TrustedPremise& premise : std::views::reverse(obligation.assumptions)) {
+            premise.direct = false;
+            evidence = kernel::ProofTerm::implication_introduction(premise.proposition, std::move(evidence));
         }
         obligation.evidence = std::move(evidence);
     }

@@ -194,6 +194,77 @@ uncolored rather than color a C++ declaration.
 
 ---
 
+## trust-propagation
+
+Manifest: `features/trust-propagation.yaml`
+
+Normative sources: `TRUSTED-001`–`TRUSTED-009` (SPEC §27), `PROOFSRC-005`,
+`PROOFSRC-006` (Annex H), `STATUS-002`, `STATUSPROMO-002` (SPEC §38, §39),
+`INTERACT-020` (Annex V.14); `TRUST.md` §25, §35, §36.
+
+### Components
+
+| Component | Responsibility | Paths |
+| --- | --- | --- |
+| elaboration | Resolve an evidence name to a premise first, then a proof or a trusted law; refuse a name that denotes more than one proof or trusted law. | `compiler/elaboration/src/elaborate.cpp` |
+| vir | Carry a trusted law named as evidence as `TrustedLawRef`, distinct from a proof reference. | `vir/include/cppl/vir/module.hpp` |
+| obligations | Collect the trusted laws a proof names and those of every proof it uses; lower each use to the hypothesis for its law; close the evidence over them; discharge a used proof's premises with the user's own hypotheses; close an omission's evidence over its proof's premises, and a runtime path claim's over those of the proof it names; refuse a law with no stated proposition. | `compiler/obligations/src/generate.cpp`, `compiler/obligations/include/cppl/obligations/obligation.hpp` |
+| status | Accept an acceptance only for the goal under exactly the premises the verdict names, and keep them. | `compiler/obligations/include/cppl/obligations/status.hpp`, `compiler/obligations/src/status.cpp` |
+| automation | Check written evidence relative to its premises; never suppose a trusted law in a strategy. Accept a partial contract's condition relative to its premises, since its evidence is never composed into another's, and a stage only outright. | `compiler/automation/src/evidence.cpp`, `compiler/automation/src/composition.cpp` |
+| trust closure | Give every proven claim its closure; join contracts across verified calls to a fixed point; report every unattributable dependency as a fault. | `compiler/obligations/include/cppl/obligations/trust.hpp`, `compiler/obligations/src/trust.cpp` |
+| driver | Fail the build on a fault or a proven claim without a closure; print closures, the split per category, and unused trusted laws. | `compiler/driver/src/pipeline.cpp`, `compiler/driver/src/driver.cpp` |
+
+### Required behavior
+
+```text
+a trusted law named as evidence   makes the proof relative to it; the kernel
+                                  checks the claim under exactly its premises
+a verdict                         never names fewer premises than its evidence
+                                  was checked under, nor more
+a proof using a proof             rests on every law the used proof rests on
+an omitted case                   rests on every law of the proof it is in
+a runtime path claim              rests on every law of the proof it names
+a contract                        rests on its body's obligations and on every
+                                  contract it calls, to a fixed point
+a trusted law's premise           is still owed where the law is applied
+a trusted law                     is a premise only where a statement names it
+an ambiguous evidence name        is refused, never resolved by preference
+a law with no stated proposition  cannot be named as evidence
+a trusted law                     is TRUSTED, never counted as proven
+a dependency no claim accounts for, or a proven claim with no closure,
+                                  is an internal error
+a unit with no trusted law        reports none, and every existing line keeps
+                                  its meaning
+```
+
+### Interactions
+
+```text
+trusted law x written proofs and proof chains     TRUSTED-006, PROOFSRC-006
+trusted law x apply over an expects premise       TRUSTED-007, PROOFSRC-005
+trusted law x contradiction and omitted cases     TRUSTED-008, CASE-011, CASE-012
+trusted law x runtime path claims                 VERIFIED-023, CASE-016
+trusted law x verified-call composition           TRUSTED-002 (TRUST.md 35)
+trusted law x circular proofs                     PROOFSRC-007
+trusted law x several translation units           TCB-TRUST-005
+trusted law x erasure                             ERASE-*
+```
+
+### Existing surface
+
+```text
+tests/fixtures/trust_closure.cpp          every accepted use, and the accepted half of the matched pair
+tests/e2e/trust_closure.sh                the whole closure section, determinism, two units, erasure
+tests/negative/trusted_dependencies.sh    every rejection, written out in tests/fixtures/negative/
+tests/unit/trust_closure_test.cpp         contract propagation, cycles, and every fault
+tests/unit/verdict_test.cpp               the verdict gate under premises
+```
+
+Not built: a trusted law admitting a memory proposition (`TRUSTED-003`), and
+carrying a closure across translation units through proof artifacts.
+
+---
+
 ## Adding a feature to this map
 
 1. Add the feature to `FEATURE_INDEX.md`.

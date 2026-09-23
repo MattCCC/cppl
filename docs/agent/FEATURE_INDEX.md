@@ -65,6 +65,7 @@ section numbers move and rule IDs do not.
 | --- | --- | --- | --- | --- | --- |
 | `unsafe` | `UNSAFE-*` | §26 | §22, §23 | — | §17, §18 |
 | `trusted` | `TRUSTED-*` | §27 | §24 | — | §15, §16, §17 |
+| Trust propagation and assumption closure | `TRUSTED-*`, `PROOFSRC-005`, `STATUS-002` | §27.1, §27.4, §38, Annex H.12 | §5, §24 | §7.3, §98, §130 | §3.2, §25, §35, §36 |
 | Runtime validation | `RUNTIMECHECK-*` | §28 | — | — | §22 |
 | FFI and foreign code | `FFI-*` | §35 | — | — | §19, §20 |
 | Verification statuses | `STATUS-*`, `STATUSPROMO-*` | §38, §39 | — | — | §27 |

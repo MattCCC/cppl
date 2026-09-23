@@ -7,7 +7,8 @@ add_library(cppl_obligations STATIC
     src/generate.cpp
     src/contracts.cpp
     src/contradiction.cpp
-    src/status.cpp)
+    src/status.cpp
+    src/trust.cpp)
 
 target_include_directories(cppl_obligations PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)

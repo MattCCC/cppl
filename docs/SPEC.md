@@ -3279,6 +3279,44 @@ proposition must be well-formed and side-effect-free even though it is not prove
 Its parameters and `expects` premise follow ordinary Law semantics; trust does not
 change quantification or scope.
 
+## 27.4 Using a trusted Law
+
+A trusted Law is applied like a proven Law (PROOFSRC-005):
+
+```cpp
+trusted law sensor_identity(unsigned x)
+    proves (x + zero() == x);
+
+proof first_link(unsigned y)
+    proves (y + zero() == y)
+{
+    exact sensor_identity(y);
+}
+```
+
+[TRUSTED-006] A statement of a proof body may name a trusted Law as its evidence wherever it may
+name a proof (§15.6). The proof that names it is established relative to the Law:
+its evidence is checked with the Law's proposition as a premise, and the Law
+belongs to its trust dependency closure (TRUSTED-002). A proof that uses such a
+proof is established relative to the same Law, and so is everything built on it
+in turn: a claim that a runtime path cannot occur naming such a proof
+(VERIFIED-045), the contract of the verified function it is written in, and the
+contract of every verified function that calls that one. A runtime path claim
+names a proof declaration, never a trusted Law directly.
+
+[TRUSTED-007] Naming a trusted Law does not assume its `expects` premise. Applying the Law
+leaves that premise, instantiated at the Law's arguments, to be proven like any
+other goal.
+
+[TRUSTED-008] A trusted Law supplies its proposition only to the statements that name it. It
+is not a premise standing in the proof context: `assume` cannot name it, and
+`contradiction` does not reason from it unless it is the evidence the statement
+names.
+
+[TRUSTED-009] A name used as evidence that denotes more than one proof or trusted Law MUST be
+rejected, never resolved by preference, so that which assumptions a proof rests on
+is always what its statements name.
+
 ---
 
 # 28. Runtime validation

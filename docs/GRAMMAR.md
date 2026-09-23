@@ -80,6 +80,12 @@ proof-statement ::= "refl" ";"
 evidence-reference ::= qualified-id ["(" [argument-expression-list] ")"]
 ```
 
+In a proof body, an evidence reference names a premise bound by `assume`, a proof
+declaration, or a trusted law (SPEC.md TRUSTED-006). A premise bound in the body
+is the more local binding; a name that denotes more than one proof or trusted law
+is refused (TRUSTED-009). In a verified function's body, the evidence of a
+`contradiction` statement names a proof declaration only (§5.6).
+
 ### 5.1 `refl`
 
 `refl;` closes a definitionally reflexive equality. It cannot prove `1 == 2`.
@@ -110,8 +116,9 @@ the goal. The transformed goal must still be proven; a nonmatching rewrite fails
 `contradiction evidence;` closes the goal, whatever its shape, from evidence that
 the context where it is written cannot occur. The named evidence must establish
 an equality that cannot hold together with the premises standing there; it is
-checked like any other evidence and introduces no trust (SPEC `CASE-011`,
-`CASE-013`). The same statement, written as the `omit` clause below, accounts for
+checked like any other evidence and introduces no trust of its own (SPEC
+`CASE-011`, `CASE-013`). Evidence that rests on a trusted law carries that
+dependency into the claim (`TRUSTED-006`). The same statement, written as the `omit` clause below, accounts for
 an omitted case, which is a claim of its own and is reported as one (SPEC
 `CASE-012`).
 
@@ -343,6 +350,7 @@ combined with `verified` or `pure` to bypass checks, and has no expression form.
 
 Only `trusted law` is a trusted declaration. It always ends with `;`, never a
 proof body. The assumption and its dependent evidence retain trust provenance.
+A proof statement uses one by naming it as evidence (§5); nothing else does.
 
 ## 25. Loop clauses
 

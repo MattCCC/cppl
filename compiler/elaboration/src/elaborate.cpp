@@ -682,15 +682,18 @@ std::optional<std::vector<vir::Capability>> convert_capabilities(
 // Resolves a proof body into typed steps.
 //
 // A step's reference names a proof-level entity: a proof this translation unit
-// declares, or a premise an earlier `assume` in this same body bound. Both are
-// C++L bindings, resolved here and nowhere else. The terms a step is
+// declares, a trusted law it declares, or a premise an earlier `assume` in this
+// same body bound. All are C++L bindings, resolved here and nowhere else. The
+// terms a step is
 // instantiated at, and the proposition an `assume` names, are ordinary C++ and
 // are read back from the functions the projector emitted for them, so Clang
 // alone decides what each one denotes.
 std::optional<std::vector<vir::ProofStep>> convert_statements(
     const Request& request, const frontend::ProofDeclaration& declaration, const frontend::ProofFunction& projected,
-    const std::map<std::string, std::size_t>& declared, const std::vector<vir::Parameter>& parameters,
-    std::uint32_t& next_expression_id, diagnostics::Engine& engine, std::vector<SubjectStates>* subject_states) {
+    const std::map<std::string, std::size_t>& declared,
+    const std::map<std::string, std::vector<const vir::Law*>>& trusted_laws,
+    const std::vector<vir::Parameter>& parameters, std::uint32_t& next_expression_id, diagnostics::Engine& engine,
+    std::vector<SubjectStates>* subject_states) {
     const std::size_t parameter_count = parameters.size();
     std::vector<std::string> value_names;
     value_names.reserve(parameters.size());
@@ -1045,12 +1048,37 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
                 }
             }
 
+            // A trusted law is named like a proof but has no evidence: naming it
+            // makes this proof relative to it (SPEC.md TRUSTED-006). A name that
+            // could mean more than one thing is refused, never resolved by
+            // preference, so which assumption a proof rests on is never a guess
+            // (TRUSTED-009).
+            const auto trusted = trusted_laws.find(statement.reference);
+            if (!evidence.has_value() && trusted != trusted_laws.end()) {
+                if (declared.contains(statement.reference) || trusted->second.size() != 1) {
+                    report(engine, diagnostics::Category::Elaboration, statement.location,
+                           "'" + statement.reference + "' names more than one proof or trusted law",
+                           "rename one of them, so that the evidence a statement names is never chosen by "
+                           "preference");
+                    return std::nullopt;
+                }
+                const vir::Law& law = *trusted->second.front();
+                evidence = vir::Reference{vir::TrustedLawRef{law.id}, statement.reference};
+                for (const auto& parameter : law.parameters)
+                    expected_arguments.push_back(parameter.type);
+                if (!law.premise.has_value()) {
+                    auto quantified = quantified_types(law.proposition);
+                    expected_arguments.insert(expected_arguments.end(), quantified.begin(), quantified.end());
+                }
+            }
+
             if (!evidence.has_value()) {
                 const auto target = declared.find(statement.reference);
                 if (target == declared.end()) {
                     report(engine, diagnostics::Category::Elaboration, statement.location,
                            "no proof or assumed premise named '" + statement.reference + "' is in scope here",
-                           "'" + describe(statement.kind) + "' names a proof declaration or a name bound by 'assume'");
+                           "'" + describe(statement.kind) +
+                               "' names a proof declaration, a trusted law or a name bound by 'assume'");
                     return std::nullopt;
                 }
                 if (statement.reference == declaration.name) {
@@ -1349,6 +1377,13 @@ void elaborate_proofs(const Request& request, const std::map<std::string, vir::L
                    "an earlier proof in this translation unit already has this name");
         }
     }
+    // Only laws given formal meaning are here, so a trusted law whose
+    // proposition could not be stated cannot be named as evidence either.
+    std::map<std::string, std::vector<const vir::Law*>> trusted_laws;
+    for (const vir::Law& law : result.module.laws) {
+        if (law.trusted)
+            trusted_laws[law.name].push_back(&law);
+    }
 
     for (const frontend::ProofFunction& projected : request.projection.proof_functions) {
         const frontend::ProofDeclaration& declaration = request.syntax.proofs[projected.proof_index];
@@ -1433,8 +1468,9 @@ void elaborate_proofs(const Request& request, const std::map<std::string, vir::L
         // ordinary C++ call, so Clang has already settled their number and
         // their types; which proposition they state is worked out where the
         // law's own proposition is known, by instantiating it at them.
-        std::optional<std::vector<vir::ProofStep>> steps = convert_statements(
-            request, declaration, projected, declared, *parameters, next_expression_id, engine, &result.subject_states);
+        std::optional<std::vector<vir::ProofStep>> steps =
+            convert_statements(request, declaration, projected, declared, trusted_laws, *parameters, next_expression_id,
+                               engine, &result.subject_states);
         if (!steps.has_value()) {
             if (law)
                 result.laws_with_refused_proofs.push_back(*law);

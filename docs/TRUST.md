@@ -809,6 +809,8 @@ Concurrency creates behaviors not captured by purely sequential reasoning.
 
 **[TCB-TRUST-007]** A trusted memory proposition such as `readable(...)` or `writable(...)` is an explicit assumption about the modeled storage relation; it does not perform runtime checking or mutate storage.
 
+**[TCB-TRUST-009]** When a proof names a trusted Law as evidence (`SPEC.md` TRUSTED-006), the premise supposed for it MUST be exactly the proposition that Law states, over its parameters and under its premise. A component that could suppose a different proposition under the Law's name would hide an assumption behind a reported one, so the construction of that premise is part of the correspondence TCB.
+
 ## 25.1 No hidden assumptions
 
 The following are forbidden as hidden assumption sources:
@@ -1087,6 +1089,8 @@ If theorem `A` depends on theorem `B`, and `B` depends on trusted assumption `X`
 **[TCB-PROV-004]** Reusing a theorem through an alias/import/re-export MUST preserve its trust closure.
 
 **[TCB-PROV-005]** Trust closure computation MUST be cycle-safe and deterministic.
+
+**[TCB-PROV-006]** A claim's reported trust closure MUST include every premise its accepted evidence was checked relative to. Where a closure is derived rather than read from checked evidence, as when it is joined across verified calls, the derivation is reporting TCB, and a dependency it cannot attribute to a reported claim MUST fail closed rather than be left out.
 
 ## 35.1 Trust identity
 

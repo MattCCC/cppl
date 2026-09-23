@@ -5,8 +5,9 @@
 # `trusted` is the escape hatch for a fact C++L cannot establish - an external
 # API contract, an OS guarantee. It is not a weaker kind of proof. These cases
 # pin that it stays an escape hatch: it is never reported as proven, it is
-# always named in the trust report, and it never closes an obligation that
-# something else was supposed to discharge.
+# always named in the trust report, and it closes no obligation that no proof
+# names it for. What a proof derives from one is reported as resting on it;
+# `e2e/trust_closure.sh` covers that.
 set -euo pipefail
 CPPL="$1"
 WORK="$3"
@@ -71,6 +72,12 @@ reports an_assumption_is_accepted 'Laws proven: +0'
 # The report names where the assumption was made, so it can be audited.
 reports an_assumption_is_accepted 'an_assumption_is_accepted\.cpp:1'
 
+# Nothing rests on it, and the report says that too rather than leaving it to
+# be inferred (TRUST.md 36.2).
+reports an_assumption_is_accepted '^Trust-dependent claims: +0$'
+reports an_assumption_is_accepted '^Unused trusted laws: +1$'
+reports an_assumption_is_accepted '^  unused: +external_guarantee \('
+
 # --- Trust is explicit, never inferred ---------------------------------------
 
 # The same proposition without `trusted` owes a proof like any other law.
@@ -109,6 +116,22 @@ CPP
 
 reports a_unit_with_no_assumption 'Laws trusted: +0'
 reports a_unit_with_no_assumption 'Trusted external axioms: +0'
+reports a_unit_with_no_assumption '^Trust-dependent claims: +0$'
+reports a_unit_with_no_assumption '^Unused trusted laws: +0$'
+
+# --- Without being named, a trusted law is used by nothing ------------------
+
+# The same proposition is proven here by the compiler's own strategy. Declaring
+# it trusted beside that does not make the proof rest on it: only a proof
+# statement naming the law does (SPEC.md PROOFSRC-005).
+accept an_assumption_beside_an_independent_proof <<'CPP'
+trusted law assumed(unsigned x) proves (x + 0u == x);
+law independent(unsigned x) proves (x + 0u == x);
+CPP
+
+reports an_assumption_beside_an_independent_proof '^Laws proven: +1$'
+reports an_assumption_beside_an_independent_proof '^Trust-dependent claims: +0$'
+reports an_assumption_beside_an_independent_proof '^  unused: +assumed \('
 
 # --- A trusted law must be a unit-level declaration --------------------------
 

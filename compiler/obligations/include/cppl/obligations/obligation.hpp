@@ -65,6 +65,29 @@ std::string describe(Origin origin);
                                                   const std::string& subject, const kernel::Proposition& goal,
                                                   std::uint64_t position);
 
+// A trusted law that evidence rests on (SPEC.md TRUSTED-002, FOUNDATIONS.md
+// 130). Evidence established relative to trusted laws is checked by the kernel
+// with each of their propositions supposed as a premise, so the list it carries
+// is exactly what it may use without proof, and nothing it uses can be missing
+// from it.
+struct TrustedPremise {
+    vir::LawId law;
+    std::string name;
+    // The trusted law's own obligation, whose identity is derived from its
+    // proposition rather than its spelling (TRUST.md TCB-TRUST-005).
+    ObligationId identity;
+    source::SourceLocation location;
+    kernel::Proposition proposition;
+    // Whether the evidence names the law itself, rather than using a proof
+    // that does. Reporting only: the kernel sees the same premise either way.
+    bool direct = false;
+};
+
+// What evidence established relative to `premises` proves: `goal`, supposed
+// under each premise in turn, the first outermost. With no premises it is the
+// goal itself.
+[[nodiscard]] kernel::Proposition relative_to(const std::vector<TrustedPremise>& premises, kernel::Proposition goal);
+
 struct Obligation {
     ObligationId id;
     Origin origin = Origin::LawProposition;
@@ -92,6 +115,10 @@ struct Obligation {
     // occur. It is submitted to the kernel against `goal` like any other
     // evidence and believed no more than any other.
     std::optional<kernel::ProofTerm> evidence;
+
+    // The trusted laws that evidence rests on: it proves
+    // `relative_to(assumptions, goal)`, which is what the kernel is given.
+    std::vector<TrustedPremise> assumptions;
 
     // Why the evidence written for such a claim could not be built. The reason
     // was reported where it was found, so the claim stands unproven and is
@@ -134,6 +161,12 @@ struct WrittenProof {
     // discharges the law rather than one instance of it.
     kernel::Proposition goal;
     bool closes_law = false;
+
+    // The trusted laws the proof rests on, its own and those of every proof it
+    // uses, ordered by declaration. `term` proves `relative_to(assumptions,
+    // goal)`: a proof that names no trusted law, directly or through another
+    // proof, has none and proves `goal` itself.
+    std::vector<TrustedPremise> assumptions;
 
     kernel::ProofTerm term;
     source::SourceRange range;

@@ -99,6 +99,33 @@ Manifest: `features/checked-contradiction.yaml`
 | Falsity elimination | adversarial | covered — every proposition form is closed from a refuted fact; falsity elimination over reflexivity, an absurd equality, a satisfiable fact, no facts, a missing constraint or a restated fact is refused, `False` has no introduction, and a certificate that leaned on a negated goal is refused for `False` (`kernel/adversarial_kernel_test.cpp` citing `TCB-CORE-017`) |
 | Unreachable runtime path from source | positive, negative, adversarial | covered — claims across branches, a loop, a verified call, a local's versions and an unbraced `if`, each counted as an impossible path and erased to an empty statement; a matched pair differing only in the branch condition; a reachable claim under a provable goal; unknown, refused, mistyped, over-instantiated and non-equality evidence; a claim resting on an unproven callee; a claim outside a verified function; the spelling kept as a C++ declaration where `contradiction` names a type; a claim never established by a strategy (`e2e/impossible_path.sh`, `negative/impossible_paths.sh`, `unit/recognizer_test.cpp`, `unit/projection_test.cpp`, `unit/contradiction_test.cpp` citing `VERIFIED-045`, `WORD-011`, `ERASE-016`) |
 
+### trust-propagation
+
+Manifest: `features/trust-propagation.yaml`
+
+| Required case | Category | Status |
+| --- | --- | --- |
+| Direct trust | positive | covered — a law, a proof and a proof of a law instance each name a trusted law and are reported as resting on it directly (`fixtures/trust_closure.cpp`, `e2e/trust_closure.sh` citing `TRUSTED-006`) |
+| Transitive trust through a chain | positive, adversarial | covered — only the first of three proofs names the law, and all three rest on it; dropping inherited premises is an internal error, and not discharging them is a kernel rejection (`e2e/trust_closure.sh`) |
+| Several trusted laws in one claim | positive, adversarial | covered — two premises in declaration order; reversing their hypotheses is a kernel rejection (`fixtures/trust_closure.cpp`) |
+| Unused trusted law | positive | covered — listed as unused, and so is one declared beside an independent proof of the same proposition (`e2e/trust_closure.sh`, `e2e/trusted_assumptions.sh`) |
+| Chain joining assumption-free and trust-dependent proofs | positive | covered (`fixtures/trust_closure.cpp`) |
+| False trusted law | positive | covered — `x == 5u` is proven only relative to it, and reported so (`fixtures/trust_closure.cpp`) |
+| Premise still owed | negative | covered (`negative/trusted_dependencies.sh` citing `TRUSTED-007`) |
+| Premise only where named | positive, negative | covered — matched pair differing only in the evidence one contradiction names (`fixtures/trust_closure.cpp`, `negative/trusted_dependencies.sh` citing `TRUSTED-008`) |
+| Ambiguous names | negative | covered — a proof and a trusted law, and two overloaded trusted laws (`negative/trusted_dependencies.sh` citing `TRUSTED-009`) |
+| Unstated assumption | negative | covered (`negative/trusted_dependencies.sh` citing `TRUSTED-005`) |
+| Circular proofs | negative | covered (`negative/trusted_dependencies.sh` citing `PROOFSRC-007`) |
+| Omitted cases inherit their proof's closure | positive, adversarial | covered — forgetting the premises is a kernel rejection (`fixtures/trust_closure.cpp`) |
+| Contract closure through calls, including cycles | positive, unit | covered — a runtime path claim naming a trust-dependent proof puts the law into its function's contract and a caller's (`fixtures/trust_closure.cpp`); direct, through two calls, and a recursive graph, and not following calls is caught (`unit/trust_closure_test.cpp`) |
+| Verdict gate | unit, adversarial | covered — fewer, other or extra premises than the acceptance was checked under are all refused (`unit/verdict_test.cpp` citing `TRUSTED-002`, `STATUS-002`) |
+| Attribution faults | unit, adversarial | covered — a premise that is not a trusted law, a dependency no claim accounts for, an unknown callee, a shared or missing obligation, mismatched results; dropping a claim kind is an internal error (`unit/trust_closure_test.cpp`) |
+| Zero-trust report | regression | covered — every existing line unchanged, every split zero (`e2e/trust_closure.sh`, `e2e/omitted_case.sh`, `e2e/trusted_assumptions.sh`) |
+| Determinism | regression | covered (`e2e/trust_closure.sh` citing `TCB-PROV-005`) |
+| One assumption in two units | positive | covered — one identity, unused only where unused (`e2e/trust_closure.sh` citing `TCB-TRUST-005`) |
+| Erasure | erasure | covered (`e2e/trust_closure.sh`) |
+| Trusted memory proposition | positive, negative | not built (`TRUSTED-003`) |
+
 Status here describes test coverage, not implementation maturity.
 `docs/STATUS.md` is authoritative for the latter, and neither weakens what
 `docs/SPEC.md` requires.

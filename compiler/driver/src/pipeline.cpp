@@ -8,6 +8,7 @@
 #include "cppl/erasure/erase.hpp"
 #include "cppl/frontend/projection.hpp"
 #include "cppl/obligations/generate.hpp"
+#include "cppl/obligations/trust.hpp"
 #include "cppl/source/digest.hpp"
 
 #include <algorithm>
@@ -254,8 +255,9 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
         } else if (result.verdict.is_trusted()) {
             // An explicit assumption is neither proven nor unresolved: it is a
             // recorded gap (SPEC.md 27.1). Counting it as unresolved would fail
-            // the build; counting it as proven would hide it.
-            outcome.counters.trusted.push_back(result.obligation.subject + " (" + result.verdict.reason() + ")");
+            // the build; counting it as proven would hide it. The trust closure
+            // below names it.
+            ++outcome.counters.trusted;
         } else {
             ++outcome.counters.unresolved;
         }
@@ -274,6 +276,31 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
             ++outcome.counters.partial_contracts_proven;
         }
     }
+    // Every claim counted as proven above has a trust closure, and none is
+    // counted without one. A report that could not attribute a dependency, or
+    // that lost a claim on the way, would show fewer assumptions than the build
+    // rests on, so either is an internal error rather than a shorter report
+    // (TRUST.md 2.10, TCB-REPORT-002, TCB-REPORT-006).
+    outcome.counters.closure = obligations::close_trust(program, results);
+    const auto claims = [&outcome](obligations::ClaimKind kind) {
+        return static_cast<std::size_t>(
+            std::ranges::count(outcome.counters.closure.claims, kind, &obligations::ClaimClosure::kind));
+    };
+    if (outcome.counters.closure.assumptions.size() != outcome.counters.trusted) {
+        outcome.counters.closure.faults.emplace_back("a trusted law is not reported as TRUSTED");
+    }
+    if (claims(obligations::ClaimKind::Law) != outcome.counters.proven ||
+        claims(obligations::ClaimKind::Proof) != outcome.counters.proofs_proven ||
+        claims(obligations::ClaimKind::Contract) != outcome.counters.contracts_proven ||
+        claims(obligations::ClaimKind::OmittedCase) != outcome.counters.omitted_cases_proven ||
+        claims(obligations::ClaimKind::ImpossiblePath) != outcome.counters.impossible_paths_proven) {
+        outcome.counters.closure.faults.emplace_back("a proven claim has no trust closure");
+    }
+    for (const std::string& fault : outcome.counters.closure.faults) {
+        report(engine, diagnostics::Category::Internal,
+               "the trusted laws a claim rests on cannot be reported: " + fault);
+    }
+
     const std::size_t required = syntax.laws.size() + syntax.verified_functions.size();
     if (declaration_obligations < required) {
         outcome.counters.unresolved += required - declaration_obligations;

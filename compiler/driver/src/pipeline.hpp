@@ -18,6 +18,7 @@
 #include "cppl/elaboration/elaborate.hpp"
 #include "cppl/frontend/syntax.hpp"
 #include "cppl/frontend/token.hpp"
+#include "cppl/obligations/trust.hpp"
 
 #include <cstddef>
 #include <filesystem>
@@ -118,9 +119,13 @@ struct PipelineOutcome {
         std::size_t proven_by_written_proof = 0;
         std::size_t proofs_proven = 0;
         std::size_t unresolved = 0;
-        // Every explicit trusted assumption, named so the trust report can list
-        // it rather than only count it (SPEC.md 27, TRUST.md 25).
-        std::vector<std::string> trusted;
+        std::size_t trusted = 0;
+
+        // Every explicit trusted assumption the unit declares, named so the
+        // trust report can list it rather than only count it (SPEC.md 27,
+        // TRUST.md 25), and every proven claim with the trusted laws it rests
+        // on (TRUST.md 35, 36.1). A claim proven outright rests on none.
+        obligations::TrustClosure closure;
     } counters;
 };
 

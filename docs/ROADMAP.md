@@ -207,8 +207,12 @@ that core are existential quantification with its proof surface,
 induction and termination. Scalar reference storage, void functions, alias
 invalidation and verified call post-state are now prototyped together with their
 refinement crossings. General object and pointer memory reasoning, signed
-arithmetic with overflow obligations, and SMT remain incomplete. See `STATUS.md` for the
-supported fragment.
+arithmetic with overflow obligations, and SMT remain incomplete. Trust propagation
+is implemented within a translation unit: a proof may name a `trusted law`, is
+checked relative to it, and the trust report lists every proven claim with the
+trusted laws it rests on. Carrying that closure across translation units waits
+on proof artifacts, and trusted memory propositions are not started. See
+`STATUS.md` for the supported fragment.
 
 Implement:
 

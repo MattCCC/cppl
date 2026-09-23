@@ -28,9 +28,15 @@ std::string describe(Status status);
 // acceptance must carry exactly the proposition of the obligation being
 // discharged. There is no other path to this status: no frontend, elaborator,
 // solver adapter, diagnostic or test can produce one (AGENTS.md 5).
+//
+// Evidence that rests on trusted laws is accepted for the obligation's goal
+// supposed under them, and the verdict keeps them: the claim is PROVEN relative
+// to those premises and to nothing else (SPEC.md STATUS-002, TRUSTED-002). An
+// acceptance for the goal under any other premises establishes nothing.
 class Verdict {
   public:
-    [[nodiscard]] static Verdict proven(const kernel::Acceptance& acceptance, const Obligation& obligation);
+    [[nodiscard]] static Verdict proven(const kernel::Acceptance& acceptance, const Obligation& obligation,
+                                        std::vector<TrustedPremise> premises = {});
 
     // An assumption the author stated explicitly (SPEC.md 27). This is not a
     // weaker kind of proof: nothing was proved, and the trust report names every
@@ -53,11 +59,21 @@ class Verdict {
         return status_ == Status::Trusted;
     }
 
+    // The trusted laws a proven claim rests on. Empty for any other status, and
+    // for a claim proven outright.
+    [[nodiscard]] const std::vector<TrustedPremise>& premises() const noexcept {
+        return premises_;
+    }
+
   private:
-    Verdict(Status status, std::string reason) : status_(status), reason_(std::move(reason)) {}
+    Verdict(Status status, std::string reason, std::vector<TrustedPremise> premises = {})
+        : status_(status),
+          reason_(std::move(reason)),
+          premises_(std::move(premises)) {}
 
     Status status_ = Status::Unresolved;
     std::string reason_;
+    std::vector<TrustedPremise> premises_;
 };
 
 struct ObligationResult {
