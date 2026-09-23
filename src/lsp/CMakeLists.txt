@@ -4,6 +4,7 @@ add_library(cppl_lsp STATIC
     src/json.cpp
     src/linter.cpp
     src/position.cpp
+    src/semantic_tokens.cpp
     src/server.cpp
     src/transport.cpp
     src/uri.cpp
@@ -14,6 +15,7 @@ add_library(cppl_lsp STATIC
     include/cppl/lsp/linter.hpp
     include/cppl/lsp/position.hpp
     include/cppl/lsp/protocol.hpp
+    include/cppl/lsp/semantic_tokens.hpp
     include/cppl/lsp/server.hpp
     include/cppl/lsp/transport.hpp
     include/cppl/lsp/uri.hpp

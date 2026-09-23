@@ -96,6 +96,7 @@ struct ProofStatement {
     source::ByteSpan proposition;
     source::SourceLocation proposition_location;
 
+    source::ByteSpan keyword; // the statement's keyword itself, e.g. 'contradiction'
     source::SourceLocation location;
     std::vector<ProofArm> arms;
 

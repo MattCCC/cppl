@@ -61,7 +61,10 @@ The project root is detected by searching upward for `CMakeLists.txt` or
 Diagnostics, formatting (`vim.lsp.buf.format`), format-on-save and code
 actions, all from the server. Syntax coloring comes from
 [`syntax/cppl.vim`](syntax/cppl.vim), which sources the bundled C++ syntax and
-adds only the C++L contextual words.
+adds only the C++L contextual words. Proof statements spelled like C++
+declarations, such as `exact h;` and `contradiction name;`, come from the
+server's semantic tokens instead, as `@lsp.type.keyword.cppl`, which
+`setup()` links to `Statement` like the syntax file's own proof words.
 
 Inside a `cases` or `decompose` arm block the server also answers hover
 (`vim.lsp.buf.hover`) and completion. Navigation is not implemented by the

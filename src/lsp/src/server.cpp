@@ -7,9 +7,11 @@
 #include "cppl/lsp/document.hpp"
 #include "cppl/lsp/position.hpp"
 #include "cppl/lsp/protocol.hpp"
+#include "cppl/lsp/semantic_tokens.hpp"
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -222,6 +224,17 @@ std::optional<Hover> Server::text_document_hover(const TextDocumentIdentifier& i
     return case_site_hover(*site);
 }
 
+std::optional<std::vector<std::uint32_t>> Server::text_document_semantic_tokens(const TextDocumentIdentifier& id) const {
+    const Document* doc = documents_.get(id.uri);
+    if (doc == nullptr) {
+        return std::nullopt;
+    }
+    if (doc->syntax() == nullptr) {
+        return std::vector<std::uint32_t>{};
+    }
+    return proof_keyword_tokens(*doc->syntax(), doc->text(), doc->path_claims_recognized());
+}
+
 void Server::publish_diagnostics(const Document& doc) {
     // This runs the compile that also records the document's decomposition
     // states, which completion and hover answer from. Returning early when no
@@ -250,6 +263,8 @@ void Server::publish_diagnostics(const Document& doc) {
     driver::BufferCompileOutcome outcome = driver::compile_buffer(request, engine);
     if (mutable_doc != nullptr) {
         mutable_doc->set_subject_states(std::move(outcome.subject_states));
+        mutable_doc->set_path_claims_recognized(outcome.syntax != nullptr &&
+                                                !outcome.syntax->path_contradictions.empty());
     }
 
     std::vector<Diagnostic> lsp_diagnostics;

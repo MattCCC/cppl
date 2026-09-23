@@ -55,5 +55,12 @@ from the server. Format-on-save and format-on-type are enabled by default for
 
 Inside a `cases` or `decompose` arm block the server also answers hover, with
 the subject's states, and completion, with the arms still owed. Ordinary C++
-hover and completion stay with clangd. Navigation, rename and semantic tokens
-are not implemented by the server yet, so they are unavailable here.
+hover and completion stay with clangd. Navigation and rename are not
+implemented by the server yet, so they are unavailable here.
+
+Proof statements spelled like C++ declarations, such as `exact h;` and
+`contradiction name;`, are colored from the server's semantic tokens, since
+the grammar cannot tell them apart from ordinary C++. They take the grammar's
+own proof-keyword scope, `keyword.other.proof.cppl`, so any theme colors them
+like the proof words it already colors, and semantic highlighting is on by
+default for `cppl` files (`editor.semanticHighlighting.enabled`).

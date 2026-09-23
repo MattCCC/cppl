@@ -71,6 +71,17 @@ class Document {
         subject_states_ = std::move(states);
     }
 
+    // Whether the last full compile of this buffer recognized a `contradiction`
+    // statement in a verified body as a claim that its path cannot occur. That
+    // depends on every use of the word in the translation unit, headers
+    // included, which `reparse` cannot see (semantic_tokens.hpp).
+    [[nodiscard]] bool path_claims_recognized() const noexcept {
+        return path_claims_recognized_;
+    }
+    void set_path_claims_recognized(bool recognized) noexcept {
+        path_claims_recognized_ = recognized;
+    }
+
   private:
     std::string uri_;
     std::string path_;
@@ -82,6 +93,7 @@ class Document {
     std::unique_ptr<frontend::Syntax> syntax_;
     std::vector<diagnostics::Diagnostic> diagnostics_;
     std::vector<elaboration::SubjectStates> subject_states_;
+    bool path_claims_recognized_ = false;
 };
 
 // Manages all open documents

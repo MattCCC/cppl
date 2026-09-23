@@ -54,3 +54,7 @@ exclusively to `cppl-lsp` rather than the IDE's C++ engine.
 The server also answers hover and completion inside a `cases` or `decompose`
 arm block, which the IDE shows where its LSP client supports those features.
 Navigation is not implemented by the server yet, so it is unavailable here.
+
+The plugin loads no grammar: all coloring is the server's. The server reports
+only proof-statement keywords, as `keyword` semantic tokens, and whether this
+IDE's LSP client applies them has not been verified.

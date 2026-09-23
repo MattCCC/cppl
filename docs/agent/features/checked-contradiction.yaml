@@ -109,6 +109,8 @@ implementation:
   lsp:
     - src/lsp/src/decomposition_view.cpp
     - src/lsp/src/linter.cpp
+    - src/lsp/src/semantic_tokens.cpp
+    - src/lsp/src/server.cpp
   editors:
     - editors/shared/cppl.tmLanguage.json
     - editors/neovim/syntax/cppl.vim
@@ -129,6 +131,7 @@ tests:
     - tests/fixtures/contextual_omission_words.cpp
     - tests/fixtures/impossible_path.cpp
     - tests/fixtures/contradiction_as_a_cpp_name.cpp
+    - tests/fixtures/contradiction_named_by_a_header.cpp
   negative:
     - tests/negative/contradictions.sh
     - tests/negative/impossible_paths.sh
@@ -155,6 +158,7 @@ tests:
   unit:
     - tests/unit/contradiction_test.cpp
     - tests/unit/lsp_decomposition_view_test.cpp
+    - tests/unit/lsp_semantic_tokens_test.cpp
     - tests/unit/recognizer_test.cpp
     - tests/unit/projection_test.cpp
   end_to_end:
@@ -183,6 +187,7 @@ required_test_categories:
   - a claim resting on an unproven callee
   - a claim outside a verified function
   - the claim's spelling kept as C++ where the word names a type
+  - the same where only an included header names it, in the compiler and the editor
   - an impossibility never established by a strategy
   - contextual words as ordinary identifiers
   - erasure, including a claim as the body of an unbraced if

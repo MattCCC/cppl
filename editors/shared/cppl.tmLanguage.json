@@ -116,7 +116,7 @@
           "name": "keyword.other.proof.cppl"
         },
         {
-          "comment": "A case omission, `omit label by contradiction evidence;` (docs/GRAMMAR.md section 5.7). Only the whole form is colored, because it is never valid C++. `omit`, `by` and `contradiction` are ordinary names anywhere else, and a bare `contradiction name;` is spelled like a C++ declaration, so it is left to the C++ reading exactly as `ghost value;` and `exact h;` are.",
+          "comment": "A case omission, `omit label by contradiction evidence;` (docs/GRAMMAR.md section 5.7). Only the whole form is colored, because it is never valid C++. `omit`, `by` and `contradiction` are ordinary names anywhere else, and a bare `contradiction name;` is spelled like a C++ declaration, so it is left to the C++ reading exactly as `ghost value;` and `exact h;` are. cppl-lsp colors the proof statements among them, where the compiler recognized them as such, as `keyword` semantic tokens.",
           "match": "\\b(omit)\\s+(?:::)?[A-Za-z_][A-Za-z0-9_]*(?:\\s*::\\s*[A-Za-z_][A-Za-z0-9_]*)*(?:\\s*<[^;{}]*>)?\\s+(by)\\s+(contradiction)\\b",
           "captures": {
             "1": { "name": "keyword.other.proof.cppl" },

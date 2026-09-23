@@ -164,7 +164,8 @@ const cases = [
   // (docs/GRAMMAR.md 5.7). Its words are ordinary names everywhere else, and a
   // bare `contradiction name;` is spelled exactly like a C++ declaration, so it
   // is left to the C++ reading, as `ghost value;` is
-  // (tests/fixtures/contextual_omission_words.cpp).
+  // (tests/fixtures/contextual_omission_words.cpp). cppl-lsp colors it where the
+  // compiler recognized a proof statement, as a semantic token.
   { line: "        omit State::idle by contradiction is_running;", expect: true, why: "case omission" },
   { line: "        omit unnamed by contradiction impossible;", expect: true, why: "residual case omission" },
   { line: "        omit omit::idle by contradiction contradiction;", expect: true, why: "omission using its words as names" },

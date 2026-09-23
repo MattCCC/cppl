@@ -1311,7 +1311,8 @@ AI output must always be independently verified.
 | LSP/CLI: canonical clause formatting | `PROTOTYPE`   |
 | LSP: case completion and hover       | `PROTOTYPE`   |
 | LSP: code actions                    | `PROTOTYPE`   |
-| LSP: definition, semantic tokens     | `NOT STARTED` |
+| LSP: proof-keyword semantic tokens   | `PROTOTYPE`   |
+| LSP: definition, other token kinds   | `NOT STARTED` |
 | IDE proof goals                      | `NOT STARTED` |
 | Proof navigation                     | `NOT STARTED` |
 | Counterexample UI                    | `NOT STARTED` |
@@ -1359,9 +1360,17 @@ where the compiler has not confirmed a subject's states, they offer nothing
 rather than guess. Elaboration runs on publish rather than per keystroke, so
 offered labels may lag the buffer by one edit.
 
-Go-to-definition, semantic tokens and incremental sync are designed in
-`tools/cppl-lsp/README.md` but not implemented, and are deliberately not
-advertised as capabilities.
+`semanticTokensProvider` reports, as `keyword` tokens, the proof statements
+the editors' TextMate grammar cannot tell from C++ declarations, such as
+`exact h;` and `contradiction name;`. The tokens are the keywords the
+recognizer read, at the positions it recorded in the buffer as written. A
+`contradiction` statement in a verified body is reported only when the compile
+of the whole unit, headers included, also recognized claims, since a header
+that names `contradiction` makes the statement ordinary C++ (WORD-002).
+
+Go-to-definition, the other semantic-token categories and incremental sync are
+designed in `tools/cppl-lsp/README.md` but not implemented, and are deliberately
+not advertised as capabilities.
 
 ---
 

@@ -4,11 +4,13 @@
 #include "cppl/diagnostics/diagnostic.hpp"
 #include "cppl/frontend/syntax.hpp"
 #include "cppl/frontend/token.hpp"
+#include "cppl/source/location.hpp"
 #include "cppl/testing/test.hpp"
 
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -482,6 +484,43 @@ CPPL_TEST(contradiction_where_no_statement_begins_is_not_a_claim) {
               result);
     CPPL_CHECK(!result.engine.has_errors());
     CPPL_CHECK(result.syntax.path_contradictions.empty());
+}
+
+CPPL_TEST(every_proof_statement_records_where_its_keyword_was_written) {
+    // The keyword alone, not the statement: it is what an editor colors.
+    const std::string text = "proof p(E s, int a) proves (a == a) {\n"
+                             "    assume h : a == a;\n"
+                             "    rewrite h;\n"
+                             "    apply h;\n"
+                             "    exact h;\n"
+                             "    contradiction h;\n"
+                             "    induction a;\n"
+                             "    cases s { omit E::b by contradiction h; E::a => { refl; } }\n"
+                             "    decompose s { unnamed(v) => { refl; } }\n"
+                             "}\n"
+                             "verified int f(int x) ensures (result == x) { if (x != x) { contradiction p; } return x; }\n";
+    Recognized result;
+    recognize(text, result);
+    CPPL_CHECK(!result.engine.has_errors());
+    const auto spelled = [&text](const cppl::source::ByteSpan& span) {
+        return text.substr(span.offset, span.length);
+    };
+
+    const auto& statements = result.syntax.proofs[0].statements;
+    const std::vector<std::string> keywords = {"assume",    "rewrite", "apply", "exact",
+                                               "contradiction", "induction", "cases", "decompose"};
+    CPPL_CHECK_EQ(statements.size(), keywords.size());
+    for (std::size_t index = 0; index < keywords.size(); ++index) {
+        CPPL_CHECK_EQ(spelled(statements[index].keyword), keywords[index]);
+    }
+    CPPL_CHECK_EQ(spelled(statements[6].arms[0].statements[0].keyword), std::string("contradiction"));
+    CPPL_CHECK_EQ(spelled(statements[6].arms[1].statements[0].keyword), std::string("refl"));
+    CPPL_CHECK_EQ(spelled(statements[7].arms[0].statements[0].keyword), std::string("refl"));
+
+    CPPL_CHECK_EQ(result.syntax.path_contradictions.size(), std::size_t{1});
+    const auto& claim = result.syntax.path_contradictions[0];
+    CPPL_CHECK_EQ(spelled(claim.statement.keyword), std::string("contradiction"));
+    CPPL_CHECK_EQ(claim.statement.keyword.offset, claim.span.offset);
 }
 
 CPPL_TEST(a_loop_termination_measure_is_recognized_as_a_clause) {

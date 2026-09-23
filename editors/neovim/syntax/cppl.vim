@@ -41,6 +41,8 @@ syntax match cpplProof "\<refl\>\ze\s*;"
 " colored only as the whole form, which is never valid C++. Its words are
 " ordinary names anywhere else, and a bare `contradiction name;` is spelled like
 " a C++ declaration, so it is left to the C++ reading, as `ghost value;` is.
+" cppl-lsp colors such a statement where the compiler recognized it as one, as
+" a semantic token (lua/cppl/init.lua).
 syntax match cpplOmission "\<omit\s\+\%(::\)\=\h\w*\%(\s*::\s*\h\w*\)*\%(\s*<[^;{}]*>\)\=\s\+by\s\+contradiction\>" contains=cpplOmissionWord
 syntax match cpplOmissionWord "\<\%(omit\|by\|contradiction\)\>" contained
 

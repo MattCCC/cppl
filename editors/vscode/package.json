@@ -36,6 +36,14 @@
         }
       }
     ],
+    "semanticTokenScopes": [
+      {
+        "language": "cppl",
+        "scopes": {
+          "keyword": ["keyword.other.proof.cppl"]
+        }
+      }
+    ],
     "commands": [
       {
         "command": "cppl.restartServer",
@@ -76,7 +84,8 @@
     "configurationDefaults": {
       "[cppl]": {
         "editor.formatOnSave": true,
-        "editor.formatOnType": true
+        "editor.formatOnType": true,
+        "editor.semanticHighlighting.enabled": true
       }
     }
   },

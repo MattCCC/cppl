@@ -197,6 +197,14 @@ target_compile_definitions(lsp_fixtures_test PRIVATE
     CPPL_TEST_FIXTURES_DIR="${CPPL_TEST_FIXTURES}"
     CPPL_TEST_DEFAULT_CLANG="${CPPL_DEFAULT_CLANG}")
 
+# Semantic tokens, including the server's use of the real compile to decide
+# which `contradiction` statements the translation unit reads as claims.
+cppl_add_unit_test(lsp_semantic_tokens_test unit/lsp_semantic_tokens_test.cpp)
+target_link_libraries(lsp_semantic_tokens_test PRIVATE cppl_lsp)
+target_compile_definitions(lsp_semantic_tokens_test PRIVATE
+    CPPL_TEST_FIXTURES_DIR="${CPPL_TEST_FIXTURES}"
+    CPPL_TEST_DEFAULT_CLANG="${CPPL_DEFAULT_CLANG}")
+
 # Driver-level suites invoke the real compiler on real fixtures and write what
 # it produces into the work tree, so each one runs under the same limits.
 function(cppl_add_script_test name script)

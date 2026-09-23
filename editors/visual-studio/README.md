@@ -40,3 +40,7 @@ The server also answers hover and completion inside a `cases` or `decompose`
 arm block, which Visual Studio shows where its LSP client supports those
 features. Navigation is not implemented by the server yet, so it is
 unavailable here.
+
+The extension loads no grammar: all coloring is the server's. The server
+reports only proof-statement keywords, as `keyword` semantic tokens, and
+whether Visual Studio's LSP client applies them has not been verified.

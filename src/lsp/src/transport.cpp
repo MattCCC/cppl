@@ -2,6 +2,7 @@
 
 #include "cppl/lsp/json.hpp"
 #include "cppl/lsp/protocol.hpp"
+#include "cppl/lsp/semantic_tokens.hpp"
 #include "cppl/lsp/server.hpp"
 
 #include <cstddef>
@@ -243,6 +244,8 @@ class Dispatcher {
             handle_hover(id_value, params);
         } else if (method == "textDocument/codeAction") {
             handle_code_action(id_value, params);
+        } else if (method == "textDocument/semanticTokens/full") {
+            handle_semantic_tokens(id_value, params);
         } else if (is_request) {
             respond_error(*id_value, kMethodNotFound, "method not found: " + method);
         } else {
@@ -324,6 +327,19 @@ class Dispatcher {
         json::Value code_actions = json::Value::object();
         code_actions.set("codeActionKinds", std::move(code_action_kinds));
         capabilities.set("codeActionProvider", std::move(code_actions));
+
+        // The proof-statement keywords the TextMate grammar cannot tell from a
+        // C++ declaration. Whole-document only: the set is small, and a range
+        // or delta request would buy nothing for it.
+        json::Value token_types = json::Value::array();
+        token_types.push_back(json::Value(std::string(kKeywordTokenType)));
+        json::Value legend = json::Value::object();
+        legend.set("tokenTypes", std::move(token_types));
+        legend.set("tokenModifiers", json::Value::array());
+        json::Value semantic_tokens = json::Value::object();
+        semantic_tokens.set("legend", std::move(legend));
+        semantic_tokens.set("full", json::Value(true));
+        capabilities.set("semanticTokensProvider", std::move(semantic_tokens));
 
         json::Value server_info = json::Value::object();
         server_info.set("name", json::Value("cppl-lsp"));
@@ -560,6 +576,32 @@ class Dispatcher {
         contents.set("value", json::Value(hover->contents));
         json::Value result = json::Value::object();
         result.set("contents", std::move(contents));
+        respond_result(*id, std::move(result));
+    }
+
+    void handle_semantic_tokens(const json::Value* id, const json::Value* params) {
+        if (id == nullptr) {
+            return;
+        }
+        const json::Value* document = params != nullptr ? params->find("textDocument") : nullptr;
+        const auto uri = document != nullptr ? document->find_string("uri") : std::nullopt;
+        if (!uri) {
+            respond_error(*id, kInvalidParams, "textDocument/semanticTokens/full missing 'textDocument.uri'");
+            return;
+        }
+        TextDocumentIdentifier document_id;
+        document_id.uri = *uri;
+        const std::optional<std::vector<std::uint32_t>> tokens = server_.text_document_semantic_tokens(document_id);
+        if (!tokens.has_value()) {
+            respond_result(*id, json::Value(nullptr));
+            return;
+        }
+        json::Value data = json::Value::array();
+        for (const std::uint32_t value : *tokens) {
+            data.push_back(json::Value(value));
+        }
+        json::Value result = json::Value::object();
+        result.set("data", std::move(data));
         respond_result(*id, std::move(result));
     }
 

@@ -81,6 +81,19 @@ function M.setup(options)
 
   local group = vim.api.nvim_create_augroup("cppl", { clear = true })
 
+  -- cppl-lsp reports as `keyword` tokens the proof statements the syntax file
+  -- cannot tell from C++ declarations, such as `exact h;` and `contradiction
+  -- name;`. They are colored like the proof words it can see. A colorscheme
+  -- clears highlights when it loads, so the link is made again after one.
+  local function link_proof_keywords()
+    vim.api.nvim_set_hl(0, "@lsp.type.keyword.cppl", { link = "Statement", default = true })
+  end
+  link_proof_keywords()
+  vim.api.nvim_create_autocmd("ColorScheme", {
+    group = group,
+    callback = link_proof_keywords,
+  })
+
   vim.api.nvim_create_autocmd("FileType", {
     group = group,
     pattern = "cppl",

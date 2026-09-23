@@ -3051,6 +3051,13 @@ A migration note is not compiler acceptance of a legacy dialect.
 If a correction could alter meaning, the diagnostic asks for a source edit rather
 than guessing.
 
+Coloring follows the same rule. The editors' grammar leaves a statement such as
+`exact h;` or `contradiction nothing;` uncolored, because it is spelled like a
+C++ declaration. cppl-lsp colors it once the compiler has read it as a proof
+statement. A `contradiction` claim in a verified body stays uncolored while any
+part of the translation unit, an included header too, uses the word as a C++
+name, because there the statement declares a variable.
+
 No fix may:
 
 ```text

@@ -31,6 +31,7 @@ textDocument/onTypeFormatting               scoped to the smallest safe unit
 textDocument/completion                     case labels a subject still owes
 textDocument/hover                          a case subject's state partition
 textDocument/codeAction                     syntax migrations; canonical fix-all
+textDocument/semanticTokens/full            proof-statement keywords
 ```
 
 Diagnostics come from `driver::compile_buffer` over the live buffer — the same
@@ -75,13 +76,25 @@ provider modeled it, and the full partition with the written arms checked off.
 An omitted case is marked as claimed impossible, not as proven: hover reads the
 written syntax, and whether the claim checks is reported as a diagnostic.
 
+Semantic tokens cover what the editors' TextMate grammar cannot: a proof
+statement spelled like a C++ declaration, such as `exact h;`, `assume h : P;`
+or `contradiction name;`. Each keyword the recognizer read as a proof statement
+is reported as a `keyword` token, from the positions it recorded in the buffer
+as written. A `contradiction` statement in a verified body is a claim only
+where the whole translation unit, headers included, uses the word for nothing
+else (SPEC.md WORD-002), and only the compile of the preprocessed unit sees the
+headers. So such a claim is reported only when that compile recognized claims
+too; where it did not, or could not run, the statement is left uncolored, as
+the grammar leaves it.
+
 The server advertises `textDocumentSync`, `documentFormattingProvider`,
 `documentRangeFormattingProvider`, `documentOnTypeFormattingProvider`,
-`completionProvider`, `hoverProvider` and `codeActionProvider` (kinds
-`quickfix` and `source.fixAll.cppl`). **Navigation and semantic tokens are
-specified below but not implemented**, and are deliberately not advertised as
-capabilities: an editor is told what the server can do, never what it intends
-to do. `docs/STATUS.md` tracks this.
+`completionProvider`, `hoverProvider`, `codeActionProvider` (kinds
+`quickfix` and `source.fixAll.cppl`) and `semanticTokensProvider` (whole
+document, one token type, `keyword`). **Navigation is specified below but not
+implemented**, nor are the semantic-token categories beyond proof-statement
+keywords, and neither is advertised: an editor is told what the server can do,
+never what it intends to do. `docs/STATUS.md` tracks this.
 
 ---
 
@@ -618,6 +631,11 @@ verification construct
 
 Token classification must follow the actual language grammar rather than editor-side textual heuristics.
 
+Implemented today: the keyword of every proof statement the recognizer read,
+as the `keyword` type, including a `contradiction` claim in a verified body
+once the compile of the whole unit has recognized it (see Implementation
+status). The categories above are not yet reported.
+
 ---
 
 ## Editor architecture
@@ -1151,13 +1169,14 @@ reference. Detailed pointer-state and effect hovers are not implemented.
 ## Currently unsupported
 
 Transport, document synchronization, diagnostics, canonical C++L formatting,
-code actions, and proof-decomposition completion and hover are implemented. The following are
+code actions, proof-decomposition completion and hover, and semantic tokens for proof-statement
+keywords are implemented. The following are
 explicitly out of scope for this milestone and are not implemented:
 
 ```text
 go-to-definition / references
 rename
-semantic tokens
+semantic tokens beyond proof-statement keywords
 proof search / interactive proof state
 incremental (as opposed to full) text document sync
 ```

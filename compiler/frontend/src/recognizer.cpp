@@ -623,6 +623,7 @@ bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std
             statement.proposition = {tokens[cursor + 1].span.offset,
                                      tokens[open - 1].span.end() - tokens[cursor + 1].span.offset};
             statement.reference = std::string(stream.spelling(statement.proposition));
+            statement.keyword = token.span;
             statement.location = stream.location_of(token);
             const std::size_t end = matching_brace(tokens, open);
             if (end >= body_close) {
@@ -807,6 +808,7 @@ bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std
             statement.kind = ProofStatementKind::Induction;
             statement.proposition = tokens[subject].span;
             statement.reference = std::string(tokens[subject].text);
+            statement.keyword = token.span;
             statement.location = stream.location_of(token);
 
             if (subject + 1 < body_close && tokens[subject + 1].is_punctuator(";")) {
@@ -887,6 +889,7 @@ bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std
         if (token.is_identifier("refl") && cursor + 1 < body_close && tokens[cursor + 1].is_punctuator(";")) {
             ProofStatement statement;
             statement.kind = ProofStatementKind::Reflexivity;
+            statement.keyword = token.span;
             statement.location = stream.location_of(token);
             statements.push_back(std::move(statement));
             cursor += 2;
@@ -927,6 +930,7 @@ bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std
             statement.proposition = source::ByteSpan{
                 tokens[cursor + 3].span.offset, tokens[terminator - 1].span.end() - tokens[cursor + 3].span.offset};
             statement.proposition_location = stream.location_of(tokens[cursor + 3]);
+            statement.keyword = token.span;
             statement.location = stream.location_of(token);
             statements.push_back(std::move(statement));
             cursor = terminator + 1;
@@ -946,6 +950,7 @@ bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std
                              : is_contradiction ? ProofStatementKind::Contradiction
                                                 : ProofStatementKind::Apply;
             statement.reference = std::string(tokens[cursor + 1].text);
+            statement.keyword = token.span;
             statement.location = stream.location_of(token);
 
             if (tokens[cursor + 2].is_punctuator(";")) {

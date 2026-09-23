@@ -5,6 +5,7 @@
 #include "cppl/lsp/protocol.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <string>
@@ -75,6 +76,12 @@ class Server {
     [[nodiscard]] std::vector<CompletionItem> text_document_completion(const TextDocumentIdentifier& id,
                                                                        const Position& position);
     [[nodiscard]] std::optional<Hover> text_document_hover(const TextDocumentIdentifier& id, const Position& position);
+
+    // The proof-statement keywords a spelling-based grammar cannot color, as
+    // encoded semantic tokens (semantic_tokens.hpp). `std::nullopt` means the
+    // document is unknown.
+    [[nodiscard]] std::optional<std::vector<std::uint32_t>> text_document_semantic_tokens(
+        const TextDocumentIdentifier& id) const;
 
     // Diagnostics
     using DiagnosticPublisher = std::function<void(const std::string& uri, std::vector<Diagnostic>)>;

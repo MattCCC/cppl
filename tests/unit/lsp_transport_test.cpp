@@ -138,6 +138,61 @@ CPPL_TEST(initialize_advertises_both_code_action_kinds) {
                std::string::npos);
 }
 
+CPPL_TEST(initialize_advertises_whole_document_keyword_tokens) {
+    Server server;
+    std::istringstream input(framed(R"({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}})") +
+                             framed(R"({"jsonrpc":"2.0","method":"exit"})"));
+    std::ostringstream output;
+    std::ostringstream log;
+
+    [[maybe_unused]] const int exit_code = run_transport(server, input, output, log);
+    CPPL_CHECK(output.str().find(R"("semanticTokensProvider":{"legend":{"tokenTypes":["keyword"],)"
+                                 R"("tokenModifiers":[]},"full":true})") != std::string::npos);
+}
+
+CPPL_TEST(semantic_tokens_answer_with_the_encoded_keywords) {
+    Server server;
+    std::istringstream input(
+        framed(R"({"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":)"
+               R"({"uri":"file:///st.cpp","languageId":"cpp","version":1,)"
+               R"("text":"proof p(int x)\n    proves (x == x)\n{\n    refl;\n}\n"}}})") +
+        framed(R"({"jsonrpc":"2.0","id":2,"method":"textDocument/semanticTokens/full","params":{"textDocument":)"
+               R"({"uri":"file:///st.cpp"}}})") +
+        framed(R"({"jsonrpc":"2.0","method":"exit"})"));
+    std::ostringstream output;
+    std::ostringstream log;
+
+    [[maybe_unused]] const int exit_code = run_transport(server, input, output, log);
+    CPPL_CHECK(output.str().find(R"("id":2,"result":{"data":[3,4,4,0,0]})") != std::string::npos);
+}
+
+CPPL_TEST(semantic_tokens_of_an_unknown_document_answer_null) {
+    Server server;
+    std::istringstream input(
+        framed(R"({"jsonrpc":"2.0","id":2,"method":"textDocument/semanticTokens/full","params":{"textDocument":)"
+               R"({"uri":"file:///never-opened.cpp"}}})") +
+        framed(R"({"jsonrpc":"2.0","method":"exit"})"));
+    std::ostringstream output;
+    std::ostringstream log;
+
+    [[maybe_unused]] const int exit_code = run_transport(server, input, output, log);
+    CPPL_CHECK(output.str().find(R"("id":2,"result":null)") != std::string::npos);
+}
+
+CPPL_TEST(a_semantic_tokens_request_without_a_document_is_invalid_params) {
+    Server server;
+    std::istringstream input(
+        framed(R"({"jsonrpc":"2.0","id":3,"method":"textDocument/semanticTokens/full","params":{}})") +
+        framed(R"({"jsonrpc":"2.0","id":4,"method":"textDocument/semanticTokens/full"})") +
+        framed(R"({"jsonrpc":"2.0","method":"exit"})"));
+    std::ostringstream output;
+    std::ostringstream log;
+
+    [[maybe_unused]] const int exit_code = run_transport(server, input, output, log);
+    CPPL_CHECK(output.str().find(R"("id":3,"error":{"code":-32602)") != std::string::npos);
+    CPPL_CHECK(output.str().find(R"("id":4,"error":{"code":-32602)") != std::string::npos);
+}
+
 CPPL_TEST(a_code_action_carries_its_edit_as_a_workspace_edit) {
     Server server;
     std::istringstream input(

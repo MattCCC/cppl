@@ -24,16 +24,25 @@ editors/
 | Format on save | editor config | yes | yes | yes | yes |
 | Format on type | `cppl-lsp` | yes | yes | yes | — |
 | Code actions | `cppl-lsp` | yes | yes | yes | yes |
-| Syntax coloring | `editors/shared` | yes | via LSP | via LSP | yes |
+| Syntax coloring | `editors/shared` | yes | — | — | yes |
+| Proof-statement coloring | `cppl-lsp` | yes | unverified | unverified | yes |
 
 Code actions are syntax migrations, offered as quick fixes where they would
 edit, and canonical formatting as `source.fixAll.cppl`. The server also answers
 hover and completion inside `cases` and `decompose` arm blocks, for C++L's own
 syntax only, and an editor shows them where its LSP client supports those
-features; ordinary C++ hover and completion stay with clangd. Navigation,
-rename and semantic tokens are **not** implemented by the server yet, so no
-client offers them. See "Currently unsupported" in
+features; ordinary C++ hover and completion stay with clangd. Navigation and
+rename are **not** implemented by the server yet, so no client offers them. See
+"Currently unsupported" in
 [`tools/cppl-lsp/README.md`](../tools/cppl-lsp/README.md).
+
+The server's semantic tokens color what the grammar cannot: a proof statement
+spelled like a C++ declaration, such as `exact h;` or `contradiction name;`,
+where the compiler read it as one. They are the only coloring the server
+provides. The JetBrains and Visual Studio clients load no grammar and leave all
+coloring to the server, so those files show at most these keywords, and only if
+the IDE's LSP client applies semantic tokens. Neither client has been checked
+for that, hence "unverified".
 
 ## The shared grammar
 
@@ -80,6 +89,8 @@ context together with the §3.1 precedence rule — not a name lookup, since C++
 declaration parsing is more context-dependent than "is this token currently a
 known type name". A TextMate grammar has none of that, so it defers to the C++
 reading. That is the conservative and correct behavior, not a language defect.
+Where a statement of that kind is a proof statement, `cppl-lsp` colors it with
+a semantic token taken from the compiler's own recognition, not from spelling.
 
 **Do not "fix" this by making a contextual word globally special.** Doing so
 would contradict the compatibility guarantee and would encourage the frontend

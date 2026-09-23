@@ -61,4 +61,17 @@ if [ "$("$run/declaration")" != "4" ]; then
     exit 1
 fi
 
+# The translation unit decides, not the file: a type named only in an included
+# header makes the same spelling a declaration too.
+"$CPPL" "$FIXTURES/contradiction_named_by_a_header.cpp" -o "$run/header_declaration" --cppl-trust-report \
+    > "$run/header_declaration.report" 2> "$run/header_declaration.err"
+grep -q "warning \[cppl-syntax\]: 'contradiction' is also a name in this translation unit" \
+    "$run/header_declaration.err"
+grep -Eq "^Impossible paths proven: +0$" "$run/header_declaration.report"
+grep -Eq "^Function contracts proven: +1$" "$run/header_declaration.report"
+if [ "$("$run/header_declaration")" != "4" ]; then
+    echo 'the declaration named like a claim through a header did not keep its C++ meaning' >&2
+    exit 1
+fi
+
 echo 'runtime paths claimed not to occur are proven one by one and erase to empty statements'
