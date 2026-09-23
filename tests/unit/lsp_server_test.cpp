@@ -63,6 +63,30 @@ CPPL_TEST(server_document_open_publishes_diagnostics) {
     CPPL_CHECK(!published_diagnostics.empty());
 }
 
+CPPL_TEST(a_diagnostic_points_where_the_author_wrote_it) {
+    // The buffer is compiled from a scratch copy, preprocessed first, and the
+    // preprocessor writes the run of spaces before `frobnicate` as one.
+    Server server;
+    std::vector<Diagnostic> published;
+    server.set_diagnostic_publisher(
+        [&published](const std::string&, std::vector<Diagnostic> diagnostics) { published = std::move(diagnostics); });
+
+    TextDocumentItem item;
+    item.uri = "file:///spaces.cpp";
+    item.text = "proof p(int a)\n    proves (a == a)\n{\n    refl;      frobnicate a;\n}\n";
+    item.version = 1;
+    server.text_document_did_open(item);
+
+    const auto refusal = std::ranges::find_if(published, [](const Diagnostic& diagnostic) {
+        return diagnostic.message.find("'frobnicate' does not begin a proof statement") != std::string::npos;
+    });
+    CPPL_CHECK(refusal != published.end());
+    if (refusal != published.end()) {
+        CPPL_CHECK_EQ(refusal->range.start.line, 3u);
+        CPPL_CHECK_EQ(refusal->range.start.character, 15u);
+    }
+}
+
 CPPL_TEST(server_document_change_republishes) {
     Server server;
 

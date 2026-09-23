@@ -145,6 +145,10 @@ for statement in "'refl;'" "'exact <evidence>;'" "'apply <evidence>;'" "'rewrite
     grep -qF "$statement" "$run/unsupported_proof_body.log"
 done
 
+# Where it was written, not where the preprocessor's output has it.
+refuse unsupported_statement_after_spaces
+grep -q "unsupported_statement_after_spaces.cpp:7:16: error" "$run/unsupported_statement_after_spaces.log"
+
 # Circular evidence is not evidence.
 refuse cyclic_proofs
 grep -q "depends on itself" "$run/cyclic_proofs.log"

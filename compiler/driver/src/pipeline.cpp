@@ -23,8 +23,11 @@
 #include <cstddef>
 #include <expected>
 #include <filesystem>
+#include <fstream>
+#include <ios>
 #include <memory>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -59,12 +62,25 @@ diagnostics::Severity convert(clangbridge::Severity severity) {
     return diagnostics::Severity::Error;
 }
 
+// A file the preprocessor read, as it is on disk, so tokens can be given the
+// columns their author wrote them at rather than the preprocessor's.
+std::optional<std::string> written_text(const std::string& path) {
+    std::ifstream stream(path, std::ios::binary);
+    if (!stream) {
+        return std::nullopt;
+    }
+    std::ostringstream buffer;
+    buffer << stream.rdbuf();
+    return buffer.str();
+}
+
 } // namespace
 
 PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine& engine) {
     PipelineOutcome outcome;
 
-    const frontend::TokenStream stream = frontend::lex(request.preprocessed_text, request.original_path);
+    frontend::TokenStream stream = frontend::lex(request.preprocessed_text, request.original_path);
+    stream.use_written_columns(written_text);
     frontend::Syntax syntax = frontend::recognize(stream, engine);
 
     if (engine.has_errors()) {

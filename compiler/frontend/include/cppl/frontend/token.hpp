@@ -3,6 +3,8 @@
 #include "cppl/source/location.hpp"
 
 #include <cstdint>
+#include <functional>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -44,10 +46,12 @@ struct Token {
 // A lexed buffer together with the file names its line markers referred to.
 class TokenStream {
   public:
-    TokenStream(std::string_view text, std::vector<Token> tokens, std::vector<std::string> files)
+    TokenStream(std::string_view text, std::vector<Token> tokens, std::vector<std::string> files,
+                std::vector<bool> system_files = {})
         : text_(text),
           tokens_(std::move(tokens)),
-          files_(std::move(files)) {}
+          files_(std::move(files)),
+          system_files_(std::move(system_files)) {}
 
     // The scanned buffer. The stream does not own it; it stays valid only as
     // long as the buffer passed to lex() does.
@@ -66,12 +70,31 @@ class TokenStream {
         return files_;
     }
 
+    // Whether a line marker entered the file as a system header.
+    [[nodiscard]] bool is_system(std::uint32_t file) const noexcept {
+        return file < system_files_.size() && system_files_[file];
+    }
+
     [[nodiscard]] source::SourceLocation location_of(const Token& token) const;
+
+    // A file's text as its author wrote it, or nothing when it cannot be read.
+    using WrittenText = std::function<std::optional<std::string>(const std::string& file)>;
+
+    // Gives tokens the columns they were written at.
+    //
+    // A preprocessor keeps the column of a line's first token but writes every
+    // later run of whitespace, and every comment, as one space, so a later
+    // token's column in its output is not where the author wrote it. Where a
+    // line's tokens spell what the written line spells, from its start or from
+    // its end, they take the written columns; a macro's expansion matches
+    // neither and keeps the column it has. System headers are left as they are.
+    void use_written_columns(const WrittenText& written);
 
   private:
     std::string_view text_;
     std::vector<Token> tokens_;
     std::vector<std::string> files_;
+    std::vector<bool> system_files_;
 };
 
 // Lexes preprocessed C++ text.

@@ -23,7 +23,8 @@ struct ByteSpan {
 // After preprocessing, physical positions in the token buffer no longer match
 // the files a developer edits. Every location carried through the compiler is
 // therefore the presumed location: the file and line that the preprocessor's
-// line markers attribute the text to.
+// line markers attribute the text to, and the byte column the text was written
+// at wherever the written file still spells it (TokenStream::use_written_columns).
 struct SourceLocation {
     std::string file;
     std::uint32_t line = 0;

@@ -4,8 +4,11 @@
 #include "cppl/frontend/token.hpp"
 #include "cppl/testing/test.hpp"
 
+#include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace {
 
@@ -88,4 +91,87 @@ CPPL_TEST(token_spans_address_the_scanned_buffer) {
     CPPL_CHECK(value != nullptr);
     CPPL_CHECK_EQ(text.substr(value->span.offset, value->span.length), std::string("value"));
     CPPL_CHECK_EQ(value->column, 5u);
+}
+
+CPPL_TEST(a_marker_flagged_three_enters_a_system_header) {
+    const std::string text = "# 1 \"main.cpp\"\n"
+                             "int mine;\n"
+                             "# 1 \"/usr/include/stdio.h\" 1 3 4\n"
+                             "int theirs;\n"
+                             "# 2 \"main.cpp\" 2\n"
+                             "int again;\n";
+
+    const TokenStream stream = cppl::frontend::lex(text, "main.cpp");
+
+    CPPL_CHECK(!stream.is_system(find(stream, "mine")->file));
+    CPPL_CHECK(stream.is_system(find(stream, "theirs")->file));
+    CPPL_CHECK(!stream.is_system(find(stream, "again")->file));
+}
+
+CPPL_TEST(tokens_take_the_columns_they_were_written_at) {
+    // The preprocessor keeps a line's first column and writes every later run
+    // of whitespace, and a comment, as one space.
+    const std::string preprocessed = "# 1 \"main.cpp\"\n"
+                                     "    refl; frobnicate a;\n"
+                                     "int b ;\n";
+    TokenStream stream = cppl::frontend::lex(preprocessed, "main.cpp");
+    CPPL_CHECK_EQ(find(stream, "frobnicate")->column, 11u);
+
+    stream.use_written_columns([](const std::string& file) -> std::optional<std::string> {
+        CPPL_CHECK_EQ(file, std::string("main.cpp"));
+        return std::string("    refl;      frobnicate a;\n"
+                           "int /* the */ b\t;\n");
+    });
+    CPPL_CHECK_EQ(find(stream, "refl")->column, 5u);
+    CPPL_CHECK_EQ(find(stream, "frobnicate")->column, 16u);
+    CPPL_CHECK_EQ(find(stream, "a")->column, 27u);
+    CPPL_CHECK_EQ(find(stream, "b")->column, 15u);
+}
+
+CPPL_TEST(a_macro_expansion_keeps_its_columns_and_the_line_around_it_is_written) {
+    // Matched from the start up to the macro, and from the end back to it.
+    const std::string preprocessed = "# 1 \"main.cpp\"\n"
+                                     "int x = ((q) * 2) + y;\n";
+    TokenStream stream = cppl::frontend::lex(preprocessed, "main.cpp");
+    const std::uint32_t expanded = find(stream, "q")->column;
+
+    stream.use_written_columns([](const std::string&) -> std::optional<std::string> {
+        return std::string("int   x = TWICE(q)   +   y;\n");
+    });
+    CPPL_CHECK_EQ(find(stream, "x")->column, 7u);
+    CPPL_CHECK_EQ(find(stream, "q")->column, expanded);
+    CPPL_CHECK_EQ(find(stream, "+")->column, 22u);
+    CPPL_CHECK_EQ(find(stream, "y")->column, 26u);
+}
+
+CPPL_TEST(system_headers_and_unreadable_files_keep_their_columns) {
+    const std::string preprocessed = "# 1 \"main.cpp\"\n"
+                                     "int a; int b;\n"
+                                     "# 1 \"/usr/include/stdio.h\" 1 3 4\n"
+                                     "int c; int d;\n"
+                                     "# 2 \"main.cpp\" 2\n";
+    TokenStream stream = cppl::frontend::lex(preprocessed, "main.cpp");
+
+    std::vector<std::string> asked;
+    stream.use_written_columns([&asked](const std::string& file) -> std::optional<std::string> {
+        asked.push_back(file);
+        return std::nullopt;
+    });
+    // A system header is never read, and a file that cannot be read changes nothing.
+    CPPL_CHECK(asked == std::vector<std::string>{"main.cpp"});
+    CPPL_CHECK_EQ(find(stream, "b")->column, 12u);
+    CPPL_CHECK_EQ(find(stream, "d")->column, 12u);
+}
+
+CPPL_TEST(a_line_the_written_file_does_not_spell_keeps_its_columns) {
+    // A file changed on disk after preprocessing is not trusted for columns.
+    const std::string preprocessed = "# 1 \"main.cpp\"\n"
+                                     "int first; int second;\n";
+    TokenStream stream = cppl::frontend::lex(preprocessed, "main.cpp");
+
+    stream.use_written_columns([](const std::string&) -> std::optional<std::string> {
+        return std::string("long   other;   long   names;\n");
+    });
+    CPPL_CHECK_EQ(find(stream, "first")->column, 5u);
+    CPPL_CHECK_EQ(find(stream, "second")->column, 16u);
 }

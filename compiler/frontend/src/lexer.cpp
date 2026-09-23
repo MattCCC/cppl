@@ -5,6 +5,8 @@
 #include <cctype>
 #include <cstddef>
 #include <cstdint>
+#include <map>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -71,6 +73,7 @@ class Lexer {
   public:
     Lexer(std::string_view text, std::string_view initial_file) : text_(text) {
         files_.emplace_back(initial_file);
+        system_files_.push_back(false);
     }
 
     TokenStream run() {
@@ -104,7 +107,7 @@ class Lexer {
         end.column = column();
         tokens_.push_back(end);
 
-        return {text_, std::move(tokens_), std::move(files_)};
+        return {text_, std::move(tokens_), std::move(files_), std::move(system_files_)};
     }
 
   private:
@@ -197,9 +200,19 @@ class Lexer {
             }
         }
 
-        // Skip the remainder of the directive line.
+        // The flags after the file name; 3 says the file is a system header.
+        bool system = false;
         while (cursor < text_.size() && text_[cursor] != '\n') {
-            ++cursor;
+            if (std::isdigit(static_cast<unsigned char>(text_[cursor])) == 0) {
+                ++cursor;
+                continue;
+            }
+            std::uint32_t flag = 0;
+            while (cursor < text_.size() && std::isdigit(static_cast<unsigned char>(text_[cursor])) != 0) {
+                flag = flag * 10 + static_cast<std::uint32_t>(text_[cursor] - '0');
+                ++cursor;
+            }
+            system = system || flag == 3;
         }
 
         // A directive carrying a line number is a position marker; anything
@@ -216,6 +229,9 @@ class Lexer {
             presumed_line_ = stated_line;
             if (has_file) {
                 file_index_ = intern(stated_file);
+                if (system) {
+                    system_files_[file_index_] = true;
+                }
             }
         } else {
             ++presumed_line_;
@@ -230,6 +246,7 @@ class Lexer {
             }
         }
         files_.push_back(file);
+        system_files_.push_back(false);
         return static_cast<std::uint32_t>(files_.size() - 1);
     }
 
@@ -347,12 +364,51 @@ class Lexer {
     std::string_view text_;
     std::vector<Token> tokens_;
     std::vector<std::string> files_;
+    std::vector<bool> system_files_;
     std::size_t offset_ = 0;
     std::size_t line_start_ = 0;
     std::uint32_t presumed_line_ = 1;
     std::uint32_t file_index_ = 0;
     bool at_line_start_ = true;
 };
+
+struct WrittenToken {
+    std::string text;
+    std::uint32_t column = 0;
+};
+
+// The tokens of a written file, by the line each was written on.
+using WrittenLines = std::map<std::uint32_t, std::vector<WrittenToken>>;
+
+WrittenLines written_lines(std::string_view text, const std::string& file) {
+    WrittenLines lines;
+    for (const Token& token : lex(text, file).tokens()) {
+        // A `#line` naming another file moves what follows out of this one.
+        if (token.kind != TokenKind::EndOfFile && token.file == 0) {
+            lines[token.line].push_back({std::string(token.text), token.column});
+        }
+    }
+    return lines;
+}
+
+// Where tokens[begin, end), one line of preprocessed output, spell what `words`,
+// the same line as written, spells, from the start or from the end, they take
+// the written columns.
+void adopt_written_columns(std::vector<Token>& tokens, std::size_t begin, std::size_t end,
+                           const std::vector<WrittenToken>& words) {
+    const std::size_t count = end - begin;
+    std::size_t front = 0;
+    while (front < count && front < words.size() && tokens[begin + front].text == words[front].text) {
+        tokens[begin + front].column = words[front].column;
+        ++front;
+    }
+    std::size_t back = 0;
+    while (front + back < count && front + back < words.size() &&
+           tokens[end - 1 - back].text == words[words.size() - 1 - back].text) {
+        tokens[end - 1 - back].column = words[words.size() - 1 - back].column;
+        ++back;
+    }
+}
 
 } // namespace
 
@@ -368,6 +424,44 @@ source::SourceLocation TokenStream::location_of(const Token& token) const {
 
 TokenStream lex(std::string_view text, std::string_view initial_file) {
     return Lexer(text, initial_file).run();
+}
+
+void TokenStream::use_written_columns(const WrittenText& written) {
+    // Each file is read and lexed once, the first time a line of it is met.
+    std::vector<std::optional<WrittenLines>> by_file(files_.size());
+    std::vector<bool> read(files_.size(), false);
+    const auto lines_of = [&](std::uint32_t file) -> const WrittenLines* {
+        if (!read[file]) {
+            read[file] = true;
+            if (const std::optional<std::string> text = written(files_[file])) {
+                by_file[file] = written_lines(*text, files_[file]);
+            }
+        }
+        return by_file[file] ? &*by_file[file] : nullptr;
+    };
+
+    std::size_t begin = 0;
+    while (begin < tokens_.size()) {
+        const std::uint32_t file = tokens_[begin].file;
+        const std::uint32_t line = tokens_[begin].line;
+        std::size_t end = begin;
+        while (end < tokens_.size() && tokens_[end].kind != TokenKind::EndOfFile && tokens_[end].file == file &&
+               tokens_[end].line == line) {
+            ++end;
+        }
+        if (end == begin) {
+            ++begin;
+            continue;
+        }
+        if (file < files_.size() && !is_system(file)) {
+            if (const WrittenLines* lines = lines_of(file)) {
+                if (const auto found = lines->find(line); found != lines->end()) {
+                    adopt_written_columns(tokens_, begin, end, found->second);
+                }
+            }
+        }
+        begin = end;
+    }
 }
 
 } // namespace cppl::frontend
