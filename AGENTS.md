@@ -1287,6 +1287,15 @@ no per-representation kernel rule
     A representation that seems to need one is a design error to escalate,
     not a rule to add.
 
+a product is not a sum
+
+    `decompose` exposes the components a value always has; `cases` chooses
+    between states it may be in. A product has one arm and no alternatives,
+    and a sum's payloads are never offered as product components. Neither
+    statement accepts the other's subject, and neither may be emulated by the
+    other: a product modeled as a one-case sum would gain a discriminator and
+    a residual it does not have.
+
 the provider never supplies the residual discriminator
 
     The engine derives it by negating the others. A provider that could state
@@ -1321,6 +1330,15 @@ zero runtime behavior
 
     Decomposition is proof-only. Erasure tests belong to every provider, not
     only to the first one. Section 16 applies.
+
+cppl-lsp asks the compiler, never re-derives
+
+    Case labels, binders, residual cases, completion and hover in cppl-lsp
+    come from the elaboration result the compiler produced. The editor never
+    re-derives a partition, recognizes a type, resolves a label or decides
+    exhaustiveness on its own, so it cannot drift from what verification
+    accepts. A missing answer is added to the compiler's output, not
+    approximated in the server.
 
 facts do not outlive what they describe
 

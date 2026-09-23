@@ -113,6 +113,54 @@ tests/fixtures/verified_storage.cpp
 
 ---
 
+## case-analysis
+
+Manifest: `features/case-analysis.yaml`
+
+Normative sources: `CASE-001`–`CASE-010` (SPEC §20), `TCB-DECOMP-*` (TRUST §19).
+
+### Components
+
+| Component | Responsibility | Paths |
+| --- | --- | --- |
+| frontend | Recognize `cases` and `decompose` with their arms; a label is an id-expression whose parts may carry template arguments. Project each subject and label as an expression Clang resolves, and request completion of a subject's type so a specialization reached through a reference is instantiated. | `compiler/frontend/src/recognizer.cpp`, `compiler/frontend/src/projection.cpp` |
+| bridge | Model each resolved type's representation: identity, components and access, template arguments, enumerators at the underlying type's width and signedness. Refuse bases, unions, reference and inaccessible members, and incomplete types by name. | `clang/src/bridge.cpp` |
+| decomposition | Providers state the partition, each case's discriminator and binders, and which case a Clang-resolved label denotes; nothing else. | `compiler/decomposition/src/scoped_enum.cpp`, `compiler/decomposition/src/structural.cpp`, `compiler/decomposition/src/registry.cpp` |
+| elaboration | The one engine: match arms to cases, check exhaustiveness, derive the residual, scope binders, and nest. | `compiler/elaboration/src/elaborate.cpp` |
+| analysis | Resolve binder types to a fixpoint for nested statements. | `compiler/analysis/src/analyze.cpp` |
+| obligations | Split the goal on each discriminator in turn; the residual branch holds when none does. | `compiler/obligations/src/generate.cpp` |
+| kernel | Check projections of abstract nominal values; no representation-specific rule. | `kernel/src/term.cpp`, `kernel/src/types.cpp` |
+| erasure | Remove every construct, binder and arm. | `compiler/erasure/src/erase.cpp` |
+| formatter, lsp | Lay arms out canonically; complete labels and binders and show case sites from the compiler's own elaboration. | `compiler/formatter/src/format.cpp`, `src/lsp/src/decomposition_view.cpp` |
+
+### Required behavior
+
+```text
+a provider              states states, conditions and label meaning only
+the residual            is derived by the engine as no named condition holding
+an arm                  is present for every case, or its case is omitted by a
+                        checked contradiction; there is no wildcard
+a binder                is a projection or alias of the existing object
+a label                 is resolved by Clang, so an alias, alias template or
+                        class template member names the same case
+a subject               is one value for the statement; its type must be
+                        complete, and C++ instantiates it where it can
+a sum and a product     never stand in for each other
+the construct           erases completely
+```
+
+### Interactions
+
+```text
+provider x provider, nested              CASE-006
+cases x omitted cases                    CASE-004, CASE-011
+cases x quantified goals and laws        FORALL-*, LAW-*
+subject x templates and aliases          TEMPLATE-*, CASE-002
+cases x erasure                          ERASE-*
+```
+
+---
+
 ## checked-contradiction
 
 Manifest: `features/checked-contradiction.yaml`

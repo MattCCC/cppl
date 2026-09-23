@@ -85,6 +85,25 @@ Manifest: `features/refinement-types.yaml`
 | ABI equivalence | erasure | covered — the C++L source and the erased source compile to byte-identical objects across `c++17`, `c++20` and `c++23`, and no refinement name reaches the symbol table (`e2e/refinement_types.sh`) |
 | No hidden runtime validation | erasure, adversarial | covered — identical object code is compared rather than identical output, so a check that happens to pass on the test input would still be caught (`e2e/refinement_types.sh`) |
 
+### case-analysis
+
+Manifest: `features/case-analysis.yaml`
+
+| Required case | Category | Status |
+| --- | --- | --- |
+| Every provider's partition | positive | covered — scoped enumerations with aliases, negative and unnamed values and no enumerators; `std::variant` including repeated types and one alternative; `std::optional`; `std::expected`; pointers including const pointers, references to pointers and aliases; records, classes, pairs, tuples, `std::array` and built-in arrays (`fixtures/enum_cases.cpp`, `fixtures/structural_cases.cpp`, `fixtures/expected_cases.cpp`) |
+| Exhaustiveness | negative | covered — a missing, duplicated, out-of-range and wildcard arm, and `valueless` never omitted (`negative/structural_cases.sh`, `negative/proof_cases.sh`) |
+| Source evolution | negative | covered — an added enumerator, alternative or field breaks a proof that was exhaustive (`e2e/enum_cases.sh`, `e2e/structural_cases.sh`) |
+| Cross-provider nesting | positive, negative | covered — `variant<optional>`, `optional<variant>`, `variant<tuple>`, a record of a variant and an optional, an array of optionals, `expected<variant>`, a tuple of `expected`, a variant of a pointer and a variant of a variant; each nested binder is handed to a lemma of exactly its type, and the refused halves bind a neighbour's type, name too many components, drop an inner arm or decompose an inner sum (`fixtures/structural_cases.cpp`, `fixtures/expected_cases.cpp`, `negative/case_providers.sh` citing `CASE-004`, `CASE-006`) |
+| Identity through aliases and templates | positive, negative | covered — aliases, alias templates, dependent forms, a member enumeration of a class template named with its arguments, and a label from another instantiation refused (`fixtures/enum_cases.cpp`, `fixtures/structural_cases.cpp`, `negative/case_providers.sh`, `unit/recognizer_test.cpp` citing `CASE-002`) |
+| Enumerator values | positive, adversarial | covered — an unsigned enumerator with its top bit set carries its value, as a matched pair whose false half is refused because it is false (`fixtures/enum_cases.cpp`, `negative/case_providers.sh` citing `CASE-002`) |
+| Subject forms | positive | covered — const and reference subjects, members, members through a reference, array elements, and a specialization reached only through a reference, top-level or as a payload (`fixtures/structural_cases.cpp` citing `CASE-007`, `CASE-008`) |
+| Representation boundaries | negative | covered — private and protected members, base subobjects, unions, reference members, incomplete types and an undefined template, lookalike standard types, a product under `cases` and a sum under `decompose` (`negative/structural_cases.sh`, `negative/case_providers.sh` citing `CASE-003`, `CASE-007`) |
+| Branch facts and binder scope | adversarial | covered — a forged fact, an escaping binder and one shadowing the subject (`negative/structural_cases.sh`) |
+| Partition, evidence and projection corruption | adversarial | covered — corrupted branch evidence and a corrupted projection are refused by the kernel; a partition that contradicts the subject's type, or describes no state, is refused by the engine, since the kernel never sees the C++ type (`unit/decomposition_test.cpp` citing `CASE-010`, `kernel/value_model_test.cpp`) |
+| Erasure | erasure | covered — every provider in `c++17`, `c++20` and `c++23`, `std::expected` in `c++23` (`e2e/structural_cases.sh`, `e2e/enum_cases.sh`, `e2e/erasure_equivalence.sh`) |
+| Values that can change | positive, negative, adversarial | not yet — `cases` appears only in proof bodies, which contain no mutation (`CASE-009`) |
+
 ### checked-contradiction
 
 Manifest: `features/checked-contradiction.yaml`

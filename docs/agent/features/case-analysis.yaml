@@ -1,0 +1,178 @@
+# Machine-readable manifest for the case-analysis feature.
+#
+# Rule IDs are anchors in docs/SPEC.md, the canonical specification. Extract the
+# normative text with:
+#
+#     cppl-spec-rules extract --feature case-analysis
+
+feature: case-analysis
+
+summary: >
+  Proof-side case analysis and product decomposition over ordinary C++ values:
+  `cases` splits a goal over the complete state partition of a scoped
+  enumeration, `std::variant`, `std::optional`, `std::expected` or a pointer, and
+  `decompose` exposes the components of a record, `std::pair`, `std::tuple`,
+  `std::array` or built-in array. One representation-independent engine owns
+  arms, binders, exhaustiveness, residual cases and evidence; providers only
+  state which states exist, the condition that holds in each, and which case a
+  Clang-resolved label denotes. Nesting composes across providers with no code
+  specific to any pair of them, and everything erases.
+
+normative_sources:
+  spec:
+    - "§20 Proof-side case analysis and decomposition"
+  grammar:
+    - "§5.7 cases and product decomposition"
+    - "§5.9 Proof arms"
+    - "§18 Decomposition labels"
+  foundations:
+    - "§6.4 Abstract nominal sorts"
+    - "§44 Abstract nominal values"
+    - "§76 Structural case analysis"
+    - "§77 Derived case evidence"
+    - "§83 Product decomposition"
+    - "§135 Case-analysis soundness schema"
+  trust:
+    - "§19 Case analysis, decomposition and representation models"
+    - "§19.1 Standard representation obligations"
+
+rule_families:
+  - CASE
+
+# The rules this feature realizes. CASE-011 to CASE-016 belong to
+# checked-contradiction, which depends on this feature.
+rules:
+  - CASE-001
+  - CASE-002
+  - CASE-003
+  - CASE-004
+  - CASE-005
+  - CASE-006
+  - CASE-007
+  - CASE-008
+  - CASE-009
+  - CASE-010
+  - TCB-DECOMP-001
+  - TCB-DECOMP-002
+  - TCB-DECOMP-003
+  - TCB-DECOMP-004
+  - TCB-DECOMP-005
+  - TCB-DECOMP-006
+
+depends_on:
+  - proof-declarations
+  - abstract-nominal-values
+  - obligation-identity
+
+implementation:
+  decomposition:
+    - compiler/decomposition/include/cppl/decomposition/decomposition.hpp
+    - compiler/decomposition/include/cppl/decomposition/labels.hpp
+    - compiler/decomposition/include/cppl/decomposition/providers.hpp
+    - compiler/decomposition/src/registry.cpp
+    - compiler/decomposition/src/scoped_enum.cpp
+    - compiler/decomposition/src/structural.cpp
+  frontend:
+    - compiler/frontend/src/recognizer.cpp
+    - compiler/frontend/src/projection.cpp
+    - compiler/frontend/include/cppl/frontend/syntax.hpp
+  bridge:
+    - clang/src/bridge.cpp
+    - clang/include/cppl/clang/ast.hpp
+  source:
+    - compiler/source/include/cppl/source/representation.hpp
+  vir:
+    - vir/include/cppl/vir/types.hpp
+    - vir/include/cppl/vir/expr.hpp
+    - vir/include/cppl/vir/module.hpp
+  elaboration:
+    - compiler/elaboration/src/elaborate.cpp
+  analysis:
+    - compiler/analysis/src/analyze.cpp
+  obligations:
+    - compiler/obligations/src/generate.cpp
+  kernel:
+    - kernel/include/cppl/kernel/term.hpp
+    - kernel/include/cppl/kernel/types.hpp
+    - kernel/src/term.cpp
+    - kernel/src/types.cpp
+  erasure:
+    - compiler/erasure/src/erase.cpp
+  formatter:
+    - compiler/formatter/src/format.cpp
+  lsp:
+    - src/lsp/src/decomposition_view.cpp
+    - src/lsp/src/semantic_tokens.cpp
+    - src/lsp/src/server.cpp
+  editors:
+    - editors/shared/cppl.tmLanguage.json
+    - editors/neovim/syntax/cppl.vim
+
+interactions:
+  - every pair of providers, nested in both directions
+  - quantified goals and laws discharged through a case split
+  - aliases, alias templates, dependent names and class template members
+  - cv-qualified and reference subjects, members and array elements
+  - omitted cases (checked-contradiction)
+  - erasure
+
+tests:
+  positive:
+    - tests/fixtures/enum_cases.cpp
+    - tests/fixtures/structural_cases.cpp
+    - tests/fixtures/expected_cases.cpp
+  negative:
+    - tests/negative/proof_cases.sh
+    - tests/negative/structural_cases.sh
+    - tests/negative/case_providers.sh
+    - tests/fixtures/negative/enum_top_bit_claimed_false.cpp
+    - tests/fixtures/negative/enum_label_of_another_instantiation.cpp
+    - tests/fixtures/negative/decompose_undefined_template.cpp
+    - tests/fixtures/negative/nested_binder_wrong_type.cpp
+    - tests/fixtures/negative/nested_tuple_wrong_arity.cpp
+    - tests/fixtures/negative/nested_pointer_arm_missing.cpp
+    - tests/fixtures/negative/nested_valueless_missing.cpp
+    - tests/fixtures/negative/nested_sum_decomposed_as_product.cpp
+    - tests/fixtures/negative/cases_on_product.cpp
+    - tests/fixtures/negative/protected_member.cpp
+    - tests/fixtures/negative/expected_error_bound_as_value.cpp
+  kernel:
+    - tests/kernel/value_model_test.cpp
+    - tests/kernel/adversarial_kernel_test.cpp
+  unit:
+    - tests/unit/decomposition_test.cpp
+    - tests/unit/scoped_enum_provider_test.cpp
+    - tests/unit/recognizer_test.cpp
+    - tests/unit/projection_test.cpp
+    - tests/unit/formatter_test.cpp
+    - tests/unit/lsp_decomposition_view_test.cpp
+  end_to_end:
+    - tests/e2e/enum_cases.sh
+    - tests/e2e/structural_cases.sh
+    - tests/e2e/erasure_equivalence.sh
+
+required_test_categories:
+  - every provider's complete partition, residual case included
+  - a missing, duplicated, out-of-range or wildcard arm
+  - a newly added enumerator, alternative or field breaking an exhaustive proof
+  - binder arity and binder type, each as a matched pair
+  - every cross-provider nesting the plan lists, in both directions
+  - aliases, alias templates, dependent forms and class template members
+  - const, reference, member and element subjects
+  - an unsigned enumerator with its top bit set
+  - a specialization reached only through a reference
+  - a product refused as a sum and a sum refused as a product
+  - private, protected, base, union, reference and incomplete components
+  - a type spelled like a standard one that is not it
+  - forged branch facts and escaping or shadowing binders
+  - kernel-evidence corruption of projections and partitions
+  - erasure for every provider in every standard mode
+
+completion_requires:
+  - one engine; providers state states, conditions and label meaning only
+  - the residual discriminator is derived by the engine, never supplied
+  - no wildcard and no implicit catch-all
+  - a binder is a projection or alias, never a new object
+  - recognition by resolved identity, never by spelling
+  - no provider-specific kernel rule
+  - the construct erases completely

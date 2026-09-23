@@ -294,12 +294,10 @@ Neither delivers induction or recursive proof admission.
 
 Implement, over ordinary C++ types:
 
-- exhaustive case analysis (`cases`)
 - induction (`induction`) for machine integers and well-founded C++ structures
 - impossible runtime paths beyond the `PROTOTYPE` claim (`VERIFIED-045`), such as a claim over values a path learns through a pointer
 - recursive proofs
 - termination checking
-- residual cases (`unnamed`, `valueless`, `empty`, `nonnull`), with no wildcard arm
 - proof-only mathematical domains `@N`, `@Z`, `@Seq<T>`, `@Set<T>`, `@Map<K, V>`, and explicit conversions into them from machine values
 
 Example:
