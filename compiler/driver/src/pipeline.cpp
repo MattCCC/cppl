@@ -154,8 +154,8 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
         source::hash_bytes(std::filesystem::absolute(request.original_path).string()).to_short_hex(12);
 
     // A first projection, only to report its own diagnostics and to get a
-    // stable analysis/runtime path pair on disk before analysis::analyze
-    // iterates on the projection to resolve proof binding types
+    // stable analysis path on disk before analysis::analyze iterates on the
+    // projection to resolve proof binding types
     // (compiler/analysis/include/cppl/analysis/analyze.hpp). The projection
     // it eventually settles on, not this one, is what elaboration uses.
     const frontend::Projection initial_projection = frontend::project(stream, syntax, projection_options);
@@ -169,9 +169,7 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
     }
 
     const std::filesystem::path analysis_path = request.scratch / (request.stem + ".analysis.cpp");
-    const std::filesystem::path runtime_path = request.scratch / (request.stem + ".runtime.cpp");
-    if (!write_scratch_file(analysis_path, initial_projection.analysis) ||
-        !write_scratch_file(runtime_path, initial_projection.runtime)) {
+    if (!write_scratch_file(analysis_path, initial_projection.analysis)) {
         report(engine, diagnostics::Category::Internal,
                "could not write the projection of '" + request.original_path + "'");
         outcome.tokens = std::make_unique<frontend::TokenStream>(stream);
@@ -324,12 +322,28 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
     }
 
     const erasure::Erased erased = erasure::erase(stream, syntax, projection, engine);
-    if (!erased.report.only_deletions || !erased.report.lines_preserved) {
+    if (!erased.report.preserved()) {
         outcome.failed = true;
         return outcome;
     }
 
     if (engine.has_errors()) {
+        outcome.failed = true;
+        return outcome;
+    }
+
+    // What Clang compiles is the text erasure has just checked, written only
+    // now, so no earlier projection of the unit can stand in for it
+    // (TCB-ERASE-006).
+    //
+    // The runtime program is preprocessed C++, and `.ii` says so to Clang as
+    // well as `-x` does. Clang then names the compile unit in debug information
+    // after the source its first line marker names, the user's own file, rather
+    // than after this scratch file, which is gone once the build ends and whose
+    // random directory would differ in every object built (ARCH-ERASE-003).
+    const std::filesystem::path runtime_path = request.scratch / (request.stem + ".runtime.ii");
+    if (!write_scratch_file(runtime_path, erased.runtime)) {
+        report(engine, diagnostics::Category::Internal, "could not write the runtime program");
         outcome.failed = true;
         return outcome;
     }

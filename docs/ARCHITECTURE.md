@@ -563,6 +563,16 @@ lowering rules.
 **[ARCH-ERASE-003]** The compiler MUST preserve source mapping through erasure so
 that diagnostics and debug information can still refer to user source.
 
+In this implementation the driver writes the runtime program to a scratch file
+only after erasure validation passes, from the text validated, and hands that
+file to Clang as preprocessed input. Blanking keeps every line and column, and
+the preprocessor's line markers carry the user's file names, so Clang's
+diagnostics and `__builtin_LINE()` refer to user source. The file is named
+`.ii`: for preprocessed input Clang names the compile unit in debug information
+after the first line marker only when the file's extension also says it is
+preprocessed, and otherwise after the scratch path, which is removed when the
+build ends and differs in every build.
+
 ---
 
 # 11. Clang semantic bridge
