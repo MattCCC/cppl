@@ -38,7 +38,11 @@ endfunction()
 
 # The cmake or ctest command a line holds, with any `run:` before it, or empty.
 function(cppl_command line out_var)
-    string(REGEX REPLACE "^[ \t]*(- )?(run:[ \t]*)?" "" command "${line}")
+    # Each pattern needs at least one character: CMake before 3.29 refuses a
+    # replacement whose pattern can match nothing.
+    string(STRIP "${line}" command)
+    string(REGEX REPLACE "^- " "" command "${command}")
+    string(REGEX REPLACE "^run:[ \t]*" "" command "${command}")
     string(STRIP "${command}" command)
     if(command MATCHES "^(cmake|ctest) ")
         set(${out_var} "${command}" PARENT_SCOPE)
