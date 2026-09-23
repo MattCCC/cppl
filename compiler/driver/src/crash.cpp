@@ -148,6 +148,11 @@ std::size_t handler_stack_size() {
     return static_cast<std::size_t>(system > floor ? system : floor);
 }
 
+// Never freed: a signal can arrive until the process is gone, after every
+// static destructor has run. Only the kernel would otherwise know where it is,
+// and a leak checker would report the stack still in use as lost.
+std::byte* handler_stack = nullptr;
+
 extern "C" void on_signal(int number, siginfo_t* information, void*) {
     // A second fault inside the report would re-enter this handler. The report
     // is best-effort and the process is already lost, so the re-entry is
@@ -177,11 +182,10 @@ void install_crash_report() {
 #else
     // Install the handler's own stack first: SA_ONSTACK is what lets a stack
     // overflow be reported instead of faulting the handler too.
-    // Never freed: a signal can arrive until the process is gone, after every
-    // static destructor has run.
     const std::size_t size = handler_stack_size();
+    handler_stack = new std::byte[size];
     stack_t stack{};
-    stack.ss_sp = new std::byte[size];
+    stack.ss_sp = handler_stack;
     stack.ss_size = size;
     stack.ss_flags = 0;
     static_cast<void>(::sigaltstack(&stack, nullptr));
