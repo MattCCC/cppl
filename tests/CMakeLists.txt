@@ -232,6 +232,13 @@ target_link_libraries(lsp_references_test PRIVATE cppl_lsp)
 target_compile_definitions(lsp_references_test PRIVATE
     CPPL_TEST_DEFAULT_CLANG="${CPPL_DEFAULT_CLANG}")
 
+# Navigation by the names proof statements use, from what the compiler resolved.
+cppl_add_unit_test(lsp_proof_names_test unit/lsp_proof_names_test.cpp)
+target_link_libraries(lsp_proof_names_test PRIVATE cppl_lsp)
+target_compile_definitions(lsp_proof_names_test PRIVATE
+    CPPL_TEST_FIXTURES_DIR="${CPPL_TEST_FIXTURES}"
+    CPPL_TEST_DEFAULT_CLANG="${CPPL_DEFAULT_CLANG}")
+
 # Driver-level suites invoke the real compiler on real fixtures and write what
 # it produces into the work tree, so each one runs under the same limits.
 function(cppl_add_script_test name script)

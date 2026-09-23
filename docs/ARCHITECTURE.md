@@ -2745,6 +2745,12 @@ for nothing written is not reported, never approximated.
 never contributes a diagnostic, so it cannot report a program the compiler
 accepts as wrong or the reverse.
 
+A name a proof statement uses never reaches Clang. Elaboration, which resolves
+it, records the resolution (`elaboration::ResolvedName`, carried out through
+`driver::BufferCompileOutcome` beside the case engine's subject states), and the
+server navigates by those records. Neither record is read back by any compiler
+stage, so neither can change which proofs are accepted.
+
 **[ARCH-LSP-004]** An editor service treats two declarations as one name only
 where Clang gives them one identity (USR), or where the projection repeated one
 written declaration into several generated ones, such as a proof's parameters

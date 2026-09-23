@@ -32,6 +32,7 @@ struct Clause {
 // law name(parameters) proves (proposition);   (SPEC.md 10.1, GRAMMAR.md 3)
 struct LawDeclaration {
     std::string name;
+    source::SourceLocation name_location;
     source::SourceRange range; // the whole declaration, including its ';'
     source::SourceLocation keyword_location;
     std::uint32_t end_line = 0; // presumed line of the terminating ';'
@@ -87,8 +88,10 @@ struct ProofArm;
 struct ProofStatement {
     ProofStatementKind kind = ProofStatementKind::Reflexivity;
 
-    // The proof named by `exact` or `apply`, or the name `assume` binds.
+    // The proof named by `exact` or `apply`, or the name `assume` binds, and
+    // where that name is written.
     std::string reference;
+    source::SourceLocation reference_location;
     std::vector<ProofArgument> arguments;
 
     // The proposition written after `assume h :`. Ordinary C++, delimited here
@@ -149,6 +152,7 @@ struct ProofDeclaration {
     // span. The Law owns the preceding header; erasure covers both spans.
     std::optional<std::size_t> inline_law;
     std::string name;
+    source::SourceLocation name_location;
     source::SourceRange range; // the whole declaration, including its body
     source::SourceLocation keyword_location;
     std::uint32_t end_line = 0; // presumed line of the closing '}'

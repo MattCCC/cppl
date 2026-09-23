@@ -9,6 +9,7 @@
 #include "cppl/lsp/editor_view.hpp"
 #include "cppl/lsp/linter.hpp"
 #include "cppl/lsp/position.hpp"
+#include "cppl/lsp/proof_names.hpp"
 #include "cppl/lsp/protocol.hpp"
 #include "cppl/lsp/semantic_tokens.hpp"
 
@@ -138,29 +139,40 @@ std::optional<std::vector<Location>> Server::text_document_references(const Text
         return std::nullopt;
     }
     std::vector<Location> locations;
-    const std::optional<EditorView::Target> target = view->target_at(position);
-    if (!target.has_value()) {
-        return locations;
-    }
-    std::vector<std::string> uris;
-    documents_.for_each([&uris](const Document& document) { uris.push_back(document.uri()); });
-    for (const std::string& uri : uris) {
-        EditorView* other = view_for(uri);
-        if (other == nullptr) {
-            continue;
+    const auto add = [&locations](Location location) {
+        const bool repeated = std::ranges::any_of(locations, [&](const Location& known) {
+            return known.uri == location.uri && known.range.start.line == location.range.start.line &&
+                   known.range.start.character == location.range.start.character;
+        });
+        if (!repeated) {
+            locations.push_back(std::move(location));
         }
-        for (EditorView::Mention& mention : other->mentions(*target)) {
-            if (!include_declaration && mention.role == clangbridge::Role::Declaration) {
+    };
+    if (const std::optional<EditorView::Target> target = view->target_at(position)) {
+        std::vector<std::string> uris;
+        documents_.for_each([&uris](const Document& document) { uris.push_back(document.uri()); });
+        for (const std::string& uri : uris) {
+            EditorView* other = view_for(uri);
+            if (other == nullptr) {
                 continue;
             }
-            const bool repeated = std::ranges::any_of(locations, [&](const Location& known) {
-                return known.uri == mention.location.uri &&
-                       known.range.start.line == mention.location.range.start.line &&
-                       known.range.start.character == mention.location.range.start.character;
-            });
-            if (!repeated) {
-                locations.push_back(std::move(mention.location));
+            for (EditorView::Mention& mention : other->mentions(*target)) {
+                if (include_declaration || mention.role != clangbridge::Role::Declaration) {
+                    add(std::move(mention.location));
+                }
             }
+        }
+    }
+    // What proof statements name is the compiler's to resolve, not Clang's.
+    const ProofNames names(documents_);
+    if (const std::optional<ProofNames::Declaration> named = names.declaration_at(*documents_.get(id.uri), position)) {
+        if (include_declaration) {
+            if (std::optional<Location> declared = names.locate(*named)) {
+                add(std::move(*declared));
+            }
+        }
+        for (Location& use : names.uses_of(*named)) {
+            add(std::move(use));
         }
     }
     std::ranges::sort(locations, [](const Location& lhs, const Location& rhs) {
@@ -182,28 +194,41 @@ std::optional<std::vector<DocumentHighlight>> Server::text_document_document_hig
         return std::nullopt;
     }
     std::vector<DocumentHighlight> highlights;
-    const std::optional<EditorView::Target> target = view->target_at(position);
-    if (!target.has_value()) {
-        return highlights;
+    const auto add = [&](const Location& location, DocumentHighlightKind kind) {
+        if (location.uri != id.uri) {
+            return;
+        }
+        const bool repeated = std::ranges::any_of(highlights, [&](const DocumentHighlight& known) {
+            return known.range.start.line == location.range.start.line &&
+                   known.range.start.character == location.range.start.character;
+        });
+        if (!repeated) {
+            highlights.push_back(DocumentHighlight{location.range, kind});
+        }
+    };
+    if (const std::optional<EditorView::Target> target = view->target_at(position)) {
+        for (const EditorView::Mention& mention : view->mentions(*target)) {
+            switch (mention.role) {
+                case clangbridge::Role::Declaration:
+                    add(mention.location, DocumentHighlightKind::Text);
+                    break;
+                case clangbridge::Role::Read:
+                    add(mention.location, DocumentHighlightKind::Read);
+                    break;
+                case clangbridge::Role::Write:
+                    add(mention.location, DocumentHighlightKind::Write);
+                    break;
+            }
+        }
     }
-    for (const EditorView::Mention& mention : view->mentions(*target)) {
-        if (mention.location.uri != id.uri) {
-            continue;
+    const ProofNames names(documents_);
+    if (const std::optional<ProofNames::Declaration> named = names.declaration_at(*documents_.get(id.uri), position)) {
+        if (const std::optional<Location> declared = names.locate(*named)) {
+            add(*declared, DocumentHighlightKind::Text);
         }
-        DocumentHighlight highlight;
-        highlight.range = mention.location.range;
-        switch (mention.role) {
-            case clangbridge::Role::Declaration:
-                highlight.kind = DocumentHighlightKind::Text;
-                break;
-            case clangbridge::Role::Read:
-                highlight.kind = DocumentHighlightKind::Read;
-                break;
-            case clangbridge::Role::Write:
-                highlight.kind = DocumentHighlightKind::Write;
-                break;
+        for (const Location& use : names.uses_of(*named)) {
+            add(use, DocumentHighlightKind::Read);
         }
-        highlights.push_back(highlight);
     }
     std::ranges::sort(highlights, [](const DocumentHighlight& lhs, const DocumentHighlight& rhs) {
         if (lhs.range.start.line != rhs.range.start.line) {
@@ -221,7 +246,20 @@ std::optional<std::vector<Location>> Server::text_document_navigate(clangbridge:
     if (view == nullptr) {
         return std::nullopt;
     }
-    return view->navigate(destination, position);
+    std::vector<Location> locations = view->navigate(destination, position);
+    // A name a proof statement uses is C++L, and Clang has nothing to say about
+    // it; the compiler resolved it.
+    if (locations.empty() &&
+        (destination == clangbridge::Destination::Definition || destination == clangbridge::Destination::Declaration)) {
+        const ProofNames names(documents_);
+        if (const std::optional<ProofNames::Declaration> named =
+                names.declaration_at(*documents_.get(id.uri), position)) {
+            if (std::optional<Location> declared = names.locate(*named)) {
+                locations.push_back(std::move(*declared));
+            }
+        }
+    }
+    return locations;
 }
 
 std::vector<CodeAction> Server::text_document_code_actions(const CodeActionRequest& request) {
@@ -391,6 +429,7 @@ void Server::publish_diagnostics(const Document& doc) {
     driver::BufferCompileOutcome outcome = driver::compile_buffer(request, engine);
     if (mutable_doc != nullptr) {
         mutable_doc->set_subject_states(std::move(outcome.subject_states));
+        mutable_doc->set_resolved_names(std::move(outcome.names));
         mutable_doc->set_path_claims_recognized(outcome.syntax != nullptr &&
                                                 !outcome.syntax->path_contradictions.empty());
         mutable_doc->set_path_splits_recognized(outcome.syntax != nullptr && !outcome.syntax->path_splits.empty());

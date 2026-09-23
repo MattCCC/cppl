@@ -71,6 +71,16 @@ class Document {
         subject_states_ = std::move(states);
     }
 
+    // What each name a proof statement uses resolved to, as of the last full
+    // compile. Like `subject_states`, these can lag the text by an edit, so a
+    // reader checks the buffer still spells a name where one is recorded.
+    [[nodiscard]] const std::vector<elaboration::ResolvedName>& resolved_names() const noexcept {
+        return resolved_names_;
+    }
+    void set_resolved_names(std::vector<elaboration::ResolvedName> names) {
+        resolved_names_ = std::move(names);
+    }
+
     // Whether the last full compile of this buffer recognized a `contradiction`
     // statement in a verified body as a claim that its path cannot occur. That
     // depends on every use of the word in the translation unit, headers
@@ -102,6 +112,7 @@ class Document {
     std::unique_ptr<frontend::Syntax> syntax_;
     std::vector<diagnostics::Diagnostic> diagnostics_;
     std::vector<elaboration::SubjectStates> subject_states_;
+    std::vector<elaboration::ResolvedName> resolved_names_;
     bool path_claims_recognized_ = false;
     bool path_splits_recognized_ = false;
 };

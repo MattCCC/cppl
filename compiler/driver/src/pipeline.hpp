@@ -99,6 +99,10 @@ struct PipelineOutcome {
     // stage reads it back.
     std::vector<elaboration::SubjectStates> subject_states;
 
+    // What each name a proof statement uses resolved to, for editors to
+    // navigate by. Like `subject_states`, a byproduct nothing reads back.
+    std::vector<elaboration::ResolvedName> names;
+
     // The runtime program's scratch path, when one was produced (has_cppl
     // and not failed before erasure). Empty otherwise.
     std::string runtime_path;

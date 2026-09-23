@@ -66,6 +66,11 @@ struct BufferCompileOutcome {
     // modeled by a provider. An editor reads this to offer exactly the labels
     // the compiler would accept; it never recomputes them.
     std::vector<elaboration::SubjectStates> subject_states;
+
+    // What each name a proof statement uses resolved to: the proof, trusted
+    // Law or `assume` it names and where that is declared. Empty when the
+    // pipeline stopped before elaboration.
+    std::vector<elaboration::ResolvedName> names;
 };
 
 // Runs preprocess -> recognize -> project -> Clang parse -> elaborate ->

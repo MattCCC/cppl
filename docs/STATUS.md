@@ -1398,7 +1398,7 @@ AI output must always be independently verified.
 | LSP: references and highlights       | `PROTOTYPE`   |
 | LSP: other token kinds               | `NOT STARTED` |
 | IDE proof goals                      | `NOT STARTED` |
-| Proof navigation                     | `NOT STARTED` |
+| Proof navigation                     | `PROTOTYPE`   |
 | Counterexample UI                    | `NOT STARTED` |
 | Structured diagnostics               | `PROTOTYPE`   |
 
@@ -1470,8 +1470,15 @@ where it kept written text in place and where it copied written text into a
 declaration it generated, so a name inside a Law's proposition, a Law's
 parameter, a parameter named in a contract, a Law named by a proof's `proves`
 clause and a refinement type all lead to what was written; a position Clang
-reports in generated text that stands for nothing written is not shown. A proof
-statement's reference (`exact p;`) is not C++ and is not navigable yet.
+reports in generated text that stands for nothing written is not shown.
+
+A name a proof statement uses (`exact p;`, `apply p;`, `rewrite h;`,
+`contradiction e;`, the evidence of an omitted case) is not C++. Elaboration
+records what it resolved each one to, a proof, a trusted Law or an `assume`
+binding, and where that is declared (`elaboration::ResolvedName`), as a
+byproduct nothing in the compiler reads; the server navigates and lists
+references from those records, and only where the buffer still spells the name
+where it was recorded.
 
 `referencesProvider` and `documentHighlightProvider` are answered from the same
 units: every open document's unit reports where a name, identified by Clang's

@@ -3180,7 +3180,11 @@ clause to the parameter written, and a refinement type to its `type`
 declaration. A name Clang resolves to something nobody wrote, such as `result`,
 leads nowhere rather than into generated code. Find references lists the same
 uses: a proof's parameter is one name wherever the proof mentions it, in its
-claim and in its `assume` statements alike.
+claim and in its `assume` statements alike. The names proof statements use
+navigate the same way, from the compiler's own resolution: `exact p;` and
+`apply p;` lead to proof `p` or trusted Law `p`, `rewrite h;` to the `assume`
+that bound `h`, and `contradiction e;` to its evidence, whether it closes a
+proof, discharges an omitted case or claims a path cannot occur.
 
 No fix may:
 

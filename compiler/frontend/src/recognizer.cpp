@@ -300,7 +300,8 @@ bool try_law(const TokenStream& stream, std::size_t index, diagnostics::Engine& 
     }
 
     law.name = std::string(tokens[index + 1].text);
-    law.range.begin = stream.location_of(tokens[index + 1]);
+    law.name_location = stream.location_of(tokens[index + 1]);
+    law.range.begin = law.name_location;
     law.keyword_location = stream.location_of(tokens[index]);
     law.parameters =
         source::ByteSpan{tokens[index + 2].span.end(), tokens[close].span.offset - tokens[index + 2].span.end()};
@@ -374,6 +375,7 @@ bool try_law(const TokenStream& stream, std::size_t index, diagnostics::Engine& 
             return true;
         }
         body.name = law.name;
+        body.name_location = law.name_location;
         body.range = law.range;
         body.range.span = {tokens[cursor].span.offset, tokens[end].span.end() - tokens[cursor].span.offset};
         body.keyword_location = law.keyword_location;
@@ -939,6 +941,7 @@ bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std
             ProofStatement statement;
             statement.kind = ProofStatementKind::Assume;
             statement.reference = std::string(tokens[cursor + 1].text);
+            statement.reference_location = stream.location_of(tokens[cursor + 1]);
             statement.proposition = source::ByteSpan{
                 tokens[cursor + 3].span.offset, tokens[terminator - 1].span.end() - tokens[cursor + 3].span.offset};
             statement.proposition_location = stream.location_of(tokens[cursor + 3]);
@@ -962,6 +965,7 @@ bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std
                              : is_contradiction ? ProofStatementKind::Contradiction
                                                 : ProofStatementKind::Apply;
             statement.reference = std::string(tokens[cursor + 1].text);
+            statement.reference_location = stream.location_of(tokens[cursor + 1]);
             statement.keyword = token.span;
             statement.location = stream.location_of(token);
 
@@ -1060,7 +1064,8 @@ bool try_proof(const TokenStream& stream, std::size_t index, diagnostics::Engine
     next_index = body_close + 1;
 
     proof.name = std::string(tokens[index + 1].text);
-    proof.range.begin = stream.location_of(tokens[index + 1]);
+    proof.name_location = stream.location_of(tokens[index + 1]);
+    proof.range.begin = proof.name_location;
     proof.range.span =
         source::ByteSpan{tokens[index].span.offset, tokens[body_close].span.end() - tokens[index].span.offset};
     proof.keyword_location = stream.location_of(tokens[index]);

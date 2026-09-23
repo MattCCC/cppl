@@ -159,6 +159,7 @@ BufferCompileOutcome compile_buffer(const BufferCompileRequest& request, diagnos
     outcome.tokens = std::move(result.tokens);
     outcome.syntax = std::move(result.syntax);
     outcome.subject_states = std::move(result.subject_states);
+    outcome.names = std::move(result.names);
     return outcome;
 }
 

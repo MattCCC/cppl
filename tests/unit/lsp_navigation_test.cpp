@@ -209,8 +209,10 @@ CPPL_TEST(every_parameter_repeated_in_a_generated_declaration_leads_to_the_one_w
     // The Law itself, named by the proof, is the Law's name.
     CPPL_CHECK_EQ(go(server, Destination::Definition, "file:///work/main.cpp", position_of(text, "guarded(given")),
                   spans("main.cpp", text, "guarded"));
-    // The name `h` an assumption binds is not C++.
-    CPPL_CHECK(go(server, Destination::Definition, "file:///work/main.cpp", position_of(text, "h :")).empty());
+    // The name `h` an assumption binds is not C++; it is declared where it is
+    // written.
+    CPPL_CHECK_EQ(go(server, Destination::Definition, "file:///work/main.cpp", position_of(text, "h :")),
+                  spans("main.cpp", text, "h :", 0, 1));
 }
 
 CPPL_TEST(a_name_in_a_contract_leads_to_the_parameter_it_names) {

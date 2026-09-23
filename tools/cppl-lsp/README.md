@@ -121,8 +121,19 @@ generated for a refinement type for the refinement's, so a proof's `proves`
 clause leads to the Law, and a use of a refinement type to its declaration.
 Anything else Clang reports in generated text, such as `result` or a probe, has
 no written position and is not shown: no answer is better than one pointing at
-text nobody wrote. Proof statements (`exact`, `apply`) are not C++ and Clang
-says nothing about them.
+text nobody wrote.
+
+Proof statements are not C++, and Clang says nothing about the names they use.
+The compiler resolves those while it elaborates the buffer -- to a proof, to a
+trusted Law, or to a name an earlier `assume` bound -- and records each
+resolution with where the name is written and where what it names is declared
+(`elaboration::ResolvedName`). So `exact p;`, `apply p;`, `rewrite h;`,
+`contradiction e;` in a proof or a verified body, and the evidence of
+`omit label by contradiction e;`, lead to what they name, and references to a
+proof or an assumption list every statement that names it. The server answers
+from those records and never resolves a name itself. A record comes from the
+last compile, so it is used only where the buffer still spells the name at the
+recorded position.
 
 References come from the same units. A name is identified as Clang identifies
 it, by its USR, so every open document's unit finds it in itself and in the
@@ -1268,7 +1279,6 @@ implemented:
 
 ```text
 references in a file no open document includes
-navigation from a proof statement (`exact`, `apply`) to what it names
 rename
 semantic tokens beyond proof-statement keywords
 proof search / interactive proof state

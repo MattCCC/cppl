@@ -9,6 +9,7 @@
 #include "cppl/vir/module.hpp"
 #include "cppl/vir/types.hpp"
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -57,9 +58,34 @@ struct SubjectStates {
     std::vector<State> states;
 };
 
+// A name a proof statement uses, as elaboration resolved it: `exact p;`,
+// `apply p;`, `rewrite h;`, `contradiction e;` in a proof or in a verified body,
+// and the evidence an omitted case names. Editors navigate by these; nothing
+// in the compiler reads them back, so they cannot change which proofs are
+// accepted.
+struct ResolvedName {
+    enum class Kind : std::uint8_t {
+        Proof,
+        TrustedLaw,
+        // A name an earlier `assume` in the same body bound.
+        Assumption,
+    };
+    Kind kind = Kind::Proof;
+    std::string name;
+    // Where the statement writes the name.
+    source::SourceLocation at;
+    // Where what it names is declared: the proof's or the Law's name, or the
+    // name `assume` binds.
+    source::SourceLocation declaration;
+};
+
 struct Result {
     vir::Module module;
     std::vector<FunctionRejection> rejected_functions;
+
+    // Every name a proof statement uses that elaboration resolved, in the order
+    // it resolved them.
+    std::vector<ResolvedName> names;
 
     // One entry per `cases`/`decompose` statement whose subject a provider
     // modeled, in source order. Statements the provider boundary refused are

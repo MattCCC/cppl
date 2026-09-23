@@ -6,6 +6,7 @@ add_library(cppl_lsp STATIC
     src/linter.cpp
     src/position.cpp
     src/projected_file.cpp
+    src/proof_names.cpp
     src/semantic_tokens.cpp
     src/server.cpp
     src/transport.cpp
@@ -18,6 +19,7 @@ add_library(cppl_lsp STATIC
     include/cppl/lsp/linter.hpp
     include/cppl/lsp/position.hpp
     include/cppl/lsp/projected_file.hpp
+    include/cppl/lsp/proof_names.hpp
     include/cppl/lsp/protocol.hpp
     include/cppl/lsp/semantic_tokens.hpp
     include/cppl/lsp/server.hpp

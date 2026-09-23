@@ -564,8 +564,9 @@ Also:
 
 - LSP hover, completion, rename and incremental sync (full sync, diagnostics,
   formatting, code actions, definition, declaration, type definition,
-  implementation, references and highlights, and completion and hover over
-  case arms are implemented; see `STATUS.md`)
+  implementation, references and highlights, navigation from proof statements
+  to what they name, and completion and hover over case arms are implemented;
+  see `STATUS.md`)
 - IDE diagnostics
 - proof goals
 - counterexamples

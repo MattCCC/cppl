@@ -200,7 +200,7 @@ Normative sources: `CASE-004`, `CASE-005`, `CASE-011`–`CASE-016` (SPEC §20.2,
 | refutation | Propose certificates; never decide. | `compiler/refutation/src/refute.cpp` |
 | automation | Submit an impossibility's own evidence and nothing else, never a strategy's, and a claim resting on a callee only once that callee is proven; name each origin in its own diagnostic. | `compiler/automation/src/evidence.cpp`, `compiler/automation/src/composition.cpp` |
 | driver | Count omitted cases and impossible paths apart from laws and from each other. | `compiler/driver/src/pipeline.cpp`, `compiler/driver/src/driver.cpp` |
-| formatter, lsp, editors | Lay out an omission as one line; present it as omitted, not as an arm. The grammar colors only the whole omission form; the server reports each `contradiction` keyword the recognizer read as a semantic token, a claim only once the compile of the whole unit recognized claims. | `compiler/formatter/src/format.cpp`, `src/lsp/src/decomposition_view.cpp`, `src/lsp/src/semantic_tokens.cpp`, `src/lsp/src/server.cpp`, `editors/shared/cppl.tmLanguage.json`, `editors/neovim/syntax/cppl.vim` |
+| formatter, lsp, editors | Lay out an omission as one line; present it as omitted, not as an arm. The grammar colors only the whole omission form; the server reports each `contradiction` keyword the recognizer read as a semantic token, a claim only once the compile of the whole unit recognized claims. The evidence a claim or an omission names leads to its declaration, from elaboration's record of what it resolved the name to, never from a lookup of the server's own. | `compiler/formatter/src/format.cpp`, `src/lsp/src/decomposition_view.cpp`, `src/lsp/src/semantic_tokens.cpp`, `src/lsp/src/proof_names.cpp`, `src/lsp/src/server.cpp`, `editors/shared/cppl.tmLanguage.json`, `editors/neovim/syntax/cppl.vim` |
 
 ### Required behavior
 
@@ -254,6 +254,7 @@ tests/fixtures/contradiction_named_by_a_header.cpp  the same, with the word name
 tests/e2e/impossible_path.sh              claims counted, program run, erasure to an empty statement
 tests/negative/impossible_paths.sh        every refused claim, written out in tests/fixtures/negative/
 tests/unit/lsp_semantic_tokens_test.cpp   editor coloring of claims, including one a header makes C++
+tests/unit/lsp_proof_names_test.cpp       a claim's and an omission's evidence, navigated as the compiler resolved it
 ```
 
 A grammar cannot tell whether the unit gives `contradiction` another meaning,

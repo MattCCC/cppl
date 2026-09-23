@@ -1070,13 +1070,21 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
     const std::map<std::string, std::size_t>& declared,
     const std::map<std::string, std::vector<const vir::Law*>>& trusted_laws,
     const std::vector<vir::Parameter>& parameters, std::uint32_t& next_expression_id, diagnostics::Engine& engine,
-    std::vector<SubjectStates>* subject_states) {
+    std::vector<SubjectStates>* subject_states, std::vector<ResolvedName>* names) {
     const std::size_t parameter_count = parameters.size();
     std::vector<std::string> value_names;
     value_names.reserve(parameters.size());
     for (const auto& parameter : parameters)
         value_names.push_back(parameter.name);
     std::vector<std::string> assumed;
+    // Where each name `assume` bound is written, beside it, for editors.
+    std::vector<source::SourceLocation> assumed_at;
+    const auto note_resolution = [names](ResolvedName::Kind kind, const frontend::ProofStatement& statement,
+                                         const source::SourceLocation& declaration) {
+        if (names != nullptr && statement.reference_location.is_valid()) {
+            names->push_back(ResolvedName{kind, statement.reference, statement.reference_location, declaration});
+        }
+    };
     std::vector<std::vector<vir::Type>> assumed_types;
     const auto quantified_types = [](const vir::Expr& proposition) {
         std::vector<vir::Type> types;
@@ -1182,6 +1190,7 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
                     value_names.resize(parameter_count + outer_aliases);
                     assumed.resize(outer_assumed);
                     assumed_types.resize(outer_assumed);
+                    assumed_at.resize(outer_assumed);
                     if (!nested)
                         return std::nullopt;
                     step.node = vir::ProductStep{*subject, std::move(*nested)};
@@ -1251,6 +1260,7 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
                     value_names.resize(parameter_count + enclosing_aliases);
                     assumed.resize(enclosing_assumed);
                     assumed_types.resize(enclosing_assumed);
+                    assumed_at.resize(enclosing_assumed);
                     if (!nested)
                         return std::nullopt;
                     converted.steps = std::move(*nested);
@@ -1295,6 +1305,7 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
                 assumed_types.push_back(quantified_types(*proposition));
                 step.node = vir::AssumeStep{statement.reference, std::move(*proposition)};
                 assumed.push_back(statement.reference);
+                assumed_at.push_back(statement.reference_location);
                 steps.push_back(std::move(step));
                 continue;
             }
@@ -1308,6 +1319,7 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
                     expected_arguments = assumed_types[position - 1];
                     evidence = vir::Reference{vir::HypothesisRef{static_cast<std::uint32_t>(position - 1)},
                                               statement.reference};
+                    note_resolution(ResolvedName::Kind::Assumption, statement, assumed_at[position - 1]);
                     break;
                 }
             }
@@ -1328,6 +1340,13 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
                 }
                 const vir::Law& law = *trusted->second.front();
                 evidence = vir::Reference{vir::TrustedLawRef{law.id}, statement.reference};
+                const auto written =
+                    std::ranges::find_if(request.syntax.laws, [&law](const frontend::LawDeclaration& candidate) {
+                        return candidate.range == law.range;
+                    });
+                if (written != request.syntax.laws.end()) {
+                    note_resolution(ResolvedName::Kind::TrustedLaw, statement, written->name_location);
+                }
                 for (const auto& parameter : law.parameters)
                     expected_arguments.push_back(parameter.type);
                 if (!law.premise.has_value()) {
@@ -1354,6 +1373,8 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
                 }
                 evidence = vir::Reference{vir::ProofRef{vir::ProofId{static_cast<std::uint32_t>(target->second)}},
                                           statement.reference};
+                note_resolution(ResolvedName::Kind::Proof, statement,
+                                request.syntax.proofs[target->second].name_location);
                 const auto projected_target =
                     std::ranges::find_if(request.projection.proof_functions, [&](const auto& candidate) {
                         return candidate.proof_index == target->second;
@@ -1752,7 +1773,7 @@ void elaborate_proofs(const Request& request, const std::map<std::string, vir::L
         // law's own proposition is known, by instantiating it at them.
         std::optional<std::vector<vir::ProofStep>> steps =
             convert_statements(request, declaration, projected, declared, trusted_laws, *parameters, next_expression_id,
-                               engine, &result.subject_states);
+                               engine, &result.subject_states, &result.names);
         if (!steps.has_value()) {
             if (law)
                 result.laws_with_refused_proofs.push_back(*law);
@@ -1887,6 +1908,10 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
         } else {
             resolved.proof =
                 vir::ProofId{static_cast<std::uint32_t>(std::distance(request.syntax.proofs.begin(), declared))};
+            if (written.statement.reference_location.is_valid()) {
+                result.names.push_back(ResolvedName{ResolvedName::Kind::Proof, written.statement.reference,
+                                                    written.statement.reference_location, declared->name_location});
+            }
         }
         claims.emplace(marker.name, std::move(resolved));
     }
