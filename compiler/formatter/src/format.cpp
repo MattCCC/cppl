@@ -646,15 +646,78 @@ std::string canonical_arm_body(std::string_view text, const frontend::ProofArm& 
     return body;
 }
 
+// The comments written in the source between two positions of an arm block,
+// laid out for the canonical block. A well-formed block holds nothing between
+// its arms but whitespace and comments, and a comment is never dropped.
+//
+// `same_line` is what shares the line the gap starts on - a comment trailing
+// the '{', '}' or ';' before it - and stays on that line. `lines` is every
+// comment line after it, each on a line of its own at `indent`.
+struct GapComments {
+    std::string same_line;
+    std::string lines;
+};
+
+GapComments comments_between(std::string_view text, std::size_t from, std::size_t to, const std::string& indent) {
+    GapComments comments;
+    if (from >= to) {
+        return comments;
+    }
+    const std::string_view gap = text.substr(from, to - from);
+    const auto trimmed = [](std::string_view line) {
+        const std::size_t first = line.find_first_not_of(" \t\r");
+        if (first == std::string_view::npos) {
+            return std::string_view{};
+        }
+        const std::size_t last = line.find_last_not_of(" \t\r");
+        return line.substr(first, last - first + 1);
+    };
+    std::size_t line_start = 0;
+    bool first_line = true;
+    while (line_start <= gap.size()) {
+        std::size_t line_end = gap.find('\n', line_start);
+        const bool last = line_end == std::string_view::npos;
+        if (last) {
+            line_end = gap.size();
+        }
+        const std::string_view content = trimmed(gap.substr(line_start, line_end - line_start));
+        if (!content.empty()) {
+            if (first_line) {
+                comments.same_line += ' ';
+                comments.same_line += content;
+            } else {
+                comments.lines += '\n';
+                comments.lines += indent;
+                comments.lines += content;
+            }
+        }
+        if (last) {
+            break;
+        }
+        first_line = false;
+        line_start = line_end + 1;
+    }
+    return comments;
+}
+
 // The full `{ arm label(bindings) => { ... } ... }` block for one
 // Cases/Decompose/Induction statement, arms separated by exactly one blank
-// line, nested one level deeper than `declaration_column`.
+// line, nested one level deeper than `declaration_column`. Comments between
+// the arms keep their place relative to them (`comments_between`).
 std::string canonical_arm_block(std::string_view text, const frontend::ProofStatement& statement,
                                 std::size_t declaration_column) {
     const std::string arm_indent(declaration_column + kIndentWidth, ' ');
     std::string block = "{";
+    std::size_t previous = statement.arms_span.offset + 1; // just past the block's own '{'
     for (std::size_t i = 0; i < statement.arms.size(); ++i) {
         const frontend::ProofArm& arm = statement.arms[i];
+        const GapComments gap = comments_between(text, previous, arm.span.offset, arm_indent);
+        block += gap.same_line;
+        if (i > 0) {
+            block += '\n'; // one blank line between consecutive arms
+        }
+        block += gap.lines;
+        previous = arm.span.end();
         block += '\n';
         block += arm_indent;
         // An omitted case has no body and no braces, so it is one line
@@ -666,9 +729,6 @@ std::string canonical_arm_block(std::string_view text, const frontend::ProofStat
             block += text.substr(arm.label.offset, arm.label.length);
             block += " by ";
             block += text.substr(arm.discharge_span.offset, arm.discharge_span.length);
-            if (i + 1 < statement.arms.size()) {
-                block += "\n";
-            }
             continue;
         }
         block += canonical_arm_header(text, arm);
@@ -680,9 +740,13 @@ std::string canonical_arm_block(std::string_view text, const frontend::ProofStat
         block += '\n';
         block += arm_indent;
         block += '}';
-        if (i + 1 < statement.arms.size()) {
-            block += "\n"; // one blank line between consecutive arms
-        }
+    }
+    // Comments after the last arm stand apart from it, like one more arm would.
+    const GapComments trailing = comments_between(text, previous, statement.arms_span.end() - 1, arm_indent);
+    block += trailing.same_line;
+    if (!trailing.lines.empty()) {
+        block += '\n';
+        block += trailing.lines;
     }
     block += '\n';
     block += std::string(declaration_column, ' ');

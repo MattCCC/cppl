@@ -920,6 +920,34 @@ CPPL_TEST(proof_comments_are_preserved) {
     CPPL_CHECK(formatted.find("// closes by reflexivity") != std::string::npos);
 }
 
+CPPL_TEST(comments_between_proof_arms_are_preserved) {
+    // A comment beside an arm, rather than inside one, belongs to no arm's
+    // body. Rebuilding the arm block from its arms alone used to drop it
+    // silently, which is data loss, and a comment explaining why a case is
+    // omitted is exactly what an author writes above `omit`.
+    const std::string input = "enum class S { a, b };\n"
+                              "proof p(S s) proves(true){cases s { // the partition\n"
+                              "// first\n"
+                              "S::a=>{refl;} // after a\n"
+                              "\n"
+                              "   // why b cannot occur\n"
+                              "omit S::b by contradiction h; // see the premise\n"
+                              "/* the rest */ unnamed(v)=>{refl;}\n"
+                              "// trailing\n"
+                              "}}\n";
+    const std::string once = format_text(input);
+    CPPL_CHECK(once.find("cases s { // the partition\n") != std::string::npos);
+    CPPL_CHECK(once.find("        // first\n        S::a => {\n") != std::string::npos);
+    CPPL_CHECK(once.find("        } // after a\n") != std::string::npos);
+    CPPL_CHECK(once.find("\n\n        // why b cannot occur\n        omit S::b by contradiction h;") !=
+               std::string::npos);
+    CPPL_CHECK(once.find("omit S::b by contradiction h; // see the premise\n") != std::string::npos);
+    CPPL_CHECK(once.find("\n\n        /* the rest */\n        unnamed(v) => {\n") != std::string::npos);
+    CPPL_CHECK(once.find("        }\n\n        // trailing\n    }\n") != std::string::npos);
+    // Laying the comments out is a fixed point, like the rest of the block.
+    CPPL_CHECK_EQ(format_text(once), once);
+}
+
 CPPL_TEST(proof_arm_formatting_is_idempotent) {
     const std::string input = "enum class Flag { on, off };\n"
                               "proof p(Flag f) proves(true){cases f { Flag::on=>{refl;} Flag::off=>{refl;} }}\n";

@@ -495,7 +495,10 @@ in grammar order. A contracted body's `{` is on the next line at declaration
 indentation. Other braces follow `.clang-format`. Proof arms are expanded,
 with `label(bindings) => {` and one blank line between arms. A case omission is
 one line, `omit label by contradiction evidence;`, separated from its neighbours
-the same way, with the statement after `by` kept as written. `where` stays on the
+the same way, with the statement after `by` kept as written. A comment between
+arms keeps its place: one on the line of the `{`, `}` or `;` before it stays on
+that line, and one on a line of its own stays on its own line, before the arm
+that follows or before the block's closing `}`. `where` stays on the
 refinement declaration subject to normal ColumnLimit wrapping. Predicates use
 the same indentation and line-width configuration as C++ expressions.
 
