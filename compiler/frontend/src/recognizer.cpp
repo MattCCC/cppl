@@ -634,29 +634,35 @@ bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std
             statement.arms_span = {tokens[open].span.offset, tokens[end].span.end() - tokens[open].span.offset};
             cursor = open + 1;
             // Where a case label starting at `from` ends: the index just past
-            // it, or `from` itself when no label starts there.
+            // it, or `from` itself when no label starts there. A label is an
+            // id-expression (GRAMMAR.md 5.9), so any of its parts may carry
+            // template arguments, as `Machine<int>::Mode::on` and
+            // `alternative<0>` do.
             const auto label_end = [&](std::size_t from) {
                 std::size_t at = from;
                 if (at < end && tokens[at].is_punctuator("::"))
                     ++at;
                 if (at >= end || tokens[at].kind != TokenKind::Identifier)
                     return from;
-                ++at;
-                while (at + 1 < end && tokens[at].is_punctuator("::") && tokens[at + 1].kind == TokenKind::Identifier)
-                    at += 2;
-                if (at < end && tokens[at].is_punctuator("<")) {
-                    unsigned angles = 0;
-                    do {
-                        if (tokens[at].is_punctuator("<"))
-                            ++angles;
-                        if (tokens[at].is_punctuator(">"))
-                            --angles;
-                        if (tokens[at].is_punctuator(">>"))
-                            angles = angles >= 2 ? angles - 2 : 0;
-                        ++at;
-                    } while (at < end && angles != 0);
+                while (true) {
+                    ++at;
+                    if (at < end && tokens[at].is_punctuator("<")) {
+                        unsigned angles = 0;
+                        do {
+                            if (tokens[at].is_punctuator("<"))
+                                ++angles;
+                            if (tokens[at].is_punctuator(">"))
+                                --angles;
+                            if (tokens[at].is_punctuator(">>"))
+                                angles = angles >= 2 ? angles - 2 : 0;
+                            ++at;
+                        } while (at < end && angles != 0);
+                    }
+                    if (at + 1 >= end || !tokens[at].is_punctuator("::") ||
+                        tokens[at + 1].kind != TokenKind::Identifier)
+                        return at;
+                    ++at;
                 }
-                return at;
             };
             bool malformed = false;
             while (cursor < end) {

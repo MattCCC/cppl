@@ -177,7 +177,10 @@ proof-binder-list ::= identifier {"," identifier}
 ```
 
 This grammar is shared by every representation and by induction. The provider
-controls binder arity and label meaning. Arm bodies may nest.
+controls binder arity and label meaning. Arm bodies may nest. Because a label is
+an `id-expression`, any part of its qualification may carry template arguments,
+as `Machine<int>::Mode::on` does for an enumerator of a class template's member
+enumeration.
 
 ## 6. Function specification clauses
 

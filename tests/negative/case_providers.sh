@@ -49,4 +49,11 @@ refuse() {
 refuse enum_top_bit_claimed_false "eq(4294967295, 4294967295) reduces to 1 while 0 reduces to 0"
 ! grep -q "malformed literal" "$run/enum_top_bit_claimed_false.log"
 
+# SPEC: CASE-002
+# A member enumeration of each class template instantiation is its own type, so
+# a label resolved through another instantiation names no case here. It is
+# refused by the provider, at that label, not by the parser.
+refuse enum_label_of_another_instantiation "this label does not name a case of 'Machine<int>::Mode'"
+grep -q "enum_label_of_another_instantiation.cpp:15:9" "$run/enum_label_of_another_instantiation.log"
+
 echo 'each decomposition provider refuses the half of its matched pairs that does not hold'

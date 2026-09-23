@@ -181,6 +181,66 @@ proof top_of_unsigned_long_long(Wide s)
     }
 }
 
+// SPEC: CASE-002
+// A member enumeration of a class template is a distinct enumeration per
+// instantiation, and C++ names its enumerators only through the template's
+// arguments. Labels are id-expressions, so they are written the same way. The
+// refused half of this matched pair, a label from another instantiation, is
+// `fixtures/negative/enum_label_of_another_instantiation.cpp`.
+template <typename T> struct Machine {
+    enum class Mode : unsigned { off = 0u, on = 1u };
+};
+
+proof member_enum_of_template(Machine<int>::Mode m)
+    proves (Eq<bool>(m == Machine<int>::Mode::on, static_cast<unsigned>(m) == 1u))
+{
+    cases m {
+        Machine<int>::Mode::off => {
+            assume here : m == Machine<int>::Mode::off;
+            rewrite here;
+            refl;
+        }
+
+        Machine<int>::Mode::on => {
+            assume here : m == Machine<int>::Mode::on;
+            rewrite here;
+            refl;
+        }
+
+        unnamed(value) => {
+            assume residual : value != 0u && value != 1u;
+            refl;
+        }
+    }
+}
+
+// An alias template denotes its argument, so the subject is the same
+// enumeration however it is spelled.
+template <typename T> using Same = T;
+
+proof enum_through_alias_template(Same<Machine<Same<long>>::Mode> m)
+    proves (Eq<bool>(m == Machine<long>::Mode::off, static_cast<unsigned>(m) == 0u))
+{
+    cases m {
+        Machine<long>::Mode::off => {
+            assume here : m == Machine<long>::Mode::off;
+            rewrite here;
+            refl;
+        }
+
+        Machine<long>::Mode::on => {
+            assume here : m == Machine<long>::Mode::on;
+            rewrite here;
+            refl;
+        }
+
+        unnamed(value) => {
+            assume residual : value != 0u && value != 1u;
+            refl;
+        }
+    }
+}
+
 // Every underlying value is a valid scoped-enum state, including unnamed ones.
 int main() {
     auto s = static_cast<One>(37u);

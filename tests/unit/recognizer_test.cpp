@@ -588,6 +588,28 @@ CPPL_TEST(case_arms_are_nested_proof_statements_with_source_locations) {
     CPPL_CHECK_EQ(statement.arms[0].spelling, std::string("E::a"));
 }
 
+// A label is an id-expression (GRAMMAR.md 5.9), so any part of it may carry
+// template arguments, including a `>>` that closes two lists at once. An
+// enumerator of a class template's member enumeration can be named no other way.
+CPPL_TEST(case_labels_are_id_expressions_whose_parts_carry_template_arguments) {
+    Recognized result;
+    recognize("proof p(M s) proves (true) {\n"
+              " cases s { Machine<int>::Mode::on => { refl; }\n"
+              " ::Outer<Box<int>>::Mode::off => { refl; }\n"
+              " omit Machine<long>::Mode::idle by contradiction e;\n"
+              " alternative<1>(v) => { refl; } } }",
+              result);
+    CPPL_CHECK(!result.engine.has_errors());
+    const auto& statement = result.syntax.proofs[0].statements[0];
+    CPPL_CHECK_EQ(statement.arms.size(), std::size_t{4});
+    CPPL_CHECK_EQ(statement.arms[0].spelling, std::string("Machine<int>::Mode::on"));
+    CPPL_CHECK_EQ(statement.arms[1].spelling, std::string("::Outer<Box<int>>::Mode::off"));
+    CPPL_CHECK(statement.arms[2].omitted);
+    CPPL_CHECK_EQ(statement.arms[2].spelling, std::string("Machine<long>::Mode::idle"));
+    CPPL_CHECK_EQ(statement.arms[3].spelling, std::string("alternative<1>"));
+    CPPL_CHECK_EQ(statement.arms[3].binders[0], std::string("v"));
+}
+
 CPPL_TEST(cases_and_residual_names_remain_ordinary_cpp_identifiers) {
     Recognized result;
     recognize("int cases(int unnamed) { return unnamed; }\n"
