@@ -413,7 +413,7 @@ class Prover {
     // Every case comes from a decidability principle applied to a machine
     // comparison. Nothing here grants `P || not P` for an arbitrary `P`: a goal
     // that needs excluded middle over an undecided proposition stays unproven
-    // (`SPEC.md` 7.8, `TRUST.md` "Disjunction").
+    // (`SPEC.md` 7.8, `FOUNDATIONS.md` 2.6).
     std::optional<k::ProofTerm> derive_decidable_cases(const k::Proposition& goal) {
         if (++splits_ > kMaxCaseSplits) {
             return std::nullopt;

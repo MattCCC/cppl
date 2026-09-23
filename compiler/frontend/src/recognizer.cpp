@@ -82,7 +82,7 @@ std::size_t specifiers_start(const std::vector<Token>& tokens, std::size_t index
 //
 // The span matters beyond recognition: a contract probe for a templated
 // function names the template's parameters, so it has to be emitted under the
-// same header the author wrote (SPEC.md 21).
+// same header the author wrote (SPEC.md 42).
 std::optional<std::size_t> template_header_start(const std::vector<Token>& tokens, std::size_t index) {
     if (index == 0 || !tokens[index - 1].is_punctuator(">")) {
         return std::nullopt;
@@ -680,7 +680,7 @@ bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std
                 // to the syntax. The parser only separates a name a
                 // representation reserves for a state with no C++ expression
                 // from a label Clang is to resolve; which case either denotes is
-                // settled later, by the provider (SPEC.md 20.5).
+                // settled later, by the provider (SPEC.md 20.1).
                 arm.keyword_label = decomposition::label_kind(arm.spelling) == decomposition::LabelKind::Keyword;
                 if (tokens[start].is_identifier("_")) {
                     report(engine, stream, tokens[start], diagnostics::Category::CpplSyntax,
@@ -1520,7 +1520,7 @@ enum class LoopClauses : std::uint8_t {
 // C++ (SPEC.md 3.1).
 // `clause_start` is where loop clauses may begin: just past the condition's
 // ')' for `while (c)`/`for (...)`, or right after the keyword itself for
-// `do` (GRAMMAR.md 328: `"do" loop-clauses compound-statement "while" ...` -
+// `do` (GRAMMAR.md 26: `"do" loop-clauses compound-statement "while" ...` -
 // `do` has no leading `(condition)` for the clauses to follow).
 LoopClauses try_loop_clauses(const TokenStream& stream, std::size_t index, std::size_t clause_start,
                              diagnostics::Engine& engine, LoopSpecification& loop, std::size_t& next_index) {
@@ -1765,7 +1765,7 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
             }
         }
 
-        // do loop-clauses compound-statement while (condition);  (GRAMMAR.md 328)
+        // do loop-clauses compound-statement while (condition);  (GRAMMAR.md 26)
         if (tokens[index].is_identifier("do") && index + 1 < tokens.size()) {
             LoopSpecification loop;
             std::size_t next = index + 1;

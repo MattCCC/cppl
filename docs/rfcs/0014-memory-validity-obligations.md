@@ -68,7 +68,7 @@ non-null  ⇒  valid dereference
 as a global assumption the kernel never checks — exactly the hidden soundness
 gap `AGENTS.md` 8 and 12 exist to prevent.
 
-The fix cannot live in the pointer provider. `AGENTS.md` 38 requires a pointer
+The fix cannot live in the pointer provider. `AGENTS.md` 39 requires a pointer
 provider to state `null` and `non_null` and **never** lifetime, provenance,
 dereferenceability, bounds, initialization, ownership or uniqueness. That rule
 is correct and this RFC does not weaken it.
@@ -229,9 +229,10 @@ different regions                disjoint    when provable
 
 The last two lines are the conservative core. Two arbitrary dereferences may
 alias, so a write through one invalidates facts about the other. This is
-imprecise and deliberately so: `AGENTS.md` 22 and the refinement storage
-invariants both require conservative invalidation over unproved distinction,
-and `SPEC.md` 12.9 already applies exactly this rule to references.
+imprecise and deliberately so: the storage and memory invariants and the
+refinement storage invariants of `AGENTS.md` both require conservative
+invalidation over unproved distinction, and `SPEC.md` 12.9 already applies
+exactly this rule to references.
 
 Type-based disjointness (strict aliasing) is **not** used. It is valid C++
 inference, but it depends on UB-freedom the program has not yet been shown to
@@ -294,7 +295,7 @@ asserted without proof.
 
 **Temporaries.** A materialized temporary gets a fresh region, live for its
 full-expression, then dead. No runtime temporary is introduced that C++ did not
-already create (`SPEC.md` 27 requirement, and `AGENTS.md` 38's "a binding is
+already create (`SPEC.md` 36.1 `ERASE-007`, and `AGENTS.md` 39's "a binding is
 never a new object").
 
 **Moves.** A move from a scalar or trivially-copyable region follows Clang's
@@ -395,7 +396,7 @@ and a genuine kernel extension. It also invites `readable(p) == true` to be
 proved by reflexivity, which would be catastrophic.
 
 **Option B — add capability propositions to the kernel.** Extend `Proposition`
-with a `Holds(capability, place)` former. *Rejected under `AGENTS.md` 38*: this
+with a `Holds(capability, place)` former. *Rejected under `AGENTS.md` 39*: this
 is a representation-specific kernel rule in all but name, and it puts memory
 semantics inside the trusted kernel where they cannot be checked.
 
@@ -467,7 +468,7 @@ erasure equivalence tests apply to every construct this RFC adds.
 ## 12. Syntax
 
 Capabilities appear as ordinary contract clauses, using contextual identifiers
-(`SPEC.md` 2), so ordinary C++ using these spellings keeps its meaning:
+(`SPEC.md` 3), so ordinary C++ using these spellings keeps its meaning:
 
 ```cpp
 verified int read(int* p)
@@ -534,7 +535,7 @@ refusal.
 
 ## 15. Diagnostics
 
-Per `AGENTS.md` 34, a diagnostic must distinguish *unsupported*, *unproved* and
+Per `AGENTS.md` 35, a diagnostic must distinguish *unsupported*, *unproved* and
 *disproved*, and must never claim a predicate is false when it is merely
 unproved:
 
@@ -591,7 +592,7 @@ dereference.
 
 **Non-null as sufficient.** Rejected: unsound, as shown in the motivation.
 
-**Validity in the pointer provider.** Rejected: violates `AGENTS.md` 38 and
+**Validity in the pointer provider.** Rejected: violates `AGENTS.md` 39 and
 would let one provider invent lifetime and provenance facts.
 
 **Predicates over pointer values** (this RFC's first revision). Rejected: cannot
@@ -617,8 +618,8 @@ changing the obligation model, because it would only *discharge* capabilities,
 never redefine them.
 
 Conservative aliasing will reject programs that are in fact correct. That is the
-intended direction of error (`AGENTS.md` 22: false rejection is preferable to a
-stale unsound fact).
+intended direction of error (the storage and memory invariants of `AGENTS.md`:
+false rejection is preferable to a stale unsound fact).
 
 ## 20. Compatibility
 

@@ -155,7 +155,7 @@ struct PlaceRef {
 };
 
 // A subscript's index must lie within its array's extent (SPEC.md 12.10
-// VERIFIED-038, RFC 0014 §7).
+// VERIFIED-038, RFC 0014 §17 step 7).
 //
 // Both sides are terms, so this is an ordinary proposition the kernel proves
 // with the existing arithmetic rules. That is the deliberate split: bounds

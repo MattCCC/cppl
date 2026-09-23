@@ -50,7 +50,7 @@ Erased erase(const frontend::TokenStream& stream, const frontend::Syntax& syntax
 
     // A refinement type is runtime-bearing: what must stand in its place is the
     // alias it means, recomputed here from the declaration so that nothing the
-    // projector produced is taken on trust (SPEC.md 17.4).
+    // projector produced is taken on trust (SPEC.md 17.8).
     std::vector<Lowering> lowerings;
     lowerings.reserve(syntax.refinement_types.size());
     for (const frontend::RefinementType& refinement : syntax.refinement_types) {

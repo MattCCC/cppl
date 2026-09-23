@@ -680,7 +680,7 @@ constexpr std::size_t kMaxConditionSteps = std::size_t{1} << 15;
 // local at a loop head - is a fresh variable bound where the path meets it,
 // followed by the proposition supposed of it. Which conditions a body needs is
 // decided here, by the rules for calls and loops; that is a correspondence
-// responsibility (TRUST.md 41.2). Whether each holds is the kernel's.
+// responsibility (TRUST.md 12.1, 13). Whether each holds is the kernel's.
 class Conditions {
   public:
     Conditions(const vir::Function& function, const ContractVerification& plan, const Contracts& contracts,

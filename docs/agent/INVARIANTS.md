@@ -4,7 +4,7 @@ These hold for every feature, in every task, regardless of what is being
 implemented. They are not a feature checklist; they are the properties that make
 a C++L result mean anything.
 
-`AGENTS.md` §37 and §38 state the repository invariants in full. This file maps
+`AGENTS.md` §38 and §39 state the repository invariants in full. This file maps
 them to the normative rules that require them, so an implementation can cite the
 authority rather than an unattributed convention.
 

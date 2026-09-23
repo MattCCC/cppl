@@ -120,8 +120,8 @@ verified void f(Positive* p) expects (writable(p)) ensures (true) { *p = 0; }
 CPP
 
 # A symbolic subscript owes `index < extent`, and the extent is the array's own
-# (SPEC.md 12.10 VERIFIED-038, RFC 0014 §7). Both sides are values, so the
-# kernel proves it rather than the access being trusted.
+# (SPEC.md 12.10 VERIFIED-038, RFC 0014 §17 step 7). Both sides are values, so
+# the kernel proves it rather than the access being trusted.
 reject symbolic_index_owes_its_bound "element index' is not proven" <<'CPP'
 verified unsigned f(unsigned i) ensures (result == result) {
     unsigned a[4] = {0u, 1u, 2u, 3u};
@@ -202,7 +202,7 @@ CPP
 # A capability permits reaching a pointer's storage; it does not decide which
 # element of that storage a subscript names. The index still owes
 # `index < extent`, exactly as a subscript of a local array does
-# (RFC 0014 §7, SPEC.md 12.10 VERIFIED-038).
+# (RFC 0014 §17 step 7, SPEC.md 12.10 VERIFIED-038).
 #
 # The sized form `readable(a, n)` states the region's extent, so an index into
 # it owes `index < n`. The capability permits reaching the storage; it never

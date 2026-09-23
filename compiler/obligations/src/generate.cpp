@@ -37,7 +37,7 @@ std::unexpected<Failure> fail(std::string reason, const source::SourceLocation& 
 std::optional<kernel::Type> lower_type(const vir::Type& type) {
     // C++ `bool` has exactly the two values the core's one-bit unsigned integer
     // has, and no arithmetic on it is modeled: every promotion to `int` is a
-    // conversion the bridge already refuses (SPEC.md 12.7).
+    // conversion the bridge already refuses (SPEC.md 29.2).
     if (type.is_boolean() || type.is_void()) {
         return kernel::Type{kernel::kBoolean};
     }
@@ -500,7 +500,7 @@ std::expected<kernel::Proposition, Failure> lower_proposition(const vir::Expr& e
     // side-effect-free specification expression, so short-circuiting changes
     // which of them C++ evaluates and never what the statement means.
     // `||` states the disjunction of its operands for the same reason (SPEC.md
-    // 7.7): both are pure specification expressions, so which of them C++ would
+    // 7.8): both are pure specification expressions, so which of them C++ would
     // evaluate does not enter into what the proposition says.
     if (const auto* binary = std::get_if<vir::Binary>(&expression.node);
         binary != nullptr && (binary->op == vir::BinaryOp::And || binary->op == vir::BinaryOp::Or)) {

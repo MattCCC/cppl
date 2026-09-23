@@ -5,7 +5,7 @@
 > [normative grammar](../GRAMMAR.md). Semantic rationale remains applicable.
 
 Status: implemented. Supersedes the scoped-enum-only framing of this RFC's first
-revision. The normative boundary is SPEC.md 20.5.
+revision. The normative boundary is SPEC.md 20.
 
 Scoped enumerations were the **first vertical implementation** of proof-side
 `cases`. They are no longer the architecture. The production architecture is
@@ -315,7 +315,7 @@ and is reported under each claim's own name when refused.
 ## Abstract observation signature
 
 The generalized value model admits `V(identity; T0, ..., Tn)` and checked
-`project<i>(v) : Ti`, as specified in SPEC.md 20.5. It needs no new inference
+`project<i>(v) : Ti`, as specified in FOUNDATIONS.md 44. It needs no new inference
 rule: equality, substitution and conditional elimination already apply to the
 resulting typed propositions. A signature is part of identity, so changing a
 component invalidates old evidence. Observation normalization never unfolds C++

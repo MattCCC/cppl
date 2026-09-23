@@ -95,7 +95,7 @@ struct Obligation {
 //
 // Lowering decides what the written statement means as a proof term. It does
 // not decide whether that term proves anything: the term goes to the kernel
-// like any other (TRUST.md 41).
+// like any other (TRUST.md 5.1).
 struct WrittenProof {
     vir::ProofId id;
     std::string name;

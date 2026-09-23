@@ -14,7 +14,7 @@ namespace cppl::automation {
 // Candidate evidence for a goal, together with the strategy that produced it.
 //
 // This layer proposes; it does not decide. Whatever it returns is handed to the
-// kernel, and the kernel's answer is the result (AGENTS.md 19, TRUST.md 3).
+// kernel, and the kernel's answer is the result (AGENTS.md 19, TRUST.md 6).
 struct Evidence {
     kernel::ProofTerm proof;
     std::string strategy;

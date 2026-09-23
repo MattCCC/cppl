@@ -103,7 +103,7 @@ instantiated at one. `forall` and `exists` are formal only in that complete form
 and an `->` outside all brackets is implication, so a program that spells its own
 `forall` or dereferences inside an expression keeps its own meaning. Existential
 quantification, quantifiers in loop invariants, and formal forms nested inside an
-ordinary C++ expression are refused. See `SPEC.md` 8.1-8.3 and 9.1. Both forms
+ordinary C++ expression are refused. See `SPEC.md` 8, 8.1-8.2 and 9. Both forms
 lower onto the quantifier and implication the kernel already had, and added no
 kernel rule.
 Conjunction of supported Boolean predicates is now `PROTOTYPE`: nested `&&`
@@ -122,8 +122,8 @@ are elaborated into the routes they select between (SPEC.md 12.7). Value and
 invariant uses of `&&` and `||` remain unsupported, because a proposition is not
 a value (SPEC.md 7.6-7.8).
 Everything else is reported as unsupported and produces no obligation. See
-`docs/ARCHITECTURE.md` 97 for the implemented structure and `TRUST.md` 41 for what
-must be trusted today.
+`docs/ARCHITECTURE.md` 95 for the implemented structure and `TRUST.md` 4 for what
+must be trusted.
 
 A precondition is supposed, never granted: `expects (P) ensures (Q)` states
 `P -> Q`, and the premise reaches a proof only through implication
@@ -179,7 +179,7 @@ local's value, so bodies whose stated terms exceed a fixed size are rejected
 too. Locals add no kernel rule and no runtime change.
 
 `while` and `for` loops with a block body may state `invariant (...)` clauses
-(`SPEC.md` 24.3). Each local the loop writes is carried: at the head it is a
+(`SPEC.md` 24). Each local the loop writes is carried: at the head it is a
 fresh value of which only the invariants and the condition are known. Every
 invariant is proven on entry and at the end of every iteration path, including
 `continue` and the `for` step; what follows the loop, and any `break`, is
@@ -190,13 +190,14 @@ conditions, reported separately, and never admitted as a core definition, so no
 Law or specification can mention it and nontermination cannot reach the
 kernel. Termination is not proven; `decreases`, `do`/`while`, range-based `for`
 and `for` without a condition are rejected. Loops add no kernel rule; the loop
-rule is correspondence trust (`TRUST.md` 15).
+rule is correspondence trust (`TRUST.md` 12.1).
 
 Refinement types are `PROTOTYPE`: `type R = T where (P);` and its indexed form
 declare a verification-level type over an ordinary C++ base type, lower to the
 alias the program keeps, and make membership an obligation at every site a value
 enters the type. Refined parameters supply their predicate to the body and refined
-results are proven on every return. The boundary is in `SPEC.md` 17.3.1.
+results are proven on every return. The boundary is stated under
+[Refinement status](#refinement-status).
 
 `contradiction e;` is `PROTOTYPE`: a proof statement that closes the goal from
 evidence that the context where it is written cannot occur (`GRAMMAR.md` 5.6,
@@ -256,8 +257,9 @@ Tagged sums share one mechanism and products share another, so these are two
 provider implementations rather than six. Nesting composes generically in both
 directions. `std::expected` is gated on the C++23 library. Representations with
 no provider are still refused at the provider boundary by name, and arm syntax
-does not make a class a sum. See `SPEC.md` 20.5 for the boundary and resource
-limits, and `TRUST.md` 19 for what each provider does and does not state.
+does not make a class a sum. A statement is read with at most 64 arms, omissions
+included, and arms nest at most 32 deep. See `SPEC.md` 20.1 and 20.4 for the
+boundary, and `TRUST.md` 19 for what each provider does and does not state.
 
 `cases` and `decompose` appear only in proof bodies, which contain no mutation,
 so no case fact can go stale; they are not yet available over values that can
@@ -454,7 +456,7 @@ implication and conjunction. The kernel's terms are variables, machine-integer l
 applications of admitted definitions, and primitives: wrapping addition,
 subtraction and multiplication, the six comparisons, boolean negation and
 selection. It admits no recursion, which is why it needs no termination checker
-yet (`docs/ARCHITECTURE.md` 97.7).
+yet (`SPEC.md` 22.2, 22.4).
 
 Reflexivity decides definitional equality by normalization, which puts machine
 arithmetic in polynomial normal form modulo `2^width` and comparisons in
@@ -641,7 +643,7 @@ representation. Membership is an obligation at every modeled flow into the type 
 local declaration, an assignment or update, a verified call's argument, a return -
 closed under the path conditions where the value enters, so a branch fact discharges
 it. Subtyping is the implication between predicates and carries no runtime check in
-either direction (`SPEC.md` 17.3.2).
+either direction (`SPEC.md` 17.4).
 
 Scalar reference parameters (`T&`, `const T&`, `T&&`), local references to modeled
 parameters, and verified void functions now use storage versions and post-state
@@ -1103,7 +1105,7 @@ the `pure` specifier, and lowers a refinement type declaration to the alias it
 means. The implementation checks a strong property rather than asserting success:
 the runtime program must be the analysed program with proof-only spans blanked and
 each runtime-bearing declaration replaced by the canonical C++ recomputed from that
-declaration, with line numbering unchanged (`TRUST.md` 10.1). Equivalence is
+declaration, with line numbering unchanged (`TRUST.md` 29). Equivalence is
 therefore established structurally for the constructs implemented, not proven in
 general.
 
@@ -1300,7 +1302,7 @@ Until concurrency semantics exist, concurrency must not be silently treated usin
 | Per-Law assumption closure  | `NOT STARTED` |
 | Trust-report implementation | `PARTIAL`     |
 
-The implemented TCB is stated in `TRUST.md` 41. There are no axioms. A
+The TCB is stated in `TRUST.md` 4 and 5. There are no axioms. A
 `trusted law` (`SPEC.md` 27) is the one implemented way to admit a proposition
 without proof: it is stated to the formal core, given status `TRUSTED` rather
 than `PROVEN`, never counted among proven laws, and named individually in the

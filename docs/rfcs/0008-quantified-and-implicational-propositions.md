@@ -4,7 +4,7 @@
 > [RFC 0015](0015-canonical-language-surface.md) and the
 > [normative grammar](../GRAMMAR.md). Semantic rationale remains applicable.
 
-Status: implemented by this slice; normative rules are SPEC.md 8, 8.1-8.3, 9.1
+Status: implemented by this slice; normative rules are SPEC.md 8, 8.1-8.2, 9
 and GRAMMAR.md 28, 29, 33.
 
 ## Meaning

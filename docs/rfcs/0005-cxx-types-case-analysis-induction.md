@@ -6,7 +6,7 @@
 
 Status: accepted design decision. Its case-analysis half is implemented, over
 generic decomposition providers; its induction and proof-only-domain halves are
-not. Normative rules are SPEC.md 19–21 and GRAMMAR.md 5.6–5.8, 18 and 20. It
+not. Normative rules are SPEC.md 19–21 and GRAMMAR.md 5.7–5.9, 18 and 20. It
 supersedes the earlier `data` declarations and `match` expressions, which were
 specified but never implemented.
 
@@ -159,7 +159,7 @@ The implemented labels are `some`/`none` rather than `engaged`/`empty`, and
 alternatives are named by index so that repeated and aliased alternative types
 remain distinct states. `non_null` binds nothing: binding a pointee would assert
 that a live, initialized object exists, which a non-null pointer does not
-establish. RFC 0013 and SPEC.md 20.5 are normative for all of this.
+establish. RFC 0013 and SPEC.md 20.1 are normative for all of this.
 
 A product representation - a record, `std::pair`, `std::tuple`, `std::array` or
 a built-in array - has one state and so is not case analysis at all. It is

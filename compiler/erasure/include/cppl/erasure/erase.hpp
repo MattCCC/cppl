@@ -15,7 +15,7 @@ struct Report {
     std::size_t erased_bytes = 0;
 
     // Runtime-bearing declarations, and the bytes of canonical C++ they lowered
-    // to (TRUST.md 7.1).
+    // to (TRUST.md 29).
     std::size_t lowered_spans = 0;
     std::size_t lowered_bytes = 0;
 
@@ -34,7 +34,7 @@ struct Erased {
 // Selects the runtime program and checks that erasure did what it claims.
 //
 // The property checked here is stronger than "the formal syntax is gone". C++L
-// syntax falls into two classes (TRUST.md 7):
+// syntax falls into two classes (TRUST.md 29):
 //
 //   - proof-only syntax is blanked, so no byte is added or altered;
 //   - a runtime-bearing declaration is replaced by the canonical C++ it means,
@@ -43,7 +43,7 @@ struct Erased {
 //
 // Every line stays where it was in both cases. That is what makes erasure unable
 // to alter runtime behaviour, and unable to introduce a construct the target
-// standard does not have (TRUST.md 7, COMPATIBILITY.md).
+// standard does not have (TRUST.md 29, COMPATIBILITY.md).
 [[nodiscard]] Erased erase(const frontend::TokenStream& stream, const frontend::Syntax& syntax,
                            const frontend::Projection& projection, diagnostics::Engine& engine);
 

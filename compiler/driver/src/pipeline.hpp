@@ -119,7 +119,7 @@ struct PipelineOutcome {
         std::size_t proofs_proven = 0;
         std::size_t unresolved = 0;
         // Every explicit trusted assumption, named so the trust report can list
-        // it rather than only count it (SPEC.md 27, TRUST.md 29).
+        // it rather than only count it (SPEC.md 27, TRUST.md 25).
         std::vector<std::string> trusted;
     } counters;
 };

@@ -57,7 +57,7 @@ struct Enumerator {
 };
 
 // The resolved identity of a C++ representation whose proof-visible states a
-// decomposition provider models (SPEC.md 20.5).
+// decomposition provider models (SPEC.md 20.1, 20.4).
 //
 // `identity` is Clang's USR, so provider selection is by resolved semantic
 // identity and never by spelling: an alias, a qualified name and a template

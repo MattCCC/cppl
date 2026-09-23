@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Invariants that must hold across whole classes of programs, not just the
-# fixtures that happen to be written down (AGENTS.md 37, SPEC.md 42).
+# fixtures that happen to be written down (AGENTS.md 38, SPEC.md 42).
 #
 # Each check here is a property: it is run over a family of generated programs
 # so that a regression shows up wherever it occurs, rather than only at the one

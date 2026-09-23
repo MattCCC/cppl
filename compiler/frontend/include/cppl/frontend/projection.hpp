@@ -103,7 +103,7 @@ struct RefinementProbe {
 };
 
 // A runtime-bearing C++L declaration and the canonical C++ it lowers to
-// (`TRUST.md` 7.1). The text is recomputed from the declaration when erasure is
+// (`TRUST.md` 29.1). The text is recomputed from the declaration when erasure is
 // checked, so the projector cannot put anything else in its place.
 struct RuntimeLowering {
     source::ByteSpan span; // the declaration in the scanned text
@@ -165,7 +165,7 @@ struct ProjectionOptions {
 
 [[nodiscard]] Projection project(const TokenStream& stream, const Syntax& syntax, const ProjectionOptions& options);
 
-// The canonical C++ a refinement declaration lowers to (SPEC.md 17.4):
+// The canonical C++ a refinement declaration lowers to (SPEC.md 17.8):
 //
 //     type R = T where (P);              ->  using R = T;
 //     type R(I i) = T where (P);         ->  template <I i> using R = T;

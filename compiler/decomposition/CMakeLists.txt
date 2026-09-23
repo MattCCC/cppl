@@ -1,7 +1,7 @@
 # Proof decomposition.
 #
 # The representation-independent decomposition model and the providers that
-# describe one C++ representation family each (SPEC.md 20.5, RFC 0013).
+# describe one C++ representation family each (SPEC.md 20, RFC 0013).
 #
 # It depends on the VIR and on nothing further down the pipeline: a provider
 # states what Clang already resolved, and knows nothing about proof obligations,

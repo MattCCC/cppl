@@ -30,7 +30,7 @@ struct Forall {
     friend bool operator==(const Forall&, const Forall&) = default;
 };
 
-// Implication (SPEC.md 7.2, GRAMMAR.md 29). `premise -> conclusion` is
+// Implication (SPEC.md 8.2, GRAMMAR.md 29). `premise -> conclusion` is
 // established by evidence for the conclusion that may use the premise, and it
 // is never a claim that the premise holds.
 //

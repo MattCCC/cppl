@@ -522,7 +522,7 @@ struct ArmRegion {
 // Every OUTERMOST Cases/Decompose/Induction statement directly in
 // `statements` (a proof body's own top-level statements, never an arm's -
 // those are visited only through their enclosing statement's own edit).
-// Nested Cases/Decompose/Induction (SPEC.md 2277: "Nested cases, decompose
+// Nested Cases/Decompose/Induction (SPEC.md 20.3: "Nested cases, decompose
 // and induction are permitted") are deliberately NOT collected here as their
 // own top-level region: `canonical_arm_block` already substitutes a nested
 // statement's canonical block recursively while building its parent's

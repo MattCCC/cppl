@@ -23,12 +23,12 @@ The declaration form cannot survive an erasure that only deletes. Blanking
 type Percentage = int where (self >= 0 && self <= 100);
 ```
 
-leaves `Percentage` undeclared in the runtime program, so SPEC.md 17.4 - a
+leaves `Percentage` undeclared in the runtime program, so SPEC.md 17.8 - a
 refinement has the runtime representation of its base type - could not hold for any
 use of the name. Every other C++L form is additive decoration around text that is
 already valid C++; this one is not.
 
-C++L syntax therefore has two erasure classes (TRUST.md 10.1). Proof-only syntax is
+C++L syntax therefore has two erasure classes (ARCHITECTURE.md 10). Proof-only syntax is
 blanked as before. A runtime-bearing declaration is replaced by the canonical C++ it
 means:
 
@@ -126,7 +126,7 @@ write still generates membership evidence. Missing predicate metadata or index
 arguments is an error, never an empty requirement.
 
 Crossing between two refinements of one base type is implication and nothing else
-(SPEC.md 17.3.2). A value already of a refinement type carries its predicate, so the
+(SPEC.md 17.4). A value already of a refinement type carries its predicate, so the
 goal at the crossing is `P(v) -> Q(v)` under the path conditions there: the looser
 direction discharges from what the value has, the stricter direction owes the rest.
 No runtime check exists in either direction, because there is nothing to check - both
@@ -151,7 +151,7 @@ reference. The common predicate instantiation is used for initialization, direct
 writes and call effects, on both total and partial-correctness paths. No new
 kernel rule, logical assumption or axiom is introduced. The storage, alias and
 post-state correspondence expands the existing frontend/obligation TCB (TRUST.md
-10.1). General object and lifetime flows are still incomplete; STATUS.md records
+13, 14). General object and lifetime flows are still incomplete; STATUS.md records
 those implementation gaps.
 
 Refined members follow one order, and it is not negotiable: obligations on every

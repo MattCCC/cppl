@@ -102,7 +102,7 @@ std::optional<vir::Type> convert_type(const clangbridge::Type& type) {
     }
     // What C++ representation the value stands for, when it is one a
     // decomposition provider may model. Nothing is inferred from a spelling:
-    // this is the identity Clang resolved (SPEC.md 20.5).
+    // this is the identity Clang resolved (SPEC.md 20.1, 20.4).
     converted->representation.identity = type.representation.identity;
     converted->representation.kind = type.representation.kind;
     converted->representation.components = type.representation.components;

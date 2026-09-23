@@ -244,7 +244,7 @@ struct Proof {
 // last position, standing for the value being refined. That parameter is what
 // `self` denotes; it exists only in the specification. The type has no runtime
 // representation of its own, so nothing here reaches code generation - what the
-// program keeps is the base type (SPEC.md 17.4).
+// program keeps is the base type (SPEC.md 17.8).
 struct RefinementDeclaration {
     std::string name;
     Type base;

@@ -242,7 +242,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
     };
 
     // A refinement type is runtime-bearing: the program keeps the alias it means
-    // and loses only its predicate (SPEC.md 17.4, TRUST.md 7.1). The analysis
+    // and loses only its predicate (SPEC.md REFINE-016, TRUST.md 8.1). The analysis
     // text gets the same alias, so every ordinary use of the name is Clang's, and
     // a probe stating the predicate with `self` and the indices bound.
     for (std::size_t index = 0; index < syntax.refinement_types.size(); ++index) {

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The trusted boundary: an assumption the author states explicitly, recorded
-# rather than proved (SPEC.md 27, TRUST.md 29).
+# rather than proved (SPEC.md 27, TRUST.md 25).
 #
 # `trusted` is the escape hatch for a fact C++L cannot establish - an external
 # API contract, an OS guarantee. It is not a weaker kind of proof. These cases

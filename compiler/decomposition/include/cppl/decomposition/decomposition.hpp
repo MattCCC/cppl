@@ -11,7 +11,7 @@
 #include <variant>
 #include <vector>
 
-// Representation-independent proof decomposition (SPEC.md 20.5, RFC 0013).
+// Representation-independent proof decomposition (SPEC.md 20, RFC 0013).
 //
 // A *representation provider* knows the sound logical state model of one C++
 // representation family. It contributes nothing else: arm matching, binder

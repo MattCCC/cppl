@@ -52,7 +52,7 @@ struct Enumerator {
 };
 
 // The resolved identity of a C++ representation whose proof-visible states a
-// decomposition provider may model (SPEC.md 20.5).
+// decomposition provider may model (SPEC.md 20.1, 20.4).
 //
 // `identity` is the declaration's USR, so a provider selects on resolved
 // semantic identity rather than on a spelling: aliases, qualified names and

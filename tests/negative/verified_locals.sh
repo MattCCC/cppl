@@ -74,7 +74,7 @@ reject aggregate_element_is_not_unconstrained 'does not satisfy its contract' \
 # not decided, so the value read is not any one initializer. That every element
 # happens to hold `x` is not concluded here; relating a symbolic place to each
 # element is exactly the reasoning the conservative model withholds, and a
-# false rejection is preferable to a stale fact (RFC 0014 §4, §7).
+# false rejection is preferable to a stale fact (RFC 0014 §4, §17 step 7).
 reject variable_index_names_no_decided_element 'does not satisfy its contract' \
     'verified unsigned f(unsigned x, unsigned i) expects (i < 2u) ensures (result == x) { unsigned y[2] = {x, x}; return y[i]; }'
 reject empty_braces 'single modeled value' \

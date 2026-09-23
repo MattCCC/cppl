@@ -492,7 +492,7 @@ struct Local {
 
     // For a symbolic element place, the extent of the array it indexes. The
     // index owes `index < extent`, which is a proposition about values and so
-    // is proved by the kernel rather than tracked (RFC 0014 §7, §10).
+    // is proved by the kernel rather than tracked (RFC 0014 §10, §17 step 7).
     //
     // A term, not a count: `readable(p, n)` bounds a region by a value that is
     // never a literal, and no enumeration of elements can recover it (SPEC.md
@@ -673,9 +673,9 @@ CXCursor strip_parens(CXCursor cursor) {
 // The constant element index a subscript selects, when Clang evaluated one.
 //
 // A variable index selects no single element, so it becomes a symbolic element
-// step instead (RFC 0014 §7). The two are different place kinds because a
-// constant index is decided and a symbolic one is not: two symbolic elements
-// are disjoint only when their indices are proved unequal.
+// step instead (RFC 0014 §17 step 7). The two are different place kinds
+// because a constant index is decided and a symbolic one is not: two symbolic
+// elements are disjoint only when their indices are proved unequal.
 std::optional<std::uint32_t> constant_index_of(CXCursor subscript) {
     CXEvalResult evaluated = clang_Cursor_Evaluate(subscript);
     if (evaluated == nullptr)
@@ -776,7 +776,8 @@ std::optional<ResolvedAccess> resolve_access(CXCursor cursor) {
                 // A symbolic index selects an element this implementation
                 // cannot decide. It is still one place -- the step records
                 // which index term selects it -- and it is disjoint from
-                // another element only where that is proved (RFC 0014 §4, §7).
+                // another element only where that is proved (RFC 0014 §4,
+                // §17 step 7).
                 path.push_back(
                     PlaceStep{PlaceStep::Kind::SymbolicElement, 0, static_cast<std::uint32_t>(symbolic.size())});
                 symbolic.push_back(children[1]);
@@ -1866,7 +1867,7 @@ struct BodyLowering {
         // which element of that storage a subscript names. The two are separate
         // obligations and stay separate: the capability is tracked as a context
         // hypothesis, while `index < extent` is a proposition about values that
-        // the kernel proves (RFC 0014 §7, §10, SPEC.md VERIFIED-038).
+        // the kernel proves (RFC 0014 §10, §17 step 7, SPEC.md VERIFIED-038).
         //
         // Only the sized form states an extent. `readable(p)` describes one
         // object, so it reaches no element beyond the first and there is no
@@ -1980,7 +1981,7 @@ struct BodyLowering {
     }
 
     // Form the place a symbolic subscript names, with the bounds obligation it
-    // owes (RFC 0014 §7).
+    // owes (RFC 0014 §17 step 7).
     //
     // The element is undecided, so it gets its own place and an opaque value:
     // nothing here decides which element it is. The bounds obligation is a

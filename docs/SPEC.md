@@ -2967,7 +2967,7 @@ a required obligation in either of these ways:
 Straight-line finite control flow requires no `decreases` clause merely to show
 termination. Recursion requires a sound well-founded argument, normally expressed
 by function-level `decreases`. A loop contributes total correctness only when its
-termination is established under §24.2. A call contributes total correctness only
+termination is established under §24.3. A call contributes total correctness only
 when the callee's relevant contract is total.
 
 Accordingly, the presence of a loop does not by itself permanently force a

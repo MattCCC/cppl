@@ -104,7 +104,7 @@ Status here describes test coverage, not implementation maturity.
 
 ## Adversarial baseline
 
-These apply to every feature and correspond to `AGENTS.md` §37:
+These apply to every feature and correspond to `AGENTS.md` §38:
 
 ```text
 False is not inhabitable

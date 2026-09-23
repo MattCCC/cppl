@@ -79,7 +79,7 @@ struct ImplicationIntroduction {
 };
 
 // Elimination of an implication: evidence for `premise -> conclusion` together
-// with evidence for the premise (SPEC.md 7.2).
+// with evidence for the premise (SPEC.md 8.2).
 //
 // Like universal elimination, the implication eliminated from is restated so
 // that the kernel can check that step itself rather than infer it. Both pieces

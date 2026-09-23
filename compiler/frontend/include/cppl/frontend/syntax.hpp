@@ -47,7 +47,7 @@ struct LawDeclaration {
     [[nodiscard]] const Clause* premise() const;
 };
 
-// The primitive proof statements of GRAMMAR.md 5.1 - 5.7.
+// The primitive proof statements of GRAMMAR.md 5.1 - 5.8.
 enum class ProofStatementKind : std::uint8_t {
     Reflexivity,
     Exact,
@@ -65,7 +65,7 @@ enum class ProofStatementKind : std::uint8_t {
     // "induction" identifier ";" | "induction" identifier "{" proof-arm... "}"
     // (GRAMMAR.md 5.8). Recognized at the syntax level like `Cases`/
     // `Decompose` so the formatter can lay out its arms; this implementation's
-    // formal core has no induction rule (SPEC.md 21/24.2), so elaboration
+    // formal core has no induction rule (SPEC.md 21), so elaboration
     // rejects it exactly as it rejected the previously-unparsed spelling -
     // structural recognition here must never be read as semantic support.
     Induction,
@@ -109,7 +109,7 @@ struct ProofStatement {
 // The recognizer reads arm syntax without knowing what the subject is. Which
 // case a label denotes, how many binders the case supplies, and whether the
 // arms are exhaustive are all settled later against the subject's decomposition
-// provider (SPEC.md 20.5).
+// provider (SPEC.md 20.1, 20.2).
 struct ProofArm {
     // The label's source span, kept so diagnostics and editors point at what
     // was written, and its spelling, which is what a reserved label is matched

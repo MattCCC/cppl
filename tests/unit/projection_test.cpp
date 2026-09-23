@@ -3,7 +3,7 @@
 // The runtime program must be the scanned program with C++L-only spans removed
 // and nothing else changed. That property is what makes a C++17 target stay
 // C++17: erasure can only delete, so it cannot introduce a construct from a
-// later standard (COMPATIBILITY.md, TRUST.md 7).
+// later standard (COMPATIBILITY.md, TRUST.md 29).
 
 #include "cppl/diagnostics/diagnostic.hpp"
 #include "cppl/erasure/erase.hpp"

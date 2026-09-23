@@ -483,7 +483,7 @@ CPP
 
 # A variable index names a symbolic element place, which is not resolved to any
 # particular element: the value read is not any one initializer, so a contract
-# claiming one is unproven (RFC 0014 §7).
+# claiming one is unproven (RFC 0014 §17 step 7).
 refuse variable_index_read 'does not satisfy its contract' <<'CPP'
 verified int f(unsigned i) expects (i < 3u) ensures (result > 0) { int a[3]{1, 2, 3}; return a[i]; }
 CPP
@@ -647,7 +647,7 @@ CPP
 
 # A symbolic subscript is a place like any other: the index owes its bound, and
 # once bounded the element reads and writes through the one read/write path
-# (RFC 0014 §7).
+# (RFC 0014 §17 step 7).
 accept a_bounded_symbolic_subscript_reads <<'CPP'
 verified unsigned f(unsigned i) expects (i < 4u) ensures (result == result) {
     unsigned a[4] = {0u, 1u, 2u, 3u};
@@ -678,7 +678,8 @@ CPP
 # A subscript through a sized capability owes `index < n` against the extent the
 # contract stated. The capability and the bound stay separate: `readable(a, n)`
 # permits reaching the region, and the refinement on the index is what proves
-# the element selected lies inside it (RFC 0014 §7, §10, SPEC.md VERIFIED-038).
+# the element selected lies inside it (RFC 0014 §10, §17 step 7, SPEC.md
+# VERIFIED-038).
 accept a_capability_extent_bounds_a_subscript <<'CPP'
 type Below4 = unsigned where (self < 4u);
 verified unsigned f(const unsigned* a, Below4 i)

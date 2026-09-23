@@ -110,7 +110,7 @@ verified unsigned updated(unsigned x)
 
 // The looser direction of the subset relation: every `Percentage` is a
 // `NonNegative`, because the predicate it carries implies that one's (SPEC.md
-// 17.3.2). Nothing is checked at run time to cross it.
+// 17.4). Nothing is checked at run time to cross it.
 verified int widened(Percentage p)
     ensures (result >= 0)
 {
