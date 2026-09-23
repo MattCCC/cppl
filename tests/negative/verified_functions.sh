@@ -159,4 +159,14 @@ grep -q "the postcondition of verified function 'halves' is not modeled" "$run/a
 grep -q "contract_after_an_unrelated_error.cpp:6:24: error" "$run/after_error.err"
 grep -q "verified function 'claims_zero' does not satisfy its contract" "$run/after_error.err"
 
+# SPEC: VERIFIED-018
+# A call to a function that is neither pure nor verified is refused as such,
+# even where it stands after a subscript's bound.
+status=0
+"$CPPL" -std=c++17 -c "$FIXTURES/impure_call_after_a_subscript.cpp" -o "$run/after_subscript.o" \
+    > "$run/after_subscript.out" 2> "$run/after_subscript.err" || status=$?
+test "$status" -ne 0
+test ! -e "$run/after_subscript.o"
+grep -q "it calls a function that is not declared pure" "$run/after_subscript.err"
+
 echo 'false contracts and unsupported verified bodies fail closed'

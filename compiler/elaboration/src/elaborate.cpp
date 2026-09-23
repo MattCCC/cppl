@@ -510,51 +510,35 @@ class ExpressionElaborator {
     std::optional<Failure> failure_;
 };
 
+// Every function a body calls, wherever the call stands: in a value, a
+// condition, the rest of the body under a binding or a bound, a subscript's
+// extent, or the arguments of a claim, which are never evaluated but must still
+// be terms the formal core can state. Every node's children are visited, so a
+// node kind added later is searched without being listed here.
 void collect_callees(const vir::Expr& expr, std::vector<vir::SymbolId>& callees) {
     if (const auto* call = std::get_if<vir::Call>(&expr.node)) {
         callees.push_back(call->callee);
-        for (const vir::Expr& argument : call->arguments) {
-            collect_callees(argument, callees);
-        }
-        return;
     }
-    if (const auto* returned = std::get_if<vir::ReturnState>(&expr.node))
-        for (const auto& operand : returned->operands)
-            collect_callees(operand, callees);
-    if (const auto* unknown = std::get_if<vir::UnknownVersion>(&expr.node))
-        for (const auto& operand : unknown->operands)
-            collect_callees(operand, callees);
-    if (const auto* binary = std::get_if<vir::Binary>(&expr.node)) {
-        for (const vir::Expr& operand : binary->operands) {
-            collect_callees(operand, callees);
-        }
-    }
-    if (const auto* branch = std::get_if<vir::Conditional>(&expr.node)) {
-        for (const auto& operand : branch->operands)
-            collect_callees(operand, callees);
-    }
-    if (const auto* bound = std::get_if<vir::PlaceVersion>(&expr.node)) {
-        for (const auto& operand : bound->operands)
-            collect_callees(operand, callees);
-    }
-    if (const auto* negation = std::get_if<vir::Negation>(&expr.node)) {
-        for (const auto& operand : negation->operands)
-            collect_callees(operand, callees);
-    }
-    if (const auto* loop = std::get_if<vir::Loop>(&expr.node)) {
-        for (const auto& operand : loop->operands)
-            collect_callees(operand, callees);
-    }
-    if (const auto* next = std::get_if<vir::Iterate>(&expr.node)) {
-        for (const auto& operand : next->operands)
-            collect_callees(operand, callees);
-    }
-    // A claim's arguments are never evaluated, but a function they call must
-    // still be one the formal core can state.
-    if (const auto* claim = std::get_if<vir::PathContradiction>(&expr.node)) {
-        for (const auto& operand : claim->operands)
-            collect_callees(operand, callees);
-    }
+    std::visit(
+        [&callees](const auto& node) {
+            if constexpr (requires { node.operands; }) {
+                for (const vir::Expr& child : node.operands)
+                    collect_callees(child, callees);
+            }
+            if constexpr (requires { node.arguments; }) {
+                for (const vir::Expr& child : node.arguments)
+                    collect_callees(child, callees);
+            }
+            if constexpr (requires { node.extent; }) {
+                for (const vir::Expr& child : node.extent)
+                    collect_callees(child, callees);
+            }
+            if constexpr (requires { node.body; }) {
+                for (const vir::Expr& child : node.body)
+                    collect_callees(child, callees);
+            }
+        },
+        expr.node);
 }
 
 // Generated helpers have distinct names. Repeated displayed locations must
