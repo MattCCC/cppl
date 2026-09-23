@@ -107,16 +107,25 @@ verified int identity(int x)
 ```
 
 `expects` states the caller's precondition; `ensures` states the normal-return
-postcondition. An expects-only function still has to satisfy its body safety
-obligations. Here unsigned arithmetic avoids signed overflow:
+postcondition. A function that returns a value states it with `ensures`; a
+`void` function may state only `expects`, and still has to satisfy its body's
+obligations. Here `advance` owes the precondition of the call it makes, and its
+own precondition supplies it:
 
 <!-- cppl-example: verify -->
 
 ```cpp
 verified unsigned next(unsigned x)
     expects (x < 100u)
+    ensures (result == x + 1u)
 {
     return x + 1u;
+}
+
+verified void advance(unsigned& counter)
+    expects (counter < 100u)
+{
+    counter = next(counter);
 }
 
 verified unsigned withdraw(unsigned balance, unsigned amount)
@@ -1723,14 +1732,15 @@ proof pointer_states(int* pointer)
             refl;
         }
 
-        non_null(address) => {
+        non_null => {
             refl;
         }
     }
 }
 ```
 
-It proves no:
+`non_null` binds nothing: a pointer's only state beyond null is that it is not
+null. It proves no:
 
 ```text
 lifetime

@@ -193,9 +193,11 @@ expects-clause ::= "expects" "(" specification-expression ")"
 ensures-clause ::= "ensures" "(" specification-expression ")"
 ```
 
-Each kind occurs at most once and in the displayed order. An expects-only
-verified function still incurs body safety obligations. No postcondition means
-no additional postcondition assertion; it does not waive those obligations.
+Each kind occurs at most once and in the displayed order. A verified function
+that returns a value states it with `ensures`, or returns a refinement type
+whose predicate it owes; an expects-only verified function is therefore `void`.
+It still incurs body safety obligations. No postcondition means no additional
+postcondition assertion; it does not waive those obligations.
 
 ## 7. Modifier ordering
 

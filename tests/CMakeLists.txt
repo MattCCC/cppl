@@ -251,6 +251,12 @@ add_test(NAME conformance_readme_examples
 set_tests_properties(conformance_readme_examples PROPERTIES
     LABELS "conformance;script"
     TIMEOUT ${CPPL_TEST_TIMEOUT})
+add_test(NAME conformance_guide_examples
+         COMMAND bash "${CPPL_BOUNDED}" bash "${CMAKE_CURRENT_SOURCE_DIR}/conformance/guide_examples.sh"
+                 $<TARGET_FILE:cppl> "${CMAKE_SOURCE_DIR}/docs/DEVELOPER_GUIDE.md" "${CPPL_TEST_WORK}")
+set_tests_properties(conformance_guide_examples PROPERTIES
+    LABELS "conformance;script"
+    TIMEOUT ${CPPL_TEST_TIMEOUT})
 
 cppl_add_script_test(e2e_valid_law e2e/valid_law.sh)
 cppl_add_script_test(e2e_invalid_law e2e/invalid_law.sh)
