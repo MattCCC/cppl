@@ -63,4 +63,37 @@ refuse decompose_undefined_template "proof decomposition unavailable for incompl
 grep -q "decompose_undefined_template.cpp:12:5" "$run/decompose_undefined_template.log"
 ! grep -q "cpp-semantic" "$run/decompose_undefined_template.log"
 
+# SPEC: CASE-006
+# Composition adds no special cases: a binder nested under another provider's
+# arm still denotes exactly its own component, so handing it to a lemma for a
+# neighbouring component's type is refused.
+refuse nested_binder_wrong_type "proof argument has type 'Right', but its quantified parameter has type 'Left'"
+
+# SPEC: CASE-004
+# Each nested statement is checked against its own subject's partition.
+refuse nested_tuple_wrong_arity "product binds 2 value(s), but this arm names 3"
+refuse nested_pointer_arm_missing "non-exhaustive cases: 'non_null' has no arm"
+refuse nested_valueless_missing "non-exhaustive cases: 'valueless' has no arm"
+
+# SPEC: CASE-003, CASE-007
+# A sum is not a product and a product is not a sum, wherever either sits.
+refuse nested_sum_decomposed_as_product "decompose requires a product; use cases for alternative states"
+refuse cases_on_product "product decomposition requires decompose"
+
+# SPEC: CASE-007
+# Access control applies to every non-public member, protected ones included.
+refuse protected_member "product decomposition cannot access member 'second'"
+
+# SPEC: CASE-006
+# std::expected binds its error payload only as the error, never as the value.
+# It exists only in the C++23 library, so it is refused there; elsewhere the
+# fixture cannot be compiled at all and proves nothing.
+if "$CPPL" -std=c++23 -fsyntax-only "$FIXTURES/../expected_cases.cpp" > /dev/null 2>&1; then
+    refuse expected_error_bound_as_value \
+        "proof argument has type 'Fault', but its quantified parameter has type 'Left'" c++23
+    grep -q "expected_error_bound_as_value.cpp:38:35" "$run/expected_error_bound_as_value.log"
+else
+    echo 'std::expected unavailable in this standard library; its refusal correctly not exercised'
+fi
+
 echo 'each decomposition provider refuses the half of its matched pairs that does not hold'

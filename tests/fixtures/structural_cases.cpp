@@ -1,5 +1,6 @@
 #include <array>
 #include <cstdio>
+#include <memory>
 #include <optional>
 #include <tuple>
 #include <utility>
@@ -542,6 +543,312 @@ proof crate_inside_optional_reference(const std::optional<Crate<long>>& o)
 
         none => {
             refl;
+        }
+    }
+}
+
+// 33/35. Each binder below is handed to a lemma that accepts exactly one type,
+// so a binder bound to the wrong component, alternative or payload does not
+// type-check; nothing is converted implicitly between these three records. The
+// refused halves of these matched pairs are in `fixtures/negative/`, driven by
+// `negative/case_providers.sh`.
+struct Left {
+    int l;
+};
+
+struct Right {
+    bool r;
+};
+
+struct Other {
+    unsigned o;
+};
+
+proof is_left(Left x)
+    proves (Eq<bool>(true, true))
+{
+    refl;
+}
+
+proof is_right(Right x)
+    proves (Eq<bool>(true, true))
+{
+    refl;
+}
+
+proof is_other(Other x)
+    proves (Eq<bool>(true, true))
+{
+    refl;
+}
+
+// 33. A product inside a sum: the alternative's payload is a tuple whose
+// components are bound in order.
+proof variant_of_tuple(std::variant<std::tuple<Left, Right>, Other> v)
+    proves (Eq<bool>(true, true))
+{
+    cases v {
+        alternative<0>(pair) => {
+            decompose pair {
+                components(first, second) => {
+                    exact is_right(second);
+                }
+            }
+        }
+
+        alternative<1>(single) => {
+            exact is_other(single);
+        }
+
+        valueless => {
+            refl;
+        }
+    }
+}
+
+// 33. Sums inside a record, reached by decomposing the record first.
+struct Tagged {
+    std::variant<Left, Right> choice;
+    std::optional<Other> extra;
+};
+
+proof record_of_sums(Tagged t)
+    proves (Eq<bool>(true, true))
+{
+    decompose t {
+        components(choice, extra) => {
+            cases choice {
+                alternative<0>(left) => {
+                    exact is_left(left);
+                }
+
+                alternative<1>(right) => {
+                    cases extra {
+                        some(other) => {
+                            exact is_other(other);
+                        }
+
+                        none => {
+                            exact is_right(right);
+                        }
+                    }
+                }
+
+                valueless => {
+                    refl;
+                }
+            }
+        }
+    }
+}
+
+// 33. Optionals inside an array, each element decomposed on its own.
+proof array_of_optional(std::array<std::optional<Left>, 2> a)
+    proves (Eq<bool>(true, true))
+{
+    decompose a {
+        components(first, second) => {
+            cases second {
+                some(payload) => {
+                    exact is_left(payload);
+                }
+
+                none => {
+                    refl;
+                }
+            }
+        }
+    }
+}
+
+// 33. A pointer inside a sum decomposes into null and non-null and binds nothing,
+// wherever it sits.
+proof variant_of_pointer(std::variant<const Left*, Right> v)
+    proves (Eq<bool>(true, true))
+{
+    cases v {
+        alternative<0>(pointer) => {
+            cases pointer {
+                null => {
+                    refl;
+                }
+
+                non_null => {
+                    refl;
+                }
+            }
+        }
+
+        alternative<1>(flag) => {
+            exact is_right(flag);
+        }
+
+        valueless => {
+            refl;
+        }
+    }
+}
+
+// 35. A variant inside a variant: each has its own index space and its own
+// `valueless`.
+proof nested_variants(std::variant<std::variant<Left, Right>, Other> v)
+    proves (Eq<bool>(true, true))
+{
+    cases v {
+        alternative<0>(inner) => {
+            cases inner {
+                alternative<0>(left) => {
+                    exact is_left(left);
+                }
+
+                alternative<1>(right) => {
+                    exact is_right(right);
+                }
+
+                valueless => {
+                    refl;
+                }
+            }
+        }
+
+        alternative<1>(other) => {
+            exact is_other(other);
+        }
+
+        valueless => {
+            refl;
+        }
+    }
+}
+
+// 35. A variant of one alternative still has two states.
+proof one_alternative(std::variant<Left> v)
+    proves (Eq<bool>(true, true))
+{
+    cases v {
+        alternative<0>(only) => {
+            exact is_left(only);
+        }
+
+        valueless => {
+            refl;
+        }
+    }
+}
+
+// 35. Pointers: a const pointer, a reference to a pointer and an alias all have
+// the same two states as the pointer they denote.
+using LeftPointer = const Left*;
+
+proof const_pointer(Left* const p)
+    proves (Eq<bool>(true, true))
+{
+    cases p {
+        null => {
+            refl;
+        }
+
+        non_null => {
+            refl;
+        }
+    }
+}
+
+proof pointer_reference(Left*& p)
+    proves (Eq<bool>(true, true))
+{
+    cases p {
+        null => {
+            refl;
+        }
+
+        non_null => {
+            refl;
+        }
+    }
+}
+
+proof pointer_alias(LeftPointer p)
+    proves (Eq<bool>(true, true))
+{
+    cases p {
+        null => {
+            refl;
+        }
+
+        non_null => {
+            refl;
+        }
+    }
+}
+
+// 35. Products: a class with public members, move-only fields, a class template
+// and an alias of one. None needs a copy, since a binder is a projection.
+class Open {
+  public:
+    Left first;
+    Right second;
+};
+
+proof class_fields(Open o)
+    proves (Eq<bool>(true, true))
+{
+    decompose o {
+        components(first, second) => {
+            exact is_right(second);
+        }
+    }
+}
+
+struct MoveOnly {
+    Left inner;
+    MoveOnly(MoveOnly&&) = default;
+    MoveOnly(const MoveOnly&) = delete;
+};
+
+struct HoldsMoveOnly {
+    MoveOnly owned;
+    std::unique_ptr<int> unique;
+    Right flag;
+};
+
+proof move_only_fields(HoldsMoveOnly h)
+    proves (Eq<bool>(true, true))
+{
+    decompose h {
+        components(owned, unique, flag) => {
+            decompose owned {
+                components(inner) => {
+                    exact is_left(inner);
+                }
+            }
+        }
+    }
+}
+
+template <typename T> struct Box {
+    T item;
+    Right tag;
+};
+
+using LeftBox = Box<Left>;
+
+proof template_record(Box<Other> b)
+    proves (Eq<bool>(true, true))
+{
+    decompose b {
+        components(item, tag) => {
+            exact is_other(item);
+        }
+    }
+}
+
+proof alias_record(const LeftBox& b)
+    proves (Eq<bool>(true, true))
+{
+    decompose b {
+        components(item, tag) => {
+            exact is_left(item);
         }
     }
 }

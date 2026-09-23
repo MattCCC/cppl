@@ -10,7 +10,7 @@ run=$(mktemp -d "$WORK/structural-cases.XXXXXX")
 for standard in c++17 c++20 c++23; do
     "$CPPL" "-std=$standard" "$FIXTURES/structural_cases.cpp" -o "$run/program" \
         --cppl-trust-report "--cppl-emit-projection=$run/runtime.cpp" > "$run/report"
-    grep -Eq '^Proof declarations proven: +28$' "$run/report"
+    grep -Eq '^Proof declarations proven: +44$' "$run/report"
     grep -Eq '^Laws proven: +1$' "$run/report"
     grep -Eq '^Unresolved obligations: +0$' "$run/report"
     grep -Eq '^Trusted external axioms: +0$' "$run/report"
@@ -26,7 +26,7 @@ done
 if "$CPPL" -std=c++23 -fsyntax-only "$FIXTURES/expected_cases.cpp" > /dev/null 2>&1; then
     "$CPPL" -std=c++23 "$FIXTURES/expected_cases.cpp" -o "$run/expected" \
         --cppl-trust-report "--cppl-emit-projection=$run/expected_runtime.cpp" > "$run/expected_report"
-    grep -Eq '^Proof declarations proven: +4$' "$run/expected_report"
+    grep -Eq '^Proof declarations proven: +11$' "$run/expected_report"
     grep -Eq '^Trusted external axioms: +0$' "$run/expected_report"
     test "$("$run/expected")" = '5'
     ! grep -q 'alternative<0>\|=> *{\|proves (\|refl;' "$run/expected_runtime.cpp"
