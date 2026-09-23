@@ -190,6 +190,11 @@ k::Term random_term(Random& random, const k::IntType& type, std::uint32_t variab
 // Every assignment of `variables` variables of a small type.
 void each_assignment(const k::IntType& type, std::uint32_t variables,
                      const std::function<void(const std::vector<std::uint64_t>&)>& visit) {
+    // A 64-bit type has 2^64 values, one more than a std::uint64_t counts, so
+    // the count would wrap to zero; only a type this small can be enumerated.
+    if (type.width > 16) {
+        ::cppl::testing::fail(__FILE__, __LINE__, "each_assignment enumerates types of at most 16 bits");
+    }
     std::vector<std::uint64_t> environment(variables, 0);
     const std::uint64_t size = mask(type) + 1u;
     std::uint64_t total = 1;
