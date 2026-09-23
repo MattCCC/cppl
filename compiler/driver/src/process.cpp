@@ -27,7 +27,11 @@
 #include <system_error>
 #include <unistd.h>
 
+// glibc declares `environ` in <unistd.h> when _GNU_SOURCE is defined, as it is
+// for C++; POSIX leaves the declaration to the program everywhere else.
+#if !(defined(__GLIBC__) && defined(__USE_GNU))
 extern char** environ;
+#endif
 #endif
 
 namespace cppl::driver {
