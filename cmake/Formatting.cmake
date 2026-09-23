@@ -92,36 +92,32 @@ foreach(CPPL_FORMAT_ROOT IN LISTS CPPL_FORMAT_ROOTS)
     list(APPEND CPPL_FORMAT_FILES ${CPPL_FORMAT_ROOT_FILES})
 endforeach()
 
-list(
-    FILTER CPPL_FORMAT_FILES
-    EXCLUDE REGEX
-    "/third_party/"
-)
+# The exclusions below name directories inside the project, so they are matched
+# against paths relative to it. Matched against absolute paths, they would also
+# match wherever the checkout itself lives: a clone under a directory named
+# `tmp` or `vendor` would silently format and check nothing at all.
+set(CPPL_FORMAT_RELATIVE_FILES)
+foreach(CPPL_FORMAT_FILE IN LISTS CPPL_FORMAT_FILES)
+    cmake_path(
+        RELATIVE_PATH CPPL_FORMAT_FILE
+        BASE_DIRECTORY "${PROJECT_SOURCE_DIR}"
+        OUTPUT_VARIABLE CPPL_FORMAT_RELATIVE_FILE
+    )
+    list(APPEND CPPL_FORMAT_RELATIVE_FILES "${CPPL_FORMAT_RELATIVE_FILE}")
+endforeach()
 
 list(
-    FILTER CPPL_FORMAT_FILES
+    FILTER CPPL_FORMAT_RELATIVE_FILES
     EXCLUDE REGEX
-    "/external/"
-)
-
-list(
-    FILTER CPPL_FORMAT_FILES
-    EXCLUDE REGEX
-    "/vendor/"
-)
-
-list(
-    FILTER CPPL_FORMAT_FILES
-    EXCLUDE REGEX
-    "/generated/"
+    "(^|/)(third_party|external|vendor|generated)/"
 )
 
 # `tmp/` is ignored scratch. It holds C++L sources and emitted runtime text,
 # neither of which is C++ this project's style applies to.
 list(
-    FILTER CPPL_FORMAT_FILES
+    FILTER CPPL_FORMAT_RELATIVE_FILES
     EXCLUDE REGEX
-    "/tmp/"
+    "(^|/)tmp/"
 )
 
 # Test fixtures are C++L, not C++, and they carry the `.cpp` extension because
@@ -132,9 +128,15 @@ list(
 # fixtures it is no longer the diagnostic they pin. Formatting the corpus this
 # project exists to parse is left to the project's own formatter.
 list(
-    FILTER CPPL_FORMAT_FILES
+    FILTER CPPL_FORMAT_RELATIVE_FILES
     EXCLUDE REGEX
-    "/tests/fixtures/"
+    "^tests/fixtures/"
+)
+
+list(
+    TRANSFORM CPPL_FORMAT_RELATIVE_FILES
+    PREPEND "${PROJECT_SOURCE_DIR}/"
+    OUTPUT_VARIABLE CPPL_FORMAT_FILES
 )
 
 list(
