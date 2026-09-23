@@ -1161,6 +1161,94 @@ std::optional<std::size_t> find_declarator_name(const std::vector<Token>& tokens
     return std::nullopt;
 }
 
+// The first token of the qualified-id whose last component is `name`, so
+// `C<int>::f` is taken whole rather than as its last component. A reference to
+// the specialization has to name it the way the author did.
+std::size_t qualified_name_start(const std::vector<Token>& tokens, std::size_t name) {
+    std::size_t start = name;
+    while (start >= 2 && tokens[start - 1].is_punctuator("::")) {
+        std::size_t previous = start - 2;
+        if (tokens[previous].is_punctuator(">")) {
+            const std::optional<std::size_t> open = template_arguments_start(tokens, previous);
+            if (!open.has_value() || *open == 0) {
+                break;
+            }
+            previous = *open - 1;
+        }
+        if (tokens[previous].kind != TokenKind::Identifier) {
+            break;
+        }
+        start = previous;
+    }
+    return start;
+}
+
+// `template T f<args>(params);` at namespace scope: an explicit instantiation
+// definition of a function template (SPEC.md TEMPLATE-001).
+//
+// Recognizing this is textual and deliberately narrow. `template <` introduces
+// a template rather than instantiating one; `extern template` instantiates
+// nothing here; and a class instantiation, `template struct C<int>;`, has no
+// parameter list, so no declarator name is found. Whether the name resolves,
+// and to which specialization, stays Clang's decision.
+bool try_explicit_instantiation(const TokenStream& stream, const std::vector<Token>& tokens, std::size_t index,
+                                ExplicitInstantiation& instantiation, std::size_t& next_index) {
+    if (!tokens[index].is_identifier("template") || index + 1 >= tokens.size() ||
+        tokens[index + 1].is_punctuator("<")) {
+        return false;
+    }
+    if (index > 0 && tokens[index - 1].is_identifier("extern")) {
+        return false;
+    }
+    const std::optional<std::size_t> name = find_declarator_name(tokens, index);
+    if (!name.has_value()) {
+        return false;
+    }
+    // The declaration ends at the first `;` outside any bracket. A definition
+    // would have a body instead, which is not an explicit instantiation.
+    std::size_t depth = 0;
+    std::size_t end = tokens.size();
+    for (std::size_t cursor = *name; cursor < tokens.size(); ++cursor) {
+        const Token& token = tokens[cursor];
+        if (token.is_punctuator("(") || token.is_punctuator("[")) {
+            ++depth;
+        } else if (token.is_punctuator(")") || token.is_punctuator("]")) {
+            if (depth == 0) {
+                return false;
+            }
+            --depth;
+        } else if (depth == 0 && token.is_punctuator("{")) {
+            return false;
+        } else if (depth == 0 && token.is_punctuator(";")) {
+            end = cursor;
+            break;
+        }
+    }
+    if (end == tokens.size()) {
+        return false;
+    }
+    // The id-expression runs from the qualified name to the parameter list.
+    std::size_t parameters = tokens.size();
+    for (std::size_t cursor = *name; cursor < end; ++cursor) {
+        if (tokens[cursor].is_punctuator("(")) {
+            parameters = cursor;
+            break;
+        }
+    }
+    if (parameters == tokens.size()) {
+        return false;
+    }
+    const std::size_t start = qualified_name_start(tokens, *name);
+    instantiation.function_name = std::string(tokens[*name].text);
+    instantiation.location = stream.location_of(tokens[*name]);
+    instantiation.id_expression =
+        source::ByteSpan{tokens[start].span.offset, tokens[parameters].span.offset - tokens[start].span.offset};
+    instantiation.insertion_offset = tokens[end].span.end();
+    instantiation.insertion_line = tokens[end].line;
+    next_index = end + 1;
+    return true;
+}
+
 // The ordinary declarator - cv-qualifiers, ref-qualifiers, `noexcept`
 // (optionally with a parenthesized operand), a trailing return type, and
 // member markers such as `override`/`final` - stands between the parameter
@@ -1984,6 +2072,16 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
                         syntax.proofs.push_back(std::move(proof));
                     }
                 }
+                index = next;
+                continue;
+            }
+        }
+
+        if (tokens[index].is_identifier("template") && at_namespace_scope() && at_declaration_start(tokens, index)) {
+            ExplicitInstantiation instantiation;
+            std::size_t next = index + 1;
+            if (try_explicit_instantiation(stream, tokens, index, instantiation, next)) {
+                syntax.explicit_instantiations.push_back(std::move(instantiation));
                 index = next;
                 continue;
             }

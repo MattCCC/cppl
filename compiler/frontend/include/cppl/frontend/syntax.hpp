@@ -285,6 +285,31 @@ struct PureMarker {
     std::size_t function_offset = 0;
 };
 
+// An explicit instantiation definition of a function template,
+// `template T f<args>(params);` (SPEC.md TEMPLATE-001).
+//
+// It instantiates the body in this unit, so the specialization it names has a
+// contract to discharge here. Clang's cursor API exposes no cursor for the
+// instantiation itself, so the specialization is reached the way every other
+// one is -- from a reference to it, which the projector emits into the analysis
+// text alone.
+//
+// `extern template ...` is an instantiation declaration, not a definition: it
+// instantiates nothing here and is deliberately not recorded.
+struct ExplicitInstantiation {
+    std::string function_name;
+    source::SourceLocation location;
+
+    // The id-expression naming the specialization, `f<args>` or `C<int>::f`, as
+    // written. A reference is built from this spelling rather than rebuilt from
+    // parts, so which specialization it denotes stays Clang's to resolve.
+    source::ByteSpan id_expression;
+
+    // Just past the `;`, where the reference is emitted.
+    std::size_t insertion_offset = 0;
+    std::uint32_t insertion_line = 0;
+};
+
 struct Syntax {
     std::vector<LawDeclaration> laws;
     std::vector<ProofDeclaration> proofs;
@@ -293,6 +318,7 @@ struct Syntax {
     std::vector<LoopSpecification> loops;
     std::vector<PathContradiction> path_contradictions;
     std::vector<RefinementType> refinement_types;
+    std::vector<ExplicitInstantiation> explicit_instantiations;
 
     // A specification clause written on a function that is not 'verified'
     // (GRAMMAR.md 6 permits the syntax; this implementation does not check

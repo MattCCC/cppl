@@ -198,6 +198,42 @@ verified int member_entry_validity(Reading reading)
     return reading.count;
 }
 
+// A refined member of a class template is refined storage in every
+// specialization (SPEC.md 17.6, 42 TEMPLATE-001). The predicate is the one
+// written in the template, read at the specialization Clang produced: the
+// member is decomposed from the instantiated type, not from the pattern.
+template <typename T> struct Box {
+    T plain;
+    Percentage level;
+};
+
+// A refined subobject of a parameter is valid on entry here too.
+verified int template_member_entry(Box<int> box)
+    ensures (result >= 0)
+{
+    return box.level;
+}
+
+// Every write crosses into the member's declared type, so the member of a
+// specialization owes exactly the predicate the template declared.
+verified int template_member_write()
+    ensures (result == 70)
+{
+    Box<int> box{1, 10};
+    box.level = 70;
+    return box.level;
+}
+
+// Writing one member leaves its sibling's version standing, including the
+// sibling whose type is the template's own parameter.
+verified int template_member_sibling()
+    ensures (result == 5)
+{
+    Box<int> box{5, 10};
+    box.level = 90;
+    return box.plain;
+}
+
 // A refined value used as its base value needs no further proof (SPEC.md 17.3).
 pure int identity(int x) {
     return x;
@@ -224,6 +260,10 @@ int main() {
     if (member_construction() != 50 || member_write() != 80)
         return 1;
     if (member_sibling() != 3 || member_through_reference() != 7)
+        return 1;
+    if (template_member_entry(Box<int>{1, 20}) != 20 || template_member_write() != 70)
+        return 1;
+    if (template_member_sibling() != 5)
         return 1;
     Holder holder{7};
     type ordinary = holder.type;

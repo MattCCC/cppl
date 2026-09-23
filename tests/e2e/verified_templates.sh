@@ -323,4 +323,70 @@ verified unsigned pick<4u>(unsigned x) expects (x < 4u) ensures (result < 4u) {
 int main() { return static_cast<int>(pick<4u>(0u) + pick<8u>(1u)); }
 CPP
 
+# An explicit instantiation instantiates the body in this unit, so the
+# specialization it names has a contract to discharge here. Clang's cursor API
+# exposes no cursor for the instantiation itself, so the specialization is
+# reached from a reference the projector emits into the analysis text alone.
+# SPEC: TEMPLATE-001
+accept an_explicit_instantiation_is_checked 1 <<'CPP'
+template <unsigned N>
+verified unsigned clamp_to(unsigned x) expects (x < N) ensures (result < N) {
+    return x;
+}
+template unsigned clamp_to<4u>(unsigned);
+int main() { return 0; }
+CPP
+
+# Each explicit instantiation is a specialization of its own. This contract is
+# true at `N = 4` and false at `N = 8`, so accepting the pair would mean the
+# second was never checked (TEMPLATE-003).
+# SPEC: TEMPLATE-003
+refuse every_explicit_instantiation_is_checked 'does not satisfy its contract' <<'CPP'
+template <unsigned N>
+verified unsigned pin(unsigned x) expects (x < N) ensures (result < 4u) {
+    return x;
+}
+template unsigned pin<4u>(unsigned);
+template unsigned pin<8u>(unsigned);
+int main() { return 0; }
+CPP
+
+# Order is not what decides it: the false instantiation is refused whether it
+# comes first or second.
+# SPEC: TEMPLATE-003
+refuse an_explicit_instantiation_is_checked_in_either_order 'does not satisfy its contract' <<'CPP'
+template <unsigned N>
+verified unsigned pin(unsigned x) expects (x < N) ensures (result < 4u) {
+    return x;
+}
+template unsigned pin<8u>(unsigned);
+template unsigned pin<4u>(unsigned);
+int main() { return 0; }
+CPP
+
+# An instantiation and an ordinary call naming the same arguments are one
+# specialization, so the contract is counted once rather than twice.
+# SPEC: TEMPLATE-001
+accept an_instantiation_and_a_call_are_one_specialization 1 <<'CPP'
+template <unsigned N>
+verified unsigned clamp_to(unsigned x) expects (x < N) ensures (result < N) {
+    return x;
+}
+template unsigned clamp_to<4u>(unsigned);
+int main() { return static_cast<int>(clamp_to<4u>(0u)); }
+CPP
+
+# `extern template` is an instantiation declaration: it instantiates nothing
+# here and states that a definition exists elsewhere. There is no body in this
+# unit to discharge the contract from, so nothing is proven (TUBOUND-001).
+# SPEC: TEMPLATE-001
+refuse an_extern_template_instantiates_nothing 'is not instantiated in this translation unit' <<'CPP'
+template <unsigned N>
+verified unsigned clamp_to(unsigned x) expects (x < N) ensures (result < N) {
+    return x;
+}
+extern template unsigned clamp_to<4u>(unsigned);
+int main() { return 0; }
+CPP
+
 echo 'verified templates are checked per specialization'

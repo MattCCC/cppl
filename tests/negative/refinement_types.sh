@@ -667,4 +667,71 @@ CPP
 grep -q 'ordinary function.*return cannot establish refinement' \
     "$run/a_header_declaration_does_not_carry_evidence.log"
 
+# A record with a base subobject is not decomposed by its own members: the base
+# carries state no member names, so modelling the record as its members alone
+# would identify values that differ in the part left out. The member is refused
+# by name rather than read out of an incomplete decomposition.
+# SPEC: REFINE-008
+reject a_base_subobject_is_not_decomposed <<'CPP'
+type Positive = int where (self > 0);
+struct Base { Positive b; };
+struct Derived : Base { Positive p; };
+verified int read_it(Derived d) ensures (result > 0) {
+    return d.p;
+}
+CPP
+grep -q 'base subobject decomposition' \
+    "$run/a_base_subobject_is_not_decomposed.log"
+
+# The same holds for a class template: a specialization is decomposed from the
+# instantiated type, and a base there is a base here (SPEC.md 42 TEMPLATE-001).
+# SPEC: REFINE-008
+reject a_base_subobject_of_a_specialization_is_not_decomposed <<'CPP'
+type Positive = int where (self > 0);
+struct Base { Positive b; };
+template <typename T> struct Derived : Base { Positive p; };
+verified int read_it(Derived<int> d) ensures (result > 0) {
+    return d.p;
+}
+CPP
+grep -q 'base subobject decomposition' \
+    "$run/a_base_subobject_of_a_specialization_is_not_decomposed.log"
+
+# A union needs an active-member model before any member of it can be read, in a
+# specialization exactly as in an ordinary union.
+reject a_union_specialization_has_no_active_member_model <<'CPP'
+type Positive = int where (self > 0);
+template <typename T> union U { Positive p; int q; };
+verified int read_it(U<int> u) ensures (result > 0) {
+    return u.p;
+}
+CPP
+
+# Access control is C++'s, and it applies to a specialization's members too. A
+# private member is not readable, so no predicate of it is available either.
+reject a_private_member_of_a_specialization_is_not_readable <<'CPP'
+type Positive = int where (self > 0);
+template <typename T> class Box {
+    Positive hidden;
+public:
+    Positive open;
+};
+verified int read_it(Box<int> b) ensures (result > 0) {
+    return b.hidden;
+}
+CPP
+
+# A refinement erases to its base type, so it is that type as a template
+# argument: `Box<Positive>` and `Box<int>` are one specialization with one
+# member type, and no predicate travels with the argument. Formal identity is
+# semantic rather than spelling-only (SPEC.md 43), so this must fail to prove
+# rather than quietly read a predicate that is not there.
+reject a_refinement_as_a_template_argument_carries_no_predicate <<'CPP'
+type Positive = int where (self > 0);
+template <typename T> struct Box { T p; };
+verified int read_it(Box<Positive> b) ensures (result > 0) {
+    return b.p;
+}
+CPP
+
 echo "refinement membership is proven or refused; contextual words keep their C++ meaning"

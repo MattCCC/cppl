@@ -532,6 +532,21 @@ make Clang accept a probe.
 The projector should expose only the C++ operands that require C++ resolution and
 retain the formal connective/intrinsic identity separately.
 
+A probe may also exist to make an entity *reachable* rather than to ask a
+question about one. An explicit instantiation instantiates a body in this unit,
+but Clang's cursor API exposes no cursor for the instantiation, so nothing would
+reach the specialization that now has a contract to discharge.
+
+**[ARCH-PROBE-005]** Where a C++ entity that must be verified is not reachable
+through Clang's cursor API, the projector MAY emit an analysis-only reference
+that makes Clang expose it. Such a reference MUST name the entity with the
+spelling the author wrote, MUST NOT select among candidates itself, and MUST NOT
+appear in the runtime projection (ARCH-PROJ-003).
+
+Reconstructing the entity from parts would make the projector decide which
+specialization is meant. Naming it as written leaves that decision to Clang,
+which is the same division every other probe observes.
+
 ---
 
 # 10. Runtime projection and erasure classes

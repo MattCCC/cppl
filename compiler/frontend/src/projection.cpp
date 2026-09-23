@@ -707,6 +707,39 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         projection.path_contradictions.push_back(std::move(marker));
     }
 
+    // An explicit instantiation instantiates a body in this unit, but Clang's
+    // cursor API exposes no cursor for it, so nothing would reach the
+    // specialization that now has a contract to discharge. A reference to it
+    // supplies the same edge an ordinary use would, and the specialization is
+    // then collected exactly as every other one is (SPEC.md TEMPLATE-001).
+    //
+    // The reference is an edit, so it exists only in the analysis text. The
+    // runtime text keeps the instantiation the author wrote and gains nothing,
+    // which is what keeps this out of the emitted program (AGENTS.md 16).
+    for (std::size_t index = 0; index < syntax.explicit_instantiations.size(); ++index) {
+        const ExplicitInstantiation& instantiation = syntax.explicit_instantiations[index];
+        // Only an instantiation of a function template this unit marked
+        // verified needs the edge, and only such a unit has opted into C++L.
+        // An ordinary C++ program's instantiations are left exactly as written,
+        // so nothing about them depends on this recognition (AGENTS.md 2).
+        const bool verified_here =
+            std::ranges::any_of(syntax.verified_functions, [&](const VerifiedFunction& candidate) {
+                return candidate.template_header.length != 0 && !candidate.explicit_specialization &&
+                       candidate.function_name == instantiation.function_name;
+            });
+        if (!verified_here) {
+            continue;
+        }
+        const std::string name = options.generated_prefix + "instantiate_" + std::to_string(index) +
+                                 (options.unit_key.empty() ? "" : "_" + options.unit_key);
+        std::string reference = "\n";
+        reference += line_directive(instantiation.location.line, instantiation.location.file);
+        reference += "[[maybe_unused]] static auto " + name + " = &" +
+                     spelled_tokens(stream, instantiation.id_expression) + ";\n";
+        reference += line_directive(instantiation.insertion_line + 1, instantiation.location.file);
+        edits.push_back(Edit{source::ByteSpan{instantiation.insertion_offset, 0}, std::move(reference)});
+    }
+
     // The runtime text is otherwise the scanned text with proof-only spans
     // blanked, so the lowerings are applied last and from the back, where no
     // offset recorded above them has moved yet.

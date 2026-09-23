@@ -707,6 +707,32 @@ Refined array elements use the same place model, at constant and at symbolic
 indices alike. General casts, lambdas, methods, alias-return lifetimes, `old`
 over mutable state, and dependent object flows remain unimplemented.
 
+A record is decomposed from its resolved type rather than from the cursors of
+its definition, so an instantiated class template is decomposed like any other
+record and a refined member of `Box<int>` is the refined storage the template
+declared (`SPEC.md` 17.6, 42 TEMPLATE-001). Reading, writing, sibling
+preservation, nesting and indexed refinements behave in a specialization exactly
+as in an ordinary record, and matched pairs pin that the predicate, the index
+argument and the component order are each really read.
+
+Asking the type is also what makes a base subobject visible. A record with a
+base is not decomposed by its own members -- the base carries state no member
+names -- so the member is refused by name instead of read out of a
+decomposition that left part of the object out. A union and an inaccessible
+member are refused as before.
+
+A refinement erases to its base type, so it is that type as a template argument:
+`Box<Positive>` and `Box<int>` are one specialization with one member type, and
+no predicate travels with the argument. Formal identity is semantic rather than
+spelling-only (`SPEC.md` 43), so such a program fails to prove rather than
+quietly reading a predicate that is not there.
+
+An array or a record as a member of a *tracked local* is not modeled: the
+aggregate-local path states one version per scalar member, so a nested aggregate
+is refused by name. The refusal is the same for an ordinary record and for a
+specialization, so it is a limit of that path rather than of templates. Writing
+a member of a by-value aggregate parameter is refused for the same reason.
+
 A contract may name types a template supplies, including dependent names
 spelled through one, because each clause is projected under the header its
 declaration stands under. A contract on a template itself is parameterized by
@@ -742,13 +768,21 @@ reach them. The primary's proof never covers it, so a specialization that
 replaces the body with one its contract does not describe is refused by name,
 with the goal stated at its own arguments (TEMPLATE-003).
 
-Verified function templates are `PROTOTYPE`. An explicit instantiation,
-`template unsigned f<4u>(unsigned);`, is not recognized: libclang's cursor API
-exposes no cursor for one, so a template whose only use is an explicit
-instantiation is reported as uninstantiated rather than checked. That fails
-closed -- nothing is claimed verified -- but it refuses a program `SPEC.md`
-admits. A specialization consumed across translation units also carries no
-exported verification metadata, so a use in another unit is not verified there.
+An explicit instantiation, `template unsigned f<4u>(unsigned);`, instantiates
+the body in this unit, so the specialization it names is checked here. libclang
+exposes no cursor for the instantiation itself, so the specialization is reached
+the way every other one is -- from a reference to it -- which the projector
+emits into the analysis text alone. The runtime text keeps the instantiation the
+author wrote, and the reference reaches no object file. Each instantiation is
+its own specialization: a contract true at one argument and false at another is
+refused whichever order they are written in. `extern template` is an
+instantiation declaration rather than a definition, so it instantiates nothing
+here and is still reported as uninstantiated (TEMPLATE-001).
+
+Verified function templates are `PROTOTYPE`. A specialization consumed across
+translation units carries no exported verification metadata, so a use in another
+unit is not verified there; `docs/rfcs/0017-cross-translation-unit-verification.md`
+proposes the mechanism and nothing implements it yet.
 
 A lambda is a closure object with its own call operator, and it is refused on
 every route into a verified body: bound to a local, called without ever

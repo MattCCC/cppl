@@ -88,6 +88,45 @@ std::vector<CXCursor> children_of(CXCursor cursor) {
     return children;
 }
 
+// The data members of a record type, in declaration order.
+//
+// This asks the type rather than walking the definition's cursor children,
+// because an instantiated class template specialization has no children: Clang
+// instantiates the members without exposing cursors for them, so a cursor walk
+// reports a specialization as having no members at all (SPEC.md TEMPLATE-001).
+// A record and an instantiation of a class template are the same kind of
+// product here, so both are decomposed by the one route.
+std::vector<CXCursor> record_fields(CXType record) {
+    std::vector<CXCursor> fields;
+    clang_Type_visitFields(
+        clang_getCanonicalType(record),
+        [](CXCursor field, CXClientData data) {
+            static_cast<std::vector<CXCursor>*>(data)->push_back(field);
+            return CXVisit_Continue;
+        },
+        &fields);
+    return fields;
+}
+
+// Whether a record type has any base subobject.
+//
+// A base carries state that `record_fields` does not report, so a record with
+// one is not decomposed by its members alone. Asking the type matters for the
+// same reason: an instantiation exposes no base-specifier cursor either, so a
+// cursor walk would report a derived specialization as having no base and would
+// silently model it as its own members (AGENTS.md 8).
+bool record_has_base(CXType record) {
+    unsigned bases = 0;
+    clang_visitCXXBaseClasses(
+        clang_getCanonicalType(record),
+        [](CXCursor, CXClientData data) {
+            ++*static_cast<unsigned*>(data);
+            return CXVisit_Break;
+        },
+        &bases);
+    return bases != 0;
+}
+
 source::RepresentationKind library_kind(CXCursor declaration) {
     using K = source::RepresentationKind;
     CXCursor primary = clang_getSpecializedCursorTemplate(declaration);
@@ -276,13 +315,13 @@ Type convert_type(CXType type, unsigned depth = 0, ReferenceModel references = R
                     model.rejection = "a union requires an independently justified active-member model";
                     break;
                 }
-                for (const auto& child : children_of(definition)) {
-                    if (clang_getCursorKind(child) == CXCursor_FieldDecl)
-                        component(clang_getCursorType(child), take(clang_getCursorSpelling(child)), child,
-                                  clang_getCXXAccessSpecifier(child) == CX_CXXPublic);
-                    if (clang_getCursorKind(child) == CXCursor_CXXBaseSpecifier)
-                        model.rejection = "base subobject decomposition requires an explicit accessible projection";
+                if (record_has_base(canonical)) {
+                    model.rejection = "base subobject decomposition requires an explicit accessible projection";
+                    break;
                 }
+                for (const auto& field : record_fields(canonical))
+                    component(clang_getCursorType(field), take(clang_getCursorSpelling(field)), field,
+                              clang_getCXXAccessSpecifier(field) == CX_CXXPublic);
             }
             break;
         }
@@ -668,14 +707,13 @@ std::optional<std::uint32_t> field_index_of(CXCursor field) {
     const CXCursor record = clang_getCursorSemanticParent(field);
     if (clang_getCursorKind(record) == CXCursor_UnionDecl)
         return std::nullopt;
-    std::uint32_t index = 0;
-    for (const auto& child : children_of(record)) {
-        if (clang_getCursorKind(child) != CXCursor_FieldDecl)
-            continue;
-        if (clang_equalCursors(child, field) != 0)
-            return index;
-        ++index;
-    }
+    // Counted over the record's type, by the same walk that builds the
+    // components, so a component index and a field index stay the same number
+    // for an instantiated class template as for an ordinary record.
+    const auto fields = record_fields(clang_getCursorType(record));
+    for (std::size_t index = 0; index < fields.size(); ++index)
+        if (clang_equalCursors(fields[index], field) != 0)
+            return static_cast<std::uint32_t>(index);
     return std::nullopt;
 }
 
@@ -1108,6 +1146,13 @@ Expr build_expression(CXCursor cursor, const std::vector<CXCursor>& parameters, 
             for (std::size_t i = 0; i < components.size(); ++i)
                 if (components[i].name == name && components[i].accessible)
                     return make_projection(std::move(subject), static_cast<std::uint32_t>(i));
+            // The object's type states why it has no components to select from --
+            // a base subobject, a union, an incomplete type. Reporting that is
+            // the difference between naming the obstacle and calling every such
+            // object "not modeled" (AGENTS.md 35).
+            if (const auto& rejection = subject.type.representation.rejection; !rejection.empty())
+                return unsupported_expression(cursor,
+                                              "'" + subject.type.spelling + "' is not decomposed: " + rejection);
         }
     }
     if (kind == CXCursor_ArraySubscriptExpr) {
@@ -2948,7 +2993,16 @@ struct BodyLowering {
         std::vector<Expr> values;
         for (std::size_t member = 0; member < components.size(); ++member) {
             const Type& member_type = type.projections[member];
-            if (member_type.kind == TypeKind::Unsupported || member_type.kind == TypeKind::Value) {
+            // A member that is itself an aggregate is a different refusal from
+            // one whose type has no model at all: this path states one version
+            // per scalar member, so a nested aggregate has no place of its own
+            // here even though its type is modeled elsewhere (AGENTS.md 35).
+            if (member_type.kind == TypeKind::Value) {
+                return reject("member '" + written(member) + "' of type '" + member_type.spelling +
+                              "' is itself an aggregate; this implementation tracks one version per scalar member, so "
+                              "a nested aggregate has no place of its own");
+            }
+            if (member_type.kind == TypeKind::Unsupported) {
                 return reject("member '" + written(member) + "' has type '" + member_type.spelling +
                               "', which is not modeled");
             }

@@ -40,6 +40,11 @@ depends_on:
   - call-effects
 
 implementation:
+  bridge:
+    # Records are decomposed from the resolved type, so an instantiated class
+    # template decomposes like any other record and a base subobject stays
+    # visible (record_fields, record_has_base, field_index_of).
+    - clang/src/bridge.cpp
   frontend:
     - compiler/frontend/src/recognizer.cpp
     - compiler/frontend/src/projection.cpp
@@ -82,10 +87,15 @@ interactions:
   - overload erasure
 
 tests:
+  e2e:
+    - tests/e2e/refinement_types.sh
+    - tests/e2e/refinement_flow.sh
+    - tests/e2e/verified_templates.sh
   negative:
     - tests/negative/refinement_types.sh
     - tests/negative/verified_storage.sh
   fixtures:
+    - tests/fixtures/refinement_types.cpp
     - tests/fixtures/verified_storage.cpp
 
 required_test_categories:

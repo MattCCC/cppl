@@ -395,6 +395,10 @@ If an implementation creates a transformed analysis view and a distinct runtime 
 
 **[TCB-SOURCE-007]** Runtime-bearing lowering, such as refinement aliases, MUST be canonical and semantically constrained by `SPEC.md`; arbitrary source rewriting MUST NOT hide behind the term "erasure".
 
+The analysis text may also carry a reference whose only purpose is to make the C++ authority expose an entity it otherwise reports no cursor for, such as the specialization an explicit instantiation names. Which entity that reference denotes is resolved by the C++ authority, not by the text that names it.
+
+**[TCB-SOURCE-008]** An analysis-only reference emitted to make an entity reachable MUST name it with the spelling the source used, and MUST NOT select among candidate entities itself. What it reaches is then whatever ordinary C++ name lookup and template argument resolution select, which is the same authority every other construct is resolved by (`TCB-CLANG-002`).
+
 ---
 
 # 9. Clang and C++ semantic authority
@@ -662,6 +666,8 @@ Structural proof features can be logically sound while still depending on a repr
 **[TCB-DECOMP-004]** Payload bindings MUST denote the actual logical subobject/observation represented by the arm; they MUST NOT be invented values.
 
 **[TCB-DECOMP-005]** Pointer case decomposition MUST establish only null/non-null state unless additional capability/lifetime facts are independently available.
+
+**[TCB-DECOMP-006]** A product decomposition MUST be obtained from the resolved type rather than from whatever declaration cursors the C++ authority happens to expose, and MUST account for every part of the object, base subobjects included. A route that reports no members for an instantiated class template, or no base for a derived one, does not report an empty object: it reports nothing, and a decomposition built from it would identify values that differ in the part left out (`TCB-DECOMP-002`).
 
 A case omission, `omit label by contradiction evidence;` (`SPEC.md` `CASE-004`,
 `CASE-011`), adds nothing to this TCB. Its claim is discharged by ordinary kernel

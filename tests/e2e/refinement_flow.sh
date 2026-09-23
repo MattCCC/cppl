@@ -495,10 +495,27 @@ verified int f(unsigned i) expects (i < 3u) ensures (result == 1) { int a[3]{1, 
 CPP
 
 # A member that is itself an aggregate needs a place path, not one field index.
-refuse nested_aggregate_member 'which is not modeled' <<'CPP'
+# The refusal says that, rather than calling the member's type unmodeled: the
+# same type is modeled perfectly well as a local of its own.
+refuse nested_aggregate_member 'is itself an aggregate' <<'CPP'
 struct Inner { int v; };
 struct Outer { Inner i; };
 verified int f() ensures (result == 5) { Outer o{{5}}; return o.i.v; }
+CPP
+
+# The same limit, and the same reason, when the record is a specialization:
+# this is a limit of the aggregate-local path, not of class templates.
+refuse nested_aggregate_member_of_a_specialization 'is itself an aggregate' <<'CPP'
+struct Inner { int v; };
+template <typename T> struct Outer { Inner i; };
+verified int f() ensures (result == 5) { Outer<int> o{{5}}; return o.i.v; }
+CPP
+
+# An array member is the same case: a standalone local array is tracked, but an
+# array *inside* a tracked aggregate has no place of its own.
+refuse array_member_of_an_aggregate 'is itself an aggregate' <<'CPP'
+struct Holder { int items[3]; };
+verified int f() ensures (result == 1) { Holder h{{1, 2, 3}}; return h.items[0]; }
 CPP
 
 # --- Gaps: refused today, and the reason must stay visible -------------------
