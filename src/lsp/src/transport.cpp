@@ -301,6 +301,10 @@ class Dispatcher {
             handle_navigate(id_value, params, clangbridge::Destination::TypeDefinition, method);
         } else if (method == "textDocument/implementation") {
             handle_navigate(id_value, params, clangbridge::Destination::Implementation, method);
+        } else if (method == "textDocument/references") {
+            handle_references(id_value, params);
+        } else if (method == "textDocument/documentHighlight") {
+            handle_document_highlight(id_value, params);
         } else if (is_request) {
             respond_error(*id_value, kMethodNotFound, "method not found: " + method);
         } else {
@@ -402,6 +406,8 @@ class Dispatcher {
         capabilities.set("declarationProvider", json::Value(true));
         capabilities.set("typeDefinitionProvider", json::Value(true));
         capabilities.set("implementationProvider", json::Value(true));
+        capabilities.set("referencesProvider", json::Value(true));
+        capabilities.set("documentHighlightProvider", json::Value(true));
 
         json::Value server_info = json::Value::object();
         server_info.set("name", json::Value("cppl-lsp"));
@@ -697,6 +703,62 @@ class Dispatcher {
         json::Value items = json::Value::array();
         for (const Location& location : *locations) {
             items.push_back(location_to_json(location));
+        }
+        respond_result(*id, std::move(items));
+    }
+
+    void handle_references(const json::Value* id, const json::Value* params) {
+        if (id == nullptr) {
+            return;
+        }
+        const auto request = position_params(params);
+        if (!request.has_value()) {
+            respond_error(*id, kInvalidParams, "textDocument/references missing 'textDocument.uri' or 'position'");
+            return;
+        }
+        // `context.includeDeclaration` is required by the protocol; a client
+        // that leaves it out is answered as if it had asked for them.
+        bool include_declaration = true;
+        if (const json::Value* context = params->find("context")) {
+            if (const json::Value* flag = context->find("includeDeclaration"); flag != nullptr && flag->is_boolean()) {
+                include_declaration = flag->as_boolean();
+            }
+        }
+        const std::optional<std::vector<Location>> locations =
+            server_.text_document_references(request->first, request->second, include_declaration);
+        if (!locations.has_value()) {
+            respond_result(*id, json::Value(nullptr));
+            return;
+        }
+        json::Value items = json::Value::array();
+        for (const Location& location : *locations) {
+            items.push_back(location_to_json(location));
+        }
+        respond_result(*id, std::move(items));
+    }
+
+    void handle_document_highlight(const json::Value* id, const json::Value* params) {
+        if (id == nullptr) {
+            return;
+        }
+        const auto request = position_params(params);
+        if (!request.has_value()) {
+            respond_error(*id, kInvalidParams,
+                          "textDocument/documentHighlight missing 'textDocument.uri' or 'position'");
+            return;
+        }
+        const std::optional<std::vector<DocumentHighlight>> highlights =
+            server_.text_document_document_highlight(request->first, request->second);
+        if (!highlights.has_value()) {
+            respond_result(*id, json::Value(nullptr));
+            return;
+        }
+        json::Value items = json::Value::array();
+        for (const DocumentHighlight& highlight : *highlights) {
+            json::Value item = json::Value::object();
+            item.set("range", range_to_json(highlight.range));
+            item.set("kind", json::Value(static_cast<int>(highlight.kind)));
+            items.push_back(std::move(item));
         }
         respond_result(*id, std::move(items));
     }

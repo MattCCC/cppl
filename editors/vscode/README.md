@@ -59,8 +59,10 @@ the subject's states, and completion, with the arms still owed.
 Go to Definition, Go to Declaration, Go to Type Definition and Go to
 Implementations are answered by Clang over the file's projection, for C++ and
 for the C++L declarations the projection stands for: a Law named in a proof, a
-parameter named in a clause, a refinement type. References and rename are not
-implemented by the server yet.
+parameter named in a clause, a refinement type. Find All References covers
+every open C++L file and the headers each includes, and the editor highlights
+each occurrence of the name under the cursor, marking writes apart from reads.
+Rename is not implemented by the server yet.
 
 Proof statements spelled like C++ declarations, such as `exact h;` and
 `contradiction name;`, are colored from the server's semantic tokens, since

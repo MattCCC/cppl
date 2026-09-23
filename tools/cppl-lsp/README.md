@@ -36,6 +36,8 @@ textDocument/definition                     Clang, over the document's projectio
 textDocument/declaration                    the first declaration
 textDocument/typeDefinition                 through pointers, references, `auto`
 textDocument/implementation                 overrides and derived classes
+textDocument/references                     across every open document
+textDocument/documentHighlight              declarations, reads and writes
 ```
 
 Diagnostics come from `driver::compile_buffer` over the live buffer — the same
@@ -122,6 +124,18 @@ no written position and is not shown: no answer is better than one pointing at
 text nobody wrote. Proof statements (`exact`, `apply`) are not C++ and Clang
 says nothing about them.
 
+References come from the same units. A name is identified as Clang identifies
+it, by its USR, so every open document's unit finds it in itself and in the
+headers it includes, and the answers are merged. A parameter the projection
+repeats -- a proof's, copied into the declaration for its claim and into each
+probe of its statements -- is several parameters to Clang and one to its
+author, so a declaration Clang reports at the same written position is the
+same name. A reference is reported only where its name is written: an
+implicit call, or a use spelled by a macro's body, has no written name and is
+not an occurrence. `documentHighlight` marks each occurrence in the document
+as its declaration, a read, or a write, where a write is the target of an
+assignment, a compound assignment or an increment.
+
 The editor unit reads text as written, which is what makes its positions exact,
 and it is also its one limit: a C++L construct spelled through a macro, such as
 `#define V verified`, is recognized by the compiler, which reads the
@@ -134,8 +148,9 @@ The server advertises `textDocumentSync`, `documentFormattingProvider`,
 `documentRangeFormattingProvider`, `documentOnTypeFormattingProvider`,
 `completionProvider`, `hoverProvider`, `codeActionProvider` (kinds
 `quickfix` and `source.fixAll.cppl`), `semanticTokensProvider` (whole
-document, one token type, `keyword`), and `definitionProvider`,
-`declarationProvider`, `typeDefinitionProvider` and `implementationProvider`.
+document, one token type, `keyword`), `definitionProvider`,
+`declarationProvider`, `typeDefinitionProvider`, `implementationProvider`,
+`referencesProvider` and `documentHighlightProvider`.
 The rest of navigation specified below, and the semantic-token categories
 beyond proof-statement keywords, are not implemented and not advertised: an
 editor is told what the server can do, never what it intends to do.
@@ -1246,12 +1261,13 @@ reference. Detailed pointer-state and effect hovers are not implemented.
 
 Transport, document synchronization, diagnostics, canonical C++L formatting,
 code actions, proof-decomposition completion and hover, semantic tokens for
-proof-statement keywords, and definition, declaration, type definition and
-implementation are implemented. The following are explicitly out of scope for
-this milestone and are not implemented:
+proof-statement keywords, definition, declaration, type definition and
+implementation, and references and document highlights are implemented. The
+following are explicitly out of scope for this milestone and are not
+implemented:
 
 ```text
-references
+references in a file no open document includes
 navigation from a proof statement (`exact`, `apply`) to what it names
 rename
 semantic tokens beyond proof-statement keywords

@@ -562,10 +562,10 @@ cppl trust-report
 
 Also:
 
-- LSP hover, completion, references and incremental sync (full sync,
-  diagnostics, formatting, code actions, definition, declaration, type
-  definition and implementation, and completion and hover over case arms are
-  implemented; see `STATUS.md`)
+- LSP hover, completion, rename and incremental sync (full sync, diagnostics,
+  formatting, code actions, definition, declaration, type definition,
+  implementation, references and highlights, and completion and hover over
+  case arms are implemented; see `STATUS.md`)
 - IDE diagnostics
 - proof goals
 - counterexamples

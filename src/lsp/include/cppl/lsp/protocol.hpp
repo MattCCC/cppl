@@ -136,4 +136,16 @@ struct Hover {
     std::optional<Range> range;
 };
 
+// LSP `DocumentHighlightKind`.
+enum class DocumentHighlightKind : std::uint8_t {
+    Text = 1,
+    Read = 2,
+    Write = 3,
+};
+
+struct DocumentHighlight {
+    Range range;
+    DocumentHighlightKind kind = DocumentHighlightKind::Text;
+};
+
 } // namespace cppl::lsp

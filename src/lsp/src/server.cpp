@@ -130,6 +130,90 @@ EditorView* Server::view_for(const std::string& uri) {
     return entry.view.get();
 }
 
+std::optional<std::vector<Location>> Server::text_document_references(const TextDocumentIdentifier& id,
+                                                                      const Position& position,
+                                                                      bool include_declaration) {
+    EditorView* view = view_for(id.uri);
+    if (view == nullptr) {
+        return std::nullopt;
+    }
+    std::vector<Location> locations;
+    const std::optional<EditorView::Target> target = view->target_at(position);
+    if (!target.has_value()) {
+        return locations;
+    }
+    std::vector<std::string> uris;
+    documents_.for_each([&uris](const Document& document) { uris.push_back(document.uri()); });
+    for (const std::string& uri : uris) {
+        EditorView* other = view_for(uri);
+        if (other == nullptr) {
+            continue;
+        }
+        for (EditorView::Mention& mention : other->mentions(*target)) {
+            if (!include_declaration && mention.role == clangbridge::Role::Declaration) {
+                continue;
+            }
+            const bool repeated = std::ranges::any_of(locations, [&](const Location& known) {
+                return known.uri == mention.location.uri &&
+                       known.range.start.line == mention.location.range.start.line &&
+                       known.range.start.character == mention.location.range.start.character;
+            });
+            if (!repeated) {
+                locations.push_back(std::move(mention.location));
+            }
+        }
+    }
+    std::ranges::sort(locations, [](const Location& lhs, const Location& rhs) {
+        if (lhs.uri != rhs.uri) {
+            return lhs.uri < rhs.uri;
+        }
+        if (lhs.range.start.line != rhs.range.start.line) {
+            return lhs.range.start.line < rhs.range.start.line;
+        }
+        return lhs.range.start.character < rhs.range.start.character;
+    });
+    return locations;
+}
+
+std::optional<std::vector<DocumentHighlight>> Server::text_document_document_highlight(const TextDocumentIdentifier& id,
+                                                                                       const Position& position) {
+    EditorView* view = view_for(id.uri);
+    if (view == nullptr) {
+        return std::nullopt;
+    }
+    std::vector<DocumentHighlight> highlights;
+    const std::optional<EditorView::Target> target = view->target_at(position);
+    if (!target.has_value()) {
+        return highlights;
+    }
+    for (const EditorView::Mention& mention : view->mentions(*target)) {
+        if (mention.location.uri != id.uri) {
+            continue;
+        }
+        DocumentHighlight highlight;
+        highlight.range = mention.location.range;
+        switch (mention.role) {
+            case clangbridge::Role::Declaration:
+                highlight.kind = DocumentHighlightKind::Text;
+                break;
+            case clangbridge::Role::Read:
+                highlight.kind = DocumentHighlightKind::Read;
+                break;
+            case clangbridge::Role::Write:
+                highlight.kind = DocumentHighlightKind::Write;
+                break;
+        }
+        highlights.push_back(highlight);
+    }
+    std::ranges::sort(highlights, [](const DocumentHighlight& lhs, const DocumentHighlight& rhs) {
+        if (lhs.range.start.line != rhs.range.start.line) {
+            return lhs.range.start.line < rhs.range.start.line;
+        }
+        return lhs.range.start.character < rhs.range.start.character;
+    });
+    return highlights;
+}
+
 std::optional<std::vector<Location>> Server::text_document_navigate(clangbridge::Destination destination,
                                                                     const TextDocumentIdentifier& id,
                                                                     const Position& position) {

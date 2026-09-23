@@ -1395,7 +1395,8 @@ AI output must always be independently verified.
 | LSP: code actions                    | `PROTOTYPE`   |
 | LSP: proof-keyword semantic tokens   | `PROTOTYPE`   |
 | LSP: definition and declaration      | `PROTOTYPE`   |
-| LSP: references, other token kinds   | `NOT STARTED` |
+| LSP: references and highlights       | `PROTOTYPE`   |
+| LSP: other token kinds               | `NOT STARTED` |
 | IDE proof goals                      | `NOT STARTED` |
 | Proof navigation                     | `NOT STARTED` |
 | Counterexample UI                    | `NOT STARTED` |
@@ -1472,9 +1473,16 @@ clause and a refinement type all lead to what was written; a position Clang
 reports in generated text that stands for nothing written is not shown. A proof
 statement's reference (`exact p;`) is not C++ and is not navigable yet.
 
-References, rename, the other semantic-token categories and incremental sync
-are designed in `tools/cppl-lsp/README.md` but not implemented, and are
-deliberately not advertised as capabilities.
+`referencesProvider` and `documentHighlightProvider` are answered from the same
+units: every open document's unit reports where a name, identified by Clang's
+USR, is written in it and in the headers it includes, and a parameter the
+projection repeats in several generated declarations counts as the one the
+author wrote. Highlights mark declarations, reads and writes. A file no open
+document includes is not searched.
+
+Rename, the other semantic-token categories and incremental sync are designed
+in `tools/cppl-lsp/README.md` but not implemented, and are deliberately not
+advertised as capabilities.
 
 ---
 

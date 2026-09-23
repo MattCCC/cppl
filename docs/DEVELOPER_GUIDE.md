@@ -3178,7 +3178,9 @@ predicate asks Clang, which resolved that same expression for the compiler; a
 Law named in a proof's `proves` clause leads to the Law, a parameter named in a
 clause to the parameter written, and a refinement type to its `type`
 declaration. A name Clang resolves to something nobody wrote, such as `result`,
-leads nowhere rather than into generated code.
+leads nowhere rather than into generated code. Find references lists the same
+uses: a proof's parameter is one name wherever the proof mentions it, in its
+claim and in its `assume` statements alike.
 
 No fix may:
 

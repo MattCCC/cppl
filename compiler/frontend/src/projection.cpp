@@ -147,6 +147,23 @@ std::string spelled_tokens(const TokenStream& stream, const source::ByteSpan& sp
     return text;
 }
 
+// The bytes from the first token of a span to the end of its last, without the
+// space around them.
+source::ByteSpan token_extent(const TokenStream& stream, const source::ByteSpan& span) {
+    std::size_t begin = span.end();
+    std::size_t end = span.offset;
+    for (const Token& token : stream.tokens()) {
+        if (token.kind == TokenKind::EndOfFile || token.span.offset >= span.end()) {
+            break;
+        }
+        if (token.span.offset >= span.offset && token.span.end() <= span.end()) {
+            begin = std::min(begin, token.span.offset);
+            end = std::max(end, token.span.end());
+        }
+    }
+    return end > begin ? source::ByteSpan{begin, end - begin} : source::ByteSpan{};
+}
+
 // Index declarations use ordinary typed C++ parameter syntax. Never infer a
 // parameter type from the refined base or create an alternate syntax.
 std::string spelled_indices(const TokenStream& stream, const RefinementType& refinement) {
@@ -399,6 +416,13 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         replacement += "\n";
         replacement += line_directive(refinement.keyword_location.line, refinement.keyword_location.file);
         probe.alias_offset = replacement.size() + lowering.find("using ") + 6;
+        // The alias restates the base type's tokens. Where that restatement is
+        // the text as written, it is a copy of it, like any other.
+        if (const source::ByteSpan written = token_extent(stream, refinement.base);
+            written.length != 0 && spelled_tokens(stream, refinement.base) == stream.spelling(written)) {
+            const std::size_t base = lowering.find(" = ", lowering.find("using ")) + 3;
+            replacement.copies.push_back(Projection::Copy{replacement.size() + base, written});
+        }
         replacement += lowering.substr(0, lowering.find_last_of(';') + 1);
         replacement += "\n";
         replacement += line_directive(refinement.predicate_location.line, refinement.keyword_location.file);

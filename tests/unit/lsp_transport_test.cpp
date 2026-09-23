@@ -186,6 +186,37 @@ CPPL_TEST(a_definition_answers_with_locations) {
     CPPL_CHECK(output.str().find(R"("id":4,"error":{"code":-32602)") != std::string::npos);
 }
 
+CPPL_TEST(references_and_highlights_answer_over_the_wire) {
+    Server server;
+    std::istringstream input(
+        framed(R"({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}})") +
+        framed(R"({"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":)"
+               R"({"uri":"file:///refs.cpp","languageId":"cpp","version":1,)"
+               R"("text":"int answer = 42;\nint main() { answer = 1; return answer; }\n"}}})") +
+        framed(R"({"jsonrpc":"2.0","id":2,"method":"textDocument/references","params":{"textDocument":)"
+               R"({"uri":"file:///refs.cpp"},"position":{"line":1,"character":13},)"
+               R"("context":{"includeDeclaration":false}}})") +
+        framed(R"({"jsonrpc":"2.0","id":3,"method":"textDocument/documentHighlight","params":{"textDocument":)"
+               R"({"uri":"file:///refs.cpp"},"position":{"line":0,"character":4}}})") +
+        framed(R"({"jsonrpc":"2.0","id":4,"method":"textDocument/references","params":{}})") +
+        framed(R"({"jsonrpc":"2.0","method":"exit"})"));
+    std::ostringstream output;
+    std::ostringstream log;
+
+    [[maybe_unused]] const int exit_code = run_transport(server, input, output, log);
+    CPPL_CHECK(output.str().find(R"("referencesProvider":true,"documentHighlightProvider":true)") != std::string::npos);
+    CPPL_CHECK(output.str().find(R"("id":2,"result":[{"uri":"file:///refs.cpp","range":{"start":{"line":1,)"
+                                 R"("character":13},"end":{"line":1,"character":19}}},{"uri":"file:///refs.cpp",)"
+                                 R"("range":{"start":{"line":1,"character":32},"end":{"line":1,"character":38}}}])") !=
+               std::string::npos);
+    CPPL_CHECK(output.str().find(R"("id":3,"result":[{"range":{"start":{"line":0,"character":4},"end":{"line":0,)"
+                                 R"("character":10}},"kind":1},{"range":{"start":{"line":1,"character":13},)"
+                                 R"("end":{"line":1,"character":19}},"kind":3},{"range":{"start":{"line":1,)"
+                                 R"("character":32},"end":{"line":1,"character":38}},"kind":2}])") !=
+               std::string::npos);
+    CPPL_CHECK(output.str().find(R"("id":4,"error":{"code":-32602)") != std::string::npos);
+}
+
 CPPL_TEST(semantic_tokens_answer_with_the_encoded_keywords) {
     Server server;
     std::istringstream input(

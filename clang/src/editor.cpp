@@ -14,6 +14,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -204,6 +205,214 @@ struct EditorUnit::State {
                                                    take(clang_getTokenSpelling(unit, *token))};
         clang_disposeTokens(unit, token, 1);
         return result;
+    }
+
+    // What the name written at `offset` denotes: every declaration an
+    // unresolved template name could mean, or the one it does. An operator is
+    // a name only where it calls an overloaded one.
+    [[nodiscard]] std::vector<CXCursor> named_at(std::size_t offset) const {
+        std::vector<CXCursor> targets;
+        const auto token = token_at(offset);
+        const CXCursor cursor = cursor_at(offset);
+        if (!token.has_value() || is_null(cursor) || clang_getCursorKind(cursor) == CXCursor_InclusionDirective) {
+            return targets;
+        }
+        if (clang_getCursorKind(cursor) == CXCursor_OverloadedDeclRef) {
+            const unsigned count = clang_getNumOverloadedDecls(cursor);
+            for (unsigned candidate = 0; candidate < count; ++candidate) {
+                targets.push_back(clang_getOverloadedDecl(cursor, candidate));
+            }
+            return targets;
+        }
+        const CXCursor referenced = clang_getCursorReferenced(cursor);
+        if (is_null(referenced)) {
+            return targets;
+        }
+        const bool operator_call =
+            token->first == CXToken_Punctuation && take(clang_getCursorSpelling(referenced)).starts_with("operator");
+        if (token->first == CXToken_Identifier || operator_call) {
+            targets.push_back(referenced);
+        }
+        return targets;
+    }
+
+    // Whether the text Clang read spells `name` at `start`, and if so the
+    // extent it spells it over.
+    [[nodiscard]] std::optional<Extent> spelled(CXSourceLocation start, std::string_view name) const {
+        CXFile file = nullptr;
+        unsigned offset = 0;
+        clang_getFileLocation(start, &file, nullptr, nullptr, &offset);
+        if (file == nullptr || name.empty()) {
+            return std::nullopt;
+        }
+        std::size_t size = 0;
+        const char* contents = clang_getFileContents(unit, file, &size);
+        if (contents == nullptr || offset + name.size() > size ||
+            std::string_view(contents + offset, name.size()) != name) {
+            return std::nullopt;
+        }
+        FilePosition begin = place(start);
+        FilePosition end = begin;
+        end.offset += name.size();
+        end.column += static_cast<std::uint32_t>(name.size());
+        return Extent{begin, end};
+    }
+
+    struct Walk {
+        const State* state = nullptr;
+        // Occurrences of these, or else declarations spelled `name`.
+        const std::vector<std::string>* usrs = nullptr;
+        std::string_view name;
+        // The operands an assignment or an increment writes, met before them.
+        std::vector<CXCursor> written;
+        std::vector<Occurrence> found;
+    };
+
+    static CXCursor first_child(CXCursor cursor) {
+        CXCursor first = clang_getNullCursor();
+        clang_visitChildren(
+            cursor,
+            [](CXCursor child, CXCursor, CXClientData data) {
+                *static_cast<CXCursor*>(data) = child;
+                return CXChildVisit_Break;
+            },
+            &first);
+        return first;
+    }
+
+    static bool writes(CXCursor cursor, CXCursorKind kind) {
+        if (kind == CXCursor_BinaryOperator || kind == CXCursor_CompoundAssignOperator) {
+            const CXBinaryOperatorKind operation = clang_getCursorBinaryOperatorKind(cursor);
+            return operation >= CXBinaryOperator_Assign && operation <= CXBinaryOperator_OrAssign;
+        }
+        if (kind == CXCursor_UnaryOperator) {
+            const CXUnaryOperatorKind operation = clang_getCursorUnaryOperatorKind(cursor);
+            return operation == CXUnaryOperator_PostInc || operation == CXUnaryOperator_PostDec ||
+                   operation == CXUnaryOperator_PreInc || operation == CXUnaryOperator_PreDec;
+        }
+        return false;
+    }
+
+    static bool is_reference(CXCursorKind kind) {
+        switch (kind) {
+            case CXCursor_DeclRefExpr:
+            case CXCursor_MemberRefExpr:
+            case CXCursor_TypeRef:
+            case CXCursor_TemplateRef:
+            case CXCursor_NamespaceRef:
+            case CXCursor_MemberRef:
+            case CXCursor_VariableRef:
+            case CXCursor_LabelRef:
+            case CXCursor_OverloadedDeclRef:
+            case CXCursor_MacroExpansion:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    void note_declaration(CXCursor cursor, Walk& walk) const {
+        const std::string name = take(clang_getCursorSpelling(cursor));
+        std::string usr;
+        if (walk.usrs != nullptr) {
+            usr = take(clang_getCursorUSR(cursor));
+            if (std::ranges::find(*walk.usrs, usr) == walk.usrs->end()) {
+                return;
+            }
+        } else if (name != walk.name) {
+            return;
+        } else {
+            usr = take(clang_getCursorUSR(cursor));
+        }
+        const std::optional<Extent> extent = name_extent(cursor);
+        if (!extent.has_value()) {
+            return;
+        }
+        const CXFile file = clang_getFile(unit, extent->begin.file.c_str());
+        if (file == nullptr) {
+            return;
+        }
+        if (std::optional<Extent> written =
+                spelled(clang_getLocationForOffset(unit, file, static_cast<unsigned>(extent->begin.offset)), name)) {
+            walk.found.push_back(Occurrence{*written, std::move(usr), Role::Declaration});
+        }
+    }
+
+    void note_reference(CXCursor cursor, CXCursorKind kind, Walk& walk) const {
+        std::vector<CXCursor> targets;
+        if (kind == CXCursor_OverloadedDeclRef) {
+            const unsigned count = clang_getNumOverloadedDecls(cursor);
+            for (unsigned candidate = 0; candidate < count; ++candidate) {
+                targets.push_back(clang_getOverloadedDecl(cursor, candidate));
+            }
+        } else {
+            targets.push_back(clang_getCursorReferenced(cursor));
+        }
+        for (const CXCursor target : targets) {
+            if (is_null(target)) {
+                continue;
+            }
+            std::string usr = take(clang_getCursorUSR(target));
+            if (std::ranges::find(*walk.usrs, usr) == walk.usrs->end()) {
+                continue;
+            }
+            // An expression's extent starts at its qualifier or its object; its
+            // name is where the name range says.
+            const CXSourceRange range = kind == CXCursor_DeclRefExpr || kind == CXCursor_MemberRefExpr
+                                            ? clang_getCursorReferenceNameRange(cursor, CXNameRange_WantSinglePiece, 0)
+                                            : clang_getCursorExtent(cursor);
+            const std::string name = take(clang_getCursorSpelling(target));
+            if (std::optional<Extent> written = spelled(clang_getRangeStart(range), name)) {
+                // Cursor identity includes the declaration a visit came
+                // through, which differs between the walk and the visit that
+                // found the operand, so the operand is matched by where it is.
+                const bool write = std::ranges::any_of(walk.written, [&](CXCursor operand) {
+                    return clang_getCursorKind(operand) == kind &&
+                           clang_equalLocations(clang_getCursorLocation(operand), clang_getCursorLocation(cursor)) != 0;
+                });
+                walk.found.push_back(Occurrence{*written, std::move(usr), write ? Role::Write : Role::Read});
+            }
+        }
+    }
+
+    static CXChildVisitResult visit(CXCursor cursor, CXCursor, CXClientData data) {
+        auto& walk = *static_cast<Walk*>(data);
+        if (clang_Location_isInSystemHeader(clang_getCursorLocation(cursor)) != 0) {
+            return CXChildVisit_Continue;
+        }
+        const CXCursorKind kind = clang_getCursorKind(cursor);
+        if (writes(cursor, kind)) {
+            walk.written.push_back(first_child(cursor));
+        }
+        if (clang_isDeclaration(kind) != 0 || kind == CXCursor_MacroDefinition) {
+            walk.state->note_declaration(cursor, walk);
+        } else if (walk.usrs != nullptr && is_reference(kind)) {
+            walk.state->note_reference(cursor, kind, walk);
+        }
+        return CXChildVisit_Recurse;
+    }
+
+    [[nodiscard]] std::vector<Occurrence> walk(const std::vector<std::string>* usrs, std::string_view name) const {
+        Walk walk;
+        walk.state = this;
+        walk.usrs = usrs;
+        walk.name = name;
+        if (unit != nullptr) {
+            clang_visitChildren(clang_getTranslationUnitCursor(unit), visit, &walk);
+        }
+        // A name reached twice, as a template's and as its instantiation's,
+        // is written once.
+        std::vector<Occurrence> unique;
+        for (Occurrence& occurrence : walk.found) {
+            const bool repeated = std::ranges::any_of(unique, [&](const Occurrence& known) {
+                return known.name.begin.file == occurrence.name.begin.file &&
+                       known.name.begin.offset == occurrence.name.begin.offset;
+            });
+            if (!repeated) {
+                unique.push_back(std::move(occurrence));
+            }
+        }
+        return unique;
     }
 };
 
@@ -397,15 +606,6 @@ std::vector<Extent> EditorUnit::navigate(Destination destination, std::size_t of
     }
 
     const bool deduced = token->first == CXToken_Keyword && (token->second == "auto" || token->second == "decltype");
-    if (token->first != CXToken_Identifier && !deduced) {
-        // An operator is a name only where it calls an overloaded one.
-        const CXCursor called = clang_getCursorReferenced(cursor);
-        if (token->first != CXToken_Punctuation || is_null(called) ||
-            !take(clang_getCursorSpelling(called)).starts_with("operator")) {
-            return results;
-        }
-    }
-
     std::vector<CXCursor> targets;
     if (deduced) {
         // `auto` names the type it was deduced as.
@@ -414,16 +614,8 @@ std::vector<Extent> EditorUnit::navigate(Destination destination, std::size_t of
             targets.push_back(declared);
         }
         destination = destination == Destination::Implementation ? destination : Destination::Definition;
-    } else if (clang_getCursorKind(cursor) == CXCursor_OverloadedDeclRef) {
-        const unsigned count = clang_getNumOverloadedDecls(cursor);
-        for (unsigned index = 0; index < count; ++index) {
-            targets.push_back(clang_getOverloadedDecl(cursor, index));
-        }
     } else {
-        const CXCursor referenced = clang_getCursorReferenced(cursor);
-        if (!is_null(referenced)) {
-            targets.push_back(referenced);
-        }
+        targets = state.named_at(offset);
     }
 
     const auto add = [&](CXCursor target) {
@@ -500,6 +692,31 @@ std::vector<Extent> EditorUnit::navigate(Destination destination, std::size_t of
         }
     }
     return results;
+}
+
+std::vector<Entity> EditorUnit::entities_at(std::size_t offset) const {
+    const State& state = *state_;
+    std::vector<Entity> entities;
+    if (state.unit == nullptr || offset > state.main.text.size()) {
+        return entities;
+    }
+    for (const CXCursor target : state.named_at(offset)) {
+        std::string usr = take(clang_getCursorUSR(target));
+        if (usr.empty()) {
+            continue;
+        }
+        entities.push_back(Entity{std::move(usr), take(clang_getCursorSpelling(target)),
+                                  state.name_extent(clang_getCanonicalCursor(target))});
+    }
+    return entities;
+}
+
+std::vector<Occurrence> EditorUnit::occurrences(const std::vector<std::string>& usrs) const {
+    return state_->walk(&usrs, {});
+}
+
+std::vector<Occurrence> EditorUnit::declarations_named(std::string_view name) const {
+    return state_->walk(nullptr, name);
 }
 
 std::vector<std::string> EditorUnit::included_files() const {

@@ -2745,6 +2745,11 @@ for nothing written is not reported, never approximated.
 never contributes a diagnostic, so it cannot report a program the compiler
 accepts as wrong or the reverse.
 
+**[ARCH-LSP-004]** An editor service treats two declarations as one name only
+where Clang gives them one identity (USR), or where the projection repeated one
+written declaration into several generated ones, such as a proof's parameters
+copied into each of its probes. It never identifies names by spelling alone.
+
 ---
 
 # 79. Formatter architecture

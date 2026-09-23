@@ -72,8 +72,11 @@ Inside a `cases` or `decompose` arm block the server also answers hover
 `vim.lsp.buf.definition()`, `declaration()`, `type_definition()` and
 `implementation()` are answered by Clang over the file's projection; with the
 client attached, `CTRL-]` jumps to the definition too, through Neovim's LSP
-`tagfunc`. References and rename are not implemented by the server yet — see
-"Currently unsupported" in the [`cppl-lsp` README](../../tools/cppl-lsp/README.md).
+`tagfunc`. `vim.lsp.buf.references()` (`grr` in Neovim 0.11) covers every open
+C++L buffer and the headers each includes, and `vim.lsp.buf.document_highlight()`
+marks each occurrence of the name under the cursor. Rename is not implemented by
+the server yet — see "Currently unsupported" in the
+[`cppl-lsp` README](../../tools/cppl-lsp/README.md).
 
 ## Troubleshooting
 

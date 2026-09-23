@@ -230,6 +230,73 @@ std::optional<Location> EditorView::locate(const clangbridge::Extent& extent) co
                                             mapper.byte_offset_to_position(extent.end.offset)}};
 }
 
+namespace {
+
+bool same_location(const Location& lhs, const Location& rhs) {
+    return lhs.uri == rhs.uri && lhs.range.start.line == rhs.range.start.line &&
+           lhs.range.start.character == rhs.range.start.character && lhs.range.end.line == rhs.range.end.line &&
+           lhs.range.end.character == rhs.range.end.character;
+}
+
+} // namespace
+
+std::optional<EditorView::Target> EditorView::target_at(const Position& position) const {
+    if (unit_ == nullptr || main_ == nullptr) {
+        return std::nullopt;
+    }
+    const std::optional<std::size_t> offset = request_offset(position);
+    const std::optional<std::size_t> analysis = offset.has_value() ? main_->to_analysis(*offset) : std::nullopt;
+    if (!analysis.has_value()) {
+        return std::nullopt;
+    }
+    const std::vector<clangbridge::Entity> entities = unit_->entities_at(*analysis);
+    if (entities.empty()) {
+        return std::nullopt;
+    }
+    Target target;
+    target.name = entities.front().name;
+    for (const clangbridge::Entity& entity : entities) {
+        target.usrs.push_back(entity.usr);
+    }
+    if (entities.front().declaration.has_value()) {
+        target.declaration = locate(*entities.front().declaration);
+    }
+    return target;
+}
+
+std::vector<EditorView::Mention> EditorView::mentions(const Target& target) const {
+    std::vector<Mention> found;
+    if (unit_ == nullptr) {
+        return found;
+    }
+    std::vector<std::string> usrs = target.usrs;
+    if (target.declaration.has_value()) {
+        for (const clangbridge::Occurrence& declaration : unit_->declarations_named(target.name)) {
+            const std::optional<Location> written = locate(declaration.name);
+            if (written.has_value() && same_location(*written, *target.declaration) &&
+                std::ranges::find(usrs, declaration.usr) == usrs.end()) {
+                usrs.push_back(declaration.usr);
+            }
+        }
+    }
+    for (const clangbridge::Occurrence& occurrence : unit_->occurrences(usrs)) {
+        std::optional<Location> location = locate(occurrence.name);
+        if (!location.has_value()) {
+            continue;
+        }
+        const auto known = std::ranges::find_if(
+            found, [&](const Mention& mention) { return same_location(mention.location, *location); });
+        if (known == found.end()) {
+            found.push_back(Mention{std::move(*location), occurrence.role});
+        } else if (occurrence.role == clangbridge::Role::Declaration) {
+            // Written once, reached as a repetition's reference and as the
+            // declaration it repeats: it is the declaration.
+            known->role = occurrence.role;
+        }
+    }
+    return found;
+}
+
 std::vector<Location> EditorView::navigate(clangbridge::Destination destination, const Position& position) const {
     std::vector<Location> locations;
     if (unit_ == nullptr || main_ == nullptr) {

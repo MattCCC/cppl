@@ -96,6 +96,19 @@ class Server {
                                                                               const TextDocumentIdentifier& id,
                                                                               const Position& position);
 
+    // Every place the name at `position` is written, in every open document's
+    // unit and the headers each includes, ordered by document and position
+    // (LSP `textDocument/references`). Declarations are left out unless
+    // `include_declaration`. `std::nullopt` means the document is unknown.
+    [[nodiscard]] std::optional<std::vector<Location>> text_document_references(const TextDocumentIdentifier& id,
+                                                                                const Position& position,
+                                                                                bool include_declaration);
+
+    // The same, in this document only, each marked as a declaration (text), a
+    // read or a write (LSP `textDocument/documentHighlight`).
+    [[nodiscard]] std::optional<std::vector<DocumentHighlight>> text_document_document_highlight(
+        const TextDocumentIdentifier& id, const Position& position);
+
     // Diagnostics
     using DiagnosticPublisher = std::function<void(const std::string& uri, std::vector<Diagnostic>)>;
     void set_diagnostic_publisher(DiagnosticPublisher publisher) {

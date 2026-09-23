@@ -42,6 +42,28 @@ class EditorView {
 
     [[nodiscard]] std::vector<Location> navigate(clangbridge::Destination destination, const Position& position) const;
 
+    // What the name at `position` denotes, in a form every open document's
+    // view can look up in its own unit.
+    struct Target {
+        std::vector<std::string> usrs;
+        std::string name;
+        // Where it was declared, when that is traced to written text.
+        std::optional<Location> declaration;
+    };
+    [[nodiscard]] std::optional<Target> target_at(const Position& position) const;
+
+    struct Mention {
+        Location location;
+        clangbridge::Role role = clangbridge::Role::Read;
+    };
+
+    // Every place this view's unit writes the target's name, traced to written
+    // text. A parameter the projection repeats in several generated
+    // declarations -- a proof's, in each probe it has -- is one name the author
+    // wrote once, so a declaration Clang reports at the same written position
+    // is the target too.
+    [[nodiscard]] std::vector<Mention> mentions(const Target& target) const;
+
     // The number of refreshes that had to parse the unit from scratch, for
     // tests that check an edit reuses what Clang kept.
     [[nodiscard]] std::size_t parses() const noexcept {

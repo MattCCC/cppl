@@ -95,6 +95,13 @@ std::optional<std::size_t> ProjectedFile::to_analysis(std::size_t written) const
             return segment.analysis + (written - segment.original);
         }
     }
+    // A Law's or a refinement type's own name: the generated declaration that
+    // stands for it.
+    for (const Anchor& anchor : anchors_) {
+        if (written >= anchor.written.offset && written < anchor.written.end()) {
+            return anchor.analysis + (written - anchor.written.offset);
+        }
+    }
     // Written inside a C++L declaration: its first copy, which for a Law's or
     // a proof's parameters is the declaration standing for it rather than a
     // probe that repeats them.
