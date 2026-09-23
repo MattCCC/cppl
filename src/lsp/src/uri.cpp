@@ -12,6 +12,14 @@ namespace {
 
 constexpr std::string_view kFileScheme = "file://";
 
+// A path separator on Windows, and an ordinary file-name byte everywhere else,
+// where turning it into '/' would name a different file.
+#ifdef _WIN32
+constexpr bool kBackslashSeparates = true;
+#else
+constexpr bool kBackslashSeparates = false;
+#endif
+
 // std::isxdigit already validated `digit` at the call site.
 [[nodiscard]] unsigned int hex_digit_value(char digit) {
     if (digit >= '0' && digit <= '9') {
@@ -68,13 +76,23 @@ std::optional<std::string> uri_to_path(const std::string& uri) {
 
     // An authority (host) component before the path is not something a
     // local file path can express beyond the empty/"localhost" cases LSP
-    // clients actually send; strip it if present rather than reject.
-    if (const auto slash = rest.find('/'); slash != std::string_view::npos && slash != 0) {
-        rest.remove_prefix(slash);
+    // clients actually send; strip it if present rather than reject. With no
+    // '/' at all there is only an authority, and no file is named.
+    const auto slash = rest.find('/');
+    if (slash == std::string_view::npos) {
+        return std::nullopt;
     }
+    rest.remove_prefix(slash);
 
     std::optional<std::string> decoded = percent_decode(rest);
     if (!decoded.has_value()) {
+        return std::nullopt;
+    }
+
+    // Every C API ends a path at its first NUL, so a path holding one names a
+    // different, shorter path to the code that opens it than to the code that
+    // checked it.
+    if (decoded->find('\0') != std::string::npos) {
         return std::nullopt;
     }
 
@@ -100,7 +118,7 @@ std::string path_to_uri(const std::string& path) {
 
     for (const char character : path) {
         const auto c = static_cast<unsigned char>(character);
-        if (c == '\\') {
+        if (c == '\\' && kBackslashSeparates) {
             encoded.push_back('/');
         } else if (is_unreserved(c)) {
             encoded.push_back(static_cast<char>(c));
