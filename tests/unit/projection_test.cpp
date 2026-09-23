@@ -436,6 +436,31 @@ CPPL_TEST(a_loop_measure_leaves_the_runtime_and_reaches_clang_as_a_value) {
     CPPL_CHECK_EQ(measures, std::size_t{1});
 }
 
+CPPL_TEST(a_clause_expression_keeps_its_written_position_in_the_analysis) {
+    // A diagnostic inside a clause points where the author wrote it, however
+    // long the declaration generated around the expression is.
+    const std::string text = "verified unsigned f(unsigned first_parameter, unsigned second_parameter)\n"
+                             "    ensures (result == first_parameter)\n"
+                             "{\n"
+                             "    return first_parameter;\n"
+                             "}\n";
+    cppl::diagnostics::Engine engine;
+    const auto stream = cppl::frontend::lex(text, "clauses.cpp");
+    const auto syntax = cppl::frontend::recognize(stream, engine);
+    CPPL_CHECK(!engine.has_errors());
+    const auto projection = cppl::frontend::project(stream, syntax, {});
+    const auto analysis = cppl::frontend::lex(projection.analysis, "clauses.cpp");
+    bool result_found = false;
+    bool parameter_found = false;
+    for (const auto& token : analysis.tokens()) {
+        const auto at = analysis.location_of(token);
+        result_found = result_found || (token.text == "result" && at.line == 2 && at.column == 14);
+        parameter_found = parameter_found || (token.text == "first_parameter" && at.line == 2 && at.column == 24);
+    }
+    CPPL_CHECK(result_found);
+    CPPL_CHECK(parameter_found);
+}
+
 // SPEC: VERIFIED-045, ERASE-016
 // TRUST.md TCB-ERASE-010
 CPPL_TEST(a_claim_that_a_path_cannot_occur_leaves_an_empty_statement_behind) {
@@ -471,7 +496,7 @@ CPPL_TEST(a_claim_that_a_path_cannot_occur_leaves_an_empty_statement_behind) {
     const std::string& name = projection.path_contradictions[0].name;
     CPPL_CHECK(projection.analysis.find("bool " + name + " = true;") != std::string::npos);
     CPPL_CHECK(projection.analysis.find("decltype(auto) " + name + "_argument_0 = (") != std::string::npos);
-    CPPL_CHECK(projection.analysis.find("x + 1u);") != std::string::npos);
+    CPPL_CHECK(projection.analysis.find("x + 1u\n);") != std::string::npos);
 
     // The text after the claim keeps its line and column in the analysis.
     const auto analysis = cppl::frontend::lex(projection.analysis, "claims.cpp");

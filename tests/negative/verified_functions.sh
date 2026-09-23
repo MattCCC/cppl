@@ -155,6 +155,8 @@ status=0
 test "$status" -ne 0
 test ! -e "$run/after_error.o"
 grep -q "the postcondition of verified function 'halves' is not modeled" "$run/after_error.err"
+# And it is reported where the unmodeled expression was written.
+grep -q "contract_after_an_unrelated_error.cpp:6:24: error" "$run/after_error.err"
 grep -q "verified function 'claims_zero' does not satisfy its contract" "$run/after_error.err"
 
 echo 'false contracts and unsupported verified bodies fail closed'

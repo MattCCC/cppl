@@ -27,6 +27,31 @@ struct Edit {
     std::optional<std::size_t> refinement_index = std::nullopt;
 };
 
+// An expression the author wrote, copied on a line of its own that starts at the
+// line and column its first token was written at, so a diagnostic anywhere
+// inside it points where the author wrote it rather than into the generated
+// declaration around it. The bytes are copied verbatim, so every later token
+// keeps its column too. Without a file to name in a line directive, or with no
+// token to anchor on, the text is copied in place.
+std::string at_written_position(const TokenStream& stream, const source::ByteSpan& expression) {
+    const std::vector<Token>& tokens = stream.tokens();
+    const auto first =
+        std::ranges::lower_bound(tokens, expression.offset, {}, [](const Token& token) { return token.span.offset; });
+    if (first == tokens.end() || first->kind == TokenKind::EndOfFile || first->span.offset >= expression.end()) {
+        return std::string(stream.spelling(expression));
+    }
+    const source::SourceLocation at = stream.location_of(*first);
+    const std::string directive = line_directive(at.line, at.file);
+    if (directive.empty()) {
+        return std::string(stream.spelling(expression));
+    }
+    std::string text = "\n" + directive;
+    text.append(at.column > 1 ? at.column - 1 : 0, ' ');
+    text += stream.spelling(source::ByteSpan{first->span.offset, expression.end() - first->span.offset});
+    text += "\n";
+    return text;
+}
+
 // The tokens of a span, on one line. Two tokens the author wrote adjacently stay
 // adjacent, so a type-id reads as it was written; anything between them - space,
 // newline or comment - becomes one space. Restating the tokens rather than
@@ -235,7 +260,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
             return replacement;
         }
         replacement += ") { return (";
-        replacement += stream.spelling(expression);
+        replacement += at_written_position(stream, expression);
         replacement += "); }\n";
         replacement += line_directive(end_line, begin.file);
         return replacement;
@@ -284,7 +309,13 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
             projection.diagnostics.push_back(std::move(diagnostic));
         }
         probe.shape = formula.shape;
-        replacement += " { return (" + formula.expression + "); }\n";
+        // A plain predicate is the author's own text, so it is copied where it
+        // was written; a formal one is rewritten and has no such position.
+        replacement += " { return (" +
+                       (formula.shape.kind == source::ProjectionKind::Expression
+                            ? at_written_position(stream, refinement.predicate)
+                            : formula.expression) +
+                       "); }\n";
         replacement += line_directive(refinement.end_line, refinement.keyword_location.file);
 
         projection.refinement_probes.push_back(std::move(probe));
@@ -324,19 +355,13 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
     // deduced return type is the type Clang gives the expression, with no
     // conversion imposed on the way out.
     const auto emit_expression = [&stream](std::string_view name, std::string_view parameters,
-                                           const source::ByteSpan& expression, const source::SourceLocation& location) {
+                                           const source::ByteSpan& expression) {
         std::string head = "[[maybe_unused]] static decltype(auto) ";
         head += name;
         head += "(";
         head += parameters;
         head += ") { return (";
-        // The expression's bytes are copied verbatim, so aligning the start of
-        // the copy with the column it came from makes every column inside it
-        // land where the author wrote it.
-        if (location.column > head.size() + 1) {
-            head.append(location.column - 1 - head.size(), ' ');
-        }
-        head += stream.spelling(expression);
+        head += at_written_position(stream, expression);
         head += "); }\n";
         return head;
     };
@@ -364,7 +389,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
                     std::string name =
                         options.generated_prefix + std::string(kind) + suffix + "_" + std::to_string(names.size());
                     replacement += line_directive(at.line, proof.keyword_location.file);
-                    replacement += emit_expression(name, parameters, span, at);
+                    replacement += emit_expression(name, parameters, span);
                     replacement += line_directive(proof.end_line, proof.keyword_location.file);
                     names.push_back(std::move(name));
                 };
@@ -413,8 +438,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
                         emit(name, parameters, statement.proposition, statement.proposition_location, proof.end_line);
                 } else {
                     replacement += line_directive(statement.proposition_location.line, proof.keyword_location.file);
-                    replacement +=
-                        emit_expression(name, parameters, statement.proposition, statement.proposition_location);
+                    replacement += emit_expression(name, parameters, statement.proposition);
                     replacement += line_directive(proof.end_line, proof.keyword_location.file);
                 }
                 projected.assumption_names.push_back(std::move(name));
@@ -591,12 +615,8 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
 
             const source::SourceLocation& at = loop.expression_locations[position];
             replacement += line_directive(at.line, loop.keyword_location.file);
-            std::string head = "[[maybe_unused]] bool " + marker.name + " = (";
-            if (at.column > head.size() + 1) {
-                head.append(at.column - 1 - head.size(), ' ');
-            }
-            replacement += head;
-            replacement += stream.spelling(loop.invariants[position].expression);
+            replacement += "[[maybe_unused]] bool " + marker.name + " = (";
+            replacement += at_written_position(stream, loop.invariants[position].expression);
             replacement += ");\n";
             projection.loop_invariants.push_back(std::move(marker));
         }
@@ -622,12 +642,8 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
 
             const source::SourceLocation& at = loop.measure_location;
             replacement += line_directive(at.line, loop.keyword_location.file);
-            std::string head = "[[maybe_unused]] auto " + marker.name + " = (";
-            if (at.column > head.size() + 1) {
-                head.append(at.column - 1 - head.size(), ' ');
-            }
-            replacement += head;
-            replacement += stream.spelling(loop.decreases->expression);
+            replacement += "[[maybe_unused]] auto " + marker.name + " = (";
+            replacement += at_written_position(stream, loop.decreases->expression);
             replacement += ");\n";
             projection.loop_invariants.push_back(std::move(marker));
         }
@@ -666,13 +682,9 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
             replacement += line_directive(argument.location.line, file);
             // `decltype(auto)` over a parenthesized argument binds it as it is,
             // an lvalue by reference, so nothing is copied or converted.
-            std::string head =
+            replacement +=
                 "[[maybe_unused]] decltype(auto) " + marker.name + "_argument_" + std::to_string(position) + " = (";
-            if (argument.location.column > head.size() + 1) {
-                head.append(argument.location.column - 1 - head.size(), ' ');
-            }
-            replacement += head;
-            replacement += stream.spelling(argument.span);
+            replacement += at_written_position(stream, argument.span);
             replacement += ");\n";
         }
         replacement += "}\n";
