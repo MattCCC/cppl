@@ -1230,7 +1230,8 @@ the subject's provider lists that the statement has no arm for yet — the
 residual state included, since it is a real semantic state and not a catch-all
 — and each item inserts an arm carrying the provider's own binder names. Hover
 names the subject's resolved representation, its provider, and the full
-partition with written arms marked. Both read the states the compiler's case
+partition with written arms marked; an omitted case is marked as claimed
+impossible, not as proven. Both read the states the compiler's case
 engine recorded while elaborating the buffer (`elaboration::SubjectStates`),
 so the server still has no decomposition or exhaustiveness engine of its own;
 where the compiler has not confirmed a subject's states, they offer nothing

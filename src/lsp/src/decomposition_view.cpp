@@ -156,9 +156,10 @@ std::optional<Hover> case_site_hover(const CaseSite& site) {
             text += " — residual";
         }
         // Accounted for, but by a claim that it cannot occur rather than by an
-        // arm (SPEC.md CASE-004), so the checklist says which.
+        // arm (SPEC.md CASE-004), so the checklist says which. This reads the
+        // written syntax, so it states the claim and never whether it checked.
         if (written && arm->omitted) {
-            text += " — omitted, shown impossible by contradiction";
+            text += " — omitted, claimed impossible by contradiction";
         }
         text += "\n";
     }

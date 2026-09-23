@@ -189,7 +189,9 @@ CPPL_TEST(hover_marks_written_and_residual_states) {
 CPPL_TEST(omitted_state_is_accounted_for_but_not_presented_as_an_arm) {
     // `omit valueless by contradiction e;` accounts for the state (CASE-004),
     // so completion must not offer it again. It is accounted for by a claim
-    // that the state cannot occur, not by an arm, and the hover says so.
+    // that the state cannot occur, not by an arm, and the hover says so. The
+    // hover is built from syntax alone, so it must not present that claim as
+    // checked: an omission whose evidence fails hovers exactly the same way.
     ProofStatement statement = cases_statement(100, 50, 7, {"alternative<0>"});
     ProofArm omission;
     omission.spelling = "valueless";
@@ -207,8 +209,10 @@ CPPL_TEST(omitted_state_is_accounted_for_but_not_presented_as_an_arm) {
 
     const std::optional<Hover> hover = case_site_hover(*site);
     CPPL_CHECK(hover.has_value());
-    CPPL_CHECK(hover->contents.find("- [x] `valueless` — residual — omitted, shown impossible by contradiction") !=
+    CPPL_CHECK(hover->contents.find("- [x] `valueless` — residual — omitted, claimed impossible by contradiction") !=
                std::string::npos);
+    CPPL_CHECK(hover->contents.find("shown") == std::string::npos);
+    CPPL_CHECK(hover->contents.find("proven") == std::string::npos);
     // An ordinary arm is not described as omitted.
     CPPL_CHECK(hover->contents.find("`alternative<0>(value)` — omitted") == std::string::npos);
 }

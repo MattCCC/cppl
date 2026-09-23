@@ -63,6 +63,8 @@ semantic state, not a catch-all, so it is offered like any other (`AGENTS.md`
 binder names, so an accepted completion already has the right binder count for
 that state's payload. Hover names the subject's resolved representation, which
 provider modeled it, and the full partition with the written arms checked off.
+An omitted case is marked as claimed impossible, not as proven: hover reads the
+written syntax, and whether the claim checks is reported as a diagnostic.
 
 The server advertises `textDocumentSync`, `documentFormattingProvider`,
 `documentRangeFormattingProvider`, `documentOnTypeFormattingProvider`,
