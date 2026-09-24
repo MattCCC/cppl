@@ -128,16 +128,16 @@ CPPL_TEST(a_standard_library_name_leads_into_its_system_header) {
     const std::string text = "#include <vector>\n"
                              "int main() { std::vector<int> v; v.push_back(1); return static_cast<int>(v.size()); }\n";
     open(server, "file:///work/main.cpp", text);
-    // Where the standard library defines it is the library's business; that it
-    // is found there, and not in the document, is the point.
-    const std::string vector =
-        go(server, Destination::Definition, "file:///work/main.cpp", position_of(text, "vector<"));
-    CPPL_CHECK(vector.starts_with("vector"));
-    CPPL_CHECK(vector.find("main.cpp") == std::string::npos);
-    const std::string push_back =
-        go(server, Destination::Definition, "file:///work/main.cpp", position_of(text, "push_back"));
-    CPPL_CHECK(!push_back.empty());
-    CPPL_CHECK(push_back.find("main.cpp") == std::string::npos);
+    // Which header the standard library defines it in is the library's business
+    // (libc++ and libstdc++ differ); that it is found there, and not in the
+    // document, is the point.
+    const auto found_in_a_header = [](const std::string& found) {
+        return !found.empty() && found != "null" && found.find("main.cpp") == std::string::npos;
+    };
+    CPPL_CHECK(
+        found_in_a_header(go(server, Destination::Definition, "file:///work/main.cpp", position_of(text, "vector<"))));
+    CPPL_CHECK(found_in_a_header(
+        go(server, Destination::Definition, "file:///work/main.cpp", position_of(text, "push_back"))));
 }
 
 CPPL_TEST(an_include_leads_to_the_start_of_the_file_it_includes) {
