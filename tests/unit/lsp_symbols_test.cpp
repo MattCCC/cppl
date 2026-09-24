@@ -7,7 +7,6 @@
 #include "cppl/lsp/server.hpp"
 #include "cppl/testing/test.hpp"
 
-#include <cstddef>
 #include <optional>
 #include <string>
 #include <vector>
