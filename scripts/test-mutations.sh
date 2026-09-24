@@ -37,7 +37,7 @@ arithmetic-certificate	kernel/src/check.cpp	!refuted	false && (!refuted)	^kernel
 hypothesis-scope	kernel/src/check.cpp	if (assumed->index.value >= assumptions.size()) {	if (assumed->index.value >= assumptions.size()) { return {};	^kernel_
 substitution-capture	kernel/src/substitution.cpp	return shift(argument, depth, 0);	return argument;	^kernel_
 hypothesis-binder-shift	kernel/src/check.cpp	static_cast<std::uint32_t>(locals.size() - assumption.binders)	0u	^kernel_
-verdict-goal-identity	compiler/obligations/src/status.cpp	!(acceptance.proposition() == obligation.goal)	false && (!(acceptance.proposition() == obligation.goal))	^unit_verdict_test$
+verdict-goal-identity	compiler/obligations/src/status.cpp	!(acceptance.proposition() == relative_to(premises, obligation.goal))	false && (!(acceptance.proposition() == relative_to(premises, obligation.goal)))	^unit_verdict_test$
 conjunction-side-identity	kernel/src/check.cpp	!(side == proposition)	false && (!(side == proposition))	^kernel_
 conjunction-shape	kernel/src/check.cpp	const auto* conjunction = std::get_if<And>(&taken->conjunction->node);	const auto* conjunction = std::get_if<And>(&taken->conjunction->node); if (conjunction == nullptr) { return {}; }	^kernel_
 disjunction-shape	kernel/src/check.cpp	const auto* disjunction = std::get_if<Or>(&cases->disjunction->node);	const auto* disjunction = std::get_if<Or>(&cases->disjunction->node); if (disjunction == nullptr) { return {}; }	^kernel_
