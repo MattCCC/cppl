@@ -2073,11 +2073,20 @@ Refinement validity applies to logical values and logical value versions.
 
 [REFINE-023] If a write, aliasing event, call effect, lifetime transition, or other operation may change the relevant value, facts about the previous logical version MUST NOT automatically be reused for the new logical version.
 
-[REFINE-060] A logical value version read from a storage location satisfies that location's declared semantic validity where every operation able to establish a version of the location is modeled by the verifier and each was required to establish that same validity. This does not attach the predicate to the location in the sense REFINE-022 forbids, and it reuses no fact about a previous version in the sense REFINE-023 forbids: the predicate is re-derived from the obligations charged at the operations that write the location, and it ceases to hold the moment an operation able to reach the location is not among them.
+[REFINE-060] A logical value version read from a storage location satisfies that location's declared semantic validity when both of the following hold:
 
-[REFINE-061] An implementation MUST NOT apply REFINE-060 to a location that an operation outside the modeled body can write. A location whose address escapes the body, a location designated by a parameter that may alias caller storage, and a location reached through a pointer are each writable in that way. A pointer in particular carries no such evidence, because a pointer to a refined type erases to a pointer to its representation and so says nothing about what the pointee holds (REFINE-019).
+1. semantic validity was established for the version by which the location entered the modeled state; and
+2. every operation that may subsequently establish a new version of that location is represented by the verifier and is required to establish that same semantic validity.
 
-[REFINE-062] REFINE-060 states a supposition and never an obligation. The predicate MUST NOT be demanded again where the value is read, because the obligation for it was already charged where the value was written, and charging it at both ends would make a body owe one crossing twice.
+The predicate belongs to the current logical value version because the operation that established that version was itself required to establish it. This does not attach the predicate permanently to the location in the sense REFINE-022 forbids, and it does not reuse a fact about an earlier version in the sense REFINE-023 forbids. The rule is unavailable whenever the verifier cannot account for every operation that may establish the current version.
+
+[REFINE-061] REFINE-060 MUST NOT be applied where the verifier lacks closed accounting for the writes that may reach the location. Storage whose address or mutable alias has escaped to code whose effects are not modeled, storage that an unmodeled call may modify, and storage whose mutation may occur through an execution context outside the current verification model each lack that accounting.
+
+A reference, pointer, or other alias does not by itself establish the semantic validity of the storage it designates. A pointer to a refined type erases to a pointer to the refinement's runtime representation, so the pointer value alone is not evidence that the pointee satisfies the refinement (REFINE-019). Where entry validity and every potentially reaching write are modeled, REFINE-060 applies to the resulting storage versions normally, whether or not the location is reached through an alias: what disqualifies a location is unaccounted reachability, not indirection as such.
+
+Reachability that cannot be established closed is fail-closed. An implementation that cannot account for every write that may reach a location MUST NOT reuse validity for it, and MUST invalidate conservatively or refuse.
+
+[REFINE-062] REFINE-060 derives a fact about the current logical value version; it does not create a new proof obligation. The declared semantic validity MUST NOT be demanded again merely because that same version is read. The obligation was already charged when the version was established, or validity was established at the verified boundary through which that version entered the modeled state (REFINE-007). Charging the predicate again on read would duplicate one refinement crossing obligation.
 
 Refinement validity is recursive through refinement-bearing subobjects as defined by §17.2.1.
 
@@ -5319,12 +5328,31 @@ representation, solver, or TCB implementation.
 - An implementation that establishes neither equality nor inequality must transport no fact between
   the selections and must treat a write through either as invalidating the other.
 
-- [STORAGE-011] A parameter passed by value designates storage of the callee, and its subobjects are
-  places of the callee exactly as a local's subobjects are places of the body that declares it.
-- A write to such a place has no effect any caller can observe and reaches no storage a caller
-  names, so it is modeled as an ordinary write to the callee's own storage.
-- A parameter that may designate caller storage is not such a place. Another reference may designate
-  the same object, so what a write through it reaches is not decided by the callee alone.
+- [STORAGE-011] A parameter passed by value owns a distinct parameter object in the callee. That
+  object, and every ordinary non-reference subobject whose storage is contained within it, are
+  places rooted in callee-owned storage.
+- A write whose complete place path remains within the parameter object must be modeled as a write
+  to callee-owned storage, and must not invalidate facts about the caller's argument object merely
+  because the parameter was initialized from it. This distinctness is the whole of what by-value
+  passing proves, and it says nothing about storage a value inside the parameter designates
+  (VERIFIED-040).
+- The ownership stops at every operation that may designate storage outside the parameter object.
+  Dereferencing a pointer, following a reference or reference member, reaching storage through an
+  iterator, view, span, handle, proxy or other alias-bearing value, and invoking an operation whose
+  effects may reach external storage are each governed by the ordinary alias and effect rules for
+  that operation, not by this rule.
+- An alias-bearing value stored inside a by-value parameter is itself part of the callee-owned
+  parameter object; the storage that value designates is not. For a by-value parameter `s`: `s` and
+  `s.member` for an ordinary contained subobject are callee-owned; the pointer object `s.ptr` is
+  callee-owned while `*s.ptr` is not; and `s.ref` designates the referred storage rather than
+  storage the parameter object owns.
+- A parameter passed by reference, and any parameter form whose semantics directly designate caller
+  storage, must not be treated as a callee-owned value place under this rule.
+- Where two aliases may designate one storage, writes and invalidation follow the general alias
+  model. Disjointness must not be inferred from distinct parameter names.
+- An implementation that cannot establish that a place remains entirely within callee-owned
+  parameter storage must not apply this rule. It must instead apply the relevant may-alias or
+  effect rule, or refuse the operation where that effect cannot be modeled soundly.
 
 ## E.2 Lifetime start
 

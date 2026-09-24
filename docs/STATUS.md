@@ -912,34 +912,47 @@ not earn it.
 
 A symbolic element read now supplies the element type's refinement (`SPEC.md`
 REFINE-060 to REFINE-062, `TRUST.md` TCB-REFINE-009). The value is unknown, but
-it is unknown *within* the declared type: every value that reached an element of
-a local array was written in this body and owed the predicate where it was
-written, so an element holds some value of its type even though which element is
-undecided. The predicate is supposed and never charged again — demanding it at
-the read would make the body pay for one crossing twice. `a[i]` of a
-`Positive[3]` therefore proves `result > 0`, and a refinement of a refinement
-supplies both predicates and no third one.
+it is unknown *within* the declared type: the array entered the modeled state
+through an initializer that established validity for every element, and every
+later write was modeled here and charged the same predicate, so the element's
+current version holds a value of its type even though which element is
+undecided. The predicate belongs to that version rather than to the storage, and
+it is derived and not charged again — demanding it at the read would make the
+body pay for one crossing twice. `a[i]` of a `Positive[3]` therefore proves
+`result > 0`, and a refinement of a refinement supplies both predicates and no
+third one.
 
-This rests on every write being modeled, so it is withheld wherever one might
-not be: from a pointee, because a pointer to a refined type erases to a pointer
-to its representation and says nothing about what is there; from storage a
-reference parameter designates, because the caller may hold another reference to
-it; and from a local whose address escapes. The escape test is deliberately
-stricter than the one aliasing uses — the array-to-pointer decay a subscript
-performs on its own base is not an escape, while a decay into a call argument or
-into pointer arithmetic is. Of these three conditions only the pointee one is
-observable today: the other two describe bodies this implementation already
-refuses for containing an unmodeled `&` or decay, so they are the soundness
-contract for when those forms are modeled rather than gates that currently fire.
+The rule needs closed accounting for the writes that may reach the location, so
+this implementation applies it only where it has that: a local array, entered
+through an aggregate initializer, whose address it never let escape. Indirection
+is not what disqualifies a location — the spec allows the rule to reach storage
+behind an alias once the accounting is closed — but this implementation does not
+close it there, so a pointee gets nothing, and a pointer to a refined type is
+never itself the evidence. The escape test is deliberately stricter than the one
+aliasing uses: the array-to-pointer decay a subscript performs on its own base is
+not an escape, while a decay into a call argument or into pointer arithmetic is.
+Only the pointee limit is observable today; storage a reference parameter
+designates and a local whose address escapes describe bodies this implementation
+already refuses for containing an unmodeled `&` or decay, so those conditions are
+the contract for when those forms are modeled rather than gates that fire now.
 
-A parameter passed by value is the callee's own copy, so its members are places
-of the callee and writing one is an ordinary write (`SPEC.md` STORAGE-011).
-`s.x = 5; return s.x;` verifies, a sibling keeps the value it arrived with
-without becoming known, and a refined member owes its predicate on the way in
-exactly as a local's does. A parameter that may designate caller storage gets
-none of this and is refused where it is written. A member array of a by-value
-parameter is tracked only once something writes it, so reading one at a symbolic
-index is still refused for an unknown extent.
+A parameter passed by value owns a distinct parameter object, so its ordinary
+contained subobjects are places of the callee and writing one is an ordinary
+write (`SPEC.md` STORAGE-011). `s.x = 5; return s.x;` verifies, a sibling keeps
+the value it arrived with without becoming known, a nested member is reached by a
+longer path, and a refined member owes its predicate on the way in exactly as a
+local's does. A write inside the parameter object does not reach the caller's
+argument and does not reach another parameter.
+
+Ownership stops at indirection, and this implementation stops well short of it:
+a parameter whose type has a pointer or reference member is not tracked at all,
+because such a member is not a modeled value type, so writing any member of such
+a parameter is refused rather than treated as callee-owned. `*s.p` is therefore
+never reached through this rule, and a fact about a pointee does not survive a
+write through a pointer that may designate it. A parameter that may designate
+caller storage gets none of this and is refused where it is written. A member
+array of a by-value parameter is tracked only once something writes it, so
+reading one at a symbolic index is still refused for an unknown extent.
 
 The extent is a term rather than a count. A constant extent canonicalizes to a
 literal, and the extent a capability states does not: `readable(a, n)` bounds a

@@ -1063,4 +1063,90 @@ verified int f(S& s) ensures (result == 5) {
 }
 CPP
 
+# Ownership of a by-value parameter stops at indirection. The storage an
+# alias-bearing member designates is not the parameter object's, so a fact about
+# it must not survive a write through a pointer that may designate it too. An
+# implementation that treated `*s.p` as callee-owned would keep the stale fact
+# and prove this false program.
+#
+# The four cases below are fail-closed guards rather than alias decisions: today
+# a type with a pointer or reference member is not a modeled value type, so such
+# a parameter is never tracked and these forms are refused before the ownership
+# question arises. The patterns stay broad on purpose -- what each case pins is
+# that the program is refused at all, whatever the reason, so making such
+# parameters trackable without handling the pointee turns one of these red.
+# The alias decision itself is pinned where it is modelable, by
+# `negative/verified_storage.sh` `a_pointer_write_invalidates_another_pointee`.
+# SPEC: STORAGE-011
+refuse a_pointee_of_a_member_is_not_callee_owned 'cannot state as a value|does not satisfy its contract' <<'CPP'
+struct S { int* p; };
+verified int f(S s, int* q)
+    expects (writable(s.p, 1u) && readable(s.p, 1u) && writable(q, 1u))
+    ensures (result == 5)
+{
+    *s.p = 5;
+    *q = 0;
+    return *s.p;
+}
+CPP
+
+# A call that may write through the member pointer invalidates the pointee for
+# the same reason: the callee's effects reach storage the parameter never owned.
+refuse a_call_through_a_member_pointer_invalidates_the_pointee 'cannot state as a value|does not satisfy its contract' <<'CPP'
+struct S { int* p; };
+void sink(int* q);
+verified int f(S s) expects (writable(s.p, 1u) && readable(s.p, 1u)) ensures (result == 5) {
+    *s.p = 5;
+    sink(s.p);
+    return *s.p;
+}
+CPP
+
+# A pointer to a refined type erases to a pointer to its representation, so the
+# member's declared type is no evidence about what the pointee holds.
+# SPEC: REFINE-061
+refuse a_refined_pointee_of_a_member_supplies_nothing 'cannot state as a value|does not satisfy its contract' <<'CPP'
+type Positive = int where (self > 0);
+struct S { Positive* p; };
+verified int f(S s) expects (readable(s.p, 1u)) ensures (result > 0) {
+    return *s.p;
+}
+CPP
+
+# A reference member designates the referred storage rather than storage the
+# parameter object owns.
+refuse a_reference_member_is_not_callee_owned 'cannot state as a value|does not satisfy its contract' <<'CPP'
+struct S { int& r; };
+verified int f(S s) ensures (result == 5) {
+    s.r = 5;
+    return s.r;
+}
+CPP
+
+# A write inside the parameter object reaches no storage outside it, so an
+# unrelated pointer cannot disturb a contained member: the parameter object's
+# address never escaped this body.
+# SPEC: STORAGE-011
+accept a_contained_member_survives_a_foreign_write <<'CPP'
+struct S { int x; int y; };
+verified int f(S s, int* q) expects (writable(q, 1u)) ensures (result == 5) {
+    s.x = 5;
+    *q = 0;
+    return s.x;
+}
+CPP
+
+# Validity is established once where the version is written and is not charged
+# again where that same version is read: the write below owes the predicate, and
+# the two reads of it owe nothing further.
+# SPEC: REFINE-062
+accept a_written_version_is_read_without_a_second_obligation <<'CPP'
+type Positive = int where (self > 0);
+verified int f(unsigned i) expects (i < 3u) ensures (result > 0) {
+    Positive a[3] = {1, 2, 3};
+    a[i] = 7;
+    return a[i] > 0 ? a[i] : 1;
+}
+CPP
+
 echo 'refinement flow: proven crossings and refused crossings both hold'

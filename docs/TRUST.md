@@ -613,7 +613,11 @@ Refinement types have verification identity but erase to their base representati
 
 **[TCB-REFINE-008]** A declaration collision caused by refinement erasure MUST be diagnosed rather than relying on an ABI distinction that does not exist.
 
-**[TCB-REFINE-009]** Supposing that a value read from storage satisfies that storage's declared type MUST rest on having charged the same requirement at every operation able to write the storage, and the set of such operations MUST be established rather than assumed. A location whose address escapes, one a parameter may alias, and one reached through a pointer each admit a writer the body never modeled, and for them the supposition is unfounded: the declared type of a pointee is not evidence about the pointee, exactly as equal erased representation is not evidence of a refinement (`TCB-REFINE-005`). The supposition is also never an obligation — demanding the predicate again where the value is read would charge one crossing twice and silently turn a supposed fact into a proof burden the writer already met (`SPEC.md` REFINE-060, REFINE-061, REFINE-062).
+**[TCB-REFINE-009]** Deriving that a value read from storage satisfies that storage's declared type MUST rest on closed accounting: validity established for the version by which the storage entered the modeled state, and the same requirement charged at every operation that may establish a later version. The set of those operations MUST be established rather than assumed, and where it cannot be, the derivation MUST be withheld and the storage invalidated conservatively or the body refused.
+
+Indirection does not by itself disqualify storage — what disqualifies it is a writer the model cannot account for — but an alias is never itself evidence. A pointer to a refined type erases to a pointer to its representation, so the pointer value says nothing about what the pointee holds, exactly as equal erased representation is not evidence of a refinement (`TCB-REFINE-005`). An implementation MAY therefore close the accounting for storage reached through an alias, and MUST NOT treat having reached it through one as the accounting.
+
+The derivation states a fact about the current logical version and never a new obligation. Demanding the predicate again where the value is read would charge one refinement crossing twice (`SPEC.md` REFINE-060, REFINE-061, REFINE-062).
 
 ---
 

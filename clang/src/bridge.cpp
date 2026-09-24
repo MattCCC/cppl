@@ -1965,29 +1965,33 @@ struct BodyLowering {
     // not survive back to where the binding is emitted.
     std::vector<Local> formed_derefs;
 
-    // Wrap `body` in an opaque binding for each dereference place formed while
-    // the statement was lowered, outermost first so each version is bound
-    // before anything reads it.
-    // Whether the value bound for a newly formed place is still known to
-    // inhabit the place's declared type, so the walk may suppose that type's
-    // refinement of it.
+    // Whether the value bound for a newly formed place is known to inhabit the
+    // place's declared type, so the walk may state that type's refinement of it
+    // (SPEC.md REFINE-060).
     //
-    // Only a symbolic element of a local this body never let escape qualifies.
-    // Every value that reached such an element was written here, and each of
-    // those writes owed the element type's refinement where it happened, so the
-    // element holds some value of that type even though which one is undecided.
+    // The rule needs closed accounting for every write that may reach the
+    // place: validity for the version it entered the modeled state with, and
+    // the same predicate charged at every write since. Where that holds, the
+    // element's current version holds a value of its type even though which
+    // element it is stays undecided.
     //
-    // A dereference never qualifies: a pointer to a refined type erases to a
-    // pointer to its representation, so the pointee's declared type is not
-    // evidence about what the pointee holds. A reference parameter never
-    // qualifies either, because the caller may write the same storage through
-    // another reference to it. An address-taken local never qualifies, because
-    // a write through the escaped pointer is a write this body did not model.
+    // What follows is where *this* implementation has that accounting, not the
+    // limit of where it could be had. Indirection does not disqualify a place
+    // in principle; it disqualifies it here because nothing closes the
+    // accounting behind a pointer, whose declared pointee type is erased and so
+    // is no evidence at all about what the pointee holds. The same goes for
+    // storage a reference parameter designates, which the caller may write
+    // through another reference, and for a local whose address escaped, which a
+    // write this body never modeled can reach. Widening any of these means
+    // establishing the accounting first, never relaxing the test.
     [[nodiscard]] bool confined_element(const Local& entry) const {
         return entry.symbolic && !entry.is_deref() && !entry.external &&
                !unconfined.contains(clang_hashCursor(entry.declaration));
     }
 
+    // Wrap `body` in an opaque binding for each dereference place formed while
+    // the statement was lowered, outermost first so each version is bound
+    // before anything reads it.
     Expr bind_formed_derefs(Expr body, CXCursor at) {
         for (const Local& entry : std::ranges::reverse_view(formed_derefs)) {
             Locals one{entry};
