@@ -14,7 +14,12 @@ CTEST ?= ctest
 PRESET ?= dev
 BUILD_DIR ?= build/$(PRESET)
 
-JOBS ?=
+# Default to every core. ctest runs one test at a time unless told otherwise,
+# and the suite is dominated by script tests that each spawn the compiler many
+# times, so serial runs cost minutes that parallel runs do not. No test declares
+# RUN_SERIAL or RESOURCE_LOCK and each script allocates its own `mktemp -d` work
+# directory, so they do not share state. `JOBS=1` restores serial execution.
+JOBS ?= $(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1)
 VERBOSE ?= 0
 
 ifeq ($(strip $(JOBS)),)
