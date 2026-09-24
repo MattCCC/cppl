@@ -407,6 +407,51 @@ Not built: an unsafe member function, which is refused rather than recognized.
 
 ---
 
+## ghost-state
+
+Manifest: `features/ghost-state.yaml`
+
+Normative sources: `GHOST-001`, `GHOST-002` (SPEC §25), `ERASE-011` (SPEC
+§36.4), Annex M; GRAMMAR §21; `TRUST.md` §29 (TCB-ERASE-005).
+
+### Components
+
+| Component | Responsibility | Paths |
+| --- | --- | --- |
+| recognizer | Read a ghost declaration at the start of a statement, decided C++-first once the unit is read; refuse one outside a verified body, as a statement's body, in an unsafe block, or without a type. | `compiler/frontend/src/recognizer.cpp`, `compiler/frontend/include/cppl/frontend/syntax.hpp` |
+| projection | Blank the whole declaration in the runtime text; put a marker declaration before it in the analysis text. | `compiler/frontend/src/projection.cpp` |
+| bridge | Before lowering, decide each ghost's type, storage, value and initializer, record its calls, and refuse every reference by code that runs; lower each ghost as a term binding. | `clang/src/bridge.cpp` (`GhostScan`, `lower_ghost`), `clang/include/cppl/clang/ast.hpp` |
+| elaboration | Report each ghost error where it stands; refuse a call in an initializer to anything but a pure function. | `compiler/elaboration/src/elaborate.cpp` |
+| erasure | Require the whole declaration to have left the program. | `compiler/erasure/src/erase.cpp` |
+| editors | Color the word once the compile recognized ghost state. | `src/lsp/src/semantic_tokens.cpp`, `src/lsp/src/server.cpp` |
+
+### Required behavior
+
+```text
+a ghost declaration       leaves the program whole
+a reference to a ghost    stands only in another ghost's initializer or a
+                          specification expression; anywhere else it is an
+                          error where it stands, reached or not
+a ghost initializer       has no effect and calls only pure functions
+a ghost                   is an integer or Boolean local with a value, never
+                          written after it is declared
+a unit using `ghost` as   keeps every such declaration ordinary C++
+a name
+```
+
+### Existing surface
+
+```text
+tests/fixtures/ghost_state.cpp                every accepted use
+tests/e2e/ghost_state.sh                      verification, runtime output, erasure, C++-first
+tests/negative/ghost_state.sh                 every rejection, written out in tests/fixtures/negative/
+tests/fixtures/equivalence/ghost_state.cpp    erasure against a hand-erased twin
+```
+
+Not built: ghost state of class, pointer or array type, which is refused.
+
+---
+
 ## Adding a feature to this map
 
 1. Add the feature to `FEATURE_INDEX.md`.

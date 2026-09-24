@@ -36,7 +36,7 @@ section numbers move and rule IDs do not.
 | Case analysis | `CASE-*` | §20 | §5.7, §5.9, §18 | Abstract nominal values, structural case analysis, product decomposition | §4, §19 |
 | Checked contradiction, case omission and impossible runtime paths | `CASE-004`, `CASE-005`, `CASE-011`–`CASE-016`, `VERIFIED-023`, `VERIFIED-045`, `WORD-002`, `WORD-010`, `WORD-011`, `ERASE-016` | §20.2, §20.6, §12.7, §3, §36 | §1, §5.6, §5.7 | Contradiction and explosion | §5.1, §6, §19 |
 | Induction | `INDUCT-*` | §21 | — | Induction | §4 |
-| Ghost state | `GHOST-*` | §25 | §21 | — | §10 |
+| Ghost state | `GHOST-*`, `ERASE-011` | §25, §36.4 | §21 | — | §29 |
 
 ## Types
 

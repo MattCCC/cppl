@@ -1933,6 +1933,49 @@ std::optional<std::size_t> contradiction_statement_end(const std::vector<Token>&
     return close + 1;
 }
 
+// Where a `ghost` declaration beginning at `index` ends: the index of its `;`,
+// when a declaration follows the word (GRAMMAR.md 21). Whether it declares
+// anything is Clang's to say; this only delimits it.
+std::optional<std::size_t> ghost_declaration_end(const std::vector<Token>& tokens, std::size_t index) {
+    if (index + 1 >= tokens.size() ||
+        (tokens[index + 1].kind != TokenKind::Identifier && !tokens[index + 1].is_punctuator("::"))) {
+        return std::nullopt;
+    }
+    std::size_t depth = 0;
+    for (std::size_t cursor = index + 1; cursor < tokens.size() && tokens[cursor].kind != TokenKind::EndOfFile;
+         ++cursor) {
+        const Token& token = tokens[cursor];
+        if (token.is_punctuator("(") || token.is_punctuator("[") || token.is_punctuator("{")) {
+            ++depth;
+        } else if (token.is_punctuator(")") || token.is_punctuator("]") || token.is_punctuator("}")) {
+            if (depth == 0) {
+                return std::nullopt;
+            }
+            --depth;
+        } else if (depth == 0 && token.is_punctuator(";")) {
+            return cursor;
+        }
+    }
+    return std::nullopt;
+}
+
+// Whether a ghost declaration names both a type and a variable before its
+// initializer: `ghost x = y;` would leave the assignment `x = y;` behind the
+// word, not a declaration.
+bool ghost_declares(const std::vector<Token>& tokens, std::size_t index, std::size_t end) {
+    std::size_t names = 0;
+    for (std::size_t cursor = index + 1; cursor < end; ++cursor) {
+        const Token& token = tokens[cursor];
+        if (token.is_punctuator("=") || token.is_punctuator("(") || token.is_punctuator("{")) {
+            break;
+        }
+        if (token.kind == TokenKind::Identifier) {
+            ++names;
+        }
+    }
+    return names >= 2;
+}
+
 // Where a `cases` or `decompose` statement beginning at `index` ends: the index
 // of the `}` closing its arms, when the tokens have the statement's one shape, a
 // subject and then a braced arm list (GRAMMAR.md 5.7).
@@ -2295,6 +2338,15 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
         bool namespace_scope = false;
     };
     std::vector<WrittenUnsafeDeclaration> written_unsafe_declarations;
+    // Declarations led by `ghost`, decided the same way: `ghost x = y;` declares
+    // `x` wherever `ghost` names a type (GRAMMAR.md 21). One written where no
+    // statement of a block begins is recorded too, so it can be refused by name.
+    struct WrittenGhost {
+        std::size_t keyword = 0;
+        std::size_t terminator = 0;
+        bool in_block = false;
+    };
+    std::vector<WrittenGhost> written_ghosts;
 
     std::size_t index = 0;
     while (index < tokens.size() && tokens[index].kind != TokenKind::EndOfFile) {
@@ -2386,6 +2438,19 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
             }
             ++index;
             continue;
+        }
+
+        // ghost simple-declaration  (GRAMMAR.md 21, SPEC.md 25).
+        if (tokens[index].is_identifier("ghost")) {
+            const bool in_block =
+                !scopes.empty() && scopes.back() == ScopeKind::Block && at_statement_start(tokens, index);
+            if (in_block || at_declaration_start(tokens, index)) {
+                if (const std::optional<std::size_t> end = ghost_declaration_end(tokens, index)) {
+                    written_ghosts.push_back(WrittenGhost{index, *end, in_block});
+                    index = *end + 1;
+                    continue;
+                }
+            }
         }
 
         if (!at_declaration_start(tokens, index)) {
@@ -2906,6 +2971,73 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
         }
     }
 
+    // `ghost` follows the same rule (SPEC.md 3.1). A declaration is ghost state
+    // only as a local of a verified body, directly in a block, where it can
+    // leave the program without leaving a statement's body empty (SPEC.md 25).
+    if (!written_ghosts.empty()) {
+        const auto claimed = [&](std::size_t at) {
+            return std::ranges::any_of(written_ghosts,
+                                       [at](const WrittenGhost& written) { return written.keyword == at; });
+        };
+        std::optional<std::size_t> other;
+        for (std::size_t at = 0; at < tokens.size() && !other.has_value(); ++at) {
+            if (tokens[at].is_identifier("ghost") && !in_proof(tokens[at]) && !claimed(at)) {
+                other = at;
+            }
+        }
+        for (const WrittenGhost& written : written_ghosts) {
+            const Token& keyword = tokens[written.keyword];
+            if (other.has_value()) {
+                diagnostics::Diagnostic diagnostic;
+                diagnostic.severity = diagnostics::Severity::Warning;
+                diagnostic.category = diagnostics::Category::CpplSyntax;
+                diagnostic.message =
+                    "'ghost' is also a name in this translation unit, so this is ordinary C++, not ghost state";
+                diagnostic.location = stream.location_of(keyword);
+                diagnostic.notes.push_back(
+                    diagnostics::Note{"the name is used here", stream.location_of(tokens[*other])});
+                engine.report(std::move(diagnostic));
+                continue;
+            }
+            const auto body = std::ranges::find_if(verified_bodies, [&written](const VerifiedBody& candidate) {
+                return candidate.open < written.keyword && written.keyword < candidate.close;
+            });
+            if (!written.in_block) {
+                report(engine, stream, keyword, diagnostics::Category::CpplSyntax,
+                       "ghost state is declared only as a local of a verified body",
+                       "there are no ghost globals, members or parameters (SPEC.md 25)");
+                continue;
+            }
+            if (body == verified_bodies.end()) {
+                report(engine, stream, keyword, diagnostics::Category::UnsupportedSemantics,
+                       "ghost state outside a verified body would not be checked",
+                       "mark the enclosing function 'verified'; ghost state exists only for its proof (SPEC.md 25)");
+                continue;
+            }
+            const Token& previous = tokens[written.keyword - 1];
+            if (!previous.is_punctuator("{") && !previous.is_punctuator("}") && !previous.is_punctuator(";")) {
+                report(engine, stream, keyword, diagnostics::Category::CpplSyntax,
+                       "a ghost declaration stands directly in a block",
+                       "as the body of a statement or after a label it would leave that statement without one "
+                       "when it is erased; write it inside braces");
+                continue;
+            }
+            if (!ghost_declares(tokens, written.keyword, written.terminator)) {
+                report(engine, stream, keyword, diagnostics::Category::CpplSyntax,
+                       "a ghost declaration names a type and a variable",
+                       "without a type, what follows 'ghost' is not a declaration (GRAMMAR.md 21)");
+                continue;
+            }
+            GhostDeclaration ghost;
+            ghost.function_index = body->function;
+            ghost.keyword = keyword.span;
+            ghost.location = stream.location_of(keyword);
+            ghost.erased =
+                source::ByteSpan{keyword.span.offset, tokens[written.terminator].span.end() - keyword.span.offset};
+            syntax.ghost_declarations.push_back(ghost);
+        }
+    }
+
     // What an unsafe block holds is runtime code whose safety is not
     // established, so no statement inside one is a path the verifier walks.
     // Proof syntax there would state an obligation nothing discharges, and is
@@ -2915,6 +3047,13 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
             return offset > block.body.offset && offset < block.body.end();
         });
     };
+    for (const GhostDeclaration& ghost : syntax.ghost_declarations) {
+        if (inside_unsafe(ghost.keyword.offset)) {
+            report(engine, ghost.location, diagnostics::Category::UnsupportedSemantics,
+                   "ghost state inside an unsafe block would not be checked",
+                   "an unsafe block's statements are not a path the verifier walks, so declare it outside the block");
+        }
+    }
     for (const LoopSpecification& loop : syntax.loops) {
         if (inside_unsafe(loop.keyword.offset)) {
             report(engine, loop.keyword_location, diagnostics::Category::UnsupportedSemantics,

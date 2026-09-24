@@ -178,6 +178,27 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
     projection_options.unit_key =
         source::hash_bytes(std::filesystem::absolute(request.original_path).string()).to_short_hex(12);
 
+    // Every declaration the projector generates is named with this prefix, and
+    // the body lowering reads a declaration so named as one it generated: a
+    // loop clause, a claim's evidence, an unsafe or a ghost marker, never code
+    // that runs. A name the author wrote with it would be read the same way, so
+    // it is refused; C++ reserves such names for the implementation anyway.
+    for (const frontend::Token& token : stream.tokens()) {
+        if (token.kind == frontend::TokenKind::Identifier &&
+            token.text.starts_with(projection_options.generated_prefix)) {
+            report(engine, diagnostics::Category::CpplSyntax,
+                   "'" + std::string(token.text) + "' begins with '" + projection_options.generated_prefix +
+                       "', which names only what C++L generates",
+                   stream.location_of(token), "rename it; a name containing '__' is reserved for the implementation");
+        }
+    }
+    if (engine.has_errors()) {
+        outcome.tokens = std::make_unique<frontend::TokenStream>(stream);
+        outcome.syntax = std::make_unique<frontend::Syntax>(std::move(syntax));
+        outcome.failed = true;
+        return outcome;
+    }
+
     // A first projection, only to report its own diagnostics and to get a
     // stable analysis path on disk before analysis::analyze iterates on the
     // projection to resolve proof binding types

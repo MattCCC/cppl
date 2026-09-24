@@ -777,6 +777,27 @@ CPPL_TEST(unsafe_blocks_and_declarations_are_laid_out_like_the_cpp_they_delimit)
     CPPL_CHECK_EQ(format_text(once), once);
 }
 
+// SPEC: GHOST-001
+// A ghost declaration is laid out as the declaration it prefixes, with the word
+// where the statement begins.
+CPPL_TEST(ghost_declarations_are_laid_out_like_the_declaration_they_prefix) {
+    const std::string input = "verified unsigned f(unsigned x)\n"
+                              "    ensures (result == x)\n"
+                              "{\n"
+                              "      ghost   unsigned seen=x;\n"
+                              "    while (seen > x)\n"
+                              "        invariant (seen >= x)\n"
+                              "    {\n"
+                              "  ghost bool   odd = (seen % 2u) == 1u;\n"
+                              "    }\n"
+                              "    return x;\n"
+                              "}\n";
+    const std::string once = format_text(input);
+    CPPL_CHECK(once.find("\n    ghost unsigned seen = x;\n") != std::string::npos);
+    CPPL_CHECK(once.find("\n        ghost bool odd = (seen % 2u) == 1u;\n") != std::string::npos);
+    CPPL_CHECK_EQ(format_text(once), once);
+}
+
 // -----------------------------------------------------------------------------
 // Refinements: where stays attached
 // -----------------------------------------------------------------------------

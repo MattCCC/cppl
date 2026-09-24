@@ -947,6 +947,8 @@ for every accepted program within the supported semantics.
 
 **[TCB-ERASE-005]** Ghost initialization/destruction may be erased only when the source semantics guarantee that no observable runtime behavior depends on them.
 
+In this implementation that guarantee is checked before a verified body is lowered, and the check is erasure TCB (`clang/src/bridge.cpp`, `GhostScan`): a ghost is an integer or a Boolean local with automatic storage and a value, so it constructs and destroys nothing; its initializer has no assignment, increment, allocation, throw, lambda or volatile read, and every call in it is to a `pure` function, which elaboration confirms; and no reference to it stands anywhere in the body outside another ghost's initializer or a specification expression the projector declared under its own prefix, a prefix no name the author writes may begin with. The last rule is what makes the analysed and the erased program agree: a use it missed would be verified against a value the program never computes, so each is refused where it stands, whether or not a path reaches it. The erasure validator then confirms the whole declaration, and nothing else, left the program.
+
 **[TCB-ERASE-006]** A mismatch between the analyzed program and the runtime program MUST be an internal verification failure, never a successful weaker assurance result.
 
 **[TCB-ERASE-010]** Erasing a claim that a path cannot occur (`SPEC.md` `ERASE-016`) MUST leave its `;` as an empty statement, so that a statement it was the body of keeps one and no control flow changes. Erasing the `;` with the claim's words would silently make the next statement that body.

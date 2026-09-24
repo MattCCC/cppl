@@ -1534,12 +1534,17 @@ Termination requires the corresponding proof obligation.
 
 ## 8. Ghost locals
 
-`ghost` prefixes a local declaration in a verification-enabled block. Its value
-exists only for verification.
+`ghost` prefixes a local declaration in the body of a verified function. Its
+value exists only for verification, and the whole declaration leaves the
+program.
 
-There are no ghost runtime parameters, members or globals in this grammar.
+There are no ghost runtime parameters, members or globals in this grammar, and a
+proof body holds proof statements only, so there is no ghost declaration there
+either.
 
 A snapshot can support an invariant:
+
+<!-- cppl-example: verify -->
 
 ```cpp
 verified unsigned keep(unsigned x)
@@ -1559,19 +1564,13 @@ verified unsigned keep(unsigned x)
 }
 ```
 
-Ghost values may also support proof steps:
-
-```cpp
-proof ghost_bookkeeping(unsigned x)
-    proves (Eq<unsigned>(x, x))
-{
-    ghost unsigned snapshot = x;
-    refl;
-}
-```
-
-Their initializers must be specification-safe. Ghost bookkeeping cannot perform
-observable mutation or require runtime copies/destruction.
+A ghost may also be computed from other ghosts and from `pure` functions, and a
+claim's evidence may take one as an argument. Its initializer is read like a
+specification expression, so it may have no effect: no assignment, increment,
+allocation or volatile read, and no call to anything but a `pure` function. It
+is an integer or a Boolean value, declared with a value, directly in a block
+and outside every unsafe block; a class, pointer, reference or array ghost could
+construct, destroy or alias runtime objects, and is refused.
 
 Runtime values may be observed symbolically; proof-only values cannot flow back
 into runtime behavior.
@@ -1587,16 +1586,22 @@ verified unsigned leaked(unsigned x)
 }
 ```
 
-The return is runtime behavior and would depend on erased state.
-
-The same rule forbids ghost-dependent:
+The return is runtime behavior and would depend on erased state, so the
+compiler refuses it where the ghost is used:
 
 ```text
-runtime branches
-addresses
-I/O
-object layout
-FFI arguments
+error [cppl-syntax]: ghost 'snapshot' is used by code that runs
+```
+
+The same rule forbids every other use by code that runs, whether or not a path
+reaches it:
+
+```text
+runtime branches and loop bounds
+indices
+arguments, including lambda captures
+initializers of runtime objects
+writes, and addresses
 runtime return values
 ```
 
@@ -3614,6 +3619,8 @@ The first contract contributes evidence to the second verification.
 The runtime program still contains ordinary function calls and arithmetic.
 
 ### 19.5. Loop with ghost state, invariant and termination
+
+<!-- cppl-example: verify -->
 
 ```cpp
 verified unsigned count_preserving_input(unsigned input)

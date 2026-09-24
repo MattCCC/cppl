@@ -1,0 +1,129 @@
+# Machine-readable manifest for the ghost-state feature.
+#
+# Rule IDs are anchors in docs/SPEC.md, the canonical specification. Extract the
+# normative text with:
+#
+#     cppl-spec-rules extract --feature ghost-state
+
+feature: ghost-state
+
+summary: >
+  `ghost T name = value;` declares proof-only local state in a verified body.
+  Runtime values may be copied into it, and loop clauses, a claim's evidence and
+  other ghosts may read it. Its initializer is read as a specification
+  expression: no effect, and calls only to pure functions. Nothing that runs may
+  use it; each such use is refused where it stands. The whole declaration leaves
+  the program.
+
+normative_sources:
+  spec:
+    - "§3 Contextual words"
+    - "§25 Ghost state"
+    - "§36.4 Ghost erasure"
+    - "Annex M Erasure matrix"
+  grammar:
+    - "§21 Ghost locals"
+  trust:
+    - "§29 Erasure and lowering trust"
+
+rule_families:
+  - GHOST
+
+# The rules this feature realizes, within that family and outside it.
+# `cppl-spec-rules extract --feature` reads only the families above; extract
+# the others by ID.
+rules:
+  - GHOST-001
+  - GHOST-002
+  - ERASE-011
+  - WORD-002
+  - WORD-011
+  - REFINE-008
+
+depends_on:
+  - verified-functions
+  - loop-invariants
+  - checked-contradiction
+  - erasure
+
+implementation:
+  frontend:
+    - compiler/frontend/include/cppl/frontend/syntax.hpp
+    - compiler/frontend/src/recognizer.cpp
+    - compiler/frontend/src/projection.cpp
+  clang:
+    - clang/include/cppl/clang/ast.hpp
+    - clang/src/bridge.cpp
+  elaboration:
+    - compiler/elaboration/src/elaborate.cpp
+  erasure:
+    - compiler/erasure/src/erase.cpp
+  editors:
+    - src/lsp/include/cppl/lsp/semantic_tokens.hpp
+    - src/lsp/src/semantic_tokens.cpp
+    - src/lsp/src/server.cpp
+
+interactions:
+  - loop invariants reading a ghost
+  - claims taking a ghost as evidence
+  - refinement types
+  - pure functions
+  - unsafe blocks
+  - erasure
+  - editors
+
+tests:
+  positive:
+    - tests/fixtures/ghost_state.cpp
+    - tests/fixtures/equivalence/ghost_state.cpp
+  negative:
+    - tests/negative/ghost_state.sh
+    - tests/fixtures/negative/ghost_returned.cpp
+    - tests/fixtures/negative/ghost_branch.cpp
+    - tests/fixtures/negative/ghost_index.cpp
+    - tests/fixtures/negative/ghost_argument.cpp
+    - tests/fixtures/negative/ghost_initializes_runtime.cpp
+    - tests/fixtures/negative/ghost_written.cpp
+    - tests/fixtures/negative/ghost_controls_mutation.cpp
+    - tests/fixtures/negative/ghost_captured.cpp
+    - tests/fixtures/negative/ghost_shadows_runtime.cpp
+    - tests/fixtures/negative/ghost_runtime_storage.cpp
+    - tests/fixtures/negative/ghost_through_reserved_name.cpp
+    - tests/fixtures/negative/ghost_effectful_initializer.cpp
+    - tests/fixtures/negative/ghost_impure_call.cpp
+    - tests/fixtures/negative/ghost_verified_call.cpp
+    - tests/fixtures/negative/ghost_class_type.cpp
+    - tests/fixtures/negative/ghost_reference.cpp
+    - tests/fixtures/negative/ghost_static.cpp
+    - tests/fixtures/negative/ghost_without_value.cpp
+    - tests/fixtures/negative/ghost_global.cpp
+    - tests/fixtures/negative/ghost_outside_verified.cpp
+    - tests/fixtures/negative/ghost_in_unsafe_block.cpp
+    - tests/fixtures/negative/ghost_unbraced.cpp
+    - tests/fixtures/negative/ghost_untyped.cpp
+    - tests/fixtures/negative/ghost_false_postcondition.cpp
+    - tests/fixtures/negative/ghost_refinement_owed.cpp
+  unit:
+    - tests/unit/recognizer_test.cpp
+    - tests/unit/lsp_semantic_tokens_test.cpp
+    - tests/unit/formatter_test.cpp
+  end_to_end:
+    - tests/e2e/ghost_state.sh
+    - tests/e2e/erasure_equivalence.sh
+
+required_test_categories:
+  - ghost state supports invariants and claims
+  - runtime values copied into ghost state
+  - no runtime influence through a return, branch, index, argument, initializer, write, loop bound, capture or address
+  - a ghost shadowing a runtime local
+  - an initializer with an effect, or calling an impure or verified function
+  - class, reference, static, valueless, global, member and misplaced declarations
+  - a ghost proves nothing about what runs
+  - erasure equivalence and runtime behavior
+  - C++-first recognition and editor coloring
+
+completion_requires:
+  - no reference to a ghost stands in code that runs
+  - a ghost initializer never needs to run
+  - a ghost declaration erases completely
+  - a unit using `ghost` as a name is ordinary C++

@@ -6,6 +6,7 @@
 #include "cppl/frontend/syntax.hpp"
 #include "cppl/frontend/token.hpp"
 #include "cppl/lsp/protocol.hpp"
+#include "cppl/lsp/semantic_tokens.hpp"
 
 #include <cstdint>
 #include <memory>
@@ -104,33 +105,14 @@ class Document {
         verified_version_ = version;
     }
 
-    // Whether the last full compile of this buffer recognized a `contradiction`
-    // statement in a verified body as a claim that its path cannot occur. That
+    // Which words the last full compile of this buffer read as C++L where that
     // depends on every use of the word in the translation unit, headers
     // included, which `reparse` cannot see (semantic_tokens.hpp).
-    [[nodiscard]] bool path_claims_recognized() const noexcept {
-        return path_claims_recognized_;
+    [[nodiscard]] UnitRecognition recognized() const noexcept {
+        return recognized_;
     }
-    void set_path_claims_recognized(bool recognized) noexcept {
-        path_claims_recognized_ = recognized;
-    }
-
-    // The same, for a `cases` or `decompose` statement in a verified body read
-    // as a case split on its path (SPEC.md CASE-017).
-    [[nodiscard]] bool path_splits_recognized() const noexcept {
-        return path_splits_recognized_;
-    }
-    void set_path_splits_recognized(bool recognized) noexcept {
-        path_splits_recognized_ = recognized;
-    }
-
-    // The same, for an `unsafe` block or declaration read as an unsafe
-    // boundary (SPEC.md 26).
-    [[nodiscard]] bool unsafe_recognized() const noexcept {
-        return unsafe_recognized_;
-    }
-    void set_unsafe_recognized(bool recognized) noexcept {
-        unsafe_recognized_ = recognized;
+    void set_recognized(UnitRecognition recognized) noexcept {
+        recognized_ = recognized;
     }
 
   private:
@@ -148,9 +130,7 @@ class Document {
     std::vector<driver::ObligationRecord> obligations_;
     bool verified_ = false;
     std::int32_t verified_version_ = -1;
-    bool path_claims_recognized_ = false;
-    bool path_splits_recognized_ = false;
-    bool unsafe_recognized_ = false;
+    UnitRecognition recognized_;
 };
 
 // Manages all open documents

@@ -66,16 +66,16 @@ struct SemanticToken {
 // A `contradiction` statement in a verified body is a claim only when no other
 // part of the translation unit, headers included, uses the word (SPEC.md
 // WORD-002). `syntax` comes from the unpreprocessed buffer, which cannot see
-// its headers, so such a claim is a token only when `path_claims_recognized`
-// says the compile of the preprocessed unit recognized its claims too. A
-// `cases` or `decompose` statement in a verified body is a case split on the
-// same terms (SPEC.md CASE-017), so it and the words of its arms are tokens
-// only when `path_splits_recognized` says so. `unsafe` is a boundary on the
-// same terms too (SPEC.md 26), so its blocks' and declarations' keywords are
-// tokens only when `unsafe_recognized` says so.
-[[nodiscard]] std::vector<SemanticToken> cppl_tokens(const frontend::Syntax& syntax, bool path_claims_recognized,
-                                                     bool path_splits_recognized = false,
-                                                     bool unsafe_recognized = false,
+// its headers, so each word read on those terms is a token only where
+// `recognized` says the compile of the preprocessed unit read it the same way.
+struct UnitRecognition {
+    bool path_claims = false; // `contradiction` in a verified body
+    bool path_splits = false; // `cases` or `decompose` in one (SPEC.md CASE-017)
+    bool unsafe = false;      // an unsafe block or declaration (SPEC.md 26)
+    bool ghost = false;       // a ghost declaration (SPEC.md 25)
+};
+
+[[nodiscard]] std::vector<SemanticToken> cppl_tokens(const frontend::Syntax& syntax, UnitRecognition recognized,
                                                      const std::vector<elaboration::ResolvedName>& resolved = {});
 
 // `tokens`, over `text`, as LSP semantic tokens: five integers per token, each

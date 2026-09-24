@@ -863,3 +863,60 @@ CPPL_TEST(proof_syntax_inside_an_unsafe_block_is_refused) {
         CPPL_CHECK(result.engine.has_errors());
     }
 }
+
+// SPEC: GHOST-001, ERASE-011
+// A ghost declaration records its word, the verified body it stands in, and
+// everything that leaves the program: the whole declaration through its `;`.
+CPPL_TEST(a_ghost_declaration_is_recognized_with_everything_that_erases) {
+    Recognized result;
+    const std::string text = "verified unsigned f(unsigned x) ensures (result == x) {\n"
+                             "    ghost unsigned seen = x, twice = seen + seen;\n"
+                             "    return x;\n"
+                             "}\n";
+    recognize(text, result);
+    CPPL_CHECK(!result.engine.has_errors());
+    CPPL_CHECK(result.engine.diagnostics().empty());
+    CPPL_CHECK_EQ(result.syntax.ghost_declarations.size(), std::size_t{1});
+    const auto& ghost = result.syntax.ghost_declarations[0];
+    CPPL_CHECK_EQ(ghost.function_index, std::size_t{0});
+    CPPL_CHECK_EQ(ghost.location.line, 2u);
+    CPPL_CHECK_EQ(ghost.location.column, 5u);
+    CPPL_CHECK_EQ(text.substr(ghost.erased.offset, ghost.erased.length),
+                  std::string("ghost unsigned seen = x, twice = seen + seen;"));
+}
+
+// SPEC: WORD-002, WORD-011
+// `ghost x = y;` declares `x` wherever `ghost` names a type, so the word used
+// for anything else leaves every such declaration ordinary C++.
+CPPL_TEST(ghost_named_anywhere_else_keeps_the_declaration_ordinary_cpp) {
+    Recognized result;
+    recognize("struct ghost { unsigned value; };\n"
+              "verified unsigned f(unsigned x) ensures (result == x) { ghost g{x}; return g.value; }\n",
+              result);
+    CPPL_CHECK(!result.engine.has_errors());
+    CPPL_CHECK(result.syntax.ghost_declarations.empty());
+    CPPL_CHECK_EQ(result.engine.diagnostics().size(), std::size_t{1});
+    CPPL_CHECK(result.engine.diagnostics()[0].severity == cppl::diagnostics::Severity::Warning);
+}
+
+// SPEC: GHOST-001
+// Where a ghost declaration may not stand: at namespace scope, in a class, in an
+// ordinary function, as a statement's body, and without a type.
+CPPL_TEST(a_ghost_declaration_outside_a_verified_block_is_refused) {
+    for (const char* text : {"ghost unsigned counter = 0u;\n", "struct S { ghost unsigned member = 0u; };\n",
+                             "unsigned f(unsigned x) { ghost unsigned g = x; return x; }\n",
+                             "verified unsigned f(unsigned x) ensures (result == x) {\n"
+                             "    if (x > 1u) ghost unsigned g = x;\n"
+                             "    return x;\n"
+                             "}\n",
+                             "verified unsigned f(unsigned x) ensures (result == x) {\n"
+                             "    unsigned y = x;\n"
+                             "    ghost y = 1u;\n"
+                             "    return x;\n"
+                             "}\n"}) {
+        Recognized result;
+        recognize(text, result);
+        CPPL_CHECK(result.engine.has_errors());
+        CPPL_CHECK(result.syntax.ghost_declarations.empty());
+    }
+}

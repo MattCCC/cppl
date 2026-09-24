@@ -471,6 +471,26 @@ struct Function {
     // path. Every one the projector emitted for a verified function must be
     // here: one that is not stands where no path of the body reaches it.
     std::vector<std::string> unsafe_regions;
+
+    // Every error in how the body declares or uses ghost state, where it
+    // stands (SPEC.md GHOST-001, GHOST-002). Any one refuses the body.
+    struct GhostError {
+        std::string message;
+        std::string note;
+        source::SourceLocation location;
+    };
+    std::vector<GhostError> ghost_errors;
+
+    // Every call a ghost initializer makes. A ghost initializer never runs, so
+    // each must be to a function the formal core defines, which only
+    // elaboration knows.
+    struct GhostCall {
+        std::string callee_usr;
+        std::string callee;
+        std::string ghost;
+        source::SourceLocation location;
+    };
+    std::vector<GhostCall> ghost_calls;
 };
 
 enum class Severity : std::uint8_t {

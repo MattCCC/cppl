@@ -75,6 +75,11 @@ Erased erase(const frontend::TokenStream& stream, const frontend::Syntax& syntax
     for (const frontend::UnsafeBlock& block : syntax.unsafe_blocks) {
         spans.push_back(block.keyword);
     }
+    // Ghost state leaves whole, its initializer with it (SPEC.md GHOST-001,
+    // ERASE-011, Annex M).
+    for (const frontend::GhostDeclaration& ghost : syntax.ghost_declarations) {
+        spans.push_back(ghost.erased);
+    }
     // A verified function stays in the program; its specifier and its contract
     // do not.
     for (const frontend::VerifiedFunction& verified : syntax.verified_functions) {

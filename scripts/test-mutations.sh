@@ -60,6 +60,12 @@ unsafe-pure-refused	compiler/elaboration/src/elaborate.cpp	candidate.pure && con
 unsafe-contract-refused	compiler/frontend/src/recognizer.cpp	if (std::size_t clause_index = 0; has_specification_clause(tokens, *name, clause_index)) {	if (std::size_t clause_index = 0; false && has_specification_clause(tokens, *name, clause_index)) {	^negative_unsafe_boundary$|^unit_recognizer_test$
 unsafe-closure-through-calls	compiler/obligations/src/trust.cpp	regions[index].emplace(where, UnsafeDependency{region.location, false}).second	(false && regions[index].emplace(where, UnsafeDependency{region.location, false}).second)	^e2e_unsafe_boundary$
 unsafe-not-assumption-free	compiler/driver/src/driver.cpp	return claim.premises.empty() && claim.unsafe.empty();	return claim.premises.empty();	^e2e_unsafe_boundary$
+ghost-runtime-use	clang/src/bridge.cpp	            if (is_ghost(referenced)) {	            if (false && is_ghost(referenced)) {	^negative_ghost_state$
+ghost-initializer-effect	clang/src/bridge.cpp	if (const std::optional<std::string> effect = ghost_effect(initializer, 0)) {	if (const std::optional<std::string> effect = (false ? ghost_effect(initializer, 0) : std::optional<std::string>{})) {	^negative_ghost_state$
+ghost-initializer-pure	compiler/elaboration/src/elaborate.cpp	            if (!pure_symbols.contains(call.callee_usr)) {	            if (false && !pure_symbols.contains(call.callee_usr)) {	^negative_ghost_state$
+ghost-scalar-type	clang/src/bridge.cpp	        if (!ghost_scalar(type)) {	        if (false && !ghost_scalar(type)) {	^negative_ghost_state$
+ghost-erased-whole	compiler/erasure/src/erase.cpp	        spans.push_back(ghost.erased);	        spans.push_back(ghost.keyword);	^e2e_ghost_state$
+generated-prefix-reserved	compiler/driver/src/pipeline.cpp	token.text.starts_with(projection_options.generated_prefix)	false && token.text.starts_with(projection_options.generated_prefix)	^negative_ghost_state$
 MUTATIONS
 )
 

@@ -74,8 +74,7 @@ class Collector {
 
 } // namespace
 
-std::vector<SemanticToken> cppl_tokens(const frontend::Syntax& syntax, bool path_claims_recognized,
-                                       bool path_splits_recognized, bool unsafe_recognized,
+std::vector<SemanticToken> cppl_tokens(const frontend::Syntax& syntax, UnitRecognition recognized,
                                        const std::vector<elaboration::ResolvedName>& resolved) {
     Collector collector(resolved);
     for (const frontend::LawDeclaration& law : syntax.laws) {
@@ -121,24 +120,29 @@ std::vector<SemanticToken> cppl_tokens(const frontend::Syntax& syntax, bool path
         collector.name(type.name_span, TokenType::Type, kDeclaration);
         collector.keyword(type.where_keyword);
     }
-    if (path_claims_recognized) {
+    if (recognized.path_claims) {
         for (const frontend::PathContradiction& claim : syntax.path_contradictions) {
             if (!claim.split.has_value()) { // a claim in a split's arm is the split's
                 collector.statement(claim.statement);
             }
         }
     }
-    if (path_splits_recognized) {
+    if (recognized.path_splits) {
         for (const frontend::PathCaseSplit& split : syntax.path_splits) {
             collector.statement(split.statement);
         }
     }
-    if (unsafe_recognized) {
+    if (recognized.unsafe) {
         for (const frontend::UnsafeBlock& block : syntax.unsafe_blocks) {
             collector.keyword(block.keyword);
         }
         for (const frontend::UnsafeFunction& function : syntax.unsafe_functions) {
             collector.keyword(function.keyword);
+        }
+    }
+    if (recognized.ghost) {
+        for (const frontend::GhostDeclaration& ghost : syntax.ghost_declarations) {
+            collector.keyword(ghost.keyword);
         }
     }
     return std::move(collector).collected();

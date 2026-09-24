@@ -4,6 +4,7 @@
 #include "cppl/diagnostics/diagnostic.hpp"
 #include "cppl/driver/buffer_compile.hpp"
 #include "cppl/formatter/format.hpp"
+#include "cppl/frontend/syntax.hpp"
 #include "cppl/lsp/decomposition_view.hpp"
 #include "cppl/lsp/document.hpp"
 #include "cppl/lsp/editor_view.hpp"
@@ -780,8 +781,7 @@ std::optional<std::vector<std::uint32_t>> Server::text_document_semantic_tokens(
     // token is the one kept.
     std::vector<SemanticToken> tokens;
     if (doc->syntax() != nullptr) {
-        tokens = cppl_tokens(*doc->syntax(), doc->path_claims_recognized(), doc->path_splits_recognized(),
-                             doc->unsafe_recognized(), doc->resolved_names());
+        tokens = cppl_tokens(*doc->syntax(), doc->recognized(), doc->resolved_names());
     }
     if (const EditorView* view = view_for(id.uri)) {
         std::ranges::copy(view->semantic_tokens(), std::back_inserter(tokens));
@@ -835,10 +835,14 @@ void Server::apply_compile(CompileResult result) {
     doc.set_subject_states(std::move(outcome.subject_states));
     doc.set_resolved_names(std::move(outcome.names));
     doc.set_verification(outcome.verified, std::move(outcome.obligations), doc.version());
-    doc.set_path_claims_recognized(outcome.syntax != nullptr && !outcome.syntax->path_contradictions.empty());
-    doc.set_path_splits_recognized(outcome.syntax != nullptr && !outcome.syntax->path_splits.empty());
-    doc.set_unsafe_recognized(outcome.syntax != nullptr &&
-                              (!outcome.syntax->unsafe_blocks.empty() || !outcome.syntax->unsafe_functions.empty()));
+    UnitRecognition recognized;
+    if (const frontend::Syntax* syntax = outcome.syntax.get()) {
+        recognized.path_claims = !syntax->path_contradictions.empty();
+        recognized.path_splits = !syntax->path_splits.empty();
+        recognized.unsafe = !syntax->unsafe_blocks.empty() || !syntax->unsafe_functions.empty();
+        recognized.ghost = !syntax->ghost_declarations.empty();
+    }
+    doc.set_recognized(recognized);
 
     const PositionMapper mapper(doc.text());
     std::vector<Diagnostic> lsp_diagnostics;

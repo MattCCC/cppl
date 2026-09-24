@@ -79,17 +79,25 @@ std::string described(const std::vector<std::uint32_t>& data, bool keywords_only
 }
 
 // C++L's tokens for `text`, read by the recognizer alone.
-std::vector<std::uint32_t> cppl_data(const std::string& text, bool path_claims_recognized,
-                                     bool path_splits_recognized = false, bool unsafe_recognized = false) {
+std::vector<std::uint32_t> cppl_data(const std::string& text, UnitRecognition recognized) {
     const frontend::TokenStream stream = frontend::lex(text, "main.cpp");
     diagnostics::Engine engine;
     const frontend::Syntax syntax = frontend::recognize(stream, engine);
-    return encode(cppl_tokens(syntax, path_claims_recognized, path_splits_recognized, unsafe_recognized), text);
+    return encode(cppl_tokens(syntax, recognized), text);
 }
 
-std::string keywords_of(const std::string& text, bool path_claims_recognized, bool path_splits_recognized = false,
-                        bool unsafe_recognized = false) {
-    return described(cppl_data(text, path_claims_recognized, path_splits_recognized, unsafe_recognized), true);
+std::vector<std::uint32_t> cppl_data(const std::string& text, bool path_claims_recognized,
+                                     bool path_splits_recognized = false) {
+    return cppl_data(text,
+                     UnitRecognition{.path_claims = path_claims_recognized, .path_splits = path_splits_recognized});
+}
+
+std::string keywords_of(const std::string& text, UnitRecognition recognized) {
+    return described(cppl_data(text, recognized), true);
+}
+
+std::string keywords_of(const std::string& text, bool path_claims_recognized, bool path_splits_recognized = false) {
+    return described(cppl_data(text, path_claims_recognized, path_splits_recognized), true);
 }
 
 std::string read_fixture(const std::string& name) {
@@ -268,8 +276,23 @@ CPPL_TEST(an_unsafe_boundary_is_tokens_only_when_the_compile_recognized_it) {
                              "    return x;\n"
                              "}\n";
     const std::string declarations = "1:0:8 2:4:7";
-    expect(keywords_of(text, false, false, false), declarations, __LINE__);
-    expect(keywords_of(text, true, true, true), "0:0:6 " + declarations + " 5:4:6", __LINE__);
+    expect(keywords_of(text, UnitRecognition{}), declarations, __LINE__);
+    expect(keywords_of(text, UnitRecognition{.unsafe = true}), "0:0:6 " + declarations + " 5:4:6", __LINE__);
+}
+
+// SPEC: GHOST-001, WORD-011
+// `ghost x = y;` declares `x` wherever `ghost` names a type, so a ghost
+// declaration's word is a token only when the compile recognized ghost state.
+CPPL_TEST(a_ghost_declaration_is_a_token_only_when_the_compile_recognized_it) {
+    const std::string text = "verified unsigned f(unsigned x)\n"
+                             "    ensures (result == x)\n"
+                             "{\n"
+                             "    ghost unsigned seen = x;\n"
+                             "    return x;\n"
+                             "}\n";
+    const std::string declarations = "0:0:8 1:4:7";
+    expect(keywords_of(text, UnitRecognition{.unsafe = true}), declarations, __LINE__);
+    expect(keywords_of(text, UnitRecognition{.ghost = true}), declarations + " 3:4:5", __LINE__);
 }
 
 CPPL_TEST(a_position_counts_utf16_code_units_not_bytes) {
@@ -428,6 +451,15 @@ CPPL_TEST(the_server_colors_every_unsafe_boundary_the_compiler_recognized) {
     // Three unsafe declarations and six unsafe blocks.
     const std::vector<std::uint32_t> data = server_data(server, "file:///unsafe_boundary.cpp");
     CPPL_CHECK_EQ(keywords_spelling(text, data, {"unsafe"}), std::size_t{9});
+}
+
+CPPL_TEST(the_server_colors_every_ghost_declaration_the_compiler_recognized) {
+    Server server = fixture_server();
+    const std::string text = read_fixture("ghost_state.cpp");
+    open(server, "file:///ghost_state.cpp", text);
+    // Seven ghost declarations, one of them declaring two ghosts.
+    const std::vector<std::uint32_t> data = server_data(server, "file:///ghost_state.cpp");
+    CPPL_CHECK_EQ(keywords_spelling(text, data, {"ghost"}), std::size_t{7});
 }
 
 CPPL_TEST(without_a_compile_no_unsafe_boundary_is_colored) {

@@ -2121,6 +2121,25 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
         } else if (!function->returned_value.has_value()) {
             rejection = "its body produced no value expression";
         }
+        // Each error in the body's ghost state stands where it was written,
+        // since the body itself may be one the implementation models.
+        for (const clangbridge::Function::GhostError& error : function->ghost_errors) {
+            report(engine, diagnostics::Category::CpplSyntax, error.location, error.message, error.note);
+            rejection_reported = true;
+        }
+        // A ghost initializer never runs, so what it calls must be a function
+        // the formal core defines rather than one whose call is modeled by its
+        // contract (SPEC.md GHOST-001).
+        for (const clangbridge::Function::GhostCall& call : function->ghost_calls) {
+            if (!pure_symbols.contains(call.callee_usr)) {
+                report(engine, diagnostics::Category::CpplSyntax, call.location,
+                       "the initializer of ghost '" + call.ghost + "' calls '" + call.callee + "', which is not pure",
+                       "a ghost initializer never runs, so it may call only functions the formal core defines "
+                       "(SPEC.md GHOST-001)");
+                rejection = "it initializes ghost state by a call that would have to run";
+                rejection_reported = true;
+            }
+        }
 
         if (rejection.empty()) {
             ExpressionElaborator elaborator(next_expression_id, candidate.contract != nullptr ? &claims : nullptr,

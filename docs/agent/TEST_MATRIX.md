@@ -179,6 +179,20 @@ Manifest: `features/unsafe-boundary.yaml`
 | Erasure and runtime behavior | erasure | covered — identical output and assembly against a hand-erased twin in three standards, and every block runs (`e2e/erasure_equivalence.sh`, `e2e/unsafe_boundary.sh` citing `UNSAFE-001`) |
 | Determinism and two units | regression | covered (`e2e/unsafe_boundary.sh`) |
 
+### ghost-state
+
+Manifest: `features/ghost-state.yaml`
+
+| Required case | Category | Status |
+| --- | --- | --- |
+| Ghost state supports a proof | positive | covered — a snapshot read by an invariant, runtime values copied before and after a write, a ghost from another ghost, a pure call, a Boolean, a refinement proven, a claim's evidence, two ghosts in one declaration, one per loop iteration (`fixtures/ghost_state.cpp`, `e2e/ghost_state.sh` citing `GHOST-001`) |
+| No runtime influence | negative, adversarial | covered — a returned value, a branch, an index, an argument, an object's initializer, a write, a loop bound, a lambda capture, an address, and a ghost shadowing a runtime local: each refused where the use stands; a copy through a name spelled like a generated one is refused because such names are; removing either check is mutation-checked (`negative/ghost_state.sh` citing `GHOST-002`, `ERASE-011`; `ghost-runtime-use`, `generated-prefix-reserved` in `scripts/test-mutations.sh`) |
+| Initializer has no effect | negative | covered — an increment, a call to an ordinary function and a call to a verified one are refused; each check is mutation-checked (`negative/ghost_state.sh` citing `GHOST-001`; `ghost-initializer-effect`, `ghost-initializer-pure`) |
+| Declaration form | negative | covered — a class with a destructor, a reference, a static, no value, a global, a member, an ordinary function, an unsafe block, a statement's body, no type; the type check is mutation-checked (`negative/ghost_state.sh`, `unit/recognizer_test.cpp`; `ghost-scalar-type`) |
+| Proves nothing about what runs | adversarial | covered — a postcondition that holds of a ghost and not of the result is not proven, and a ghost of a refinement type owes its predicate (`negative/ghost_state.sh` citing `GHOST-002`, `REFINE-008`) |
+| Erasure | erasure | covered — no ghost word or name survives, identical assembly against a hand-erased twin, and erasing less than the whole declaration is mutation-checked (`e2e/ghost_state.sh`, `e2e/erasure_equivalence.sh` citing `ERASE-011`; `ghost-erased-whole`) |
+| C++-first and editors | positive, unit | covered — `ghost` as a type keeps a declaration ordinary C++ with a warning, and the program runs; the word is colored only once the compile recognized it; layout is idempotent (`e2e/ghost_state.sh`, `unit/recognizer_test.cpp`, `unit/lsp_semantic_tokens_test.cpp`, `unit/formatter_test.cpp` citing `WORD-002`, `WORD-011`) |
+
 ### erasure and ABI
 
 Rules: `ERASE-*`, `ERASEMATRIX-*`, `ABI-*` (see `FEATURE_INDEX.md`, Lowering).
@@ -198,8 +212,8 @@ agrees with it.
 | Contextual words beside erased constructs | erasure, conformance | covered — every word of SPEC.md §3 as a variable, member or function in a unit that also uses the words as C++L, including a declarator list spelled like clauses, which is neither laid out as a clause nor routed through C++L (`e2e/erasure_equivalence.sh`, `unit/recognizer_test.cpp` citing `WORD-008`; `declarator-list-ends-clauses` in `scripts/test-mutations.sh`) |
 | Native ABI across translation units | ABI | covered — an ordinary client compiled by Clang alone links against a C++L library and calls it with records in registers and in memory, by value and by reference, a record return and a C-linkage function; both sides agree on size, alignment and offsets; the library matches its hand erasure in assembly (`e2e/abi_equivalence.sh` citing `ABI-001`, `ABI-002`, `ABI-003`) |
 | Source positions survive erasure | erasure | covered — `__builtin_LINE()` after every multi-line construct kind, a Clang warning's column on a line that lost `verified`, the line count of the program, debug information naming the user's file, and byte-identical `-g` objects across builds (`e2e/erasure_source_mapping.sh` citing `ERASEMATRIX-003`, `ARCH-ERASE-003`) |
-| Refusal leaves no runtime program | negative | covered — ghost state, a contract resting on what an unsafe block did, `old`, `induction` and misplaced loop clauses refused for their reason, then every refused fixture swept: no executable and no runtime projection (`negative/erasure.sh` citing `ERASE-006`, `ERASE-011`) |
-| Ghost erasure | erasure | not built — ghost state is not implemented and is refused (`ERASE-011`) |
+| Refusal leaves no runtime program | negative | covered — a ghost given runtime storage, a contract resting on what an unsafe block did, `old`, `induction` and misplaced loop clauses refused for their reason, then every refused fixture swept: no executable and no runtime projection (`negative/erasure.sh` citing `ERASE-006`, `ERASE-011`) |
+| Ghost erasure | erasure | covered — whole declarations at the top of a body and in a loop, two ghosts in one declaration, a pure call in an initializer: identical output and assembly against the reference in three standards (`e2e/erasure_equivalence.sh` citing `ERASE-011`) |
 | Verification metadata across units | ABI | not built — no metadata is exported, so a use in another unit is not verified (`ABI-004`, `ABI-005`) |
 
 Status here describes test coverage, not implementation maturity.

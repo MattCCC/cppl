@@ -392,6 +392,20 @@ struct UnsafeFunction {
     std::size_t function_offset = 0;
 };
 
+// ghost simple-declaration   (GRAMMAR.md 21, SPEC.md 25)
+//
+// Proof-only local state in a verified body. The whole declaration leaves the
+// program, so nothing that runs may depend on it (GHOST-001, GHOST-002, ERASE-011).
+// It stands directly in a block, so no statement is left without a body when it
+// goes. Clang is given a marker declaration just before it, which tells the body
+// lowering that the declaration after it is ghost.
+struct GhostDeclaration {
+    std::size_t function_index = 0; // the verified function whose body holds it
+    source::ByteSpan keyword;       // `ghost` itself
+    source::SourceLocation location;
+    source::ByteSpan erased; // from `ghost` through the terminating `;`
+};
+
 // type name [(index parameters)] = base-type where (predicate);
 //                                            (SPEC.md 17, 18; GRAMMAR.md 14, 16)
 //
@@ -468,6 +482,7 @@ struct Syntax {
     std::vector<ExplicitInstantiation> explicit_instantiations;
     std::vector<UnsafeBlock> unsafe_blocks;
     std::vector<UnsafeFunction> unsafe_functions;
+    std::vector<GhostDeclaration> ghost_declarations;
 
     // A specification clause written on a function that is not 'verified'
     // (GRAMMAR.md 6 permits the syntax; this implementation does not check
@@ -482,7 +497,8 @@ struct Syntax {
     [[nodiscard]] bool empty() const noexcept {
         return laws.empty() && proofs.empty() && pure_markers.empty() && verified_functions.empty() && loops.empty() &&
                path_contradictions.empty() && path_splits.empty() && refinement_types.empty() &&
-               unchecked_clauses.empty() && unsafe_blocks.empty() && unsafe_functions.empty();
+               unchecked_clauses.empty() && unsafe_blocks.empty() && unsafe_functions.empty() &&
+               ghost_declarations.empty();
     }
 };
 

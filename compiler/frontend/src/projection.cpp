@@ -337,6 +337,24 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         projection.unsafe_blocks.push_back(std::move(marker));
     }
 
+    // A ghost declaration leaves the program whole (SPEC.md GHOST-001,
+    // ERASE-011). Clang still sees it, after a declaration only Clang sees,
+    // named where `ghost` was written, which tells the body lowering that the
+    // declaration after it is ghost state.
+    for (std::size_t index = 0; index < syntax.ghost_declarations.size(); ++index) {
+        const GhostDeclaration& ghost = syntax.ghost_declarations[index];
+        blank(projection.runtime, ghost.erased);
+        const std::string name = options.generated_prefix + "ghost_" + std::to_string(index) +
+                                 (options.unit_key.empty() ? "" : "_" + options.unit_key);
+        const std::size_t column = ghost.location.column > 1 ? ghost.location.column - 1 : 0;
+        std::string inserted = "\n[[maybe_unused]] bool\n";
+        inserted += line_directive(ghost.location.line, ghost.location.file);
+        inserted += std::string(column, ' ') + name + " = true;\n";
+        inserted += line_directive(ghost.location.line, ghost.location.file);
+        inserted += std::string(column + ghost.keyword.length, ' ');
+        edits.push_back(Edit{ghost.keyword, std::move(inserted)});
+    }
+
     // The template header the declaration being emitted stands under, where it
     // has one. A contract clause may name the template's parameters, so its
     // probe has to be declared under the same header; laws and proofs are not

@@ -1455,6 +1455,32 @@ Ghost access must not bypass normal proof typing or trust rules.
 **[ARCH-GHOST-001]** Architecture MUST NOT add new ghost storage classes merely
 because the internal representation could support them.
 
+The realized flow of a ghost declaration:
+
+```text
+recognizer   `ghost` at the start of a statement, decided C++-first once the
+             unit is read (Syntax::ghost_declarations); refused outside a
+             verified body, as a statement's body, and in an unsafe block
+projection   the runtime text loses the whole declaration; the analysis text
+             keeps it, after a marker declaration named where `ghost` was
+bridge       before any path is lowered, GhostScan decides the body's ghost
+             state: its type, storage and value, an initializer with no effect,
+             the calls it makes, and every reference to a ghost outside another
+             ghost's initializer or a generated specification expression, each
+             an error where it stands; lowering then binds each ghost to its
+             initializer read as a term, and nothing ever writes it
+elaboration  the errors reported at their positions; a call in an initializer
+             must be to a pure function
+obligations  a ghost is a value binding like any other, read by loop clauses
+             and claims; it has no runtime effect to model
+erasure      the validator requires the whole declaration, and nothing else,
+             to have left the program
+```
+
+A ghost is an ordinary versioned place of the verification model, never a
+runtime one: no statement of the erased program names it, which the scan
+establishes rather than assumes.
+
 ---
 
 # 34. Call architecture

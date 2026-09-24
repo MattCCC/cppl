@@ -299,10 +299,27 @@ that do not change within the body. A split's binders are declared once for the
 statement as written, so in a function template whose specializations bind
 values of different types, the specializations that disagree are refused.
 
-This slice does **not** implement induction, loop termination, ghost state,
-proof `let`, solvers, proof caching, or any verification of the C++ memory
-model. Those remain `SPECIFIED` below. `trusted law` and `unsafe` are
-implemented and described under
+A verified body may declare ghost state (`SPEC.md` 25): `ghost T name = value;`,
+a local of integer or Boolean type that records a value for the proof. Runtime
+values may be copied into it; loop clauses, a claim's evidence and another
+ghost's initializer may read it. Its initializer is read like a specification
+expression, so it may have no effect and call only a `pure` function. Nothing
+that runs may use it: a returned value, a branch, an index, an argument, an
+initializer, a write, a loop bound or a lambda capture naming a ghost is refused
+where it stands, reached or not (GHOST-002). The whole declaration then leaves
+the program (ERASE-011), which compiles to the same code as the program written
+without it (`fixtures/equivalence/ghost_state.cpp`). A ghost is declared only
+directly in a block of a verified body, outside every unsafe block; a class,
+pointer, reference, array or volatile ghost, a static one, one without a value,
+a global and a member are refused by name (`negative_ghost_state`). In any unit
+with C++L syntax, a name beginning with `__cppl_`, the prefix of every
+declaration C++L generates, is refused, since the body lowering reads a
+declaration so named as generated.
+
+This slice does **not** implement induction, loop termination, proof `let`,
+solvers, proof caching, or any verification of the C++ memory model. Those
+remain `SPECIFIED` below. `trusted law` and `unsafe` are implemented and
+described under
 [Unsafe and trusted boundary status](#unsafe-and-trusted-boundary-status).
 
 ---
@@ -430,7 +447,7 @@ The project should not claim broad language implementation before the proof sema
 | locals and assignments        | `PROTOTYPE`   |
 | `invariant` on loops          | `PROTOTYPE`   |
 | partial-correctness contracts | `PROTOTYPE`   |
-| `ghost`                       | `SPECIFIED`   |
+| `ghost`                       | `IMPLEMENTED` |
 | `unsafe`                      | `IMPLEMENTED` |
 | `trusted`                     | `IMPLEMENTED` |
 | `decreases`                   | `SPECIFIED`   |
@@ -1352,7 +1369,7 @@ Foreign code must not automatically count as verified.
 | Capability                       | Status        |
 | -------------------------------- | ------------- |
 | Proof erasure model              | `SPECIFIED`   |
-| Ghost erasure model              | `SPECIFIED`   |
+| Ghost erasure model              | `IMPLEMENTED` |
 | Dependent argument erasure       | `SPECIFIED`   |
 | Erasure implementation           | `PROTOTYPE`   |
 | Runtime-equivalence tests        | `PARTIAL`     |
@@ -1360,8 +1377,9 @@ Foreign code must not automatically count as verified.
 | Formal erasure correctness proof | `NOT STARTED` |
 
 Erasure currently removes law and trusted-law declarations, proofs, contracts,
-loop invariants and measures, the `verified`, `pure` and `unsafe` specifiers and
-the `unsafe` keyword of a block, which leaves the block's braces; reduces a
+loop invariants and measures, ghost declarations whole, the `verified`, `pure`
+and `unsafe` specifiers and the `unsafe` keyword of a block, which leaves the
+block's braces; reduces a
 claim that a path cannot occur to the empty statement its `;` leaves; and lowers
 a refinement type declaration to the alias it means. The implementation checks a
 strong property rather than asserting success: the runtime program must be the
@@ -1380,9 +1398,9 @@ identical assembly at `-O0` and `-O2` in `c++17`, `c++20` and `c++23`
 a library whose interface uses refinements and contracts, and by linking an
 ordinary C++ client, compiled by Clang alone, against it
 (`tests/e2e/abi_equivalence.sh`). Both are `PARTIAL`: they cover the constructs
-this implementation accepts, on the host's ABI; ghost state and
-cross-translation-unit verification metadata are not implemented, and are
-refused rather than erased (`tests/negative/erasure.sh`).
+this implementation accepts, on the host's ABI; cross-translation-unit
+verification metadata is not implemented, and a use of it is refused rather
+than erased (`tests/negative/erasure.sh`).
 
 C++L's intended mature pipeline is:
 
