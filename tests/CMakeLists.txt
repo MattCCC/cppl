@@ -111,6 +111,9 @@ target_link_libraries(unit_recognizer_test PRIVATE cppl_frontend cppl_diagnostic
 cppl_add_unit_test(unit_draft_recognition_test unit/draft_recognition_test.cpp)
 target_link_libraries(unit_draft_recognition_test PRIVATE cppl_frontend cppl_diagnostics)
 
+cppl_add_unit_test(unit_draft_authority_test unit/draft_authority_test.cpp)
+target_link_libraries(unit_draft_authority_test PRIVATE cppl_frontend cppl_elaboration cppl_diagnostics)
+
 cppl_add_unit_test(unit_projection_test unit/projection_test.cpp)
 target_link_libraries(unit_projection_test PRIVATE cppl_frontend cppl_erasure cppl_diagnostics)
 target_compile_definitions(unit_projection_test PRIVATE
@@ -379,6 +382,13 @@ add_test(NAME architecture_dependency_boundaries
          COMMAND bash "${CPPL_BOUNDED}" bash "${CMAKE_CURRENT_SOURCE_DIR}/architecture/dependency_boundaries.sh"
                  "${CMAKE_SOURCE_DIR}/kernel" "$<TARGET_FILE:cppl_kernel>")
 set_tests_properties(architecture_dependency_boundaries PROPERTIES
+    LABELS "architecture;script"
+    TIMEOUT ${CPPL_TEST_TIMEOUT})
+
+add_test(NAME architecture_draft_boundaries
+         COMMAND bash "${CPPL_BOUNDED}" bash "${CMAKE_CURRENT_SOURCE_DIR}/architecture/draft_boundaries.sh"
+                 "${CMAKE_SOURCE_DIR}")
+set_tests_properties(architecture_draft_boundaries PROPERTIES
     LABELS "architecture;script"
     TIMEOUT ${CPPL_TEST_TIMEOUT})
 

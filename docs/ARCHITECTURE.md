@@ -2782,6 +2782,21 @@ be written, is the compiler frontend's answer. Where an editor needs what the
 frontend does not say, the frontend is extended. A draft never reaches a
 compile.
 
+A draft records where the author is. It is not a second, more permissive way to
+read C++L. The compiler recognizes only in `Compile` mode.
+`frontend::evidence_at` offers only declarations written whole, and only names
+that a readable `assume` bound. `frontend::draft_only` says where a syntax holds
+a node that only a draft keeps, and `elaboration::elaborate` refuses such a
+syntax whole. Only the frontend and the editor services name a draft at all
+(`tests/architecture/draft_boundaries.sh`).
+
+**[ARCH-LSP-007]** Draft recognition may recognize C++L that is not yet
+complete, but it never gives incomplete syntax semantic authority. Two kinds of
+node belong only to a draft: a Law or a proof not written whole, and a
+statement the recognizer could not read. Such a node may guide an editor. It
+never takes part in elaboration, verification, evidence lookup or a successful
+compile as if it were valid syntax.
+
 ---
 
 # 79. Formatter architecture

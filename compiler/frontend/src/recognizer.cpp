@@ -2092,6 +2092,53 @@ bool names_evidence(ProofStatementKind kind) {
            kind == ProofStatementKind::Rewrite || kind == ProofStatementKind::Contradiction;
 }
 
+namespace {
+
+std::optional<source::SourceLocation> unread_in(const ProofStatement& statement) {
+    if (statement.kind == ProofStatementKind::Unread) {
+        return statement.location;
+    }
+    for (const ProofArm& arm : statement.arms) {
+        for (const ProofStatement& inner : arm.statements) {
+            if (std::optional<source::SourceLocation> unread = unread_in(inner)) {
+                return unread;
+            }
+        }
+    }
+    return std::nullopt;
+}
+
+} // namespace
+
+std::optional<source::SourceLocation> draft_only(const Syntax& syntax) {
+    for (const LawDeclaration& law : syntax.laws) {
+        if (law.completeness != Completeness::Whole) {
+            return law.keyword_location;
+        }
+    }
+    for (const ProofDeclaration& proof : syntax.proofs) {
+        if (proof.completeness != Completeness::Whole) {
+            return proof.keyword_location;
+        }
+        for (const ProofStatement& statement : proof.statements) {
+            if (std::optional<source::SourceLocation> unread = unread_in(statement)) {
+                return unread;
+            }
+        }
+    }
+    for (const PathContradiction& claim : syntax.path_contradictions) {
+        if (std::optional<source::SourceLocation> unread = unread_in(claim.statement)) {
+            return unread;
+        }
+    }
+    for (const PathCaseSplit& split : syntax.path_splits) {
+        if (std::optional<source::SourceLocation> unread = unread_in(split.statement)) {
+            return unread;
+        }
+    }
+    return std::nullopt;
+}
+
 std::vector<ClauseKind> clauses_admitted(ClauseOwner owner, const std::vector<Clause>& written, std::size_t at) {
     // What each declaration reads as a clause at all: `try_law` refuses
     // `ensures` and `decreases`, a proof has only its claim, and a verified

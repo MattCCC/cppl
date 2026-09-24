@@ -1805,6 +1805,16 @@ const FunctionRejection* Result::rejection(const vir::SymbolId& symbol) const {
 
 Result elaborate(const Request& request, diagnostics::Engine& engine) {
     Result result;
+    // A draft keeps what the compiler refuses, for an editor to say where the
+    // author is. None of it has meaning, so one that reached elaboration is
+    // refused whole rather than any of it read as C++L (ARCH-LSP-007).
+    if (const std::optional<source::SourceLocation> unfinished = frontend::draft_only(request.syntax)) {
+        report(engine, diagnostics::Category::Internal, *unfinished,
+               "an editor's draft of the text reached elaboration",
+               "a draft holds declarations not written whole and statements that could not be read; only a "
+               "compile's recognition of the text is elaborated");
+        return result;
+    }
     std::uint32_t next_expression_id = 0;
     std::uint32_t next_function_id = 0;
 

@@ -777,6 +777,11 @@ clause's word is the recognizer's own, and a test checks that every snippet
 offered is what the recognizer reads it as. Nothing here resolves a name: a
 suggestion the compiler would reject is only a suggestion.
 
+A draft only says where the author is, so it decides nothing (`ARCH-LSP-007`).
+Evidence is offered only from declarations written whole and from `assume`
+statements that could be read. The compiler never recognizes a draft, and
+elaboration refuses any syntax that holds a node only a draft keeps.
+
 Signature help shows, while a call's arguments are written, every declaration
 Clang says it could resolve to, with the argument being written marked. Clang
 decides all of it: whether the position is inside a call's argument list, which

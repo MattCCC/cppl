@@ -451,4 +451,11 @@ enum class RecognitionMode : std::uint8_t { Compile, Edit, Draft };
 [[nodiscard]] Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine,
                                RecognitionMode mode = RecognitionMode::Compile);
 
+// Where `syntax` holds what only a draft keeps: a Law or a proof not written
+// whole, or a proof statement the recognizer could not read. Nothing, for a
+// syntax recognized to be compiled or formatted. A draft is where the author
+// is, never what the program means, so nothing that decides meaning accepts
+// one (ARCHITECTURE.md ARCH-LSP-007).
+[[nodiscard]] std::optional<source::SourceLocation> draft_only(const Syntax& syntax);
+
 } // namespace cppl::frontend

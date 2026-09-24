@@ -350,7 +350,10 @@ carrying a closure across translation units through proof artifacts.
    in `describe(ProofStatementKind)` and `statement_keyword`. Completion's
    snippet for it in `src/lsp/src/completion.cpp` uses the recognizer's word,
    and `tests/unit/lsp_completion_test.cpp` checks the recognizer reads every
-   snippet as what it names.
+   snippet as what it names. A new kind of draft-only node, such as a new
+   `Completeness` state or a new place `Unread` can occur, must also be
+   reported by `frontend::draft_only`, so that elaboration refuses it
+   (`ARCH-LSP-007`, `tests/unit/draft_authority_test.cpp`).
 
 Keep required behavior as a statement of *what must hold*, not a description of
 current code. This file maps rules to where they are realized; it does not

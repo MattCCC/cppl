@@ -1465,7 +1465,9 @@ scope, trusted Laws and proofs a statement can name after `exact`, `apply`,
 `rewrite` or `contradiction`, and the clauses a declaration may still take.
 The recognizer reads text still being written through its draft mode, which
 keeps a Law or a proof not yet written whole and reads past a statement it
-cannot read; the server reads no C++L grammar of its own.
+cannot read; the server reads no C++L grammar of its own. A draft has no
+authority (ARCH-LSP-007): nothing only a draft keeps is offered as evidence,
+and elaboration refuses a syntax that holds any of it.
 
 `signatureHelpProvider` shows, while a call's arguments are written, every
 declaration Clang says the call could resolve to, with the argument being
