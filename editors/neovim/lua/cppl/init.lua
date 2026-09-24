@@ -12,7 +12,8 @@ local defaults = {
   server_path = "",
   -- Clang driver forwarded as `--clang`; empty uses cppl-lsp's own default.
   clang_path = "",
-  -- Extra flags forwarded as repeated `--clang-arg`.
+  -- Extra flags forwarded as repeated `--clang-arg`, after those the file's
+  -- compile_commands.json entry gives it, which cppl-lsp reads itself.
   clang_arguments = {},
   format_on_save = true,
   -- Show, over each Law, proof and verified function, what became of its

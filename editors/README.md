@@ -33,6 +33,7 @@ editors/
 | Verification status (code lens) | `cppl-lsp` | yes | unverified | unverified | yes |
 | Outline (document symbols) | `cppl-lsp` | yes | unverified | unverified | yes |
 | Folding, expand selection | `cppl-lsp` | yes | unverified | unverified | yes |
+| Build flags from `compile_commands.json` | `cppl-lsp` | yes | yes | yes | yes |
 | Syntax coloring | `editors/shared` | yes | — | — | yes |
 | Proof-statement coloring | `cppl-lsp` | yes | unverified | unverified | yes |
 
@@ -55,6 +56,14 @@ References cover every open document and the headers each includes.
 "Unverified" means the IDE's own LSP client documents the request but nobody
 has checked it against this server. Rename is **not** implemented yet. See
 "Currently unsupported" in [`tools/cppl-lsp/README.md`](../tools/cppl-lsp/README.md).
+
+### Build flags
+
+The server reads each file with the flags its build compiles it with, taken
+from the nearest `compile_commands.json`. That file can be in the file's
+directory, in a `build` directory beside it, or in any directory above. Every
+client gets this the same way, because the server finds the database itself.
+An extension's own Clang-argument setting adds flags after the build's.
 
 ### Plain C++ files
 

@@ -2745,6 +2745,14 @@ for nothing written is not reported, never approximated.
 never contributes a diagnostic, so it cannot report a program the compiler
 accepts as wrong or the reverse.
 
+Each document is read with the flags its build compiles it with. The server
+takes them from the nearest `compile_commands.json` (`lsp::CompileCommands`)
+and adds its own `--clang-arg` flags after them.
+
+**[ARCH-LSP-008]** A document's editor unit and its compile read it with the
+same flags, so navigation and diagnostics never describe two different
+programs.
+
 A name a proof statement uses never reaches Clang. Elaboration, which resolves
 it, records the resolution (`elaboration::ResolvedName`, carried out through
 `driver::BufferCompileOutcome` beside the case engine's subject states), and the

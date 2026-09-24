@@ -41,11 +41,17 @@ instead. See [`editors/README.md`](../README.md) for the publishing process.
 | --- | --- | --- |
 | `cppl.serverPath` | `build/dev/bin/cppl-lsp`, then `PATH` | Path to the `cppl-lsp` executable. |
 | `cppl.clangPath` | (cppl-lsp's own default) | Clang driver, forwarded as `cppl-lsp --clang`. |
-| `cppl.clangArguments` | `[]` | Extra flags for Clang, one `--clang-arg` per entry. |
+| `cppl.clangArguments` | `[]` | Extra flags for Clang, one `--clang-arg` per entry, after the flags the file's `compile_commands.json` entry gives it. |
 | `cppl.trace.server` | `off` | Trace JSON-RPC traffic to the output channel. |
 
 Commands: **C++L: Restart Language Server** and **C++L: Show Language Server
 Output**.
+
+Each file is read with the flags its build compiles it with, taken from the
+nearest `compile_commands.json`. That file can be in the file's directory, in a
+`build` directory beside it, or in any directory above. CMake writes it with
+`-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`. `cppl.clangArguments` is only needed for
+flags the build does not give.
 
 ## What works
 

@@ -118,18 +118,26 @@ EditorView* Server::view_for(const std::string& uri) {
     if (entry.view == nullptr) {
         entry.view = std::make_unique<EditorView>();
     }
-    if (entry.generation != generation_) {
+    std::vector<std::string> arguments = arguments_for(document->path());
+    if (entry.generation != generation_ || entry.arguments != arguments) {
         std::vector<OpenBuffer> open;
         documents_.for_each([&open](const Document& buffer) {
             open.push_back(OpenBuffer{buffer.uri(), buffer.path(), &buffer.text()});
         });
         EditorView::Options options;
         options.driver = driver_;
-        options.arguments = clang_arguments_;
+        options.arguments = arguments;
         entry.view->refresh(OpenBuffer{document->uri(), document->path(), &document->text()}, open, options);
         entry.generation = generation_;
+        entry.arguments = std::move(arguments);
     }
     return entry.view.get();
+}
+
+std::vector<std::string> Server::arguments_for(const std::string& path) {
+    std::vector<std::string> arguments = compile_commands_.flags_for(path);
+    arguments.insert(arguments.end(), clang_arguments_.begin(), clang_arguments_.end());
+    return arguments;
 }
 
 std::optional<std::vector<Location>> Server::text_document_references(const TextDocumentIdentifier& id,
@@ -509,7 +517,7 @@ void Server::publish_diagnostics(const Document& doc) {
     request.virtual_path = doc.path();
     request.text = doc.text();
     request.clang = clang_;
-    request.clang_arguments = clang_arguments_;
+    request.clang_arguments = arguments_for(doc.path());
 
     diagnostics::Engine engine;
     driver::BufferCompileOutcome outcome = driver::compile_buffer(request, engine);

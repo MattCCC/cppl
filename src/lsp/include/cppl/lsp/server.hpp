@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cppl/clang/editor.hpp"
+#include "cppl/lsp/compile_commands.hpp"
 #include "cppl/lsp/document.hpp"
 #include "cppl/lsp/editor_view.hpp"
 #include "cppl/lsp/linter.hpp"
@@ -22,8 +23,9 @@ class Server {
   public:
     // `clang` is the Clang driver executable used to preprocess and
     // semantically check buffers (mirrors `cppl::driver::Options::clang`).
-    // `clang_arguments` are extra flags forwarded to Clang for every buffer
-    // compile (include paths, defines, target flags); it may be empty.
+    // Each document is read with the flags its build compiles it with, from
+    // the nearest `compile_commands.json` (compile_commands.hpp), followed by
+    // `clang_arguments`, extra flags for every document; it may be empty.
     explicit Server(std::string clang = {}, std::vector<std::string> clang_arguments = {});
 
     // Lifecycle
@@ -167,14 +169,21 @@ class Server {
     // null when the document is unknown.
     EditorView* view_for(const std::string& uri);
 
+    // The flags the document at `path` is read with, by its editor unit and by
+    // its compile alike (ARCHITECTURE.md ARCH-LSP-008).
+    [[nodiscard]] std::vector<std::string> arguments_for(const std::string& path);
+
     DocumentManager documents_;
     ClientCapabilities client_;
-    // One view per open document, each with the buffer generation it was last
-    // refreshed at. Any edit to any open buffer can change what another
-    // document's unit reads, so every edit starts a new generation.
+    CompileCommands compile_commands_;
+    // One view per open document, each with the buffer generation and the
+    // flags it was last refreshed with. Any edit to any open buffer can change
+    // what another document's unit reads, so every edit starts a new
+    // generation; an edited compilation database can change the flags.
     struct View {
         std::unique_ptr<EditorView> view;
         std::uint64_t generation = 0;
+        std::vector<std::string> arguments;
     };
     std::unordered_map<std::string, View> views_;
     std::uint64_t generation_ = 1;

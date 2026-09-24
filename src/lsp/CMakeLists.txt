@@ -1,4 +1,5 @@
 add_library(cppl_lsp STATIC
+    src/compile_commands.cpp
     src/completion.cpp
     src/decomposition_view.cpp
     src/document.cpp
@@ -16,6 +17,7 @@ add_library(cppl_lsp STATIC
     src/transport.cpp
     src/uri.cpp
     src/verification.cpp
+    include/cppl/lsp/compile_commands.hpp
     include/cppl/lsp/completion.hpp
     include/cppl/lsp/decomposition_view.hpp
     include/cppl/lsp/diagnostic_codes.hpp

@@ -18,7 +18,8 @@ namespace {
 // on stdout, so it takes no positional arguments. `--clang` and `--clang-arg`
 // let the editor point the buffer-compile pipeline at a specific Clang and
 // forward extra flags (include paths, defines, -std=), mirroring the CLI's
-// own `--clang` (cppl::driver::Options::clang).
+// own `--clang` (cppl::driver::Options::clang). They follow the flags each
+// document's build gives it (cppl/lsp/compile_commands.hpp).
 struct CommandLine {
     std::string clang;
     std::vector<std::string> clang_arguments;

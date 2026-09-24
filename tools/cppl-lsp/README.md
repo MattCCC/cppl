@@ -1338,10 +1338,51 @@ build/dev/bin/cppl-lsp --clang /path/to/clang++ --clang-arg -std=c++20
 ```
 
 `--clang` selects the Clang driver executable used to preprocess and
-semantically check documents (defaults to the toolchain's `clang++` when
-omitted); repeat `--clang-arg` for each extra flag (include paths, defines,
-target flags) the buffer-compile pipeline should forward to Clang, mirroring
-`cppl`'s own `--clang` option.
+semantically check documents. When it is omitted, the toolchain's `clang++` is
+used. Repeat `--clang-arg` for each extra flag (include paths, defines, target
+flags) that every document should be read with. These come after the flags the
+document's build gives it (see "Compile flags"). `--clang` mirrors `cppl`'s own
+`--clang` option.
+
+### Compile flags
+
+A document is read with the flags its build compiles it with. The server looks
+for a `compile_commands.json` in the document's directory, then in a `build`
+directory beside it, then in each directory above in turn. CMake writes one with
+`-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`, and Bear or a build tool's own export
+writes one for other builds.
+
+The document's own entry gives its flags. A header, or a file the build does
+not compile, takes the flags of the entry most like it: first one with the same
+name and another extension, then the one sharing the most directories with it.
+
+Only flags that change how the text reads are kept:
+
+- include, system and framework paths, made absolute against the entry's
+  directory;
+- macros defined and undefined, and forced includes;
+- the language standard and standard library;
+- the target and system root;
+- optimization levels, which define `__OPTIMIZE__`;
+- the few `-f` and `-m` switches that define macros or change the language.
+
+Output, dependency, warning and code-generation flags are dropped, and so is
+the input.
+
+The database belongs to the project, and opening a file must not run the
+project's code. The compiler an entry names is never run: the server always
+uses its own Clang. Only the flags above are passed on. A plugin (`-fplugin=`,
+`-Xclang -load`), a tool search path (`-B`) or a toolchain elsewhere never
+reaches Clang.
+
+The document's editor unit and its compile read it with the same flags
+(`ARCH-LSP-008`), so navigation and diagnostics never see two different
+programs. An edited database is read again on the next request. A document with
+no database is read with `--clang-arg` alone.
+
+A quoted `#include` is looked for beside the document, as a compiler looks for
+it beside the file that writes it. This holds even though the compile reads a
+copy of the buffer from a scratch directory.
 
 There is normally no reason to type LSP JSON-RPC by hand; an editor extension
 (see below) does this. To confirm the process itself starts and speaks the

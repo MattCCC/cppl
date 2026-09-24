@@ -1402,6 +1402,7 @@ AI output must always be independently verified.
 | LSP: references and highlights       | `PROTOTYPE`   |
 | LSP: document outline                | `PROTOTYPE`   |
 | LSP: folding and selection ranges    | `PROTOTYPE`   |
+| LSP: build flags (compile_commands)  | `PROTOTYPE`   |
 | LSP: other token kinds               | `NOT STARTED` |
 | IDE proof goals                      | `PROTOTYPE`   |
 | Proof navigation                     | `PROTOTYPE`   |
@@ -1427,7 +1428,10 @@ re-recognizing it. The buffer compile names the buffer by the document's own
 path, so a diagnostic is shown where it was written, at the column its author
 wrote it at, and one located in an included header is shown on the document's
 `#include` that brought the header in, with the header's location as related
-information. Transport is separate from analysis, and the library is tested
+information. Each document is compiled, and read by its editor unit, with the
+flags its build gives it in the nearest `compile_commands.json`, followed by
+the server's `--clang-arg` flags. A quoted `#include` is looked for beside the
+document. Transport is separate from analysis, and the library is tested
 without an editor. The server also advertises
 `documentFormattingProvider`, `documentRangeFormattingProvider` and
 `documentOnTypeFormattingProvider`, backed by one shared `compiler/formatter`

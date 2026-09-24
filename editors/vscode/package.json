@@ -71,7 +71,7 @@
           "type": "array",
           "items": { "type": "string" },
           "default": [],
-          "description": "Extra arguments forwarded to Clang for every document (include paths, defines, -std=), forwarded as repeated cppl-lsp --clang-arg."
+          "description": "Extra arguments forwarded to Clang for every document (include paths, defines, -std=), forwarded as repeated cppl-lsp --clang-arg. They follow the flags the document's compile_commands.json entry gives it, which are read automatically."
         },
         "cppl.trace.server": {
           "type": "string",

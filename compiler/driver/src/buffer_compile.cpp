@@ -86,10 +86,7 @@ BufferCompileOutcome compile_buffer(const BufferCompileRequest& request, diagnos
     }
 
     // The buffer is written under the virtual path's own basename, in the
-    // scratch directory, so a relative #include next to the real file still
-    // has a name to resolve against; the include search itself is driven by
-    // clang_arguments (e.g. -I<directory of virtual_path>), which the caller
-    // is responsible for supplying when the buffer's directory matters.
+    // scratch directory, so file names stay readable.
     const std::filesystem::path source_path = scratch.path() / stem;
     if (!write_scratch_file(source_path, naming_line(request.virtual_path) + request.text)) {
         report_internal(engine, "could not write a scratch copy of '" + request.virtual_path + "'");
@@ -99,7 +96,15 @@ BufferCompileOutcome compile_buffer(const BufferCompileRequest& request, diagnos
 
     const std::filesystem::path preprocessed_path = scratch.path() / (stem + ".i");
 
-    std::vector<std::string> preprocess = request.clang_arguments;
+    // A quoted `#include` is looked for first beside the file that writes it.
+    // The copy Clang reads is not there, so the document's own directory is
+    // searched for quoted includes ahead of any the flags name, as it would be.
+    std::vector<std::string> preprocess;
+    if (const std::filesystem::path directory = virtual_path.parent_path(); virtual_path.is_absolute()) {
+        preprocess.emplace_back("-iquote");
+        preprocess.push_back(directory.string());
+    }
+    preprocess.insert(preprocess.end(), request.clang_arguments.begin(), request.clang_arguments.end());
     preprocess.emplace_back("-E");
     preprocess.push_back(source_path.string());
     preprocess.emplace_back("-o");

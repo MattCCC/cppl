@@ -47,7 +47,8 @@ require("cppl").setup({
   server_path = "",
   -- Forwarded as `--clang`; empty uses cppl-lsp's own default.
   clang_path = "",
-  -- Forwarded as repeated `--clang-arg`.
+  -- Forwarded as repeated `--clang-arg`, after the flags the file's
+  -- compile_commands.json entry gives it, which are read automatically.
   clang_arguments = { "-std=c++20" },
   format_on_save = true,
   -- Verification status over each Law, proof and verified function.
