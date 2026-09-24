@@ -123,7 +123,12 @@ spells its parameter's name gets no hint.
 Expand Selection and Shrink Selection (`Shift+Alt+Right` and `Shift+Alt+Left`)
 grow a selection one construct at a time. For C++, that is what Clang parsed.
 For C++L, it runs through a clause, a proof statement, an arm, a proof body and
-the declaration. Rename is not implemented by the server yet.
+the declaration.
+
+Rename Symbol (`F2`) renames the name under the cursor in every file of the
+workspace, showing first which name it would rewrite. A rename the server
+cannot make whole is refused with its reason, and nothing is changed. Go to
+Symbol in Workspace (`Ctrl+T`) searches every file's declarations.
 
 The server's semantic tokens color every name by what Clang says it names, and
 every C++L word and name by what the recognizer read. Semantic highlighting is

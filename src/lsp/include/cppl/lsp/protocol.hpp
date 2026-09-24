@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <map>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -80,6 +81,19 @@ struct TextDocumentIdentifier {
 struct TextEdit {
     Range range;
     std::string newText;
+};
+
+// Edits to several documents at once, each document's by its URI (LSP:
+// `WorkspaceEdit.changes`).
+struct WorkspaceEdit {
+    std::map<std::string, std::vector<TextEdit>> changes;
+};
+
+// The name a rename would rewrite, and the text an editor offers to replace
+// (LSP: `PrepareRenameResult`).
+struct PrepareRename {
+    Range range;
+    std::string placeholder;
 };
 
 // The code-action kinds this server produces (LSP: `CodeActionKind`).
@@ -200,6 +214,9 @@ struct ClientCapabilities {
     // lenses and tokens when told they changed, as they do after a compile.
     bool code_lens_refresh = false;
     bool semantic_tokens_refresh = false;
+    // `textDocument.rename.prepareSupport`: the client asks what a rename
+    // would rewrite before asking for the new name.
+    bool prepare_rename = false;
 };
 
 enum class InlayHintKind : std::uint8_t {

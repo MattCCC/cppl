@@ -278,6 +278,9 @@ struct EditorUnit::State {
         const std::vector<std::string>* usrs = nullptr;
         std::string_view name;
         bool everything = false;
+        // When set, each use of one of those names that is not written where
+        // it is used -- a macro's body spells it -- is noted here too.
+        std::vector<Occurrence>* unwritten = nullptr;
         // The operands an assignment or an increment writes, met before them.
         std::vector<CXCursor> written;
         std::vector<Occurrence> found;
@@ -391,6 +394,13 @@ struct EditorUnit::State {
                            clang_equalLocations(clang_getCursorLocation(operand), clang_getCursorLocation(cursor)) != 0;
                 });
                 walk.found.push_back(Occurrence{*written, std::move(usr), write ? Role::Write : Role::Read});
+            } else if (walk.unwritten != nullptr) {
+                // Clang places a use a macro's body spells where the macro is
+                // expanded, which does not spell the name.
+                const FilePosition expanded = place(clang_getRangeStart(range));
+                if (!expanded.file.empty()) {
+                    walk.unwritten->push_back(Occurrence{Extent{expanded, expanded}, std::move(usr), Role::Read});
+                }
             }
         }
     }
@@ -410,6 +420,44 @@ struct EditorUnit::State {
             walk.state->note_reference(cursor, kind, walk);
         }
         return CXChildVisit_Recurse;
+    }
+
+    // Each constructor's and destructor's identity, with its class's.
+    using Members = std::vector<std::pair<std::string, std::string>>;
+
+    static CXChildVisitResult member_visit(CXCursor cursor, CXCursor, CXClientData data) {
+        if (clang_Location_isInSystemHeader(clang_getCursorLocation(cursor)) != 0) {
+            return CXChildVisit_Continue;
+        }
+        const CXCursorKind kind = clang_getCursorKind(cursor);
+        if (kind == CXCursor_Constructor || kind == CXCursor_Destructor) {
+            static_cast<Members*>(data)->emplace_back(take(clang_getCursorUSR(cursor)),
+                                                      take(clang_getCursorUSR(clang_getCursorSemanticParent(cursor))));
+        }
+        return CXChildVisit_Recurse;
+    }
+
+    [[nodiscard]] std::vector<std::string> renamed_together(const std::string& usr) const {
+        Members members;
+        if (unit != nullptr) {
+            clang_visitChildren(clang_getTranslationUnitCursor(unit), member_visit, &members);
+        }
+        std::string owner = usr;
+        for (const auto& [member, parent] : members) {
+            if (member == usr) {
+                owner = parent;
+            }
+        }
+        std::vector<std::string> together = {owner};
+        for (const auto& [member, parent] : members) {
+            if (parent == owner && std::ranges::find(together, member) == together.end()) {
+                together.push_back(member);
+            }
+        }
+        if (std::ranges::find(together, usr) == together.end()) {
+            together.push_back(usr);
+        }
+        return together;
     }
 
     struct OutlineWalk {
@@ -642,12 +690,14 @@ struct EditorUnit::State {
     }
 
     [[nodiscard]] std::vector<Occurrence> walk(const std::vector<std::string>* usrs, std::string_view name,
-                                               bool everything = false) const {
+                                               bool everything = false,
+                                               std::vector<Occurrence>* unwritten = nullptr) const {
         Walk walk;
         walk.state = this;
         walk.usrs = usrs;
         walk.name = name;
         walk.everything = everything;
+        walk.unwritten = unwritten;
         if (unit != nullptr) {
             clang_visitChildren(clang_getTranslationUnitCursor(unit), visit, &walk);
         }
@@ -972,6 +1022,16 @@ std::vector<Occurrence> EditorUnit::declarations_named(std::string_view name) co
 
 std::vector<Occurrence> EditorUnit::all_occurrences() const {
     return state_->walk(nullptr, {}, true);
+}
+
+std::vector<std::string> EditorUnit::renamed_together(const std::string& usr) const {
+    return state_->renamed_together(usr);
+}
+
+std::vector<Occurrence> EditorUnit::unwritten_uses(const std::vector<std::string>* usrs) const {
+    std::vector<Occurrence> unwritten;
+    static_cast<void>(state_->walk(usrs, {}, usrs == nullptr, &unwritten));
+    return unwritten;
 }
 
 namespace {

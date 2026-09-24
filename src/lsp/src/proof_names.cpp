@@ -13,10 +13,7 @@
 #include <cctype>
 #include <cstddef>
 #include <cstdint>
-#include <fstream>
-#include <ios>
 #include <optional>
-#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -28,16 +25,6 @@ namespace {
 bool is_name_byte(char character) {
     const auto byte = static_cast<unsigned char>(character);
     return std::isalnum(byte) != 0 || character == '_' || byte >= 0x80;
-}
-
-std::optional<std::string> read_file(const std::string& path) {
-    std::ifstream stream(path, std::ios::binary);
-    if (!stream) {
-        return std::nullopt;
-    }
-    std::ostringstream buffer;
-    buffer << stream.rdbuf();
-    return buffer.str();
 }
 
 // What a file holds now: the editor's buffer when it is open, else the disk.

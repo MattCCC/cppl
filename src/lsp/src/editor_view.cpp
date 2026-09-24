@@ -23,6 +23,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -40,6 +41,8 @@ bool is_name_byte(char character) {
     return std::isalnum(byte) != 0 || character == '_' || byte >= 0x80;
 }
 
+} // namespace
+
 std::optional<std::string> read_file(const std::string& path) {
     std::ifstream stream(path, std::ios::binary);
     if (!stream) {
@@ -49,8 +52,6 @@ std::optional<std::string> read_file(const std::string& path) {
     buffer << stream.rdbuf();
     return buffer.str();
 }
-
-} // namespace
 
 std::string normal_path(const std::string& path) {
     if (path.empty()) {
@@ -344,6 +345,21 @@ std::optional<EditorView::Target> EditorView::target_at(const Position& position
     return target;
 }
 
+EditorView::Target EditorView::renamed_together(Target target) const {
+    if (unit_ == nullptr) {
+        return target;
+    }
+    const std::vector<std::string> named = target.usrs;
+    for (const std::string& usr : named) {
+        for (std::string& together : unit_->renamed_together(usr)) {
+            if (std::ranges::find(target.usrs, together) == target.usrs.end()) {
+                target.usrs.push_back(std::move(together));
+            }
+        }
+    }
+    return target;
+}
+
 std::vector<EditorView::Mention> EditorView::mentions(const Target& target) const {
     std::vector<Mention> found;
     if (unit_ == nullptr) {
@@ -396,6 +412,22 @@ std::vector<EditorView::Named> EditorView::all_mentions() const {
             found.push_back(Named{occurrence.usr, Mention{std::move(*location), occurrence.role}});
         } else if (occurrence.role == clangbridge::Role::Declaration) {
             found[known->second].mention.role = occurrence.role;
+        }
+    }
+    return found;
+}
+
+std::vector<EditorView::Named> EditorView::unwritten(const std::vector<std::string>* usrs) const {
+    std::vector<Named> found;
+    if (unit_ == nullptr) {
+        return found;
+    }
+    std::set<std::tuple<std::string, std::string, std::uint32_t, std::uint32_t>> seen;
+    for (const clangbridge::Occurrence& use : unit_->unwritten_uses(usrs)) {
+        std::optional<Location> location = locate(use.name);
+        if (location.has_value() &&
+            seen.emplace(use.usr, location->uri, location->range.start.line, location->range.start.character).second) {
+            found.push_back(Named{use.usr, Mention{std::move(*location), use.role}});
         }
     }
     return found;

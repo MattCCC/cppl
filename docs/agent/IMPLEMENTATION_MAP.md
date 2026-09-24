@@ -362,7 +362,11 @@ carrying a closure across translation units through proof artifacts.
    C++L names a declaration is recorded by elaboration as an
    `elaboration::ResolvedName`. References find it from that record, in open
    documents and, through the workspace index, in files on disk
-   (`ARCH-LSP-009`, `tests/unit/lsp_workspace_index_test.cpp`).
+   (`ARCH-LSP-009`, `tests/unit/lsp_workspace_index_test.cpp`). A new C++L
+   word is added to SPEC.md and to `frontend::cppl_words`
+   (`compiler/frontend/src/words.cpp`) alike, which
+   `tests/unit/words_test.cpp` checks, so that a rename never writes it inside
+   C++L (`ARCH-LSP-010`, `tests/unit/lsp_rename_test.cpp`).
 
 Keep required behavior as a statement of *what must hold*, not a description of
 current code. This file maps rules to where they are realized; it does not

@@ -562,13 +562,14 @@ cppl trust-report
 
 Also:
 
-- LSP rename (incremental sync, diagnostics, formatting, code
-  actions, hover, completion, signature help, definition, declaration, type
-  definition, implementation, references and highlights, the document outline,
-  folding and selection ranges, inlay hints, navigation from proof statements to what they name, and verification status
-  and each obligation's goal, background compiles, and a workspace index for
-  workspace symbols and references in closed files are implemented; see
-  `STATUS.md`)
+- LSP semantic tokens for a range or as a delta, and interactive proof state
+  (incremental sync, diagnostics, formatting, code actions, hover, completion,
+  signature help, definition, declaration, type definition, implementation,
+  references and highlights, the document outline, folding and selection
+  ranges, inlay hints, navigation from proof statements to what they name,
+  verification status and each obligation's goal, background compiles, a
+  workspace index for workspace symbols and references in closed files, and
+  rename are implemented; see `STATUS.md`)
 - IDE diagnostics
 - proof goals
 - counterexamples

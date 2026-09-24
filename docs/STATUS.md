@@ -1406,6 +1406,7 @@ AI output must always be independently verified.
 | LSP: inlay hints                     | `PROTOTYPE`   |
 | LSP: background compiles, cancel     | `PROTOTYPE`   |
 | LSP: workspace index and symbols     | `PROTOTYPE`   |
+| LSP: rename                          | `PROTOTYPE`   |
 | IDE proof goals                      | `PROTOTYPE`   |
 | Proof navigation                     | `PROTOTYPE`   |
 | Counterexample UI                    | `NOT STARTED` |
@@ -1591,8 +1592,14 @@ declaration an outline would show in the open documents and the index. An open
 document always answers as the editor holds it (ARCH-LSP-009), and each pass
 that reads files is reported as progress.
 
-Rename is designed in `tools/cppl-lsp/README.md` but not implemented, and is
-deliberately not advertised as a capability.
+Rename (`textDocument/prepareRename`, `textDocument/rename`) rewrites every
+place references finds, declarations and a class's constructors and destructor
+included, whole or not at all. It refuses, with the reason, a new name that is
+no C++ identifier or is a keyword, a place in a file neither open nor indexed,
+a place that no longer spells the name, a use a macro's body spells, a C++L
+word written inside C++L, and any edit after which the recognizer reads a
+file's C++L differently (ARCH-LSP-010). Collisions with other declarations are
+not checked; the compile reports them.
 
 ---
 

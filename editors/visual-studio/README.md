@@ -43,9 +43,8 @@ inside a `cases` or `decompose`
 arm block, which Visual Studio shows where its LSP client supports those
 features. Go To Definition is answered by Clang over the file's projection,
 for C++ and for the C++L declarations the projection stands for. The server
-also answers references and document highlights across every open file;
-whether Visual Studio's LSP client asks for them has not been verified. Rename
-is not implemented by the server yet.
+also answers references, document highlights, workspace symbols and rename;
+whether Visual Studio's LSP client asks for them has not been verified.
 
 `*.cppl` files are colored by the shared C++L TextMate grammar
 ([`editors/shared/cppl.tmLanguage.json`](../shared/cppl.tmLanguage.json), the

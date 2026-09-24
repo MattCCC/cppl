@@ -11,6 +11,7 @@ add_library(cppl_lsp STATIC
     src/position.cpp
     src/projected_file.cpp
     src/proof_names.cpp
+    src/rename.cpp
     src/semantic_tokens.cpp
     src/server.cpp
     src/symbols.cpp
@@ -31,6 +32,7 @@ add_library(cppl_lsp STATIC
     include/cppl/lsp/projected_file.hpp
     include/cppl/lsp/proof_names.hpp
     include/cppl/lsp/protocol.hpp
+    include/cppl/lsp/rename.hpp
     include/cppl/lsp/semantic_tokens.hpp
     include/cppl/lsp/server.hpp
     include/cppl/lsp/symbols.hpp

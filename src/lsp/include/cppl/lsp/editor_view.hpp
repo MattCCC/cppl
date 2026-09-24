@@ -54,6 +54,11 @@ class EditorView {
     };
     [[nodiscard]] std::optional<Target> target_at(const Position& position) const;
 
+    // `target` with every identity renaming it renames too: a class's
+    // constructors and destructor, or a constructor's class and the rest of
+    // them (clangbridge::EditorUnit::renamed_together).
+    [[nodiscard]] Target renamed_together(Target target) const;
+
     struct Mention {
         Location location;
         clangbridge::Role role = clangbridge::Role::Read;
@@ -73,6 +78,12 @@ class EditorView {
         Mention mention;
     };
     [[nodiscard]] std::vector<Named> all_mentions() const;
+
+    // Every place this view's unit uses a name with one of `usrs`, or any
+    // name when `usrs` is null, without writing it there: a macro expanded
+    // there whose body spells it. Each is where the macro is expanded, traced
+    // to written text; nothing a rename could rewrite.
+    [[nodiscard]] std::vector<Named> unwritten(const std::vector<std::string>* usrs) const;
 
     // What hover shows for the name at `position`, and the C++L declaration it
     // shows when the name stands for one. Such a name is shown as that
@@ -173,6 +184,9 @@ class EditorView {
 // The normal form of a path Clang reports, so two spellings of one file compare
 // equal.
 [[nodiscard]] std::string normal_path(const std::string& path);
+
+// What the file at `path` holds on disk, or nothing when it cannot be read.
+[[nodiscard]] std::optional<std::string> read_file(const std::string& path);
 
 // The Clang driver named by `configured`, by path: a bare name is looked up on
 // PATH, as a shell would, since Clang finds its own headers relative to where

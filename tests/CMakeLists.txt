@@ -105,6 +105,11 @@ target_link_libraries(unit_crash_report_test PRIVATE cppl_driver)
 cppl_add_unit_test(unit_lexer_test unit/lexer_test.cpp)
 target_link_libraries(unit_lexer_test PRIVATE cppl_frontend)
 
+cppl_add_unit_test(unit_words_test unit/words_test.cpp)
+target_link_libraries(unit_words_test PRIVATE cppl_frontend)
+target_compile_definitions(unit_words_test PRIVATE
+    CPPL_TEST_SPEC="${PROJECT_SOURCE_DIR}/docs/SPEC.md")
+
 cppl_add_unit_test(unit_recognizer_test unit/recognizer_test.cpp)
 target_link_libraries(unit_recognizer_test PRIVATE cppl_frontend cppl_diagnostics)
 
@@ -296,6 +301,11 @@ target_compile_definitions(lsp_structure_test PRIVATE
 cppl_add_unit_test(lsp_workspace_index_test unit/lsp_workspace_index_test.cpp)
 target_link_libraries(lsp_workspace_index_test PRIVATE cppl_lsp)
 target_compile_definitions(lsp_workspace_index_test PRIVATE
+    CPPL_TEST_DEFAULT_CLANG="${CPPL_DEFAULT_CLANG}")
+
+cppl_add_unit_test(lsp_rename_test unit/lsp_rename_test.cpp)
+target_link_libraries(lsp_rename_test PRIVATE cppl_lsp)
+target_compile_definitions(lsp_rename_test PRIVATE
     CPPL_TEST_DEFAULT_CLANG="${CPPL_DEFAULT_CLANG}")
 
 # Driver-level suites invoke the real compiler on real fixtures and write what

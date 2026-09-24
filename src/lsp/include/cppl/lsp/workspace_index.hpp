@@ -93,6 +93,14 @@ class WorkspaceIndex {
     // once each.
     [[nodiscard]] std::vector<Mention> mentions(const std::vector<std::string>& usrs) const;
 
+    // Every place, in the files indexed, a name with one of `usrs` is used
+    // without being written there: where a macro whose body spells it is
+    // expanded (EditorView::unwritten).
+    [[nodiscard]] std::vector<Location> unwritten(const std::vector<std::string>& usrs) const;
+
+    // Whether the file at `path` is one the index has read.
+    [[nodiscard]] bool holds(const std::string& path) const;
+
     // Every proof statement, in the files indexed, that the compile resolved
     // to the declaration of `name` written at `declaration`.
     [[nodiscard]] std::vector<Location> proof_name_uses(const std::string& name,
@@ -115,6 +123,7 @@ class WorkspaceIndex {
         std::filesystem::file_time_type written;
         std::vector<Symbol> symbols;
         std::vector<Mention> mentions;
+        std::vector<Mention> unwritten;
         std::vector<ProofNameUse> uses;
     };
 

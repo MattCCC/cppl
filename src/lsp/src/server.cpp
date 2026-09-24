@@ -12,20 +12,23 @@
 #include "cppl/lsp/position.hpp"
 #include "cppl/lsp/proof_names.hpp"
 #include "cppl/lsp/protocol.hpp"
+#include "cppl/lsp/rename.hpp"
 #include "cppl/lsp/semantic_tokens.hpp"
 #include "cppl/lsp/uri.hpp"
 #include "cppl/lsp/verification.hpp"
 #include "cppl/lsp/workspace_index.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <expected>
 #include <filesystem>
 #include <functional>
 #include <iterator>
+#include <map>
 #include <memory>
 #include <optional>
-#include <set>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -61,6 +64,11 @@ bool asks_for(const std::vector<std::string>& only, std::string_view kind) {
     });
 }
 
+// The file a URI names, in the form two spellings of it share.
+std::string file_of(const std::string& uri) {
+    return normal_path(uri_to_path(uri).value_or(uri));
+}
+
 // The documents open now, known by file rather than by how a URI spells it:
 // a client and path_to_uri may escape the same path differently.
 class OpenFiles {
@@ -68,7 +76,7 @@ class OpenFiles {
     explicit OpenFiles(const DocumentManager& documents) {
         documents.for_each([this](const Document& document) {
             uris_.push_back(document.uri());
-            paths_.insert(file_of(document.uri()));
+            documents_.emplace(file_of(document.uri()), &document);
         });
     }
 
@@ -77,17 +85,36 @@ class OpenFiles {
     }
 
     [[nodiscard]] bool holds(const std::string& uri) const {
-        return paths_.contains(file_of(uri));
+        return documents_.contains(file_of(uri));
+    }
+
+    // The open document of the file `uri` names, however the URI spells it.
+    [[nodiscard]] const Document* document(const std::string& uri) const {
+        const auto found = documents_.find(file_of(uri));
+        return found == documents_.end() ? nullptr : found->second;
     }
 
   private:
-    static std::string file_of(const std::string& uri) {
-        return normal_path(uri_to_path(uri).value_or(uri));
-    }
-
     std::vector<std::string> uris_;
-    std::set<std::string, std::less<>> paths_;
+    std::map<std::string, const Document*, std::less<>> documents_;
 };
+
+bool before(const Position& lhs, const Position& rhs) {
+    return lhs.line < rhs.line || (lhs.line == rhs.line && lhs.character <= rhs.character);
+}
+
+// Whether `range` holds `position`, its end included: a cursor just past a
+// name is on it.
+bool holds(const Range& range, const Position& position) {
+    return before(range.start, position) && before(position, range.end);
+}
+
+// The text `range` covers.
+std::string spelled(const PositionMapper& mapper, const std::string& text, const Range& range) {
+    const std::size_t start = mapper.position_to_byte_offset(range.start);
+    const std::size_t end = mapper.position_to_byte_offset(range.end);
+    return start <= end && end <= text.size() ? text.substr(start, end - start) : std::string();
+}
 
 } // namespace
 
@@ -213,64 +240,99 @@ std::vector<std::string> Server::arguments_for(const std::string& path) {
     return arguments;
 }
 
-std::optional<std::vector<Location>> Server::text_document_references(const TextDocumentIdentifier& id,
-                                                                      const Position& position,
-                                                                      bool include_declaration) {
-    EditorView* view = view_for(id.uri);
-    if (view == nullptr) {
-        return std::nullopt;
+std::vector<Server::Occurrence> Server::occurrences(const std::string& uri, const Position& position, bool renaming) {
+    std::vector<Occurrence> found;
+    EditorView* view = view_for(uri);
+    const Document* document = documents_.get(uri);
+    if (view == nullptr || document == nullptr) {
+        return found;
     }
-    std::vector<Location> locations;
-    std::set<std::tuple<std::string, std::uint32_t, std::uint32_t>> seen;
-    const auto add = [&locations, &seen](Location location) {
-        if (seen.emplace(location.uri, location.range.start.line, location.range.start.character).second) {
-            locations.push_back(std::move(location));
+    std::map<std::tuple<std::string, std::uint32_t, std::uint32_t>, std::size_t> at;
+    const auto add = [&found, &at](Location location, bool declaration) {
+        const auto [known, added] =
+            at.try_emplace({location.uri, location.range.start.line, location.range.start.character}, found.size());
+        if (added) {
+            found.push_back(Occurrence{std::move(location), declaration});
+        } else if (declaration) {
+            found[known->second].declaration = true;
         }
     };
     // An open document answers as the editor holds it; the index answers for
     // every other file of the workspace, as it is on disk.
     const OpenFiles open(documents_);
-    const auto closed = [&open](const Location& location) {
-        return !open.holds(location.uri);
-    };
-    if (const std::optional<EditorView::Target> target = view->target_at(position)) {
-        for (const std::string& uri : open.uris()) {
-            EditorView* other = view_for(uri);
+    if (std::optional<EditorView::Target> target = view->target_at(position)) {
+        if (renaming) {
+            // A class's constructors are spelled with its name, and where the
+            // name is declared is rewritten too, even in a header no walk
+            // reaches, so that a rename that cannot reach it is refused.
+            target = view->renamed_together(std::move(*target));
+            if (target->declaration.has_value()) {
+                add(*target->declaration, true);
+            }
+        }
+        for (const std::string& other_uri : open.uris()) {
+            EditorView* other = view_for(other_uri);
             if (other == nullptr) {
                 continue;
             }
             for (EditorView::Mention& mention : other->mentions(*target)) {
-                if (include_declaration || mention.role != clangbridge::Role::Declaration) {
-                    add(std::move(mention.location));
-                }
+                add(std::move(mention.location), mention.role == clangbridge::Role::Declaration);
             }
         }
         if (index_ != nullptr) {
             for (WorkspaceIndex::Mention& mention : index_->mentions(target->usrs)) {
-                if (closed(mention.location) &&
-                    (include_declaration || mention.role != clangbridge::Role::Declaration)) {
-                    add(std::move(mention.location));
+                if (!open.holds(mention.location.uri)) {
+                    add(std::move(mention.location), mention.role == clangbridge::Role::Declaration);
+                }
+            }
+        }
+        if (renaming) {
+            for (const std::string& other_uri : open.uris()) {
+                if (EditorView* other = view_for(other_uri)) {
+                    for (EditorView::Named& use : other->unwritten(&target->usrs)) {
+                        found.push_back(Occurrence{std::move(use.mention.location), false, true});
+                    }
+                }
+            }
+            if (index_ != nullptr) {
+                for (Location& use : index_->unwritten(target->usrs)) {
+                    if (!open.holds(use.uri)) {
+                        found.push_back(Occurrence{std::move(use), false, true});
+                    }
                 }
             }
         }
     }
     // What proof statements name is the compiler's to resolve, not Clang's.
     const ProofNames names(documents_);
-    if (const std::optional<ProofNames::Declaration> named = names.declaration_at(*documents_.get(id.uri), position)) {
-        if (include_declaration) {
-            if (std::optional<Location> declared = names.locate(*named)) {
-                add(std::move(*declared));
-            }
+    if (const std::optional<ProofNames::Declaration> named = names.declaration_at(*document, position)) {
+        if (std::optional<Location> declared = names.locate(*named)) {
+            add(std::move(*declared), true);
         }
         for (Location& use : names.uses_of(*named)) {
-            add(std::move(use));
+            add(std::move(use), false);
         }
         if (index_ != nullptr) {
             for (Location& use : index_->proof_name_uses(named->name, named->at)) {
-                if (closed(use)) {
-                    add(std::move(use));
+                if (!open.holds(use.uri)) {
+                    add(std::move(use), false);
                 }
             }
+        }
+    }
+    return found;
+}
+
+std::optional<std::vector<Location>> Server::text_document_references(const TextDocumentIdentifier& id,
+                                                                      const Position& position,
+                                                                      bool include_declaration) {
+    if (view_for(id.uri) == nullptr) {
+        return std::nullopt;
+    }
+    std::vector<Location> locations;
+    for (Occurrence& occurrence : occurrences(id.uri, position)) {
+        if (include_declaration || !occurrence.declaration) {
+            locations.push_back(std::move(occurrence.location));
         }
     }
     std::ranges::sort(locations, [](const Location& lhs, const Location& rhs) {
@@ -283,6 +345,134 @@ std::optional<std::vector<Location>> Server::text_document_references(const Text
         return lhs.range.start.character < rhs.range.start.character;
     });
     return locations;
+}
+
+std::expected<Server::RenamePlan, std::string> Server::plan_rename(const TextDocumentIdentifier& id,
+                                                                   const Position& position) {
+    const Document* document = documents_.get(id.uri);
+    if (document == nullptr) {
+        return std::unexpected("the document is not open");
+    }
+    const std::vector<Occurrence> found = occurrences(id.uri, position, true);
+    const std::string here_file = normal_path(document->path());
+    const auto here = std::ranges::find_if(found, [&](const Occurrence& occurrence) {
+        return !occurrence.unwritten && file_of(occurrence.location.uri) == here_file &&
+               holds(occurrence.location.range, position);
+    });
+    if (here == found.end()) {
+        return std::unexpected("there is no name here to rename");
+    }
+    RenamePlan plan;
+    plan.here = here->location.range;
+    plan.name = spelled(PositionMapper(document->text()), document->text(), plan.here);
+    const std::string quoted = "'" + plan.name + "'";
+    if (std::ranges::none_of(found, &Occurrence::declaration)) {
+        return std::unexpected(quoted + " is declared only in text C++L generated");
+    }
+    // A use a macro's body spells would keep the old name, and rewriting the
+    // body would rename whatever else the macro names.
+    if (const auto hidden = std::ranges::find_if(found, &Occurrence::unwritten); hidden != found.end()) {
+        std::string why = quoted;
+        why += " is used through a macro at ";
+        why += file_of(hidden->location.uri);
+        why += ":" + std::to_string(hidden->location.range.start.line + 1);
+        why += ":" + std::to_string(hidden->location.range.start.character + 1);
+        why += ", which spells it in its body";
+        return std::unexpected(std::move(why));
+    }
+
+    // Each file is rewritten as the editor holds it when it is open, and as
+    // the index read it otherwise; any other file is not the workspace's.
+    const OpenFiles open(documents_);
+    for (const Occurrence& occurrence : found) {
+        const std::string path = file_of(occurrence.location.uri);
+        const auto [entry, added] = plan.files.try_emplace(path);
+        RenamePlan::File& file = entry->second;
+        if (added) {
+            if (const Document* holder = open.document(occurrence.location.uri)) {
+                file.uri = holder->uri();
+                file.text = holder->text();
+            } else if (index_ != nullptr && index_->holds(path)) {
+                std::optional<std::string> text = read_file(path);
+                if (!text.has_value()) {
+                    return std::unexpected("could not read " + path);
+                }
+                file.uri = occurrence.location.uri;
+                file.text = std::move(*text);
+            } else {
+                std::string why = quoted;
+                why += " is also written in ";
+                why += path;
+                why += ", which is neither open nor in the workspace";
+                return std::unexpected(std::move(why));
+            }
+        }
+        file.ranges.push_back(occurrence.location.range);
+    }
+    // A place that no longer spells the name -- a file edited since it was
+    // read, a name a macro spells -- is not rewritten, and so neither is any.
+    // A destructor is named by `~` and its class's name, and only the name is
+    // rewritten.
+    for (auto& [path, file] : plan.files) {
+        const PositionMapper mapper(file.text);
+        for (Range& range : file.ranges) {
+            if (const std::string written = spelled(mapper, file.text, range); written == "~" + plan.name) {
+                ++range.start.character;
+            }
+            if (spelled(mapper, file.text, range) != plan.name) {
+                std::string why = quoted;
+                why += " is not written as such at ";
+                why += path;
+                why += ":" + std::to_string(range.start.line + 1);
+                why += ":" + std::to_string(range.start.character + 1);
+                return std::unexpected(std::move(why));
+            }
+        }
+    }
+    return plan;
+}
+
+std::expected<PrepareRename, std::string> Server::text_document_prepare_rename(const TextDocumentIdentifier& id,
+                                                                               const Position& position) {
+    std::expected<RenamePlan, std::string> plan = plan_rename(id, position);
+    if (!plan.has_value()) {
+        return std::unexpected(std::move(plan.error()));
+    }
+    return PrepareRename{plan->here, std::move(plan->name)};
+}
+
+std::expected<WorkspaceEdit, std::string> Server::text_document_rename(const TextDocumentIdentifier& id,
+                                                                       const Position& position,
+                                                                       const std::string& new_name) {
+    if (std::optional<std::string> why = refuse_identifier(new_name)) {
+        return std::unexpected(std::move(*why));
+    }
+    // A rename rewrites every place a name is written or none, so it waits
+    // for the index to have read every file as it is now.
+    constexpr auto kIndexWait = std::chrono::seconds(30);
+    if (index_ != nullptr && !index_->wait_until_current(kIndexWait)) {
+        return std::unexpected("the workspace is still being indexed; rename once indexing ends");
+    }
+    std::expected<RenamePlan, std::string> plan = plan_rename(id, position);
+    if (!plan.has_value()) {
+        return std::unexpected(std::move(plan.error()));
+    }
+    WorkspaceEdit edit;
+    if (new_name == plan->name) {
+        return edit;
+    }
+    for (auto& [path, file] : plan->files) {
+        std::vector<TextEdit> edits;
+        edits.reserve(file.ranges.size());
+        for (const Range& range : file.ranges) {
+            edits.push_back(TextEdit{range, new_name});
+        }
+        if (std::optional<std::string> why = changes_cppl(path, file.text, edits, new_name)) {
+            return std::unexpected(std::move(*why));
+        }
+        edit.changes.insert_or_assign(file.uri, std::move(edits));
+    }
+    return edit;
 }
 
 std::optional<std::vector<DocumentHighlight>> Server::text_document_document_highlight(const TextDocumentIdentifier& id,

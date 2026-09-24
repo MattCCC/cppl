@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <deque>
 #include <exception>
+#include <expected>
 #include <filesystem>
 #include <future>
 #include <ios>
@@ -236,6 +237,9 @@ std::optional<std::int32_t> parse_version(double number) {
 }
 
 constexpr int kRequestCancelled = -32800;
+// A request the server understood and declined, saying why (LSP
+// `RequestFailed`), as a rename it will not make.
+constexpr int kRequestFailed = -32803;
 
 // The protocol channel. Each message is written whole, from whichever thread
 // has one to send.
@@ -508,6 +512,10 @@ class Dispatcher {
             handle_inlay_hint(id_value, params);
         } else if (method == "workspace/symbol") {
             handle_workspace_symbol(id_value, params);
+        } else if (method == "textDocument/prepareRename") {
+            handle_prepare_rename(id_value, params);
+        } else if (method == "textDocument/rename") {
+            handle_rename(id_value, params);
         } else if (is_request) {
             respond_error(*id_value, kMethodNotFound, "method not found: " + method);
         } else {
@@ -601,6 +609,7 @@ class Dispatcher {
             flag(workspace != nullptr ? workspace->find("codeLens") : nullptr, "refreshSupport");
         capabilities.semantic_tokens_refresh =
             flag(workspace != nullptr ? workspace->find("semanticTokens") : nullptr, "refreshSupport");
+        capabilities.prepare_rename = flag(document != nullptr ? document->find("rename") : nullptr, "prepareSupport");
         return capabilities;
     }
 
@@ -716,6 +725,15 @@ class Dispatcher {
         // Declarations across the workspace, from its index and the open
         // documents.
         capabilities.set("workspaceSymbolProvider", json::Value(true));
+        // Every place references finds, rewritten; a client that can ask
+        // first learns what would be.
+        if (server_.client_capabilities().prepare_rename) {
+            json::Value rename = json::Value::object();
+            rename.set("prepareProvider", json::Value(true));
+            capabilities.set("renameProvider", std::move(rename));
+        } else {
+            capabilities.set("renameProvider", json::Value(true));
+        }
         // Folding and expanding a selection by the structure Clang parsed and
         // the C++L structure the recognizer found.
         capabilities.set("foldingRangeProvider", json::Value(true));
@@ -1217,6 +1235,54 @@ class Dispatcher {
             items.push_back(std::move(item));
         }
         respond_result(*id, std::move(items));
+    }
+
+    void handle_prepare_rename(const json::Value* id, const json::Value* params) {
+        if (id == nullptr) {
+            return;
+        }
+        const auto request = position_params(params);
+        if (!request.has_value()) {
+            respond_error(*id, kInvalidParams, "textDocument/prepareRename missing 'textDocument.uri' or 'position'");
+            return;
+        }
+        const std::expected<PrepareRename, std::string> prepared =
+            server_.text_document_prepare_rename(request->first, request->second);
+        if (!prepared.has_value()) {
+            respond_error(*id, kRequestFailed, prepared.error());
+            return;
+        }
+        json::Value result = json::Value::object();
+        result.set("range", range_to_json(prepared->range));
+        result.set("placeholder", json::Value(prepared->placeholder));
+        respond_result(*id, std::move(result));
+    }
+
+    void handle_rename(const json::Value* id, const json::Value* params) {
+        if (id == nullptr) {
+            return;
+        }
+        const auto request = position_params(params);
+        const std::optional<std::string> new_name =
+            params != nullptr ? params->find_string("newName") : std::optional<std::string>();
+        if (!request.has_value() || !new_name.has_value()) {
+            respond_error(*id, kInvalidParams,
+                          "textDocument/rename missing 'textDocument.uri', 'position' or 'newName'");
+            return;
+        }
+        const std::expected<WorkspaceEdit, std::string> edit =
+            server_.text_document_rename(request->first, request->second, *new_name);
+        if (!edit.has_value()) {
+            respond_error(*id, kRequestFailed, edit.error());
+            return;
+        }
+        json::Value changes = json::Value::object();
+        for (const auto& [uri, edits] : edit->changes) {
+            changes.set(uri, text_edits_to_json(edits));
+        }
+        json::Value result = json::Value::object();
+        result.set("changes", std::move(changes));
+        respond_result(*id, std::move(result));
     }
 
     void handle_folding_range(const json::Value* id, const json::Value* params) {

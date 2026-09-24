@@ -2785,6 +2785,18 @@ document includes.
 file would be read, and it never answers for a file open in the editor. An open
 document always answers as the editor holds it.
 
+A rename rewrites what references finds and nothing else, so it adds no second
+way of finding names. Whether an edit would change C++L is the frontend's to
+say. `frontend::cppl_words` lists the words the specification gives a meaning,
+checked against SPEC.md itself. `frontend::enclosing` says whether a place lies
+inside C++L, and the rename compares what `frontend::recognize` reads of each
+file before and after the edit (`lsp::changes_cppl`).
+
+**[ARCH-LSP-010]** An editor rename is made whole or not at all, and never when
+the recognizer would read any edited file's C++L differently afterwards. A
+rename may change names, never which Laws, proofs, clauses, statements or arms
+a file holds.
+
 **[ARCH-LSP-004]** An editor service treats two declarations as one name only
 where Clang gives them one identity (USR), or where the projection repeated one
 written declaration into several generated ones, such as a proof's parameters

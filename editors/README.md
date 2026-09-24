@@ -53,10 +53,12 @@ C++ and for the C++L declarations the projection stands for: a Law named in a
 proof, a Law's parameter in its proposition, a function parameter in a
 contract, a refinement type. The names proof statements use (`exact p;`,
 `rewrite h;`, `contradiction e;`) lead where the compiler resolved them.
-References cover every open document and the headers each includes.
+References cover every open document and the headers each includes, and every
+other file of the workspace (see "Across the workspace"). Rename rewrites every
+place references finds, or refuses and says why (see "Rename" in
+[`tools/cppl-lsp/README.md`](../tools/cppl-lsp/README.md)).
 "Unverified" means the IDE's own LSP client documents the request but nobody
-has checked it against this server. Rename is **not** implemented yet. See
-"Currently unsupported" in [`tools/cppl-lsp/README.md`](../tools/cppl-lsp/README.md).
+has checked it against this server.
 
 ### While typing
 

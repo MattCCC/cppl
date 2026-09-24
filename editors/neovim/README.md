@@ -133,8 +133,10 @@ construct that holds the one before it, whether Clang parsed it or the C++L
 recognizer found it. A Neovim version that asks for selection ranges can use
 this to expand a visual selection.
 
-Rename is not implemented by
-the server yet — see "Currently unsupported" in the
+`vim.lsp.buf.rename()` renames the name under the cursor in every file of the
+workspace, and `vim.lsp.buf.workspace_symbol()` searches their declarations. A
+rename the server cannot make whole is refused with its reason, and nothing
+is changed -- see "Rename" in the
 [`cppl-lsp` README](../../tools/cppl-lsp/README.md).
 
 ## Troubleshooting

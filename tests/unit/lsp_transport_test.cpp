@@ -100,12 +100,11 @@ CPPL_TEST(requests_after_shutdown_are_rejected) {
 }
 
 CPPL_TEST(unknown_method_gets_method_not_found_error) {
-    // `textDocument/rename` stands for a method this server does not
-    // implement. It must stay one the server does not handle: this test
-    // previously used `textDocument/hover` and went stale the moment hover
-    // was implemented.
+    // A method no protocol defines, so that implementing a real one never
+    // turns this test stale, as `textDocument/hover` and then
+    // `textDocument/rename` each did once implemented.
     Server server;
-    std::istringstream input(framed(R"({"jsonrpc":"2.0","id":5,"method":"textDocument/rename","params":{}})") +
+    std::istringstream input(framed(R"({"jsonrpc":"2.0","id":5,"method":"cppl/noSuchMethod","params":{}})") +
                              framed(R"({"jsonrpc":"2.0","method":"exit"})"));
     std::ostringstream output;
     std::ostringstream log;
@@ -220,6 +219,56 @@ CPPL_TEST(references_and_highlights_answer_over_the_wire) {
                                  R"("character":32},"end":{"line":1,"character":38}},"kind":2}])") !=
                std::string::npos);
     CPPL_CHECK(output.str().find(R"("id":4,"error":{"code":-32602)") != std::string::npos);
+}
+
+CPPL_TEST(a_rename_is_prepared_and_made_over_the_wire_or_refused_with_its_reason) {
+    Server server;
+    std::istringstream input(
+        framed(R"({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{"textDocument":)"
+               R"({"rename":{"prepareSupport":true}}}}})") +
+        framed(R"({"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":)"
+               R"({"uri":"file:///ren.cpp","languageId":"cpp","version":1,)"
+               R"("text":"int answer = 42;\nint main() { return answer; }\n"}}})") +
+        framed(R"({"jsonrpc":"2.0","id":2,"method":"textDocument/prepareRename","params":{"textDocument":)"
+               R"({"uri":"file:///ren.cpp"},"position":{"line":1,"character":22}}})") +
+        framed(R"({"jsonrpc":"2.0","id":3,"method":"textDocument/rename","params":{"textDocument":)"
+               R"({"uri":"file:///ren.cpp"},"position":{"line":1,"character":22},"newName":"reply"}})") +
+        framed(R"({"jsonrpc":"2.0","id":4,"method":"textDocument/rename","params":{"textDocument":)"
+               R"({"uri":"file:///ren.cpp"},"position":{"line":1,"character":22},"newName":"int"}})") +
+        framed(R"({"jsonrpc":"2.0","id":5,"method":"textDocument/rename","params":{"textDocument":)"
+               R"({"uri":"file:///ren.cpp"},"position":{"line":1,"character":22}}})") +
+        framed(R"({"jsonrpc":"2.0","id":6,"method":"textDocument/prepareRename","params":{"textDocument":)"
+               R"({"uri":"file:///ren.cpp"},"position":{"line":1,"character":14}}})") +
+        framed(R"({"jsonrpc":"2.0","method":"exit"})"));
+    std::ostringstream output;
+    std::ostringstream log;
+
+    [[maybe_unused]] const int exit_code = run_transport(server, input, output, log);
+    const std::string written = output.str();
+    CPPL_CHECK(written.find(R"("renameProvider":{"prepareProvider":true})") != std::string::npos);
+    CPPL_CHECK(written.find(R"("id":2,"result":{"range":{"start":{"line":1,"character":20},)"
+                            R"("end":{"line":1,"character":26}},"placeholder":"answer"})") != std::string::npos);
+    CPPL_CHECK(written.find(R"("id":3,"result":{"changes":{"file:///ren.cpp":[)"
+                            R"({"range":{"start":{"line":0,"character":4},"end":{"line":0,"character":10}},)"
+                            R"("newText":"reply"},)"
+                            R"({"range":{"start":{"line":1,"character":20},"end":{"line":1,"character":26}},)"
+                            R"("newText":"reply"}]}})") != std::string::npos);
+    CPPL_CHECK(written.find(R"("id":4,"error":{"code":-32803,"message":"'int' is a C++ keyword"})") !=
+               std::string::npos);
+    CPPL_CHECK(written.find(R"("id":5,"error":{"code":-32602)") != std::string::npos);
+    CPPL_CHECK(written.find(R"("id":6,"error":{"code":-32803,"message":"there is no name here to rename"})") !=
+               std::string::npos);
+}
+
+CPPL_TEST(a_client_that_cannot_prepare_a_rename_is_told_only_that_the_server_renames) {
+    Server server;
+    std::istringstream input(framed(R"({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}})") +
+                             framed(R"({"jsonrpc":"2.0","method":"exit"})"));
+    std::ostringstream output;
+    std::ostringstream log;
+
+    [[maybe_unused]] const int exit_code = run_transport(server, input, output, log);
+    CPPL_CHECK(output.str().find(R"("renameProvider":true)") != std::string::npos);
 }
 
 CPPL_TEST(a_code_lens_states_a_verdict_and_runs_nothing) {

@@ -316,6 +316,18 @@ class EditorUnit {
     // what an index of the workspace records.
     [[nodiscard]] std::vector<Occurrence> all_occurrences() const;
 
+    // The identities C++ spells with the same name as `usr`, which renaming it
+    // renames too: a class's constructors and destructor, declared in those
+    // files, or for a constructor or a destructor, its class and the rest of
+    // them. Just `usr` for anything else.
+    [[nodiscard]] std::vector<std::string> renamed_together(const std::string& usr) const;
+
+    // Every place in those files where a name denoting one of `usrs`, or any
+    // name when `usrs` is null, is used without being written there: in the
+    // expansion of a macro whose body spells it. Each extent is empty, where
+    // the macro is expanded.
+    [[nodiscard]] std::vector<Occurrence> unwritten_uses(const std::vector<std::string>* usrs) const;
+
     // What Clang knows about the name written at `offset`: a declaration, a
     // use, a macro, or the type `auto` was deduced as.
     [[nodiscard]] std::optional<Description> describe(std::size_t offset) const;

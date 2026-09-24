@@ -64,9 +64,9 @@ inside a `cases` or `decompose` arm block, which the IDE shows where its LSP
 client supports those features.
 Go to Declaration (Ctrl/Cmd-click) asks the server for the definition, which
 Clang answers over the file's projection, for C++ and for the C++L declarations
-the projection stands for. The server also answers references and document
-highlights across every open file; whether this IDE's LSP client asks for them
-has not been verified. Rename is not implemented by the server yet.
+the projection stands for. The server also answers references, document
+highlights, workspace symbols and rename; whether this IDE's LSP client asks for
+them has not been verified.
 
 On top of the grammar, the server reports every name as a semantic token of
 what it names, and every C++L word as a `keyword` token. Neither the grammar

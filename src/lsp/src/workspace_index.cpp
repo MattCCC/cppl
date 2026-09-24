@@ -19,14 +19,11 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
-#include <fstream>
 #include <functional>
-#include <ios>
 #include <iterator>
 #include <mutex>
 #include <optional>
 #include <set>
-#include <sstream>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -63,16 +60,6 @@ bool passed_by(const std::filesystem::path& directory) {
     std::error_code error;
     return std::filesystem::exists(directory / "CMakeCache.txt", error) ||
            std::filesystem::exists(directory / ".git", error);
-}
-
-std::optional<std::string> read_file(const std::filesystem::path& path) {
-    std::ifstream stream(path, std::ios::binary);
-    if (!stream) {
-        return std::nullopt;
-    }
-    std::ostringstream buffer;
-    buffer << stream.rdbuf();
-    return buffer.str();
 }
 
 void flatten(const std::vector<DocumentSymbol>& symbols, const std::string& uri, const std::string& container,
@@ -205,7 +192,7 @@ std::vector<std::filesystem::path> WorkspaceIndex::discover() {
 WorkspaceIndex::Entry WorkspaceIndex::read(const std::filesystem::path& file, std::filesystem::file_time_type written) {
     Entry entry;
     entry.written = written;
-    const std::optional<std::string> text = read_file(file);
+    const std::optional<std::string> text = read_file(file.string());
     if (!text.has_value()) {
         return entry;
     }
@@ -223,6 +210,10 @@ WorkspaceIndex::Entry WorkspaceIndex::read(const std::filesystem::path& file, st
         entry.symbols = declared(view.outline(), uri);
         for (EditorView::Named& named : view.all_mentions()) {
             entry.mentions.push_back(
+                Mention{std::move(named.usr), std::move(named.mention.location), named.mention.role});
+        }
+        for (EditorView::Named& named : view.unwritten(nullptr)) {
+            entry.unwritten.push_back(
                 Mention{std::move(named.usr), std::move(named.mention.location), named.mention.role});
         }
     }
@@ -341,6 +332,27 @@ std::vector<WorkspaceIndex::Mention> WorkspaceIndex::mentions(const std::vector<
         }
     }
     return found;
+}
+
+std::vector<Location> WorkspaceIndex::unwritten(const std::vector<std::string>& usrs) const {
+    const std::set<std::string, std::less<>> wanted(usrs.begin(), usrs.end());
+    std::vector<Location> found;
+    std::set<Start> seen;
+    const std::scoped_lock lock(mutex_);
+    for (const auto& [file, entry] : entries_) {
+        for (const Mention& use : entry.unwritten) {
+            if (wanted.contains(use.usr) && seen.insert(start_of(use.location)).second) {
+                found.push_back(use.location);
+            }
+        }
+    }
+    return found;
+}
+
+bool WorkspaceIndex::holds(const std::string& path) const {
+    const std::filesystem::path file = std::filesystem::path(path).lexically_normal();
+    const std::scoped_lock lock(mutex_);
+    return entries_.contains(file);
 }
 
 std::vector<Location> WorkspaceIndex::proof_name_uses(const std::string& name,

@@ -54,6 +54,8 @@ textDocument/inlayHint                      parameter names, deduced types,
                                             from Clang
 workspace/symbol                            every declaration in the workspace,
                                             from the index and open documents
+textDocument/prepareRename, rename          every place references finds, whole
+                                            or refused with the reason
 ```
 
 Diagnostics come from `driver::compile_buffer` over the live buffer — the same
@@ -186,7 +188,8 @@ document; the legend under "Semantic tokens"), `definitionProvider`,
 `declarationProvider`, `typeDefinitionProvider`, `implementationProvider`,
 `referencesProvider`, `documentHighlightProvider`, `codeLensProvider`,
 `signatureHelpProvider`, `documentSymbolProvider`, `foldingRangeProvider`,
-`selectionRangeProvider`, `inlayHintProvider` and `workspaceSymbolProvider`.
+`selectionRangeProvider`, `inlayHintProvider`, `workspaceSymbolProvider` and
+`renameProvider` (with `prepareProvider` for a client that can prepare).
 The rest of navigation specified below is not implemented and not advertised:
 an editor is told what the server can do, never what it intends to do.
 `docs/STATUS.md` tracks this.
@@ -774,6 +777,48 @@ workspace symbols and references see.
 - **Progress.** A client that shows progress sees each pass that reads files as
   work in progress titled `Indexing`, with how many files are read out of how
   many it found.
+
+### Rename
+
+A rename rewrites every place references finds the name written, its
+declarations included: in each open document as the editor holds it, and in
+each file the workspace index reads. A class's constructors and destructor are
+spelled with its name and are renamed with it, from the class or from any of
+them; a destructor keeps its `~`. A Law, a proof or an assumption is renamed in
+each proof statement the compile resolved to it too.
+
+A rename is made whole or not at all. It is refused, with the reason, when:
+
+- the new name is not a C++ identifier, or is a C++ keyword or an alternative
+  token (`and`, `xor_eq`);
+- the name is written in a file the editor does not hold open and the index
+  does not read, such as a system header, as for `std::abs`;
+- a place no longer spells the name, as a file edited on disk since it was
+  read;
+- the name is used through a macro whose body spells it. Rewriting the body
+  would rename whatever else the macro names, and leaving it would break the
+  use. A name passed to a macro as an argument is written where the macro is
+  used, and is renamed there;
+- the new name is a C++L word (`frontend::cppl_words`: SPEC.md 3, WORD-001,
+  WORD-002, WORD-010) and a place to rename lies inside a C++L construct, where
+  the word has its C++L meaning. Outside every C++L construct it is an ordinary
+  identifier and may be written;
+- the recognizer would read any edited file's C++L differently afterwards:
+  other constructs, or a proof with other statements. Besides C++L's words,
+  only the arm labels a representation reserves (WORD-005) change what it
+  reads. An unqualified case label is read only as such a state, so renaming an
+  enumerator written as one to `none` turns a statement the recognizer refused
+  into one it reads, and is refused. The frontend decides this, never the
+  server (`ARCH-LSP-010`);
+- the index is still reading the workspace after 30 seconds, since a rename
+  that missed a file would not be whole.
+
+`textDocument/prepareRename` names the place under the cursor and the name
+there, or refuses as a rename would, except that it neither checks a new name
+nor waits for the index. Refusals are answered as `RequestFailed` (`-32803`)
+with the reason as the message. A rename to the same name changes nothing.
+Whether the new name collides with another declaration, or would be captured
+by one, is not checked; the compile reports what it breaks.
 
 ### Folding and selection
 
@@ -1563,12 +1608,11 @@ reference. Detailed pointer-state and effect hovers are not implemented.
 Transport, document synchronization, diagnostics, canonical C++L formatting,
 code actions, proof-decomposition completion and hover, semantic tokens for
 every name and C++L word, definition, declaration, type definition and
-implementation, references and document highlights, and workspace symbols are
-implemented. The following are explicitly out of scope for this milestone and
-are not implemented:
+implementation, references and document highlights, workspace symbols, and
+rename are implemented. The following are explicitly out of scope for this
+milestone and are not implemented:
 
 ```text
-rename
 semantic tokens for a range or as a delta (whole documents only)
 proof search / interactive proof state
 ```

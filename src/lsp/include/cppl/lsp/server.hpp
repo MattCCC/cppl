@@ -12,7 +12,9 @@
 
 #include <chrono>
 #include <cstdint>
+#include <expected>
 #include <functional>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -185,6 +187,20 @@ class Server {
                                                                                 const Position& position,
                                                                                 bool include_declaration);
 
+    // Rename (LSP `textDocument/prepareRename` and `textDocument/rename`;
+    // tools/cppl-lsp/README.md, "Rename"). A rename rewrites every place
+    // references finds the name written, declarations included, or none of
+    // them. It is refused, saying why, unless every place still spells the
+    // name and lies in a file the editor holds open or the workspace index
+    // reads, the new name is a C++ identifier and no keyword, and each file's
+    // C++L reads the same afterwards (rename.hpp). Preparing names the place
+    // under the cursor a rename would rewrite.
+    [[nodiscard]] std::expected<PrepareRename, std::string> text_document_prepare_rename(
+        const TextDocumentIdentifier& id, const Position& position);
+    [[nodiscard]] std::expected<WorkspaceEdit, std::string> text_document_rename(const TextDocumentIdentifier& id,
+                                                                                 const Position& position,
+                                                                                 const std::string& new_name);
+
     // The same, in this document only, each marked as a declaration (text), a
     // read or a write (LSP `textDocument/documentHighlight`).
     [[nodiscard]] std::optional<std::vector<DocumentHighlight>> text_document_document_highlight(
@@ -243,6 +259,40 @@ class Server {
     // The flags the document at `path` is read with, by its editor unit and by
     // its compile alike (ARCHITECTURE.md ARCH-LSP-008).
     [[nodiscard]] std::vector<std::string> arguments_for(const std::string& path);
+
+    // A place a name is written, and whether it is declared there; or, when
+    // `unwritten`, a place it is used through a macro whose body spells it.
+    struct Occurrence {
+        Location location;
+        bool declaration = false;
+        bool unwritten = false;
+    };
+
+    // Every place the name at `position` of the open document `uri` is
+    // written: in every open document's unit and the headers it includes, in
+    // the files the workspace index reads, and in each proof statement the
+    // compile resolved to it. Empty where no name is. `renaming` adds what a
+    // rename must account for too: a class's constructors and destructor,
+    // where the name is declared wherever that is, and each use a macro's
+    // body spells.
+    [[nodiscard]] std::vector<Occurrence> occurrences(const std::string& uri, const Position& position,
+                                                      bool renaming = false);
+
+    // What renaming the name at `position` rewrites, file by file, once every
+    // place has been found to be one a rename may rewrite.
+    struct RenamePlan {
+        std::string name;
+        Range here;
+        struct File {
+            // The URI an edit names: the client's own, for an open document.
+            std::string uri;
+            std::string text;
+            std::vector<Range> ranges;
+        };
+        std::map<std::string, File> files; // by normal path
+    };
+    [[nodiscard]] std::expected<RenamePlan, std::string> plan_rename(const TextDocumentIdentifier& id,
+                                                                     const Position& position);
 
     DocumentManager documents_;
     ClientCapabilities client_;
