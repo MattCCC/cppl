@@ -33,6 +33,9 @@ expect() {
 }
 
 expect '^Function contracts proven: +13$'
+# SPEC: CORRECT-001, CORRECT-002, TERMINATION-003
+# The function with an unmeasured loop is verified all the same, as partial
+# correctness: what holds if it returns. It is kept apart from the total ones.
 expect '^  partial correctness only: +1$'
 expect '^Call preconditions proven: +1$'
 expect '^Loop invariants proven: +20$'

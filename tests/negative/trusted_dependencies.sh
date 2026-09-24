@@ -48,7 +48,7 @@ refuse() {
     fi
 }
 
-# SPEC: PROOFSRC-005, TRUSTED-001
+# SPEC: PROOFSRC-005, TRUSTED-001, TRUSTED-007
 # Trust in a law does not extend to its premise, which is still owed.
 refuse trusted_premise_still_owed "proof 'beyond_the_bound' does not establish what it claims"
 
@@ -63,7 +63,7 @@ refuse trusted_law_misapplied "'sensor_identity' does not prove what proof 'stro
 refuse trusted_law_only_where_named "'truth' does not state a contradiction"
 grep -qF "trusted_law_only_where_named.cpp:32:13" "$run/trusted_law_only_where_named.log"
 
-# SPEC: PROOFSRC-005, PROOFSRC-006
+# SPEC: PROOFSRC-005, PROOFSRC-006, TRUSTED-009
 # Which assumption a proof rests on is never chosen by preference.
 refuse trusted_law_and_proof_share_a_name "'shared' names more than one proof or trusted law"
 refuse trusted_law_overloaded "'overloaded' names more than one proof or trusted law"
