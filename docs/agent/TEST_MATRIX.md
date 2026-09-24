@@ -193,6 +193,24 @@ Manifest: `features/ghost-state.yaml`
 | Erasure | erasure | covered — no ghost word or name survives, identical assembly against a hand-erased twin, and erasing less than the whole declaration is mutation-checked (`e2e/ghost_state.sh`, `e2e/erasure_equivalence.sh` citing `ERASE-011`; `ghost-erased-whole`) |
 | C++-first and editors | positive, unit | covered — `ghost` as a type keeps a declaration ordinary C++ with a warning, and the program runs; the word is colored only once the compile recognized it; layout is idempotent (`e2e/ghost_state.sh`, `unit/recognizer_test.cpp`, `unit/lsp_semantic_tokens_test.cpp`, `unit/formatter_test.cpp` citing `WORD-002`, `WORD-011`) |
 
+### termination
+
+Manifest: `features/termination.yaml`
+
+| Required case | Category | Status |
+| --- | --- | --- |
+| Loop measures | positive, negative | covered — single and lexicographic measures, nested loops, a ghost measure; a lexicographic list whose second part grows, a `continue` that skips the step; comparing with `>=` in place of equality is mutation-checked (`fixtures/termination.cpp`, `negative/termination.sh`, `negative/verified_loops.sh` citing `LOOP-006`, `TERMINATION-005`; `lexicographic-first-stays`) |
+| Other loop forms | positive, negative | covered — `do` loops owe their invariant before the body first runs and are left where the condition fails after a body; a `for` without a condition is left by `break`; deciding a `do` loop's exit is mutation-checked (`fixtures/termination.cpp`, `negative/termination.sh` citing `LOOP-001`, `LOOP-003`; `do-loop-exit-decided`) |
+| Recursion | positive, negative, adversarial | covered — direct, mutual through a forward declaration, lexicographic with a nested recursive call, a precondition owed at a recursive call; without a measure, at the same, a larger, a wrapped and an unknown measure, a cycle that descends only round trip, measures of different lengths; owing the descent and requiring the measure are each mutation-checked (`fixtures/termination.cpp`, `negative/termination.sh` citing `TERMINATION-007`; `recursive-call-descent-owed`, `recursion-needs-measure`) |
+| Induction is not the claim | adversarial | covered — a false base case, and a group member supposing a false member's contract, leave the contracts unproven and nothing resting on them proven; establishing a group member alone is mutation-checked (`negative/termination.sh` citing `TERMINATION-007`, `CORRECT-003`; `recursion-group-established-whole`) |
+| Totality | positive, negative | covered — a function with measured loops, one calling a total function, and a claim-ending path are total; one loop without a measure is partial and named; a `decreases` function stopped by a loop, a partial callee or an unsafe block is refused; both checks are mutation-checked (`e2e/termination.sh`, `e2e/verified_loops.sh`, `e2e/impossible_path.sh`, `negative/termination.sh` citing `CORRECT-003`, `CORRECT-006`, `TERMINATION-006`; `totality-unmeasured-loop`, `totality-through-callees`) |
+| Domains | negative | covered — a signed measure is refused (`negative/termination.sh` citing `TERMINATION-005`) |
+| Recursion never unfolds | negative | covered — a recursive `verified pure` function is verified and called, and a law that would unfold it is refused with the reason (`negative/termination.sh` citing `TERMINATION-002`, `CORRECT-005`) |
+| Diagnostics | negative | covered — a failed descent names the measure before and after, for loops and calls (`negative/termination.sh`) |
+| Templates | negative | covered — a template's measure is refused rather than dropped (`negative/termination.sh`) |
+| Erasure | erasure | covered — identical output and assembly against a hand-erased twin in three standards, recursion and every loop form as written, no counter (`e2e/erasure_equivalence.sh`, `e2e/termination.sh` citing `TERMINATION-004`) |
+| Recognition | unit | covered — components split at top-level commas only, function measures read, an empty component refused (`unit/recognizer_test.cpp`) |
+
 ### erasure and ABI
 
 Rules: `ERASE-*`, `ERASEMATRIX-*`, `ABI-*` (see `FEATURE_INDEX.md`, Lowering).

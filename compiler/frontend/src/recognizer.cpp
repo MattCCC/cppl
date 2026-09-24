@@ -1507,8 +1507,7 @@ bool has_specification_clause(const std::vector<Token>& tokens, std::size_t name
 // both need the identical clause grammar, just gated by a different
 // acceptance rule afterward.
 std::optional<std::size_t> scan_function_clauses(const TokenStream& stream, std::size_t cursor,
-                                                 diagnostics::Engine& engine, std::vector<Clause>& clauses,
-                                                 bool report_decreases_unsupported) {
+                                                 diagnostics::Engine& engine, std::vector<Clause>& clauses) {
     const std::vector<Token>& tokens = stream.tokens();
     while (cursor < tokens.size()) {
         const std::optional<ClauseKind> kind = clause_kind(tokens[cursor]);
@@ -1540,10 +1539,15 @@ std::optional<std::size_t> scan_function_clauses(const TokenStream& stream, std:
             return std::nullopt;
         }
         clauses.push_back(clause);
-        if (*kind == ClauseKind::Decreases && report_decreases_unsupported) {
-            report(engine, stream, tokens[cursor], diagnostics::Category::UnsupportedSemantics,
-                   "function termination is not verified by this implementation",
-                   "the requested 'decreases' obligation must not be accepted unchecked");
+        // A lexicographic list is one measure per component (SPEC.md
+        // TERMINATION-004); each component must be an expression.
+        if (*kind == ClauseKind::Decreases &&
+            std::ranges::any_of(measure_components(stream, clause),
+                                [](const MeasureComponent& component) { return component.expression.length == 0; })) {
+            report(engine, stream, tokens[cursor], diagnostics::Category::CpplSyntax,
+                   "each component of a 'decreases' list is an expression",
+                   "a lexicographic measure separates its components with ','");
+            return std::nullopt;
         }
         if (*kind == ClauseKind::Proves) {
             report(engine, stream, tokens[cursor], diagnostics::Category::CpplSyntax,
@@ -1594,8 +1598,7 @@ bool record_unchecked_clauses(const TokenStream& stream, std::size_t keyword_ind
     }
     const std::size_t first_clause = skip_ordinary_declarator_suffix(tokens, close + 1);
     VerifiedFunction layout;
-    const std::optional<std::size_t> scanned =
-        scan_function_clauses(stream, first_clause, engine, layout.clauses, /*report_decreases_unsupported=*/false);
+    const std::optional<std::size_t> scanned = scan_function_clauses(stream, first_clause, engine, layout.clauses);
     if (!scanned.has_value() || layout.clauses.empty()) {
         return false;
     }
@@ -1678,8 +1681,7 @@ bool try_verified(const TokenStream& stream, std::size_t index, diagnostics::Eng
     }
 
     const std::size_t first_clause = skip_ordinary_declarator_suffix(tokens, close + 1);
-    const std::optional<std::size_t> scanned =
-        scan_function_clauses(stream, first_clause, engine, verified.clauses, /*report_decreases_unsupported=*/true);
+    const std::optional<std::size_t> scanned = scan_function_clauses(stream, first_clause, engine, verified.clauses);
     if (!scanned.has_value()) {
         return false;
     }
@@ -1779,24 +1781,6 @@ ScopeKind scope_kind_before(const std::vector<Token>& tokens, std::size_t brace)
     return ScopeKind::Block;
 }
 
-// Whether a ',' separates components at the top level of `(` ... `)`, which is
-// what makes a `decreases` measure a lexicographic list rather than one
-// expression. Commas nested in a call's arguments or a braced list do not.
-bool has_top_level_comma(const std::vector<Token>& tokens, std::size_t open, std::size_t close) {
-    std::size_t depth = 0;
-    for (std::size_t index = open + 1; index < close; ++index) {
-        const Token& token = tokens[index];
-        if (token.is_punctuator("(") || token.is_punctuator("[") || token.is_punctuator("{")) {
-            ++depth;
-        } else if (token.is_punctuator(")") || token.is_punctuator("]") || token.is_punctuator("}")) {
-            --depth;
-        } else if (depth == 0 && token.is_punctuator(",")) {
-            return true;
-        }
-    }
-    return false;
-}
-
 bool is_loop_clause(const std::vector<Token>& tokens, std::size_t index) {
     return index + 1 < tokens.size() &&
            (tokens[index].is_identifier("invariant") || tokens[index].is_identifier("decreases")) &&
@@ -1873,17 +1857,18 @@ LoopClauses try_loop_clauses(const TokenStream& stream, std::size_t index, std::
                 continue;
             }
             // A lexicographic list is one measure per component (SPEC.md 22.3,
-            // TERMINATION-004). Only a single measure is verified here, and a
-            // list is refused rather than read as its first component.
-            if (has_top_level_comma(tokens, clause.keyword + 1, clause.close)) {
-                report(engine, stream, keyword, diagnostics::Category::UnsupportedSemantics,
-                       "a lexicographic 'decreases' list is not verified by this implementation",
-                       "state one measure; the requested obligation must not be accepted unchecked");
+            // TERMINATION-004); each component must be an expression.
+            const Clause decreases{ClauseKind::Decreases, keyword.span, measure, stream.location_of(keyword)};
+            if (std::ranges::any_of(measure_components(stream, decreases), [](const MeasureComponent& component) {
+                    return component.expression.length == 0;
+                })) {
+                report(engine, stream, keyword, diagnostics::Category::CpplSyntax,
+                       "each component of a 'decreases' list is an expression",
+                       "a lexicographic measure separates its components with ','");
                 outcome = LoopClauses::Refused;
                 continue;
             }
-            loop.decreases = Clause{ClauseKind::Decreases, keyword.span, measure, stream.location_of(keyword)};
-            loop.measure_location = stream.location_of(tokens[clause.keyword + 2]);
+            loop.decreases = decreases;
             continue;
         }
         Clause invariant;
@@ -2091,6 +2076,45 @@ bool at_statement_start(const std::vector<Token>& tokens, std::size_t index) {
 
 } // namespace
 
+std::vector<MeasureComponent> measure_components(const TokenStream& stream, const Clause& clause) {
+    const std::vector<Token>& tokens = stream.tokens();
+    const auto first = std::ranges::lower_bound(tokens, clause.expression.offset, {},
+                                                [](const Token& token) { return token.span.offset; });
+    std::vector<MeasureComponent> components;
+    std::optional<std::size_t> start;
+    std::size_t end = clause.expression.offset;
+    std::size_t depth = 0;
+    const auto close = [&] {
+        MeasureComponent component;
+        if (start.has_value()) {
+            component.expression = source::ByteSpan{tokens[*start].span.offset, end - tokens[*start].span.offset};
+            component.location = stream.location_of(tokens[*start]);
+        }
+        components.push_back(component);
+        start.reset();
+    };
+    for (auto token = first; token != tokens.end() && token->span.end() <= clause.expression.end(); ++token) {
+        if (token->kind == TokenKind::EndOfFile) {
+            break;
+        }
+        if (depth == 0 && token->is_punctuator(",")) {
+            close();
+            continue;
+        }
+        if (token->is_punctuator("(") || token->is_punctuator("[") || token->is_punctuator("{")) {
+            ++depth;
+        } else if ((token->is_punctuator(")") || token->is_punctuator("]") || token->is_punctuator("}")) && depth > 0) {
+            --depth;
+        }
+        if (!start.has_value()) {
+            start = static_cast<std::size_t>(token - tokens.begin());
+        }
+        end = token->span.end();
+    }
+    close();
+    return components;
+}
+
 std::string describe(ClauseKind kind) {
     switch (kind) {
         case ClauseKind::Decreases:
@@ -2283,6 +2307,15 @@ std::vector<const Clause*> VerifiedFunction::preconditions() const {
         }
     }
     return found;
+}
+
+const Clause* VerifiedFunction::measure() const {
+    for (const Clause& clause : clauses) {
+        if (clause.kind == ClauseKind::Decreases) {
+            return &clause;
+        }
+    }
+    return nullptr;
 }
 
 Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, RecognitionMode mode) {

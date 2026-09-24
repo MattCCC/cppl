@@ -491,6 +491,8 @@ When loop correctness is established through generated verification conditions r
 
 **[TCB-LOOP-005]** A `decreases` proof MUST be checked on every continuing recursive/iterative path required by `SPEC.md`.
 
+In this implementation the loop and recursion rules are correspondence TCB (`compiler/obligations/src/contracts.cpp`, `compiler/automation/src/composition.cpp`). Every path that continues a loop owes its measure strictly smaller, lexicographically for a list, in the machine's non-wrapping unsigned order, as an obligation the kernel decides; a `do` loop owes its invariant before the body first runs and decides at each iteration's end; a `for` without a condition is left only by `break` or `return`. Functions that call each other form a recursion group, found as a strongly connected component of the verified call graph. Each member states a measure of one length over its parameters, every call within the group owes the callee's measure at the call's arguments strictly below the caller's at its entry values, and each member's conditions suppose the others' contracts as the induction hypothesis. That supposition is the one exception to TCB-CALL-002, and it is sound only by well-founded induction on the shared measure: the group is established, and usable as proven call evidence outside it, only once every member's conditions and descents are proven, and a recursive function without a measure is refused. A contract is reported total only when every loop and callee it depends on terminates (TCB-LOOP-004); a function stating `decreases` that is not is refused. No kernel rule is added: a recursive function is never admitted as a definition.
+
 ---
 
 # 13. Function contracts and calls

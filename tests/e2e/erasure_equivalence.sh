@@ -111,6 +111,12 @@ equivalent refinements $'2 50 9 10 70 3 9\n16 4 4 8 12\n1 1 1 1\n2 1' \
 equivalent contextual_words '136 36 55 78 17 5 7 6 7' \
     'Laws proven: +1' 'Function contracts proven: +3'
 
+# SPEC: TERMINATION-004, LOOP-001
+# Measures leave with the other clauses, on functions and on every loop form,
+# and recursion and loops stay exactly as written: no counter, no check.
+equivalent termination '0 9 0 6 0' \
+    'Function contracts proven: +6' '  partial correctness only: +0' 'Recursive call measures proven: +5'
+
 # SPEC: ERASE-011, GHOST-001
 # A ghost declaration leaves whole, at the top of a body and inside a loop, one
 # declaring two ghosts and one calling a pure function alike.

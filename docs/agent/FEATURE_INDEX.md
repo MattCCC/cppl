@@ -50,7 +50,7 @@ section numbers move and rule IDs do not.
 
 | Feature | Rule families | SPEC | Grammar | Foundations | Trust |
 | --- | --- | --- | --- | --- | --- |
-| Termination | `TERMINATION-*`, `CORRECT-*` | §22, §23 | §27 | Termination and consistency | — |
+| Termination, recursion and totality | `TERMINATION-*`, `CORRECT-*`, `LOOP-001`, `LOOP-003`, `LOOP-006` | §22, §23, §24.3 | §25–§27 | Termination and consistency | §12.1 |
 | Loop invariants | `LOOP-*` | §24 | §25, §26 | Hoare logic | — |
 | Machine arithmetic | `ARITH-*` | §29 | — | — | — |
 | Floating point | `FLOAT-*` | §30 | — | — | — |

@@ -37,9 +37,12 @@ enum class Origin : std::uint8_t {
     FunctionContract,
     CallPrecondition,
     ReturnPath,
-    LoopEntry,              // a loop invariant holds when the loop is entered
-    LoopPreservation,       // an iteration re-establishes a loop invariant
-    LoopDescent,            // an iteration strictly decreases a loop measure (SPEC.md 24.3)
+    LoopEntry,        // a loop invariant holds when the loop is entered
+    LoopPreservation, // an iteration re-establishes a loop invariant
+    LoopDescent,      // an iteration strictly decreases a loop measure (SPEC.md 24.3)
+    // A call within a recursion group is made at a strictly smaller measure
+    // than the caller was entered with (SPEC.md TERMINATION-005, TERMINATION-007).
+    CallDescent,
     RefinementIntroduction, // a value enters a refinement type (SPEC.md 17.2)
     // A subscript's index is within its array's extent (SPEC.md 12.10
     // VERIFIED-038). This is a proposition about values, so the kernel proves
@@ -127,6 +130,10 @@ struct Obligation {
     // never offered to a strategy that might establish it some other way
     // (SPEC.md CASE-005, CASE-015).
     std::optional<std::string> refusal;
+
+    // What the goal compares, in the terms the author wrote, for a diagnostic
+    // when it is not proven: a descent names the measure before and after.
+    std::vector<std::string> explanation;
 };
 
 // A claim that a runtime path cannot occur, `contradiction evidence;` written

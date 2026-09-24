@@ -2012,8 +2012,10 @@ This establishes partial correctness.
 Adding `decreases (n - i)` requests termination as well: the measure belongs to a
 well-founded domain and strictly decreases on every continuing iteration.
 
-An unsigned bound is finite; arbitrary signed subtraction requires its
-definedness and lower bound to be proven.
+An unsigned bound is finite, ordered by the machine's own non-wrapping `<`; a
+signed measure has no least element and is refused.
+
+<!-- cppl-example: verify -->
 
 ```cpp
 verified unsigned terminating_count(unsigned n)
@@ -2051,10 +2053,16 @@ verified unsigned count_for(unsigned n)
 }
 ```
 
-A range-for uses that same location.
+A `for` without a condition is left only by a `break` or a `return`, and may
+state the same clauses.
 
 A `do` loop places clauses after `do`, before its body, keeping the trailing
-`while` in its ordinary C++ position:
+`while` in its ordinary C++ position. Its invariant must hold before the body
+first runs, when nothing has checked the condition yet, and the loop is left
+where the condition fails after a body, so what follows sees that body's
+values rather than the invariant:
+
+<!-- cppl-example: verify -->
 
 ```cpp
 verified unsigned one_iteration()
@@ -2063,14 +2071,23 @@ verified unsigned one_iteration()
     unsigned i = 0u;
 
     do
-        invariant (i <= 1u)
+        invariant (i < 1u)
+        decreases (1u - i)
     {
         ++i;
     } while (i < 1u);
 
     return i;
 }
+```
 
+`invariant (i <= 1u)` would not do: it allows `i == 1u` before a body, after
+which the loop would return 2.
+
+A range-for uses the same location for its clauses, but this implementation
+does not model range-based `for` yet and refuses it:
+
+```cpp
 verified unsigned visit_three()
     ensures (result == 0u)
 {
@@ -2086,18 +2103,75 @@ verified unsigned visit_three()
 }
 ```
 
-Recursive termination uses the same measure syntax:
+Recursive termination uses the same measure syntax, over the function's
+parameters:
+
+<!-- cppl-example: verify -->
 
 ```cpp
 verified unsigned descend(unsigned n)
     ensures (result == 0u)
     decreases (n)
 {
-    return n == 0u ? 0u : descend(n - 1u);
+    if (n == 0u) {
+        return 0u;
+    }
+    return descend(n - 1u);
 }
 ```
 
-`decreases (outer, inner)` is one lexicographic measure list, not two clauses.
+Every recursive call must be made at a strictly smaller measure, under the facts
+of its own path: here `n != 0u` is what makes `n - 1u` smaller rather than a
+wrap to the largest value. Recursion is verified only with a measure, and the
+contract a recursive call supposes is the induction hypothesis the descent
+justifies, not a proof of the contract: a false base case is still refused.
+
+`decreases (outer, inner)` is one lexicographic measure list, not two clauses:
+the first component falls, or it stays and the rest fall. Functions that call
+each other state measures of one length, and every call between them descends:
+
+<!-- cppl-example: verify -->
+
+```cpp
+unsigned odd_steps(unsigned n);
+
+verified unsigned even_steps(unsigned n)
+    ensures (result == 0u)
+    decreases (n)
+{
+    if (n == 0u) {
+        return 0u;
+    }
+    return odd_steps(n - 1u);
+}
+
+verified unsigned odd_steps(unsigned n)
+    ensures (result == 0u)
+    decreases (n)
+{
+    if (n == 0u) {
+        return 0u;
+    }
+    return even_steps(n - 1u);
+}
+```
+
+A contract is total when every loop it runs states a measure and every function
+it calls is total; otherwise it is partial correctness. The trust report keeps
+the two apart:
+
+```text
+Function contracts proven:   2
+  partial correctness only:  0
+...
+Loop measures proven:        0
+Recursive call measures proven: 2
+...
+Partial-correctness contracts: 0
+```
+
+A function that states `decreases` asks that it terminate, so a loop without a
+measure, a call to a partial function or an unsafe block in it is refused.
 
 Proof-producing computation must terminate even without a written measure.
 

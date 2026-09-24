@@ -616,28 +616,65 @@ CPPL_TEST(a_loop_termination_measure_is_recognized_as_a_clause) {
     CPPL_CHECK(result.syntax.loops[0].decreases.has_value());
 }
 
-CPPL_TEST(a_lexicographic_measure_list_is_refused_rather_than_read_as_its_first_part) {
-    // SPEC.md 22.3 states a lexicographic measure as one clause of several
-    // parts. Only a single measure is verified here, so the list is refused
-    // rather than silently reduced to `n - i`.
+// SPEC: TERMINATION-004
+// A lexicographic measure is one clause whose components its top-level commas
+// separate, each read whole, never reduced to its first part.
+CPPL_TEST(a_lexicographic_measure_list_is_read_component_by_component) {
     Recognized result;
-    recognize("verified unsigned f(unsigned n) ensures (result == n) { unsigned i = 0u;\n"
-              "  while (i < n) invariant (i <= n) decreases (n - i, n) { ++i; } return i; }\n",
-              result);
-    CPPL_CHECK(result.engine.has_errors());
-    CPPL_CHECK(result.syntax.loops.empty());
+    const std::string text = "verified unsigned f(unsigned n) ensures (result == n) { unsigned i = 0u;\n"
+                             "  while (i < n) invariant (i <= n) decreases (n - i, n) { ++i; } return i; }\n";
+    recognize(text, result);
+    CPPL_CHECK(!result.engine.has_errors());
+    CPPL_CHECK_EQ(result.syntax.loops.size(), std::size_t{1});
+    const std::optional<cppl::frontend::Clause>& decreases = result.syntax.loops[0].decreases;
+    CPPL_CHECK(decreases.has_value());
+    if (!decreases.has_value()) {
+        return;
+    }
+    const cppl::frontend::TokenStream stream = cppl::frontend::lex(text, "main.cpp");
+    const auto components = cppl::frontend::measure_components(stream, *decreases);
+    CPPL_CHECK_EQ(components.size(), std::size_t{2});
+    CPPL_CHECK_EQ(std::string(stream.spelling(components[0].expression)), std::string("n - i"));
+    CPPL_CHECK_EQ(std::string(stream.spelling(components[1].expression)), std::string("n"));
+    CPPL_CHECK_EQ(components[1].location.column, 54u);
 }
 
 CPPL_TEST(a_measure_with_a_comma_inside_a_call_is_one_measure) {
     // The comma belongs to the call's arguments, not to a measure list.
     Recognized result;
-    recognize("unsigned pick(unsigned, unsigned);\n"
-              "verified unsigned f(unsigned n) ensures (result == n) { unsigned i = 0u;\n"
-              "  while (i < n) invariant (i <= n) decreases (pick(n, i)) { ++i; } return i; }\n",
-              result);
+    const std::string text = "unsigned pick(unsigned, unsigned);\n"
+                             "verified unsigned f(unsigned n) ensures (result == n) { unsigned i = 0u;\n"
+                             "  while (i < n) invariant (i <= n) decreases (pick(n, i)) { ++i; } return i; }\n";
+    recognize(text, result);
     CPPL_CHECK(!result.engine.has_errors());
     CPPL_CHECK_EQ(result.syntax.loops.size(), std::size_t{1});
-    CPPL_CHECK(result.syntax.loops[0].decreases.has_value());
+    const std::optional<cppl::frontend::Clause>& decreases = result.syntax.loops[0].decreases;
+    CPPL_CHECK(decreases.has_value());
+    if (!decreases.has_value()) {
+        return;
+    }
+    const cppl::frontend::TokenStream stream = cppl::frontend::lex(text, "main.cpp");
+    CPPL_CHECK_EQ(cppl::frontend::measure_components(stream, *decreases).size(), std::size_t{1});
+}
+
+// SPEC: TERMINATION-004
+// A function may ask that it terminate, with one measure or a list; an empty
+// component is refused rather than read as none.
+CPPL_TEST(a_function_measure_is_a_clause_and_an_empty_component_is_refused) {
+    Recognized accepted;
+    recognize("verified unsigned f(unsigned m, unsigned n) ensures (result == 0u) decreases (m, n) { return 0u; }\n",
+              accepted);
+    CPPL_CHECK(!accepted.engine.has_errors());
+    CPPL_CHECK_EQ(accepted.syntax.verified_functions.size(), std::size_t{1});
+    CPPL_CHECK(accepted.syntax.verified_functions[0].measure() != nullptr);
+
+    for (const char* text : {"verified unsigned f(unsigned n) ensures (result == 0u) decreases (n, ) { return 0u; }\n",
+                             "verified unsigned f(unsigned n) ensures (result == 0u) { unsigned i = n;\n"
+                             "  while (i > 0u) decreases (, i) { --i; } return i; }\n"}) {
+        Recognized refused;
+        recognize(text, refused);
+        CPPL_CHECK(refused.engine.has_errors());
+    }
 }
 
 CPPL_TEST(a_second_decreases_clause_on_one_loop_is_refused) {

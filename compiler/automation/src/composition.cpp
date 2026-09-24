@@ -206,11 +206,19 @@ bool Composition::established(std::size_t contract) const {
 }
 
 // A condition supposes the postconditions of the contracts its path calls, so
-// it is not offered to the kernel until each of those is established. What it
-// states is then decided by the kernel like any other goal.
+// it is not offered to the kernel until each of those is established. A
+// contract of its own recursion group is the exception: it is supposed as the
+// induction hypothesis, which the group's measure descents justify, and the
+// group is established only once every member's conditions are proven
+// (SPEC.md TERMINATION-007). What a condition states is then decided by the
+// kernel like any other goal.
 std::expected<Evidence, std::string> Composition::propose_condition(const Condition& condition,
                                                                     std::size_t obligation) const {
+    const std::vector<std::size_t>& group = program_.contracts[condition.contract].recursion;
     for (const std::size_t callee : condition.condition->callees) {
+        if (std::ranges::find(group, callee) != group.end()) {
+            continue;
+        }
         if (!established(callee)) {
             return std::unexpected("callee '" + program_.contracts[callee].name + "' is not proven");
         }
@@ -342,11 +350,18 @@ std::expected<void, std::string> Composition::accept(std::size_t obligation, con
             return std::unexpected("the kernel accepted a different contract obligation");
         }
         proven_.emplace(obligation, proof);
-        const auto& contract = program_.contracts[condition->second.contract];
-        if (std::ranges::all_of(contract.conditions, [this](const obligations::VerificationCondition& each) {
-                return proven_.contains(each.obligation);
-            })) {
-            partial_established_.insert(condition->second.contract);
+        const auto proven_whole = [this](std::size_t index) {
+            return std::ranges::all_of(
+                program_.contracts[index].conditions,
+                [this](const obligations::VerificationCondition& each) { return proven_.contains(each.obligation); });
+        };
+        const std::vector<std::size_t>& group = program_.contracts[condition->second.contract].recursion;
+        if (group.empty()) {
+            if (proven_whole(condition->second.contract)) {
+                partial_established_.insert(condition->second.contract);
+            }
+        } else if (std::ranges::all_of(group, proven_whole)) {
+            partial_established_.insert(group.begin(), group.end());
         }
         return {};
     }

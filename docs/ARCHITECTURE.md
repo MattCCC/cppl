@@ -1661,6 +1661,34 @@ required by the language construct.
 because an unreachable postcondition is vacuously true in a context where the
 language requires total proof-producing computation.
 
+The realized flow of termination:
+
+```text
+recognizer   a `decreases` clause on a loop or a verified function, split into
+             its lexicographic components (measure_components)
+projection   a loop's components become measure declarations at the head of
+             its body; a function's become probe functions of its parameters
+bridge       measures read in the loop head's scope; `do` loops decide at each
+             iteration's end, a `for` without a condition only by leaving it
+elaboration  vir::Loop measures, vir::Contract::measures; a template's measure
+             is refused
+obligations  every continuing loop path owes a lexicographic descent
+             (LoopDescent); functions that reach one another are one recursion
+             group, stated and reserved first, whose every internal call owes a
+             descent (CallDescent) and supposes the callee's contract as the
+             induction hypothesis; totality is the greatest fixed point over
+             loops, unsafe blocks and callees, and a `decreases` function that
+             is not total is refused
+automation   a condition may suppose a contract of its own group before it is
+             established; the group is established whole or not at all
+driver       measures proven, recursive call measures proven, and each
+             partial-correctness contract named
+erasure      measures leave with the other clauses; no counter or check is added
+```
+
+No step of it adds a kernel rule: each descent is an ordinary proposition, and
+a function with a loop or recursion is never a definition the kernel unfolds.
+
 ---
 
 # 41. Exception architecture

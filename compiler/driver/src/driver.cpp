@@ -36,6 +36,7 @@ struct Summary {
     std::size_t partial_contracts_proven = 0;
     std::size_t loop_invariants_proven = 0;
     std::size_t loop_measures_proven = 0;
+    std::size_t call_measures_proven = 0;
     std::size_t omitted_cases_proven = 0;
     std::size_t impossible_paths_proven = 0;
     std::size_t call_preconditions_proven = 0;
@@ -211,6 +212,7 @@ UnitOutcome compile_unit(const Options& options, const Input& input, const std::
     summary.partial_contracts_proven += result.counters.partial_contracts_proven;
     summary.loop_invariants_proven += result.counters.loop_invariants_proven;
     summary.loop_measures_proven += result.counters.loop_measures_proven;
+    summary.call_measures_proven += result.counters.call_measures_proven;
     summary.omitted_cases_proven += result.counters.omitted_cases_proven;
     summary.impossible_paths_proven += result.counters.impossible_paths_proven;
     summary.call_preconditions_proven += result.counters.call_preconditions_proven;
@@ -344,6 +346,7 @@ void print_trust_report(const Options& options, const Summary& summary) {
     std::cout << "Call preconditions proven:   " << summary.call_preconditions_proven << "\n";
     std::cout << "Loop invariants proven:      " << summary.loop_invariants_proven << "\n";
     std::cout << "Loop measures proven:        " << summary.loop_measures_proven << "\n";
+    std::cout << "Recursive call measures proven: " << summary.call_measures_proven << "\n";
     std::cout << "Omitted cases proven:        " << summary.omitted_cases_proven << "\n";
     print_closure_counts(summary, obligations::ClaimKind::OmittedCase);
     std::cout << "Impossible paths proven:     " << summary.impossible_paths_proven << "\n";
@@ -402,6 +405,17 @@ void print_trust_report(const Options& options, const Summary& summary) {
                   << ", no statement can use a memory proposition\n";
     }
     std::cout << "\n";
+    // Each contract that holds only if its function returns, named, since a
+    // count alone would not say which (SPEC.md CORRECT-006).
+    const auto partial = std::ranges::count_if(summary.claims, [](const obligations::ClaimClosure& claim) {
+        return claim.kind == obligations::ClaimKind::Contract && !claim.total;
+    });
+    std::cout << "Partial-correctness contracts: " << partial << "\n";
+    for (const obligations::ClaimClosure& claim : summary.claims) {
+        if (claim.kind == obligations::ClaimKind::Contract && !claim.total) {
+            std::cout << "  " << claim_name(claim) << ", identity " << claim.identity.text() << "\n";
+        }
+    }
     // Where the program's guarantees stop, whether or not a proven claim
     // reaches it: an unsafe block outside every verified body still runs.
     std::cout << "Unsafe regions:              " << summary.unsafe.size() << "\n";

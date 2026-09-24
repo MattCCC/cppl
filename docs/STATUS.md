@@ -148,8 +148,9 @@ Verified calls instantiate their callee's contract at the resolved arguments.
 Each precondition must be kernel-proven before its postcondition is available.
 Caller reasoning uses abstract call results and proven summaries; kernel-checked
 evidence connects that reasoning to the executable return term. Nested calls,
-overloads, and forward declarations are supported within an acyclic translation
-unit, including headers. Ordinary runtime calls remain unchanged. See `SPEC.md`
+overloads, and forward declarations are supported within a translation unit,
+including headers; recursion is verified only with a measure, as described
+below. Ordinary runtime calls remain unchanged. See `SPEC.md`
 12.5–12.8. Each return path additionally supposes its branch conditions. Calls in
 guards prove their preconditions before that guard can be used. The kernel
 combines the checked paths into the complete function theorem.
@@ -179,19 +180,44 @@ rejected. Every value is modeled where it is written, read or not. Each read rep
 local's value, so bodies whose stated terms exceed a fixed size are rejected
 too. Locals add no kernel rule and no runtime change.
 
-`while` and `for` loops with a block body may state `invariant (...)` clauses
+`while`, `do`/`while` and `for` loops with a block body, a `for` without a
+condition included, may state `invariant (...)` and `decreases (...)` clauses
 (`SPEC.md` 24). Each local the loop writes is carried: at the head it is a
 fresh value of which only the invariants and the condition are known. Every
-invariant is proven on entry and at the end of every iteration path, including
-`continue` and the `for` step; what follows the loop, and any `break`, is
-verified from what those paths suppose. Calls in the condition and body prove
-their preconditions where the loop makes them. A function with a loop, or
-calling one, has a **partial-correctness** contract: it is proven from these
-conditions, reported separately, and never admitted as a core definition, so no
-Law or specification can mention it and nontermination cannot reach the
-kernel. Termination is not proven; `decreases`, `do`/`while`, range-based `for`
-and `for` without a condition are rejected. Loops add no kernel rule; the loop
-rule is correspondence trust (`TRUST.md` 12.1).
+invariant is proven on entry, before the body first runs for a `do` loop, and
+at the end of every iteration path, including `continue` and the `for` step;
+what follows the loop, and any `break`, is verified from what those paths
+suppose. Calls in the condition and body prove their preconditions where the
+loop makes them. A measure is an unsigned value or a lexicographic list of
+them, and every path that continues to another iteration owes a strictly
+smaller one, compared component by component in the machine's non-wrapping
+order (`SPEC.md` 22.3, 22.5, LOOP-006). Range-based `for` is rejected.
+
+A verified function may state `decreases (...)` over its parameters, one
+measure or a lexicographic list, to ask that it terminate (TERMINATION-004).
+Recursion is verified only that way: functions that call each other, directly
+or through one another, form a recursion group; every member states a measure
+of one length, every call within the group owes a callee measure strictly
+smaller than the caller's, and each member's conditions suppose the others'
+contracts as the induction hypothesis those descents justify. The group is
+established only when every member's conditions and descents are proven, and a
+recursive function without a measure is refused (TERMINATION-007). A function
+template's measure is refused, since nothing yet forces it at each
+specialization.
+
+A contract is **total** when every loop its paths enter states a measure, it
+passes through no unsafe block, and every contract it calls is total, its
+recursion group's included; otherwise it is **partial correctness**: what
+holds if the function returns (`SPEC.md` 23). The trust report counts both,
+names each partial-correctness contract, and counts loop measures and recursive
+call measures proven apart from invariants. A function that states `decreases`
+and is not total is refused, for the first loop, unsafe block or callee that
+stops it (TERMINATION-006). A function with a loop, or calling one, is never
+admitted as a core definition, and neither is a recursive one, so no Law or
+specification can unfold it and nontermination cannot reach the kernel. Measures
+erase with the rest of the contract; no counter or runtime check is added
+(`fixtures/equivalence/termination.cpp`). Loops and recursion add no kernel
+rule; the loop and recursion rules are correspondence trust (`TRUST.md` 12.1).
 
 Refinement types are `PROTOTYPE`: `type R = T where (P);` and its indexed form
 declare a verification-level type over an ordinary C++ base type, lower to the
@@ -316,10 +342,10 @@ with C++L syntax, a name beginning with `__cppl_`, the prefix of every
 declaration C++L generates, is refused, since the body lowering reads a
 declaration so named as generated.
 
-This slice does **not** implement induction, loop termination, proof `let`,
-solvers, proof caching, or any verification of the C++ memory model. Those
-remain `SPECIFIED` below. `trusted law` and `unsafe` are implemented and
-described under
+This slice does **not** implement induction, structural recursion without a
+measure, proof `let`, solvers, proof caching, or any verification of the C++
+memory model. Those remain `SPECIFIED` below. `trusted law` and `unsafe` are
+implemented and described under
 [Unsafe and trusted boundary status](#unsafe-and-trusted-boundary-status).
 
 ---
@@ -435,8 +461,8 @@ The project should not claim broad language implementation before the proof sema
 | propositional equality        | `PROTOTYPE`   |
 | normalization                 | `PROTOTYPE`   |
 | `induction`                   | `SPECIFIED`   |
-| well-founded recursion        | `SPECIFIED`   |
-| termination checking          | `SPECIFIED`   |
+| well-founded recursion        | `IMPLEMENTED` |
+| termination checking          | `IMPLEMENTED` |
 | `expects` on functions        | `PROTOTYPE`   |
 | `ensures` on functions        | `PROTOTYPE`   |
 | `pure`                        | `PROTOTYPE`   |
@@ -450,7 +476,7 @@ The project should not claim broad language implementation before the proof sema
 | `ghost`                       | `IMPLEMENTED` |
 | `unsafe`                      | `IMPLEMENTED` |
 | `trusted`                     | `IMPLEMENTED` |
-| `decreases`                   | `SPECIFIED`   |
+| `decreases`                   | `IMPLEMENTED` |
 | proof erasure                 | `PROTOTYPE`   |
 
 ---
@@ -520,7 +546,10 @@ machine-integer literals, applications of admitted definitions, observations of
 an abstract value (at a constant position, or at an index that is itself a
 term), and primitives: wrapping addition, subtraction and multiplication, the
 six comparisons, boolean negation and selection. It admits no recursion, which
-is why it needs no termination checker yet (`SPEC.md` 22.2, 22.4).
+is why it needs no termination checker of its own yet (`SPEC.md` 22.2, 22.4): a
+recursive verified function terminates by its measure's descent obligations,
+which the kernel decides as ordinary propositions, and is never admitted as a
+definition it could unfold.
 
 Reflexivity decides definitional equality by normalization, which puts machine
 arithmetic in polynomial normal form modulo `2^width` and comparisons in
@@ -683,7 +712,8 @@ obligation generation and the trust closure, never by the kernel.
 | Postconditions (supported fragment)               | `PROTOTYPE`   |
 | Function invariants                               | `SPECIFIED`   |
 | Loop invariants                                   | `PROTOTYPE`   |
-| Loop termination (`decreases`)                    | `SPECIFIED`   |
+| Loop termination (`decreases`)                    | `IMPLEMENTED` |
+| Function termination and recursion (`decreases`)  | `IMPLEMENTED` |
 | Verification-condition generation (returns/paths) | `PROTOTYPE`   |
 | Verification-condition generation (loops)         | `PROTOTYPE`   |
 | Local versioning (declarations/assignments)       | `PROTOTYPE`   |
@@ -1129,14 +1159,23 @@ RFC 0005).
 | Capability                   | Status        |
 | ---------------------------- | ------------- |
 | Structural recursion         | `SPECIFIED`   |
-| Explicit `decreases` clauses | `SPECIFIED`   |
-| Well-founded recursion       | `SPECIFIED`   |
-| Termination checker          | `NOT STARTED` |
-| Mutual recursion policy      | `NOT STARTED` |
-| Termination diagnostics      | `NOT STARTED` |
-| Nontermination isolation     | `SPECIFIED`   |
+| Explicit `decreases` clauses | `IMPLEMENTED` |
+| Well-founded recursion       | `IMPLEMENTED` |
+| Termination checker          | `IMPLEMENTED` |
+| Mutual recursion policy      | `IMPLEMENTED` |
+| Termination diagnostics      | `IMPLEMENTED` |
+| Nontermination isolation     | `IMPLEMENTED` |
 
-Proof-producing nontermination must never be accepted as proof evidence.
+Proof-producing nontermination must never be accepted as proof evidence. The
+checker is the one described for loops and verified functions above: every
+continuing loop path and every call within a recursion group owes a strictly
+smaller unsigned measure, lexicographically for a list, as an obligation the
+kernel decides; recursion needs a measure in every function of it; and a
+contract is total only when every loop and callee it depends on terminates.
+Where a descent is not proven, the diagnostic names the measure before and
+after. Nontermination is isolated because a function with a loop or recursion
+is never a core definition, so the kernel unfolds nothing that could diverge.
+Structural recursion without a written measure is not inferred.
 
 ---
 
@@ -1274,9 +1313,9 @@ error, not an omission.
 
 A runtime path claim is the one way a trusted premise enters a verified body, so
 a contract rests on a trusted law only through one, in its own body or in a
-function it calls. Recursive call graphs, which no source program here yet
-produces with a trusted premise, are exercised by
-`tests/unit/trust_closure_test.cpp`. Trust is propagated within one translation
+function it calls. A recursion group is closed the same way, to a fixed point
+over its cycle, which `tests/unit/trust_closure_test.cpp` exercises with trusted
+laws and unsafe blocks. Trust is propagated within one translation
 unit: no proof artifact or cache carries a closure across units yet. A verified
 call to a function defined in another unit is refused, so no claim rests on an
 assumption this unit cannot list.

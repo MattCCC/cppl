@@ -777,6 +777,22 @@ CPPL_TEST(unsafe_blocks_and_declarations_are_laid_out_like_the_cpp_they_delimit)
     CPPL_CHECK_EQ(format_text(once), once);
 }
 
+// SPEC: TERMINATION-004
+// A lexicographic measure is one clause, laid out as one, its components
+// separated as any comma-separated list is.
+CPPL_TEST(a_lexicographic_measure_is_one_clause_on_functions_and_loops) {
+    const std::string input = "verified unsigned f(unsigned m,unsigned n) ensures (result == 0u) decreases (m,n)\n"
+                              "{\n"
+                              "    unsigned r = m;\n"
+                              "    while (r > 0u) invariant (r <= m) decreases (r,n) { --r; }\n"
+                              "    return r;\n"
+                              "}\n";
+    const std::string once = format_text(input);
+    CPPL_CHECK(once.find("\n    decreases (m, n)\n") != std::string::npos);
+    CPPL_CHECK(once.find("\n        decreases (r, n)\n") != std::string::npos);
+    CPPL_CHECK_EQ(format_text(once), once);
+}
+
 // SPEC: GHOST-001
 // A ghost declaration is laid out as the declaration it prefixes, with the word
 // where the statement begins.

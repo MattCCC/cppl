@@ -51,6 +51,13 @@ struct Contract {
     std::vector<Capability> capabilities;
     Expr postcondition;
     source::SourceRange range;
+
+    // The components of a `decreases` measure over the parameters, in order,
+    // when the function asks that it terminate (SPEC.md TERMINATION-004). Every
+    // recursive call owes a strictly smaller tuple, and the contract is then a
+    // total-correctness claim.
+    std::vector<Expr> measures;
+    source::SourceRange measure_range;
 };
 
 struct Function {

@@ -1656,6 +1656,36 @@ void elaborate_contract(const Request& request, const frontend::VerifiedFunction
         contract.preconditions.push_back(std::move(*expected));
     }
 
+    // A `decreases` clause asks that the function terminate (SPEC.md
+    // TERMINATION-004, TERMINATION-006): each component is read back as a term
+    // over the parameters. A template's measure would have to be instantiated
+    // at every specialization, which nothing forces yet, so it is refused rather
+    // than dropped.
+    if (const frontend::Clause* measure = declaration.measure(); measure != nullptr) {
+        if (declaration.template_header.length != 0 && !declaration.explicit_specialization) {
+            report(engine, diagnostics::Category::UnsupportedSemantics, measure->location,
+                   "a 'decreases' clause on function template '" + function.qualified_name +
+                       "' is not verified by this implementation",
+                   "the requested termination obligation must not be accepted unchecked");
+            return;
+        }
+        if (projected.measure_names.empty()) {
+            report(engine, diagnostics::Category::Elaboration, measure->location,
+                   "the measure of verified function '" + function.qualified_name + "' was not projected");
+            return;
+        }
+        for (const std::string& name : projected.measure_names) {
+            std::optional<vir::Expr> component =
+                convert_projected(request, name, measure->location, next_expression_id,
+                                  "the measure of verified function '" + function.qualified_name + "'", engine);
+            if (!component.has_value()) {
+                return;
+            }
+            contract.measures.push_back(std::move(*component));
+        }
+        contract.measure_range.begin = measure->location;
+    }
+
     converted.contract = std::move(contract);
 }
 
@@ -2202,8 +2232,14 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
         // A function the author marked pure and that did not turn out to be a
         // definition is recorded, so a law that reaches for it can say why.
         if (candidate.pure && converted.purity != vir::Purity::Pure) {
-            result.rejected_functions.push_back(
-                FunctionRejection{converted.symbol, function->qualified_name, rejection, function->location});
+            // A verified function whose body is not one return expression is
+            // still verified from its contract; it is only never unfolded.
+            result.rejected_functions.push_back(FunctionRejection{
+                converted.symbol, function->qualified_name,
+                rejection.empty() ? "its body is not a single return expression, so the formal core does not "
+                                    "unfold it; its contract is verified and may be called"
+                                  : rejection,
+                function->location});
         }
 
         if (candidate.contract != nullptr) {

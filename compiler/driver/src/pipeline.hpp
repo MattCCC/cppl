@@ -131,6 +131,9 @@ struct PipelineOutcome {
         // because they are what makes a loop total rather than partial
         // (SPEC.md 23, CORRECT-006).
         std::size_t loop_measures_proven = 0;
+        // Descent obligations of calls within a recursion group, which make
+        // recursion total (SPEC.md TERMINATION-007).
+        std::size_t call_measures_proven = 0;
         // Impossibility claims, each counted under its own origin: one checked
         // contradiction mechanism discharges both, but an omitted case and an
         // unreachable runtime path are different claims (SPEC.md CASE-012,

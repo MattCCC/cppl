@@ -69,16 +69,24 @@ reject invariant_outside_verified 'would not be checked' \
 # a verification failure rather than a silently dropped clause (SPEC.md 22.3).
 reject decreases_without_descent 'is not shown to decrease' \
     "$count while (i < n) invariant (i <= n) decreases (n) { ++i; } return i; }"
-reject decreases_lexicographic_list 'lexicographic' \
-    "$count while (i < n) invariant (i <= n) decreases (n - i, n) { ++i; } return i; }"
+# SPEC: TERMINATION-005
+# A lexicographic list compares its first component first, and `i` grows.
+reject decreases_lexicographic_list 'is not shown to decrease' \
+    "$count while (i < n) invariant (i <= n) decreases (i, n) { ++i; } return i; }"
 reject decreases_twice 'one .decreases. clause' \
     "$count while (i < n) invariant (i <= n) decreases (n - i) decreases (n) { ++i; } return i; }"
-reject do_while 'do-while loops are not modeled' \
-    "$count do { ++i; } while (i < n); return n; }"
+# SPEC: LOOP-003
+# A `do` loop's invariant is owed before the body first runs, unchecked by the
+# condition: at n == 0, `i < n` does not hold.
+reject do_while_entry 'does not hold on entry' \
+    "$count do invariant (i < n) { ++i; } while (i < n); return n; }"
 reject range_for 'range-based for loops are not modeled' \
     'verified unsigned f(unsigned n) ensures (result == n) { for (char c : "ab") { } return n; }'
-reject for_without_condition 'without a condition' \
-    "$count for (;;) { ++i; if (i == n) return i; } }"
+# SPEC: LOOP-001
+# A `for` without a condition is left only by a `break` or a `return`, each of
+# which owes what follows it: this return claims one more than it has.
+reject for_without_condition 'does not satisfy its contract' \
+    "$count for (;;) { ++i; if (i == n) return i + 1u; } }"
 reject condition_declaration 'declares a variable' \
     "$count while (unsigned k = n - i) { ++i; } return n; }"
 reject signed_counter 'signed type' \

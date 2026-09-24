@@ -348,6 +348,8 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
                 ++outcome.counters.loop_invariants_proven;
             } else if (result.obligation.origin == obligations::Origin::LoopDescent) {
                 ++outcome.counters.loop_measures_proven;
+            } else if (result.obligation.origin == obligations::Origin::CallDescent) {
+                ++outcome.counters.call_measures_proven;
             } else if (result.obligation.origin == obligations::Origin::OmittedCase) {
                 ++outcome.counters.omitted_cases_proven;
             } else if (result.obligation.origin == obligations::Origin::ImpossiblePath) {
@@ -366,18 +368,28 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
             ++outcome.counters.unresolved;
         }
     }
-    // A partial-correctness contract has no single obligation of its own: it is
-    // established when every one of its conditions is proven.
+    // A contract built from conditions has no single obligation of its own: it
+    // is established when every one of its conditions is proven, and those of
+    // its recursion group. It states total correctness only where its
+    // termination is established too (SPEC.md CORRECT-006).
+    const auto conditions_proven = [&](const obligations::ContractVerification& contract) {
+        return std::ranges::all_of(contract.conditions,
+                                   [&results](const obligations::VerificationCondition& condition) {
+                                       return results[condition.obligation].verdict.is_proven();
+                                   });
+    };
     for (const obligations::ContractVerification& contract : program.contracts) {
         if (!contract.partial) {
             continue;
         }
         ++declaration_obligations;
-        if (std::ranges::all_of(contract.conditions, [&results](const obligations::VerificationCondition& condition) {
-                return results[condition.obligation].verdict.is_proven();
+        if (conditions_proven(contract) && std::ranges::all_of(contract.recursion, [&](std::size_t member) {
+                return conditions_proven(program.contracts[member]);
             })) {
             ++outcome.counters.contracts_proven;
-            ++outcome.counters.partial_contracts_proven;
+            if (!contract.total) {
+                ++outcome.counters.partial_contracts_proven;
+            }
         }
     }
     // Every claim counted as proven above has a trust closure, and none is

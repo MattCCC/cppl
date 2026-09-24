@@ -10,7 +10,10 @@ for standard in c++17 c++20 c++23; do
     "$CPPL" "-std=$standard" "$FIXTURES/verified_loops.cpp" -o "$run/program" \
         --cppl-trust-report "--cppl-emit-projection=$run/runtime.cpp" > "$run/report"
     grep -Eq '^Function contracts proven: +15$' "$run/report"
-    grep -Eq '^  partial correctness only: +13$' "$run/report"
+    # SPEC: CORRECT-003, CORRECT-006
+    # The one function whose loop states a measure terminates, so its contract
+    # is total; the loops of the others state none, so theirs are partial.
+    grep -Eq '^  partial correctness only: +12$' "$run/report"
     grep -Eq '^Call preconditions proven: +2$' "$run/report"
     grep -Eq '^Loop invariants proven: +34$' "$run/report"
     # A requested termination proof is discharged and reported on its own, apart

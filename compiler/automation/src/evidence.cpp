@@ -209,6 +209,9 @@ std::vector<obligations::ObligationResult> verify(const obligations::Program& pr
             } else if (obligation.origin == obligations::Origin::LoopDescent) {
                 diagnostic.message =
                     "loop measure '" + obligation.subject + "' is not shown to decrease on every iteration";
+            } else if (obligation.origin == obligations::Origin::CallDescent) {
+                diagnostic.message = "recursive call '" + obligation.subject +
+                                     "' is not shown to be made at a smaller measure than its caller was entered with";
             } else if (obligation.origin == obligations::Origin::RefinementIntroduction) {
                 // The value is what must satisfy the predicate; the refinement is
                 // not something a proof can be written for.
@@ -218,6 +221,9 @@ std::vector<obligations::ObligationResult> verify(const obligations::Program& pr
                 diagnostic.message = "law '" + obligation.subject + "' is not proven";
             }
             diagnostic.location = location;
+            for (const std::string& explained : obligation.explanation) {
+                diagnostic.notes.push_back(diagnostics::Note{explained, location});
+            }
             diagnostic.notes.push_back(diagnostics::Note{"goal: " + kernel::describe(obligation.goal), location});
             diagnostic.notes.push_back(
                 diagnostics::Note{"the kernel did not accept the evidence: " + verdict.reason(), location});

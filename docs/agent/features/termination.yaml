@@ -1,0 +1,173 @@
+# Machine-readable manifest for the termination feature.
+#
+# Rule IDs are anchors in docs/SPEC.md, the canonical specification. Extract the
+# normative text with:
+#
+#     cppl-spec-rules extract --feature termination
+
+feature: termination
+
+summary: >
+  `decreases (...)` on a loop or a verified function asks that it terminate. A
+  measure is an unsigned value or a lexicographic list of them. Every path that
+  continues a loop, and every call within a recursion group, owes a strictly
+  smaller measure, compared component by component in the machine's
+  non-wrapping order. Functions that reach one another form a recursion group:
+  every member states a measure of one length, each supposes the others'
+  contracts as the induction hypothesis, and the group is established whole or
+  not at all. A contract is total when every loop and callee it depends on
+  terminates, and a function that asks to terminate and is not is refused.
+  Measures erase; no runtime counter is added.
+
+normative_sources:
+  spec:
+    - "§22 Termination"
+    - "§23 Partial and total correctness"
+    - "§24 Loop invariants"
+    - "§24.3 Loop termination"
+    - "§24.4 Erasure"
+  grammar:
+    - "§25 Loop clauses"
+    - "§26 Other loop forms"
+    - "§27 Termination measures"
+  foundations:
+    - "Termination and consistency"
+  trust:
+    - "§12.1 Loops"
+
+rule_families:
+  - TERMINATION
+  - CORRECT
+
+# The rules this feature realizes, within those families and outside them.
+# `cppl-spec-rules extract --feature` reads only the families above; extract
+# the others by ID.
+rules:
+  - TERMINATION-001
+  - TERMINATION-002
+  - TERMINATION-003
+  - TERMINATION-004
+  - TERMINATION-005
+  - TERMINATION-006
+  - TERMINATION-007
+  - CORRECT-001
+  - CORRECT-002
+  - CORRECT-003
+  - CORRECT-004
+  - CORRECT-005
+  - CORRECT-006
+  - LOOP-001
+  - LOOP-003
+  - LOOP-006
+  - LOOP-007
+
+depends_on:
+  - verified-functions
+  - loop-invariants
+  - verified-call-composition
+  - erasure
+
+implementation:
+  frontend:
+    - compiler/frontend/include/cppl/frontend/syntax.hpp
+    - compiler/frontend/src/recognizer.cpp
+    - compiler/frontend/include/cppl/frontend/projection.hpp
+    - compiler/frontend/src/projection.cpp
+  clang:
+    - clang/src/bridge.cpp
+  elaboration:
+    - compiler/elaboration/src/elaborate.cpp
+  vir:
+    - vir/include/cppl/vir/module.hpp
+  obligations:
+    - compiler/obligations/include/cppl/obligations/obligation.hpp
+    - compiler/obligations/include/cppl/obligations/contracts.hpp
+    - compiler/obligations/src/contracts.cpp
+    - compiler/obligations/src/status.cpp
+    - compiler/obligations/include/cppl/obligations/trust.hpp
+    - compiler/obligations/src/trust.cpp
+  automation:
+    - compiler/automation/src/composition.cpp
+    - compiler/automation/src/evidence.cpp
+  driver:
+    - compiler/driver/src/pipeline.hpp
+    - compiler/driver/src/pipeline.cpp
+    - compiler/driver/src/driver.cpp
+
+interactions:
+  - loop invariants and every loop form
+  - lexicographic measures on loops and functions
+  - direct and mutual recursion
+  - preconditions owed at recursive calls
+  - nested recursive calls
+  - ghost state read by a measure
+  - unsafe blocks, which stop totality
+  - calls to partial functions
+  - function templates, whose measures are refused
+  - trust closure over a recursion group
+  - erasure
+
+tests:
+  positive:
+    - tests/fixtures/termination.cpp
+    - tests/fixtures/equivalence/termination.cpp
+  negative:
+    - tests/negative/termination.sh
+    - tests/fixtures/negative/termination_recursion_without_measure.cpp
+    - tests/fixtures/negative/termination_mutual_without_measure.cpp
+    - tests/fixtures/negative/termination_mismatched_measures.cpp
+    - tests/fixtures/negative/termination_same_measure.cpp
+    - tests/fixtures/negative/termination_larger_measure.cpp
+    - tests/fixtures/negative/termination_wrapping_measure.cpp
+    - tests/fixtures/negative/termination_unknown_measure.cpp
+    - tests/fixtures/negative/termination_mutual_cycle.cpp
+    - tests/fixtures/negative/termination_group_member_false.cpp
+    - tests/fixtures/negative/termination_signed_measure.cpp
+    - tests/fixtures/negative/termination_unmeasured_loop.cpp
+    - tests/fixtures/negative/termination_partial_callee.cpp
+    - tests/fixtures/negative/termination_unsafe_block.cpp
+    - tests/fixtures/negative/termination_false_base_case.cpp
+    - tests/fixtures/negative/termination_lexicographic_loop.cpp
+    - tests/fixtures/negative/termination_continue_path.cpp
+    - tests/fixtures/negative/termination_do_loop_entry.cpp
+    - tests/fixtures/negative/termination_do_loop_exit.cpp
+    - tests/fixtures/negative/termination_template_measure.cpp
+    - tests/fixtures/negative/termination_recursive_definition.cpp
+    - tests/fixtures/negative/unverified_termination.cpp
+    - tests/negative/verified_loops.sh
+    - tests/negative/verified_calls.sh
+    - tests/negative/verified_functions.sh
+  unit:
+    - tests/unit/recognizer_test.cpp
+    - tests/unit/trust_closure_test.cpp
+  end_to_end:
+    - tests/e2e/termination.sh
+    - tests/e2e/verified_loops.sh
+    - tests/e2e/impossible_path.sh
+    - tests/e2e/erasure_equivalence.sh
+
+required_test_categories:
+  - loop measure, single and lexicographic
+  - continue paths and the for step
+  - do loops, entry and exit
+  - for without a condition
+  - nested loops
+  - direct, mutual and lexicographic recursion, nested recursive calls
+  - recursion without a measure refused
+  - same, larger, wrapped, unknown and cyclic descents refused
+  - a recursion group established whole
+  - signed measures refused
+  - termination requested and stopped by a loop, a callee or an unsafe block
+  - a false base case refused
+  - ghost measures
+  - totality reported and each partial contract named
+  - diagnostics naming the measures compared
+  - erasure equivalence, no runtime counter
+
+completion_requires:
+  - every continuing loop path and every recursive call owes a strict descent
+  - recursion without a measure is refused
+  - a recursion group is established only when every member is proven
+  - a contract is total only when every loop and callee terminates
+  - a function that asks to terminate and does not is refused
+  - measures erase and add no runtime code

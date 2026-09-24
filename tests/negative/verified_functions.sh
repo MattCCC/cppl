@@ -75,7 +75,7 @@ reject result_in_expects 'undeclared identifier.*result' \
     'verified unsigned f(unsigned x) expects (result == 0u) ensures (result == x) { return x; }'
 reject method 'outside namespace scope' \
     'struct S { verified unsigned f(unsigned x) ensures (result == x) { return x; } };'
-reject recursive 'recursion is not modeled' \
+reject recursive 'it calls itself and states no measure' \
     'verified pure unsigned f(unsigned x) ensures (result == x) { return f(x); }'
 reject conditional_call 'call.site precondition' \
     'verified pure unsigned g(unsigned x) expects (x == 0u) ensures (result == 0u) { return x; } verified unsigned f(unsigned x) ensures (result == x) { return g(x); }'
@@ -111,9 +111,10 @@ reject try_block "found a 'try' block" \
     'verified unsigned f(unsigned x) ensures (result == x) { try { return x; } catch (...) { return x; } }'
 reject discarded_call 'not declared pure' \
     'unsigned h(unsigned x); verified unsigned f(unsigned x) ensures (result == x) { h(x); return x; }'
-reject direct_recursion 'it calls itself; recursion is not modeled' \
+# SPEC: TERMINATION-007
+reject direct_recursion 'it calls itself and states no measure' \
     'verified unsigned f(unsigned x) ensures (result == x) { if (x == 0u) return 0u; return f(x - 1u) + 1u; }'
-reject mutual_recursion "call to 'g' is recursive or depends on recursion" \
+reject mutual_recursion "it calls 'g', which reaches it again, and it states no measure" \
     'unsigned g(unsigned); verified unsigned f(unsigned x) ensures (result == x) { return g(x); } verified unsigned g(unsigned x) ensures (result == x) { return f(x); }'
 # A contract on a template is parameterized by the template's own parameters and
 # states a claim interpreted per specialization, after substitution (SPEC.md 42

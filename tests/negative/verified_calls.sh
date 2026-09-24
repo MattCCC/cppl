@@ -36,9 +36,11 @@ reject argument_capture 'call-site precondition' \
     'verified unsigned g(unsigned a, unsigned b) expects (a == b) ensures (result == a) { return a; } verified unsigned f(unsigned x, unsigned y) expects (x == 0u) ensures (result == x) { return g(x, y); }'
 reject wrong_overload 'call-site precondition' \
     'verified unsigned g(unsigned x) expects (x == 0u) ensures (result == x) { return x; } verified int g(int x) ensures (result == x) { return x; } verified unsigned f() ensures (result == 1u) { return g(1u); }'
-reject recursion 'recursion is not modeled' \
+# SPEC: TERMINATION-007
+# Recursion without a measure would suppose the contract it is proving.
+reject recursion 'it calls itself and states no measure' \
     'verified unsigned f(unsigned x) ensures (result == x) { return f(x); }'
-reject mutual_recursion 'recursion is not modeled' \
+reject mutual_recursion 'which reaches it again, and it states no measure' \
     'unsigned g(unsigned); verified unsigned f(unsigned x) ensures (result == x) { return g(x); } verified unsigned g(unsigned x) ensures (result == x) { return f(x); }'
 reject argument_effect 'not modeled' \
     'verified unsigned g(unsigned x) ensures (result == x) { return x; } verified unsigned f(unsigned x) ensures (result == x) { return g(x++); }'

@@ -86,6 +86,26 @@ struct ContractVerification {
     // does every contract that calls this one (SPEC.md 26, TRUST.md
     // TCB-REPORT-005). A body with an unsafe block is always partial.
     std::vector<source::SourceLocation> unsafe_regions;
+
+    // Loops a path of the body enters that state no measure, each once. Where
+    // one stands, the body's termination is not established.
+    std::vector<source::SourceLocation> unmeasured_loops;
+
+    // The recursion group the function belongs to, this contract included, as
+    // indices into `Program::contracts`: functions that call each other,
+    // directly or through one another. Empty when the function does not
+    // recurse. A condition may suppose a member's contract before it is
+    // established, as the induction hypothesis the group's measure descents
+    // justify, so the members are established together or not at all (SPEC.md
+    // TERMINATION-007).
+    std::vector<std::size_t> recursion;
+
+    // Whether the contract is a total-correctness claim (SPEC.md CORRECT-003):
+    // every loop its paths enter has a measure whose descent is an obligation,
+    // it passes through no unsafe block, and every contract it calls is total,
+    // its recursion group's own included, whose calls descend a measure. When
+    // false, it states partial correctness: what holds if the function returns.
+    bool total = false;
 };
 
 } // namespace cppl::obligations

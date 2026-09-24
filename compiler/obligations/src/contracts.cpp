@@ -488,6 +488,8 @@ std::expected<void, Failure> append_calls(const vir::Expr& expression, const vir
     return {};
 }
 
+std::expected<kernel::IntType, Failure> measure_domain(const vir::Expr& measure, const std::string& what);
+
 // The contract itself: its types, postcondition and precondition, lowered
 // from the specification expressions alone.
 std::expected<void, Failure> state_contract(const vir::Function& function, const DefinitionMap& pure_definitions,
@@ -559,6 +561,17 @@ std::expected<void, Failure> state_contract(const vir::Function& function, const
             return std::unexpected(required.error());
         if (*required)
             plan.postcondition = kernel::Proposition::conjunction(std::move(plan.postcondition), **required);
+    }
+    // A measure is a function of the parameters alone, defined for every
+    // argument, and each component ranges over a well-founded domain (SPEC.md
+    // TERMINATION-005, 22.5).
+    for (const vir::Expr& measure : contract.measures) {
+        if (auto domain = measure_domain(measure, "a function measure"); !domain) {
+            return std::unexpected(domain.error());
+        }
+        if (auto lowered = lower_value(measure, pure_definitions, plan.parameters.size()); !lowered) {
+            return std::unexpected(lowered.error());
+        }
     }
     return {};
 }
@@ -706,6 +719,45 @@ std::expected<ContractVerification, Failure> build(const vir::Function& function
 // already bounds paths and statements; this keeps malformed VIR finite too.
 constexpr std::size_t kMaxConditionSteps = std::size_t{1} << 15;
 
+// The domain one measure component ranges over. An unsigned machine type,
+// ordered by its natural non-wrapping `<`, is well-founded; a signed one has no
+// least element a descent could stop at, and is refused rather than given an
+// assumed bound (SPEC.md 22.5).
+std::expected<kernel::IntType, Failure> measure_domain(const vir::Expr& measure, const std::string& what) {
+    const std::optional<kernel::Type> type = core_type(measure.type);
+    if (!type.has_value() || !type->is_integer()) {
+        return std::unexpected(
+            Failure{what + " must be an integer the formal core represents", measure.provenance.range.begin, {}});
+    }
+    if (type->integer_type().signedness != kernel::Signedness::Unsigned) {
+        return std::unexpected(Failure{what + " must range over a well-founded domain, so its type must be unsigned",
+                                       measure.provenance.range.begin,
+                                       {}});
+    }
+    return type->integer_type();
+}
+
+// `next` strictly below `here` in the lexicographic order of their components
+// (SPEC.md TERMINATION-005): the first falls, or it stays and the rest fall.
+// Each comparison is the machine's own at its component's unsigned type, and a
+// lexicographic product of well-founded orders is well-founded.
+kernel::Proposition lexicographically_below(const std::vector<kernel::Term>& next,
+                                            const std::vector<kernel::Term>& here,
+                                            const std::vector<kernel::IntType>& types) {
+    const auto compare = [&](kernel::PrimOp op, std::size_t index) {
+        return kernel::predicate(kernel::Term::primitive(op, types[index], {next[index], here[index]}), true);
+    };
+    std::size_t index = next.size() - 1;
+    kernel::Proposition below = compare(kernel::PrimOp::Less, index);
+    while (index > 0) {
+        --index;
+        below = kernel::Proposition::disjunction(
+            compare(kernel::PrimOp::Less, index),
+            kernel::Proposition::conjunction(compare(kernel::PrimOp::Equal, index), std::move(below)));
+    }
+    return below;
+}
+
 // Partial correctness (SPEC.md 23, 24).
 //
 // A body with a loop is not one total core term, so its contract cannot be a
@@ -719,15 +771,19 @@ constexpr std::size_t kMaxConditionSteps = std::size_t{1} << 15;
 // responsibility (TRUST.md 12.1, 13). Whether each holds is the kernel's.
 class Conditions {
   public:
+    // `recursion` is the recursion group the function belongs to, as contract
+    // indices, when it recurses: a call to one of them supposes its contract as
+    // the induction hypothesis and owes a strictly smaller measure.
     Conditions(const vir::Function& function, const ContractVerification& plan, const Contracts& contracts,
                const DefinitionMap& definitions, const std::map<std::string, std::size_t>& established,
-               const Program& program)
+               const Program& program, const std::vector<std::size_t>& recursion = {})
         : function_(function),
           plan_(plan),
           contracts_(contracts),
           definitions_(definitions),
           established_(established),
-          program_(program) {}
+          program_(program),
+          recursion_(recursion) {}
 
     std::expected<void, Failure> run() {
         if (!function_.returned_value.has_value()) {
@@ -748,6 +804,9 @@ class Conditions {
     // Every unsafe block a path of the body passes through, in the order the
     // walk meets them, each once.
     std::vector<source::SourceLocation> unsafe_regions;
+    // Every loop a path of the body enters that states no measure, each once.
+    // Its termination is not established, so neither is the body's.
+    std::vector<source::SourceLocation> unmeasured_loops;
 
   private:
     // After the parameters, a path binds fresh values and supposes facts, in
@@ -797,12 +856,13 @@ class Conditions {
     }
 
     void emit(const Scope& scope, Origin origin, std::string subject, const source::SourceRange& range,
-              kernel::Proposition goal) {
+              kernel::Proposition goal, std::vector<std::string> explanation = {}) {
         Obligation obligation;
         obligation.origin = origin;
         obligation.subject = std::move(subject);
         obligation.range = range;
         obligation.goal = close(scope, std::move(goal));
+        obligation.explanation = std::move(explanation);
         source::Hasher hasher;
         hasher.update_field("partial-correctness-v1");
         hasher.update_field(
@@ -964,6 +1024,14 @@ class Conditions {
             for (const auto& precondition : callee.preconditions) {
                 emit(scope, Origin::CallPrecondition, function_.qualified_name + " -> " + call.callee_name,
                      site->provenance.range, specialize(precondition, callee.parameters, arguments));
+            }
+            // A call within the recursion group supposes the callee's contract
+            // as the induction hypothesis, which holds only at a smaller
+            // measure (SPEC.md TERMINATION-007).
+            if (std::ranges::find(recursion_, found->second) != recursion_.end()) {
+                if (auto descent = descends_at_call(call, callee, arguments, scope, *site); !descent) {
+                    return descent;
+                }
             }
             // All post-state values are fresh. Their facts come only from the
             // proven callee contract, never from the erased parameter type.
@@ -1378,8 +1446,7 @@ class Conditions {
                                        std::vector<Active>& loops) {
         const source::SourceLocation& location = expression.provenance.range.begin;
         const std::size_t carried = loop.heads.size();
-        if (loop.places.size() != carried || loop.measures > 1 ||
-            loop.operands.size() != carried + loop.invariants + loop.measures + 1 ||
+        if (loop.places.size() != carried || loop.operands.size() != carried + loop.invariants + loop.measures + 1 ||
             std::ranges::any_of(loops, [&loop](const Active& active) { return active.loop->loop == loop.loop; })) {
             return fail("malformed loop", location);
         }
@@ -1402,21 +1469,19 @@ class Conditions {
                 return fail("a loop invariant must be a condition", location);
             }
         }
-        // A measure ranges over a well-founded domain (SPEC.md 22.5). An
-        // unsigned machine type ordered by its natural non-wrapping `<` is one;
-        // a signed one is not, because it has no least element the descent can
-        // stop at, and it is refused rather than given an assumed bound.
-        if (loop.measures == 1) {
-            const vir::Expr& measure = loop.operands[carried + loop.invariants];
-            const std::optional<kernel::Type> type = core_type(measure.type);
-            if (!type.has_value() || !type->is_integer()) {
-                return fail("a loop measure must be an integer the formal core represents", location);
+        // Each measure component ranges over a well-founded domain (SPEC.md
+        // 22.5). An unsigned machine type ordered by its natural non-wrapping
+        // `<` is one; a signed one is not, because it has no least element the
+        // descent can stop at, and it is refused rather than given an assumed
+        // bound. A lexicographic product of such orders is well-founded too.
+        for (std::uint32_t position = 0; position < loop.measures; ++position) {
+            const vir::Expr& measure = loop.operands[carried + loop.invariants + position];
+            if (auto domain = measure_domain(measure, "a loop measure"); !domain) {
+                return std::unexpected(domain.error());
             }
-            if (type->integer_type().signedness != kernel::Signedness::Unsigned) {
-                return fail("a loop measure must range over a well-founded domain, so its type must be "
-                            "unsigned",
-                            location);
-            }
+        }
+        if (loop.measures == 0 && std::ranges::find(unmeasured_loops, location) == unmeasured_loops.end()) {
+            unmeasured_loops.push_back(location);
         }
 
         for (std::uint32_t position = 0; position < loop.invariants; ++position) {
@@ -1508,7 +1573,7 @@ class Conditions {
             emit(scope, Origin::LoopPreservation, invariant_subject(expression, position), expression.provenance.range,
                  specialize(kernel::predicate(*invariant, true), active->carried, values));
         }
-        if (loop.measures == 1) {
+        if (loop.measures > 0) {
             if (auto descent = descends(loop, expression, scope, *active, values); !descent) {
                 return descent;
             }
@@ -1521,51 +1586,145 @@ class Conditions {
                " measure";
     }
 
-    // The descent an iteration owes its measure: the value it carries into the
-    // next iteration is strictly below the value the head started from
-    // (SPEC.md 24.3, LOOP-006).
+    // The descent an iteration owes its measure: the tuple it carries into the
+    // next iteration is strictly below the tuple the head started from, in the
+    // lexicographic order of its components (SPEC.md 24.3, LOOP-006,
+    // TERMINATION-005).
     //
-    // The measure is read twice from one expression. At the head it is stated
-    // over the carried values as they are bound there; at the end of the
+    // Each component is read twice from one expression. At the head it is
+    // stated over the carried values as they are bound there; at the end of the
     // iteration it is stated over the values the iteration produces, by the
     // same abstraction and instantiation the invariants use, so the two points
-    // are never confused. The comparison is the machine's own `<` at the
-    // measure's unsigned type, whose order is well-founded, so a strict descent
+    // are never confused. Each comparison is the machine's own order at the
+    // component's unsigned type, which is well-founded, so a strict descent
     // cannot continue forever.
     std::expected<void, Failure> descends(const vir::Loop& loop, const vir::Expr& expression, const Scope& scope,
                                           const Active& active, const std::vector<kernel::Term>& values) {
         const std::size_t carried = loop.heads.size();
-        const vir::Expr& written = loop.operands[carried + loop.invariants];
-        const std::optional<kernel::Type> type = core_type(written.type);
-        if (!type.has_value() || !type->is_integer()) {
-            return fail("a loop measure must be an integer the formal core represents",
-                        expression.provenance.range.begin);
-        }
-
         OpaqueBindings holes = scope.opaque;
         for (std::size_t index = 0; index < carried; ++index) {
             holes[loop.heads[index]] = scope.binders.size() + index;
         }
-        auto next =
-            lower_value(written, definitions_, scope.binders.size() + carried, &scope.calls, &scope.versions, &holes);
-        if (!next) {
-            return std::unexpected(next.error());
+        std::vector<kernel::Term> next;
+        std::vector<kernel::Term> here;
+        std::vector<kernel::IntType> types;
+        for (std::uint32_t position = 0; position < loop.measures; ++position) {
+            const vir::Expr& written = loop.operands[carried + loop.invariants + position];
+            auto domain = measure_domain(written, "a loop measure");
+            if (!domain) {
+                return std::unexpected(domain.error());
+            }
+            auto after = lower_value(written, definitions_, scope.binders.size() + carried, &scope.calls,
+                                     &scope.versions, &holes);
+            if (!after) {
+                return std::unexpected(after.error());
+            }
+            auto before = lower(written, scope);
+            if (!before) {
+                return std::unexpected(before.error());
+            }
+            next.push_back(std::move(*after));
+            // `next` stays abstracted over the head values, so the kernel
+            // instantiates it at what this iteration produced; `here` is moved
+            // past those binders to stand beside it.
+            here.push_back(kernel::shift(*before, static_cast<std::uint32_t>(carried)));
+            types.push_back(*domain);
         }
-        auto here = lower(written, scope);
-        if (!here) {
-            return std::unexpected(here.error());
+        std::string measure;
+        for (std::uint32_t position = 0; position < loop.measures; ++position) {
+            measure +=
+                (measure.empty() ? "" : ", ") + vir::describe(loop.operands[carried + loop.invariants + position]);
         }
+        std::string carries;
+        if (const auto* iteration = std::get_if<vir::Iterate>(&expression.node)) {
+            for (std::size_t index = 0; index < carried && index < iteration->operands.size(); ++index) {
+                carries += (carries.empty() ? "" : ", ") + vir::describe(loop.places[index]) + " = " +
+                           vir::describe(iteration->operands[index]);
+            }
+        }
+        emit(scope, Origin::LoopDescent, measure_subject(expression),
+             loop.operands[carried + loop.invariants].provenance.range,
+             specialize(lexicographically_below(next, here, types), active.carried, values),
+             {"the measure is (" + measure + ") at the head of the iteration, and is read again where this path " +
+                  (carried == 0 ? std::string("ends it, having changed nothing it reads") : "ends it, at " + carries),
+              "the second reading must be strictly smaller, component by component in order; 'x#k' names one "
+              "value local 'x' takes on the path"});
+        return {};
+    }
 
-        // next < here, with `next` still abstracted over the head values so the
-        // kernel instantiates it at what this iteration produced.
-        const kernel::IntType integer = type->integer_type();
-        auto descent = kernel::Proposition::equality(
-            kernel::Type{kernel::kBoolean},
-            kernel::Term::primitive(kernel::PrimOp::Less, integer,
-                                    {*next, kernel::shift(*here, static_cast<std::uint32_t>(carried))}),
-            kernel::Term::literal(kernel::kBoolean, 1));
-        emit(scope, Origin::LoopDescent, measure_subject(expression), written.provenance.range,
-             specialize(std::move(descent), active.carried, values));
+    // The descent a call within the recursion group owes: the callee's measure
+    // at the call's arguments is strictly below the caller's at the values it
+    // was entered with, lexicographically (SPEC.md TERMINATION-005,
+    // TERMINATION-007). Both are read from the contracts, so a measure is a
+    // function of the parameters alone, which a body cannot write.
+    //
+    // The callee's measure is stated over its own parameters and instantiated
+    // at the arguments by the kernel's substitution; the caller's is moved past
+    // those binders to stand beside it, as a loop's head measure is.
+    std::expected<void, Failure> descends_at_call(const vir::Call& call, const ContractVerification& callee,
+                                                  const std::vector<kernel::Term>& arguments, const Scope& scope,
+                                                  const vir::Expr& site) {
+        const source::SourceLocation& location = site.provenance.range.begin;
+        const auto declared = contracts_.find(call.callee.usr);
+        if (declared == contracts_.end()) {
+            return fail("'" + call.callee_name + "' has no established contract", location);
+        }
+        const std::optional<vir::Contract>& own = function_.contract;
+        const std::optional<vir::Contract>& stated = declared->second->contract;
+        if (!own.has_value() || !stated.has_value()) {
+            return fail("'" + call.callee_name + "' has no established contract", location);
+        }
+        const std::vector<vir::Expr>& mine = own->measures;
+        const std::vector<vir::Expr>& theirs = stated->measures;
+        if (mine.empty() || mine.size() != theirs.size()) {
+            return fail("'" + function_.qualified_name + "' and '" + call.callee_name +
+                            "' call each other, so each states a measure with as many components as the other",
+                        location);
+        }
+        std::vector<kernel::Term> next;
+        std::vector<kernel::Term> here;
+        std::vector<kernel::IntType> types;
+        for (std::size_t position = 0; position < mine.size(); ++position) {
+            auto caller = measure_domain(mine[position], "a function measure");
+            if (!caller) {
+                return std::unexpected(caller.error());
+            }
+            auto called = measure_domain(theirs[position], "a function measure");
+            if (!called) {
+                return std::unexpected(called.error());
+            }
+            if (!(*caller == *called)) {
+                return fail("component " + std::to_string(position + 1) + " of the measure of '" +
+                                function_.qualified_name + "' has type '" + vir::describe(mine[position].type) +
+                                "', and of '" + call.callee_name + "' type '" + vir::describe(theirs[position].type) +
+                                "': the two cannot be compared",
+                            location);
+            }
+            auto after = lower_value(theirs[position], definitions_, callee.parameters.size());
+            if (!after) {
+                return std::unexpected(after.error());
+            }
+            auto before = lower(mine[position], scope);
+            if (!before) {
+                return std::unexpected(before.error());
+            }
+            next.push_back(std::move(*after));
+            here.push_back(kernel::shift(*before, static_cast<std::uint32_t>(callee.parameters.size())));
+            types.push_back(*caller);
+        }
+        const auto described = [](const std::vector<vir::Expr>& expressions) {
+            std::string text;
+            for (const vir::Expr& expression : expressions) {
+                text += (text.empty() ? "" : ", ") + vir::describe(expression);
+            }
+            return "(" + text + ")";
+        };
+        emit(scope, Origin::CallDescent, function_.qualified_name + " -> " + call.callee_name, site.provenance.range,
+             specialize(lexicographically_below(next, here, types), callee.parameters, arguments),
+             {"'" + function_.qualified_name + "' was entered at measure " + described(mine) + "; '" +
+                  call.callee_name + "' is called with arguments " + described(call.arguments) + ", at its measure " +
+                  described(theirs),
+              "the call's measure must be strictly smaller, component by component in order"});
         return {};
     }
 
@@ -1594,21 +1753,22 @@ class Conditions {
     const DefinitionMap& definitions_;
     const std::map<std::string, std::size_t>& established_;
     const Program& program_;
+    const std::vector<std::size_t>& recursion_;
     std::size_t steps_ = 0;
     std::size_t paths_ = 0;
     std::size_t impossibilities_ = 0;
 };
 
-std::expected<ContractVerification, Failure> build_partial(const vir::Function& function, const Contracts& contracts,
-                                                           const DefinitionMap& pure_definitions,
-                                                           const std::map<std::string, std::size_t>& established,
-                                                           Program& program) {
-    ContractVerification plan;
-    if (auto stated = state_contract(function, pure_definitions, program, plan); !stated) {
-        return std::unexpected(stated.error());
-    }
-    plan.partial = true;
-    Conditions generated(function, plan, contracts, pure_definitions, established, program);
+// The conditions of a contract already stated in `plan`, pushed into the
+// program. Returns the contract's content identity, which a recursion group
+// assigns only once every member is built, since until then its members' calls
+// are identified by what their contracts state.
+std::expected<source::Digest, Failure> fill_conditions(const vir::Function& function, ContractVerification& plan,
+                                                       const Contracts& contracts,
+                                                       const DefinitionMap& pure_definitions,
+                                                       const std::map<std::string, std::size_t>& established,
+                                                       Program& program) {
+    Conditions generated(function, plan, contracts, pure_definitions, established, program, plan.recursion);
     if (auto run = generated.run(); !run) {
         return std::unexpected(run.error());
     }
@@ -1621,14 +1781,276 @@ std::expected<ContractVerification, Failure> build_partial(const vir::Function& 
     for (const Obligation& obligation : generated.obligations) {
         hasher.update_field(obligation.id.digest.to_short_hex(64));
     }
-    plan.identity = hasher.finish();
     plan.conditions = std::move(generated.conditions);
     plan.unsafe_regions = std::move(generated.unsafe_regions);
+    plan.unmeasured_loops = std::move(generated.unmeasured_loops);
     for (Obligation& obligation : generated.obligations) {
         program.obligations.push_back(std::move(obligation));
     }
     std::ranges::move(generated.claims, std::back_inserter(program.path_claims));
+    return hasher.finish();
+}
+
+std::expected<ContractVerification, Failure> build_partial(const vir::Function& function, const Contracts& contracts,
+                                                           const DefinitionMap& pure_definitions,
+                                                           const std::map<std::string, std::size_t>& established,
+                                                           Program& program) {
+    ContractVerification plan;
+    if (auto stated = state_contract(function, pure_definitions, program, plan); !stated) {
+        return std::unexpected(stated.error());
+    }
+    plan.partial = true;
+    auto identity = fill_conditions(function, plan, contracts, pure_definitions, established, program);
+    if (!identity) {
+        return std::unexpected(identity.error());
+    }
+    plan.identity = *identity;
     return plan;
+}
+
+// What a recursive contract states, identified before its body is: its
+// preconditions, its postcondition and its measure. A call within the group
+// rests on exactly that, the induction hypothesis, so it is what such a call's
+// obligation is identified by.
+source::Digest statement_identity(const vir::Function& function, const ContractVerification& plan) {
+    source::Hasher hasher;
+    hasher.update_field("recursive-contract-statement-v1");
+    hasher.update_field(function.qualified_name);
+    for (const kernel::Proposition& precondition : plan.preconditions) {
+        hasher.update_field(kernel::describe(precondition));
+    }
+    hasher.update_field(kernel::describe(plan.postcondition));
+    if (function.contract.has_value()) {
+        for (const vir::Expr& measure : function.contract->measures) {
+            hasher.update_field(vir::describe(measure));
+        }
+    }
+    return hasher.finish();
+}
+
+// A recursion group: functions that call each other, verified together
+// (SPEC.md TERMINATION-007). Every member's contract is stated and reserved
+// first, so a call within the group finds the contract it supposes; then each
+// body's conditions are generated, a call within the group owing a smaller
+// measure. If any member cannot be stated or built, none is: a member's proof
+// supposes the others', so what was generated for the group is withdrawn.
+std::expected<void, std::pair<const vir::Function*, Failure>> build_group(
+    const std::vector<const vir::Function*>& members, const Contracts& contracts, const DefinitionMap& pure_definitions,
+    std::map<std::string, std::size_t>& established, Program& program) {
+    const std::size_t first_contract = program.contracts.size();
+    const std::size_t first_obligation = program.obligations.size();
+    const std::size_t first_claim = program.path_claims.size();
+    const auto withdraw = [&] {
+        program.contracts.erase(program.contracts.begin() + static_cast<std::ptrdiff_t>(first_contract),
+                                program.contracts.end());
+        program.obligations.erase(program.obligations.begin() + static_cast<std::ptrdiff_t>(first_obligation),
+                                  program.obligations.end());
+        program.path_claims.erase(program.path_claims.begin() + static_cast<std::ptrdiff_t>(first_claim),
+                                  program.path_claims.end());
+        for (const vir::Function* member : members) {
+            established.erase(member->symbol.usr);
+        }
+    };
+    std::vector<std::size_t> group;
+    for (const vir::Function* member : members) {
+        ContractVerification plan;
+        if (auto stated = state_contract(*member, pure_definitions, program, plan); !stated) {
+            withdraw();
+            return std::unexpected(std::pair{member, stated.error()});
+        }
+        plan.partial = true;
+        plan.identity = statement_identity(*member, plan);
+        group.push_back(program.contracts.size());
+        established.emplace(member->symbol.usr, program.contracts.size());
+        program.contracts.push_back(std::move(plan));
+    }
+    for (const std::size_t index : group) {
+        program.contracts[index].recursion = group;
+    }
+    std::vector<source::Digest> identities;
+    for (std::size_t position = 0; position < members.size(); ++position) {
+        auto identity = fill_conditions(*members[position], program.contracts[group[position]], contracts,
+                                        pure_definitions, established, program);
+        if (!identity) {
+            withdraw();
+            return std::unexpected(std::pair{members[position], identity.error()});
+        }
+        identities.push_back(*identity);
+    }
+    for (std::size_t position = 0; position < members.size(); ++position) {
+        program.contracts[group[position]].identity = identities[position];
+    }
+    return {};
+}
+
+// The strongly connected components of a call graph of `count` functions, each
+// component's members in ascending order and the components ordered by their
+// first member, so the result does not depend on how the search walked.
+// Iterative, so a long call chain cannot exhaust the stack.
+std::vector<std::vector<std::size_t>> recursion_groups(
+    std::size_t count, const std::function<const std::vector<std::size_t>&(std::size_t)>& callees) {
+    constexpr std::size_t kUnvisited = static_cast<std::size_t>(-1);
+    std::vector<std::size_t> order(count, kUnvisited);
+    std::vector<std::size_t> low(count, 0);
+    std::vector<bool> on_stack(count, false);
+    std::vector<std::size_t> stack;
+    std::vector<std::vector<std::size_t>> groups;
+    std::size_t next = 0;
+    struct Frame {
+        std::size_t node;
+        std::size_t edge;
+    };
+    for (std::size_t root = 0; root < count; ++root) {
+        if (order[root] != kUnvisited) {
+            continue;
+        }
+        std::vector<Frame> frames{{root, 0}};
+        order[root] = low[root] = next++;
+        stack.push_back(root);
+        on_stack[root] = true;
+        while (!frames.empty()) {
+            Frame& frame = frames.back();
+            const std::vector<std::size_t>& edges = callees(frame.node);
+            if (frame.edge < edges.size()) {
+                const std::size_t callee = edges[frame.edge++];
+                if (order[callee] == kUnvisited) {
+                    order[callee] = low[callee] = next++;
+                    stack.push_back(callee);
+                    on_stack[callee] = true;
+                    frames.push_back({callee, 0});
+                } else if (on_stack[callee]) {
+                    low[frame.node] = std::min(low[frame.node], order[callee]);
+                }
+                continue;
+            }
+            const std::size_t node = frame.node;
+            frames.pop_back();
+            if (!frames.empty()) {
+                low[frames.back().node] = std::min(low[frames.back().node], low[node]);
+            }
+            if (low[node] == order[node]) {
+                std::vector<std::size_t>& group = groups.emplace_back();
+                std::size_t member = kUnvisited;
+                while (member != node) {
+                    member = stack.back();
+                    stack.pop_back();
+                    on_stack[member] = false;
+                    group.push_back(member);
+                }
+                std::ranges::sort(group);
+            }
+        }
+    }
+    // Disjoint and each sorted, so their lexicographic order is that of their
+    // first members.
+    std::ranges::sort(groups);
+    return groups;
+}
+
+// A function whose termination was asked for, or is required, and is not
+// established (SPEC.md TERMINATION-006): a verification failure, never an
+// omission.
+void report_termination(diagnostics::Engine& engine, const vir::Function& function, const std::string& reason,
+                        const source::SourceLocation& location, std::string note) {
+    diagnostics::Diagnostic diagnostic;
+    diagnostic.severity = diagnostics::Severity::Error;
+    diagnostic.category = diagnostics::Category::ProofFailure;
+    diagnostic.location = location.is_valid() ? location : function.range.begin;
+    diagnostic.message =
+        "the termination of verified function '" + function.qualified_name + "' is not established: " + reason;
+    diagnostic.notes.push_back({std::move(note), diagnostic.location});
+    engine.report(std::move(diagnostic));
+}
+
+std::string written_at(const source::SourceLocation& location) {
+    return location.file + ":" + std::to_string(location.line);
+}
+
+// Which contracts are total-correctness claims (SPEC.md CORRECT-003 to
+// CORRECT-006). One built as a theorem about its definition has no loop and
+// calls only such contracts, so it is total. One built from conditions is total
+// when every loop its paths enter states a measure, it passes through no
+// unsafe block, and every contract it calls is total: the greatest fixed point
+// of that rule, so a recursion group is total when all of its members are,
+// their calls within it descending a measure. A function whose `decreases`
+// asks that it terminate and is not total is refused, for the first reason it
+// is not.
+void settle_totality(Program& program, const Contracts& contracts, diagnostics::Engine& engine) {
+    const std::size_t count = program.contracts.size();
+    std::map<std::uint32_t, std::size_t> index_of;
+    for (std::size_t index = 0; index < count; ++index) {
+        index_of.emplace(program.contracts[index].function.value, index);
+    }
+    std::vector<std::vector<std::size_t>> callees(count);
+    const auto calls = [&callees](std::size_t caller, std::size_t callee) {
+        if (std::ranges::find(callees[caller], callee) == callees[caller].end()) {
+            callees[caller].push_back(callee);
+        }
+    };
+    std::vector<bool> total(count, false);
+    for (std::size_t index = 0; index < count; ++index) {
+        const ContractVerification& contract = program.contracts[index];
+        if (!contract.partial) {
+            total[index] = true;
+            for (const ReturnPath& path : contract.paths) {
+                for (const CallVerification& call : path.calls) {
+                    if (const auto callee = index_of.find(call.callee.value); callee != index_of.end()) {
+                        calls(index, callee->second);
+                    }
+                }
+            }
+            continue;
+        }
+        total[index] = contract.unmeasured_loops.empty() && contract.unsafe_regions.empty();
+        for (const VerificationCondition& condition : contract.conditions) {
+            for (const std::size_t callee : condition.callees) {
+                if (callee < count) {
+                    calls(index, callee);
+                }
+            }
+        }
+    }
+    for (bool changed = true; changed;) {
+        changed = false;
+        for (std::size_t index = 0; index < count; ++index) {
+            if (total[index] &&
+                std::ranges::any_of(callees[index], [&total](std::size_t callee) { return !total[callee]; })) {
+                total[index] = false;
+                changed = true;
+            }
+        }
+    }
+    for (std::size_t index = 0; index < count; ++index) {
+        program.contracts[index].total = total[index];
+    }
+
+    for (const auto& [usr, function] : contracts) {
+        const auto found = index_of.find(function->id.value);
+        if (found == index_of.end() || !function->contract.has_value() || function->contract->measures.empty() ||
+            total[found->second]) {
+            continue;
+        }
+        const ContractVerification& contract = program.contracts[found->second];
+        std::string reason;
+        source::SourceLocation location = function->contract->measure_range.begin;
+        if (!contract.unmeasured_loops.empty()) {
+            location = contract.unmeasured_loops.front();
+            reason = "the loop at " + written_at(location) + " states no measure";
+        } else if (!contract.unsafe_regions.empty()) {
+            location = contract.unsafe_regions.front();
+            reason = "it passes through the unsafe block at " + written_at(location) + ", which need not return";
+        } else {
+            const auto callee = std::ranges::find_if(callees[found->second],
+                                                     [&total](std::size_t candidate) { return !total[candidate]; });
+            reason = callee == callees[found->second].end()
+                         ? "a function it calls does not terminate"
+                         : "it calls '" + program.contracts[*callee].name + "', whose termination is not established";
+        }
+        report_termination(engine, *function, reason, location,
+                           "a 'decreases' clause makes termination part of what is verified, so every loop the "
+                           "function runs states a measure and every function it calls terminates (SPEC.md "
+                           "TERMINATION-006, CORRECT-004)");
+    }
 }
 
 } // namespace
@@ -1642,42 +2064,143 @@ void generate_contracts(const vir::Module& module, const DefinitionMap& pure_def
     struct Candidate {
         const vir::Function* function;
         const vir::Expr* returned_value;
+        std::vector<const vir::Expr*> calls; // every verified call the body makes
+        std::vector<std::size_t> callees;    // the candidates those calls reach, each once
     };
-    std::vector<Candidate> pending;
+    std::vector<Candidate> candidates;
     for (const auto& function : module.functions) {
         if (function.contract.has_value() && function.returned_value.has_value()) {
             contracts.emplace(function.symbol.usr, &function);
-            pending.push_back({&function, &function.returned_value.value()});
+            candidates.push_back({&function, &function.returned_value.value(), {}, {}});
         }
     }
+    std::map<std::string, std::size_t> position_of;
+    for (std::size_t position = 0; position < candidates.size(); ++position) {
+        position_of.emplace(candidates[position].function->symbol.usr, position);
+    }
+    for (Candidate& candidate : candidates) {
+        collect_calls(*candidate.returned_value, contracts, candidate.calls);
+        for (const vir::Expr* site : candidate.calls) {
+            const std::size_t callee = position_of.at(std::get<vir::Call>(site->node).callee.usr);
+            if (std::ranges::find(candidate.callees, callee) == candidate.callees.end()) {
+                candidate.callees.push_back(callee);
+            }
+        }
+    }
+
+    // The recursion groups: functions that reach one another through their
+    // calls, found as the strongly connected components of the call graph.
+    const std::vector<std::vector<std::size_t>> groups =
+        recursion_groups(candidates.size(), [&candidates](std::size_t position) -> const std::vector<std::size_t>& {
+            return candidates[position].callees;
+        });
+
+    // A group is recursive when it has more than one member or its one member
+    // calls itself. Recursion is verified only with a measure every call within
+    // the group descends (SPEC.md TERMINATION-007), and a group whose members
+    // do not all state one, of one length, is refused before anything is built.
+    struct Unit {
+        std::vector<std::size_t> members;
+        bool recursive = false;
+    };
+    std::vector<Unit> pending;
+    for (const std::vector<std::size_t>& group : groups) {
+        const bool recursive =
+            group.size() > 1 || std::ranges::find(candidates[group.front()].callees, group.front()) !=
+                                    candidates[group.front()].callees.end();
+        if (!recursive) {
+            pending.push_back(Unit{group, false});
+            continue;
+        }
+        bool admitted = true;
+        const std::size_t length = candidates[group.front()].function->contract->measures.size();
+        for (const std::size_t member : group) {
+            const vir::Function& function = *candidates[member].function;
+            // Where the recursion is written: the first call into the group.
+            source::SourceLocation at = function.range.begin;
+            std::string partner;
+            for (const vir::Expr* site : candidates[member].calls) {
+                const std::size_t callee = position_of.at(std::get<vir::Call>(site->node).callee.usr);
+                if (std::ranges::find(group, callee) != group.end()) {
+                    at = site->provenance.range.begin;
+                    partner = std::get<vir::Call>(site->node).callee_name;
+                    break;
+                }
+            }
+            if (function.contract->measures.empty()) {
+                report_termination(engine, function,
+                                   group.size() == 1
+                                       ? "it calls itself and states no measure"
+                                       : "it calls '" + partner + "', which reaches it again, and it states no measure",
+                                   at,
+                                   "recursion is verified only when every function of it states 'decreases (...)' "
+                                   "and every recursive call is made at a strictly smaller measure (SPEC.md "
+                                   "TERMINATION-007)");
+                admitted = false;
+            } else if (function.contract->measures.size() != length) {
+                const auto components = [](std::size_t count) {
+                    return std::to_string(count) + (count == 1 ? " component" : " components");
+                };
+                report_termination(engine, function,
+                                   "its measure has " + components(function.contract->measures.size()) +
+                                       ", and that of '" + candidates[group.front()].function->qualified_name +
+                                       "', which it recurses with, has " + components(length),
+                                   function.contract->measure_range.begin,
+                                   "the functions of one recursion share one ranking: each call within it compares "
+                                   "the callee's measure with the caller's, component by component (SPEC.md "
+                                   "TERMINATION-007)");
+                admitted = false;
+            }
+        }
+        if (admitted) {
+            pending.push_back(Unit{group, true});
+        }
+    }
+
     DefinitionMap definitions = pure_definitions;
     std::map<std::string, std::size_t> established;
+    const auto ready = [&](const Unit& unit) {
+        return std::ranges::all_of(unit.members, [&](std::size_t member) {
+            return std::ranges::all_of(candidates[member].callees, [&](std::size_t callee) {
+                return std::ranges::find(unit.members, callee) != unit.members.end() ||
+                       established.contains(candidates[callee].function->symbol.usr);
+            });
+        });
+    };
     bool progress = true;
     while (progress) {
         progress = false;
-        for (auto candidate = pending.begin(); candidate != pending.end();) {
-            const auto& function = *candidate->function;
-            const auto& returned_value = *candidate->returned_value;
-            std::vector<const vir::Expr*> calls;
-            collect_calls(returned_value, contracts, calls);
-            if (!std::ranges::all_of(calls, [&](const vir::Expr* call) {
-                    return established.contains(std::get<vir::Call>(call->node).callee.usr);
-                })) {
-                ++candidate;
+        for (auto unit = pending.begin(); unit != pending.end();) {
+            if (!ready(*unit)) {
+                ++unit;
                 continue;
             }
+            if (unit->recursive) {
+                std::vector<const vir::Function*> members;
+                for (const std::size_t member : unit->members) {
+                    members.push_back(candidates[member].function);
+                }
+                if (auto built = build_group(members, contracts, pure_definitions, established, program); !built) {
+                    report(engine, *built.error().first, built.error().second, explain);
+                }
+                unit = pending.erase(unit);
+                progress = true;
+                continue;
+            }
+            const Candidate& candidate = candidates[unit->members.front()];
+            const vir::Function& function = *candidate.function;
             // A loop, or a call whose contract is itself partial, leaves the
             // body without a total term; its contract is then partial too. So
             // does a call whose callee states memory capabilities: what such a
             // call owes is checked where the path makes it (SPEC.md 12.10
             // VERIFIED-043), which only the conditions walk does.
-            const bool partial =
-                requires_conditions(returned_value) || std::ranges::any_of(calls, [&](const vir::Expr* call) {
-                    const std::string& callee = std::get<vir::Call>(call->node).callee.usr;
-                    const vir::Function& declared = *contracts.at(callee);
-                    return program.contracts[established.at(callee)].partial ||
-                           (declared.contract.has_value() && !declared.contract->capabilities.empty());
-                });
+            const bool partial = requires_conditions(*candidate.returned_value) ||
+                                 std::ranges::any_of(candidate.calls, [&](const vir::Expr* call) {
+                                     const std::string& callee = std::get<vir::Call>(call->node).callee.usr;
+                                     const vir::Function& declared = *contracts.at(callee);
+                                     return program.contracts[established.at(callee)].partial ||
+                                            (declared.contract.has_value() && !declared.contract->capabilities.empty());
+                                 });
             auto plan = partial ? build_partial(function, contracts, pure_definitions, established, program)
                                 : build(function, contracts, pure_definitions, definitions, established, program);
             if (plan) {
@@ -1686,38 +2209,28 @@ void generate_contracts(const vir::Module& module, const DefinitionMap& pure_def
             } else {
                 report(engine, function, plan.error(), explain);
             }
-            candidate = pending.erase(candidate);
+            unit = pending.erase(unit);
             progress = true;
         }
     }
-    const auto is_pending = [&pending](const std::string& usr) {
-        return std::ranges::any_of(pending, [&usr](const Candidate& each) { return each.function->symbol.usr == usr; });
-    };
-    for (const auto& candidate : pending) {
-        const auto* function = candidate.function;
-        std::vector<const vir::Expr*> calls;
-        collect_calls(*candidate.returned_value, contracts, calls);
-        std::string reason = "a verified callee is not available";
-        source::SourceLocation location = function->range.begin;
-        for (const vir::Expr* site : calls) {
-            const auto& call = std::get<vir::Call>(site->node);
-            if (established.contains(call.callee.usr)) {
-                continue;
+    for (const Unit& unit : pending) {
+        for (const std::size_t member : unit.members) {
+            const Candidate& candidate = candidates[member];
+            std::string reason = "a verified callee is not available";
+            source::SourceLocation location = candidate.function->range.begin;
+            for (const vir::Expr* site : candidate.calls) {
+                const auto& call = std::get<vir::Call>(site->node);
+                if (!established.contains(call.callee.usr)) {
+                    location = site->provenance.range.begin;
+                    reason = "its callee '" + call.callee_name + "' has no established contract";
+                    break;
+                }
             }
-            location = site->provenance.range.begin;
-            if (call.callee.usr == function->symbol.usr) {
-                reason = "it calls itself; recursion is not modeled, because termination is not yet verified";
-            } else if (is_pending(call.callee.usr)) {
-                reason = "its call to '" + call.callee_name +
-                         "' is recursive or depends on recursion; recursion is not modeled, because termination is "
-                         "not yet verified";
-            } else {
-                reason = "its callee '" + call.callee_name + "' has no established contract";
-            }
-            break;
+            report(engine, *candidate.function, Failure{reason, location, {}}, explain);
         }
-        report(engine, *function, Failure{reason, location, {}}, explain);
     }
+
+    settle_totality(program, contracts, engine);
 }
 
 } // namespace cppl::obligations::detail

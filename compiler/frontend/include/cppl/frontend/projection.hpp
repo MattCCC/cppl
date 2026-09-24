@@ -63,6 +63,9 @@ struct ContractFunctions {
     std::size_t function_index = 0;
     std::string postcondition_name;
     std::vector<std::string> precondition_names; // one per expects clause, in source order
+    // One per component of the function's `decreases` measure, in order, each a
+    // function of the parameters returning that component (SPEC.md 22.3).
+    std::vector<std::string> measure_names;
 };
 
 // The declaration a loop invariant is projected into: a generated `bool` local

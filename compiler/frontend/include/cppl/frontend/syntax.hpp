@@ -32,6 +32,19 @@ struct Clause {
     source::SourceLocation location;
 };
 
+// One component of a `decreases` measure. `decreases (outer, inner)` is one
+// lexicographic list whose components its top-level commas separate; a single
+// measure is a list of one (SPEC.md TERMINATION-004).
+struct MeasureComponent {
+    source::ByteSpan expression;
+    source::SourceLocation location; // where the component's first token stands
+};
+
+// The components of `clause`, a `decreases` clause read from `stream`, in the
+// order written. A component with no tokens is returned empty, for the caller
+// to refuse.
+[[nodiscard]] std::vector<MeasureComponent> measure_components(const TokenStream& stream, const Clause& clause);
+
 // What a clause is written on.
 enum class ClauseOwner : std::uint8_t {
     Law,
@@ -279,6 +292,9 @@ struct VerifiedFunction {
 
     [[nodiscard]] const Clause* postcondition() const;
     [[nodiscard]] std::vector<const Clause*> preconditions() const; // in source order
+    // The `decreases` clause asking that the function terminate, if written
+    // (SPEC.md TERMINATION-004).
+    [[nodiscard]] const Clause* measure() const;
 };
 
 // while (condition) invariant (P)... { body }
@@ -295,7 +311,6 @@ struct LoopSpecification {
     std::vector<Clause> invariants;
     std::optional<Clause> decreases;
     std::vector<source::SourceLocation> expression_locations; // one per invariant
-    source::SourceLocation measure_location;                  // where `decreases`' expression starts
     source::ByteSpan clause_region;
 
     // Just past the body's '{', where the invariant declarations are inserted,

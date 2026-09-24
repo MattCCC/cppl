@@ -57,6 +57,10 @@ struct ClaimClosure {
     // a case of a verified body cannot occur rests on those of that body's
     // contract. Only these claims have runtime code to rest on.
     std::vector<UnsafeDependency> unsafe = {};
+
+    // For a contract, whether it is a total-correctness claim rather than one
+    // that holds only if the function returns (SPEC.md CORRECT-006).
+    bool total = true;
 };
 
 // The trust closure of every proven claim of one translation unit.

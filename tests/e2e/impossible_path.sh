@@ -19,12 +19,14 @@ run=$(mktemp -d "$WORK/impossible-path.XXXXXX")
     "--cppl-emit-projection=$run/runtime.cpp" > "$run/report"
 
 # Six claims, each proven, and each counted as an impossible path rather than
-# as an omitted case. Every function with a claim has partial-correctness
-# conditions: a path that ends in a claim returns no value.
+# as an omitted case. Every function with a claim is verified from conditions,
+# since a path that ends in a claim returns no value; a claim ends a path that
+# cannot occur, so each still terminates, and only the one whose loop states no
+# measure is partial (SPEC.md CORRECT-003, CORRECT-006).
 grep -Eq "^Impossible paths proven: +6$" "$run/report"
 grep -Eq "^Omitted cases proven: +0$" "$run/report"
 grep -Eq "^Function contracts proven: +7$" "$run/report"
-grep -Eq "^ +partial correctness only: +6$" "$run/report"
+grep -Eq "^ +partial correctness only: +1$" "$run/report"
 grep -Eq "^Unresolved obligations: +0$" "$run/report"
 grep -Eq "^Trusted external axioms: +0$" "$run/report"
 grep -Eq "^Trusted solvers: +0$" "$run/report"

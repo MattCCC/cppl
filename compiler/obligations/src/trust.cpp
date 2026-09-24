@@ -60,6 +60,7 @@ std::optional<ClaimKind> claim_of(Origin origin) {
         case Origin::LoopEntry:
         case Origin::LoopPreservation:
         case Origin::LoopDescent:
+        case Origin::CallDescent:
         case Origin::RefinementIntroduction:
         case Origin::ElementBounds:
             return std::nullopt;
@@ -287,13 +288,22 @@ TrustClosure close_trust(const Program& program, const std::vector<ObligationRes
         closure.claims[claim].unsafe = listed(regions[contract]);
     }
 
+    // A contract of a recursion group holds only with the whole group, each
+    // member's proof supposing the others' as its induction hypothesis.
+    const auto conditions_proven = [&](const ContractVerification& contract) {
+        return std::ranges::all_of(contract.conditions, [&results](const VerificationCondition& condition) {
+            return results[condition.obligation].verdict.is_proven();
+        });
+    };
     for (std::size_t index = 0; index < program.contracts.size(); ++index) {
         const ContractVerification& contract = program.contracts[index];
         const bool proven = contract.partial
-                                ? std::ranges::all_of(contract.conditions,
-                                                      [&results](const VerificationCondition& condition) {
-                                                          return results[condition.obligation].verdict.is_proven();
-                                                      })
+                                ? conditions_proven(contract) &&
+                                      std::ranges::all_of(contract.recursion,
+                                                          [&](std::size_t member) {
+                                                              return member < program.contracts.size() &&
+                                                                     conditions_proven(program.contracts[member]);
+                                                          })
                                 : results[contract.obligation].verdict.is_proven();
         if (!proven) {
             continue;
@@ -312,7 +322,7 @@ TrustClosure close_trust(const Program& program, const std::vector<ObligationRes
             ClaimKind::Contract, contract.name,
             anchor < results.size() ? program.obligations[anchor].range.begin : source::SourceLocation{},
             contract.partial ? ObligationId{contract.identity} : program.obligations[contract.obligation].id,
-            ordered(std::move(contracts[index])), listed(regions[index])});
+            ordered(std::move(contracts[index])), listed(regions[index]), contract.total});
     }
 
     return closure;

@@ -2276,10 +2276,13 @@ struct Continuation {
 // A loop about to be entered.
 struct LoopHeader {
     CXCursor statement = clang_getNullCursor();
-    CXCursor condition = clang_getNullCursor();
+    CXCursor condition = clang_getNullCursor(); // null for a `for` without one
     CXCursor body = clang_getNullCursor();
     std::optional<CXCursor> increment;
     const Continuation* exit = nullptr; // what follows the loop
+    // A `do` loop: the body runs first, and the condition decides at the end
+    // of each iteration whether another begins (SPEC.md LOOP-003).
+    bool condition_last = false;
 };
 
 // A loop whose body is being lowered.
@@ -2291,6 +2294,8 @@ struct LoopFrame {
     std::optional<CXCursor> increment;
     const Continuation* exit = nullptr;
     std::size_t frames_outside = 0; // the enclosing loops, for a `break` into what follows
+    CXCursor condition = clang_getNullCursor();
+    bool condition_last = false;
 };
 
 // A memory capability the contract of the body being lowered states, resolved
@@ -3176,7 +3181,11 @@ struct BodyLowering {
             return end_iteration(*frames.back(), false, locals, depth);
         }
         if (kind == CXCursor_DoStmt) {
-            return reject("do-while loops are not modeled");
+            if (parts.size() != 2 || clang_isExpression(clang_getCursorKind(parts[1])) == 0) {
+                return reject("the parts of this do loop could not be resolved");
+            }
+            const LoopHeader header{statement, parts[1], parts[0], std::nullopt, &next, true};
+            return lower_loop(header, locals, depth);
         }
         if (kind == CXCursor_CXXForRangeStmt) {
             return reject("range-based for loops are not modeled");
@@ -3189,13 +3198,13 @@ struct BodyLowering {
         if (!parts) {
             return reject("the parts of this for loop could not be resolved");
         }
-        if (!parts->condition) {
-            return reject("a for loop without a condition is not modeled");
-        }
-        if (clang_isExpression(clang_getCursorKind(*parts->condition)) == 0) {
+        if (parts->condition && clang_isExpression(clang_getCursorKind(*parts->condition)) == 0) {
             return reject("a for loop whose condition declares a variable is not modeled");
         }
-        const LoopHeader header{statement, *parts->condition, parts->body, parts->increment, &next};
+        // A `for` without a condition runs until a `break` or a `return` leaves
+        // it (SPEC.md LOOP-001).
+        const LoopHeader header{statement, parts->condition.value_or(clang_getNullCursor()), parts->body,
+                                parts->increment, &next};
         if (!parts->initialization) {
             return lower_loop(header, locals, depth);
         }
@@ -3556,21 +3565,16 @@ struct BodyLowering {
             statements.push_back(header.body);
         }
         std::vector<CXCursor> markers;
-        std::optional<CXCursor> measure_marker;
+        // A lexicographic measure is one marker per component, in the order
+        // written (SPEC.md TERMINATION-004).
+        std::vector<CXCursor> measure_markers;
         std::size_t first = 0;
         while (first < statements.size()) {
             const std::optional<LoopMarker> marker = invariant_marker(statements[first]);
             if (!marker) {
                 break;
             }
-            if (marker->measure) {
-                if (measure_marker) {
-                    return reject("a loop states one 'decreases' measure");
-                }
-                measure_marker = marker->cursor;
-            } else {
-                markers.push_back(marker->cursor);
-            }
+            (marker->measure ? measure_markers : markers).push_back(marker->cursor);
             ++first;
         }
 
@@ -3581,8 +3585,12 @@ struct BodyLowering {
         frame.increment = header.increment;
         frame.exit = header.exit;
         frame.frames_outside = frames.size();
+        frame.condition = header.condition;
+        frame.condition_last = header.condition_last;
         std::vector<bool> written(locals.size(), false);
-        mark_writes(header.condition, locals, written);
+        if (clang_Cursor_isNull(header.condition) == 0) {
+            mark_writes(header.condition, locals, written);
+        }
         if (header.increment) {
             mark_writes(*header.increment, locals, written);
         }
@@ -3624,12 +3632,12 @@ struct BodyLowering {
             invariants.push_back(std::move(invariant));
             consumed_invariants.push_back(take(clang_getCursorSpelling(marker)));
         }
-        // The measure is read in the head's scope like an invariant, but it is
-        // a value rather than a condition. Its well-founded domain is checked
-        // where the obligation is stated (SPEC.md 22.5).
-        std::optional<Expr> measure;
-        if (measure_marker) {
-            const CXCursor initializer = clang_Cursor_getVarDeclInitializer(*measure_marker);
+        // Each measure component is read in the head's scope like an invariant,
+        // but it is a value rather than a condition. Its well-founded domain is
+        // checked where the obligation is stated (SPEC.md 22.5).
+        std::vector<Expr> measures;
+        for (const CXCursor marker : measure_markers) {
+            const CXCursor initializer = clang_Cursor_getVarDeclInitializer(marker);
             if (clang_Cursor_isNull(initializer) != 0) {
                 return reject("a loop measure was not resolved");
             }
@@ -3637,10 +3645,9 @@ struct BodyLowering {
             if (!std::holds_alternative<Unsupported>(value.node) && value.type.kind != TypeKind::Int) {
                 return reject("a loop measure must be an integer");
             }
-            measure = std::move(value);
-            consumed_invariants.push_back(take(clang_getCursorSpelling(*measure_marker)));
+            measures.push_back(std::move(value));
+            consumed_invariants.push_back(take(clang_getCursorSpelling(marker)));
         }
-        Expr condition = build_expression(header.condition, parameters, frame.head, 0);
 
         frames.push_back(&frame);
         const std::vector<CXCursor> rest(statements.begin() + static_cast<std::ptrdiff_t>(first), statements.end());
@@ -3652,20 +3659,33 @@ struct BodyLowering {
             revoked_by = enclosing_revocation;
             return std::nullopt;
         }
-        std::optional<Expr> after = lower_statements(*header.exit, frame.head, depth + 1);
-        revoked_by = enclosing_revocation;
-        if (!after) {
-            return std::nullopt;
-        }
-        if (return_paths(*once) + return_paths(*after) > kMaxReturnPaths) {
-            return reject("more than " + std::to_string(kMaxReturnPaths) + " return paths are not modeled");
-        }
 
         const source::SourceLocation location = presumed_location(clang_getCursorLocation(header.statement));
         Expr head;
         head.type = result_type;
         head.location = location;
-        head.node = Conditional{{std::move(condition), std::move(*once), std::move(*after)}};
+        // What happens from the head on. A `do` loop runs its body first and
+        // decides at each iteration's end; a `for` without a condition always
+        // runs it, and is left only by a `break` or a `return` (SPEC.md
+        // LOOP-001). Otherwise the condition decides before each iteration.
+        if (header.condition_last || clang_Cursor_isNull(header.condition) != 0) {
+            revoked_by = enclosing_revocation;
+            if (return_paths(*once) > kMaxReturnPaths) {
+                return reject("more than " + std::to_string(kMaxReturnPaths) + " return paths are not modeled");
+            }
+            head = std::move(*once);
+        } else {
+            Expr condition = build_expression(header.condition, parameters, frame.head, 0);
+            std::optional<Expr> after = lower_statements(*header.exit, frame.head, depth + 1);
+            revoked_by = enclosing_revocation;
+            if (!after) {
+                return std::nullopt;
+            }
+            if (return_paths(*once) + return_paths(*after) > kMaxReturnPaths) {
+                return reject("more than " + std::to_string(kMaxReturnPaths) + " return paths are not modeled");
+            }
+            head.node = Conditional{{std::move(condition), std::move(*once), std::move(*after)}};
+        }
 
         Loop loop;
         loop.loop = frame.id;
@@ -3678,9 +3698,9 @@ struct BodyLowering {
         for (Expr& invariant : invariants) {
             loop.operands.push_back(std::move(invariant));
         }
-        loop.measures = measure ? 1u : 0u;
-        if (measure) {
-            loop.operands.push_back(std::move(*measure));
+        loop.measures = static_cast<std::uint32_t>(measures.size());
+        for (Expr& measure : measures) {
+            loop.operands.push_back(std::move(measure));
         }
         loop.operands.push_back(std::move(head));
 
@@ -3725,7 +3745,25 @@ struct BodyLowering {
         iterated.type = result_type;
         iterated.location = presumed_location(clang_getCursorLocation(frame.statement));
         iterated.node = std::move(next);
-        return iterated;
+        if (!frame.condition_last) {
+            return iterated;
+        }
+        // A `do` loop decides here, where its body ends or a `continue` leaves
+        // it, whether another iteration begins; when not, what follows the loop
+        // runs under the versions current here and outside the loop.
+        Expr condition = build_expression(frame.condition, parameters, locals, 0);
+        const std::vector<const LoopFrame*> inside = frames;
+        frames.resize(frame.frames_outside);
+        std::optional<Expr> after = lower_statements(*frame.exit, locals, depth + 1);
+        frames = inside;
+        if (!after) {
+            return std::nullopt;
+        }
+        Expr decided;
+        decided.type = result_type;
+        decided.location = iterated.location;
+        decided.node = Conditional{{std::move(condition), std::move(iterated), std::move(*after)}};
+        return decided;
     }
 
     // `break` continues with what follows the innermost loop, under the

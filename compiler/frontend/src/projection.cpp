@@ -729,6 +729,33 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
                 emit(name, parameter_list, precondition->expression, precondition->location, verified.body_end_line);
             projected.precondition_names.push_back(std::move(name));
         }
+        // Each component of a `decreases` measure is a function of the
+        // parameters returning it, at the type the expression already has
+        // (SPEC.md TERMINATION-004). A function template's probes would need
+        // forcing at each specialization; its measure is left unprojected, and
+        // elaboration refuses it.
+        if (const Clause* measure = verified.measure(); measure != nullptr && !templated()) {
+            if (detail::contains_formal_syntax(stream, measure->expression)) {
+                diagnostics::Diagnostic diagnostic;
+                diagnostic.severity = diagnostics::Severity::Error;
+                diagnostic.category = diagnostics::Category::UnsupportedSemantics;
+                diagnostic.location = measure->location;
+                diagnostic.message = "formal syntax in a function measure is not supported yet";
+                projection.diagnostics.push_back(std::move(diagnostic));
+            }
+            for (const MeasureComponent& component : measure_components(stream, *measure)) {
+                std::string name = options.generated_prefix + "decreases_" + suffix + "_" +
+                                   std::to_string(projected.measure_names.size());
+                replacement += "\n";
+                replacement += line_directive(component.location.line, component.location.file);
+                replacement += declaration_prefix() + "auto " + name + "(";
+                replacement += parameter_list;
+                replacement += ") { return (";
+                replacement += at_written_position(stream, component.expression);
+                replacement += "); }\n";
+                projected.measure_names.push_back(std::move(name));
+            }
+        }
 
         replacement += line_directive(verified.body_end_line, verified.keyword_location.file);
         replacement += std::string(verified.body_end_column - 1, ' ');
@@ -836,7 +863,9 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         }
         // A `decreases` measure resolves in the same scope as the invariants,
         // and is an integer rather than a condition. `auto` gives it the type
-        // the expression already has, which the bridge reads back.
+        // the expression already has, which the bridge reads back. A
+        // lexicographic list is one declaration per component, in order
+        // (SPEC.md TERMINATION-004).
         if (loop.decreases.has_value()) {
             if (detail::contains_formal_syntax(stream, loop.decreases->expression)) {
                 diagnostics::Diagnostic diagnostic;
@@ -846,20 +875,22 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
                 diagnostic.message = "formal syntax in a loop measure is not supported yet";
                 projection.diagnostics.push_back(std::move(diagnostic));
             }
-            LoopInvariantMarker marker;
-            marker.name = options.generated_prefix + "measure_" + std::to_string(projection.loop_invariants.size()) +
-                          (options.unit_key.empty() ? "" : "_" + options.unit_key);
-            marker.loop_index = index;
-            marker.function_index = loop.function_index;
-            marker.measure = true;
-            marker.location = loop.decreases->location;
+            for (const MeasureComponent& component : measure_components(stream, *loop.decreases)) {
+                LoopInvariantMarker marker;
+                marker.name = options.generated_prefix + "measure_" +
+                              std::to_string(projection.loop_invariants.size()) +
+                              (options.unit_key.empty() ? "" : "_" + options.unit_key);
+                marker.loop_index = index;
+                marker.function_index = loop.function_index;
+                marker.measure = true;
+                marker.location = loop.decreases->location;
 
-            const source::SourceLocation& at = loop.measure_location;
-            replacement += line_directive(at.line, loop.keyword_location.file);
-            replacement += "[[maybe_unused]] auto " + marker.name + " = (";
-            replacement += at_written_position(stream, loop.decreases->expression);
-            replacement += ");\n";
-            projection.loop_invariants.push_back(std::move(marker));
+                replacement += line_directive(component.location.line, loop.keyword_location.file);
+                replacement += "[[maybe_unused]] auto " + marker.name + " = (";
+                replacement += at_written_position(stream, component.expression);
+                replacement += ");\n";
+                projection.loop_invariants.push_back(std::move(marker));
+            }
         }
         replacement += line_directive(loop.body_open_line, loop.keyword_location.file);
         replacement += std::string(loop.body_open_column - 1, ' ');

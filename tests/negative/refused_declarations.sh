@@ -44,17 +44,14 @@ refuse() {
     grep -q "$name.cpp:" "$run/$name.log"
 }
 
-# A termination obligation this implementation does not verify is refused. This
-# is the safety-critical direction: accepting an unchecked 'decreases' would let
-# a report describe a program as terminating on no evidence at all.
+# SPEC: TERMINATION-006
+# A termination obligation that does not hold is refused. This is the
+# safety-critical direction: accepting an unchecked 'decreases' would let a
+# report describe a program as terminating on no evidence at all.
 refuse unverified_termination
-grep -q "function termination is not verified by this implementation" \
+grep -q "recursive call 'countdown -> countdown' is not shown to be made at a smaller measure" \
     "$run/unverified_termination.log"
-grep -q "the requested 'decreases' obligation must not be accepted unchecked" \
-    "$run/unverified_termination.log"
-grep -q "a lexicographic 'decreases' list is not verified by this implementation" \
-    "$run/unverified_termination.log"
-grep -q "state one measure; the requested obligation must not be accepted unchecked" \
+grep -q "loop measure 'nested loop at line 27 measure' is not shown to decrease on every iteration" \
     "$run/unverified_termination.log"
 
 # A specification that would never become an obligation is refused, not ignored:

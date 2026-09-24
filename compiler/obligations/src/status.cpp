@@ -57,6 +57,8 @@ std::string describe(Origin origin) {
             return "loop invariant preservation";
         case Origin::LoopDescent:
             return "loop measure descent";
+        case Origin::CallDescent:
+            return "recursive call measure descent";
         case Origin::RefinementIntroduction:
             return "refinement membership";
         case Origin::ElementBounds:

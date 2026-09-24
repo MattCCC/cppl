@@ -66,6 +66,13 @@ ghost-initializer-pure	compiler/elaboration/src/elaborate.cpp	            if (!p
 ghost-scalar-type	clang/src/bridge.cpp	        if (!ghost_scalar(type)) {	        if (false && !ghost_scalar(type)) {	^negative_ghost_state$
 ghost-erased-whole	compiler/erasure/src/erase.cpp	        spans.push_back(ghost.erased);	        spans.push_back(ghost.keyword);	^e2e_ghost_state$
 generated-prefix-reserved	compiler/driver/src/pipeline.cpp	token.text.starts_with(projection_options.generated_prefix)	false && token.text.starts_with(projection_options.generated_prefix)	^negative_ghost_state$
+recursive-call-descent-owed	compiler/obligations/src/contracts.cpp	            if (std::ranges::find(recursion_, found->second) != recursion_.end()) {	            if (false && std::ranges::find(recursion_, found->second) != recursion_.end()) {	^negative_termination$
+recursion-needs-measure	compiler/obligations/src/contracts.cpp	            if (function.contract->measures.empty()) {	            if (false && function.contract->measures.empty()) {	^negative_termination$
+recursion-group-established-whole	compiler/automation/src/composition.cpp	} else if (std::ranges::all_of(group, proven_whole)) {	} else if (proven_whole(condition->second.contract)) {	^negative_termination$
+totality-unmeasured-loop	compiler/obligations/src/contracts.cpp	total[index] = contract.unmeasured_loops.empty() && contract.unsafe_regions.empty();	total[index] = true;	^negative_termination$
+totality-through-callees	compiler/obligations/src/contracts.cpp	            if (total[index] &&	            if (false && total[index] &&	^negative_termination$
+lexicographic-first-stays	compiler/obligations/src/contracts.cpp	compare(kernel::PrimOp::Equal, index)	compare(kernel::PrimOp::GreaterEqual, index)	^negative_refused_declarations$|^negative_termination$
+do-loop-exit-decided	clang/src/bridge.cpp	        if (!frame.condition_last) {	        if (true) {	^negative_termination$
 MUTATIONS
 )
 

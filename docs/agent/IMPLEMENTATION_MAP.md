@@ -452,6 +452,53 @@ Not built: ghost state of class, pointer or array type, which is refused.
 
 ---
 
+## termination
+
+Manifest: `features/termination.yaml`
+
+Normative sources: `TERMINATION-001`–`TERMINATION-007` (SPEC §22),
+`CORRECT-001`–`CORRECT-006` (SPEC §23), `LOOP-001`, `LOOP-003`, `LOOP-006`,
+`LOOP-007` (SPEC §24); GRAMMAR §25–§27; `TRUST.md` §12.1.
+
+### Components
+
+| Component | Responsibility | Paths |
+| --- | --- | --- |
+| recognizer | Read `decreases` on loops and verified functions; split a measure into its lexicographic components; refuse an empty component. | `compiler/frontend/src/recognizer.cpp` (`measure_components`) |
+| projection | A measure declaration per loop component at the head of its body; a probe function of the parameters per function component. | `compiler/frontend/src/projection.cpp` |
+| bridge | Read every measure component in the loop head's scope; lower `do` loops, deciding at each iteration's end, and `for` without a condition. | `clang/src/bridge.cpp` (`lower_loop`, `end_iteration`) |
+| elaboration | Read a function's measure into `vir::Contract::measures`; refuse a template's. | `compiler/elaboration/src/elaborate.cpp` |
+| obligations | Owe a lexicographic descent on every continuing loop path and every call within a recursion group; find recursion groups; state and reserve a group before building it; refuse recursion without a measure and measures of different lengths; settle totality and refuse a `decreases` function that is not total. | `compiler/obligations/src/contracts.cpp` |
+| automation | Suppose a group member's contract before it is established; establish a group whole. | `compiler/automation/src/composition.cpp` |
+| trust closure, driver | A group member is proven only with its group; count measures and recursive call measures; name each partial-correctness contract. | `compiler/obligations/src/trust.cpp`, `compiler/driver/src/pipeline.cpp`, `compiler/driver/src/driver.cpp` |
+
+### Required behavior
+
+```text
+a continuing loop path     owes a strictly smaller measure, lexicographically
+a call within a recursion  owes the callee's measure at its arguments below
+group                      the caller's at its entry values
+a recursive function       states a measure, of the group's length
+a recursion group          is established only when every member is proven
+a contract                 is total when every loop and callee terminates
+a `decreases` function     that is not total is refused
+a measure                  erases, and no counter is added
+```
+
+### Existing surface
+
+```text
+tests/fixtures/termination.cpp                every accepted form
+tests/e2e/termination.sh                      counts, the named partial contract, erasure, determinism
+tests/negative/termination.sh                 every rejection, written out in tests/fixtures/negative/
+tests/fixtures/equivalence/termination.cpp    erasure against a hand-erased twin
+```
+
+Not built: range-based `for`, structural recursion without a written measure,
+and measures on function templates, each refused.
+
+---
+
 ## Adding a feature to this map
 
 1. Add the feature to `FEATURE_INDEX.md`.
