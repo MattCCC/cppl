@@ -230,7 +230,9 @@ std::optional<std::vector<Location>> Server::text_document_references(const Text
     // An open document answers as the editor holds it; the index answers for
     // every other file of the workspace, as it is on disk.
     const OpenFiles open(documents_);
-    const auto closed = [&open](const Location& location) { return !open.holds(location.uri); };
+    const auto closed = [&open](const Location& location) {
+        return !open.holds(location.uri);
+    };
     if (const std::optional<EditorView::Target> target = view->target_at(position)) {
         for (const std::string& uri : open.uris()) {
             EditorView* other = view_for(uri);

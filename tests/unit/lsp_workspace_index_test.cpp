@@ -173,8 +173,9 @@ CPPL_TEST(every_source_under_a_root_is_indexed_but_hidden_package_build_and_nest
     write(root / "notes.txt", "int in_text();\n");
     // A file the build compiles is indexed wherever it lives.
     write(scratch.path() / "outside" / "g.cpp", "int in_listed();\n");
-    write(root / "compile_commands.json", R"([{"directory":")" + root.string() +
-                                              R"(","file":"../outside/g.cpp","command":"clang++ -c ../outside/g.cpp"}])");
+    write(root / "compile_commands.json",
+          R"([{"directory":")" + root.string() +
+              R"(","file":"../outside/g.cpp","command":"clang++ -c ../outside/g.cpp"}])");
 
     WorkspaceIndex index({root}, options());
     CPPL_CHECK(index.wait_until_current(kIndexed));
@@ -289,9 +290,9 @@ CPPL_TEST(references_reach_files_no_open_document_holds) {
     CPPL_CHECK(server.wait_for_index(kIndexed));
     open(server, root / "first.cpp", first);
     const Position use = position_of(first, "shared_value");
-    CPPL_CHECK_EQ(references(server, root / "first.cpp", use),
-                  at("first.cpp", first, "shared_value") + " " + at("second.cpp", second, "shared_value") + " " +
-                      at("shared.hpp", header, "shared_value"));
+    CPPL_CHECK_EQ(references(server, root / "first.cpp", use), at("first.cpp", first, "shared_value") + " " +
+                                                                   at("second.cpp", second, "shared_value") + " " +
+                                                                   at("shared.hpp", header, "shared_value"));
     // Without declarations: the header's is left out, wherever it was found.
     CPPL_CHECK_EQ(references(server, root / "first.cpp", use, false),
                   at("first.cpp", first, "shared_value") + " " + at("second.cpp", second, "shared_value"));
@@ -350,9 +351,10 @@ CPPL_TEST(the_workspace_is_each_folder_the_client_opened_or_else_its_root) {
     const std::string second = path_to_uri((scratch.path() / "second").string());
     const std::string root = path_to_uri((scratch.path() / "root").string());
 
-    CPPL_CHECK_EQ(symbols_after_initialize(R"({"workspaceFolders":[{"uri":")" + first + R"(","name":"first"},)"
-                                               R"({"uri":")" + second + R"(","name":"second"}],"rootUri":")" +
-                                               root + R"("})",
+    CPPL_CHECK_EQ(symbols_after_initialize(R"({"workspaceFolders":[{"uri":")" + first +
+                                               R"(","name":"first"},)"
+                                               R"({"uri":")" +
+                                               second + R"(","name":"second"}],"rootUri":")" + root + R"("})",
                                            "from_"),
                   std::string("from_first@a.cpp from_second@b.cpp"));
     CPPL_CHECK_EQ(symbols_after_initialize(R"({"workspaceFolders":null,"rootUri":")" + root + R"("})", "from_"),

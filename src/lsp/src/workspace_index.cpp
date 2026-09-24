@@ -47,7 +47,7 @@ bool is_source(const std::filesystem::path& file) {
     std::string extension = file.extension().string();
     std::ranges::transform(extension, extension.begin(),
                            [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
-    static const std::set<std::string, std::less<>> kSources = {".cppl", ".cpp", ".cc", ".cxx", ".c++", ".h",
+    static const std::set<std::string, std::less<>> kSources = {".cppl", ".cpp", ".cc",  ".cxx", ".c++", ".h",
                                                                 ".hh",   ".hpp", ".hxx", ".h++", ".ipp", ".inl"};
     return kSources.contains(extension);
 }
@@ -150,7 +150,10 @@ void WorkspaceIndex::rank(std::vector<Symbol>& symbols, std::string_view query) 
 }
 
 WorkspaceIndex::WorkspaceIndex(std::vector<std::filesystem::path> roots, Options options, Progress progress)
-    : roots_(std::move(roots)), options_(std::move(options)), progress_(std::move(progress)), thread_([this] { run(); }) {}
+    : roots_(std::move(roots)),
+      options_(std::move(options)),
+      progress_(std::move(progress)),
+      thread_([this] { run(); }) {}
 
 WorkspaceIndex::~WorkspaceIndex() {
     {
@@ -219,7 +222,8 @@ WorkspaceIndex::Entry WorkspaceIndex::read(const std::filesystem::path& file, st
     if (view.refresh(OpenBuffer{uri, path, &*text}, {}, view_options)) {
         entry.symbols = declared(view.outline(), uri);
         for (EditorView::Named& named : view.all_mentions()) {
-            entry.mentions.push_back(Mention{std::move(named.usr), std::move(named.mention.location), named.mention.role});
+            entry.mentions.push_back(
+                Mention{std::move(named.usr), std::move(named.mention.location), named.mention.role});
         }
     }
 

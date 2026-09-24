@@ -1749,8 +1749,7 @@ void run_in_background(Server& server, std::istream& input, std::ostream& output
         worker.schedule(std::move(job), opened ? CompileWorker::Clock::duration::zero() : quiet);
     });
     IndexProgress index_progress(writer, tokens, shared->events);
-    server.set_index_progress(
-        [&index_progress](std::size_t done, std::size_t total) { index_progress(done, total); });
+    server.set_index_progress([&index_progress](std::size_t done, std::size_t total) { index_progress(done, total); });
 
     std::promise<void> read_all;
     std::future<void> reader_done = read_all.get_future();

@@ -322,7 +322,8 @@ CPPL_TEST(indexing_the_workspace_is_reported_as_progress_and_answers_workspace_s
     int asked = 0;
     const auto symbols = [&session, &asked] {
         const std::string id = std::to_string(++asked);
-        session.send(R"({"jsonrpc":"2.0","id":)" + id + R"(,"method":"workspace/symbol","params":{"query":"indexed_"}})");
+        session.send(R"({"jsonrpc":"2.0","id":)" + id +
+                     R"(,"method":"workspace/symbol","params":{"query":"indexed_"}})");
         const std::size_t answered = session.output().wait_for(R"("id":)" + id + ",");
         return answered == std::string::npos ? std::string() : session.output().text().substr(answered);
     };
