@@ -2,6 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
   "name": "C++L",
   "scopeName": "source.cppl",
+  "fileTypes": ["cppl"],
   "comment": "C++L is a superset of C++: this grammar injects the C++L-only surface from docs/GRAMMAR.md section 1 and defers everything else to the C++ grammar. Contextual words are matched only where the grammar gives them meaning, so an ordinary C++ identifier named `result`, `old`, `self` or `type` is left alone.",
   "patterns": [
     { "include": "#comments-and-strings" },

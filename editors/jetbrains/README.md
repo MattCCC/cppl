@@ -48,8 +48,14 @@ settings are stored by `CpplSettings` (`cppl.xml`).
 ## What works
 
 Diagnostics, formatting, format-on-save and code actions, all from the server.
-`*.cppl` files are registered as their own file type, and formatting is routed
-exclusively to `cppl-lsp` rather than the IDE's C++ engine.
+Formatting of `*.cppl` files is routed exclusively to `cppl-lsp` rather than
+the IDE's C++ engine.
+
+`*.cppl` files are colored by the shared C++L TextMate grammar
+([`editors/shared/cppl.tmLanguage.json`](../shared/cppl.tmLanguage.json), the
+same one VS Code uses). The build copies it into the plugin as a TextMate
+bundle, which the IDE's bundled TextMate support loads, and that support owns
+the `.cppl` file type.
 
 The server answers hover over any name -- what Clang knows of a C++ name, a
 C++L declaration as written with what became of its obligations -- code lenses
@@ -62,7 +68,7 @@ the projection stands for. The server also answers references and document
 highlights across every open file; whether this IDE's LSP client asks for them
 has not been verified. Rename is not implemented by the server yet.
 
-The plugin loads no grammar: all coloring is the server's. The server reports
-every name as a semantic token of what it names, and every C++L word as a
-`keyword` token. Literals, comments and C++'s own keywords are left uncolored.
-Whether this IDE's LSP client applies semantic tokens has not been verified.
+On top of the grammar, the server reports every name as a semantic token of
+what it names, and every C++L word as a `keyword` token. Neither the grammar
+bundle nor semantic tokens have been checked in a running IDE, hence
+"unverified" in [`editors/README.md`](../README.md).

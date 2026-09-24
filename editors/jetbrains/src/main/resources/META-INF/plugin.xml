@@ -15,14 +15,12 @@
     <!-- The platform LSP API lives in the commercial IDE platform. -->
     <depends>com.intellij.modules.platform</depends>
     <depends>com.intellij.modules.ultimate</depends>
+    <!-- Coloring is the shared TextMate grammar, through the bundled TextMate support. -->
+    <depends>org.jetbrains.plugins.textmate</depends>
 
     <extensions defaultExtensionNs="com.intellij">
-        <fileType
-            name="C++L"
-            implementationClass="dev.cppl.CpplFileType"
-            fieldName="INSTANCE"
-            language="C++L"
-            extensions="cppl"/>
+        <textmate.bundleProvider
+            implementation="dev.cppl.CpplTextMateBundleProvider"/>
 
         <platform.lsp.serverSupportProvider
             implementation="dev.cppl.CpplLspSupportProvider"/>

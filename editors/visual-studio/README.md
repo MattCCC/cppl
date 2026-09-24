@@ -47,8 +47,11 @@ also answers references and document highlights across every open file;
 whether Visual Studio's LSP client asks for them has not been verified. Rename
 is not implemented by the server yet.
 
-The extension loads no grammar: all coloring is the server's. The server
+`*.cppl` files are colored by the shared C++L TextMate grammar
+([`editors/shared/cppl.tmLanguage.json`](../shared/cppl.tmLanguage.json), the
+same one VS Code uses). The VSIX ships it in a `Grammars` folder that
+`Grammars.pkgdef` registers with Visual Studio's TextMate colorizer, and the
+grammar's `fileTypes` associates it with `.cppl`. On top of it, the server
 reports every name as a semantic token of what it names, and every C++L word as
-a `keyword` token. Literals, comments and C++'s own keywords are left
-uncolored. Whether Visual Studio's LSP client applies semantic tokens has not
-been verified.
+a `keyword` token. Neither has been checked in a running Visual Studio, hence
+"unverified" in [`editors/README.md`](../README.md).

@@ -1,0 +1,25 @@
+{
+  "name": "cppl",
+  "displayName": "C++L",
+  "description": "The shared C++L TextMate grammar, for the IDE's TextMate support. The grammar itself is copied from editors/shared at build time.",
+  "version": "0.0.1",
+  "contributes": {
+    "languages": [
+      {
+        "id": "cppl",
+        "aliases": ["C++L", "cppl"],
+        "extensions": [".cppl"]
+      }
+    ],
+    "grammars": [
+      {
+        "language": "cppl",
+        "scopeName": "source.cppl",
+        "path": "./syntaxes/cppl.tmLanguage.json",
+        "embeddedLanguages": {
+          "source.cpp": "cpp"
+        }
+      }
+    ]
+  }
+}

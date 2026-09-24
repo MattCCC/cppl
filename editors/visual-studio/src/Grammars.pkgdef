@@ -1,0 +1,5 @@
+; Registers the shared C++L TextMate grammar (editors/shared/cppl.tmLanguage.json,
+; copied into the VSIX's Grammars folder at build time) with Visual Studio's
+; TextMate colorizer. The grammar's `fileTypes` associates it with `.cppl`.
+[$RootKey$\TextMate\Repositories]
+"cppl"="$PackageFolder$\Grammars"

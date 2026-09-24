@@ -25,4 +25,16 @@
     </None>
   </ItemGroup>
 
+  <!-- The shared TextMate grammar is the one definition of C++L coloring; it is
+       shipped from editors/shared rather than copied into this project. -->
+  <ItemGroup>
+    <Content Include="..\..\shared\cppl.tmLanguage.json">
+      <Link>Grammars\cppl.tmLanguage.json</Link>
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+    <Content Include="Grammars.pkgdef">
+      <IncludeInVSIX>true</IncludeInVSIX>
+    </Content>
+  </ItemGroup>
+
 </Project>

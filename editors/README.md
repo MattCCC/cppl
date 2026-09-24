@@ -35,7 +35,7 @@ editors/
 | Folding, expand selection | `cppl-lsp` | yes | unverified | unverified | unverified |
 | Inlay hints (parameter names, deduced types) | `cppl-lsp` | yes | unverified | unverified | unverified |
 | Build flags from `compile_commands.json` | `cppl-lsp` | yes | yes | yes | yes |
-| Syntax coloring | `editors/shared` | yes | — | — | yes |
+| Syntax coloring | `editors/shared` | yes | unverified | unverified | yes |
 | Semantic coloring (every name, C++L words) | `cppl-lsp` | yes | unverified | unverified | unverified |
 
 Code actions are syntax migrations, offered as quick fixes where they would
@@ -92,6 +92,15 @@ definition of C++L coloring. It follows the normative lexical rule in
 [`docs/GRAMMAR.md`](../docs/GRAMMAR.md) §1: C++L words are *contextual*, so
 `law`, `type`, `result` and friends are colored only where the grammar gives
 them meaning and remain ordinary identifiers everywhere else.
+
+Every client ships this one file rather than a copy of it:
+
+- VS Code copies it in when the extension is packaged
+  (`editors/vscode/scripts/sync-grammar.js`);
+- JetBrains ships it as a TextMate bundle the build assembles;
+- Visual Studio's VSIX links it into its `Grammars` folder;
+- Neovim uses its own syntax file, which adds the same contextual words to the
+  bundled C++ syntax.
 
 That boundary is enforced by a test, not by inspection:
 
