@@ -31,11 +31,9 @@ A C++L program can say not only **what to execute**, but also **what must be tru
 
 ## Status
 
-> **Experimental / Pre-Alpha — under active development**
+**Experimental / Pre-Alpha — under active development**
 
 C++L currently has a normative target specification and an implementation that is still growing toward it.
-
-The specification defines the language C++L intends to be. Repository code, tests, and `STATUS.md` describe how much of that language is implemented today.
 
 The syntax, proof coverage, diagnostics, and tooling should currently be considered unstable.
 
@@ -97,9 +95,7 @@ tribal knowledge
 AI prompts
 ```
 
-All of those can be valuable.
-
-But none of them, by itself, means:
+All of those can be valuable. But none of them, by itself, means:
 
 > **The language has a proposition, the program generated the corresponding proof obligations, and valid evidence was mechanically checked.**
 
@@ -111,36 +107,21 @@ C++L adds that missing layer directly to C++.
 
 C++L separates four things that ordinary software development often mixes together:
 
-```text
-runtime code
-    says what executes
-
-Laws and contracts
-    say what must be true
-
-proofs
-    establish why it is true
-
-trust / unsafe / runtime validation
-    state exactly where proof comes from or where it stops
-```
+1. runtime code - says what executes
+2. Laws and contracts - say what must be true
+3. proofs - establish why it is true
+4. trust / unsafe / runtime validation - state exactly where proof comes from or where it stops
 
 Then:
 
-```text
-C++L source
-    ↓
-proof obligations
-    ↓
-checked evidence
-    ↓
-proof erasure
-    ↓
-ordinary C++
-    ↓
-Clang / LLVM
-    ↓
-native binary
+```mermaid
+flowchart TD
+    A["C++L source"] --> B["Proof obligations"]
+    B --> C["Checked evidence"]
+    C --> D["Proof erasure"]
+    D --> E["Ordinary C++"]
+    E --> F["Clang / LLVM"]
+    F --> G["Native binary"]
 ```
 
 The proof layer is allowed to decide whether compilation succeeds.
