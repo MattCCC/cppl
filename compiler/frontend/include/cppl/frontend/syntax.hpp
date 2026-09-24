@@ -75,7 +75,9 @@ struct LawDeclaration {
     source::SourceRange range;  // the whole declaration, including its ';'
     Completeness completeness = Completeness::Whole;
     source::SourceLocation keyword_location;
-    std::uint32_t end_line = 0; // presumed line of the terminating ';'
+    source::ByteSpan keyword;         // `law` itself
+    source::ByteSpan trusted_keyword; // `trusted`, where it is written
+    std::uint32_t end_line = 0;       // presumed line of the terminating ';'
     source::ByteSpan parameters;
     std::vector<Clause> clauses;
 
@@ -145,6 +147,7 @@ struct ProofStatement {
     // where that name is written.
     std::string reference;
     source::SourceLocation reference_location;
+    source::ByteSpan reference_span;
     std::vector<ProofArgument> arguments;
 
     // The proposition written after `assume h :`. Ordinary C++, delimited here
@@ -188,6 +191,9 @@ struct ProofArm {
     // case to be covered by exactly one of an arm or an omission, so the two
     // must stay distinguishable even when a real arm's body is one statement.
     bool omitted = false;
+    // For an omission, its `omit` and `by` as written.
+    source::ByteSpan omit_keyword;
+    source::ByteSpan by_keyword;
     std::vector<std::string> binders;
     std::vector<ProofStatement> statements;
 
@@ -216,6 +222,7 @@ struct ProofDeclaration {
     source::ByteSpan body;
     Completeness completeness = Completeness::Whole;
     source::SourceLocation keyword_location;
+    source::ByteSpan keyword;   // `proof` itself; empty for a Law's own body
     std::uint32_t end_line = 0; // presumed line of the closing '}'
     source::ByteSpan parameters;
     source::ByteSpan proves_keyword; // the 'proves' token itself
@@ -359,7 +366,9 @@ struct RefinementType {
     source::ByteSpan name_span; // the name as written
     source::SourceRange range;  // the whole declaration, including its ';'
     source::SourceLocation keyword_location;
-    std::uint32_t end_line = 0; // presumed line of the terminating ';'
+    source::ByteSpan keyword;       // `type` itself
+    source::ByteSpan where_keyword; // the `where` before the predicate
+    std::uint32_t end_line = 0;     // presumed line of the terminating ';'
 
     // The index parameter list, empty when the declaration has none. Indices are
     // verification-level; they never reach the alias.

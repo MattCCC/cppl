@@ -4,6 +4,7 @@
 #include "cppl/lsp/hover.hpp"
 #include "cppl/lsp/projected_file.hpp"
 #include "cppl/lsp/protocol.hpp"
+#include "cppl/lsp/semantic_tokens.hpp"
 
 #include <cstddef>
 #include <filesystem>
@@ -111,6 +112,12 @@ class EditorView {
     // proposition is annotated where the Law writes it, and nothing the
     // projection generated is annotated at all.
     [[nodiscard]] std::vector<InlayHint> inlay_hints(const Range& range) const;
+
+    // Every name the document writes that Clang resolved, as a semantic token
+    // of the kind of thing it names, where it was written. A name inside a
+    // Law's proposition is where the Law writes it; a Law's generated
+    // declaration is its written name; nothing else generated is a token.
+    [[nodiscard]] std::vector<SemanticToken> semantic_tokens() const;
 
     // The number of refreshes that had to parse the unit from scratch, for
     // tests that check an edit reuses what Clang kept.

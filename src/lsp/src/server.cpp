@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
@@ -491,17 +492,23 @@ std::optional<std::vector<CodeLens>> Server::text_document_code_lens(const TextD
     return verification_lenses(*doc);
 }
 
-std::optional<std::vector<std::uint32_t>> Server::text_document_semantic_tokens(
-    const TextDocumentIdentifier& id) const {
+std::optional<std::vector<std::uint32_t>> Server::text_document_semantic_tokens(const TextDocumentIdentifier& id) {
     const Document* doc = documents_.get(id.uri);
     if (doc == nullptr) {
         return std::nullopt;
     }
-    if (doc->syntax() == nullptr) {
-        return std::vector<std::uint32_t>{};
+    // C++L's words first, so that where Clang also names one -- a Law's
+    // generated declaration stands for the Law's name -- the recognizer's
+    // token is the one kept.
+    std::vector<SemanticToken> tokens;
+    if (doc->syntax() != nullptr) {
+        tokens = cppl_tokens(*doc->syntax(), doc->path_claims_recognized(), doc->path_splits_recognized(),
+                             doc->resolved_names());
     }
-    return proof_keyword_tokens(*doc->syntax(), doc->text(), doc->path_claims_recognized(),
-                                doc->path_splits_recognized());
+    if (const EditorView* view = view_for(id.uri)) {
+        std::ranges::copy(view->semantic_tokens(), std::back_inserter(tokens));
+    }
+    return encode(std::move(tokens), doc->text());
 }
 
 void Server::publish_diagnostics(const Document& doc) {

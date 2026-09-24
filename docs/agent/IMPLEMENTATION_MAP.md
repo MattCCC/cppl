@@ -348,7 +348,10 @@ carrying a closure across translation units through proof artifacts.
    written, and answer where it may be written from
    `compiler/frontend/src/admissible.cpp`. Report its bodies and spans from
    `compiler/frontend/src/structure.cpp` (`blocks`, `enclosing`), so that
-   editors fold and select it (`tests/unit/lsp_structure_test.cpp`). A new proof statement's word belongs
+   editors fold and select it (`tests/unit/lsp_structure_test.cpp`). Record
+   each of its words as a span too, and report it from `cppl_tokens` in
+   `src/lsp/src/semantic_tokens.cpp`, so editors color it where the recognizer
+   read it (`tests/unit/lsp_semantic_tokens_test.cpp`). A new proof statement's word belongs
    in `describe(ProofStatementKind)` and `statement_keyword`. Completion's
    snippet for it in `src/lsp/src/completion.cpp` uses the recognizer's word,
    and `tests/unit/lsp_completion_test.cpp` checks the recognizer reads every

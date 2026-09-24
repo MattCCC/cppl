@@ -80,12 +80,16 @@ Neovim has no on-type formatting of its own. So when `}` or `;` is typed,
 the statement just finished as VS Code does. Set `format_on_type = false` to
 turn this off.
 
-Syntax coloring comes from
-[`syntax/cppl.vim`](syntax/cppl.vim), which sources the bundled C++ syntax and
-adds only the C++L contextual words. Proof statements spelled like C++
-declarations, such as `exact h;` and `contradiction name;`, come from the
-server's semantic tokens instead, as `@lsp.type.keyword.cppl`, which
-`setup()` links to `Statement` like the syntax file's own proof words.
+Syntax coloring comes from [`syntax/cppl.vim`](syntax/cppl.vim), which sources
+the bundled C++ syntax and adds only the C++L contextual words. On top of that,
+the server's semantic tokens color every name by what Clang says it names
+(`@lsp.type.function.cppl`, `@lsp.type.parameter.cppl`, ...), with Neovim's
+default links.
+
+C++L's words, including proof statements spelled like C++ declarations such as
+`exact h;` and `contradiction name;`, come as `@lsp.type.keyword.cppl`.
+`setup()` links that group to `Statement`, like the syntax file's own proof
+words.
 
 `vim.lsp.buf.hover()` (`K`) shows what Clang knows of a name, or a C++L
 declaration as written with what became of its obligations; inside a `cases`

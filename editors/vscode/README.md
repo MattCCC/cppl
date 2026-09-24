@@ -125,9 +125,16 @@ grow a selection one construct at a time. For C++, that is what Clang parsed.
 For C++L, it runs through a clause, a proof statement, an arm, a proof body and
 the declaration. Rename is not implemented by the server yet.
 
-Proof statements spelled like C++ declarations, such as `exact h;` and
-`contradiction name;`, are colored from the server's semantic tokens, since
-the grammar cannot tell them apart from ordinary C++. They take the grammar's
-own proof-keyword scope, `keyword.other.proof.cppl`, so any theme colors them
-like the proof words it already colors, and semantic highlighting is on by
-default for `cppl` files (`editor.semanticHighlighting.enabled`).
+The server's semantic tokens color every name by what Clang says it names, and
+every C++L word and name by what the recognizer read. Semantic highlighting is
+on by default for `cppl` files (`editor.semanticHighlighting.enabled`).
+
+Names take the theme's own semantic colors: namespaces, types, functions,
+variables, parameters, fields, enumerators, macros, and whether a name is
+declared there, constant, a static member, deprecated, or from a system header.
+
+C++L's words take the grammar's proof-keyword scope,
+`keyword.other.proof.cppl`, so any theme colors them like the words the grammar
+already colors. That includes proof statements spelled like C++ declarations,
+such as `exact h;` and `contradiction name;`, which the grammar cannot tell
+from ordinary C++.

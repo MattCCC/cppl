@@ -10,6 +10,7 @@
 #include "cppl/lsp/position.hpp"
 #include "cppl/lsp/projected_file.hpp"
 #include "cppl/lsp/protocol.hpp"
+#include "cppl/lsp/semantic_tokens.hpp"
 #include "cppl/source/location.hpp"
 
 #include <algorithm>
@@ -248,6 +249,63 @@ std::vector<Range> EditorView::selection(const Position& position) const {
         chain.push_back(Range{position, position});
     }
     return chain;
+}
+
+namespace {
+
+TokenType token_type(clangbridge::ClassifiedName::Kind kind) {
+    switch (kind) {
+        case clangbridge::ClassifiedName::Kind::Namespace:
+            return TokenType::Namespace;
+        case clangbridge::ClassifiedName::Kind::Type:
+            return TokenType::Type;
+        case clangbridge::ClassifiedName::Kind::Class:
+            return TokenType::Class;
+        case clangbridge::ClassifiedName::Kind::Enum:
+            return TokenType::Enum;
+        case clangbridge::ClassifiedName::Kind::Struct:
+            return TokenType::Struct;
+        case clangbridge::ClassifiedName::Kind::TypeParameter:
+            return TokenType::TypeParameter;
+        case clangbridge::ClassifiedName::Kind::Parameter:
+            return TokenType::Parameter;
+        case clangbridge::ClassifiedName::Kind::Variable:
+            return TokenType::Variable;
+        case clangbridge::ClassifiedName::Kind::Field:
+            return TokenType::Property;
+        case clangbridge::ClassifiedName::Kind::Enumerator:
+            return TokenType::EnumMember;
+        case clangbridge::ClassifiedName::Kind::Function:
+            return TokenType::Function;
+        case clangbridge::ClassifiedName::Kind::Method:
+            return TokenType::Method;
+        case clangbridge::ClassifiedName::Kind::Macro:
+            return TokenType::Macro;
+    }
+    return TokenType::Variable;
+}
+
+} // namespace
+
+std::vector<SemanticToken> EditorView::semantic_tokens() const {
+    std::vector<SemanticToken> tokens;
+    if (main_ == nullptr || unit_ == nullptr) {
+        return tokens;
+    }
+    for (const clangbridge::ClassifiedName& name : unit_->classified_names()) {
+        const std::optional<source::ByteSpan> span = written_span(*main_, name.name);
+        if (!span.has_value()) {
+            continue;
+        }
+        std::uint32_t modifiers = 0;
+        modifiers |= name.declaration ? kDeclaration : 0;
+        modifiers |= name.constant ? kReadonly : 0;
+        modifiers |= name.is_static ? kStatic : 0;
+        modifiers |= name.deprecated ? kDeprecated : 0;
+        modifiers |= name.library ? kDefaultLibrary : 0;
+        tokens.push_back(SemanticToken{*span, token_type(name.kind), modifiers});
+    }
+    return tokens;
 }
 
 std::vector<InlayHint> EditorView::inlay_hints(const Range& range) const {

@@ -98,11 +98,12 @@ class Server {
     // `textDocument/codeLens`). `std::nullopt` means the document is unknown.
     [[nodiscard]] std::optional<std::vector<CodeLens>> text_document_code_lens(const TextDocumentIdentifier& id) const;
 
-    // The proof-statement keywords a spelling-based grammar cannot color, as
-    // encoded semantic tokens (semantic_tokens.hpp). `std::nullopt` means the
-    // document is unknown.
+    // Every name the document writes, as the kind of thing it names -- C++
+    // from Clang, C++L's words and names from the recognizer and the compile
+    // -- as encoded semantic tokens (semantic_tokens.hpp). `std::nullopt` means
+    // the document is unknown.
     [[nodiscard]] std::optional<std::vector<std::uint32_t>> text_document_semantic_tokens(
-        const TextDocumentIdentifier& id) const;
+        const TextDocumentIdentifier& id);
 
     // Where the name at `position` is defined, declared, typed or overridden,
     // as `destination` asks (LSP `textDocument/definition`, `declaration`,

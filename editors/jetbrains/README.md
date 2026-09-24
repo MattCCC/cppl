@@ -63,5 +63,6 @@ highlights across every open file; whether this IDE's LSP client asks for them
 has not been verified. Rename is not implemented by the server yet.
 
 The plugin loads no grammar: all coloring is the server's. The server reports
-only proof-statement keywords, as `keyword` semantic tokens, and whether this
-IDE's LSP client applies them has not been verified.
+every name as a semantic token of what it names, and every C++L word as a
+`keyword` token. Literals, comments and C++'s own keywords are left uncolored.
+Whether this IDE's LSP client applies semantic tokens has not been verified.

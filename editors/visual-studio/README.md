@@ -48,5 +48,7 @@ whether Visual Studio's LSP client asks for them has not been verified. Rename
 is not implemented by the server yet.
 
 The extension loads no grammar: all coloring is the server's. The server
-reports only proof-statement keywords, as `keyword` semantic tokens, and
-whether Visual Studio's LSP client applies them has not been verified.
+reports every name as a semantic token of what it names, and every C++L word as
+a `keyword` token. Literals, comments and C++'s own keywords are left
+uncolored. Whether Visual Studio's LSP client applies semantic tokens has not
+been verified.

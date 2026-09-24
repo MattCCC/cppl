@@ -1397,14 +1397,13 @@ AI output must always be independently verified.
 | LSP: hover over C++ and C++L names   | `PROTOTYPE`   |
 | LSP: verification status in editors  | `PROTOTYPE`   |
 | LSP: code actions                    | `PROTOTYPE`   |
-| LSP: proof-keyword semantic tokens   | `PROTOTYPE`   |
+| LSP: semantic tokens (all names)     | `PROTOTYPE`   |
 | LSP: definition and declaration      | `PROTOTYPE`   |
 | LSP: references and highlights       | `PROTOTYPE`   |
 | LSP: document outline                | `PROTOTYPE`   |
 | LSP: folding and selection ranges    | `PROTOTYPE`   |
 | LSP: build flags (compile_commands)  | `PROTOTYPE`   |
 | LSP: inlay hints                     | `PROTOTYPE`   |
-| LSP: other token kinds               | `NOT STARTED` |
 | IDE proof goals                      | `PROTOTYPE`   |
 | Proof navigation                     | `PROTOTYPE`   |
 | Counterexample UI                    | `NOT STARTED` |
@@ -1527,11 +1526,22 @@ obligation, not an interactive proof state: the goal a proof has reached after
 each of its statements is not reported. Counterexamples are not reported
 because nothing in the compiler produces one.
 
-`semanticTokensProvider` reports, as `keyword` tokens, the proof statements
-the editors' TextMate grammar cannot tell from C++ declarations, such as
-`exact h;` and `contradiction name;`. The tokens are the keywords the
-recognizer read, at the positions it recorded in the buffer as written. A
-`contradiction` statement in a verified body is reported only when the compile
+`semanticTokensProvider` colors every name by what it names.
+
+- **C++ names come from Clang.** The types are namespace, type, class, struct,
+  enum, type parameter, parameter, variable, field, enumerator, function,
+  method and macro. The modifiers are declaration, readonly, static member,
+  deprecated and system-header.
+- **C++L comes from the recognizer.** Every C++L word is a keyword. The names of
+  Laws, proofs and refinement types are declared, and so is each name `assume`
+  binds. The names proof statements use are colored as the compile resolved
+  them.
+
+Positions are the ones recorded in the buffer as written, and a name inside a
+Law's proposition is where the Law writes it. This includes the proof
+statements the editors' TextMate grammar cannot tell from C++ declarations,
+such as `exact h;` and `contradiction name;`. A `contradiction` statement in a
+verified body is reported only when the compile
 of the whole unit, headers included, also recognized claims, since a header
 that names `contradiction` makes the statement ordinary C++ (WORD-002). A case
 split in a verified body, with the keywords of its arms, is reported on the same

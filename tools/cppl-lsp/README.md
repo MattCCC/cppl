@@ -33,7 +33,8 @@ textDocument/completion                     C++ from Clang; C++L where the gramm
 textDocument/hover                          C++ from Clang; C++L as written;
                                             a case subject's state partition
 textDocument/codeAction                     syntax migrations; canonical fix-all
-textDocument/semanticTokens/full            proof-statement keywords
+textDocument/semanticTokens/full            every name, from Clang; C++L words
+                                            and names, from the frontend
 textDocument/definition                     Clang, over the document's projection
 textDocument/declaration                    the first declaration
 textDocument/typeDefinition                 through pointers, references, `auto`
@@ -96,19 +97,25 @@ written syntax, and whether the claim checks is reported as a diagnostic. A case
 split written in a verified body is a case site the same way, served from the
 states the compiler recorded while elaborating the body.
 
-Semantic tokens cover what the editors' TextMate grammar cannot: a proof
-statement spelled like a C++ declaration, such as `exact h;`, `assume h : P;`
-or `contradiction name;`. Each keyword the recognizer read as a proof statement
-is reported as a `keyword` token, from the positions it recorded in the buffer
-as written. A `contradiction` statement in a verified body is a claim only
-where the whole translation unit, headers included, uses the word for nothing
-else (SPEC.md WORD-002), and only the compile of the preprocessed unit sees the
-headers. So such a claim is reported only when that compile recognized claims
-too; where it did not, or could not run, the statement is left uncolored, as
-the grammar leaves it. A `cases` or `decompose` statement in a verified body is
-a case split on the same terms (SPEC.md WORD-012): it and the keywords in its
-arms are reported only when that compile recognized splits, and a claim in an
-arm is reported once, as the split's.
+Semantic tokens color every name by what it names (see "Semantic tokens").
+C++ names are Clang's, and C++L's words and names are the recognizer's.
+
+A proof statement is spelled like a C++ declaration, as in `exact h;`,
+`assume h : P;` or `contradiction name;`. That is what the editors' TextMate
+grammar cannot tell apart, and only the recognizer knows which spellings are
+statements.
+
+A `contradiction` statement in a verified body is a claim only where the whole
+translation unit, headers included, uses the word for nothing else (SPEC.md
+WORD-002). Only the compile of the preprocessed unit sees the headers, so such
+a claim is reported only when that compile recognized claims too. Where it did
+not, or could not run, the statement is left uncolored, as the grammar leaves
+it.
+
+A `cases` or `decompose` statement in a verified body is a case split on the
+same terms (SPEC.md WORD-012). It and the keywords in its arms are reported
+only when that compile recognized splits. A claim in an arm is reported once,
+as the split's.
 
 Navigation is Clang's answer, read back through the projection. Each document
 gets an editor unit: the analysis projection the compiler makes
@@ -171,14 +178,13 @@ The server advertises `textDocumentSync`, `documentFormattingProvider`,
 `documentRangeFormattingProvider`, `documentOnTypeFormattingProvider`,
 `completionProvider`, `hoverProvider`, `codeActionProvider` (kinds
 `quickfix` and `source.fixAll.cppl`), `semanticTokensProvider` (whole
-document, one token type, `keyword`), `definitionProvider`,
+document; the legend under "Semantic tokens"), `definitionProvider`,
 `declarationProvider`, `typeDefinitionProvider`, `implementationProvider`,
 `referencesProvider`, `documentHighlightProvider`, `codeLensProvider`,
 `signatureHelpProvider`, `documentSymbolProvider`, `foldingRangeProvider`,
 `selectionRangeProvider` and `inlayHintProvider`.
-The rest of navigation specified below, and the semantic-token categories
-beyond proof-statement keywords, are not implemented and not advertised: an
-editor is told what the server can do, never what it intends to do.
+The rest of navigation specified below is not implemented and not advertised:
+an editor is told what the server can do, never what it intends to do.
 `docs/STATUS.md` tracks this.
 
 ---
@@ -891,10 +897,44 @@ verification construct
 
 Token classification must follow the actual language grammar rather than editor-side textual heuristics.
 
-Implemented today: the keyword of every proof statement the recognizer read,
-as the `keyword` type, including a `contradiction` claim in a verified body
-once the compile of the whole unit has recognized it (see Implementation
-status). The categories above are not yet reported.
+What is implemented has two sources, and neither reads the text itself.
+
+**C++ names come from Clang.** Every identifier the document writes that
+resolves to something is a token of that thing's kind:
+
+- `namespace`, `type` (an alias or a concept), `class`, `struct` (a union
+  too), `enum`, `typeParameter`;
+- `parameter`, `variable`, `property` (a field), `enumMember`;
+- `function`, `method`, `macro` (only the macro's own name).
+
+The modifiers are:
+
+- `declaration` where the name is declared;
+- `readonly` for a `const` object or an enumerator;
+- `static` for a static member of a class;
+- `deprecated`;
+- `defaultLibrary` for a name declared in a system header.
+
+A name inside a Law's proposition, a contract or a proof's claim is where the
+author wrote it, read through the source map. The generated declaration for a
+Law is the Law's written name. Nothing else the projection generated is a
+token.
+
+**C++L's words and names come from the recognizer**
+(`src/lsp/include/cppl/lsp/semantic_tokens.hpp`):
+
+- `keyword` for every C++L word: `law`, `trusted`, `proof`, `proves`, each
+  clause's keyword, `verified`, `pure`, a refinement type's `type` and `where`,
+  each proof statement's keyword, and `omit` and `by`;
+- `function` for each Law's and proof's name;
+- `type` for each refinement type's name;
+- a constant `variable` for each name `assume` binds;
+- for each name a proof statement uses, what the compile resolved it to: an
+  assumption as a variable, a proof or a trusted Law as a function.
+
+A word the recognizer left to C++, such as `int law = 1;`, is never a C++L
+token. The gating of runtime claims and splits is described under
+"Implementation status".
 
 ---
 
@@ -1481,7 +1521,7 @@ reference. Detailed pointer-state and effect hovers are not implemented.
 
 Transport, document synchronization, diagnostics, canonical C++L formatting,
 code actions, proof-decomposition completion and hover, semantic tokens for
-proof-statement keywords, definition, declaration, type definition and
+every name and C++L word, definition, declaration, type definition and
 implementation, and references and document highlights are implemented. The
 following are explicitly out of scope for this milestone and are not
 implemented:
@@ -1489,7 +1529,7 @@ implemented:
 ```text
 references in a file no open document includes
 rename
-semantic tokens beyond proof-statement keywords
+semantic tokens for a range or as a delta (whole documents only)
 proof search / interactive proof state
 incremental (as opposed to full) text document sync
 ```

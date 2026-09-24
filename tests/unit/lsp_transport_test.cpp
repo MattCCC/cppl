@@ -138,7 +138,7 @@ CPPL_TEST(initialize_advertises_both_code_action_kinds) {
                std::string::npos);
 }
 
-CPPL_TEST(initialize_advertises_whole_document_keyword_tokens) {
+CPPL_TEST(initialize_advertises_whole_document_tokens_for_every_kind_of_name) {
     Server server;
     std::istringstream input(framed(R"({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}})") +
                              framed(R"({"jsonrpc":"2.0","method":"exit"})"));
@@ -146,8 +146,11 @@ CPPL_TEST(initialize_advertises_whole_document_keyword_tokens) {
     std::ostringstream log;
 
     [[maybe_unused]] const int exit_code = run_transport(server, input, output, log);
-    CPPL_CHECK(output.str().find(R"("semanticTokensProvider":{"legend":{"tokenTypes":["keyword"],)"
-                                 R"("tokenModifiers":[]},"full":true})") != std::string::npos);
+    CPPL_CHECK(
+        output.str().find(R"("semanticTokensProvider":{"legend":{"tokenTypes":["namespace","type","class","enum",)"
+                          R"("struct","typeParameter","parameter","variable","property","enumMember","function",)"
+                          R"("method","macro","keyword"],"tokenModifiers":["declaration","readonly","static",)"
+                          R"("deprecated","defaultLibrary"]},"full":true})") != std::string::npos);
 }
 
 CPPL_TEST(initialize_advertises_every_navigation_request) {
@@ -328,12 +331,14 @@ CPPL_TEST(an_outline_is_nested_only_for_a_client_that_nests_it) {
                          R"json("containerName":"shapes"})json") != std::string::npos);
 }
 
-CPPL_TEST(semantic_tokens_answer_with_the_encoded_keywords) {
+CPPL_TEST(semantic_tokens_answer_with_the_encoded_tokens) {
+    // `proof`, the proof's name as a declared function, `proves` and `refl`:
+    // five integers each, positions relative to the token before.
     Server server;
     std::istringstream input(
         framed(R"({"jsonrpc":"2.0","method":"textDocument/didOpen","params":{"textDocument":)"
                R"({"uri":"file:///st.cpp","languageId":"cpp","version":1,)"
-               R"("text":"proof p(int x)\n    proves (x == x)\n{\n    refl;\n}\n"}}})") +
+               R"("text":"proof p()\n    proves (true)\n{\n    refl;\n}\n"}}})") +
         framed(R"({"jsonrpc":"2.0","id":2,"method":"textDocument/semanticTokens/full","params":{"textDocument":)"
                R"({"uri":"file:///st.cpp"}}})") +
         framed(R"({"jsonrpc":"2.0","method":"exit"})"));
@@ -341,7 +346,8 @@ CPPL_TEST(semantic_tokens_answer_with_the_encoded_keywords) {
     std::ostringstream log;
 
     [[maybe_unused]] const int exit_code = run_transport(server, input, output, log);
-    CPPL_CHECK(output.str().find(R"("id":2,"result":{"data":[3,4,4,0,0]})") != std::string::npos);
+    CPPL_CHECK(output.str().find(R"("id":2,"result":{"data":[0,0,5,13,0,0,6,1,10,1,1,4,6,13,0,2,4,4,13,0]})") !=
+               std::string::npos);
 }
 
 CPPL_TEST(semantic_tokens_of_an_unknown_document_answer_null) {

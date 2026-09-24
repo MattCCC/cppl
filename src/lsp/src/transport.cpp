@@ -437,14 +437,19 @@ class Dispatcher {
         code_actions.set("codeActionKinds", std::move(code_action_kinds));
         capabilities.set("codeActionProvider", std::move(code_actions));
 
-        // The proof-statement keywords the TextMate grammar cannot tell from a
-        // C++ declaration. Whole-document only: the set is small, and a range
-        // or delta request would buy nothing for it.
+        // Every name as the kind of thing it names, from Clang, and C++L's
+        // words and names from the recognizer (semantic_tokens.hpp).
         json::Value token_types = json::Value::array();
-        token_types.push_back(json::Value(std::string(kKeywordTokenType)));
+        for (const std::string_view type : kTokenTypes) {
+            token_types.push_back(json::Value(std::string(type)));
+        }
+        json::Value token_modifiers = json::Value::array();
+        for (const std::string_view modifier : kTokenModifiers) {
+            token_modifiers.push_back(json::Value(std::string(modifier)));
+        }
         json::Value legend = json::Value::object();
         legend.set("tokenTypes", std::move(token_types));
-        legend.set("tokenModifiers", json::Value::array());
+        legend.set("tokenModifiers", std::move(token_modifiers));
         json::Value semantic_tokens = json::Value::object();
         semantic_tokens.set("legend", std::move(legend));
         semantic_tokens.set("full", json::Value(true));

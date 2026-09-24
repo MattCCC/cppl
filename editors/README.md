@@ -36,7 +36,7 @@ editors/
 | Inlay hints (parameter names, deduced types) | `cppl-lsp` | yes | unverified | unverified | unverified |
 | Build flags from `compile_commands.json` | `cppl-lsp` | yes | yes | yes | yes |
 | Syntax coloring | `editors/shared` | yes | — | — | yes |
-| Proof-statement coloring | `cppl-lsp` | yes | unverified | unverified | yes |
+| Semantic coloring (every name, C++L words) | `cppl-lsp` | yes | unverified | unverified | unverified |
 
 Code actions are syntax migrations, offered as quick fixes where they would
 edit, and canonical formatting as `source.fixAll.cppl`. Completion offers what
@@ -77,13 +77,13 @@ language servers on one file publish two diagnostic streams for it, so each
 file should have one owner, and the project chooses it. Where `cppl-lsp` owns a
 project's C++, turn off the other C++ extension's IntelliSense for those files.
 
-The server's semantic tokens color what the grammar cannot: a proof statement
-spelled like a C++ declaration, such as `exact h;` or `contradiction name;`,
-where the compiler read it as one. They are the only coloring the server
-provides. The JetBrains and Visual Studio clients load no grammar and leave all
-coloring to the server, so those files show at most these keywords, and only if
-the IDE's LSP client applies semantic tokens. Neither client has been checked
-for that, hence "unverified".
+The server's semantic tokens color every name by what it names, as Clang
+resolved it: namespaces, types, functions, variables, parameters, fields,
+enumerators and macros. They also color every C++L word and every name C++L
+declares, as the recognizer read them. This is also how a proof statement
+spelled like a C++ declaration, such as `exact h;` or `contradiction name;`, is
+colored where the compiler read it as one: the grammar cannot tell. Literals,
+comments and C++'s own keywords are left to the grammar.
 
 ## The shared grammar
 

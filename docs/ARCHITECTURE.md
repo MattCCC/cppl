@@ -2782,8 +2782,8 @@ it cannot read (`ProofStatementKind::Unread`). `frontend::admissible_at` answers
 from that draft what may be written at a position: a declaration, a clause and
 which, a proof statement, the evidence a statement names. Completion offers
 from that answer. The outline, hover and the source map take each C++L name,
-body and statement from the spans the recognizer records, and so do folding and
-selection. They read those spans through `frontend::blocks` and
+body and statement from the spans the recognizer records, and so do folding,
+selection and semantic coloring. They read those spans through `frontend::blocks` and
 `frontend::enclosing`, and they read comments from the frontend lexer. Folds
 and selections of ordinary C++ are Clang's, from its cursors, and a conditional
 directive's branches are paired from Clang's tokens.

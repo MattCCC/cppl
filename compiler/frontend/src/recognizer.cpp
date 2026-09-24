@@ -324,6 +324,7 @@ bool try_law(const TokenStream& stream, std::size_t index, diagnostics::Engine& 
         law.name_span = tokens[index + 1].span;
         law.range.begin = law.name_location;
         law.keyword_location = stream.location_of(tokens[index]);
+        law.keyword = tokens[index].span;
         law.parameters =
             source::ByteSpan{tokens[index + 2].span.end(), tokens[close].span.offset - tokens[index + 2].span.end()};
     };
@@ -536,6 +537,8 @@ bool try_refinement_type(const TokenStream& stream, std::size_t index, diagnosti
     refinement.name_span = tokens[index + 1].span;
     refinement.range.begin = stream.location_of(tokens[index + 1]);
     refinement.keyword_location = stream.location_of(tokens[index]);
+    refinement.keyword = tokens[index].span;
+    refinement.where_keyword = tokens[where].span;
     refinement.base_location = stream.location_of(tokens[equals + 1]);
     refinement.base =
         source::ByteSpan{tokens[equals].span.end(), tokens[where].span.offset - tokens[equals].span.end()};
@@ -745,6 +748,8 @@ bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std
                                       omitted_label_end < end && tokens[omitted_label_end].is_identifier("by");
                 if (omitting) {
                     arm.omitted = true;
+                    arm.omit_keyword = tokens[cursor].span;
+                    arm.by_keyword = tokens[omitted_label_end].span;
                     ++cursor;
                 }
                 const std::size_t start = cursor;
@@ -1001,6 +1006,7 @@ bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std
             statement.kind = ProofStatementKind::Assume;
             statement.reference = std::string(tokens[cursor + 1].text);
             statement.reference_location = stream.location_of(tokens[cursor + 1]);
+            statement.reference_span = tokens[cursor + 1].span;
             statement.proposition = source::ByteSpan{
                 tokens[cursor + 3].span.offset, tokens[terminator - 1].span.end() - tokens[cursor + 3].span.offset};
             statement.proposition_location = stream.location_of(tokens[cursor + 3]);
@@ -1022,6 +1028,7 @@ bool read_proof_statements(const TokenStream& stream, std::size_t body_open, std
             statement.kind = *named;
             statement.reference = std::string(tokens[cursor + 1].text);
             statement.reference_location = stream.location_of(tokens[cursor + 1]);
+            statement.reference_span = tokens[cursor + 1].span;
             statement.keyword = token.span;
             statement.location = stream.location_of(token);
 
@@ -1144,6 +1151,7 @@ bool try_proof(const TokenStream& stream, std::size_t index, diagnostics::Engine
         proof.name_span = tokens[index + 1].span;
         proof.range.begin = proof.name_location;
         proof.keyword_location = stream.location_of(tokens[index]);
+        proof.keyword = tokens[index].span;
         proof.parameters =
             source::ByteSpan{tokens[index + 2].span.end(), tokens[close].span.offset - tokens[index + 2].span.end()};
     };
@@ -2395,6 +2403,7 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
                 if (!law.name.empty()) {
                     if (at_namespace_scope()) {
                         law.trusted = true;
+                        law.trusted_keyword = tokens[index].span;
                         law.keyword_location = stream.location_of(tokens[index]);
                         // `try_law` measured the declaration from `law`, so the
                         // span must be widened to cover `trusted` as well: the
@@ -2417,6 +2426,7 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
             // are still ordinary C++, so recognition goes on through them.
             if (law.completeness == Completeness::AwaitingClause && at_namespace_scope()) {
                 law.trusted = true;
+                law.trusted_keyword = tokens[index].span;
                 law.keyword_location = stream.location_of(tokens[index]);
                 law.range.span =
                     source::ByteSpan{tokens[index].span.offset, law.range.span.end() - tokens[index].span.offset};

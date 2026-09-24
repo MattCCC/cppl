@@ -200,6 +200,36 @@ struct Hint {
     std::string label;
 };
 
+// A name the main file writes, and what Clang says it names.
+struct ClassifiedName {
+    enum class Kind : std::uint8_t {
+        Namespace,
+        Type,
+        Class,
+        Enum,
+        Struct,
+        TypeParameter,
+        Parameter,
+        Variable,
+        Field,
+        Enumerator,
+        Function,
+        Method,
+        Macro,
+    };
+    Kind kind = Kind::Variable;
+    Extent name;
+    // Written where it is declared.
+    bool declaration = false;
+    // A constant: a `const` variable, parameter or field, or an enumerator.
+    bool constant = false;
+    // A static member of a class.
+    bool is_static = false;
+    bool deprecated = false;
+    // Declared in a system header.
+    bool library = false;
+};
+
 // What encloses a position, as far as what may be declared there goes.
 enum class Scope : std::uint8_t {
     Namespace,
@@ -320,6 +350,11 @@ class EditorUnit {
     // parameter's name, one a macro wrote, a default argument, an overloaded
     // operator's operands and a lambda's type get none.
     [[nodiscard]] std::vector<Hint> hints() const;
+
+    // Every name the main file's text writes that Clang resolves to a
+    // declaration or a macro, in order, with what kind of thing it names
+    // (LSP semantic tokens). Keywords, literals and comments are not names.
+    [[nodiscard]] std::vector<ClassifiedName> classified_names() const;
 
   private:
     struct State;
