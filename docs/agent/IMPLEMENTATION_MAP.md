@@ -358,7 +358,11 @@ carrying a closure across translation units through proof artifacts.
    snippet as what it names. A new kind of draft-only node, such as a new
    `Completeness` state or a new place `Unread` can occur, must also be
    reported by `frontend::draft_only`, so that elaboration refuses it
-   (`ARCH-LSP-007`, `tests/unit/draft_authority_test.cpp`).
+   (`ARCH-LSP-007`, `tests/unit/draft_authority_test.cpp`). A new place where
+   C++L names a declaration is recorded by elaboration as an
+   `elaboration::ResolvedName`. References find it from that record, in open
+   documents and, through the workspace index, in files on disk
+   (`ARCH-LSP-009`, `tests/unit/lsp_workspace_index_test.cpp`).
 
 Keep required behavior as a statement of *what must hold*, not a description of
 current code. This file maps rules to where they are realized; it does not

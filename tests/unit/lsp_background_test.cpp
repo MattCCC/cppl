@@ -3,13 +3,17 @@
 // each compile is reported as work in progress (src/lsp/include/cppl/lsp/
 // transport.hpp, TransportOptions).
 
+#include "cppl/driver/scratch.hpp"
 #include "cppl/lsp/server.hpp"
 #include "cppl/lsp/transport.hpp"
+#include "cppl/lsp/uri.hpp"
 #include "cppl/testing/test.hpp"
 
 #include <chrono>
 #include <condition_variable>
 #include <cstddef>
+#include <filesystem>
+#include <fstream>
 #include <ios>
 #include <istream>
 #include <mutex>
@@ -115,7 +119,9 @@ class Watched : public std::streambuf {
 // A session with an editor on the other end, which runs until `finish`.
 class Session {
   public:
-    explicit Session(std::chrono::milliseconds quiet, const std::string& capabilities = "{}")
+    // `more` is further initialize parameters, each with a comma before it.
+    explicit Session(std::chrono::milliseconds quiet, const std::string& capabilities = "{}",
+                     const std::string& more = "")
         : input_(&pipe_),
           output_(&watched_) {
         TransportOptions options;
@@ -123,7 +129,7 @@ class Session {
         options.quiet = quiet;
         thread_ = std::thread([this, options] { exit_code_ = run_transport(server_, input_, output_, log_, options); });
         pipe_.send(R"({"jsonrpc":"2.0","id":"init","method":"initialize","params":{"capabilities":)" + capabilities +
-                   "}}");
+                   more + "}}");
         CPPL_CHECK(watched_.wait_for(R"("id":"init","result")") != std::string::npos);
         pipe_.send(R"({"jsonrpc":"2.0","method":"initialized","params":{}})");
     }
@@ -179,6 +185,10 @@ class Session {
     int exit_code_ = -1;
     std::thread thread_;
 };
+
+void write(const std::filesystem::path& path, const std::string& text) {
+    std::ofstream(path, std::ios::binary) << text;
+}
 
 std::size_t count(const std::string& text, std::string_view needle) {
     std::size_t found = 0;
@@ -273,15 +283,15 @@ CPPL_TEST(each_compile_is_reported_as_progress_on_a_token_the_client_created) {
     // The server asks for a token; the client creates it.
     CPPL_CHECK(
         session.output().wait_for(
-            R"("id":"cppl/create/1","method":"window/workDoneProgress/create","params":{"token":"cppl/compile/1"})") !=
+            R"("id":"cppl/create/1","method":"window/workDoneProgress/create","params":{"token":"cppl/progress/1"})") !=
         std::string::npos);
     session.send(R"({"jsonrpc":"2.0","id":"cppl/create/1","result":null})");
     session.open("file:///work/progress.cpp", R"("int main() { return 0; }\n")");
     const std::size_t begun = session.output().wait_for(
-        R"("method":"$/progress","params":{"token":"cppl/compile/1","value":{"kind":"begin","title":"Checking",)"
+        R"("method":"$/progress","params":{"token":"cppl/progress/1","value":{"kind":"begin","title":"Checking",)"
         R"("message":"progress.cpp")");
     CPPL_CHECK(begun != std::string::npos);
-    CPPL_CHECK(session.output().wait_for(R"("params":{"token":"cppl/compile/1","value":{"kind":"end"}})", begun) !=
+    CPPL_CHECK(session.output().wait_for(R"("params":{"token":"cppl/progress/1","value":{"kind":"end"}})", begun) !=
                std::string::npos);
     // The token taken, the next one is asked for; and the client is told its
     // lenses and tokens may have changed.
@@ -293,6 +303,53 @@ CPPL_TEST(each_compile_is_reported_as_progress_on_a_token_the_client_created) {
     session.send(R"({"jsonrpc":"2.0","id":"cppl/refresh/3","result":null})");
     CPPL_CHECK_EQ(session.finish(), 0);
     CPPL_CHECK(session.output().text().find(R"("id":"cppl/refresh/3","error")") == std::string::npos);
+}
+
+CPPL_TEST(indexing_the_workspace_is_reported_as_progress_and_answers_workspace_symbols) {
+    const cppl::driver::ScratchDirectory scratch;
+    write(scratch.path() / "first.cpp", "int indexed_first();\n");
+    Session session(std::chrono::milliseconds(300), R"({"window":{"workDoneProgress":true}})",
+                    R"(,"rootUri":")" + path_to_uri(scratch.path().string()) + R"(")");
+    // A token for compiles, and one for indexing.
+    CPPL_CHECK(session.output().wait_for(R"("id":"cppl/create/1","method":"window/workDoneProgress/create")") !=
+               std::string::npos);
+    CPPL_CHECK(session.output().wait_for(R"("id":"cppl/create/2","method":"window/workDoneProgress/create")") !=
+               std::string::npos);
+    session.send(R"({"jsonrpc":"2.0","id":"cppl/create/1","result":null})");
+    session.send(R"({"jsonrpc":"2.0","id":"cppl/create/2","result":null})");
+    // Answered in turn, after the tokens are created, once the first file is
+    // indexed.
+    int asked = 0;
+    const auto symbols = [&session, &asked] {
+        const std::string id = std::to_string(++asked);
+        session.send(R"({"jsonrpc":"2.0","id":)" + id + R"(,"method":"workspace/symbol","params":{"query":"indexed_"}})");
+        const std::size_t answered = session.output().wait_for(R"("id":)" + id + ",");
+        return answered == std::string::npos ? std::string() : session.output().text().substr(answered);
+    };
+    constexpr int kAsks = 600;
+    std::string answer = symbols();
+    for (int tries = 1; tries < kAsks && answer.starts_with(R"("result":)") &&
+                        !answer.starts_with(R"("result":[{"name":"indexed_first")");
+         ++tries) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        answer = symbols();
+    }
+    CPPL_CHECK(answer.starts_with(R"("result":[{"name":"indexed_first","kind":12,"location":{"uri":")"));
+    const std::size_t indexed = session.output().text().size();
+
+    // A file added is indexed on a token, file by file.
+    write(scratch.path() / "second.cpp", "int indexed_second();\n");
+    const std::size_t begun = session.output().wait_for(
+        R"("value":{"kind":"begin","title":"Indexing","message":"0/1 files","percentage":0,)", indexed);
+    CPPL_CHECK(begun != std::string::npos);
+    CPPL_CHECK(session.output().wait_for(R"("value":{"kind":"end"}})", begun) != std::string::npos);
+    // The token taken, the next one is asked for.
+    CPPL_CHECK(session.output().wait_for(R"("id":"cppl/create/3","method":"window/workDoneProgress/create")") !=
+               std::string::npos);
+    CPPL_CHECK(symbols().starts_with(R"("result":[{"name":"indexed_first",)"));
+    CPPL_CHECK(session.output().text().find(R"({"name":"indexed_second","kind":12,"location":{"uri":")", begun) !=
+               std::string::npos);
+    CPPL_CHECK_EQ(session.finish(), 0);
 }
 
 CPPL_TEST(without_progress_support_no_progress_is_reported) {

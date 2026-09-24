@@ -29,6 +29,11 @@ class CompileCommands {
     // dropped. A database edited since it was read is read again.
     [[nodiscard]] std::vector<std::string> flags_for(const std::string& path);
 
+    // Every file the build compiles, as the database at the root of a
+    // workspace lists it: `root/compile_commands.json` or
+    // `root/build/compile_commands.json`.
+    [[nodiscard]] std::vector<std::filesystem::path> listed_under(const std::filesystem::path& root);
+
   private:
     struct Entry {
         std::filesystem::path file;

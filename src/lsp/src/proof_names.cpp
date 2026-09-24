@@ -57,8 +57,21 @@ std::optional<std::string> current_text(const DocumentManager& documents, const 
     return read_file(file);
 }
 
-// Where `at` falls in `text`, when `name`, and no longer name, is spelled
-// there.
+// Every `assume` a proof body binds, in arms too.
+void assumptions(const std::vector<frontend::ProofStatement>& statements,
+                 std::vector<const frontend::ProofStatement*>& found) {
+    for (const frontend::ProofStatement& statement : statements) {
+        if (statement.kind == frontend::ProofStatementKind::Assume) {
+            found.push_back(&statement);
+        }
+        for (const frontend::ProofArm& arm : statement.arms) {
+            assumptions(arm.statements, found);
+        }
+    }
+}
+
+} // namespace
+
 std::optional<std::size_t> spelled_at(const std::string& text, const source::SourceLocation& at,
                                       const std::string& name) {
     if (!at.is_valid() || at.column == 0 || name.empty()) {
@@ -85,21 +98,6 @@ std::optional<std::size_t> spelled_at(const std::string& text, const source::Sou
 bool same_place(const source::SourceLocation& lhs, const source::SourceLocation& rhs) {
     return lhs.line == rhs.line && lhs.column == rhs.column && normal_path(lhs.file) == normal_path(rhs.file);
 }
-
-// Every `assume` a proof body binds, in arms too.
-void assumptions(const std::vector<frontend::ProofStatement>& statements,
-                 std::vector<const frontend::ProofStatement*>& found) {
-    for (const frontend::ProofStatement& statement : statements) {
-        if (statement.kind == frontend::ProofStatementKind::Assume) {
-            found.push_back(&statement);
-        }
-        for (const frontend::ProofArm& arm : statement.arms) {
-            assumptions(arm.statements, found);
-        }
-    }
-}
-
-} // namespace
 
 ProofNames::ProofNames(const DocumentManager& documents) : documents_(documents) {}
 

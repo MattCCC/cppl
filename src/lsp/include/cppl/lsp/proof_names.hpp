@@ -4,11 +4,20 @@
 #include "cppl/lsp/protocol.hpp"
 #include "cppl/source/location.hpp"
 
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <vector>
 
 namespace cppl::lsp {
+
+// Where `at` falls in `text`, when `name`, and no longer name, is spelled
+// there: a record of where a name was written, checked against the text now.
+[[nodiscard]] std::optional<std::size_t> spelled_at(const std::string& text, const source::SourceLocation& at,
+                                                    const std::string& name);
+
+// Whether two positions are one, in the same file however its path is spelled.
+[[nodiscard]] bool same_place(const source::SourceLocation& lhs, const source::SourceLocation& rhs);
 
 // Navigation by the names proof statements use -- `exact p;`, `apply p;`,
 // `rewrite h;`, `contradiction e;` -- which are C++L and never reach Clang.

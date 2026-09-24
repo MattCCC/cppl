@@ -34,6 +34,11 @@ struct BufferCompileRequest {
     // minus input/output selection, which this request supplies itself.
     std::string clang;
     std::vector<std::string> clang_arguments;
+
+    // Stop once elaboration has resolved the names proof statements use
+    // (BufferCompileOutcome::names), verifying nothing: what an index of a
+    // workspace needs, at a fraction of a full compile's cost.
+    bool stop_after_elaboration = false;
 };
 
 // What became of one proof obligation, as an editor shows it. A copy of the

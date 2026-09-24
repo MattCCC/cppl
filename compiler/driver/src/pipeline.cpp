@@ -252,6 +252,9 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
         elaboration::elaborate(elaboration::Request{syntax, projection, unit}, engine);
     outcome.subject_states = elaborated.subject_states;
     outcome.names = elaborated.names;
+    if (request.stop_after_elaboration) {
+        return outcome;
+    }
 
     const obligations::Program program = obligations::generate(elaborated.module, elaborated, engine);
     if (!engine.has_errors() && program.proofs.size() != syntax.proofs.size()) {

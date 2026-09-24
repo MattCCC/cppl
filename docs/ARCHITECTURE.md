@@ -2773,6 +2773,18 @@ change is compiled once typing pauses. What a compile produced is applied where
 the server lives, and only while the document still holds exactly the text the
 compile read. A compile of text since edited is dropped, never shown.
 
+The workspace index (`lsp::WorkspaceIndex`) reads every other file of the
+workspace the same way, on a thread of its own. Each file gets an editor unit
+with its build's flags, and a compile that stops after elaboration
+(`BufferCompileRequest::stop_after_elaboration`) for the names its proof
+statements use. The index verifies nothing, and it publishes no diagnostic and
+no verdict. It serves workspace symbols, and references into files no open
+document includes.
+
+**[ARCH-LSP-009]** The index reads a file on disk as an open document of that
+file would be read, and it never answers for a file open in the editor. An open
+document always answers as the editor holds it.
+
 **[ARCH-LSP-004]** An editor service treats two declarations as one name only
 where Clang gives them one identity (USR), or where the projection repeated one
 written declaration into several generated ones, such as a proof's parameters

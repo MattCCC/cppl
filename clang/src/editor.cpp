@@ -273,9 +273,11 @@ struct EditorUnit::State {
 
     struct Walk {
         const State* state = nullptr;
-        // Occurrences of these, or else declarations spelled `name`.
+        // Occurrences of these, or else declarations spelled `name`; or, when
+        // `everything`, every occurrence of every name.
         const std::vector<std::string>* usrs = nullptr;
         std::string_view name;
+        bool everything = false;
         // The operands an assignment or an increment writes, met before them.
         std::vector<CXCursor> written;
         std::vector<Occurrence> found;
@@ -327,7 +329,12 @@ struct EditorUnit::State {
     void note_declaration(CXCursor cursor, Walk& walk) const {
         const std::string name = take(clang_getCursorSpelling(cursor));
         std::string usr;
-        if (walk.usrs != nullptr) {
+        if (walk.everything) {
+            usr = take(clang_getCursorUSR(cursor));
+            if (usr.empty() || name.empty()) {
+                return;
+            }
+        } else if (walk.usrs != nullptr) {
             usr = take(clang_getCursorUSR(cursor));
             if (std::ranges::find(*walk.usrs, usr) == walk.usrs->end()) {
                 return;
@@ -366,7 +373,7 @@ struct EditorUnit::State {
                 continue;
             }
             std::string usr = take(clang_getCursorUSR(target));
-            if (std::ranges::find(*walk.usrs, usr) == walk.usrs->end()) {
+            if (usr.empty() || (!walk.everything && std::ranges::find(*walk.usrs, usr) == walk.usrs->end())) {
                 continue;
             }
             // An expression's extent starts at its qualifier or its object; its
@@ -399,7 +406,7 @@ struct EditorUnit::State {
         }
         if (clang_isDeclaration(kind) != 0 || kind == CXCursor_MacroDefinition) {
             walk.state->note_declaration(cursor, walk);
-        } else if (walk.usrs != nullptr && is_reference(kind)) {
+        } else if ((walk.usrs != nullptr || walk.everything) && is_reference(kind)) {
             walk.state->note_reference(cursor, kind, walk);
         }
         return CXChildVisit_Recurse;
@@ -634,11 +641,13 @@ struct EditorUnit::State {
         }
     }
 
-    [[nodiscard]] std::vector<Occurrence> walk(const std::vector<std::string>* usrs, std::string_view name) const {
+    [[nodiscard]] std::vector<Occurrence> walk(const std::vector<std::string>* usrs, std::string_view name,
+                                               bool everything = false) const {
         Walk walk;
         walk.state = this;
         walk.usrs = usrs;
         walk.name = name;
+        walk.everything = everything;
         if (unit != nullptr) {
             clang_visitChildren(clang_getTranslationUnitCursor(unit), visit, &walk);
         }
@@ -959,6 +968,10 @@ std::vector<Occurrence> EditorUnit::occurrences(const std::vector<std::string>& 
 
 std::vector<Occurrence> EditorUnit::declarations_named(std::string_view name) const {
     return state_->walk(nullptr, name);
+}
+
+std::vector<Occurrence> EditorUnit::all_occurrences() const {
+    return state_->walk(nullptr, {}, true);
 }
 
 namespace {

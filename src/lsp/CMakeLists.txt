@@ -16,6 +16,7 @@ add_library(cppl_lsp STATIC
     src/symbols.cpp
     src/transport.cpp
     src/uri.cpp
+    src/workspace_index.cpp
     src/verification.cpp
     include/cppl/lsp/compile_commands.hpp
     include/cppl/lsp/completion.hpp
@@ -36,6 +37,7 @@ add_library(cppl_lsp STATIC
     include/cppl/lsp/transport.hpp
     include/cppl/lsp/uri.hpp
     include/cppl/lsp/verification.hpp
+    include/cppl/lsp/workspace_index.hpp
 )
 
 target_include_directories(cppl_lsp PUBLIC

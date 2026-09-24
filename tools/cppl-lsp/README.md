@@ -39,7 +39,8 @@ textDocument/definition                     Clang, over the document's projectio
 textDocument/declaration                    the first declaration
 textDocument/typeDefinition                 through pointers, references, `auto`
 textDocument/implementation                 overrides and derived classes
-textDocument/references                     across every open document
+textDocument/references                     across the workspace: open documents
+                                            as held, other files from the index
 textDocument/documentHighlight              declarations, reads and writes
 textDocument/codeLens                       each Law's, proof's, function's verdict
 textDocument/signatureHelp                  the call being written, from Clang
@@ -51,6 +52,8 @@ textDocument/selectionRange                 Clang's constructs and the
                                             recognizer's C++L spans, nested
 textDocument/inlayHint                      parameter names, deduced types,
                                             from Clang
+workspace/symbol                            every declaration in the workspace,
+                                            from the index and open documents
 ```
 
 Diagnostics come from `driver::compile_buffer` over the live buffer — the same
@@ -164,7 +167,8 @@ same name. A reference is reported only where its name is written: an
 implicit call, or a use spelled by a macro's body, has no written name and is
 not an occurrence. `documentHighlight` marks each occurrence in the document
 as its declaration, a read, or a write, where a write is the target of an
-assignment, a compound assignment or an increment.
+assignment, a compound assignment or an increment. Files no open document holds
+answer from the workspace index (see "Workspace index").
 
 The editor unit reads text as written, which is what makes its positions exact,
 and it is also its one limit: a C++L construct spelled through a macro, such as
@@ -182,7 +186,7 @@ document; the legend under "Semantic tokens"), `definitionProvider`,
 `declarationProvider`, `typeDefinitionProvider`, `implementationProvider`,
 `referencesProvider`, `documentHighlightProvider`, `codeLensProvider`,
 `signatureHelpProvider`, `documentSymbolProvider`, `foldingRangeProvider`,
-`selectionRangeProvider` and `inlayHintProvider`.
+`selectionRangeProvider`, `inlayHintProvider` and `workspaceSymbolProvider`.
 The rest of navigation specified below is not implemented and not advertised:
 an editor is told what the server can do, never what it intends to do.
 `docs/STATUS.md` tracks this.
@@ -733,6 +737,43 @@ Clang's entry, marked `verified` or `pure`.
 A client that cannot nest an outline
 (`hierarchicalDocumentSymbolSupport` unset) gets the same entries as a flat
 list, each naming the entry it is nested in.
+
+### Workspace index
+
+Files no document holds open answer too. The server indexes every file under
+each folder the client opened (`workspaceFolders`, or else `rootUri` or
+`rootPath`): each C++ and C++L source and header (`.cppl`, `.cpp`, `.cc`,
+`.cxx`, `.c++`, `.h`, `.hh`, `.hpp`, `.hxx`, `.h++`, `.ipp`, `.inl`), and each
+file a compilation database at a root (`compile_commands.json` or
+`build/compile_commands.json`) lists, wherever that file lives. The walk passes
+by hidden directories, `node_modules`, build trees (a directory holding
+`CMakeCache.txt`) and repositories nested in the workspace (a directory holding
+`.git`). It stops at 20,000 files and 32 directories deep, so a root that is
+not a project costs a bounded amount.
+
+Each file is read from disk the way an open document is read. Clang reads it
+through its projection, with the flags its build gives it (`ARCH-LSP-008`).
+The compile reads it as far as elaboration, which says what each name a proof
+statement uses resolves to. The index never verifies, publishes no diagnostic
+and shows no verdict. It runs on a thread of its own. It reads every file
+once, then looks every 2 seconds for files added, removed or edited on disk,
+and reads again only those.
+
+An open document always answers as the editor holds it, and the index answers
+only for the other files (`ARCH-LSP-009`). So an edit not yet saved is what
+workspace symbols and references see.
+
+- **Workspace symbols** (`workspace/symbol`) are the declarations the outline
+  shows, in open documents and indexed files, whose name holds the query's
+  characters in order, ignoring case. The name itself ranks first, then a name
+  it begins, then one it is part of, then one it is scattered through, each
+  rank by name. At most 256 are returned, each with the declarations it is
+  nested in as its container (`a::b`).
+- **References** reach every indexed file: a C++ name by its USR, and a Law or
+  a proof through each proof statement the compile resolved to it.
+- **Progress.** A client that shows progress sees each pass that reads files as
+  work in progress titled `Indexing`, with how many files are read out of how
+  many it found.
 
 ### Folding and selection
 
@@ -1522,12 +1563,11 @@ reference. Detailed pointer-state and effect hovers are not implemented.
 Transport, document synchronization, diagnostics, canonical C++L formatting,
 code actions, proof-decomposition completion and hover, semantic tokens for
 every name and C++L word, definition, declaration, type definition and
-implementation, and references and document highlights are implemented. The
-following are explicitly out of scope for this milestone and are not
-implemented:
+implementation, references and document highlights, and workspace symbols are
+implemented. The following are explicitly out of scope for this milestone and
+are not implemented:
 
 ```text
-references in a file no open document includes
 rename
 semantic tokens for a range or as a delta (whole documents only)
 proof search / interactive proof state
@@ -1555,8 +1595,10 @@ runs.
   as cancelled (`-32800`) instead of run. A withdrawal of a request already
   answered is ignored.
 - **Progress.** A client that shows progress (`window.workDoneProgress`) sees
-  each compile as work in progress, titled with the file it checks, on a token
-  the server asks the client to create ahead of time.
+  each compile as work in progress, titled with the file it checks, and each
+  pass of the workspace index (see "Workspace index"). Each is reported on a
+  token the server asks the client to create ahead of time: one for compiles,
+  and one more while a workspace is indexed.
 - **Refresh.** After a compile, a client that supports it
   (`workspace.codeLens.refreshSupport`, `workspace.semanticTokens.refreshSupport`)
   is asked to fetch its code lenses and semantic tokens again. Those are what a

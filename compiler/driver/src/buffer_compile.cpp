@@ -151,6 +151,7 @@ BufferCompileOutcome compile_buffer(const BufferCompileRequest& request, diagnos
     pipeline_request.stem = stem;
     pipeline_request.clang = clang;
     pipeline_request.clang_arguments = request.clang_arguments;
+    pipeline_request.stop_after_elaboration = request.stop_after_elaboration;
     // The LSP has no later "real compile" step of its own, unlike the CLI,
     // so a document with no C++L syntax at all still needs Clang's own
     // diagnostics to reach the editor (README.md: "Ordinary C++ remains

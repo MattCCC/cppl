@@ -5,6 +5,8 @@
 #include "cppl/lsp/protocol.hpp"
 #include "cppl/lsp/semantic_tokens.hpp"
 #include "cppl/lsp/server.hpp"
+#include "cppl/lsp/uri.hpp"
+#include "cppl/lsp/workspace_index.hpp"
 
 #include <algorithm>
 #include <charconv>
@@ -371,12 +373,13 @@ class Dispatcher {
         });
     }
 
-    // Asks the client for a progress token to report the next compile with.
+    // Asks the client for a progress token to report the next compile, or the
+    // next pass of indexing, with.
     void request_progress_token() {
         if (tokens_ == nullptr || !server_.client_capabilities().work_done_progress) {
             return;
         }
-        const std::string token = "cppl/compile/" + std::to_string(++sent_);
+        const std::string token = "cppl/progress/" + std::to_string(++sent_);
         const std::string id = "cppl/create/" + std::to_string(sent_);
         pending_tokens_.emplace(id, token);
         json::Value params = json::Value::object();
@@ -442,7 +445,11 @@ class Dispatcher {
             handle_initialize(id_value, params);
         } else if (method == "initialized") {
             server_.initialized();
+            // One token for compiles, and one for indexing while it runs.
             request_progress_token();
+            if (server_.indexing()) {
+                request_progress_token();
+            }
         } else if (method.starts_with("$/")) {
             // `$/cancelRequest` for a request already answered, and any
             // other protocol-internal notification, which may be ignored.
@@ -499,6 +506,8 @@ class Dispatcher {
             handle_selection_range(id_value, params);
         } else if (method == "textDocument/inlayHint") {
             handle_inlay_hint(id_value, params);
+        } else if (method == "workspace/symbol") {
+            handle_workspace_symbol(id_value, params);
         } else if (is_request) {
             respond_error(*id_value, kMethodNotFound, "method not found: " + method);
         } else {
@@ -595,8 +604,38 @@ class Dispatcher {
         return capabilities;
     }
 
+    // The directories the client opened: each workspace folder, or else the
+    // root it names, as a URI or, from an older client, a path.
+    static std::vector<std::string> workspace_roots(const json::Value* params) {
+        std::vector<std::string> roots;
+        if (params == nullptr) {
+            return roots;
+        }
+        const auto add = [&roots](const std::string& uri) {
+            if (std::optional<std::string> path = uri_to_path(uri)) {
+                roots.push_back(std::move(*path));
+            }
+        };
+        if (const json::Value* folders = params->find("workspaceFolders"); folders != nullptr && folders->is_array()) {
+            for (const json::Value& folder : folders->as_array()) {
+                if (const std::optional<std::string> uri = folder.find_string("uri")) {
+                    add(*uri);
+                }
+            }
+        }
+        if (!roots.empty()) {
+            return roots;
+        }
+        if (const std::optional<std::string> uri = params->find_string("rootUri")) {
+            add(*uri);
+        } else if (std::optional<std::string> path = params->find_string("rootPath")) {
+            roots.push_back(std::move(*path));
+        }
+        return roots;
+    }
+
     void handle_initialize(const json::Value* id, const json::Value* params) {
-        server_.initialize(client_capabilities(params));
+        server_.initialize(client_capabilities(params), workspace_roots(params));
 
         json::Value capabilities = json::Value::object();
         // Incremental sync: a client sends only what changed, and each change
@@ -674,6 +713,9 @@ class Dispatcher {
         json::Value document_symbols = json::Value::object();
         document_symbols.set("label", json::Value(std::string("C++L")));
         capabilities.set("documentSymbolProvider", std::move(document_symbols));
+        // Declarations across the workspace, from its index and the open
+        // documents.
+        capabilities.set("workspaceSymbolProvider", json::Value(true));
         // Folding and expanding a selection by the structure Clang parsed and
         // the C++L structure the recognizer found.
         capabilities.set("foldingRangeProvider", json::Value(true));
@@ -1158,6 +1200,25 @@ class Dispatcher {
         respond_result(*id, std::move(items));
     }
 
+    void handle_workspace_symbol(const json::Value* id, const json::Value* params) {
+        if (id == nullptr) {
+            return;
+        }
+        const std::string query = params != nullptr ? params->find_string("query").value_or(std::string()) : "";
+        json::Value items = json::Value::array();
+        for (const WorkspaceIndex::Symbol& symbol : server_.workspace_symbols(query)) {
+            json::Value item = json::Value::object();
+            item.set("name", json::Value(symbol.name));
+            item.set("kind", json::Value(static_cast<int>(symbol.kind)));
+            item.set("location", location_to_json(symbol.location));
+            if (!symbol.container.empty()) {
+                item.set("containerName", json::Value(symbol.container));
+            }
+            items.push_back(std::move(item));
+        }
+        respond_result(*id, std::move(items));
+    }
+
     void handle_folding_range(const json::Value* id, const json::Value* params) {
         if (id == nullptr) {
             return;
@@ -1444,6 +1505,77 @@ class Dispatcher {
     }
 };
 
+void report_progress(Writer& writer, const std::string& token, json::Value value) {
+    json::Value params = json::Value::object();
+    params.set("token", json::Value(token));
+    params.set("value", std::move(value));
+    json::Value message = json::Value::object();
+    message.set("jsonrpc", json::Value("2.0"));
+    message.set("method", json::Value("$/progress"));
+    message.set("params", std::move(params));
+    writer.write(message);
+}
+
+// Reports indexing, on the thread that indexes: each pass that reads files
+// begins on a token, reports each file read, and ends once all are. A pass
+// that begins before a token has been created takes one as it arrives.
+class IndexProgress {
+  public:
+    IndexProgress(Writer& writer, ProgressTokens& tokens, Events& events)
+        : writer_(writer),
+          tokens_(tokens),
+          events_(events) {}
+
+    void operator()(std::size_t done, std::size_t total) {
+        if (done == 0 && token_.has_value()) {
+            end();
+        }
+        if (done >= total) {
+            end();
+            return;
+        }
+        const std::string counted = std::to_string(done) + "/" + std::to_string(total) + " files";
+        constexpr std::size_t kWhole = 100;
+        const auto percentage = static_cast<int>(done * kWhole / total);
+        if (!token_.has_value()) {
+            token_ = tokens_.take();
+            if (!token_.has_value()) {
+                return;
+            }
+            json::Value begin = json::Value::object();
+            begin.set("kind", json::Value("begin"));
+            begin.set("title", json::Value("Indexing"));
+            begin.set("message", json::Value(counted));
+            begin.set("percentage", json::Value(percentage));
+            begin.set("cancellable", json::Value(false));
+            report_progress(writer_, *token_, std::move(begin));
+            events_.push(TokenTaken{});
+            return;
+        }
+        json::Value report = json::Value::object();
+        report.set("kind", json::Value("report"));
+        report.set("message", json::Value(counted));
+        report.set("percentage", json::Value(percentage));
+        report_progress(writer_, *token_, std::move(report));
+    }
+
+  private:
+    void end() {
+        if (!token_.has_value()) {
+            return;
+        }
+        json::Value end = json::Value::object();
+        end.set("kind", json::Value("end"));
+        report_progress(writer_, *token_, std::move(end));
+        token_.reset();
+    }
+
+    Writer& writer_;
+    ProgressTokens& tokens_;
+    Events& events_;
+    std::optional<std::string> token_;
+};
+
 // Compiles documents on a thread of its own, so the loop that owns the server
 // answers requests while a compile runs. Each document keeps only its latest
 // text waiting: a change waits for typing to pause before it is compiled,
@@ -1526,7 +1658,7 @@ class CompileWorker {
             begin.set("title", json::Value("Checking"));
             begin.set("message", json::Value(std::filesystem::path(job.request.virtual_path).filename().string()));
             begin.set("cancellable", json::Value(false));
-            progress(*token, std::move(begin));
+            report_progress(writer_, *token, std::move(begin));
             events_.push(TokenTaken{});
         }
         try {
@@ -1537,19 +1669,8 @@ class CompileWorker {
         if (token.has_value()) {
             json::Value end = json::Value::object();
             end.set("kind", json::Value("end"));
-            progress(*token, std::move(end));
+            report_progress(writer_, *token, std::move(end));
         }
-    }
-
-    void progress(const std::string& token, json::Value value) {
-        json::Value params = json::Value::object();
-        params.set("token", json::Value(token));
-        params.set("value", std::move(value));
-        json::Value message = json::Value::object();
-        message.set("jsonrpc", json::Value("2.0"));
-        message.set("method", json::Value("$/progress"));
-        message.set("params", std::move(params));
-        writer_.write(message);
     }
 
     Events& events_;
@@ -1627,6 +1748,9 @@ void run_in_background(Server& server, std::istream& input, std::ostream& output
     server.set_compile_scheduler([&worker, quiet = options.quiet](CompileJob job, bool opened) {
         worker.schedule(std::move(job), opened ? CompileWorker::Clock::duration::zero() : quiet);
     });
+    IndexProgress index_progress(writer, tokens, shared->events);
+    server.set_index_progress(
+        [&index_progress](std::size_t done, std::size_t total) { index_progress(done, total); });
 
     std::promise<void> read_all;
     std::future<void> reader_done = read_all.get_future();
@@ -1657,6 +1781,9 @@ void run_in_background(Server& server, std::istream& input, std::ostream& output
         }
     }
 
+    // Indexing reports through what ends with this loop, so it ends first.
+    server.stop_index();
+    server.set_index_progress({});
     server.set_compile_scheduler({});
     worker.stop();
     // A client closes its end of the input after `exit`, which ends the reader;

@@ -312,6 +312,10 @@ class EditorUnit {
     // Every declaration spelled `name` in those files.
     [[nodiscard]] std::vector<Occurrence> declarations_named(std::string_view name) const;
 
+    // Every place in those files where any name with an identity is written:
+    // what an index of the workspace records.
+    [[nodiscard]] std::vector<Occurrence> all_occurrences() const;
+
     // What Clang knows about the name written at `offset`: a declaration, a
     // use, a macro, or the type `auto` was deduced as.
     [[nodiscard]] std::optional<Description> describe(std::size_t offset) const;

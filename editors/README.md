@@ -67,6 +67,15 @@ finishes. A client that shows progress shows each compile as it runs, and one
 that supports refreshing re-fetches its code lenses and semantic tokens after
 each compile.
 
+### Across the workspace
+
+The server indexes every source and header under the folders the editor
+opened, in the background, and reads again what changes on disk. A workspace
+symbol search (VS Code's Go to Symbol in Workspace, Neovim's
+`vim.lsp.buf.workspace_symbol()`) lists declarations from every file, and find
+references reaches files no open document includes. A file open in the editor
+is answered as the editor holds it, saved or not.
+
 ### Build flags
 
 The server reads each file with the flags its build compiles it with, taken

@@ -1405,6 +1405,7 @@ AI output must always be independently verified.
 | LSP: build flags (compile_commands)  | `PROTOTYPE`   |
 | LSP: inlay hints                     | `PROTOTYPE`   |
 | LSP: background compiles, cancel     | `PROTOTYPE`   |
+| LSP: workspace index and symbols     | `PROTOTYPE`   |
 | IDE proof goals                      | `PROTOTYPE`   |
 | Proof navigation                     | `PROTOTYPE`   |
 | Counterexample UI                    | `NOT STARTED` |
@@ -1578,8 +1579,17 @@ where it was recorded.
 units: every open document's unit reports where a name, identified by Clang's
 USR, is written in it and in the headers it includes, and a parameter the
 projection repeats in several generated declarations counts as the one the
-author wrote. Highlights mark declarations, reads and writes. A file no open
-document includes is not searched.
+author wrote. Highlights mark declarations, reads and writes.
+
+A workspace index (`lsp::WorkspaceIndex`) reads every other file of the folders
+the client opened, and each file a compilation database there lists. It reads
+each on a thread of its own as an open document of it would be read: by
+Clang through its projection with its build's flags, and by the compile as far
+as elaboration. Files edited, added or removed on disk are read again within 2
+seconds. References reach those files, and `workspace/symbol` lists every
+declaration an outline would show in the open documents and the index. An open
+document always answers as the editor holds it (ARCH-LSP-009), and each pass
+that reads files is reported as progress.
 
 Rename is designed in `tools/cppl-lsp/README.md` but not implemented, and is
 deliberately not advertised as a capability.

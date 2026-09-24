@@ -10,6 +10,7 @@
 #include <fstream>
 #include <ios>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -258,6 +259,22 @@ const CompileCommands::Database* CompileCommands::database_at(const std::filesys
         return nullptr;
     }
     return &(databases_[file] = std::move(database));
+}
+
+std::vector<std::filesystem::path> CompileCommands::listed_under(const std::filesystem::path& root) {
+    std::vector<std::filesystem::path> files;
+    std::set<std::filesystem::path> seen;
+    for (const std::filesystem::path& candidate :
+         {root / "compile_commands.json", root / "build" / "compile_commands.json"}) {
+        if (const Database* database = database_at(normal(candidate))) {
+            for (const Entry& entry : database->entries) {
+                if (seen.insert(entry.file).second) {
+                    files.push_back(entry.file);
+                }
+            }
+        }
+    }
+    return files;
 }
 
 std::vector<std::string> CompileCommands::flags_for(const std::string& path) {

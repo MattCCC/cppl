@@ -8,7 +8,9 @@
 #include "cppl/lsp/editor_view.hpp"
 #include "cppl/lsp/linter.hpp"
 #include "cppl/lsp/protocol.hpp"
+#include "cppl/lsp/workspace_index.hpp"
 
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -48,11 +50,36 @@ class Server {
     // `clang_arguments`, extra flags for every document; it may be empty.
     explicit Server(std::string clang = {}, std::vector<std::string> clang_arguments = {});
 
-    // Lifecycle
-    void initialize(ClientCapabilities capabilities = {});
+    // Lifecycle. With workspace `roots`, every file under them is indexed in
+    // the background (workspace_index.hpp), reporting how far it has come to
+    // the progress set beforehand.
+    void initialize(ClientCapabilities capabilities = {}, std::vector<std::string> roots = {});
+    void set_index_progress(WorkspaceIndex::Progress progress) {
+        index_progress_ = std::move(progress);
+    }
     void initialized();
     void shutdown();
     void exit();
+
+    // Ends indexing: after this the index reports nothing more.
+    void stop_index() {
+        index_.reset();
+    }
+    [[nodiscard]] bool indexing() const noexcept {
+        return index_ != nullptr;
+    }
+
+    // Returns once the workspace's files have all been indexed as they are on
+    // disk now, true, or `timeout` has passed, false. True with no workspace.
+    [[nodiscard]] bool wait_for_index(std::chrono::milliseconds timeout) {
+        return index_ == nullptr || index_->wait_until_current(timeout);
+    }
+
+    // The declarations in the workspace whose name matches `query` -- its
+    // characters in order, ignoring case -- best first: the index's, with an
+    // open document's taken from the document as the editor holds it (LSP
+    // `workspace/symbol`).
+    [[nodiscard]] std::vector<WorkspaceIndex::Symbol> workspace_symbols(const std::string& query);
 
     [[nodiscard]] bool is_shutting_down() const noexcept {
         return shutting_down_;
@@ -234,6 +261,8 @@ class Server {
     Linter linter_;
     DiagnosticPublisher diagnostic_publisher_;
     CompileScheduler compile_scheduler_;
+    WorkspaceIndex::Progress index_progress_;
+    std::unique_ptr<WorkspaceIndex> index_;
     TextDocumentSyncKind sync_kind_ = TextDocumentSyncKind::Incremental;
     bool shutting_down_ = false;
     bool should_exit_ = false;

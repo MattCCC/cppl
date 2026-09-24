@@ -13,16 +13,22 @@
 #include "cppl/lsp/proof_names.hpp"
 #include "cppl/lsp/protocol.hpp"
 #include "cppl/lsp/semantic_tokens.hpp"
+#include "cppl/lsp/uri.hpp"
 #include "cppl/lsp/verification.hpp"
+#include "cppl/lsp/workspace_index.hpp"
 
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
+#include <functional>
 #include <iterator>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -55,6 +61,34 @@ bool asks_for(const std::vector<std::string>& only, std::string_view kind) {
     });
 }
 
+// The documents open now, known by file rather than by how a URI spells it:
+// a client and path_to_uri may escape the same path differently.
+class OpenFiles {
+  public:
+    explicit OpenFiles(const DocumentManager& documents) {
+        documents.for_each([this](const Document& document) {
+            uris_.push_back(document.uri());
+            paths_.insert(file_of(document.uri()));
+        });
+    }
+
+    [[nodiscard]] const std::vector<std::string>& uris() const noexcept {
+        return uris_;
+    }
+
+    [[nodiscard]] bool holds(const std::string& uri) const {
+        return paths_.contains(file_of(uri));
+    }
+
+  private:
+    static std::string file_of(const std::string& uri) {
+        return normal_path(uri_to_path(uri).value_or(uri));
+    }
+
+    std::vector<std::string> uris_;
+    std::set<std::string, std::less<>> paths_;
+};
+
 } // namespace
 
 Server::Server(std::string clang, std::vector<std::string> clang_arguments)
@@ -62,8 +96,45 @@ Server::Server(std::string clang, std::vector<std::string> clang_arguments)
       clang_arguments_(std::move(clang_arguments)),
       driver_(resolve_driver(clang_.empty() ? std::string{CPPL_DEFAULT_CLANG} : clang_)) {}
 
-void Server::initialize(ClientCapabilities capabilities) {
+void Server::initialize(ClientCapabilities capabilities, std::vector<std::string> roots) {
     client_ = capabilities;
+    if (!roots.empty()) {
+        WorkspaceIndex::Options options;
+        options.driver = driver_;
+        options.clang = clang_;
+        options.clang_arguments = clang_arguments_;
+        std::vector<std::filesystem::path> paths(roots.begin(), roots.end());
+        index_ = std::make_unique<WorkspaceIndex>(std::move(paths), std::move(options), index_progress_);
+    }
+}
+
+std::vector<WorkspaceIndex::Symbol> Server::workspace_symbols(const std::string& query) {
+    constexpr std::size_t kMostSymbols = 256;
+    const OpenFiles open(documents_);
+
+    // An open document's declarations are the ones it holds now.
+    std::vector<WorkspaceIndex::Symbol> found;
+    for (const std::string& uri : open.uris()) {
+        if (EditorView* view = view_for(uri)) {
+            for (WorkspaceIndex::Symbol& symbol : WorkspaceIndex::declared(view->outline(), uri)) {
+                if (WorkspaceIndex::match(symbol.name, query) > 0) {
+                    found.push_back(std::move(symbol));
+                }
+            }
+        }
+    }
+    if (index_ != nullptr) {
+        for (WorkspaceIndex::Symbol& symbol : index_->symbols(query, kMostSymbols)) {
+            if (!open.holds(symbol.location.uri)) {
+                found.push_back(std::move(symbol));
+            }
+        }
+    }
+    WorkspaceIndex::rank(found, query);
+    if (found.size() > kMostSymbols) {
+        found.resize(kMostSymbols);
+    }
+    return found;
 }
 
 void Server::initialized() {
@@ -72,6 +143,7 @@ void Server::initialized() {
 
 void Server::shutdown() {
     shutting_down_ = true;
+    stop_index();
 }
 
 void Server::exit() {
@@ -149,25 +221,32 @@ std::optional<std::vector<Location>> Server::text_document_references(const Text
         return std::nullopt;
     }
     std::vector<Location> locations;
-    const auto add = [&locations](Location location) {
-        const bool repeated = std::ranges::any_of(locations, [&](const Location& known) {
-            return known.uri == location.uri && known.range.start.line == location.range.start.line &&
-                   known.range.start.character == location.range.start.character;
-        });
-        if (!repeated) {
+    std::set<std::tuple<std::string, std::uint32_t, std::uint32_t>> seen;
+    const auto add = [&locations, &seen](Location location) {
+        if (seen.emplace(location.uri, location.range.start.line, location.range.start.character).second) {
             locations.push_back(std::move(location));
         }
     };
+    // An open document answers as the editor holds it; the index answers for
+    // every other file of the workspace, as it is on disk.
+    const OpenFiles open(documents_);
+    const auto closed = [&open](const Location& location) { return !open.holds(location.uri); };
     if (const std::optional<EditorView::Target> target = view->target_at(position)) {
-        std::vector<std::string> uris;
-        documents_.for_each([&uris](const Document& document) { uris.push_back(document.uri()); });
-        for (const std::string& uri : uris) {
+        for (const std::string& uri : open.uris()) {
             EditorView* other = view_for(uri);
             if (other == nullptr) {
                 continue;
             }
             for (EditorView::Mention& mention : other->mentions(*target)) {
                 if (include_declaration || mention.role != clangbridge::Role::Declaration) {
+                    add(std::move(mention.location));
+                }
+            }
+        }
+        if (index_ != nullptr) {
+            for (WorkspaceIndex::Mention& mention : index_->mentions(target->usrs)) {
+                if (closed(mention.location) &&
+                    (include_declaration || mention.role != clangbridge::Role::Declaration)) {
                     add(std::move(mention.location));
                 }
             }
@@ -183,6 +262,13 @@ std::optional<std::vector<Location>> Server::text_document_references(const Text
         }
         for (Location& use : names.uses_of(*named)) {
             add(std::move(use));
+        }
+        if (index_ != nullptr) {
+            for (Location& use : index_->proof_name_uses(named->name, named->at)) {
+                if (closed(use)) {
+                    add(std::move(use));
+                }
+            }
         }
     }
     std::ranges::sort(locations, [](const Location& lhs, const Location& rhs) {

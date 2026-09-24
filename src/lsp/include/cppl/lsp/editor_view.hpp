@@ -66,6 +66,14 @@ class EditorView {
     // is the target too.
     [[nodiscard]] std::vector<Mention> mentions(const Target& target) const;
 
+    // Every place this view's unit writes a name with an identity, traced to
+    // written text: what the workspace index records of a file.
+    struct Named {
+        std::string usr;
+        Mention mention;
+    };
+    [[nodiscard]] std::vector<Named> all_mentions() const;
+
     // What hover shows for the name at `position`, and the C++L declaration it
     // shows when the name stands for one. Such a name is shown as that
     // declaration, never as what the projection generated for it; a name only

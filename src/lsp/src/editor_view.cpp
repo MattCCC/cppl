@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -26,6 +27,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -370,6 +372,30 @@ std::vector<EditorView::Mention> EditorView::mentions(const Target& target) cons
             // Written once, reached as a repetition's reference and as the
             // declaration it repeats: it is the declaration.
             known->role = occurrence.role;
+        }
+    }
+    return found;
+}
+
+std::vector<EditorView::Named> EditorView::all_mentions() const {
+    std::vector<Named> found;
+    if (unit_ == nullptr) {
+        return found;
+    }
+    // Each name once per place it is written.
+    std::map<std::tuple<std::string, std::string, std::uint32_t, std::uint32_t>, std::size_t> seen;
+    for (const clangbridge::Occurrence& occurrence : unit_->all_occurrences()) {
+        std::optional<Location> location = locate(occurrence.name);
+        if (!location.has_value()) {
+            continue;
+        }
+        const auto [known, fresh] = seen.try_emplace(
+            std::tuple{occurrence.usr, location->uri, location->range.start.line, location->range.start.character},
+            found.size());
+        if (fresh) {
+            found.push_back(Named{occurrence.usr, Mention{std::move(*location), occurrence.role}});
+        } else if (occurrence.role == clangbridge::Role::Declaration) {
+            found[known->second].mention.role = occurrence.role;
         }
     }
     return found;

@@ -82,6 +82,12 @@ struct PipelineRequest {
     // C++ remains ordinary C++" -- the same semantic treatment it would get
     // through Clang).
     bool check_ordinary_cpp_with_clang = false;
+
+    // Stop once elaboration has resolved the unit's names: what each name a
+    // proof statement uses resolves to (PipelineOutcome::names), without
+    // generating or verifying an obligation. An editor's index of the
+    // workspace needs no more, and verification is the costly part.
+    bool stop_after_elaboration = false;
 };
 
 struct PipelineOutcome {
