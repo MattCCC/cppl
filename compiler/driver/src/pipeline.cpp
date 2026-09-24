@@ -292,6 +292,18 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
         record.goal = kernel::describe(result.obligation.goal);
         outcome.obligations.push_back(std::move(record));
     }
+    // A trusted law admitting a memory proposition has no obligation, but an
+    // editor shows it TRUSTED exactly as the trust report names it.
+    for (const obligations::TrustedMemoryAssumption& assumption : program.memory_assumptions) {
+        ObligationRecord record;
+        record.origin = obligations::Origin::LawProposition;
+        record.subject = assumption.name;
+        record.location = assumption.location;
+        record.status = obligations::Status::Trusted;
+        record.strategy = "explicit trusted assumption";
+        record.goal = assumption.statement;
+        outcome.obligations.push_back(std::move(record));
+    }
 
     outcome.counters.laws += elaborated.module.laws.size();
     std::size_t declaration_obligations = 0;
@@ -371,6 +383,9 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
                "the trusted laws a claim rests on cannot be reported: " + fault);
     }
 
+    // A trusted law admitting a memory proposition is accounted for by its
+    // recorded assumption rather than by an obligation (SPEC.md TRUSTED-003).
+    declaration_obligations += program.memory_assumptions.size();
     const std::size_t required = syntax.laws.size() + syntax.verified_functions.size();
     if (declaration_obligations < required) {
         outcome.counters.unresolved += required - declaration_obligations;

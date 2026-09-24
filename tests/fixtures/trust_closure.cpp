@@ -34,6 +34,13 @@ trusted law broken_counter()
 trusted law never_used(unsigned x)
     proves (x * 1u == x);
 
+// A memory proposition, admitted as an explicit assumption (SPEC.md
+// TRUSTED-003). It is not a proposition any proof goal can be, so no statement
+// can use it: it is TRUSTED, listed with what it admits, and unused.
+trusted law device_window(unsigned* registers, unsigned count)
+    expects (count <= 64u)
+    proves (readable(registers, count));
+
 // --- Direct trust ------------------------------------------------------------
 
 law identity_holds(unsigned x)
@@ -87,6 +94,32 @@ proof mixed(unsigned y)
 {
     rewrite outright(y);
     exact third_link(y);
+}
+
+// --- Through another law, and the same law reached more than once ----------
+
+// `identity_holds` is a law whose own proof names the assumption; using the
+// law carries it here.
+proof through_a_law(unsigned y)
+    proves (y + zero() == y)
+{
+    exact identity_holds(y);
+}
+
+// Named twice: one dependency, not two.
+proof named_twice(unsigned y)
+    proves (y + zero() + zero() == y)
+{
+    rewrite sensor_identity(y + zero());
+    exact sensor_identity(y);
+}
+
+// Reached through `first_link` and named directly: one dependency, direct.
+proof direct_and_through(unsigned y)
+    proves (y + zero() + zero() == y)
+{
+    rewrite first_link(y + zero());
+    exact sensor_identity(y);
 }
 
 // --- A false assumption proves anything, relative to it ---------------------

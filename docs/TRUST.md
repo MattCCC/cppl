@@ -831,6 +831,8 @@ Concurrency creates behaviors not captured by purely sequential reasoning.
 
 **[TCB-TRUST-009]** When a proof names a trusted Law as evidence (`SPEC.md` TRUSTED-006), the premise supposed for it MUST be exactly the proposition that Law states, over its parameters and under its premise. A component that could suppose a different proposition under the Law's name would hide an assumption behind a reported one, so the construction of that premise is part of the correspondence TCB.
 
+In this implementation a trusted Law admitting a memory proposition (`SPEC.md` TRUSTED-003) is recorded apart from Laws, because it has no kernel proposition: it is never lowered, never supposed as a premise and never counted as proven, and the trust report lists it `TRUSTED` with its location, a content-derived identity and what it admits. No statement can name one as evidence, so no claim rests on one and the report lists it as unused. Only an explicit `trusted law` may state a memory proposition; an ordinary Law or a proof claiming one is refused. This adds no kernel rule, axiom or logical assumption beyond the one the author declares.
+
 ## 25.1 No hidden assumptions
 
 The following are forbidden as hidden assumption sources:

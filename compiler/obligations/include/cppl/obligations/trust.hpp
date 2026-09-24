@@ -31,6 +31,11 @@ struct ClaimClosure {
     std::string subject;
     source::SourceLocation location;
 
+    // The content identity of what the claim states: its obligation's, a
+    // partial contract's conditions', or for a proof of a law instance, the
+    // goal it proves relative to its premises (TRUST.md 36.1).
+    ObligationId identity;
+
     // Ordered by law. `direct` is set where the claim's own evidence names the
     // law; otherwise it arrives through a proof the claim uses or a verified
     // function it calls. Empty for a claim proven outright.
@@ -51,6 +56,11 @@ struct TrustClosure {
 
     // Every trusted law the unit declares, ordered by law.
     std::vector<TrustedPremise> assumptions;
+
+    // Every trusted law admitting a memory proposition, in declaration order.
+    // No claim can rest on one (SPEC.md TRUSTED-003, TRUSTED-008), so each is
+    // also unused; it is listed so that the assumption stays visible.
+    std::vector<TrustedMemoryAssumption> memory_assumptions;
 
     // Dependencies that could not be attributed to a claim. Any one means the
     // report cannot vouch for the closures above, so it is an internal error

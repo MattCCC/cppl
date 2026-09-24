@@ -431,7 +431,7 @@ The project should not claim broad language implementation before the proof sema
 | partial-correctness contracts | `PROTOTYPE`   |
 | `ghost`                       | `SPECIFIED`   |
 | `unsafe`                      | `SPECIFIED`   |
-| `trusted`                     | `PARTIAL`     |
+| `trusted`                     | `IMPLEMENTED` |
 | `decreases`                   | `SPECIFIED`   |
 | proof erasure                 | `PROTOTYPE`   |
 
@@ -1209,7 +1209,7 @@ facility of the roadmap, which is not the same as C++ unsigned arithmetic.
 | ----------------------------------- | ------------- |
 | `unsafe` syntax                     | `SPECIFIED`   |
 | `trusted law`                       | `IMPLEMENTED` |
-| Trusted memory propositions         | `NOT STARTED` |
+| Trusted memory propositions         | `PARTIAL`     |
 | Unsafe-to-verified transition rules | `SPECIFIED`   |
 | Trust propagation                   | `IMPLEMENTED` |
 | Assumption closure                  | `IMPLEMENTED` |
@@ -1256,9 +1256,29 @@ a contract rests on a trusted law only through one, in its own body or in a
 function it calls. Recursive call graphs, which no source program here yet
 produces with a trusted premise, are exercised by
 `tests/unit/trust_closure_test.cpp`. Trust is propagated within one translation
-unit: no proof artifact or cache carries a closure across units yet.
-A trusted law cannot yet admit a memory proposition such as `readable(p)`
-(`SPEC.md` TRUSTED-003); one is refused.
+unit: no proof artifact or cache carries a closure across units yet. A verified
+call to a function defined in another unit is refused, so no claim rests on an
+assumption this unit cannot list.
+
+A trusted law may admit a memory proposition, `readable(p)` or `writable(p, n)`,
+under an ordinary premise (`SPEC.md` TRUSTED-003, VERIFIED-044). It is recorded
+as an explicit assumption with its location and a content-derived identity,
+reported `TRUSTED` with what it admits, shown so in an editor, and erased. This
+is `PARTIAL` for one reason: a capability is not a proposition the kernel checks
+(RFC 0014 §10), so no proof goal or premise can be one, and no statement can
+name such a law as evidence. It is therefore listed among the unused trusted
+laws with that reason. A proof statement naming one, and a proof or an ordinary
+law whose own claim is a memory proposition, are refused by name
+(`negative_trusted_dependencies`). No construct of this implementation consumes
+a trusted capability; one would need a statement that names capability
+evidence, which `SPEC.md` does not yet define.
+
+Every proven claim is listed in the trust report with the content identity of
+what it states (`TRUST.md` 36.1): under `Trust-dependent claims` with each
+trusted law it rests on, or under `Assumption-free claims`. A law named twice,
+or reached both directly and through a proof, is one dependency, marked direct;
+a law reached through another law's written proof is reached through a proof it
+uses (`fixtures/trust_closure.cpp`).
 
 ---
 
@@ -1428,9 +1448,10 @@ The driver is Clang-compatible rather than subcommand-based: `cppl` takes the
 arguments `clang++` takes. Trust reporting exists as `--cppl-trust-report`; the
 subcommand forms above are not implemented. The report counts partial-
 correctness contracts and loop-invariant obligations separately, lists every
-proven claim that rests on a trusted law with each law it rests on, and lists
-the trusted laws nothing rests on. It is text only: there is no
-machine-readable form yet, and it prints no proposition or evidence hashes
+proven claim with the content identity of what it states, apart by whether it
+rests on trusted laws and, if so, with each law it rests on, and lists every
+trusted law with its identity and the ones nothing rests on. It is text only:
+there is no machine-readable form yet, and it prints no evidence hashes
 (`TRUST.md` 36.1).
 
 `cppl-lsp` implements `initialize`, `shutdown`, `exit`, incrementally synced

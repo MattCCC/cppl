@@ -2168,6 +2168,13 @@ driver        --cppl-trust-report prints every claim's closure and the
               trusted Laws nothing rests on
 ```
 
+A trusted Law whose conclusion is a memory proposition takes a separate path,
+because it has no kernel proposition: elaboration records it as a
+`vir::MemoryAssumption` on the capability channel, the obligation layer gives it
+a content identity (`TrustedMemoryAssumption`), and the closure and report carry
+it as a `TRUSTED` assumption no claim rests on. No stage lowers it, supposes it,
+or lets a statement name it.
+
 A proof's closure is not inferred from source proximity: it is exactly the set of
 premises the kernel checked its evidence relative to, so evidence cannot use an
 assumption its verdict does not name (`TRUST.md` TCB-PROV-001). Joining contracts

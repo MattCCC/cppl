@@ -91,6 +91,24 @@ struct Law {
     bool trusted = false;
 };
 
+// A trusted law whose conclusion is a memory proposition (SPEC.md TRUSTED-003,
+// VERIFIED-044): `trusted law name(params) proves (readable(p));`.
+//
+// A capability is not a proposition the kernel checks (RFC 0014 §10), so this
+// is not a `Law`: it has no proposition to lower and no obligation, and keeping
+// it off that list is what makes it impossible to lower a placeholder in its
+// place. It is an explicit assumption with its own identity and location, and
+// the trust report names it. A trusted law supplies what it states only to the
+// statements that name it (TRUSTED-008), and no statement names evidence for a
+// capability, so nothing rests on one.
+struct MemoryAssumption {
+    std::string name;
+    std::vector<Parameter> parameters;
+    std::optional<Expr> premise;
+    std::vector<Capability> capabilities;
+    source::SourceRange range;
+};
+
 // The written proof steps of GRAMMAR.md 5, resolved.
 //
 // A step is a typed node naming the proof it uses, not a tactic name to be
@@ -268,6 +286,7 @@ struct RefinementDeclaration {
 struct Module {
     std::vector<Function> functions;
     std::vector<Law> laws;
+    std::vector<MemoryAssumption> memory_assumptions;
     std::vector<Proof> proofs;
     std::vector<RefinementDeclaration> refinements;
 

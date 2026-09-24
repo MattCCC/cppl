@@ -48,6 +48,7 @@ declarator-list-ends-clauses	compiler/frontend/src/recognizer.cpp	nesting == 0 &
 call-capability-kind	compiler/obligations/src/contracts.cpp	return candidate.kind == required.kind &&	return true &&	^negative_memory_capabilities$
 call-capability-pointer	compiler/obligations/src/contracts.cpp	candidate.place.root.id == passed->parameter;	(true || candidate.place.root.id == passed->parameter);	^negative_memory_capabilities$
 call-capability-extent	compiler/obligations/src/contracts.cpp	if (required.extent.empty() && holding->extent.empty()) {	if (true || (required.extent.empty() && holding->extent.empty())) {	^negative_memory_capabilities$
+memory-assumption-trusted-only	compiler/elaboration/src/elaborate.cpp	    if (!declaration.trusted) {	    if (false && !declaration.trusted) {	^negative_trusted_dependencies$
 verified-specifier-span	compiler/frontend/src/recognizer.cpp	verified.keyword = tokens[index].span;	verified.keyword = source::ByteSpan{tokens[specifiers_start(tokens, index)].span.offset, tokens[index].span.end() - tokens[specifiers_start(tokens, index)].span.offset};	^e2e_erasure_equivalence$
 MUTATIONS
 )

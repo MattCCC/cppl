@@ -155,7 +155,9 @@ Manifest: `features/trust-propagation.yaml`
 | Determinism | regression | covered (`e2e/trust_closure.sh` citing `TCB-PROV-005`) |
 | One assumption in two units | positive | covered — one identity, unused only where unused (`e2e/trust_closure.sh` citing `TCB-TRUST-005`) |
 | Erasure | erasure | covered (`e2e/trust_closure.sh`) |
-| Trusted memory proposition | positive, negative | not built (`TRUSTED-003`) |
+| Through another law, and duplicates | positive | covered — a proof using a law whose written proof names the assumption rests on it through that proof; a law named twice, and one reached directly and through a proof, is one dependency marked direct (`fixtures/trust_closure.cpp`, `e2e/trust_closure.sh`) |
+| Every claim enumerated | positive, regression | covered — every proven claim is listed with its content identity, apart by whether it rests on a trusted law, and a line without one fails the test (`e2e/trust_closure.sh` citing `TRUST.md` 36.1) |
+| Trusted memory proposition | positive, negative, adversarial | covered as a declaration — admitted under a premise, reported TRUSTED with what it admits and why it is unused, shown TRUSTED in an editor; a proof statement naming one, an ordinary law stating one and a proof claiming one are refused by name; accepting an untrusted one is mutation-checked. No statement consumes one (`fixtures/trust_closure.cpp`, `negative/trusted_dependencies.sh`, `unit/lsp_verification_test.cpp` citing `TRUSTED-003`, `TRUSTED-008`, `VERIFIED-044`; `memory-assumption-trusted-only` in `scripts/test-mutations.sh`) |
 
 ### erasure and ABI
 

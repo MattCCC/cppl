@@ -159,6 +159,11 @@ CPPL_TEST(a_trusted_law_is_trusted_and_what_rests_on_it_says_so) {
     const std::vector<CodeLens> found = lenses(server, "file:///trust_closure.cpp");
     CPPL_CHECK_EQ(lens_at(found, position_of(text, "trusted law sensor_identity", 12)),
                   std::string("TRUSTED: an explicit assumption"));
+    // SPEC: TRUSTED-003
+    // A memory proposition has no obligation, and is shown TRUSTED all the same,
+    // never proven and never unverified.
+    CPPL_CHECK_EQ(lens_at(found, position_of(text, "trusted law device_window", 12)),
+                  std::string("TRUSTED: an explicit assumption"));
     const std::string first = lens_at(found, position_of(text, "proof first_link", 6));
     CPPL_CHECK(first.starts_with("PROVEN relative to trusted "));
     CPPL_CHECK(has(first, "sensor_identity"));

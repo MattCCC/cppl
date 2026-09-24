@@ -3,7 +3,9 @@
 #include "cppl/obligations/contracts.hpp"
 #include "cppl/obligations/obligation.hpp"
 #include "cppl/obligations/status.hpp"
+#include "cppl/source/location.hpp"
 #include "cppl/vir/ids.hpp"
+#include "lowering.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -86,6 +88,7 @@ std::string describe(ClaimKind kind) {
 
 TrustClosure close_trust(const Program& program, const std::vector<ObligationResult>& results) {
     TrustClosure closure;
+    closure.memory_assumptions = program.memory_assumptions;
 
     if (results.size() != program.obligations.size()) {
         closure.faults.emplace_back("the verification results do not correspond to the obligations");
@@ -171,7 +174,8 @@ TrustClosure close_trust(const Program& program, const std::vector<ObligationRes
         admitted(claim, premises);
 
         if (kind.has_value()) {
-            closure.claims.push_back(ClaimClosure{*kind, obligation.subject, obligation.range.begin, premises});
+            closure.claims.push_back(
+                ClaimClosure{*kind, obligation.subject, obligation.range.begin, obligation.id, premises});
         }
         if (const auto contract = owner.find(index); contract != owner.end()) {
             for (const TrustedPremise& premise : premises) {
@@ -189,8 +193,10 @@ TrustClosure close_trust(const Program& program, const std::vector<ObligationRes
             continue;
         }
         admitted("proof '" + written.name + "'", written.assumptions);
-        closure.claims.push_back(
-            ClaimClosure{ClaimKind::LawInstance, written.name, written.range.begin, written.assumptions});
+        closure.claims.push_back(ClaimClosure{ClaimKind::LawInstance, written.name, written.range.begin,
+                                              detail::identify_goal(program.context, "proof:" + written.name,
+                                                                    relative_to(written.assumptions, written.goal)),
+                                              written.assumptions});
     }
 
     // Each contract rests on what the contracts it calls rest on (TRUST.md
@@ -255,10 +261,11 @@ TrustClosure close_trust(const Program& program, const std::vector<ObligationRes
         const std::size_t anchor =
             contract.partial ? (contract.conditions.empty() ? results.size() : contract.conditions.front().obligation)
                              : contract.obligation;
-        closure.claims.push_back(
-            ClaimClosure{ClaimKind::Contract, contract.name,
-                         anchor < results.size() ? program.obligations[anchor].range.begin : source::SourceLocation{},
-                         ordered(std::move(contracts[index]))});
+        closure.claims.push_back(ClaimClosure{
+            ClaimKind::Contract, contract.name,
+            anchor < results.size() ? program.obligations[anchor].range.begin : source::SourceLocation{},
+            contract.partial ? ObligationId{contract.identity} : program.obligations[contract.obligation].id,
+            ordered(std::move(contracts[index]))});
     }
 
     return closure;

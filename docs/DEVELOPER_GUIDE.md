@@ -2264,17 +2264,23 @@ Proof declarations proven:   2
   relative to trusted laws:  2
 ...
 Trust-dependent claims:      3
-  law bound_after_identity (guide.cpp:24)
+  law bound_after_identity (guide.cpp:24), identity 79145ac641c8226e
     rests on sensor_identity (guide.cpp:5), named directly
     rests on device_bound (guide.cpp:8), named directly
-  proof first_link (guide.cpp:12)
+  proof first_link (guide.cpp:12), identity 2e028b16cd2be25c
     rests on sensor_identity (guide.cpp:5), named directly
-  proof second_link (guide.cpp:18)
+  proof second_link (guide.cpp:18), identity 22fb66e5fc124363
     rests on sensor_identity (guide.cpp:5), through a proof it uses
+Assumption-free claims:      0
 Unused trusted laws:         0
 ```
 
-Each kind of proven claim is split into what is proven outright and what rests
+Every proven claim is listed, with the content identity of what it states: those
+that rest on trusted laws under `Trust-dependent claims`, each with every law it
+rests on and whether it names that law or reaches it through what it uses, and
+those that rest on none under `Assumption-free claims`. A law reached twice, or
+both directly and through a proof, is listed once. Each kind of proven claim is
+also split into what is proven outright and what rests
 on trusted laws, and the two always add up to the count above them. The same
 split is given for function contracts, and for omitted cases and impossible
 paths, which are never counted as each other or as the proof they occur in. An
@@ -2289,6 +2295,38 @@ included into several translation units is recognizable as one.
 
 If the report cannot account for a dependency, the build fails with an internal
 error rather than printing a shorter list (`TRUST.md` 2.10).
+
+### 12.3. Trusted memory propositions
+
+A trusted law may admit a memory proposition, such as a guarantee an operating
+system or a device gives about a buffer (`SPEC.md` TRUSTED-003, VERIFIED-044):
+
+<!-- cppl-example: verify -->
+
+```cpp
+trusted law device_window(unsigned* registers, unsigned count)
+    expects (count <= 64u)
+    proves (readable(registers, count));
+```
+
+It is an explicit assumption like any trusted law: `TRUSTED`, never proven, and
+named in the trust report with its location, its identity and what it admits:
+
+```text
+Laws trusted:                1
+  assumed:                 device_window (guide.cpp:1), identity fefb8672a6f55f05, admits readable(registers, count)
+...
+Unused trusted laws:         1
+  unused:                  device_window (guide.cpp:1), no statement can use a memory proposition
+```
+
+A capability is a property of the execution state, not a proposition the kernel
+checks (RFC 0014 §10), so no proof goal or premise can be one. A proof statement
+naming `device_window` is refused, and so is a proof or an ordinary law whose own
+claim is a memory proposition: only an explicit assumption may state one. A
+trusted law supplies what it states only to the statements that name it
+(TRUSTED-008), so nothing in this implementation rests on one; the report says so
+rather than leave it looking forgotten.
 
 ## 13. References, pointers and memory validity
 

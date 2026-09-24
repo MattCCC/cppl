@@ -1018,23 +1018,20 @@ std::optional<vir::Expr> convert_projected(const Request& request, std::string_v
 // context hypothesis (RFC 0014 §10, SPEC.md 12.10).
 // Absent when a capability was stated and could not be read, which is reported
 // here; empty when the clause states none.
-std::optional<std::vector<vir::Capability>> convert_capabilities(
-    const Request& request, std::string_view generated, const source::SourceLocation& written,
-    std::uint32_t& next_expression_id, const std::string& subject, diagnostics::Engine& engine,
-    const std::vector<clangbridge::TemplateArgument>* arguments = nullptr) {
-    const clangbridge::Function* function = proposition_function(request, generated, written, arguments);
-    if (function == nullptr || function->capabilities.empty()) {
-        return std::vector<vir::Capability>{};
-    }
+std::optional<std::vector<vir::Capability>> convert_stated_capabilities(
+    const clangbridge::Function& function, const source::SourceLocation& written, vir::CapabilityOrigin origin,
+    const std::string& trusted_law, std::uint32_t& next_expression_id, const std::string& subject,
+    diagnostics::Engine& engine) {
     std::vector<vir::Capability> converted_all;
     ExpressionElaborator elaborator(next_expression_id);
-    for (const clangbridge::Capability& stated : function->capabilities) {
+    for (const clangbridge::Capability& stated : function.capabilities) {
         vir::Capability capability;
         capability.kind = stated.kind == clangbridge::Capability::Kind::Readable ? vir::CapabilityKind::Readable
                                                                                  : vir::CapabilityKind::Writable;
-        // A capability stated by a contract is owed by the caller, so its
-        // origin is the contract until a trusted law admits it.
-        capability.origin = vir::CapabilityOrigin::Contract;
+        // A capability stated by a contract is owed by the caller; one a
+        // trusted law states is admitted by it, and says so wherever it goes.
+        capability.origin = origin;
+        capability.trusted_law = trusted_law;
         capability.location = written;
 
         // The capability names the storage its pointer designates. The bridge
@@ -1056,6 +1053,18 @@ std::optional<std::vector<vir::Capability>> convert_capabilities(
     return converted_all;
 }
 
+std::optional<std::vector<vir::Capability>> convert_capabilities(
+    const Request& request, std::string_view generated, const source::SourceLocation& written,
+    std::uint32_t& next_expression_id, const std::string& subject, diagnostics::Engine& engine,
+    const std::vector<clangbridge::TemplateArgument>* arguments = nullptr) {
+    const clangbridge::Function* function = proposition_function(request, generated, written, arguments);
+    if (function == nullptr || function->capabilities.empty()) {
+        return std::vector<vir::Capability>{};
+    }
+    return convert_stated_capabilities(*function, written, vir::CapabilityOrigin::Contract, {}, next_expression_id,
+                                       subject, engine);
+}
+
 // Resolves a proof body into typed steps.
 //
 // A step's reference names a proof-level entity: a proof this translation unit
@@ -1068,7 +1077,7 @@ std::optional<std::vector<vir::Capability>> convert_capabilities(
 std::optional<std::vector<vir::ProofStep>> convert_statements(
     const Request& request, const frontend::ProofDeclaration& declaration, const frontend::ProofFunction& projected,
     const std::map<std::string, std::size_t>& declared,
-    const std::map<std::string, std::vector<const vir::Law*>>& trusted_laws,
+    const std::map<std::string, std::vector<const vir::Law*>>& trusted_laws, const std::set<std::string>& memory_laws,
     const std::vector<vir::Parameter>& parameters, std::uint32_t& next_expression_id, diagnostics::Engine& engine,
     std::vector<SubjectStates>* subject_states, std::vector<ResolvedName>* names) {
     const std::size_t parameter_count = parameters.size();
@@ -1357,6 +1366,18 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
 
             if (!evidence.has_value()) {
                 const auto target = declared.find(statement.reference);
+                // A trusted law admitting a memory proposition is an explicit
+                // assumption, but a capability is not a proposition any proof
+                // goal can be, so no statement can use it (SPEC.md TRUSTED-003,
+                // TRUSTED-008, RFC 0014 §10).
+                if (target == declared.end() && memory_laws.contains(statement.reference)) {
+                    report(engine, diagnostics::Category::Elaboration, statement.location,
+                           "trusted law '" + statement.reference +
+                               "' admits a memory proposition, which no proof statement can use",
+                           "'readable' and 'writable' are not propositions the kernel checks, so no goal is one and "
+                           "no premise can be supposed for one");
+                    return std::nullopt;
+                }
                 if (target == declared.end()) {
                     report(engine, diagnostics::Category::Elaboration, statement.location,
                            "no proof or assumed premise named '" + statement.reference + "' is in scope here",
@@ -1591,6 +1612,54 @@ void elaborate_contract(const Request& request, const frontend::VerifiedFunction
     converted.contract = std::move(contract);
 }
 
+// A law whose conclusion is a memory proposition, `readable(p)` or
+// `writable(p, n)` (SPEC.md TRUSTED-003, VERIFIED-044).
+//
+// Only a trusted law may state one. A capability is a property of the execution
+// state, not a proposition the kernel checks (RFC 0014 §10), so no proof can
+// establish it and an ordinary law stating one could never be proven. A trusted
+// one is recorded as an explicit assumption on the capability channel, with the
+// law's identity and location attached, and the trust report names it; nothing
+// lowers it to a kernel proposition.
+void elaborate_memory_assumption(const Request& request, const frontend::SpecificationFunction& specification,
+                                 const frontend::LawDeclaration& declaration, const clangbridge::Function& function,
+                                 std::uint32_t& next_expression_id, Result& result, diagnostics::Engine& engine) {
+    const source::SourceLocation stated =
+        declaration.proposition() != nullptr ? declaration.proposition()->location : declaration.range.begin;
+    if (!declaration.trusted) {
+        report(engine, diagnostics::Category::UnsupportedSemantics, stated,
+               "law '" + declaration.name + "' states a memory proposition, which no proof can establish",
+               "'readable' and 'writable' are not propositions the kernel checks; only a trusted law may admit one, as "
+               "an explicit assumption (SPEC.md TRUSTED-003, VERIFIED-044)");
+        return;
+    }
+    const std::string subject = "trusted law '" + declaration.name + "'";
+    const std::optional<std::vector<vir::Parameter>> parameters = convert_parameters(function, engine, subject);
+    if (!parameters.has_value()) {
+        return;
+    }
+    vir::MemoryAssumption assumption;
+    assumption.name = declaration.name;
+    assumption.parameters = *parameters;
+    assumption.range = declaration.range;
+    if (const frontend::Clause* written = declaration.premise(); written != nullptr) {
+        std::optional<vir::Expr> premise =
+            convert_projected(request, specification.premise_name, written->location, next_expression_id,
+                              "the precondition of " + subject, engine);
+        if (!premise.has_value()) {
+            return;
+        }
+        assumption.premise = std::move(*premise);
+    }
+    std::optional<std::vector<vir::Capability>> capabilities = convert_stated_capabilities(
+        function, stated, vir::CapabilityOrigin::TrustedLaw, declaration.name, next_expression_id, subject, engine);
+    if (!capabilities.has_value()) {
+        return;
+    }
+    assumption.capabilities = std::move(*capabilities);
+    result.module.memory_assumptions.push_back(std::move(assumption));
+}
+
 // Resolves the written proofs of a unit against the laws they claim to prove.
 //
 // Nothing here decides whether a proof holds. It decides only what the author
@@ -1687,6 +1756,10 @@ void elaborate_proofs(const Request& request, const std::map<std::string, vir::L
         if (law.trusted)
             trusted_laws[law.name].push_back(&law);
     }
+    std::set<std::string> memory_laws;
+    for (const vir::MemoryAssumption& assumption : result.module.memory_assumptions) {
+        memory_laws.insert(assumption.name);
+    }
 
     for (const frontend::ProofFunction& projected : request.projection.proof_functions) {
         const frontend::ProofDeclaration& declaration = request.syntax.proofs[projected.proof_index];
@@ -1698,6 +1771,13 @@ void elaborate_proofs(const Request& request, const std::map<std::string, vir::L
 
         const clangbridge::Function* function =
             proposition_function(request, projected.name, declaration.keyword_location);
+        if (function != nullptr && !function->capabilities.empty()) {
+            report(engine, diagnostics::Category::UnsupportedSemantics, declaration.proposition_location,
+                   "proof '" + declaration.name + "' states a memory proposition, which no proof can establish",
+                   "'readable' and 'writable' are not propositions the kernel checks; only a trusted law may admit "
+                   "one, as an explicit assumption (SPEC.md TRUSTED-003, VERIFIED-044)");
+            continue;
+        }
         if (function == nullptr || !function->returned_value.has_value()) {
             report(engine, diagnostics::Category::Elaboration, declaration.range.begin,
                    "the proposition of proof '" + declaration.name + "' was not resolved",
@@ -1772,8 +1852,8 @@ void elaborate_proofs(const Request& request, const std::map<std::string, vir::L
         // their types; which proposition they state is worked out where the
         // law's own proposition is known, by instantiating it at them.
         std::optional<std::vector<vir::ProofStep>> steps =
-            convert_statements(request, declaration, projected, declared, trusted_laws, *parameters, next_expression_id,
-                               engine, &result.subject_states, &result.names);
+            convert_statements(request, declaration, projected, declared, trusted_laws, memory_laws, *parameters,
+                               next_expression_id, engine, &result.subject_states, &result.names);
         if (!steps.has_value()) {
             if (law)
                 result.laws_with_refused_proofs.push_back(*law);
@@ -2039,6 +2119,14 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
         const std::string law_usr = function != nullptr ? function->usr : std::string{};
         if (function != nullptr && !specification.proposition_probe.empty()) {
             function = find_projected(request.unit, specification.proposition_probe, declaration.keyword_location);
+        }
+        // A memory proposition is admitted only as an explicit assumption: no
+        // proof establishes one, because it is not a proposition the kernel
+        // checks (SPEC.md TRUSTED-003, VERIFIED-044, RFC 0014 §10).
+        if (function != nullptr && !function->capabilities.empty()) {
+            elaborate_memory_assumption(request, specification, declaration, *function, next_expression_id, result,
+                                        engine);
+            continue;
         }
         if (function == nullptr || !function->returned_value.has_value()) {
             report(engine, diagnostics::Category::Elaboration, declaration.range.begin,

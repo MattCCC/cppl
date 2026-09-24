@@ -17,6 +17,7 @@
 #include "cppl/source/digest.hpp"
 #include "cppl/source/location.hpp"
 #include "cppl/source/representation.hpp"
+#include "cppl/vir/capability.hpp"
 #include "cppl/vir/expr.hpp"
 #include "cppl/vir/ids.hpp"
 #include "cppl/vir/module.hpp"
@@ -2592,6 +2593,33 @@ Program generate(const vir::Module& module, const elaboration::Result& elaborate
         obligation.id = identify(program.context, law.name, goal);
         obligation.goal = std::move(goal);
         program.obligations.push_back(std::move(obligation));
+    }
+
+    // A trusted law admitting a memory proposition is an explicit assumption
+    // with no kernel proposition, so it is recorded with an identity derived
+    // from what it states rather than as an obligation (SPEC.md TRUSTED-003,
+    // TRUST.md TCB-TRUST-005). The pointer is identified by its position among
+    // the law's parameters. A premise or a count is hashed as written, so
+    // renaming a parameter they mention yields a new identity: that errs
+    // toward invalidating an assumption, never toward keeping a changed one
+    // (TCB-TRUST-006).
+    for (const vir::MemoryAssumption& assumption : module.memory_assumptions) {
+        source::Hasher hasher;
+        hasher.update_field("trusted-memory-proposition-v1");
+        hasher.update_field(assumption.name);
+        for (const vir::Parameter& parameter : assumption.parameters) {
+            hasher.update_field(vir::describe(parameter.type));
+        }
+        hasher.update_field(assumption.premise.has_value() ? vir::describe(*assumption.premise) : std::string{});
+        std::string statement;
+        for (const vir::Capability& capability : assumption.capabilities) {
+            hasher.update_field(vir::describe(capability.kind));
+            hasher.update_field(std::to_string(capability.place.root.id));
+            hasher.update_field(capability.extent.empty() ? std::string{} : vir::describe(capability.extent.front()));
+            statement += (statement.empty() ? "" : " && ") + vir::describe(capability);
+        }
+        program.memory_assumptions.push_back(TrustedMemoryAssumption{assumption.name, ObligationId{hasher.finish()},
+                                                                     assumption.range.begin, std::move(statement)});
     }
 
     // A refinement type's predicate, stated once so every site a value enters

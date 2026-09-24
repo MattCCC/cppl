@@ -189,9 +189,24 @@ struct RefinementPredicate {
     std::string identity = {};
 };
 
+// A trusted law whose conclusion is a memory proposition (SPEC.md TRUSTED-003).
+//
+// It is an explicit assumption like any trusted law, TRUSTED and never proven,
+// but it states no proposition the kernel checks, so it is carried here rather
+// than as an obligation: nothing can suppose it as a premise, and no claim can
+// rest on it (TRUSTED-008). Its identity is derived from what it states.
+struct TrustedMemoryAssumption {
+    std::string name;
+    ObligationId identity;
+    source::SourceLocation location;
+    // What it admits, as written in the report: `readable(p, n)`.
+    std::string statement;
+};
+
 struct Program {
     kernel::Context context;
     std::vector<Obligation> obligations;
+    std::vector<TrustedMemoryAssumption> memory_assumptions;
     std::vector<WrittenProof> proofs;
     std::vector<ContractVerification> contracts;
     std::vector<RefinementPredicate> refinements;

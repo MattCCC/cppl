@@ -34,7 +34,7 @@ expect() {
 # is proven relative to trusted laws, and the two always add up.
 expect '^Laws proven: +6$'
 expect '^ +by a written proof: +5$'
-expect '^Proof declarations proven: +6$'
+expect '^Proof declarations proven: +9$'
 expect '^Function contracts proven: +3$'
 expect '^Omitted cases proven: +3$'
 expect '^Impossible paths proven: +1$'
@@ -44,7 +44,7 @@ grep -Eq '^ +assumption-free: +1$' <<< "$laws"
 grep -Eq '^ +relative to trusted laws: +5$' <<< "$laws"
 proofs=$(grep -A2 '^Proof declarations proven:' "$report")
 grep -Eq '^ +assumption-free: +1$' <<< "$proofs"
-grep -Eq '^ +relative to trusted laws: +5$' <<< "$proofs"
+grep -Eq '^ +relative to trusted laws: +8$' <<< "$proofs"
 # `add_zero` names no trusted law and calls nothing that rests on one; the two
 # functions whose contracts rest on `broken_counter` reach it through a runtime
 # path claim and through a verified call.
@@ -61,55 +61,80 @@ grep -Eq '^ +relative to trusted laws: +1$' <<< "$paths"
 # A trusted law is TRUSTED, never proven, whether or not anything uses it
 # (TRUST.md TCB-REPORT-003), and each is named where it is declared together
 # with an identity derived from what it states.
-expect '^Laws trusted: +4$'
-expect '^Trusted external axioms: +4$'
+expect '^Laws trusted: +5$'
+expect '^Trusted external axioms: +5$'
 for law in sensor_identity device_bound broken_counter never_used; do
     expect "^  assumed: +$law \\(.*trust_closure\\.cpp:[0-9]+\\), identity [0-9a-f]{16}$"
 done
+# SPEC: TRUSTED-003, VERIFIED-044
+# A memory proposition is assumed like any trusted law, and the report says what
+# it admits, since no proof statement can use it.
+expect '^  assumed: +device_window \(.*trust_closure\.cpp:[0-9]+\), identity [0-9a-f]{16}, admits readable\(registers, count\)$'
 
-# The closure of every claim that rests on a trusted law, in program order, and
-# every trusted law nothing rests on. Compared whole, so a dependency that goes
-# missing, a claim that is dropped, or an order that changes all fail here.
-sed -e "s|$FIXTURES/||g" "$report" | sed -n '/^Trust-dependent claims:/,/^$/p' > "$run/closure.actual"
+# Every proven claim carries the identity of what it states (TRUST.md 36.1).
+claim_lines=$(sed -n '/^Trust-dependent claims:/,/^Unused trusted laws:/p' "$report" | grep -E '^  [a-z]' || true)
+if grep -Evq ', identity [0-9a-f]{16}$' <<< "$claim_lines"; then
+    echo 'a proven claim is reported without its identity' >&2
+    cat "$report" >&2
+    exit 1
+fi
+
+# The closure of every claim that rests on a trusted law, in program order, every
+# claim that rests on none, and every trusted law nothing rests on. Compared
+# whole, so a dependency that goes missing, a claim that is dropped, or an order
+# that changes all fail here. Identities are content hashes, checked above.
+sed -e "s|$FIXTURES/||g" "$report" | sed -E -e 's/, identity [0-9a-f]{16}$//' |
+    sed -n '/^Trust-dependent claims:/,/^$/p' > "$run/closure.actual"
 cat > "$run/closure.expected" <<'REPORT'
-Trust-dependent claims:      17
-  law identity_holds (trust_closure.cpp:39)
+Trust-dependent claims:      20
+  law identity_holds (trust_closure.cpp:46)
     rests on sensor_identity (trust_closure.cpp:20), named directly
-  law bound_after_identity (trust_closure.cpp:67)
+  law bound_after_identity (trust_closure.cpp:74)
     rests on sensor_identity (trust_closure.cpp:20), named directly
     rests on device_bound (trust_closure.cpp:24), named directly
-  law anything_goes (trust_closure.cpp:94)
+  law anything_goes (trust_closure.cpp:127)
     rests on broken_counter (trust_closure.cpp:30), named directly
-  law omission_relies_on_assumption (trust_closure.cpp:102)
+  law omission_relies_on_assumption (trust_closure.cpp:135)
     rests on broken_counter (trust_closure.cpp:30), named directly
-  law only_where_named (trust_closure.cpp:120)
+  law only_where_named (trust_closure.cpp:153)
     rests on broken_counter (trust_closure.cpp:30), named directly
-  unreachable runtime path never_seven path 1 (trust_closure.cpp:162)
+  unreachable runtime path never_seven path 1 (trust_closure.cpp:195)
     rests on broken_counter (trust_closure.cpp:30), through a proof it uses
-  proof first_link (trust_closure.cpp:47)
+  proof first_link (trust_closure.cpp:54)
     rests on sensor_identity (trust_closure.cpp:20), named directly
-  proof second_link (trust_closure.cpp:53)
+  proof second_link (trust_closure.cpp:60)
     rests on sensor_identity (trust_closure.cpp:20), through a proof it uses
-  proof third_link (trust_closure.cpp:59)
+  proof third_link (trust_closure.cpp:66)
     rests on sensor_identity (trust_closure.cpp:20), through a proof it uses
-  proof mixed (trust_closure.cpp:85)
+  proof mixed (trust_closure.cpp:92)
     rests on sensor_identity (trust_closure.cpp:20), through a proof it uses
-  proof counter_is_one (trust_closure.cpp:148)
+  proof through_a_law (trust_closure.cpp:103)
+    rests on sensor_identity (trust_closure.cpp:20), through a proof it uses
+  proof named_twice (trust_closure.cpp:110)
+    rests on sensor_identity (trust_closure.cpp:20), named directly
+  proof direct_and_through (trust_closure.cpp:118)
+    rests on sensor_identity (trust_closure.cpp:20), named directly
+  proof counter_is_one (trust_closure.cpp:181)
     rests on broken_counter (trust_closure.cpp:30), named directly
-  omitted case 'State::running' of proof 'omission_relies_on_assumption' (trust_closure.cpp:110)
+  omitted case 'State::running' of proof 'omission_relies_on_assumption' (trust_closure.cpp:143)
     rests on broken_counter (trust_closure.cpp:30), through the proof it is written in
-  omitted case 'unnamed' of proof 'omission_relies_on_assumption' (trust_closure.cpp:112)
+  omitted case 'unnamed' of proof 'omission_relies_on_assumption' (trust_closure.cpp:145)
     rests on broken_counter (trust_closure.cpp:30), through the proof it is written in
-  omitted case 'unnamed' of proof 'only_where_named' (trust_closure.cpp:134)
+  omitted case 'unnamed' of proof 'only_where_named' (trust_closure.cpp:167)
     rests on broken_counter (trust_closure.cpp:30), through the proof it is written in
-  proof identity_at_three of a law instance (trust_closure.cpp:140)
+  proof identity_at_three of a law instance (trust_closure.cpp:173)
     rests on sensor_identity (trust_closure.cpp:20), named directly
-  contract of never_seven (trust_closure.cpp:162)
+  contract of never_seven (trust_closure.cpp:195)
     rests on broken_counter (trust_closure.cpp:30), through a proof or verified call it uses
-  contract of calls_never_seven (trust_closure.cpp:173)
+  contract of calls_never_seven (trust_closure.cpp:206)
     rests on broken_counter (trust_closure.cpp:30), through a proof or verified call it uses
-Unused trusted laws:         1
+Assumption-free claims:      3
+  law plain (trust_closure.cpp:211)
+  proof outright (trust_closure.cpp:86)
+  contract of add_zero (trust_closure.cpp:217)
+Unused trusted laws:         2
   unused:                  never_used (trust_closure.cpp:34)
+  unused:                  device_window (trust_closure.cpp:40), no statement can use a memory proposition
 
 REPORT
 if ! diff -u "$run/closure.expected" "$run/closure.actual" >&2; then
@@ -184,7 +209,7 @@ if [ "$(wc -l <<< "$identities" | tr -d ' ')" != 1 ]; then
     exit 1
 fi
 grep -Eq '^Trust-dependent claims: +1$' "$units"
-grep -Eq '^  proof relies \(.*user\.cpp:2\)$' "$units"
+grep -Eq '^  proof relies \(.*user\.cpp:2\), identity [0-9a-f]{16}$' "$units"
 grep -Eq '^    rests on shared_fact \(.*assumption\.hpp:2\), named directly$' "$units"
 grep -Eq '^Unused trusted laws: +1$' "$units"
 grep -Eq '^Laws proven: +1$' "$units"

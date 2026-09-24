@@ -50,6 +50,7 @@ rule_families:
 rules:
   - TRUSTED-001
   - TRUSTED-002
+  - TRUSTED-003
   - TRUSTED-004
   - TRUSTED-005
   - TRUSTED-006
@@ -68,7 +69,10 @@ rules:
   - INTERACT-020
 
 # TRUSTED-003 (a trusted law admitting a memory proposition such as
-# `readable(p)`) is not realized: such a law is refused. See STATUS.md.
+# `readable(p)`) is realized as a declaration: the assumption is recorded,
+# reported TRUSTED with what it admits, and erased. A capability is not a
+# kernel proposition, so no statement can name one as evidence and nothing rests
+# on it; such a use is refused by name. See STATUS.md.
 
 depends_on:
   - trusted-law-declarations
@@ -120,6 +124,9 @@ tests:
     - tests/fixtures/negative/trusted_law_overloaded.cpp
     - tests/fixtures/negative/trusted_law_unstated.cpp
     - tests/fixtures/negative/trusted_law_in_a_cycle.cpp
+    - tests/fixtures/negative/trusted_memory_law_named.cpp
+    - tests/fixtures/negative/memory_law_untrusted.cpp
+    - tests/fixtures/negative/memory_proposition_proof.cpp
   unit:
     - tests/unit/trust_closure_test.cpp
     - tests/unit/verdict_test.cpp
@@ -147,6 +154,10 @@ required_test_categories:
   - zero-trust report unchanged
   - deterministic report
   - one assumption included into two translation units has one identity
+  - a trusted law reached through another law's written proof
+  - one trusted law named twice, or directly and through a proof, is one dependency
+  - every proven claim listed with its identity, assumption-free claims included
+  - a trusted memory proposition is reported TRUSTED and unused, and naming one is refused
   - erasure
 
 completion_requires:

@@ -331,8 +331,13 @@ tests/unit/trust_closure_test.cpp         contract propagation, cycles, and ever
 tests/unit/verdict_test.cpp               the verdict gate under premises
 ```
 
-Not built: a trusted law admitting a memory proposition (`TRUSTED-003`), and
-carrying a closure across translation units through proof artifacts.
+A trusted law admitting a memory proposition (`TRUSTED-003`) is elaborated
+apart from laws (`vir::MemoryAssumption`), since it has no kernel proposition;
+the obligation layer gives it an identity (`TrustedMemoryAssumption`), the trust
+closure carries it, and the driver reports it TRUSTED and unused. Nothing can
+consume one: no statement names capability evidence.
+
+Not built: carrying a closure across translation units through proof artifacts.
 
 ---
 

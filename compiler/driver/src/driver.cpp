@@ -49,6 +49,8 @@ struct Summary {
     std::vector<obligations::ClaimClosure> claims;
     // Trusted laws no proven claim of their own unit rests on.
     std::vector<obligations::TrustedPremise> unused;
+    // Trusted laws admitting a memory proposition, which nothing can rest on.
+    std::vector<obligations::TrustedMemoryAssumption> memory_trusted;
 };
 
 struct UnitOutcome {
@@ -227,6 +229,8 @@ UnitOutcome compile_unit(const Options& options, const Input& input, const std::
     }
     summary.trusted.insert(summary.trusted.end(), closure.assumptions.begin(), closure.assumptions.end());
     summary.claims.insert(summary.claims.end(), closure.claims.begin(), closure.claims.end());
+    summary.memory_trusted.insert(summary.memory_trusted.end(), closure.memory_assumptions.begin(),
+                                  closure.memory_assumptions.end());
 
     return outcome;
 }
@@ -241,6 +245,10 @@ void print_diagnostics(const diagnostics::Engine& engine) {
 // assumption can be audited there.
 std::string declared_at(const obligations::TrustedPremise& premise) {
     return premise.name + " (" + premise.location.file + ":" + std::to_string(premise.location.line) + ")";
+}
+
+std::string declared_at(const obligations::TrustedMemoryAssumption& assumption) {
+    return assumption.name + " (" + assumption.location.file + ":" + std::to_string(assumption.location.line) + ")";
 }
 
 std::string claim_name(const obligations::ClaimClosure& claim) {
@@ -297,10 +305,17 @@ void print_trust_report(const Options& options, const Summary& summary) {
     print_closure_counts(summary, obligations::ClaimKind::Law);
     std::cout << "Proof declarations proven:   " << summary.proofs_proven << "\n";
     print_closure_counts(summary, obligations::ClaimKind::Proof);
-    std::cout << "Laws trusted:                " << summary.trusted.size() << "\n";
+    const std::size_t trusted_laws = summary.trusted.size() + summary.memory_trusted.size();
+    std::cout << "Laws trusted:                " << trusted_laws << "\n";
     for (const obligations::TrustedPremise& assumption : summary.trusted) {
         std::cout << "  assumed:                 " << declared_at(assumption) << ", identity "
                   << assumption.identity.text() << "\n";
+    }
+    // A memory proposition is assumed like any trusted law, and says what it
+    // admits, since that is a capability rather than a proposition.
+    for (const obligations::TrustedMemoryAssumption& assumption : summary.memory_trusted) {
+        std::cout << "  assumed:                 " << declared_at(assumption) << ", identity "
+                  << assumption.identity.text() << ", admits " << assumption.statement << "\n";
     }
     std::cout << "Function contracts proven:   " << summary.contracts_proven << "\n";
     std::cout << "  partial correctness only:  " << summary.partial_contracts_proven << "\n";
@@ -324,22 +339,36 @@ void print_trust_report(const Options& options, const Summary& summary) {
         if (claim.premises.empty()) {
             continue;
         }
-        std::cout << "  " << claim_name(claim) << "\n";
+        std::cout << "  " << claim_name(claim) << ", identity " << claim.identity.text() << "\n";
         for (const obligations::TrustedPremise& premise : claim.premises) {
             std::cout << "    rests on " << declared_at(premise) << ", "
                       << (premise.direct ? "named directly" : reached_through(claim.kind)) << "\n";
         }
     }
-    std::cout << "Unused trusted laws:         " << summary.unused.size() << "\n";
+    // Every proven claim is enumerable, not only counted: the ones above rest
+    // on trusted laws, and these rest on none (TRUST.md 36.1, 36.2).
+    std::cout << "Assumption-free claims:      " << summary.claims.size() - static_cast<std::size_t>(relative) << "\n";
+    for (const obligations::ClaimClosure& claim : summary.claims) {
+        if (claim.premises.empty()) {
+            std::cout << "  " << claim_name(claim) << ", identity " << claim.identity.text() << "\n";
+        }
+    }
+    std::cout << "Unused trusted laws:         " << summary.unused.size() + summary.memory_trusted.size() << "\n";
     for (const obligations::TrustedPremise& assumption : summary.unused) {
         std::cout << "  unused:                  " << declared_at(assumption) << "\n";
+    }
+    // No statement can use a memory proposition, so each is unused, and the
+    // report says why rather than leave an audit to wonder.
+    for (const obligations::TrustedMemoryAssumption& assumption : summary.memory_trusted) {
+        std::cout << "  unused:                  " << declared_at(assumption)
+                  << ", no statement can use a memory proposition\n";
     }
     std::cout << "\n";
     std::cout << "Unsafe regions:              0\n";
     std::cout << "Runtime validation sites:    0\n";
     std::cout << "Unverified FFI boundaries:   not analysed\n\n";
     std::cout << "Trusted solvers:             0\n";
-    std::cout << "Trusted external axioms:     " << summary.trusted.size() << "\n\n";
+    std::cout << "Trusted external axioms:     " << trusted_laws << "\n\n";
     std::cout << "Kernel version:              " << kernel::kKernelVersion << "\n";
     std::cout << "Formal core version:         " << kernel::kFormalCoreVersion << "\n";
     std::cout << "Compiler version:            " << CPPL_VERSION << "\n";

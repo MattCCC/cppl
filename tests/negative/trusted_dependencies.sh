@@ -80,4 +80,12 @@ refuse trusted_law_in_a_cycle "proof 'going_round' depends on itself through the
 # A runtime path claim names a proof declaration, and a trusted law is not one.
 refuse trusted_law_named_on_a_runtime_path "no proof named 'broken_counter' is in scope here"
 
+# SPEC: TRUSTED-003, TRUSTED-008, VERIFIED-044
+# A memory proposition is admitted only as an explicit assumption, and no proof
+# statement can use one: it is not a proposition a goal or a premise can be.
+refuse trusted_memory_law_named "trusted law 'device_window' admits a memory proposition, which no proof statement can use"
+refuse memory_law_untrusted "law 'device_window' states a memory proposition, which no proof can establish"
+refuse memory_proposition_proof \
+    "proof 'claims_a_capability' states a memory proposition, which no proof can establish"
+
 echo 'a trusted law is used only as stated, only where named, and never in place of evidence'
