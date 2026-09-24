@@ -84,7 +84,7 @@ void Server::text_document_did_open(const TextDocumentItem& item) {
 
     // Publish diagnostics for the newly opened document
     if (const auto* doc = documents_.get(item.uri)) {
-        publish_diagnostics(*doc);
+        publish_diagnostics(*doc, true);
     }
 }
 
@@ -95,7 +95,7 @@ void Server::text_document_did_change(const VersionedTextDocumentIdentifier& id,
 
     // Publish updated diagnostics
     if (const auto* doc = documents_.get(id.uri)) {
-        publish_diagnostics(*doc);
+        publish_diagnostics(*doc, false);
     }
 }
 
@@ -511,41 +511,56 @@ std::optional<std::vector<std::uint32_t>> Server::text_document_semantic_tokens(
     return encode(std::move(tokens), doc->text());
 }
 
-void Server::publish_diagnostics(const Document& doc) {
+CompileResult compile(const CompileJob& job) {
+    // The real compile pipeline (preprocess -> recognize -> project -> Clang
+    // parse -> elaborate -> obligations -> verify -> erase) over the live
+    // buffer, exactly as the CLI compiles a file (cppl::driver::compile_buffer,
+    // tools/cppl-lsp/README.md). This is the one and only place C++L
+    // recognition happens for diagnostics: its tokens and syntax feed the
+    // structural Linter, so the same recognition is never redone (and never
+    // double-reported) by this server.
+    CompileResult result;
+    result.uri = job.uri;
+    result.text = job.request.text;
+    diagnostics::Engine engine;
+    result.outcome = driver::compile_buffer(job.request, engine);
+    result.diagnostics = engine.diagnostics();
+    return result;
+}
+
+void Server::publish_diagnostics(const Document& doc, bool opened) {
     // This runs the compile that also records the document's decomposition
     // states, which completion and hover answer from. Returning early when no
     // publisher is installed would leave those states empty and make
     // completion silently offer nothing, so the compile happens either way and
     // only the delivery at the end is conditional.
-    Document* mutable_doc = documents_.get(doc.uri());
-
-    PositionMapper mapper(doc.text());
-
-    // Run the real compile pipeline (preprocess -> recognize -> project ->
-    // Clang parse -> elaborate -> obligations -> verify -> erase) over the
-    // live buffer, exactly as the CLI compiles a file
-    // (cppl::driver::compile_buffer, tools/cppl-lsp/README.md). This is the
-    // one and only place C++L recognition happens for diagnostics: its
-    // tokens/syntax feed the structural Linter below, so the same
-    // recognition is never redone (and never double-reported) by this
-    // server.
-    driver::BufferCompileRequest request;
-    request.virtual_path = doc.path();
-    request.text = doc.text();
-    request.clang = clang_;
-    request.clang_arguments = arguments_for(doc.path());
-
-    diagnostics::Engine engine;
-    driver::BufferCompileOutcome outcome = driver::compile_buffer(request, engine);
-    if (mutable_doc != nullptr) {
-        mutable_doc->set_subject_states(std::move(outcome.subject_states));
-        mutable_doc->set_resolved_names(std::move(outcome.names));
-        mutable_doc->set_verification(outcome.verified, std::move(outcome.obligations), doc.version());
-        mutable_doc->set_path_claims_recognized(outcome.syntax != nullptr &&
-                                                !outcome.syntax->path_contradictions.empty());
-        mutable_doc->set_path_splits_recognized(outcome.syntax != nullptr && !outcome.syntax->path_splits.empty());
+    CompileJob job;
+    job.uri = doc.uri();
+    job.request.virtual_path = doc.path();
+    job.request.text = doc.text();
+    job.request.clang = clang_;
+    job.request.clang_arguments = arguments_for(doc.path());
+    if (compile_scheduler_) {
+        compile_scheduler_(std::move(job), opened);
+        return;
     }
+    apply_compile(compile(job));
+}
 
+void Server::apply_compile(CompileResult result) {
+    Document* found = documents_.get(result.uri);
+    if (found == nullptr || found->text() != result.text) {
+        return;
+    }
+    Document& doc = *found;
+    driver::BufferCompileOutcome& outcome = result.outcome;
+    doc.set_subject_states(std::move(outcome.subject_states));
+    doc.set_resolved_names(std::move(outcome.names));
+    doc.set_verification(outcome.verified, std::move(outcome.obligations), doc.version());
+    doc.set_path_claims_recognized(outcome.syntax != nullptr && !outcome.syntax->path_contradictions.empty());
+    doc.set_path_splits_recognized(outcome.syntax != nullptr && !outcome.syntax->path_splits.empty());
+
+    const PositionMapper mapper(doc.text());
     std::vector<Diagnostic> lsp_diagnostics;
 
     if (outcome.tokens && outcome.syntax) {
@@ -557,7 +572,7 @@ void Server::publish_diagnostics(const Document& doc) {
         // since the Linter has nothing more to say about them.
         std::vector<diagnostics::Diagnostic> syntax_diagnostics;
         std::vector<diagnostics::Diagnostic> other_diagnostics;
-        for (const diagnostics::Diagnostic& diagnostic : engine.diagnostics()) {
+        for (const diagnostics::Diagnostic& diagnostic : result.diagnostics) {
             if (diagnostic.category == diagnostics::Category::CpplSyntax) {
                 syntax_diagnostics.push_back(diagnostic);
             } else {
@@ -592,7 +607,7 @@ void Server::publish_diagnostics(const Document& doc) {
                 lsp_diagnostics.push_back(linter_.convert_diagnostic(diagnostic, mapper, published));
             }
         }
-        for (const diagnostics::Diagnostic& diagnostic : engine.diagnostics()) {
+        for (const diagnostics::Diagnostic& diagnostic : result.diagnostics) {
             lsp_diagnostics.push_back(linter_.convert_diagnostic(diagnostic, mapper, published));
         }
     }

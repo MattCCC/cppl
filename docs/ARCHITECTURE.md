@@ -2768,6 +2768,11 @@ in hover. Nothing reads a record back.
 compile of that exact buffer version produced. It never infers, carries over or
 upgrades one: text edited since shows no status until it is compiled again.
 
+Compiles run in the background, off the loop that answers requests, and a
+change is compiled once typing pauses. What a compile produced is applied where
+the server lives, and only while the document still holds exactly the text the
+compile read. A compile of text since edited is dropped, never shown.
+
 **[ARCH-LSP-004]** An editor service treats two declarations as one name only
 where Clang gives them one identity (USR), or where the projection repeated one
 written declaration into several generated ones, such as a proof's parameters

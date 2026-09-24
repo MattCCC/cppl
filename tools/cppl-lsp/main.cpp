@@ -56,7 +56,11 @@ int serve(int argc, char** argv) {
     // stdout is the JSON-RPC channel exclusively; every diagnostic message
     // this process itself wants to report (malformed input, internal
     // errors) goes to stderr instead (tools/cppl-lsp/README.md, task spec).
-    return cppl::lsp::run_transport(server, std::cin, std::cout, std::cerr);
+    // An editor waits on no compile: each runs in the background, a change's
+    // once typing pauses.
+    cppl::lsp::TransportOptions options;
+    options.background_compiles = true;
+    return cppl::lsp::run_transport(server, std::cin, std::cout, std::cerr, options);
 }
 
 } // namespace

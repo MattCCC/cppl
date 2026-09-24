@@ -8,18 +8,29 @@
 
 #include <algorithm>
 #include <charconv>
+#include <chrono>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <exception>
+#include <filesystem>
+#include <future>
 #include <ios>
 #include <istream>
+#include <map>
+#include <memory>
+#include <mutex>
 #include <optional>
 #include <ostream>
 #include <ranges>
+#include <set>
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <thread>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace cppl::lsp {
@@ -222,15 +233,174 @@ std::optional<std::int32_t> parse_version(double number) {
     return static_cast<std::int32_t>(number);
 }
 
+constexpr int kRequestCancelled = -32800;
+
+// The protocol channel. Each message is written whole, from whichever thread
+// has one to send.
+class Writer {
+  public:
+    explicit Writer(std::ostream& output) : output_(output) {}
+
+    void write(const json::Value& message) {
+        const std::string body = message.dump();
+        const std::scoped_lock lock(mutex_);
+        write_message(output_, body);
+    }
+
+  private:
+    std::ostream& output_;
+    std::mutex mutex_;
+};
+
+json::Value request(const std::string& id, const std::string& method, json::Value params) {
+    json::Value message = json::Value::object();
+    message.set("jsonrpc", json::Value("2.0"));
+    message.set("id", json::Value(id));
+    message.set("method", json::Value(method));
+    message.set("params", std::move(params));
+    return message;
+}
+
+// Requests the client withdrew (`$/cancelRequest`) while they waited to be
+// answered, by their id as the client spelled it. A withdrawal that arrives
+// after its request was answered is kept only until more recent ones push it
+// out, so the set stays small.
+class Cancellations {
+  public:
+    void add(std::string id) {
+        const std::scoped_lock lock(mutex_);
+        if (ids_.insert(id).second) {
+            order_.push_back(std::move(id));
+        }
+        if (order_.size() > kKept) {
+            ids_.erase(order_.front());
+            order_.pop_front();
+        }
+    }
+
+    // Whether the request with `id` was withdrawn, forgetting it if so.
+    bool take(const std::string& id) {
+        const std::scoped_lock lock(mutex_);
+        return ids_.erase(id) != 0;
+    }
+
+  private:
+    static constexpr std::size_t kKept = 4096;
+    std::mutex mutex_;
+    std::set<std::string> ids_;
+    std::deque<std::string> order_;
+};
+
+// Tokens the client created for progress this server reports
+// (`window/workDoneProgress/create`). A token carries one piece of work from
+// its beginning to its end, so each is taken once.
+class ProgressTokens {
+  public:
+    std::optional<std::string> take() {
+        const std::scoped_lock lock(mutex_);
+        if (ready_.empty()) {
+            return std::nullopt;
+        }
+        std::string token = std::move(ready_.front());
+        ready_.pop_front();
+        return token;
+    }
+
+    void add(std::string token) {
+        const std::scoped_lock lock(mutex_);
+        ready_.push_back(std::move(token));
+    }
+
+  private:
+    std::mutex mutex_;
+    std::deque<std::string> ready_;
+};
+
+// What the loop that owns the server is handed, in the order it happened: a
+// message the client sent, a line to log, the end of the input, a compile
+// that finished, or a progress token taken, to be replaced.
+struct Incoming {
+    json::Value message;
+};
+struct Logged {
+    std::string line;
+};
+struct InputEnded {};
+struct Compiled {
+    CompileResult result;
+};
+struct TokenTaken {};
+using Event = std::variant<Incoming, Logged, InputEnded, Compiled, TokenTaken>;
+
+class Events {
+  public:
+    void push(Event event) {
+        {
+            const std::scoped_lock lock(mutex_);
+            events_.push_back(std::move(event));
+        }
+        ready_.notify_one();
+    }
+
+    Event pop() {
+        std::unique_lock lock(mutex_);
+        ready_.wait(lock, [this] { return !events_.empty(); });
+        Event event = std::move(events_.front());
+        events_.pop_front();
+        return event;
+    }
+
+  private:
+    std::mutex mutex_;
+    std::condition_variable ready_;
+    std::deque<Event> events_;
+};
+
 // Dispatches one JSON-RPC message to `server`. Writes a response to
 // `output` for a request (a message carrying "id"); a notification (no
 // "id") produces no response either way, per the JSON-RPC 2.0 spec.
 class Dispatcher {
   public:
-    Dispatcher(Server& server, std::ostream& output, std::ostream& log) : server_(server), output_(output), log_(log) {
+    Dispatcher(Server& server, Writer& writer, std::ostream& log, ProgressTokens* tokens = nullptr)
+        : server_(server),
+          writer_(writer),
+          log_(log),
+          tokens_(tokens) {
         server_.set_diagnostic_publisher([this](const std::string& uri, const std::vector<Diagnostic>& diagnostics) {
             publish_diagnostics(uri, diagnostics);
         });
+    }
+
+    // Asks the client for a progress token to report the next compile with.
+    void request_progress_token() {
+        if (tokens_ == nullptr || !server_.client_capabilities().work_done_progress) {
+            return;
+        }
+        const std::string token = "cppl/compile/" + std::to_string(++sent_);
+        const std::string id = "cppl/create/" + std::to_string(sent_);
+        pending_tokens_.emplace(id, token);
+        json::Value params = json::Value::object();
+        params.set("token", json::Value(token));
+        writer_.write(request(id, "window/workDoneProgress/create", std::move(params)));
+    }
+
+    // Tells the client that what a compile decides -- each verdict's lens,
+    // which statements are claims -- may have changed.
+    void refresh_after_compile() {
+        const ClientCapabilities& client = server_.client_capabilities();
+        if (client.code_lens_refresh) {
+            writer_.write(
+                request("cppl/refresh/" + std::to_string(++sent_), "workspace/codeLens/refresh", json::Value(nullptr)));
+        }
+        if (client.semantic_tokens_refresh) {
+            writer_.write(request("cppl/refresh/" + std::to_string(++sent_), "workspace/semanticTokens/refresh",
+                                  json::Value(nullptr)));
+        }
+    }
+
+    // Answers a request the client withdrew before it was dispatched.
+    void cancelled(const json::Value& id) {
+        respond_error(id, kRequestCancelled, "the request was cancelled");
     }
 
     // Returns false once `exit` has been processed, telling the caller to
@@ -239,6 +409,13 @@ class Dispatcher {
         const json::Value* method_value = message.find("method");
         const json::Value* id_value = message.find("id");
         const bool is_request = id_value != nullptr;
+
+        // The client's answer to a request this server sent.
+        if (method_value == nullptr && id_value != nullptr &&
+            (message.find("result") != nullptr || message.find("error") != nullptr)) {
+            answered(*id_value, message.find("error") == nullptr);
+            return true;
+        }
 
         if (method_value == nullptr || !method_value->is_string()) {
             if (is_request) {
@@ -265,6 +442,10 @@ class Dispatcher {
             handle_initialize(id_value, params);
         } else if (method == "initialized") {
             server_.initialized();
+            request_progress_token();
+        } else if (method.starts_with("$/")) {
+            // `$/cancelRequest` for a request already answered, and any
+            // other protocol-internal notification, which may be ignored.
         } else if (method == "shutdown") {
             server_.shutdown();
             shutting_down_ = true;
@@ -335,13 +516,31 @@ class Dispatcher {
 
   private:
     Server& server_;
-    std::ostream& output_;
+    Writer& writer_;
     std::ostream& log_;
+    ProgressTokens* tokens_ = nullptr;
     bool shutting_down_ = false;
     bool exited_ = false;
+    std::uint64_t sent_ = 0;
+    // Progress tokens asked for and not yet created, by the id of the request.
+    std::map<std::string, std::string> pending_tokens_;
 
     void write(const json::Value& message) {
-        write_message(output_, message.dump());
+        writer_.write(message);
+    }
+
+    void answered(const json::Value& id, bool succeeded) {
+        if (!id.is_string()) {
+            return;
+        }
+        const auto pending = pending_tokens_.find(id.as_string());
+        if (pending == pending_tokens_.end()) {
+            return;
+        }
+        if (succeeded && tokens_ != nullptr) {
+            tokens_->add(pending->second);
+        }
+        pending_tokens_.erase(pending);
     }
 
     void respond_result(const json::Value& id, json::Value result) {
@@ -382,6 +581,17 @@ class Dispatcher {
             lines != nullptr && lines->is_boolean()) {
             capabilities.line_folding_only = lines->as_boolean();
         }
+        const auto flag = [](const json::Value* section, const char* name) {
+            const json::Value* value = section != nullptr ? section->find(name) : nullptr;
+            return value != nullptr && value->is_boolean() && value->as_boolean();
+        };
+        capabilities.work_done_progress =
+            flag(stated != nullptr ? stated->find("window") : nullptr, "workDoneProgress");
+        const json::Value* workspace = stated != nullptr ? stated->find("workspace") : nullptr;
+        capabilities.code_lens_refresh =
+            flag(workspace != nullptr ? workspace->find("codeLens") : nullptr, "refreshSupport");
+        capabilities.semantic_tokens_refresh =
+            flag(workspace != nullptr ? workspace->find("semanticTokens") : nullptr, "refreshSupport");
         return capabilities;
     }
 
@@ -1234,6 +1444,232 @@ class Dispatcher {
     }
 };
 
+// Compiles documents on a thread of its own, so the loop that owns the server
+// answers requests while a compile runs. Each document keeps only its latest
+// text waiting: a change waits for typing to pause before it is compiled,
+// and a later change replaces it. What a compile produced is handed back as
+// an event, to be applied where the server lives.
+class CompileWorker {
+  public:
+    using Clock = std::chrono::steady_clock;
+
+    CompileWorker(Events& events, Writer& writer, ProgressTokens& tokens)
+        : events_(events),
+          writer_(writer),
+          tokens_(tokens),
+          thread_([this] { run(); }) {}
+
+    ~CompileWorker() {
+        stop();
+    }
+
+    CompileWorker(const CompileWorker&) = delete;
+    CompileWorker& operator=(const CompileWorker&) = delete;
+    CompileWorker(CompileWorker&&) = delete;
+    CompileWorker& operator=(CompileWorker&&) = delete;
+
+    void schedule(CompileJob job, Clock::duration delay) {
+        {
+            const std::scoped_lock lock(mutex_);
+            std::string uri = job.uri;
+            waiting_.insert_or_assign(std::move(uri), Waiting{std::move(job), Clock::now() + delay});
+        }
+        changed_.notify_one();
+    }
+
+    // Drops what waits, and returns once the compile running, if any, ends.
+    void stop() {
+        {
+            const std::scoped_lock lock(mutex_);
+            stopping_ = true;
+            waiting_.clear();
+        }
+        changed_.notify_one();
+        if (thread_.joinable()) {
+            thread_.join();
+        }
+    }
+
+  private:
+    struct Waiting {
+        CompileJob job;
+        Clock::time_point due;
+    };
+
+    void run() {
+        std::unique_lock lock(mutex_);
+        while (!stopping_) {
+            if (waiting_.empty()) {
+                changed_.wait(lock);
+                continue;
+            }
+            const auto next = std::ranges::min_element(
+                waiting_, {}, [](const std::pair<const std::string, Waiting>& entry) { return entry.second.due; });
+            // A copy: while this waits, a later change may replace the entry.
+            if (const Clock::time_point due = next->second.due; due > Clock::now()) {
+                changed_.wait_until(lock, due);
+                continue;
+            }
+            CompileJob job = std::move(next->second.job);
+            waiting_.erase(next);
+            lock.unlock();
+            compile_and_hand_back(job);
+            lock.lock();
+        }
+    }
+
+    void compile_and_hand_back(const CompileJob& job) {
+        const std::optional<std::string> token = tokens_.take();
+        if (token.has_value()) {
+            json::Value begin = json::Value::object();
+            begin.set("kind", json::Value("begin"));
+            begin.set("title", json::Value("Checking"));
+            begin.set("message", json::Value(std::filesystem::path(job.request.virtual_path).filename().string()));
+            begin.set("cancellable", json::Value(false));
+            progress(*token, std::move(begin));
+            events_.push(TokenTaken{});
+        }
+        try {
+            events_.push(Compiled{compile(job)});
+        } catch (const std::exception& error) {
+            events_.push(Logged{std::string("cppl-lsp: compiling '") + job.uri + "' failed: " + error.what()});
+        }
+        if (token.has_value()) {
+            json::Value end = json::Value::object();
+            end.set("kind", json::Value("end"));
+            progress(*token, std::move(end));
+        }
+    }
+
+    void progress(const std::string& token, json::Value value) {
+        json::Value params = json::Value::object();
+        params.set("token", json::Value(token));
+        params.set("value", std::move(value));
+        json::Value message = json::Value::object();
+        message.set("jsonrpc", json::Value("2.0"));
+        message.set("method", json::Value("$/progress"));
+        message.set("params", std::move(params));
+        writer_.write(message);
+    }
+
+    Events& events_;
+    Writer& writer_;
+    ProgressTokens& tokens_;
+    std::mutex mutex_;
+    std::condition_variable changed_;
+    std::map<std::string, Waiting> waiting_;
+    bool stopping_ = false;
+    // Last, so that it starts once everything it uses exists.
+    std::thread thread_;
+};
+
+// What the reader thread and the loop share. The reader may outlive the loop
+// (a client that keeps its end of the input open after `exit` leaves the
+// reader blocked), so it holds its share alive itself.
+struct Shared {
+    Events events;
+    Cancellations cancelled;
+};
+
+// Reads messages until the input ends, handing each to the loop in order.
+// A withdrawal (`$/cancelRequest`) is recorded at once instead, so that it can
+// overtake the request it withdraws, which may still be waiting its turn.
+void read_messages(std::istream& input, const std::shared_ptr<Shared>& shared) {
+    while (true) {
+        std::optional<std::string> body;
+        try {
+            body = read_message(input);
+        } catch (const std::exception& error) {
+            shared->events.push(Logged{std::string("cppl-lsp: malformed message header: ") + error.what()});
+            break;
+        }
+        if (!body.has_value()) {
+            break; // end of stream, or a header block that could not be read
+        }
+        json::Value message;
+        try {
+            message = json::parse(*body);
+        } catch (const std::exception& error) {
+            shared->events.push(Logged{std::string("cppl-lsp: malformed JSON-RPC body: ") + error.what()});
+            continue; // one bad message does not end the session
+        }
+        if (const std::optional<std::string> method = message.find_string("method"); method == "$/cancelRequest") {
+            const json::Value* params = message.find("params");
+            if (const json::Value* id = params != nullptr ? params->find("id") : nullptr) {
+                shared->cancelled.add(id->dump());
+            }
+            continue;
+        }
+        shared->events.push(Incoming{std::move(message)});
+    }
+    shared->events.push(InputEnded{});
+}
+
+bool dispatch_logged(Dispatcher& dispatcher, const json::Value& message, std::ostream& log) {
+    try {
+        return dispatcher.dispatch(message);
+    } catch (const std::exception& error) {
+        log << "cppl-lsp: error handling a request: " << error.what() << "\n";
+        return true; // a handler failure is not fatal to the session
+    }
+}
+
+// The loop with compiles in the background: every message, finished compile
+// and line to log arrives as an event, handled in order where the server
+// lives.
+void run_in_background(Server& server, std::istream& input, std::ostream& output, std::ostream& log,
+                       const TransportOptions& options) {
+    Writer writer(output);
+    ProgressTokens tokens;
+    Dispatcher dispatcher(server, writer, log, &tokens);
+    const auto shared = std::make_shared<Shared>();
+    CompileWorker worker(shared->events, writer, tokens);
+    server.set_compile_scheduler([&worker, quiet = options.quiet](CompileJob job, bool opened) {
+        worker.schedule(std::move(job), opened ? CompileWorker::Clock::duration::zero() : quiet);
+    });
+
+    std::promise<void> read_all;
+    std::future<void> reader_done = read_all.get_future();
+    std::thread reader([&input, shared, done = std::move(read_all)]() mutable {
+        read_messages(input, shared);
+        done.set_value();
+    });
+
+    bool running = true;
+    while (running) {
+        Event event = shared->events.pop();
+        if (auto* incoming = std::get_if<Incoming>(&event)) {
+            const json::Value* id = incoming->message.find("id");
+            if (id != nullptr && incoming->message.find("method") != nullptr && shared->cancelled.take(id->dump())) {
+                dispatcher.cancelled(*id);
+                continue;
+            }
+            running = dispatch_logged(dispatcher, incoming->message, log);
+        } else if (auto* logged = std::get_if<Logged>(&event)) {
+            log << logged->line << "\n";
+        } else if (auto* compiled = std::get_if<Compiled>(&event)) {
+            server.apply_compile(std::move(compiled->result));
+            dispatcher.refresh_after_compile();
+        } else if (std::holds_alternative<TokenTaken>(event)) {
+            dispatcher.request_progress_token();
+        } else {
+            running = false; // the input ended
+        }
+    }
+
+    server.set_compile_scheduler({});
+    worker.stop();
+    // A client closes its end of the input after `exit`, which ends the reader;
+    // one that keeps it open leaves the reader blocked, and it is let go
+    // rather than waited for, holding what it shares alive.
+    constexpr auto kReaderGrace = std::chrono::seconds(2);
+    if (reader_done.wait_for(kReaderGrace) == std::future_status::ready) {
+        reader.join();
+    } else {
+        reader.detach();
+    }
+}
+
 } // namespace
 
 std::optional<std::string> read_message(std::istream& input) {
@@ -1262,9 +1698,15 @@ void write_message(std::ostream& output, const std::string& body) {
     output.flush();
 }
 
-int run_transport(Server& server, std::istream& input, std::ostream& output, std::ostream& log) {
-    Dispatcher dispatcher(server, output, log);
+int run_transport(Server& server, std::istream& input, std::ostream& output, std::ostream& log,
+                  const TransportOptions& options) {
+    if (options.background_compiles) {
+        run_in_background(server, input, output, log, options);
+        return server.is_shutting_down() ? 0 : 1;
+    }
 
+    Writer writer(output);
+    Dispatcher dispatcher(server, writer, log);
     while (true) {
         std::optional<std::string> body;
         try {
@@ -1285,14 +1727,7 @@ int run_transport(Server& server, std::istream& input, std::ostream& output, std
             continue; // one bad message does not end the session
         }
 
-        bool keep_going = true;
-        try {
-            keep_going = dispatcher.dispatch(message);
-        } catch (const std::exception& error) {
-            log << "cppl-lsp: error handling a request: " << error.what() << "\n";
-            // A handler failure is not fatal to the session: continue.
-        }
-        if (!keep_going) {
+        if (!dispatch_logged(dispatcher, message, log)) {
             break;
         }
     }

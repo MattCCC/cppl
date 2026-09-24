@@ -1,6 +1,8 @@
 #pragma once
 
 #include "cppl/clang/editor.hpp"
+#include "cppl/diagnostics/diagnostic.hpp"
+#include "cppl/driver/buffer_compile.hpp"
 #include "cppl/lsp/compile_commands.hpp"
 #include "cppl/lsp/document.hpp"
 #include "cppl/lsp/editor_view.hpp"
@@ -17,6 +19,24 @@
 #include <vector>
 
 namespace cppl::lsp {
+
+// One compile of one version of a document: what it reads, taken where the
+// server runs, and what it produced, applied there.
+struct CompileJob {
+    std::string uri;
+    driver::BufferCompileRequest request;
+};
+
+struct CompileResult {
+    std::string uri;
+    // The text compiled, which the result describes.
+    std::string text;
+    driver::BufferCompileOutcome outcome;
+    std::vector<diagnostics::Diagnostic> diagnostics;
+};
+
+// Runs `job`'s compile. It reads no server state, so it may run on any thread.
+[[nodiscard]] CompileResult compile(const CompileJob& job);
 
 // LSP server state and request handlers
 class Server {
@@ -40,6 +60,21 @@ class Server {
     [[nodiscard]] bool should_exit() const noexcept {
         return should_exit_;
     }
+
+    // Where compiles run. With none set, a document is compiled as it opens
+    // or changes, before the notification returns. With one set, each compile
+    // is handed to it, and `apply_compile` takes what it produced; `opened`
+    // says the document has just opened, so its compile should not wait for
+    // typing to pause.
+    using CompileScheduler = std::function<void(CompileJob job, bool opened)>;
+    void set_compile_scheduler(CompileScheduler scheduler) {
+        compile_scheduler_ = std::move(scheduler);
+    }
+
+    // Records what a compile found and publishes its diagnostics, when the
+    // document still holds the text it compiled. A compile of text since
+    // edited is dropped: a compile of the edit is on its way.
+    void apply_compile(CompileResult result);
 
     // Document synchronization
     void text_document_did_open(const TextDocumentItem& item);
@@ -170,7 +205,9 @@ class Server {
     }
 
   private:
-    void publish_diagnostics(const Document& doc);
+    // Compiles the document, where the scheduler says or at once, and
+    // publishes what the compile found.
+    void publish_diagnostics(const Document& doc, bool opened);
 
     // The document's view, brought up to date with every open buffer first;
     // null when the document is unknown.
@@ -196,6 +233,7 @@ class Server {
     std::uint64_t generation_ = 1;
     Linter linter_;
     DiagnosticPublisher diagnostic_publisher_;
+    CompileScheduler compile_scheduler_;
     TextDocumentSyncKind sync_kind_ = TextDocumentSyncKind::Incremental;
     bool shutting_down_ = false;
     bool should_exit_ = false;

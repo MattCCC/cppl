@@ -58,6 +58,15 @@ References cover every open document and the headers each includes.
 has checked it against this server. Rename is **not** implemented yet. See
 "Currently unsupported" in [`tools/cppl-lsp/README.md`](../tools/cppl-lsp/README.md).
 
+### While typing
+
+The server compiles in the background, a change once typing pauses, so
+completion, hover and every other request are answered while a compile runs.
+Diagnostics, verdicts and the coloring of claims follow when the compile
+finishes. A client that shows progress shows each compile as it runs, and one
+that supports refreshing re-fetches its code lenses and semantic tokens after
+each compile.
+
 ### Build flags
 
 The server reads each file with the flags its build compiles it with, taken

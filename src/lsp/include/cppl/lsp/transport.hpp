@@ -11,11 +11,23 @@
 
 #include "cppl/lsp/server.hpp"
 
+#include <chrono>
 #include <iosfwd>
 #include <optional>
 #include <string>
 
 namespace cppl::lsp {
+
+struct TransportOptions {
+    // Compile each document on a thread of its own, so that requests are
+    // answered while a compile runs, and report each compile as work in
+    // progress to a client that shows it. A document is compiled as soon as
+    // it opens, and a change once typing has paused for `quiet`. Off, a
+    // document is compiled before the notification that opened or changed it
+    // returns, as a test that reads what a notification produced needs.
+    bool background_compiles = false;
+    std::chrono::milliseconds quiet{300};
+};
 
 // Reads one Content-Length-delimited JSON-RPC message body from `input`.
 // Returns std::nullopt at end of stream, including one that ends inside a
@@ -42,6 +54,12 @@ void write_message(std::ostream& output, const std::string& body);
 // needs to say (malformed input, unknown methods it chooses to log) goes to
 // `log`, never to `output`, since `output` is the protocol channel and
 // stdout must carry nothing but framed JSON-RPC.
-[[nodiscard]] int run_transport(Server& server, std::istream& input, std::ostream& output, std::ostream& log);
+//
+// With background compiles, the input is read on a thread of its own, so a
+// request the client withdraws (`$/cancelRequest`) while it waits its turn is
+// answered as cancelled, not run. After a compile, a client that supports it
+// is asked to fetch its code lenses and semantic tokens again.
+[[nodiscard]] int run_transport(Server& server, std::istream& input, std::ostream& output, std::ostream& log,
+                                const TransportOptions& options = {});
 
 } // namespace cppl::lsp

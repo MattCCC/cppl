@@ -193,6 +193,13 @@ struct ClientCapabilities {
     // `textDocument.foldingRange.lineFoldingOnly`: the client folds whole
     // lines, so a body's closing line is left out of its fold to stay visible.
     bool line_folding_only = false;
+    // `window.workDoneProgress`: the client shows progress the server reports.
+    bool work_done_progress = false;
+    // `workspace.codeLens.refreshSupport` and
+    // `workspace.semanticTokens.refreshSupport`: the client asks again for its
+    // lenses and tokens when told they changed, as they do after a compile.
+    bool code_lens_refresh = false;
+    bool semantic_tokens_refresh = false;
 };
 
 enum class InlayHintKind : std::uint8_t {

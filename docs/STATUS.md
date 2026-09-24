@@ -1404,6 +1404,7 @@ AI output must always be independently verified.
 | LSP: folding and selection ranges    | `PROTOTYPE`   |
 | LSP: build flags (compile_commands)  | `PROTOTYPE`   |
 | LSP: inlay hints                     | `PROTOTYPE`   |
+| LSP: background compiles, cancel     | `PROTOTYPE`   |
 | IDE proof goals                      | `PROTOTYPE`   |
 | Proof navigation                     | `PROTOTYPE`   |
 | Counterexample UI                    | `NOT STARTED` |
@@ -1428,7 +1429,13 @@ re-recognizing it. The buffer compile names the buffer by the document's own
 path, so a diagnostic is shown where it was written, at the column its author
 wrote it at, and one located in an included header is shown on the document's
 `#include` that brought the header in, with the header's location as related
-information. Each document is compiled, and read by its editor unit, with the
+information. Compiles run in the background, a change's once typing pauses for
+300 ms, so requests are answered while one runs. A compile of text since edited
+is dropped. A request withdrawn while it waits its turn is answered as
+cancelled, each compile is reported as work in progress to a client that shows
+it, and after a compile the client is asked to fetch its code lenses and
+semantic tokens again. Each document is compiled, and read by its editor unit,
+with the
 flags its build gives it in the nearest `compile_commands.json`, followed by
 the server's `--clang-arg` flags. A quoted `#include` is looked for beside the
 document. Transport is separate from analysis, and the library is tested

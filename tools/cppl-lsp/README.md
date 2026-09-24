@@ -1536,6 +1536,36 @@ proof search / interactive proof state
 Completion and hover cover every name, from Clang for C++ and from C++L's own
 syntax and declarations (see "Completion" and "Hover").
 
+### Responsiveness
+
+A compile runs on a thread of its own, so the server answers requests while one
+runs.
+
+- **When compiles run.** A document is compiled as soon as it opens. A change
+  is compiled once typing has paused for 300 ms, and a later change replaces
+  one still waiting, so typing costs one compile per pause, not one per
+  keystroke.
+- **Stale results are dropped.** A compile's result is applied only while the
+  document still holds exactly the text it compiled. A compile of text since
+  edited is dropped, never published: a compile of the edit is on its way.
+  This is what keeps a verdict from describing text other than the text shown
+  (`ARCH-LSP-005`).
+- **Cancellation.** The input is read on a thread of its own too, so a request
+  the client withdraws (`$/cancelRequest`) while it waits its turn is answered
+  as cancelled (`-32800`) instead of run. A withdrawal of a request already
+  answered is ignored.
+- **Progress.** A client that shows progress (`window.workDoneProgress`) sees
+  each compile as work in progress, titled with the file it checks, on a token
+  the server asks the client to create ahead of time.
+- **Refresh.** After a compile, a client that supports it
+  (`workspace.codeLens.refreshSupport`, `workspace.semanticTokens.refreshSupport`)
+  is asked to fetch its code lenses and semantic tokens again. Those are what a
+  compile decides: each verdict, and which statements are claims.
+
+`run_transport` compiles in the foreground unless `TransportOptions` asks
+otherwise, so a test can read what a notification produced as soon as it
+returns. `cppl-lsp` itself always compiles in the background.
+
 `textDocument/didChange` is handled under incremental document sync
 (`TextDocumentSyncKind.Incremental`). The client sends only what changed. Each
 change with a range replaces what the range covers, counted in UTF-16 units.
