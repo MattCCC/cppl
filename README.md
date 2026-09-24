@@ -31,13 +31,13 @@ A C++L program can say not only **what to execute**, but also **what must be tru
 
 ## Status
 
-**Experimental / Pre-Alpha — under active development**
+**🔴 Experimental / Pre-Alpha — under active development 🔴**
+
+**🔴 C++L is not yet production-ready and unsafe to use in production applications 🔴**
 
 C++L currently has a normative target specification and an implementation that is still growing toward it.
 
 The syntax, proof coverage, diagnostics, and tooling should currently be considered unstable.
-
-**C++L is not yet production-ready.**
 
 See [STATUS.md](docs/STATUS.md) for implementation coverage and [SPEC.md](docs/SPEC.md) for the normative language definition.
 
