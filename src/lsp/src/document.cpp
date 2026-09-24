@@ -30,18 +30,23 @@ void Document::update(std::string text, std::int32_t version) {
 }
 
 void Document::apply_change(const TextDocumentContentChangeEvent& change, std::int32_t version) {
-    if (!change.range.has_value()) {
-        update(change.text, version);
-        return;
-    }
-    // Full sync is advertised, so a client should not send a range. One that
-    // does has it applied where it lands: taken as the whole document, the
-    // fragment would silently replace the buffer.
-    const PositionMapper mapper(text_);
-    const std::size_t start = mapper.position_to_byte_offset(change.range->start);
-    const std::size_t end = mapper.position_to_byte_offset(change.range->end);
+    apply_changes({change}, version);
+}
+
+void Document::apply_changes(const std::vector<TextDocumentContentChangeEvent>& changes, std::int32_t version) {
+    // Each change applies to the text the one before it left, and the result
+    // is recognized once, however many there are.
     std::string text = text_;
-    text.replace(start, end > start ? end - start : 0, change.text);
+    for (const TextDocumentContentChangeEvent& change : changes) {
+        if (!change.range.has_value()) {
+            text = change.text;
+            continue;
+        }
+        const PositionMapper mapper(text);
+        const std::size_t start = mapper.position_to_byte_offset(change.range->start);
+        const std::size_t end = mapper.position_to_byte_offset(change.range->end);
+        text.replace(start, end > start ? end - start : 0, change.text);
+    }
     update(std::move(text), version);
 }
 
@@ -78,9 +83,7 @@ void DocumentManager::change(const VersionedTextDocumentIdentifier& id,
         return;
     }
 
-    for (auto& change : changes) {
-        it->second->apply_change(change, id.version);
-    }
+    it->second->apply_changes(changes, id.version);
 }
 
 void DocumentManager::close(const TextDocumentIdentifier& id) {

@@ -1418,7 +1418,7 @@ the trusted laws nothing rests on. It is text only: there is no
 machine-readable form yet, and it prints no proposition or evidence hashes
 (`TRUST.md` 36.1).
 
-`cppl-lsp` implements `initialize`, `shutdown`, `exit`, full-document
+`cppl-lsp` implements `initialize`, `shutdown`, `exit`, incrementally synced
 `textDocument/didOpen`, `didChange` and `didClose`, and
 `textDocument/publishDiagnostics`. Diagnostics come from the ordinary compile
 pipeline over the live buffer (`driver::compile_buffer`), so the server has no
@@ -1574,9 +1574,8 @@ projection repeats in several generated declarations counts as the one the
 author wrote. Highlights mark declarations, reads and writes. A file no open
 document includes is not searched.
 
-Rename, the other semantic-token categories and incremental sync are designed
-in `tools/cppl-lsp/README.md` but not implemented, and are deliberately not
-advertised as capabilities.
+Rename is designed in `tools/cppl-lsp/README.md` but not implemented, and is
+deliberately not advertised as a capability.
 
 ---
 

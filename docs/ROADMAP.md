@@ -562,7 +562,7 @@ cppl trust-report
 
 Also:
 
-- LSP rename and incremental sync (full sync, diagnostics, formatting, code
+- LSP rename (incremental sync, diagnostics, formatting, code
   actions, hover, completion, signature help, definition, declaration, type
   definition, implementation, references and highlights, the document outline,
   folding and selection ranges, inlay hints, navigation from proof statements to what they name, and verification status

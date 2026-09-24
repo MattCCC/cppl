@@ -71,6 +71,8 @@ CPPL_TEST(initialize_request_gets_a_response) {
     CPPL_CHECK_EQ(exit_code, 1); // exit without a prior shutdown
     CPPL_CHECK(output.str().find("\"id\":1") != std::string::npos);
     CPPL_CHECK(output.str().find("capabilities") != std::string::npos);
+    // Incremental document sync: a client sends only what changed.
+    CPPL_CHECK(output.str().find(R"("textDocumentSync":2)") != std::string::npos);
 }
 
 CPPL_TEST(shutdown_then_exit_reports_success) {

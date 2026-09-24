@@ -22,7 +22,11 @@ class Document {
     Document(std::string uri, std::string text, std::int32_t version);
 
     void update(std::string text, std::int32_t version);
+    // A change with a range replaces what it covers, counted in UTF-16 units
+    // as LSP counts them; one without replaces the whole text. Several apply
+    // in order, each to what the last left, and are recognized once.
     void apply_change(const TextDocumentContentChangeEvent& change, std::int32_t version);
+    void apply_changes(const std::vector<TextDocumentContentChangeEvent>& changes, std::int32_t version);
 
     [[nodiscard]] const std::string& uri() const noexcept {
         return uri_;

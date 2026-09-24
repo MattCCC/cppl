@@ -196,7 +196,7 @@ class Server {
     std::uint64_t generation_ = 1;
     Linter linter_;
     DiagnosticPublisher diagnostic_publisher_;
-    TextDocumentSyncKind sync_kind_ = TextDocumentSyncKind::Full;
+    TextDocumentSyncKind sync_kind_ = TextDocumentSyncKind::Incremental;
     bool shutting_down_ = false;
     bool should_exit_ = false;
     std::string clang_;

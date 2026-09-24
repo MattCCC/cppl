@@ -389,10 +389,8 @@ class Dispatcher {
         server_.initialize(client_capabilities(params));
 
         json::Value capabilities = json::Value::object();
-        // Full document sync: Document::apply_change currently replaces the
-        // whole text on any change, so advertising Incremental would be a
-        // capability the server does not actually implement
-        // (tools/cppl-lsp/README.md non-goals: no incremental sync yet).
+        // Incremental sync: a client sends only what changed, and each change
+        // is applied where its range lands (Document::apply_changes).
         capabilities.set("textDocumentSync", json::Value(static_cast<int>(server_.sync_kind())));
 
         capabilities.set("documentFormattingProvider", json::Value(true));

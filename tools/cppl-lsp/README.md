@@ -23,7 +23,7 @@ ships today is:
 
 ```text
 initialize / initialized / shutdown / exit
-textDocument/didOpen, didChange, didClose   full-document sync
+textDocument/didOpen, didChange, didClose   incremental sync
 textDocument/publishDiagnostics             from the real compile pipeline
 textDocument/formatting                     canonical C++L clause placement
 textDocument/rangeFormatting                scoped to the requested range
@@ -1531,17 +1531,17 @@ references in a file no open document includes
 rename
 semantic tokens for a range or as a delta (whole documents only)
 proof search / interactive proof state
-incremental (as opposed to full) text document sync
 ```
 
 Completion and hover cover every name, from Clang for C++ and from C++L's own
 syntax and declarations (see "Completion" and "Hover").
 
-`textDocument/didChange` is handled under full document sync
-(`TextDocumentSyncKind.Full`): the client resends the whole document on every
-change, which this server always accepts correctly regardless of what sync
-kind the client actually advertises support for. A change that carries a range
-anyway is applied where it lands rather than taken as the whole document, and
-one whose range is malformed is skipped and logged. Every position, range and
+`textDocument/didChange` is handled under incremental document sync
+(`TextDocumentSyncKind.Incremental`). The client sends only what changed. Each
+change with a range replaces what the range covers, counted in UTF-16 units.
+One without a range replaces the whole document, so a client that sends whole
+documents is served too. A notification's changes apply in order, each to the
+text the last one left, and the result is recognized once. A change whose range
+is malformed is skipped and logged. Every position, range and
 version a client sends is checked before it is narrowed; one out of range is
 refused as invalid params, or, for a version, logged and recorded as 0.

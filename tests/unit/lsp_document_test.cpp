@@ -96,9 +96,8 @@ CPPL_TEST(document_manager_change) {
 }
 
 CPPL_TEST(a_ranged_change_is_applied_where_it_lands) {
-    // Full sync is advertised, but a client that sends a range anyway must have
-    // it applied in place: taken as the whole document, the two characters
-    // below would silently become the entire buffer.
+    // Taken as the whole document, the two characters below would silently
+    // become the entire buffer.
     Document doc("file:///test.cpp", "int a = 1;\nint b = 2;\n", 1);
     TextDocumentContentChangeEvent change;
     change.range = Range{Position{1, 8}, Position{1, 9}};
@@ -137,6 +136,44 @@ CPPL_TEST(ranged_changes_apply_in_order_each_to_the_result_of_the_last) {
     const Document* doc = manager.get("file:///test.cpp");
     CPPL_CHECK(doc != nullptr);
     CPPL_CHECK_EQ(doc->text(), "bcd");
+}
+
+CPPL_TEST(edits_as_an_editor_sends_them_while_typing_rebuild_the_text) {
+    // A deletion across lines, an insertion at the very end, a whole-text
+    // replacement in the middle of a batch, and the edits after it.
+    Document doc("file:///test.cpp", "int a = 1;\nint b = 2;\nint c = 3;\n", 1);
+    TextDocumentContentChangeEvent join;
+    join.range = Range{Position{0, 10}, Position{1, 10}};
+    join.text = "";
+    TextDocumentContentChangeEvent append;
+    append.range = Range{Position{2, 0}, Position{2, 0}};
+    append.text = "// end\n";
+    doc.apply_changes({join, append}, 2);
+    CPPL_CHECK_EQ(doc.text(), "int a = 1;\nint c = 3;\n// end\n");
+
+    TextDocumentContentChangeEvent whole;
+    whole.text = "law l(int x)\n    proves (x == x);\n";
+    TextDocumentContentChangeEvent rename;
+    rename.range = Range{Position{0, 4}, Position{0, 5}};
+    rename.text = "holds";
+    doc.apply_changes({whole, rename}, 3);
+    CPPL_CHECK_EQ(doc.text(), "law holds(int x)\n    proves (x == x);\n");
+    CPPL_CHECK_EQ(doc.version(), 3);
+    // The second edit's line exists only in the text the first one left.
+    Document shifted("file:///test.cpp", "a\nb\n", 1);
+    TextDocumentContentChangeEvent line_above;
+    line_above.range = Range{Position{0, 0}, Position{0, 0}};
+    line_above.text = "x\n";
+    TextDocumentContentChangeEvent capital;
+    capital.range = Range{Position{2, 0}, Position{2, 1}};
+    capital.text = "B";
+    shifted.apply_changes({line_above, capital}, 2);
+    CPPL_CHECK_EQ(shifted.text(), "x\na\nB\n");
+
+    // Recognized from the text the last edit left.
+    const bool recognized =
+        doc.syntax() != nullptr && doc.syntax()->laws.size() == 1 && doc.syntax()->laws[0].name == "holds";
+    CPPL_CHECK(recognized);
 }
 
 CPPL_TEST(document_parses_valid_cppl) {

@@ -36,8 +36,9 @@ CPPL_TEST(server_lifecycle) {
 }
 
 CPPL_TEST(server_sync_kind) {
+    // A client sends only what changed.
     Server server;
-    CPPL_CHECK(server.sync_kind() == TextDocumentSyncKind::Full);
+    CPPL_CHECK(server.sync_kind() == TextDocumentSyncKind::Incremental);
 }
 
 CPPL_TEST(server_document_open_publishes_diagnostics) {
