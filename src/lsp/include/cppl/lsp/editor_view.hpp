@@ -94,6 +94,18 @@ class EditorView {
     // projection generated is never in it.
     [[nodiscard]] std::vector<DocumentSymbol> outline() const;
 
+    // Where the document may fold (structure.hpp): each body, `#include` run and
+    // conditional branch Clang parsed, each C++L body and bodiless declaration
+    // the recognizer found, and each comment block or run of whole-line
+    // comments. A body folds between its braces; a client that folds whole
+    // lines keeps the line of its `}` in view.
+    [[nodiscard]] std::vector<FoldingRange> folding_ranges(bool line_folding_only) const;
+
+    // What selecting outward from `position` selects, innermost first: the
+    // token there, then each construct Clang parsed and each C++L construct
+    // the recognizer found that holds it, each holding the one before.
+    [[nodiscard]] std::vector<Range> selection(const Position& position) const;
+
     // The number of refreshes that had to parse the unit from scratch, for
     // tests that check an edit reuses what Clang kept.
     [[nodiscard]] std::size_t parses() const noexcept {

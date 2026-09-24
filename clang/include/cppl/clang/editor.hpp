@@ -168,6 +168,23 @@ struct Symbol {
     std::vector<Symbol> children;
 };
 
+// A run of the main file's text a reader may fold away.
+struct Fold {
+    enum class Kind : std::uint8_t {
+        // A body from its `{` through its `}`: a block, a function's, a
+        // lambda's, a class's, an enumeration's, a namespace's, an `extern`
+        // block's, a braced initializer.
+        Braces,
+        // One `#include` directive. Consecutive ones fold together.
+        Include,
+        // A branch of a conditional directive: from its `#if`, `#ifdef`,
+        // `#ifndef`, `#elif` or `#else` up to the directive that ends it.
+        Conditional,
+    };
+    Kind kind = Kind::Braces;
+    Extent extent;
+};
+
 // What encloses a position, as far as what may be declared there goes.
 enum class Scope : std::uint8_t {
     Namespace,
@@ -270,6 +287,17 @@ class EditorUnit {
     // body -- namespaces, types, functions, variables, fields, enumerators,
     // aliases, macros, concepts -- nested as they are declared.
     [[nodiscard]] std::vector<Symbol> outline() const;
+
+    // Every body, `#include` and conditional branch the main file's text
+    // holds. Bodies are what Clang parsed as one; a conditional directive has
+    // no cursor, so its branches are paired from the directives Clang lexed.
+    [[nodiscard]] std::vector<Fold> folds() const;
+
+    // The extent of every construct Clang parsed that holds `offset` of the
+    // main file's text, an extent's end included, from the innermost out: an
+    // expression, the statements and blocks around it, the declaration, the
+    // classes and namespaces around that.
+    [[nodiscard]] std::vector<Extent> enclosing(std::size_t offset) const;
 
   private:
     struct State;

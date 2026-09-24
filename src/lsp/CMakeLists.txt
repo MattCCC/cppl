@@ -2,6 +2,7 @@ add_library(cppl_lsp STATIC
     src/completion.cpp
     src/decomposition_view.cpp
     src/document.cpp
+    src/document_structure.cpp
     src/editor_view.cpp
     src/hover.cpp
     src/json.cpp

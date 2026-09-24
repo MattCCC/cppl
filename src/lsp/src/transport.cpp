@@ -15,6 +15,7 @@
 #include <istream>
 #include <optional>
 #include <ostream>
+#include <ranges>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -311,6 +312,10 @@ class Dispatcher {
             handle_signature_help(id_value, params);
         } else if (method == "textDocument/documentSymbol") {
             handle_document_symbol(id_value, params);
+        } else if (method == "textDocument/foldingRange") {
+            handle_folding_range(id_value, params);
+        } else if (method == "textDocument/selectionRange") {
+            handle_selection_range(id_value, params);
         } else if (is_request) {
             respond_error(*id_value, kMethodNotFound, "method not found: " + method);
         } else {
@@ -369,6 +374,11 @@ class Dispatcher {
                 symbols != nullptr ? symbols->find("hierarchicalDocumentSymbolSupport") : nullptr;
             nested != nullptr && nested->is_boolean()) {
             capabilities.hierarchical_symbols = nested->as_boolean();
+        }
+        const json::Value* folding = document != nullptr ? document->find("foldingRange") : nullptr;
+        if (const json::Value* lines = folding != nullptr ? folding->find("lineFoldingOnly") : nullptr;
+            lines != nullptr && lines->is_boolean()) {
+            capabilities.line_folding_only = lines->as_boolean();
         }
         return capabilities;
     }
@@ -449,6 +459,10 @@ class Dispatcher {
         json::Value document_symbols = json::Value::object();
         document_symbols.set("label", json::Value(std::string("C++L")));
         capabilities.set("documentSymbolProvider", std::move(document_symbols));
+        // Folding and expanding a selection by the structure Clang parsed and
+        // the C++L structure the recognizer found.
+        capabilities.set("foldingRangeProvider", json::Value(true));
+        capabilities.set("selectionRangeProvider", json::Value(true));
 
         // What became of each Law's, proof's and verified function's
         // obligations, stated over its name; a lens runs no command.
@@ -923,6 +937,96 @@ class Dispatcher {
             }
         } else {
             flatten_symbols(*symbols, *uri, std::string(), items);
+        }
+        respond_result(*id, std::move(items));
+    }
+
+    void handle_folding_range(const json::Value* id, const json::Value* params) {
+        if (id == nullptr) {
+            return;
+        }
+        const json::Value* document = params != nullptr ? params->find("textDocument") : nullptr;
+        const auto uri = document != nullptr ? document->find_string("uri") : std::nullopt;
+        if (!uri) {
+            respond_error(*id, kInvalidParams, "textDocument/foldingRange missing 'textDocument.uri'");
+            return;
+        }
+        TextDocumentIdentifier document_id;
+        document_id.uri = *uri;
+        const std::optional<std::vector<FoldingRange>> folds = server_.text_document_folding_range(document_id);
+        if (!folds.has_value()) {
+            respond_result(*id, json::Value(nullptr));
+            return;
+        }
+        json::Value items = json::Value::array();
+        for (const FoldingRange& fold : *folds) {
+            json::Value item = json::Value::object();
+            item.set("startLine", json::Value(fold.start_line));
+            if (fold.start_character.has_value()) {
+                item.set("startCharacter", json::Value(*fold.start_character));
+            }
+            item.set("endLine", json::Value(fold.end_line));
+            if (fold.end_character.has_value()) {
+                item.set("endCharacter", json::Value(*fold.end_character));
+            }
+            if (!fold.kind.empty()) {
+                item.set("kind", json::Value(fold.kind));
+            }
+            items.push_back(std::move(item));
+        }
+        respond_result(*id, std::move(items));
+    }
+
+    // A client asks for a selection at each cursor it has; more than any
+    // editor keeps is refused rather than parsed and walked one by one.
+    static constexpr std::size_t kMaxSelectionPositions = 4096;
+
+    void handle_selection_range(const json::Value* id, const json::Value* params) {
+        if (id == nullptr) {
+            return;
+        }
+        const json::Value* document = params != nullptr ? params->find("textDocument") : nullptr;
+        const auto uri = document != nullptr ? document->find_string("uri") : std::nullopt;
+        const json::Value* listed = params != nullptr ? params->find("positions") : nullptr;
+        if (!uri || listed == nullptr || !listed->is_array()) {
+            respond_error(*id, kInvalidParams,
+                          "textDocument/selectionRange needs 'textDocument.uri' and an array of 'positions'");
+            return;
+        }
+        if (listed->as_array().size() > kMaxSelectionPositions) {
+            respond_error(*id, kInvalidParams, "textDocument/selectionRange names more positions than any editor has");
+            return;
+        }
+        std::vector<Position> positions;
+        for (const json::Value& value : listed->as_array()) {
+            const std::optional<Position> position = parse_position(value);
+            if (!position.has_value()) {
+                respond_error(*id, kInvalidParams, "textDocument/selectionRange has a malformed position");
+                return;
+            }
+            positions.push_back(*position);
+        }
+        TextDocumentIdentifier document_id;
+        document_id.uri = *uri;
+        const std::optional<std::vector<std::vector<Range>>> chains =
+            server_.text_document_selection_range(document_id, positions);
+        if (!chains.has_value()) {
+            respond_result(*id, json::Value(nullptr));
+            return;
+        }
+        json::Value items = json::Value::array();
+        for (const std::vector<Range>& chain : *chains) {
+            // Nested from the outermost in: each range's parent holds it.
+            json::Value selection(nullptr);
+            for (const Range& range : std::views::reverse(chain)) {
+                json::Value inner = json::Value::object();
+                inner.set("range", range_to_json(range));
+                if (!selection.is_null()) {
+                    inner.set("parent", std::move(selection));
+                }
+                selection = std::move(inner);
+            }
+            items.push_back(std::move(selection));
         }
         respond_result(*id, std::move(items));
     }

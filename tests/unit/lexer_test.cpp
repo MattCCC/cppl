@@ -2,6 +2,7 @@
 // literals must never be mistaken for code.
 
 #include "cppl/frontend/token.hpp"
+#include "cppl/source/location.hpp"
 #include "cppl/testing/test.hpp"
 
 #include <cstdint>
@@ -80,6 +81,21 @@ CPPL_TEST(comments_are_skipped) {
     CPPL_CHECK(find(stream, "commented") == nullptr);
     CPPL_CHECK(find(stream, "blocked") == nullptr);
     CPPL_CHECK(find(stream, "value") != nullptr);
+}
+
+CPPL_TEST(each_comment_passed_over_is_recorded_where_it_is_written) {
+    const std::string text = "int a; // after code\n"
+                             "const char* s = \"// not a comment\";\n"
+                             "/* over\n   two lines */\n"
+                             "/* never closed";
+
+    const TokenStream stream = cppl::frontend::lex(text, "main.cpp");
+
+    std::vector<std::string> spelled;
+    for (const cppl::source::ByteSpan& comment : stream.comments()) {
+        spelled.push_back(text.substr(comment.offset, comment.length));
+    }
+    CPPL_CHECK_EQ(spelled, (std::vector<std::string>{"// after code", "/* over\n   two lines */", "/* never closed"}));
 }
 
 CPPL_TEST(token_spans_address_the_scanned_buffer) {

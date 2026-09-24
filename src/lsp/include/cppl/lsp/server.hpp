@@ -133,6 +133,19 @@ class Server {
     [[nodiscard]] std::optional<std::vector<DocumentSymbol>> text_document_document_symbol(
         const TextDocumentIdentifier& id);
 
+    // Where the document may fold: each body, `#include` run and conditional
+    // branch Clang parsed, each C++L body and declaration the recognizer found,
+    // and each comment block (LSP `textDocument/foldingRange`). `std::nullopt`
+    // means the document is unknown.
+    [[nodiscard]] std::optional<std::vector<FoldingRange>> text_document_folding_range(
+        const TextDocumentIdentifier& id);
+
+    // For each of `positions`, what selecting outward from it selects,
+    // innermost first (LSP `textDocument/selectionRange`). `std::nullopt` means
+    // the document is unknown.
+    [[nodiscard]] std::optional<std::vector<std::vector<Range>>> text_document_selection_range(
+        const TextDocumentIdentifier& id, const std::vector<Position>& positions);
+
     [[nodiscard]] const ClientCapabilities& client_capabilities() const noexcept {
         return client_;
     }

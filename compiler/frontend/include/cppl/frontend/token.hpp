@@ -54,12 +54,14 @@ struct IncludeSite {
 class TokenStream {
   public:
     TokenStream(std::string_view text, std::vector<Token> tokens, std::vector<std::string> files,
-                std::vector<bool> system_files = {}, std::vector<std::optional<IncludeSite>> include_sites = {})
+                std::vector<bool> system_files = {}, std::vector<std::optional<IncludeSite>> include_sites = {},
+                std::vector<source::ByteSpan> comments = {})
         : text_(text),
           tokens_(std::move(tokens)),
           files_(std::move(files)),
           system_files_(std::move(system_files)),
-          include_sites_(std::move(include_sites)) {}
+          include_sites_(std::move(include_sites)),
+          comments_(std::move(comments)) {}
 
     // The scanned buffer. The stream does not own it; it stays valid only as
     // long as the buffer passed to lex() does.
@@ -76,6 +78,12 @@ class TokenStream {
     }
     [[nodiscard]] const std::vector<std::string>& files() const noexcept {
         return files_;
+    }
+    // Every comment the lexer passed over, `//` to the end of its line or `/*`
+    // through `*/`, in order. A preprocessor removes comments, so a compile's
+    // stream has none; an editor's, lexed from the text as written, has each.
+    [[nodiscard]] const std::vector<source::ByteSpan>& comments() const noexcept {
+        return comments_;
     }
 
     // Whether a line marker entered the file as a system header.
@@ -108,6 +116,7 @@ class TokenStream {
     std::vector<std::string> files_;
     std::vector<bool> system_files_;
     std::vector<std::optional<IncludeSite>> include_sites_;
+    std::vector<source::ByteSpan> comments_;
 };
 
 // Lexes preprocessed C++ text.

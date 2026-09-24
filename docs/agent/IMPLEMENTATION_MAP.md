@@ -346,7 +346,9 @@ carrying a closure across translation units through proof artifacts.
    recognizer (`ARCH-LSP-006`): record its name and extent as spans in
    `Syntax`, keep `RecognitionMode::Draft` reading it while it is half
    written, and answer where it may be written from
-   `compiler/frontend/src/admissible.cpp`. A new proof statement's word belongs
+   `compiler/frontend/src/admissible.cpp`. Report its bodies and spans from
+   `compiler/frontend/src/structure.cpp` (`blocks`, `enclosing`), so that
+   editors fold and select it (`tests/unit/lsp_structure_test.cpp`). A new proof statement's word belongs
    in `describe(ProofStatementKind)` and `statement_keyword`. Completion's
    snippet for it in `src/lsp/src/completion.cpp` uses the recognizer's word,
    and `tests/unit/lsp_completion_test.cpp` checks the recognizer reads every

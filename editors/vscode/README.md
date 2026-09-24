@@ -73,7 +73,20 @@ every open C++L file and the headers each includes, and the editor highlights
 each occurrence of the name under the cursor, marking writes apart from reads.
 The Outline view, the breadcrumbs and Go to Symbol in Editor
 (`Ctrl+Shift+O`) list the file's C++ declarations and its Laws, proofs and
-refinement types. Rename is not implemented by the server yet.
+refinement types.
+
+The folding arrows in the gutter come from the server when
+`editor.foldingStrategy` is `auto`, the default. They fold:
+
+- C++ bodies, `#include` runs and conditional branches;
+- comment blocks;
+- proof bodies and `cases` arms;
+- Laws and refinement types that span several lines.
+
+Expand Selection and Shrink Selection (`Shift+Alt+Right` and `Shift+Alt+Left`)
+grow a selection one construct at a time. For C++, that is what Clang parsed.
+For C++L, it runs through a clause, a proof statement, an arm, a proof body and
+the declaration. Rename is not implemented by the server yet.
 
 Proof statements spelled like C++ declarations, such as `exact h;` and
 `contradiction name;`, are colored from the server's semantic tokens, since

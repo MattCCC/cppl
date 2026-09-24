@@ -9,7 +9,8 @@ add_library(cppl_frontend STATIC
     src/formal_projection.cpp
     src/lexer.cpp
     src/projection.cpp
-    src/recognizer.cpp)
+    src/recognizer.cpp
+    src/structure.cpp)
 
 target_include_directories(cppl_frontend PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)

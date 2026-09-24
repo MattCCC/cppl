@@ -44,6 +44,10 @@ textDocument/codeLens                       each Law's, proof's, function's verd
 textDocument/signatureHelp                  the call being written, from Clang
 textDocument/documentSymbol                 C++ from Clang; Laws, proofs,
                                             refinement types from the frontend
+textDocument/foldingRange                   C++ bodies, includes, conditionals
+                                            from Clang; C++L from the frontend
+textDocument/selectionRange                 Clang's constructs and the
+                                            recognizer's C++L spans, nested
 ```
 
 Diagnostics come from `driver::compile_buffer` over the live buffer — the same
@@ -168,7 +172,8 @@ The server advertises `textDocumentSync`, `documentFormattingProvider`,
 document, one token type, `keyword`), `definitionProvider`,
 `declarationProvider`, `typeDefinitionProvider`, `implementationProvider`,
 `referencesProvider`, `documentHighlightProvider`, `codeLensProvider`,
-`signatureHelpProvider` and `documentSymbolProvider`.
+`signatureHelpProvider`, `documentSymbolProvider`, `foldingRangeProvider` and
+`selectionRangeProvider`.
 The rest of navigation specified below, and the semantic-token categories
 beyond proof-statement keywords, are not implemented and not advertised: an
 editor is told what the server can do, never what it intends to do.
@@ -720,6 +725,42 @@ Clang's entry, marked `verified` or `pure`.
 A client that cannot nest an outline
 (`hierarchicalDocumentSymbolSupport` unset) gets the same entries as a flat
 list, each naming the entry it is nested in.
+
+### Folding and selection
+
+Folding follows the same split, and the server reads neither C++ nor C++L
+structure from the text itself.
+
+- **C++ structure comes from Clang.** A body folds between its braces: a block,
+  and a function's, a lambda's, a class's, an enumeration's, a namespace's, an
+  `extern` block's or a braced initializer's. A run of consecutive `#include`s
+  folds as imports.
+- **Conditional directives are paired from Clang's tokens.** Each branch of a
+  conditional directive folds as a region, up to the directive that ends it.
+  Clang's cursors do not cover conditional directives, so these are the one fold
+  built from tokens.
+- **C++L structure comes from the recognizer**
+  (`compiler/frontend/include/cppl/frontend/structure.hpp`):
+  - a proof's body, a Law's body, the arms of a `cases`, `decompose` or
+    `induction` statement, and each arm's body fold between their braces;
+  - a Law with no body and a refinement type fold as whole lines.
+- **Comments come from the frontend's lexer.** A block comment folds as a
+  comment, and so does a run of line comments that each start their line. Code
+  on a comment's line is never folded away with it.
+
+Braces the projection generated are never written, so they never fold.
+
+A client that folds only whole lines (`lineFoldingOnly`) keeps each closing
+brace's line in view.
+
+Expanding a selection (`textDocument/selectionRange`) grows from the token under
+the cursor. Each step is a construct that holds the one before it:
+
+- what Clang parsed, traced back through the source map, so a Law's proposition
+  selects as the expression Clang read where the projection copied it;
+- and the recognizer's C++L spans, in this order: a clause's expression, the
+  clause, a proof statement, an arm's body, the arm, the arms, the statement,
+  a proof's body, and the declaration.
 
 ---
 

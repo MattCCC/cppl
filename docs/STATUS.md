@@ -1401,6 +1401,7 @@ AI output must always be independently verified.
 | LSP: definition and declaration      | `PROTOTYPE`   |
 | LSP: references and highlights       | `PROTOTYPE`   |
 | LSP: document outline                | `PROTOTYPE`   |
+| LSP: folding and selection ranges    | `PROTOTYPE`   |
 | LSP: other token kinds               | `NOT STARTED` |
 | IDE proof goals                      | `PROTOTYPE`   |
 | Proof navigation                     | `PROTOTYPE`   |
@@ -1479,6 +1480,22 @@ with each Law, proof and refinement type the compiler's recognizer finds placed
 among them where it is written. A declaration the projection generated is never
 in it. A client that cannot nest an outline gets a flat list naming each
 entry's container.
+
+`foldingRangeProvider` folds what Clang parsed:
+
+- each body between its braces;
+- each run of `#include`s, as imports;
+- each branch of a conditional directive, as a region, paired from the
+  directives Clang lexed.
+
+It also folds each C++L proof body, arm block, arm body, bodiless Law and
+refinement type that the recognizer found, and each comment block or run of
+whole-line comments that the frontend's lexer passed over.
+
+`selectionRangeProvider` grows a selection from the token under the cursor. It
+goes through each construct Clang parsed and each C++L span the recognizer
+recorded: clause, statement, arm, body, declaration. The server reads no
+structure from the text itself.
 
 Outside a case block, hover describes any name. For C++ it shows what Clang
 reports: the declaration's kind and qualified name, the declaration without a

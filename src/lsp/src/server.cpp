@@ -271,6 +271,28 @@ std::optional<std::vector<DocumentSymbol>> Server::text_document_document_symbol
     return view->outline();
 }
 
+std::optional<std::vector<FoldingRange>> Server::text_document_folding_range(const TextDocumentIdentifier& id) {
+    EditorView* view = view_for(id.uri);
+    if (view == nullptr) {
+        return std::nullopt;
+    }
+    return view->folding_ranges(client_.line_folding_only);
+}
+
+std::optional<std::vector<std::vector<Range>>> Server::text_document_selection_range(
+    const TextDocumentIdentifier& id, const std::vector<Position>& positions) {
+    EditorView* view = view_for(id.uri);
+    if (view == nullptr) {
+        return std::nullopt;
+    }
+    std::vector<std::vector<Range>> chains;
+    chains.reserve(positions.size());
+    for (const Position& position : positions) {
+        chains.push_back(view->selection(position));
+    }
+    return chains;
+}
+
 std::vector<CodeAction> Server::text_document_code_actions(const CodeActionRequest& request) {
     const Document* doc = documents_.get(request.document.uri);
     if (doc == nullptr) {

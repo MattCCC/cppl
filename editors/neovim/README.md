@@ -55,6 +55,9 @@ require("cppl").setup({
   -- Neovim's own LSP completion as you type (0.11 and newer); false leaves
   -- completion to a completion plugin.
   completion = true,
+  -- Fold by the server's folding ranges (0.11 and newer), all folds open at
+  -- first; false leaves the window's folding as you configured it.
+  folding = true,
 })
 ```
 
@@ -94,7 +97,20 @@ client attached, `CTRL-]` jumps to the definition too, through Neovim's LSP
 C++L buffer and the headers each includes, and `vim.lsp.buf.document_highlight()`
 marks each occurrence of the name under the cursor. `vim.lsp.buf.document_symbol()`
 (`gO` in Neovim 0.11) lists the document's outline: its C++ declarations and its
-Laws, proofs and refinement types. Rename is not implemented by
+Laws, proofs and refinement types.
+
+On Neovim 0.11 and newer, `setup()` folds C++L buffers by the server's folding
+ranges (`foldexpr` set to `vim.lsp.foldexpr()`). Folds cover C++ bodies,
+`#include` runs, conditional branches, comment blocks, proof bodies, `cases`
+arms, and multi-line Laws and refinement types. Every fold starts open, and
+`zc`, `zo` and `zM` work as usual.
+
+The server also answers `textDocument/selectionRange`: each step selects a
+construct that holds the one before it, whether Clang parsed it or the C++L
+recognizer found it. A Neovim version that asks for selection ranges can use
+this to expand a visual selection.
+
+Rename is not implemented by
 the server yet — see "Currently unsupported" in the
 [`cppl-lsp` README](../../tools/cppl-lsp/README.md).
 

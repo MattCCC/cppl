@@ -108,7 +108,12 @@ class Lexer {
         end.column = column();
         tokens_.push_back(end);
 
-        return {text_, std::move(tokens_), std::move(files_), std::move(system_files_), std::move(include_sites_)};
+        return {text_,
+                std::move(tokens_),
+                std::move(files_),
+                std::move(system_files_),
+                std::move(include_sites_),
+                std::move(comments_)};
     }
 
   private:
@@ -127,10 +132,12 @@ class Lexer {
         if (offset_ + 1 >= text_.size() || text_[offset_] != '/') {
             return false;
         }
+        const std::size_t start = offset_;
         if (text_[offset_ + 1] == '/') {
             while (offset_ < text_.size() && text_[offset_] != '\n') {
                 ++offset_;
             }
+            comments_.push_back(source::ByteSpan{start, offset_ - start});
             return true;
         }
         if (text_[offset_ + 1] == '*') {
@@ -142,10 +149,11 @@ class Lexer {
                 }
                 if (text_[offset_] == '*' && offset_ + 1 < text_.size() && text_[offset_ + 1] == '/') {
                     offset_ += 2;
-                    return true;
+                    break;
                 }
                 ++offset_;
             }
+            comments_.push_back(source::ByteSpan{start, offset_ - start});
             return true;
         }
         return false;
@@ -377,6 +385,7 @@ class Lexer {
     std::vector<std::string> files_;
     std::vector<bool> system_files_;
     std::vector<std::optional<IncludeSite>> include_sites_;
+    std::vector<source::ByteSpan> comments_;
     std::size_t offset_ = 0;
     std::size_t line_start_ = 0;
     std::uint32_t presumed_line_ = 1;

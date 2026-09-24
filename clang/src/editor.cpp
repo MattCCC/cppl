@@ -15,6 +15,7 @@
 #include <memory>
 #include <optional>
 #include <ranges>
+#include <span>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -400,6 +401,115 @@ struct EditorUnit::State {
     };
 
     static CXChildVisitResult outline_visit(CXCursor cursor, CXCursor, CXClientData data);
+
+    // The main file's tokens Clang lexed in `range`, released with the object.
+    class Tokens {
+      public:
+        Tokens(CXTranslationUnit unit, CXSourceRange range) : unit_(unit) {
+            clang_tokenize(unit_, range, &tokens_, &count_);
+        }
+        ~Tokens() {
+            if (tokens_ != nullptr) {
+                clang_disposeTokens(unit_, tokens_, count_);
+            }
+        }
+        Tokens(const Tokens&) = delete;
+        Tokens& operator=(const Tokens&) = delete;
+        Tokens(Tokens&&) = delete;
+        Tokens& operator=(Tokens&&) = delete;
+
+        [[nodiscard]] unsigned size() const noexcept {
+            return count_;
+        }
+        [[nodiscard]] CXToken operator[](unsigned position) const {
+            return std::span(tokens_, count_)[position];
+        }
+        // A punctuator's spelling, and nothing for any other token.
+        [[nodiscard]] std::string punctuator(unsigned position) const {
+            return clang_getTokenKind((*this)[position]) == CXToken_Punctuation
+                       ? take(clang_getTokenSpelling(unit_, (*this)[position]))
+                       : std::string();
+        }
+
+      private:
+        CXTranslationUnit unit_;
+        CXToken* tokens_ = nullptr;
+        unsigned count_ = 0;
+    };
+
+    // The `{` through the `}` of what `cursor` declares, where it has a body:
+    // the last `}` of its extent and the `{` it closes.
+    [[nodiscard]] std::optional<Extent> declared_body(CXCursor cursor) const {
+        const Tokens tokens(unit, clang_getCursorExtent(cursor));
+        if (tokens.size() == 0 || tokens.punctuator(tokens.size() - 1) != "}") {
+            return std::nullopt;
+        }
+        const unsigned close = tokens.size() - 1;
+        unsigned depth = 0;
+        for (unsigned position = close + 1; position-- > 0;) {
+            const std::string spelling = tokens.punctuator(position);
+            if (spelling == "}") {
+                ++depth;
+            } else if (spelling == "{" && --depth == 0) {
+                return Extent{place(clang_getTokenLocation(unit, tokens[position])),
+                              place(clang_getRangeEnd(clang_getTokenExtent(unit, tokens[close])))};
+            }
+        }
+        return std::nullopt;
+    }
+
+    // What a block or a braced initializer spans, when Clang's extent for it
+    // is its braces as written.
+    [[nodiscard]] std::optional<Extent> braced(CXCursor cursor) const {
+        const CXSourceRange range = clang_getCursorExtent(cursor);
+        Extent extent{place(clang_getRangeStart(range)), place(clang_getRangeEnd(range))};
+        const std::string& text = main.text;
+        if (!extent.begin.in_main_file || !extent.end.in_main_file || extent.end.offset <= extent.begin.offset ||
+            extent.end.offset > text.size() || text[extent.begin.offset] != '{' || text[extent.end.offset - 1] != '}') {
+            return std::nullopt;
+        }
+        return extent;
+    }
+
+    // Each branch of each conditional directive in the main file, paired as
+    // the preprocessor pairs them: a branch runs from its directive's `#` to
+    // the `#` of the directive after it.
+    void conditional_branches(std::vector<Fold>& into) const {
+        CXFile file = main_file();
+        if (file == nullptr) {
+            return;
+        }
+        const Tokens tokens(
+            unit, clang_getRange(clang_getLocationForOffset(unit, file, 0),
+                                 clang_getLocationForOffset(unit, file, static_cast<unsigned>(main.text.size()))));
+        const auto line_of = [&](unsigned position) {
+            unsigned line = 0;
+            clang_getFileLocation(clang_getTokenLocation(unit, tokens[position]), nullptr, &line, nullptr, nullptr);
+            return line;
+        };
+        std::vector<FilePosition> open;
+        unsigned previous_line = 0;
+        for (unsigned position = 0; position + 1 < tokens.size(); ++position) {
+            const unsigned line = line_of(position);
+            const bool starts_line = position == 0 || line != previous_line;
+            previous_line = line;
+            if (!starts_line || tokens.punctuator(position) != "#" || line_of(position + 1) != line) {
+                continue;
+            }
+            const std::string directive = take(clang_getTokenSpelling(unit, tokens[position + 1]));
+            const FilePosition at = place(clang_getTokenLocation(unit, tokens[position]));
+            const bool opens = directive == "if" || directive == "ifdef" || directive == "ifndef";
+            const bool continues =
+                directive == "elif" || directive == "elifdef" || directive == "elifndef" || directive == "else";
+            if ((continues || directive == "endif") && !open.empty()) {
+                into.push_back(Fold{Fold::Kind::Conditional, Extent{open.back(), at}});
+                open.pop_back();
+            }
+            if (opens || continues) {
+                open.push_back(at);
+            }
+        }
+    }
 
     [[nodiscard]] std::vector<Occurrence> walk(const std::vector<std::string>* usrs, std::string_view name) const {
         Walk walk;
@@ -1379,6 +1489,90 @@ std::vector<Symbol> EditorUnit::outline() const {
         clang_visitChildren(clang_getTranslationUnitCursor(state_->unit), State::outline_visit, &walk);
     }
     return symbols;
+}
+
+std::vector<Fold> EditorUnit::folds() const {
+    std::vector<Fold> found;
+    if (state_->unit == nullptr) {
+        return found;
+    }
+    struct Walk {
+        const State* state;
+        std::vector<Fold>* found;
+    } walk{state_.get(), &found};
+    clang_visitChildren(
+        clang_getTranslationUnitCursor(state_->unit),
+        [](CXCursor cursor, CXCursor, CXClientData data) {
+            const Walk& walk = *static_cast<Walk*>(data);
+            if (clang_Location_isFromMainFile(clang_getCursorLocation(cursor)) == 0) {
+                return CXChildVisit_Continue;
+            }
+            std::optional<Extent> body;
+            switch (clang_getCursorKind(cursor)) {
+                case CXCursor_InclusionDirective: {
+                    const CXSourceRange range = clang_getCursorExtent(cursor);
+                    walk.found->push_back(
+                        Fold{Fold::Kind::Include, Extent{walk.state->place(clang_getRangeStart(range)),
+                                                         walk.state->place(clang_getRangeEnd(range))}});
+                    return CXChildVisit_Continue;
+                }
+                case CXCursor_CompoundStmt:
+                case CXCursor_InitListExpr:
+                    body = walk.state->braced(cursor);
+                    break;
+                case CXCursor_Namespace:
+                case CXCursor_LinkageSpec:
+                case CXCursor_ClassDecl:
+                case CXCursor_StructDecl:
+                case CXCursor_UnionDecl:
+                case CXCursor_EnumDecl:
+                case CXCursor_ClassTemplate:
+                case CXCursor_ClassTemplatePartialSpecialization:
+                    body = walk.state->declared_body(cursor);
+                    break;
+                default:
+                    break;
+            }
+            if (body.has_value() && body->begin.in_main_file && body->end.in_main_file) {
+                walk.found->push_back(Fold{Fold::Kind::Braces, *body});
+            }
+            return CXChildVisit_Recurse;
+        },
+        &walk);
+    state_->conditional_branches(found);
+    return found;
+}
+
+std::vector<Extent> EditorUnit::enclosing(std::size_t offset) const {
+    std::vector<Extent> found;
+    if (state_->unit == nullptr) {
+        return found;
+    }
+    struct Walk {
+        const State* state;
+        std::size_t offset;
+        std::vector<Extent>* found;
+    } walk{state_.get(), offset, &found};
+    clang_visitChildren(
+        clang_getTranslationUnitCursor(state_->unit),
+        [](CXCursor cursor, CXCursor, CXClientData data) {
+            const Walk& walk = *static_cast<Walk*>(data);
+            if (clang_Location_isFromMainFile(clang_getCursorLocation(cursor)) == 0) {
+                return CXChildVisit_Continue;
+            }
+            const CXSourceRange range = clang_getCursorExtent(cursor);
+            const Extent extent{walk.state->place(clang_getRangeStart(range)),
+                                walk.state->place(clang_getRangeEnd(range))};
+            if (!extent.begin.in_main_file || !extent.end.in_main_file || extent.begin.offset > walk.offset ||
+                walk.offset > extent.end.offset) {
+                return CXChildVisit_Continue;
+            }
+            walk.found->push_back(extent);
+            return CXChildVisit_Recurse;
+        },
+        &walk);
+    std::ranges::reverse(found);
+    return found;
 }
 
 std::vector<std::string> EditorUnit::included_files() const {

@@ -21,6 +21,9 @@ local defaults = {
   -- Neovim's own LSP completion (0.11 and newer), triggered as you type. Off
   -- leaves completion to whatever completion plugin is installed.
   completion = true,
+  -- Fold by the server's folding ranges (0.11 and newer), every fold open
+  -- when the buffer is shown. Off leaves the window's folding as configured.
+  folding = true,
 }
 
 M.options = vim.deepcopy(defaults)
@@ -130,6 +133,13 @@ function M.setup(options)
       end
       if M.options.completion and vim.lsp.completion ~= nil then
         vim.lsp.completion.enable(true, client.id, event.buf, { autotrigger = true })
+      end
+      if M.options.folding and vim.lsp.foldexpr ~= nil and client.server_capabilities.foldingRangeProvider then
+        for _, window in ipairs(vim.fn.win_findbuf(event.buf)) do
+          vim.wo[window][0].foldmethod = "expr"
+          vim.wo[window][0].foldexpr = "v:lua.vim.lsp.foldexpr()"
+          vim.wo[window][0].foldlevel = 99
+        end
       end
     end,
   })

@@ -190,6 +190,21 @@ struct ClientCapabilities {
     // `textDocument.documentSymbol.hierarchicalDocumentSymbolSupport`: the
     // outline may be nested, rather than a list naming each entry's container.
     bool hierarchical_symbols = false;
+    // `textDocument.foldingRange.lineFoldingOnly`: the client folds whole
+    // lines, so a body's closing line is left out of its fold to stay visible.
+    bool line_folding_only = false;
+};
+
+// A region a client may fold away (LSP `FoldingRange`). A body folds between
+// its braces, for a client that folds within lines; anything else folds whole
+// lines and states no characters.
+struct FoldingRange {
+    std::uint32_t start_line = 0;
+    std::optional<std::uint32_t> start_character;
+    std::uint32_t end_line = 0;
+    std::optional<std::uint32_t> end_character;
+    // "comment", "imports" or "region"; empty for a body or a declaration.
+    std::string kind;
 };
 
 struct Hover {

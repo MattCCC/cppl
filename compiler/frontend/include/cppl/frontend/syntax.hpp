@@ -26,6 +26,8 @@ std::string describe(ClauseKind kind);
 struct Clause {
     ClauseKind kind = ClauseKind::Ensures;
     source::ByteSpan keyword; // the clause keyword itself, e.g. 'ensures'
+    // Everything between the parentheses: the `)` closing it is the byte at
+    // `expression.end()`.
     source::ByteSpan expression;
     source::SourceLocation location;
 };
