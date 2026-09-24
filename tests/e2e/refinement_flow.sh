@@ -1149,4 +1149,40 @@ verified int f(unsigned i) expects (i < 3u) ensures (result > 0) {
 }
 CPP
 
+# A loop that writes elements and a symbolic read that supplies the element
+# predicate were built independently, and their intersection is where a stale
+# predicate would hide: the loop establishes new versions of every element, so
+# the predicate must come from the loop's own write obligation and not from the
+# initializer that preceded it.
+# SPEC: REFINE-060
+accept a_loop_write_in_the_refinement_still_supplies_it <<'CPP'
+type Positive = int where (self > 0);
+verified int f(unsigned i) expects (i < 3u) ensures (result > 0) {
+    Positive a[3] = {1, 2, 3};
+    for (unsigned k = 0u; k < 3u; ++k) { a[k] = 1; }
+    return a[i];
+}
+CPP
+
+# The same loop writing out of the refinement owes the predicate and fails,
+# rather than leaning on the elements the initializer established.
+refuse a_loop_write_out_of_the_refinement_is_refused 'not shown to satisfy refinement type' <<'CPP'
+type Positive = int where (self > 0);
+verified int f(unsigned i) expects (i < 3u) ensures (result > 0) {
+    Positive a[3] = {1, 2, 3};
+    for (unsigned k = 0u; k < 3u; ++k) { a[k] = 0; }
+    return a[i];
+}
+CPP
+
+# A loop over a plain array supplies nothing, and an exact value does not
+# survive the versions the loop establishes.
+refuse a_loop_over_a_plain_array_supplies_nothing 'does not satisfy its contract' <<'CPP'
+verified int f(unsigned i) expects (i < 3u) ensures (result > 0) {
+    int a[3] = {1, 2, 3};
+    for (unsigned k = 0u; k < 3u; ++k) { a[k] = 1; }
+    return a[i];
+}
+CPP
+
 echo 'refinement flow: proven crossings and refused crossings both hold'
