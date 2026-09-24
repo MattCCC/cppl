@@ -591,6 +591,8 @@ The implementation MAY check these through a dedicated capability calculus rathe
 
 **[TCB-CAP-008]** A `trusted law` that admits a memory proposition expands the trusted-assumption closure; it does not change runtime memory or create a runtime validation.
 
+**[TCB-CAP-009]** A verified call MUST consume every capability its callee's contract states, exactly as it owes the callee's precondition (`SPEC.md` VERIFIED-013, VERIFIED-043): the caller holds a capability of the same kind on the pointer it passes, and where either side states an element count the callee's is proved no larger than the caller's. A caller that passes a pointer it holds nothing for, or a larger region than it holds, hands the callee storage the proof never established it may access. This implementation checks the kind and the pointer in the obligation layer's path walk (`compiler/obligations/src/contracts.cpp`, correspondence TCB) and states the count comparison as an ordinary obligation the kernel decides.
+
 ---
 
 # 16. Refinement correspondence

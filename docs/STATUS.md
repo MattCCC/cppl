@@ -885,6 +885,18 @@ VERIFIED-043). A pointer computed by arithmetic or returned by a call names no
 place this implementation can identify and stays refused. Reading requires
 `readable` and writing requires `writable`; neither entails the other.
 
+A verified call owes the capabilities its callee's contract states, as it owes
+the callee's precondition (`SPEC.md` VERIFIED-013, VERIFIED-043, `TRUST.md`
+TCB-CAP-009). The caller must pass one of its own pointer parameters and hold a
+capability of the same kind on it; a pointer it holds nothing for, a capability
+held for another pointer, and `readable` where `writable` is required are each
+refused by name. Where either side states an element count, the callee's count
+instantiated at the call's arguments must be proved no larger than the caller's,
+an ordinary obligation the kernel decides; an unstated count is one object, so a
+caller holding `writable(q, m)` passes `writable(q)` on only where `1 <= m` is
+proved. Before this check a caller with no capability at all was reported
+proven; `negative_memory_capabilities` pins the refusals and matched pairs.
+
 `readable` and `writable` are built-in specification propositions, not calls to
 user functions, and they never become runtime calls. They are recognized
 contextually, so ordinary C++ that already spells a function or variable

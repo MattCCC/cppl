@@ -45,6 +45,9 @@ spend-dependency-proven	compiler/automation/src/composition.cpp	dependency.has_v
 erasure-span-blank	compiler/erasure/src/erase.cpp	spans_erased = false; // proof-only text left in the program	(void)spans_erased;	^unit_projection_test$
 erasure-lowering-canonical	compiler/erasure/src/erase.cpp	runtime.substr(runtime_offset, lowering.expected.size()) != lowering.expected	false && (runtime.substr(runtime_offset, lowering.expected.size()) != lowering.expected)	^unit_projection_test$
 declarator-list-ends-clauses	compiler/frontend/src/recognizer.cpp	nesting == 0 && token.is_punctuator(",")	false && (nesting == 0 && token.is_punctuator(","))	^unit_recognizer_test$
+call-capability-kind	compiler/obligations/src/contracts.cpp	return candidate.kind == required.kind &&	return true &&	^negative_memory_capabilities$
+call-capability-pointer	compiler/obligations/src/contracts.cpp	candidate.place.root.id == passed->parameter;	(true || candidate.place.root.id == passed->parameter);	^negative_memory_capabilities$
+call-capability-extent	compiler/obligations/src/contracts.cpp	if (required.extent.empty() && holding->extent.empty()) {	if (true || (required.extent.empty() && holding->extent.empty())) {	^negative_memory_capabilities$
 verified-specifier-span	compiler/frontend/src/recognizer.cpp	verified.keyword = tokens[index].span;	verified.keyword = source::ByteSpan{tokens[specifiers_start(tokens, index)].span.offset, tokens[index].span.end() - tokens[specifiers_start(tokens, index)].span.offset};	^e2e_erasure_equivalence$
 MUTATIONS
 )

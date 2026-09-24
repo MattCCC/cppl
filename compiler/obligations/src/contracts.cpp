@@ -9,6 +9,7 @@
 #include "cppl/obligations/obligation.hpp"
 #include "cppl/source/digest.hpp"
 #include "cppl/source/storage.hpp"
+#include "cppl/vir/capability.hpp"
 #include "cppl/vir/expr.hpp"
 #include "cppl/vir/module.hpp"
 #include "cppl/vir/place.hpp"
@@ -802,6 +803,115 @@ class Conditions {
         obligations.push_back(std::move(obligation));
     }
 
+    // The memory capabilities a callee's contract states are owed at every call
+    // to it, as its preconditions are (SPEC.md 12.10 VERIFIED-043, RFC 0014 §3).
+    // A capability is not a proposition the kernel sees, so what is owed is that
+    // the caller holds it: the argument is one of the caller's own pointer
+    // parameters, and the caller's contract states a capability of the same kind
+    // on it. Nothing about the argument's value supplies one, and neither kind
+    // entails the other.
+    //
+    // A sized capability bounds a value, so where either side states an element
+    // count, the callee's must not exceed the caller's. That comparison is an
+    // ordinary obligation the kernel decides; an unstated count is one object.
+    std::expected<void, Failure> owe_capabilities(const vir::Call& call, const ContractVerification& callee,
+                                                  const std::vector<kernel::Term>& arguments, const Scope& scope,
+                                                  const vir::Expr& site) {
+        const source::SourceLocation& location = site.provenance.range.begin;
+        const auto declared = contracts_.find(call.callee.usr);
+        if (declared == contracts_.end()) {
+            return fail("'" + call.callee_name + "' has no established contract", location);
+        }
+        const std::optional<vir::Contract>& stated = declared->second->contract;
+        if (!stated.has_value()) {
+            return fail("'" + call.callee_name + "' has no established contract", location);
+        }
+        static const std::vector<vir::Capability> none;
+        const std::vector<vir::Capability>& held =
+            function_.contract.has_value() ? function_.contract->capabilities : none;
+        for (const vir::Capability& required : stated->capabilities) {
+            const std::uint32_t position = required.place.root.id;
+            if (required.place.root.kind != vir::PlaceRoot::Kind::Parameter || position >= call.arguments.size() ||
+                arguments.size() != call.arguments.size()) {
+                return fail("the memory capability '" + vir::describe(required) + "' of '" + call.callee_name +
+                                "' does not name one of its parameters",
+                            location);
+            }
+            const std::string kind = vir::describe(required.kind);
+            const auto* passed = std::get_if<vir::ParameterRef>(&call.arguments[position].node);
+            if (passed == nullptr) {
+                return fail("calling '" + call.callee_name + "' requires '" + kind + "' of the pointer passed for '" +
+                                required.place.spelling + "', and only a pointer parameter of '" +
+                                function_.qualified_name + "' whose contract states that capability can supply it",
+                            call.arguments[position].provenance.range.begin.is_valid()
+                                ? call.arguments[position].provenance.range.begin
+                                : location);
+            }
+            const std::string owed = kind + "(" + passed->name + ")";
+            const auto holding = std::ranges::find_if(held, [&](const vir::Capability& candidate) {
+                return candidate.kind == required.kind &&
+                       candidate.place.root.kind == vir::PlaceRoot::Kind::Parameter &&
+                       candidate.place.root.id == passed->parameter;
+            });
+            if (holding == held.end()) {
+                return fail("calling '" + call.callee_name + "' requires '" + owed +
+                                "', which is not established: the contract of '" + function_.qualified_name +
+                                "' states no such capability, and 'p != nullptr' does not imply it",
+                            location);
+            }
+            if (required.extent.empty() && holding->extent.empty()) {
+                continue;
+            }
+            const vir::Expr* owed_count = required.extent.empty() ? nullptr : &required.extent.front();
+            const vir::Expr* held_count = holding->extent.empty() ? nullptr : &holding->extent.front();
+            const std::optional<kernel::Type> type =
+                core_type(owed_count != nullptr ? owed_count->type : held_count->type);
+            if (!type || !type->is_integer()) {
+                return fail("the element count of '" + owed + "' is not an integer the formal core represents",
+                            location);
+            }
+            if (owed_count != nullptr && held_count != nullptr && core_type(held_count->type) != type) {
+                return fail("calling '" + call.callee_name + "' compares an element count of type '" +
+                                vir::describe(owed_count->type) + "' against one of type '" +
+                                vir::describe(held_count->type) + "', and the conversion between them is not modeled",
+                            location);
+            }
+            const kernel::IntType integer = type->integer_type();
+            // The callee's count is stated over its own parameters and one more
+            // binder standing for the caller's, then instantiated at the call's
+            // arguments and at that count, so neither side is read in the
+            // other's scope.
+            kernel::Term needed = kernel::Term::literal(integer, 1);
+            if (owed_count != nullptr) {
+                auto lowered = lower_value(*owed_count, definitions_, callee.parameters.size() + 1);
+                if (!lowered) {
+                    return std::unexpected(lowered.error());
+                }
+                needed = std::move(*lowered);
+            }
+            kernel::Term available = kernel::Term::literal(integer, 1);
+            if (held_count != nullptr) {
+                auto lowered = lower(*held_count, scope);
+                if (!lowered) {
+                    return std::unexpected(lowered.error());
+                }
+                available = std::move(*lowered);
+            }
+            std::vector<kernel::Type> binders = callee.parameters;
+            binders.emplace_back(integer);
+            std::vector<kernel::Term> instantiated = arguments;
+            instantiated.push_back(std::move(available));
+            emit(scope, Origin::CallPrecondition, function_.qualified_name + " -> " + call.callee_name,
+                 site.provenance.range,
+                 specialize(kernel::predicate(kernel::Term::primitive(
+                                                  kernel::PrimOp::LessEqual, integer,
+                                                  {std::move(needed), kernel::Term::variable(kernel::VarIndex{0})}),
+                                              true),
+                            binders, instantiated));
+        }
+        return {};
+    }
+
     // Each verified call the expression evaluates, where it evaluates it: its
     // precondition is a condition under what the path supposes so far, and its
     // result is a fresh value of which the callee's postcondition is supposed.
@@ -828,6 +938,9 @@ class Conditions {
                     return std::unexpected(lowered.error());
                 }
                 arguments.push_back(std::move(*lowered));
+            }
+            if (auto owed = owe_capabilities(call, callee, arguments, scope, *site); !owed) {
+                return owed;
             }
             for (const auto& precondition : callee.preconditions) {
                 emit(scope, Origin::CallPrecondition, function_.qualified_name + " -> " + call.callee_name,
@@ -1486,10 +1599,16 @@ void generate_contracts(const vir::Module& module, const DefinitionMap& pure_def
                 continue;
             }
             // A loop, or a call whose contract is itself partial, leaves the
-            // body without a total term; its contract is then partial too.
+            // body without a total term; its contract is then partial too. So
+            // does a call whose callee states memory capabilities: what such a
+            // call owes is checked where the path makes it (SPEC.md 12.10
+            // VERIFIED-043), which only the conditions walk does.
             const bool partial =
                 requires_conditions(returned_value) || std::ranges::any_of(calls, [&](const vir::Expr* call) {
-                    return program.contracts[established.at(std::get<vir::Call>(call->node).callee.usr)].partial;
+                    const std::string& callee = std::get<vir::Call>(call->node).callee.usr;
+                    const vir::Function& declared = *contracts.at(callee);
+                    return program.contracts[established.at(callee)].partial ||
+                           (declared.contract.has_value() && !declared.contract->capabilities.empty());
                 });
             auto plan = partial ? build_partial(function, contracts, pure_definitions, established, program)
                                 : build(function, contracts, pure_definitions, definitions, established, program);

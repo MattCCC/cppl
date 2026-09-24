@@ -91,12 +91,15 @@ tests:
     - tests/e2e/refinement_types.sh
     - tests/e2e/refinement_flow.sh
     - tests/e2e/verified_templates.sh
+    - tests/e2e/memory_capabilities.sh
   negative:
     - tests/negative/refinement_types.sh
     - tests/negative/verified_storage.sh
+    - tests/negative/memory_capabilities.sh
   fixtures:
     - tests/fixtures/refinement_types.cpp
     - tests/fixtures/verified_storage.cpp
+    - tests/fixtures/memory_capabilities.cpp
 
 required_test_categories:
   - local initialization
@@ -107,6 +110,7 @@ required_test_categories:
   - element write
   - alias mutation
   - verified call effect
+  - capabilities owed at a verified call
   - nested refinements
   - indexed refinements
   - refinement implication
