@@ -7,7 +7,6 @@
 #include "cppl/lsp/transport.hpp"
 #include "cppl/testing/test.hpp"
 
-#include <cstddef>
 #include <optional>
 #include <sstream>
 #include <string>
