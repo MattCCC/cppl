@@ -16,6 +16,9 @@ local defaults = {
   -- compile_commands.json entry gives it, which cppl-lsp reads itself.
   clang_arguments = {},
   format_on_save = true,
+  -- Format the statement just finished when `}` or `;` is typed, as the
+  -- server's on-type formatting lays it out.
+  format_on_type = true,
   -- Show, over each Law, proof and verified function, what became of its
   -- obligations in the last compile.
   code_lens = true,
@@ -134,6 +137,42 @@ function M.setup(options)
       end
       if M.options.completion and vim.lsp.completion ~= nil then
         vim.lsp.completion.enable(true, client.id, event.buf, { autotrigger = true })
+      end
+      -- Neovim sends no on-type formatting request of its own. After a trigger
+      -- character the server names is typed, ask for the edits and apply them.
+      local on_type = client.server_capabilities.documentOnTypeFormattingProvider
+      if M.options.format_on_type and on_type then
+        local triggers = { [on_type.firstTriggerCharacter] = true }
+        for _, character in ipairs(on_type.moreTriggerCharacter or {}) do
+          triggers[character] = true
+        end
+        vim.api.nvim_create_autocmd("InsertCharPre", {
+          group = group,
+          buffer = event.buf,
+          callback = function()
+            local typed = vim.v.char
+            if not triggers[typed] then
+              return
+            end
+            -- The character is inserted after this returns.
+            vim.schedule(function()
+              if not vim.api.nvim_buf_is_valid(event.buf) or vim.api.nvim_get_current_buf() ~= event.buf then
+                return
+              end
+              local params = vim.lsp.util.make_position_params(0, client.offset_encoding)
+              params.ch = typed
+              params.options = {
+                tabSize = vim.fn.shiftwidth(),
+                insertSpaces = vim.bo[event.buf].expandtab,
+              }
+              vim.lsp.buf_request(event.buf, "textDocument/onTypeFormatting", params, function(err, result)
+                if err == nil and result ~= nil and vim.api.nvim_buf_is_valid(event.buf) then
+                  vim.lsp.util.apply_text_edits(result, event.buf, client.offset_encoding)
+                end
+              end)
+            end)
+          end,
+        })
       end
       if M.options.folding and vim.lsp.foldexpr ~= nil and client.server_capabilities.foldingRangeProvider then
         for _, window in ipairs(vim.fn.win_findbuf(event.buf)) do

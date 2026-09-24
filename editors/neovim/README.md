@@ -2,7 +2,8 @@
 
 A thin Neovim client for [`cppl-lsp`](../../tools/cppl-lsp/README.md). It
 registers the `cppl` filetype, starts the server through Neovim's built-in LSP
-client, and enables format-on-save. It owns no C++L semantics.
+client, and enables format-on-save and format-on-type. It owns no C++L
+semantics.
 
 Requires Neovim 0.10 or newer (for `vim.lsp.start` and `vim.fs`).
 
@@ -51,6 +52,8 @@ require("cppl").setup({
   -- compile_commands.json entry gives it, which are read automatically.
   clang_arguments = { "-std=c++20" },
   format_on_save = true,
+  -- Lay out the statement just finished when `}` or `;` is typed.
+  format_on_type = true,
   -- Verification status over each Law, proof and verified function.
   code_lens = true,
   -- Neovim's own LSP completion as you type (0.11 and newer); false leaves
@@ -68,7 +71,14 @@ The project root is detected by searching upward for `CMakeLists.txt` or
 ## What works
 
 Diagnostics, formatting (`vim.lsp.buf.format`), format-on-save and code
-actions, all from the server. Syntax coloring comes from
+actions, all from the server.
+
+Neovim has no on-type formatting of its own. So when `}` or `;` is typed,
+`setup()` asks the server for its on-type edits and applies them, laying out
+the statement just finished as VS Code does. Set `format_on_type = false` to
+turn this off.
+
+Syntax coloring comes from
 [`syntax/cppl.vim`](syntax/cppl.vim), which sources the bundled C++ syntax and
 adds only the C++L contextual words. Proof statements spelled like C++
 declarations, such as `exact h;` and `contradiction name;`, come from the

@@ -22,7 +22,7 @@ editors/
 | Diagnostics (C++L + Clang) | `cppl-lsp` | yes | yes | yes | yes |
 | Formatting | `cppl-lsp` | yes | yes | yes | yes |
 | Format on save | editor config | yes | yes | yes | yes |
-| Format on type | `cppl-lsp` | yes | yes | yes | — |
+| Format on type | `cppl-lsp` | yes | yes | yes | unverified |
 | Code actions | `cppl-lsp` | yes | yes | yes | yes |
 | Hover | `cppl-lsp` | yes | unverified | yes | yes |
 | Completion | `cppl-lsp` | yes | unverified | yes | yes |
@@ -32,7 +32,7 @@ editors/
 | Find references, highlight occurrences | `cppl-lsp` | yes | unverified | unverified | yes |
 | Verification status (code lens) | `cppl-lsp` | yes | unverified | unverified | yes |
 | Outline (document symbols) | `cppl-lsp` | yes | unverified | unverified | yes |
-| Folding, expand selection | `cppl-lsp` | yes | unverified | unverified | yes |
+| Folding, expand selection | `cppl-lsp` | yes | unverified | unverified | unverified |
 | Build flags from `compile_commands.json` | `cppl-lsp` | yes | yes | yes | yes |
 | Syntax coloring | `editors/shared` | yes | — | — | yes |
 | Proof-statement coloring | `cppl-lsp` | yes | unverified | unverified | yes |
