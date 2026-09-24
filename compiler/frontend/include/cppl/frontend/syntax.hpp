@@ -352,6 +352,46 @@ struct PathCaseSplit {
     std::vector<std::size_t> claims;
 };
 
+// unsafe { statements }   (GRAMMAR.md 22, SPEC.md 26)
+//
+// An explicit boundary around runtime code C++L does not verify. The statements
+// run as ordinary C++; only the word `unsafe` leaves the program. In a verified
+// body the block is not lowered statement by statement: it is a region whose
+// effects are modeled conservatively and which establishes no fact (UNSAFE-003,
+// INTERACT-018), so Clang is given a marker declaration just inside its `{`
+// that tells the body lowering where the region is.
+struct UnsafeBlock {
+    // The verified function whose body holds the block, if any. A block in an
+    // ordinary function is still an unsafe region of the program, but there is
+    // no claim for it to weaken.
+    std::optional<std::size_t> function_index;
+    source::ByteSpan keyword; // `unsafe` itself
+    source::SourceLocation location;
+    source::ByteSpan body; // `{` through `}`
+    // A block inside another unsafe block is part of that region: it gets no
+    // marker of its own, only its word erased.
+    bool nested = false;
+
+    // Just past the `{`, where the marker is inserted, and the presumed position
+    // the text after it resumes at.
+    std::size_t body_open = 0;
+    std::uint32_t body_open_line = 0;
+    std::uint32_t body_open_column = 0;
+};
+
+// unsafe T f(parameters);   (GRAMMAR.md 23, SPEC.md UNSAFE-001, UNSAFE-002)
+//
+// Every call to the function crosses an unsafe runtime boundary. It is not a
+// verified function and supplies no summary; a verified body may call it only
+// inside an unsafe block.
+struct UnsafeFunction {
+    source::ByteSpan keyword;
+    source::SourceLocation keyword_location;
+    std::string function_name;
+    source::SourceLocation function_location;
+    std::size_t function_offset = 0;
+};
+
 // type name [(index parameters)] = base-type where (predicate);
 //                                            (SPEC.md 17, 18; GRAMMAR.md 14, 16)
 //
@@ -426,6 +466,8 @@ struct Syntax {
     std::vector<PathCaseSplit> path_splits;
     std::vector<RefinementType> refinement_types;
     std::vector<ExplicitInstantiation> explicit_instantiations;
+    std::vector<UnsafeBlock> unsafe_blocks;
+    std::vector<UnsafeFunction> unsafe_functions;
 
     // A specification clause written on a function that is not 'verified'
     // (GRAMMAR.md 6 permits the syntax; this implementation does not check
@@ -440,7 +482,7 @@ struct Syntax {
     [[nodiscard]] bool empty() const noexcept {
         return laws.empty() && proofs.empty() && pure_markers.empty() && verified_functions.empty() && loops.empty() &&
                path_contradictions.empty() && path_splits.empty() && refinement_types.empty() &&
-               unchecked_clauses.empty();
+               unchecked_clauses.empty() && unsafe_blocks.empty() && unsafe_functions.empty();
     }
 };
 

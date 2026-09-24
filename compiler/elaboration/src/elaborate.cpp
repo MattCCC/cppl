@@ -704,6 +704,20 @@ class ExpressionElaborator {
         if (const auto* split = std::get_if<clangbridge::CaseSplit>(&expr.node)) {
             return convert_split(*split, expr, std::move(result));
         }
+        // An unsafe block on this path (SPEC.md 26): no value and no fact, only
+        // the rest of the path under the fresh versions the block leaves.
+        if (const auto* region = std::get_if<clangbridge::UnsafeRegion>(&expr.node)) {
+            if (region->operands.size() != 1) {
+                failure_ = Failure{"malformed unsafe region", expr.location};
+                return std::nullopt;
+            }
+            auto continued = convert(region->operands.front());
+            if (!continued) {
+                return std::nullopt;
+            }
+            result.node = vir::UnsafeRegion{{std::move(*continued)}};
+            return result;
+        }
         // A binder of an arm is the value its case exposes. The type Clang
         // resolved for its declaration must be that value's type, or what the
         // arm said about it was resolved at some other type.
@@ -913,6 +927,25 @@ void collect_callees(const vir::Expr& expr, std::vector<vir::SymbolId>& callees)
             if constexpr (requires { node.body; }) {
                 for (const vir::Expr& child : node.body)
                     collect_callees(child, callees);
+            }
+        },
+        expr.node);
+}
+
+// Whether a body passes through an unsafe block anywhere. Every statement-like
+// node keeps the rest of its path among its operands, so searching them finds
+// every region whatever node a later change adds.
+bool contains_unsafe_region(const vir::Expr& expr) {
+    if (std::holds_alternative<vir::UnsafeRegion>(expr.node)) {
+        return true;
+    }
+    return std::visit(
+        [](const auto& node) {
+            if constexpr (requires { node.operands; }) {
+                return std::ranges::any_of(node.operands,
+                                           [](const vir::Expr& child) { return contains_unsafe_region(child); });
+            } else {
+                return false;
             }
         },
         expr.node);
@@ -1518,6 +1551,20 @@ void elaborate_contract(const Request& request, const frontend::VerifiedFunction
         }
     }
 
+    // Every unsafe block written in this body must have been passed through as
+    // a region of one of its paths. One that was not stands in a lambda or a
+    // local class, where it would weaken a claim nothing reports.
+    for (const frontend::UnsafeBlockMarker& marker : request.projection.unsafe_blocks) {
+        if (marker.function_index == std::optional<std::size_t>{projected.function_index} &&
+            std::ranges::find(function.unsafe_regions, marker.name) == function.unsafe_regions.end()) {
+            report(engine, diagnostics::Category::UnsupportedSemantics, marker.location,
+                   "this unsafe block is not on a runtime path of verified function '" + function.qualified_name + "'",
+                   "an unsafe block in a verified body is modeled as a region of the function's own paths, not "
+                   "inside a lambda or a local class");
+            return;
+        }
+    }
+
     // Every invariant written in this body must have become an invariant of a
     // lowered loop. One that did not would be an obligation silently dropped.
     for (const frontend::LoopInvariantMarker& marker : request.projection.loop_invariants) {
@@ -2012,8 +2059,36 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
         }
     }
 
+    // Functions declared `unsafe`, by the identity Clang gave them, so that every
+    // redeclaration and every call is recognized whatever it is spelled as
+    // (SPEC.md UNSAFE-001, UNSAFE-002).
+    std::map<std::string, std::string> unsafe_symbols;
+    for (std::size_t index = 0; index < request.syntax.unsafe_functions.size(); ++index) {
+        const frontend::UnsafeFunction& declared = request.syntax.unsafe_functions[index];
+        const auto offset = request.projection.declaration_offset(declared.function_offset);
+        const clangbridge::Function* function = offset.has_value() ? request.unit.find_at_offset(*offset) : nullptr;
+        if (function == nullptr) {
+            report(engine, diagnostics::Category::Elaboration, declared.function_location,
+                   "the declaration of '" + declared.function_name + "' marked unsafe was not resolved",
+                   "Clang did not report a function declaration at this location");
+            continue;
+        }
+        if (unsafe_symbols.emplace(function->usr, function->qualified_name).second) {
+            result.unsafe_functions.push_back(index);
+        }
+    }
+
     for (const Candidate& candidate : candidates) {
         const clangbridge::Function* function = candidate.function;
+        // An unsafe function is not verified and not pure: it marks a boundary
+        // whose safety is not established, so it cannot also claim either.
+        if (unsafe_symbols.contains(function->usr)) {
+            report(engine, diagnostics::Category::CpplSyntax, function->location,
+                   "'" + function->qualified_name + "' is declared unsafe, so it cannot also be " +
+                       (candidate.contract != nullptr ? "verified" : "pure"),
+                   "an unsafe declaration states that calls cross an unverified boundary (SPEC.md UNSAFE-002)");
+            continue;
+        }
         vir::Function converted;
         converted.id = vir::FunctionId{next_function_id++};
         converted.symbol = vir::SymbolId{function->usr};
@@ -2071,7 +2146,23 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
                     return pure_symbols.contains(callee.usr) ||
                            (candidate.contract != nullptr && verified_symbols.contains(callee.usr));
                 });
-                if (!calls_modeled) {
+                // A call inside an unsafe block is never lowered, so one found
+                // here stands on a path the body verifies.
+                const auto unsafe_call = std::ranges::find_if(
+                    callees, [&](const vir::SymbolId& callee) { return unsafe_symbols.contains(callee.usr); });
+                if (unsafe_call != callees.end()) {
+                    rejection = "it calls unsafe function '" + unsafe_symbols.at(unsafe_call->usr) +
+                                "' outside an unsafe block; a verified body crosses that boundary only inside one "
+                                "(SPEC.md UNSAFE-002)";
+                } else if (candidate.pure && contains_unsafe_region(*converted.returned_value)) {
+                    rejection = "it holds an unsafe block, whose effects are not checked, so it cannot be "
+                                "established pure (SPEC.md PURE-005, UNSAFE-002)";
+                    report(engine, diagnostics::Category::UnsupportedSemantics, function->location,
+                           "pure function '" + function->qualified_name +
+                               "' holds an unsafe block, whose effects are not checked, so it cannot be established "
+                               "pure (SPEC.md PURE-005, UNSAFE-002)");
+                    rejection_reported = true;
+                } else if (!calls_modeled) {
                     rejection = "it calls a function that is not declared pure, so its value is not "
                                 "a mathematical function of its arguments";
                 } else if (candidate.pure && calls_only_pure &&
@@ -2080,7 +2171,8 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
                            !std::holds_alternative<vir::Loop>(converted.returned_value->node) &&
                            !std::holds_alternative<vir::ReturnState>(converted.returned_value->node) &&
                            !std::holds_alternative<vir::PathContradiction>(converted.returned_value->node) &&
-                           !std::holds_alternative<vir::CaseSplit>(converted.returned_value->node)) {
+                           !std::holds_alternative<vir::CaseSplit>(converted.returned_value->node) &&
+                           !std::holds_alternative<vir::UnsafeRegion>(converted.returned_value->node)) {
                     converted.purity = vir::Purity::Pure;
                 } else if (candidate.pure && candidate.contract == nullptr) {
                     rejection = "pure specification helpers require a single return expression";

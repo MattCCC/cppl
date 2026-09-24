@@ -446,6 +446,12 @@ class TermLowering {
             return fail("a case split has no value: each of its arms is a path of its own, walked as one", location);
         }
 
+        if (std::holds_alternative<vir::UnsafeRegion>(expr.node)) {
+            return fail("an unsafe block has no core term: what it does is not modeled, so a body crossing one is "
+                        "verified path by path and never unfolded",
+                        location);
+        }
+
         return fail("this expression has no core representation", location);
     }
 

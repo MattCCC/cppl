@@ -136,6 +136,7 @@ constexpr Declaration kDeclarations[] = {
      "verified ${1:int} ${2:name}(${3:parameters})\n    ensures (${4:result == 0})\n{\n    $0\n}", "verified"},
     {"type", "C++L: a refinement type", "type ${1:Name} = ${2:int} where (${3:self >= 0});", "type"},
     {"pure", "C++L: a function the formal core may unfold", "pure ", "pure"},
+    {"unsafe", "C++L: a function whose calls cross an unsafe boundary", "unsafe ", "unsafe"},
 };
 
 // A proof statement, spelled with the recognizer's own word for it: what

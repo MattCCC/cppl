@@ -330,6 +330,16 @@ struct CaseSplit {
     std::vector<Expr> operands; // subject, labels, one continuation per arm
 };
 
+// An unsafe block on this path (SPEC.md 26), read from the marker the projector
+// put just inside its `{`. Its statements are not lowered: they run as
+// ordinary C++ and nothing about what they compute is known. `operands` holds
+// the rest of the path after the block, under fresh versions of every place the
+// block may have written, so no fact from before it survives about them.
+struct UnsafeRegion {
+    std::string marker;
+    std::vector<Expr> operands; // continuation
+};
+
 // A binder of an arm of a case split on a runtime path: the value the arm's
 // case exposes, never storage. `type` of the enclosing `Expr` is the type Clang
 // resolved for the binder's declaration; which value it names is the
@@ -374,7 +384,7 @@ struct Expr {
     source::SourceLocation location;
     std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, PlaceVersion, PlaceRef, Loop, Iterate,
                  Projection, Element, FormalEquality, Universal, Implication, Connective, ReturnState, UnknownVersion,
-                 ElementBound, PathContradiction, CaseSplit, CaseBinder, Unsupported>
+                 ElementBound, PathContradiction, CaseSplit, CaseBinder, UnsafeRegion, Unsupported>
         node;
 };
 
@@ -456,6 +466,11 @@ struct Function {
         Type type;
     };
     std::vector<SplitSubject> path_splits;
+
+    // The markers of the unsafe blocks the body lowering read as regions of a
+    // path. Every one the projector emitted for a verified function must be
+    // here: one that is not stands where no path of the body reaches it.
+    std::vector<std::string> unsafe_regions;
 };
 
 enum class Severity : std::uint8_t {

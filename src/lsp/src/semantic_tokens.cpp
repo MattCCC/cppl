@@ -75,7 +75,7 @@ class Collector {
 } // namespace
 
 std::vector<SemanticToken> cppl_tokens(const frontend::Syntax& syntax, bool path_claims_recognized,
-                                       bool path_splits_recognized,
+                                       bool path_splits_recognized, bool unsafe_recognized,
                                        const std::vector<elaboration::ResolvedName>& resolved) {
     Collector collector(resolved);
     for (const frontend::LawDeclaration& law : syntax.laws) {
@@ -131,6 +131,14 @@ std::vector<SemanticToken> cppl_tokens(const frontend::Syntax& syntax, bool path
     if (path_splits_recognized) {
         for (const frontend::PathCaseSplit& split : syntax.path_splits) {
             collector.statement(split.statement);
+        }
+    }
+    if (unsafe_recognized) {
+        for (const frontend::UnsafeBlock& block : syntax.unsafe_blocks) {
+            collector.keyword(block.keyword);
+        }
+        for (const frontend::UnsafeFunction& function : syntax.unsafe_functions) {
+            collector.keyword(function.keyword);
         }
     }
     return std::move(collector).collected();

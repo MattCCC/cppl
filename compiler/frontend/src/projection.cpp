@@ -303,6 +303,40 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         edits.push_back(Edit{marker.keyword, std::string(marker.keyword.length, ' ')});
     }
 
+    // `unsafe` is a marker: the word leaves both texts and the declaration or
+    // the block it marks stays ordinary C++ (SPEC.md ERASE-003, Annex M).
+    for (const UnsafeFunction& function : syntax.unsafe_functions) {
+        blank(projection.runtime, function.keyword);
+        edits.push_back(Edit{function.keyword, std::string(function.keyword.length, ' ')});
+    }
+    // A block's region starts at a declaration only Clang sees, just inside its
+    // `{`, written at the position of the word it replaces, so the region's
+    // provenance is where the author wrote `unsafe`.
+    for (std::size_t index = 0; index < syntax.unsafe_blocks.size(); ++index) {
+        const UnsafeBlock& block = syntax.unsafe_blocks[index];
+        blank(projection.runtime, block.keyword);
+        edits.push_back(Edit{block.keyword, std::string(block.keyword.length, ' ')});
+        if (block.nested) {
+            continue;
+        }
+        UnsafeBlockMarker marker;
+        marker.name = options.generated_prefix + "unsafe_" + std::to_string(index) +
+                      (options.unit_key.empty() ? "" : "_" + options.unit_key);
+        marker.block_index = index;
+        marker.function_index = block.function_index;
+        marker.location = block.location;
+        // The declared name, which is where Clang locates a declaration, stands
+        // exactly where `unsafe` was written.
+        std::string inserted = "\n[[maybe_unused]] bool\n";
+        inserted += line_directive(block.location.line, block.location.file);
+        inserted += std::string(block.location.column > 1 ? block.location.column - 1 : 0, ' ');
+        inserted += marker.name + " = true;\n";
+        inserted += line_directive(block.body_open_line, block.location.file);
+        inserted += std::string(block.body_open_column > 1 ? block.body_open_column - 1 : 0, ' ');
+        edits.push_back(Edit{source::ByteSpan{block.body_open, 0}, std::move(inserted)});
+        projection.unsafe_blocks.push_back(std::move(marker));
+    }
+
     // The template header the declaration being emitted stands under, where it
     // has one. A contract clause may name the template's parameters, so its
     // probe has to be declared under the same header; laws and proofs are not
@@ -1068,6 +1102,8 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
     for (const auto& marker : syntax.pure_markers)
         declarations.push_back(marker.function_offset);
     for (const auto& function : syntax.verified_functions)
+        declarations.push_back(function.function_offset);
+    for (const auto& function : syntax.unsafe_functions)
         declarations.push_back(function.function_offset);
     std::ranges::sort(declarations);
     declarations.erase(std::unique(declarations.begin(), declarations.end()), declarations.end());

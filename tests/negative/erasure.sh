@@ -50,12 +50,14 @@ refuse() {
     done
 }
 
-# Ghost state, `unsafe`, `old` and induction are specified and not implemented,
-# and loop clauses written outside their place are not recognized. Each keeps
-# its C++ reading or is refused by name; none is erased as though checked.
+# Ghost state, `old` and induction are specified and not implemented, and loop
+# clauses written outside their place are not recognized. Each keeps its C++
+# reading or is refused by name; none is erased as though checked. A contract
+# resting on what an unsafe block did is refused like any unproven one, and the
+# block is not erased around it.
 refuse unsupported_ghost_state "unsupported_ghost_state.cpp:9:5: error [cpp-semantic]: unknown type name 'ghost'"
-refuse unsupported_unsafe_block \
-    "unsupported_unsafe_block.cpp:10:5: error [cpp-semantic]: use of undeclared identifier 'unsafe'"
+refuse unsafe_false_postcondition \
+    "unsafe_false_postcondition.cpp:12:12: error [kernel-rejection]: return path 'bumped path 1' does not satisfy its contract"
 refuse unsupported_old_value "unsupported_old_value.cpp:8:19: error [cpp-semantic]: use of undeclared identifier 'old'"
 refuse unsupported_induction "unsupported_induction.cpp:15:5: error [proof-failure]: proof" "uses induction over 'x'"
 refuse misplaced_loop_clauses \

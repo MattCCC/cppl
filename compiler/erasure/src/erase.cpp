@@ -66,6 +66,15 @@ Erased erase(const frontend::TokenStream& stream, const frontend::Syntax& syntax
     for (const frontend::PureMarker& marker : syntax.pure_markers) {
         spans.push_back(marker.keyword);
     }
+    // `unsafe` marks a boundary and nothing else: the word goes, and the
+    // declaration or the block's statements stay exactly as written (SPEC.md
+    // ERASE-003, Annex M).
+    for (const frontend::UnsafeFunction& function : syntax.unsafe_functions) {
+        spans.push_back(function.keyword);
+    }
+    for (const frontend::UnsafeBlock& block : syntax.unsafe_blocks) {
+        spans.push_back(block.keyword);
+    }
     // A verified function stays in the program; its specifier and its contract
     // do not.
     for (const frontend::VerifiedFunction& verified : syntax.verified_functions) {

@@ -159,6 +159,26 @@ Manifest: `features/trust-propagation.yaml`
 | Every claim enumerated | positive, regression | covered — every proven claim is listed with its content identity, apart by whether it rests on a trusted law, and a line without one fails the test (`e2e/trust_closure.sh` citing `TRUST.md` 36.1) |
 | Trusted memory proposition | positive, negative, adversarial | covered as a declaration — admitted under a premise, reported TRUSTED with what it admits and why it is unused, shown TRUSTED in an editor; a proof statement naming one, an ordinary law stating one and a proof claiming one are refused by name; accepting an untrusted one is mutation-checked. No statement consumes one (`fixtures/trust_closure.cpp`, `negative/trusted_dependencies.sh`, `unit/lsp_verification_test.cpp` citing `TRUSTED-003`, `TRUSTED-008`, `VERIFIED-044`; `memory-assumption-trusted-only` in `scripts/test-mutations.sh`) |
 
+### unsafe-boundary
+
+Manifest: `features/unsafe-boundary.yaml`
+
+| Required case | Category | Status |
+| --- | --- | --- |
+| A block's result has no facts | positive, negative | covered — the bound comes from a runtime check after the block, and the same claim without it is refused (`fixtures/unsafe_boundary.cpp`, `negative/unsafe_boundary.sh` citing `BOUNDARYEX-010`, `UNSAFE-005`) |
+| False postcondition, smuggled refinement | adversarial | covered — a block that does add one, and a refined local assigned out of range inside a block, are both refused by the kernel; removing the havoc is mutation-checked (`negative/unsafe_boundary.sh` citing `UNSAFE-003`; `unsafe-block-havoc` in `scripts/test-mutations.sh`) |
+| Stale alias facts | adversarial | covered — an address kept by one block and written by a later block that never names the local, and storage a reference parameter designates; not widening what a block names is mutation-checked (`negative/unsafe_boundary.sh` citing `UNSAFE-005`; `unsafe-names-escape`) |
+| Loop invariants across a block | positive, adversarial | covered — a counter the block never names keeps its invariant, one it writes does not (`fixtures/unsafe_boundary.cpp`, `negative/unsafe_boundary.sh` citing `INTERACT-018`) |
+| Invalid pointer facts | adversarial | covered — a pointer parameter the block may rebind is refused, and no capability survives a block for a write or a verified call; each revocation is mutation-checked (`negative/unsafe_boundary.sh` citing `VERIFIED-043`; `unsafe-revokes-capabilities`, `unsafe-revokes-call-capabilities`) |
+| Control leaves a block | negative | covered — a return and a break of the enclosing loop, while a break of a loop inside the block stays; mutation-checked (`negative/unsafe_boundary.sh`; `unsafe-control-stays-in-block`) |
+| Unsafe functions | negative, adversarial | covered — combined with `verified` either way, redeclared unsafe after a verified definition, called outside a block, named in a proposition, carrying a contract, declared in a class; a pure function holding a block (`negative/unsafe_boundary.sh`, `unit/recognizer_test.cpp` citing `UNSAFE-001`–`UNSAFE-004`, `PURE-005`; `unsafe-call-outside-block`, `unsafe-pure-refused`, `unsafe-contract-refused`) |
+| Proof syntax inside a block | negative | covered — loop clauses and a path claim (`negative/unsafe_boundary.sh`, `unit/recognizer_test.cpp` citing `UNSAFE-003`) |
+| Dependencies reported | positive, regression, unit | covered — each claim with every block, in its own body and through a verified call, a path claim of such a body, one resting on a trusted law too, never assumption-free; the whole section compared; a recursive call graph closed to a fixed point; not following calls and counting such a claim assumption-free are each mutation-checked (`e2e/unsafe_boundary.sh`, `unit/trust_closure_test.cpp` citing `TCB-REPORT-005`; `unsafe-closure-through-calls`, `unsafe-not-assumption-free`) |
+| Every boundary listed | positive | covered — blocks with their verified function, a block in `main`, a function declared twice listed once, a unit without any listing none (`e2e/unsafe_boundary.sh`) |
+| C++-first and editors | positive, unit | covered — the word used as a type keeps blocks ordinary with a warning; the keyword is colored only once the compile recognized it; the specifier is offered and read back as one; layout is idempotent (`unit/recognizer_test.cpp`, `unit/lsp_semantic_tokens_test.cpp`, `unit/lsp_completion_test.cpp`, `unit/formatter_test.cpp` citing `WORD-002`, `WORD-011`) |
+| Erasure and runtime behavior | erasure | covered — identical output and assembly against a hand-erased twin in three standards, and every block runs (`e2e/erasure_equivalence.sh`, `e2e/unsafe_boundary.sh` citing `UNSAFE-001`) |
+| Determinism and two units | regression | covered (`e2e/unsafe_boundary.sh`) |
+
 ### erasure and ABI
 
 Rules: `ERASE-*`, `ERASEMATRIX-*`, `ABI-*` (see `FEATURE_INDEX.md`, Lowering).
@@ -178,7 +198,7 @@ agrees with it.
 | Contextual words beside erased constructs | erasure, conformance | covered — every word of SPEC.md §3 as a variable, member or function in a unit that also uses the words as C++L, including a declarator list spelled like clauses, which is neither laid out as a clause nor routed through C++L (`e2e/erasure_equivalence.sh`, `unit/recognizer_test.cpp` citing `WORD-008`; `declarator-list-ends-clauses` in `scripts/test-mutations.sh`) |
 | Native ABI across translation units | ABI | covered — an ordinary client compiled by Clang alone links against a C++L library and calls it with records in registers and in memory, by value and by reference, a record return and a C-linkage function; both sides agree on size, alignment and offsets; the library matches its hand erasure in assembly (`e2e/abi_equivalence.sh` citing `ABI-001`, `ABI-002`, `ABI-003`) |
 | Source positions survive erasure | erasure | covered — `__builtin_LINE()` after every multi-line construct kind, a Clang warning's column on a line that lost `verified`, the line count of the program, debug information naming the user's file, and byte-identical `-g` objects across builds (`e2e/erasure_source_mapping.sh` citing `ERASEMATRIX-003`, `ARCH-ERASE-003`) |
-| Refusal leaves no runtime program | negative | covered — ghost state, `unsafe`, `old`, `induction` and misplaced loop clauses refused for their reason, then every refused fixture swept: no executable and no runtime projection (`negative/erasure.sh` citing `ERASE-006`, `ERASE-011`) |
+| Refusal leaves no runtime program | negative | covered — ghost state, a contract resting on what an unsafe block did, `old`, `induction` and misplaced loop clauses refused for their reason, then every refused fixture swept: no executable and no runtime projection (`negative/erasure.sh` citing `ERASE-006`, `ERASE-011`) |
 | Ghost erasure | erasure | not built — ghost state is not implemented and is refused (`ERASE-011`) |
 | Verification metadata across units | ABI | not built — no metadata is exported, so a use in another unit is not verified (`ABI-004`, `ABI-005`) |
 

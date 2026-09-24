@@ -80,15 +80,16 @@ std::string described(const std::vector<std::uint32_t>& data, bool keywords_only
 
 // C++L's tokens for `text`, read by the recognizer alone.
 std::vector<std::uint32_t> cppl_data(const std::string& text, bool path_claims_recognized,
-                                     bool path_splits_recognized = false) {
+                                     bool path_splits_recognized = false, bool unsafe_recognized = false) {
     const frontend::TokenStream stream = frontend::lex(text, "main.cpp");
     diagnostics::Engine engine;
     const frontend::Syntax syntax = frontend::recognize(stream, engine);
-    return encode(cppl_tokens(syntax, path_claims_recognized, path_splits_recognized), text);
+    return encode(cppl_tokens(syntax, path_claims_recognized, path_splits_recognized, unsafe_recognized), text);
 }
 
-std::string keywords_of(const std::string& text, bool path_claims_recognized, bool path_splits_recognized = false) {
-    return described(cppl_data(text, path_claims_recognized, path_splits_recognized), true);
+std::string keywords_of(const std::string& text, bool path_claims_recognized, bool path_splits_recognized = false,
+                        bool unsafe_recognized = false) {
+    return described(cppl_data(text, path_claims_recognized, path_splits_recognized, unsafe_recognized), true);
 }
 
 std::string read_fixture(const std::string& name) {
@@ -252,6 +253,25 @@ CPPL_TEST(a_split_on_a_path_is_tokens_only_when_the_compile_recognized_splits) {
     expect(keywords_of(text, true, true), declarations + " 9:4:5 11:12:13 13:8:4 13:25:2 13:28:13", __LINE__);
 }
 
+// SPEC: UNSAFE-001, WORD-011
+// `unsafe {x}` constructs a temporary wherever `unsafe` names a type, so a block
+// and a declaration are tokens only when the compile recognized the boundary.
+CPPL_TEST(an_unsafe_boundary_is_tokens_only_when_the_compile_recognized_it) {
+    const std::string text = "unsafe unsigned read_device();\n"
+                             "verified unsigned f(unsigned x)\n"
+                             "    ensures (result == x)\n"
+                             "{\n"
+                             "    unsigned y = 0u;\n"
+                             "    unsafe {\n"
+                             "        y = read_device();\n"
+                             "    }\n"
+                             "    return x;\n"
+                             "}\n";
+    const std::string declarations = "1:0:8 2:4:7";
+    expect(keywords_of(text, false, false, false), declarations, __LINE__);
+    expect(keywords_of(text, true, true, true), "0:0:6 " + declarations + " 5:4:6", __LINE__);
+}
+
 CPPL_TEST(a_position_counts_utf16_code_units_not_bytes) {
     // U+2200 is three UTF-8 bytes and one UTF-16 unit; U+1F600 is four bytes
     // and two units, a surrogate pair.
@@ -399,6 +419,24 @@ CPPL_TEST(without_a_compile_no_runtime_claim_is_colored) {
     const std::vector<std::uint32_t> data = server_data(server, "file:///impossible_path.cpp");
     CPPL_CHECK_EQ(keywords_spelling(text, data, {"refl"}), std::size_t{2});
     CPPL_CHECK_EQ(keywords_spelling(text, data, {"contradiction"}), std::size_t{0});
+}
+
+CPPL_TEST(the_server_colors_every_unsafe_boundary_the_compiler_recognized) {
+    Server server = fixture_server();
+    const std::string text = read_fixture("unsafe_boundary.cpp");
+    open(server, "file:///unsafe_boundary.cpp", text);
+    // Three unsafe declarations and six unsafe blocks.
+    const std::vector<std::uint32_t> data = server_data(server, "file:///unsafe_boundary.cpp");
+    CPPL_CHECK_EQ(keywords_spelling(text, data, {"unsafe"}), std::size_t{9});
+}
+
+CPPL_TEST(without_a_compile_no_unsafe_boundary_is_colored) {
+    Server server = fixture_server("/nonexistent/cppl-test/clang");
+    const std::string text = read_fixture("unsafe_boundary.cpp");
+    open(server, "file:///unsafe_boundary.cpp", text);
+    const std::vector<std::uint32_t> data = server_data(server, "file:///unsafe_boundary.cpp");
+    CPPL_CHECK_EQ(keywords_spelling(text, data, {"verified"}), std::size_t{7});
+    CPPL_CHECK_EQ(keywords_spelling(text, data, {"unsafe"}), std::size_t{0});
 }
 
 CPPL_TEST(semantic_tokens_of_an_unknown_document_are_null) {

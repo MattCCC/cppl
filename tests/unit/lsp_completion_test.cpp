@@ -154,6 +154,7 @@ CPPL_TEST(cppl_declarations_are_offered_where_a_declaration_may_begin) {
     CPPL_CHECK(offers(top, "proof"));
     CPPL_CHECK(offers(top, "verified"));
     CPPL_CHECK(offers(top, "type"));
+    CPPL_CHECK(offers(top, "unsafe"));
     const CompletionItem* law = find(top, "law");
     CPPL_CHECK(law != nullptr);
     if (law != nullptr) {
@@ -329,11 +330,14 @@ CPPL_TEST(every_snippet_is_what_the_compiler_reads_it_as) {
         } else if (item.label == "pure") {
             CPPL_CHECK_EQ(compiled(written + "int f(int x) { return x; }\n").syntax.pure_markers.size(),
                           std::size_t{1});
+        } else if (item.label == "unsafe") {
+            CPPL_CHECK_EQ(compiled(written + "unsigned read_device();\n").syntax.unsafe_functions.size(),
+                          std::size_t{1});
         } else {
             ::cppl::testing::fail(__FILE__, __LINE__, "an unchecked declaration snippet: " + item.label);
         }
     }
-    CPPL_CHECK_EQ(checked, std::size_t{6});
+    CPPL_CHECK_EQ(checked, std::size_t{7});
 
     const std::string head = "proof p(int x)\n    proves (x == x)\n{\n    ";
     Server body = make_server();

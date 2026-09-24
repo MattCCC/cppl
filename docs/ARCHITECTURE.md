@@ -2211,6 +2211,31 @@ without an independent checked/runtime-validated/trusted basis.
 **[ARCH-UNSAFE-002]** Effects of unsafe runtime code MUST be conservative enough
 that surrounding verified code cannot retain stale state facts.
 
+The realized flow of an unsafe boundary:
+
+```text
+recognizer   an `unsafe` block or function declaration, decided C++-first once
+             the whole unit has been read (Syntax::unsafe_blocks,
+             Syntax::unsafe_functions); a contract on an unsafe function and
+             proof syntax inside a block are refused
+projection   the keyword is blanked; in the analysis text each block opens with
+             a marker declaration whose name stands where `unsafe` was written
+bridge       a marked block is never lowered: every place it may reach gets an
+             unknown version, the path after it holds no capability, and control
+             leaving it is refused; the body records it as an UnsafeRegion
+elaboration  vir::UnsafeRegion; unsafe functions resolved by identity and
+             refused as verified, as pure, and as callees outside a block
+obligations  the path walk revokes call capabilities after a region and records
+             each on its contract (ContractVerification::unsafe_regions);
+             close_trust joins them across verified calls (UnsafeDependency)
+driver       the report lists every boundary and every claim resting on one,
+             and fails the build if a claim rests on a block it cannot name
+erasure      the keyword is blanked; the block and the function stay
+```
+
+Nothing in this flow reaches the kernel or the trusted-assumption channel
+(ARCH-UNSAFE-001): an unsafe block only ever removes facts.
+
 ---
 
 # 59. Verification result model

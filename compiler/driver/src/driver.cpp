@@ -51,6 +51,8 @@ struct Summary {
     std::vector<obligations::TrustedPremise> unused;
     // Trusted laws admitting a memory proposition, which nothing can rest on.
     std::vector<obligations::TrustedMemoryAssumption> memory_trusted;
+    // Every unsafe boundary written, whether or not a proven claim rests on it.
+    std::vector<detail::PipelineOutcome::Counters::UnsafeBoundary> unsafe;
 };
 
 struct UnitOutcome {
@@ -231,6 +233,8 @@ UnitOutcome compile_unit(const Options& options, const Input& input, const std::
     summary.claims.insert(summary.claims.end(), closure.claims.begin(), closure.claims.end());
     summary.memory_trusted.insert(summary.memory_trusted.end(), closure.memory_assumptions.begin(),
                                   closure.memory_assumptions.end());
+    summary.unsafe.insert(summary.unsafe.end(), result.counters.unsafe_boundaries.begin(),
+                          result.counters.unsafe_boundaries.end());
 
     return outcome;
 }
@@ -286,16 +290,33 @@ std::string reached_through(obligations::ClaimKind kind) {
     return "through what it uses";
 }
 
-// The proven claims of one kind that rest on no trusted law, and those that
-// rest on at least one. Both are PROVEN; only the first is proven outright
-// (TRUST.md 3.2).
+// A claim proven outright: it rests on no trusted law and on no unsafe code.
+bool assumption_free(const obligations::ClaimClosure& claim) {
+    return claim.premises.empty() && claim.unsafe.empty();
+}
+
+std::string written_at(const source::SourceLocation& location) {
+    return location.file + ":" + std::to_string(location.line) + ":" + std::to_string(location.column);
+}
+
+// The proven claims of one kind that rest on nothing, those that rest on at
+// least one trusted law, and for claims about runtime code those that rest on
+// unsafe code. All are PROVEN; only the first are proven outright (TRUST.md
+// 3.2, TCB-REPORT-005).
 void print_closure_counts(const Summary& summary, obligations::ClaimKind kind) {
-    const auto relative = std::ranges::count_if(summary.claims, [kind](const obligations::ClaimClosure& claim) {
-        return claim.kind == kind && !claim.premises.empty();
-    });
-    const auto outright = std::ranges::count(summary.claims, kind, &obligations::ClaimClosure::kind) - relative;
-    std::cout << "  assumption-free:           " << outright << "\n";
-    std::cout << "  relative to trusted laws:  " << relative << "\n";
+    const auto of_kind = [&summary, kind](auto predicate) {
+        return std::ranges::count_if(summary.claims, [kind, &predicate](const obligations::ClaimClosure& claim) {
+            return claim.kind == kind && predicate(claim);
+        });
+    };
+    std::cout << "  assumption-free:           " << of_kind(assumption_free) << "\n";
+    std::cout << "  relative to trusted laws:  "
+              << of_kind([](const obligations::ClaimClosure& claim) { return !claim.premises.empty(); }) << "\n";
+    if (kind == obligations::ClaimKind::Contract || kind == obligations::ClaimKind::OmittedCase ||
+        kind == obligations::ClaimKind::ImpossiblePath) {
+        std::cout << "  relying on unsafe code:    "
+                  << of_kind([](const obligations::ClaimClosure& claim) { return !claim.unsafe.empty(); }) << "\n";
+    }
 }
 
 void print_trust_report(const Options& options, const Summary& summary) {
@@ -345,11 +366,28 @@ void print_trust_report(const Options& options, const Summary& summary) {
                       << (premise.direct ? "named directly" : reached_through(claim.kind)) << "\n";
         }
     }
-    // Every proven claim is enumerable, not only counted: the ones above rest
-    // on trusted laws, and these rest on none (TRUST.md 36.1, 36.2).
-    std::cout << "Assumption-free claims:      " << summary.claims.size() - static_cast<std::size_t>(relative) << "\n";
+    // Each contract proven with an unsafe block's effects left unknown holds
+    // only if that block is sound, which nothing checked, so it stays listed
+    // however much else about the function is proven (TRUST.md TCB-REPORT-005).
+    const auto reliant = std::ranges::count_if(
+        summary.claims, [](const obligations::ClaimClosure& claim) { return !claim.unsafe.empty(); });
+    std::cout << "Unsafe-dependent claims:     " << reliant << "\n";
     for (const obligations::ClaimClosure& claim : summary.claims) {
-        if (claim.premises.empty()) {
+        if (claim.unsafe.empty()) {
+            continue;
+        }
+        std::cout << "  " << claim_name(claim) << ", identity " << claim.identity.text() << "\n";
+        for (const obligations::UnsafeDependency& dependency : claim.unsafe) {
+            std::cout << "    rests on unsafe block (" << written_at(dependency.location) << "), "
+                      << (dependency.direct ? "in its own body" : "through a verified call it makes") << "\n";
+        }
+    }
+    // Every proven claim is enumerable, not only counted: the ones above rest
+    // on trusted laws or unsafe code, and these rest on neither (TRUST.md
+    // 36.1, 36.2).
+    std::cout << "Assumption-free claims:      " << std::ranges::count_if(summary.claims, assumption_free) << "\n";
+    for (const obligations::ClaimClosure& claim : summary.claims) {
+        if (assumption_free(claim)) {
             std::cout << "  " << claim_name(claim) << ", identity " << claim.identity.text() << "\n";
         }
     }
@@ -364,7 +402,20 @@ void print_trust_report(const Options& options, const Summary& summary) {
                   << ", no statement can use a memory proposition\n";
     }
     std::cout << "\n";
-    std::cout << "Unsafe regions:              0\n";
+    // Where the program's guarantees stop, whether or not a proven claim
+    // reaches it: an unsafe block outside every verified body still runs.
+    std::cout << "Unsafe regions:              " << summary.unsafe.size() << "\n";
+    for (const detail::PipelineOutcome::Counters::UnsafeBoundary& boundary : summary.unsafe) {
+        if (!boundary.function.empty()) {
+            std::cout << "  unsafe function:         " << boundary.function << " (" << written_at(boundary.location)
+                      << ")\n";
+        } else if (!boundary.owner.empty()) {
+            std::cout << "  unsafe block:            " << written_at(boundary.location) << ", in verified function "
+                      << boundary.owner << "\n";
+        } else {
+            std::cout << "  unsafe block:            " << written_at(boundary.location) << "\n";
+        }
+    }
     std::cout << "Runtime validation sites:    0\n";
     std::cout << "Unverified FFI boundaries:   not analysed\n\n";
     std::cout << "Trusted solvers:             0\n";

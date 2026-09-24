@@ -300,9 +300,10 @@ statement as written, so in a function template whose specializations bind
 values of different types, the specializations that disagree are refused.
 
 This slice does **not** implement induction, loop termination, ghost state,
-`unsafe`, proof `let`, solvers, proof caching, or any verification of the C++
-memory model. Those remain `SPECIFIED` below. `trusted law` is implemented and
-described under [Unsafe and trusted boundary status](#unsafe-and-trusted-boundary-status).
+proof `let`, solvers, proof caching, or any verification of the C++ memory
+model. Those remain `SPECIFIED` below. `trusted law` and `unsafe` are
+implemented and described under
+[Unsafe and trusted boundary status](#unsafe-and-trusted-boundary-status).
 
 ---
 
@@ -430,7 +431,7 @@ The project should not claim broad language implementation before the proof sema
 | `invariant` on loops          | `PROTOTYPE`   |
 | partial-correctness contracts | `PROTOTYPE`   |
 | `ghost`                       | `SPECIFIED`   |
-| `unsafe`                      | `SPECIFIED`   |
+| `unsafe`                      | `IMPLEMENTED` |
 | `trusted`                     | `IMPLEMENTED` |
 | `decreases`                   | `SPECIFIED`   |
 | proof erasure                 | `PROTOTYPE`   |
@@ -645,13 +646,15 @@ modules, concepts and ABI-sensitive constructs are not yet covered.
 | VIR state model                | `NOT STARTED` |
 | VIR contract model             | `PROTOTYPE`   |
 | VIR proof obligations          | `PROTOTYPE`   |
-| VIR unsafe/trust annotations   | `NOT STARTED` |
+| VIR unsafe/trust annotations   | `PROTOTYPE`   |
 | VIR serialization              | `NOT STARTED` |
 | VIR deterministic hashing      | `NOT STARTED` |
 
 Obligation identities are content-derived today, but they are computed from the
 core representation rather than from VIR, so VIR hashing has no consumer yet and
-is not implemented.
+is not implemented. VIR marks a trusted law as trusted and an unsafe block as an
+`UnsafeRegion` node on the path that passes through it; both are read by
+obligation generation and the trust closure, never by the kernel.
 
 ---
 
@@ -1207,10 +1210,11 @@ facility of the roadmap, which is not the same as C++ unsigned arithmetic.
 
 | Capability                          | Status        |
 | ----------------------------------- | ------------- |
-| `unsafe` syntax                     | `SPECIFIED`   |
+| `unsafe` syntax                     | `IMPLEMENTED` |
 | `trusted law`                       | `IMPLEMENTED` |
 | Trusted memory propositions         | `PARTIAL`     |
-| Unsafe-to-verified transition rules | `SPECIFIED`   |
+| Unsafe-to-verified transition rules | `IMPLEMENTED` |
+| Unsafe dependency reporting         | `IMPLEMENTED` |
 | Trust propagation                   | `IMPLEMENTED` |
 | Assumption closure                  | `IMPLEMENTED` |
 | Trust reporting                     | `PARTIAL`     |
@@ -1280,6 +1284,49 @@ or reached both directly and through a proof, is one dependency, marked direct;
 a law reached through another law's written proof is reached through a proof it
 uses (`fixtures/trust_closure.cpp`).
 
+`unsafe` marks a runtime boundary (`SPEC.md` 26). A block `unsafe { ... }` and an
+`unsafe` function declaration are recognized under the same C++-first rule as
+every contextual word: in a unit that uses the word for anything else, both stay
+ordinary C++ and are warned about. Both erase to the C++ they mark: the keyword
+leaves, and the function, the block's braces and every statement in it stay and
+run as written (`fixtures/equivalence/unsafe_boundaries.cpp`).
+
+In a verified body a block's statements are not verified: nothing they compute
+is known after the block, and they establish no fact (UNSAFE-003, UNSAFE-005).
+Every place the block could have written gets a fresh value no earlier fact
+describes and that keeps no refinement (`TRUST.md` TCB-UNSAFE-002,
+TCB-UNSAFE-003): what a pointer designates, the storage a reference parameter
+designates, and every local whose address the body takes or that any unsafe
+block of the body names, since a block may keep an address and write through it
+later from a block that never names it. A parameter the body does not follow
+that a block may rebind is refused. No memory capability of the contract holds
+after a block, for a dereference or for a verified call. Control passes through a
+block: a `return`, a `goto`, or a `break` or `continue` leaving it is refused,
+and so is proof syntax inside it. A contract proven across a block is partial
+correctness only, since nothing says the block terminates. What follows a block
+is established only by explicit means (UNSAFE-004): a runtime check on the path
+after it, or a claim that the path cannot occur, which may rest on a trusted
+law.
+
+An `unsafe` function is neither verified nor pure, however its declarations are
+spelled, and states no contract; a verified body calls one only inside an unsafe
+block, and a proposition cannot mention one. A `pure` function holding an unsafe
+block is not pure. Unsafe functions are recognized at namespace scope; one
+declared in a class is refused. Each refusal is a fixture of its own
+(`negative_unsafe_boundary`).
+
+The trust report lists every unsafe boundary a unit writes, each outermost block
+with the verified function that holds it and each unsafe function once however
+often it is declared, whether or not anything rests on it. Every claim that rests
+on one is listed under `Unsafe-dependent claims` with each block, marked as in
+its own body or reached through a verified call: a contract whose body or any
+verified callee's body holds a block, and a claim that a path or a case of such a
+body cannot occur. Such a claim is counted `relying on unsafe code` and is never
+listed as assumption-free, whatever else about its function is proven
+(`TRUST.md` TCB-REPORT-005). An unsafe block is not a trusted assumption and
+adds none (`fixtures/unsafe_boundary.cpp`). An editor colors `unsafe` where the
+compile of the unit recognized it.
+
 ---
 
 # FFI status
@@ -1313,7 +1360,8 @@ Foreign code must not automatically count as verified.
 | Formal erasure correctness proof | `NOT STARTED` |
 
 Erasure currently removes law and trusted-law declarations, proofs, contracts,
-loop invariants and measures, and the `verified` and `pure` specifiers; reduces a
+loop invariants and measures, the `verified`, `pure` and `unsafe` specifiers and
+the `unsafe` keyword of a block, which leaves the block's braces; reduces a
 claim that a path cannot occur to the empty statement its `;` leaves; and lowers
 a refinement type declaration to the alias it means. The implementation checks a
 strong property rather than asserting success: the runtime program must be the
@@ -1332,7 +1380,7 @@ identical assembly at `-O0` and `-O2` in `c++17`, `c++20` and `c++23`
 a library whose interface uses refinements and contracts, and by linking an
 ordinary C++ client, compiled by Clang alone, against it
 (`tests/e2e/abi_equivalence.sh`). Both are `PARTIAL`: they cover the constructs
-this implementation accepts, on the host's ABI; ghost state, `unsafe` and
+this implementation accepts, on the host's ABI; ghost state and
 cross-translation-unit verification metadata are not implemented, and are
 refused rather than erased (`tests/negative/erasure.sh`).
 

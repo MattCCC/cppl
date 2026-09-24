@@ -124,6 +124,15 @@ class Document {
         path_splits_recognized_ = recognized;
     }
 
+    // The same, for an `unsafe` block or declaration read as an unsafe
+    // boundary (SPEC.md 26).
+    [[nodiscard]] bool unsafe_recognized() const noexcept {
+        return unsafe_recognized_;
+    }
+    void set_unsafe_recognized(bool recognized) noexcept {
+        unsafe_recognized_ = recognized;
+    }
+
   private:
     std::string uri_;
     std::string path_;
@@ -141,6 +150,7 @@ class Document {
     std::int32_t verified_version_ = -1;
     bool path_claims_recognized_ = false;
     bool path_splits_recognized_ = false;
+    bool unsafe_recognized_ = false;
 };
 
 // Manages all open documents

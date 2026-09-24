@@ -32,6 +32,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -378,9 +379,43 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
         claims(obligations::ClaimKind::ImpossiblePath) != outcome.counters.impossible_paths_proven) {
         outcome.counters.closure.faults.emplace_back("a proven claim has no trust closure");
     }
+    for (const frontend::UnsafeBlock& block : syntax.unsafe_blocks) {
+        if (block.nested) {
+            continue; // part of the region that holds it
+        }
+        outcome.counters.unsafe_boundaries.push_back(PipelineOutcome::Counters::UnsafeBoundary{
+            block.location,
+            block.function_index.has_value() && *block.function_index < syntax.verified_functions.size()
+                ? syntax.verified_functions[*block.function_index].function_name
+                : std::string{},
+            {}});
+    }
+    for (const std::size_t index : elaborated.unsafe_functions) {
+        const frontend::UnsafeFunction& function = syntax.unsafe_functions[index];
+        outcome.counters.unsafe_boundaries.push_back(
+            PipelineOutcome::Counters::UnsafeBoundary{function.function_location, {}, function.function_name});
+    }
+    std::ranges::stable_sort(
+        outcome.counters.unsafe_boundaries, {}, [](const PipelineOutcome::Counters::UnsafeBoundary& boundary) {
+            return std::tie(boundary.location.file, boundary.location.line, boundary.location.column);
+        });
+    // A contract that rests on an unsafe block this report cannot name would
+    // be reported resting on less than it does (TRUST.md TCB-REPORT-005).
+    for (const obligations::ClaimClosure& claim : outcome.counters.closure.claims) {
+        for (const obligations::UnsafeDependency& dependency : claim.unsafe) {
+            const bool named =
+                std::ranges::any_of(outcome.counters.unsafe_boundaries,
+                                    [&dependency](const PipelineOutcome::Counters::UnsafeBoundary& known) {
+                                        return known.function.empty() && known.location == dependency.location;
+                                    });
+            if (!named) {
+                outcome.counters.closure.faults.push_back("the contract of '" + claim.subject +
+                                                          "' rests on an unsafe block this unit does not declare");
+            }
+        }
+    }
     for (const std::string& fault : outcome.counters.closure.faults) {
-        report(engine, diagnostics::Category::Internal,
-               "the trusted laws a claim rests on cannot be reported: " + fault);
+        report(engine, diagnostics::Category::Internal, "what a claim rests on cannot be reported: " + fault);
     }
 
     // A trusted law admitting a memory proposition is accounted for by its

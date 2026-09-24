@@ -214,7 +214,10 @@ std::string describe(const Expr& expr) {
                     text += " " + node.arms[index].label + " => " + describe(node.operands[first_arm + index]) + ";";
                 }
                 return text + " }";
+            } else if constexpr (std::is_same_v<Node, UnsafeRegion>) {
+                return node.operands.size() == 1 ? "unsafe; " + describe(node.operands.front()) : "<malformed-unsafe>";
             } else {
+                static_assert(std::is_same_v<Node, Binary>, "every VIR alternative is described by name");
                 if (node.operands.size() != 2) {
                     return "<malformed-binary>";
                 }

@@ -322,6 +322,40 @@ CPPL_TEST(a_recursive_call_graph_is_closed_to_a_fixed_point) {
     }
 }
 
+// SPEC: UNSAFE-003
+// TRUST.md TCB-REPORT-005: an unsafe block travels the same edges as a trusted
+// law, through a recursive call graph too, and a claim that a path of the body
+// holding it cannot occur rests on it as well. It is never a trusted law.
+CPPL_TEST(an_unsafe_block_reaches_every_caller_and_the_claims_of_its_body) {
+    Builder unit;
+    const auto a = unit.proven(o::Origin::ReturnPath, "f30 path");
+    const auto claimed = unit.proven(o::Origin::ImpossiblePath, "f30 path 2");
+    const auto b = unit.proven(o::Origin::ReturnPath, "f31 path");
+    const auto c = unit.proven(o::Origin::ReturnPath, "f32 path");
+    const auto d = unit.proven(o::Origin::ReturnPath, "f33 path");
+    unit.partial_contract(30, {a, claimed}, {1}); // f30 calls f31
+    unit.partial_contract(31, {b}, {0});          // f31 calls f30
+    unit.partial_contract(32, {c}, {1});          // f32 calls f31
+    unit.partial_contract(33, {d});               // f33 calls nothing
+    const cppl::source::SourceLocation block{"unit.cpp", 40, 5};
+    unit.program.contracts[1].unsafe_regions.push_back(block);
+
+    const auto closure = unit.close();
+
+    CPPL_CHECK(closure.faults.empty());
+    CPPL_CHECK(closure.assumptions.empty());
+    const auto rests_on_block = [&](o::ClaimKind kind, const std::string& subject, bool direct) {
+        const auto* found = claim(closure, kind, subject);
+        return found != nullptr && found->premises.empty() && found->unsafe.size() == 1 &&
+               found->unsafe.front().location == block && found->unsafe.front().direct == direct;
+    };
+    CPPL_CHECK(rests_on_block(o::ClaimKind::Contract, "f31", true));
+    CPPL_CHECK(rests_on_block(o::ClaimKind::Contract, "f30", false));
+    CPPL_CHECK(rests_on_block(o::ClaimKind::Contract, "f32", false));
+    CPPL_CHECK(rests_on_block(o::ClaimKind::ImpossiblePath, "f30 path 2", false));
+    CPPL_CHECK(claim(closure, o::ClaimKind::Contract, "f33")->unsafe.empty());
+}
+
 CPPL_TEST(an_unproven_contract_is_not_a_claim) {
     Builder unit;
     const auto base = unit.trusted(0);

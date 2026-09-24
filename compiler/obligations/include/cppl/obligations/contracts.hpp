@@ -4,6 +4,7 @@
 #include "cppl/kernel/term.hpp"
 #include "cppl/kernel/types.hpp"
 #include "cppl/source/digest.hpp"
+#include "cppl/source/location.hpp"
 #include "cppl/vir/ids.hpp"
 
 #include <cstddef>
@@ -78,6 +79,13 @@ struct ContractVerification {
     bool partial = false;
     std::vector<VerificationCondition> conditions;
     source::Digest identity; // content identity of the conditions, for callers
+
+    // Where the body passes through an unsafe block, in source order. The
+    // contract is proven with each block's effects modeled as unknown writes,
+    // so it holds only if the block's own code is sound: it rests on it, and so
+    // does every contract that calls this one (SPEC.md 26, TRUST.md
+    // TCB-REPORT-005). A body with an unsafe block is always partial.
+    std::vector<source::SourceLocation> unsafe_regions;
 };
 
 } // namespace cppl::obligations

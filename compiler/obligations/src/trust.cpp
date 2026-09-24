@@ -14,6 +14,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -160,8 +161,12 @@ TrustClosure close_trust(const Program& program, const std::vector<ObligationRes
     }
 
     // Claims that stand on their own, in program order, and what each
-    // obligation of a verified body contributes to its contract.
+    // obligation of a verified body contributes to its contract. A claim that a
+    // runtime path or a case cannot occur there is decided from the facts of
+    // that body, so it rests on the unsafe blocks its contract rests on; which
+    // contract that is is kept until those are known.
     std::vector<Premises> contracts(program.contracts.size());
+    std::vector<std::pair<std::size_t, std::size_t>> path_claims;
     for (std::size_t index = 0; index < results.size(); ++index) {
         const ObligationResult& result = results[index];
         if (!result.verdict.is_proven()) {
@@ -178,6 +183,9 @@ TrustClosure close_trust(const Program& program, const std::vector<ObligationRes
                 ClaimClosure{*kind, obligation.subject, obligation.range.begin, obligation.id, premises});
         }
         if (const auto contract = owner.find(index); contract != owner.end()) {
+            if (kind.has_value()) {
+                path_claims.emplace_back(closure.claims.size() - 1, contract->second);
+            }
             for (const TrustedPremise& premise : premises) {
                 join(contracts[contract->second], premise, premise.direct);
             }
@@ -240,6 +248,45 @@ TrustClosure close_trust(const Program& program, const std::vector<ObligationRes
         }
     }
 
+    // The unsafe blocks each contract rests on travel the same edges: a caller
+    // proven from a callee's contract rests on whatever that contract rests on
+    // (TRUST.md TCB-REPORT-005). The same fixed point, over locations.
+    using Regions = std::map<std::tuple<std::string, std::uint32_t, std::uint32_t>, UnsafeDependency>;
+    const auto key = [](const source::SourceLocation& at) {
+        return std::tuple{at.file, at.line, at.column};
+    };
+    std::vector<Regions> regions(program.contracts.size());
+    for (std::size_t index = 0; index < program.contracts.size(); ++index) {
+        for (const source::SourceLocation& at : program.contracts[index].unsafe_regions) {
+            regions[index].emplace(key(at), UnsafeDependency{at, true});
+        }
+    }
+    for (bool changed = true; changed;) {
+        changed = false;
+        for (std::size_t index = 0; index < regions.size(); ++index) {
+            for (const std::size_t callee : callees[index]) {
+                if (callee == index) {
+                    continue;
+                }
+                for (const auto& [where, region] : regions[callee]) {
+                    changed = regions[index].emplace(where, UnsafeDependency{region.location, false}).second || changed;
+                }
+            }
+        }
+    }
+
+    const auto listed = [](const Regions& found) {
+        std::vector<UnsafeDependency> unsafe;
+        unsafe.reserve(found.size());
+        for (const auto& [where, region] : found) {
+            unsafe.push_back(region);
+        }
+        return unsafe;
+    };
+    for (const auto& [claim, contract] : path_claims) {
+        closure.claims[claim].unsafe = listed(regions[contract]);
+    }
+
     for (std::size_t index = 0; index < program.contracts.size(); ++index) {
         const ContractVerification& contract = program.contracts[index];
         const bool proven = contract.partial
@@ -265,7 +312,7 @@ TrustClosure close_trust(const Program& program, const std::vector<ObligationRes
             ClaimKind::Contract, contract.name,
             anchor < results.size() ? program.obligations[anchor].range.begin : source::SourceLocation{},
             contract.partial ? ObligationId{contract.identity} : program.obligations[contract.obligation].id,
-            ordered(std::move(contracts[index]))});
+            ordered(std::move(contracts[index])), listed(regions[index])});
     }
 
     return closure;

@@ -1558,6 +1558,8 @@ std::size_t return_paths(const Expr& expression) {
     }
     if (const auto* unknown = std::get_if<UnknownVersion>(&expression.node); unknown && unknown->operands.size() == 1)
         return return_paths(unknown->operands.front());
+    if (const auto* region = std::get_if<UnsafeRegion>(&expression.node); region && region->operands.size() == 1)
+        return return_paths(region->operands.front());
     return 1;
 }
 
@@ -1885,6 +1887,152 @@ bool terminates(CXCursor statement, unsigned depth) {
     return false;
 }
 
+// The declaration the projector put just inside an unsafe block's `{`, when
+// `statement` is such a block (SPEC.md 26). A nested block has none: it is part
+// of the region holding it.
+std::optional<CXCursor> unsafe_marker_of(CXCursor statement, const std::string& prefix) {
+    if (prefix.empty() || clang_getCursorKind(statement) != CXCursor_CompoundStmt) {
+        return std::nullopt;
+    }
+    const std::vector<CXCursor> children = children_of(statement);
+    if (children.empty() || clang_getCursorKind(children.front()) != CXCursor_DeclStmt) {
+        return std::nullopt;
+    }
+    const std::vector<CXCursor> declared = children_of(children.front());
+    if (declared.size() != 1 || clang_getCursorKind(declared.front()) != CXCursor_VarDecl ||
+        !take(clang_getCursorSpelling(declared.front())).starts_with(prefix + "unsafe_")) {
+        return std::nullopt;
+    }
+    return declared.front();
+}
+
+// Every marked unsafe block a subtree holds.
+std::vector<CXCursor> unsafe_blocks_in(CXCursor root, const std::string& prefix, unsigned depth = 0) {
+    std::vector<CXCursor> found;
+    if (depth > kMaxExpressionDepth) {
+        return found;
+    }
+    if (unsafe_marker_of(root, prefix).has_value()) {
+        found.push_back(root);
+        return found;
+    }
+    for (const CXCursor child : children_of(root)) {
+        std::vector<CXCursor> inner = unsafe_blocks_in(child, prefix, depth + 1);
+        found.insert(found.end(), inner.begin(), inner.end());
+    }
+    return found;
+}
+
+// The variables and parameters a subtree names, by Clang's resolution.
+std::unordered_set<unsigned> named_declarations(CXCursor root) {
+    std::unordered_set<unsigned> named;
+    clang_visitChildren(
+        root,
+        [](CXCursor cursor, CXCursor, CXClientData data) {
+            if (clang_getCursorKind(cursor) == CXCursor_DeclRefExpr) {
+                const CXCursor declaration = clang_getCursorReferenced(cursor);
+                if (clang_getCursorKind(declaration) == CXCursor_VarDecl ||
+                    clang_getCursorKind(declaration) == CXCursor_ParmDecl) {
+                    static_cast<std::unordered_set<unsigned>*>(data)->insert(clang_hashCursor(declaration));
+                }
+            }
+            return CXChildVisit_Recurse;
+        },
+        &named);
+    return named;
+}
+
+// How control leaves an unsafe block other than by reaching its end, if it can.
+// A `break` or `continue` belonging to a loop or a `switch` inside the block
+// stays inside it; a lambda's `return` is the lambda's own.
+std::optional<std::string> leaves_block(CXCursor cursor, unsigned loops, unsigned breakable, unsigned depth) {
+    if (depth > kMaxExpressionDepth) {
+        return "statements nested too deeply to follow";
+    }
+    const CXCursorKind kind = clang_getCursorKind(cursor);
+    if (kind == CXCursor_LambdaExpr) {
+        return std::nullopt;
+    }
+    if (kind == CXCursor_ReturnStmt) {
+        return "a return";
+    }
+    if (kind == CXCursor_GotoStmt || kind == CXCursor_IndirectGotoStmt) {
+        return "a goto";
+    }
+    if (kind == CXCursor_BreakStmt && breakable == 0) {
+        return "a break";
+    }
+    if (kind == CXCursor_ContinueStmt && loops == 0) {
+        return "a continue";
+    }
+    const bool loop = kind == CXCursor_WhileStmt || kind == CXCursor_ForStmt || kind == CXCursor_DoStmt ||
+                      kind == CXCursor_CXXForRangeStmt;
+    const bool switches = kind == CXCursor_SwitchStmt;
+    for (const CXCursor child : children_of(cursor)) {
+        if (auto left =
+                leaves_block(child, loops + (loop ? 1U : 0U), breakable + (loop || switches ? 1U : 0U), depth + 1)) {
+            return left;
+        }
+    }
+    return std::nullopt;
+}
+
+// Whether `cursor` names `declaration` itself, parentheses aside.
+bool names(CXCursor cursor, CXCursor declaration) {
+    cursor = strip_parens(cursor);
+    return clang_getCursorKind(cursor) == CXCursor_DeclRefExpr &&
+           clang_equalCursors(clang_getCursorReferenced(cursor), declaration) != 0;
+}
+
+// Whether code in `root` may change what `declaration` itself holds, now or
+// later: by writing it, by taking its address, by binding a reference to it that
+// is not const, or by capturing it in a lambda. Reading it, passing it by value
+// and reaching what it points to leave it as it was.
+bool may_rebind(CXCursor root, CXCursor declaration, unsigned depth = 0) {
+    if (depth > kMaxExpressionDepth) {
+        return true;
+    }
+    const CXCursorKind kind = clang_getCursorKind(root);
+    const std::vector<CXCursor> children = children_of(root);
+    if (kind == CXCursor_LambdaExpr) {
+        std::unordered_set<unsigned> captured = named_declarations(root);
+        return captured.contains(clang_hashCursor(declaration));
+    }
+    if (((kind == CXCursor_BinaryOperator && clang_getCursorBinaryOperatorKind(root) == CXBinaryOperator_Assign) ||
+         kind == CXCursor_CompoundAssignOperator) &&
+        !children.empty() && names(children.front(), declaration)) {
+        return true;
+    }
+    if (kind == CXCursor_UnaryOperator && children.size() == 1 && names(children.front(), declaration)) {
+        const enum CXUnaryOperatorKind op = clang_getCursorUnaryOperatorKind(root);
+        if (op == CXUnaryOperator_PreInc || op == CXUnaryOperator_PostInc || op == CXUnaryOperator_PreDec ||
+            op == CXUnaryOperator_PostDec || op == CXUnaryOperator_AddrOf) {
+            return true;
+        }
+    }
+    if (kind == CXCursor_VarDecl && source::aliases_storage(passing_of(clang_getCursorType(root))) &&
+        passing_of(clang_getCursorType(root)) != source::ParameterPassing::ConstReference) {
+        const CXCursor initializer = clang_Cursor_getVarDeclInitializer(root);
+        if (clang_Cursor_isNull(initializer) == 0 && names(initializer, declaration)) {
+            return true;
+        }
+    }
+    if (kind == CXCursor_CallExpr) {
+        const std::vector<CXCursor> parameters = parameters_of(clang_getCursorReferenced(root));
+        const int count = clang_Cursor_getNumArguments(root);
+        for (int index = 0; index >= 0 && index < count; ++index) {
+            const CXCursor argument = clang_Cursor_getArgument(root, static_cast<unsigned>(index));
+            const bool by_reference =
+                static_cast<std::size_t>(index) < parameters.size() &&
+                source::may_write(passing_of(clang_getCursorType(parameters[static_cast<std::size_t>(index)])));
+            if (by_reference && names(argument, declaration)) {
+                return true;
+            }
+        }
+    }
+    return std::ranges::any_of(children, [&](CXCursor child) { return may_rebind(child, declaration, depth + 1); });
+}
+
 // What remains to be executed after the statement being lowered: the rest of
 // its block, and whatever follows the blocks enclosing it. A branch lowers this
 // continuation once per arm, under the versions that arm established, which is
@@ -1963,6 +2111,15 @@ struct BodyLowering {
     std::vector<std::string> consumed_invariants;
     std::vector<std::string> consumed_contradictions;
     std::vector<Function::SplitSubject> consumed_splits;
+    std::vector<std::string> consumed_unsafe;
+
+    // Where the path being lowered passed through an unsafe block, if it has.
+    // From there on the path holds none of the capabilities its contract stated:
+    // the block may have ended a lifetime, released storage or moved a pointer's
+    // target, and nothing checked that it did not (SPEC.md UNSAFE-003,
+    // ARCHITECTURE.md ARCH-UNSAFE-002). A loop that holds an unsafe block is
+    // such a point for its every iteration and for what follows it.
+    std::optional<source::SourceLocation> revoked_by;
     std::string rejection;
     bool executable_state = true;
     source::SourceLocation completion_location = {};
@@ -2048,7 +2205,7 @@ struct BodyLowering {
     // not entail `writable`: an output buffer may be written and not read
     // (RFC 0014 §3).
     [[nodiscard]] const StatedCapability* granted_capability(std::uint32_t parameter, Capability::Kind kind) const {
-        if (capabilities == nullptr) {
+        if (capabilities == nullptr || revoked_by.has_value()) {
             return nullptr;
         }
         const auto at = std::ranges::find_if(*capabilities, [&](const StatedCapability& stated) {
@@ -2162,8 +2319,11 @@ struct BodyLowering {
             const std::string spelling = take(clang_getCursorSpelling(declaration));
             rejection = std::string(required == Capability::Kind::Writable ? "writing through '" : "reading '") +
                         spelling + "' requires '" +
-                        (required == Capability::Kind::Writable ? "writable(" : "readable(") + spelling +
-                        ")', which was not established; 'p != nullptr' does not imply it";
+                        (required == Capability::Kind::Writable ? "writable(" : "readable(") + spelling + ")', " +
+                        (revoked_by.has_value() ? "which no longer holds after the unsafe block at " +
+                                                      revoked_by->file + ":" + std::to_string(revoked_by->line) +
+                                                      ": what that block did to the storage was not checked"
+                                                : "which was not established; 'p != nullptr' does not imply it");
             return std::nullopt;
         }
         // A capability permits reaching the pointer's storage; it does not say
@@ -2685,7 +2845,9 @@ struct BodyLowering {
             return lower_split(*marker, from, locals, depth);
         }
         const Continuation next{from.outer, from.statements, from.index + 1};
-        if (next.index != from.statements->size() && terminates(statement, 0)) {
+        // An unsafe block says for itself why a way out of it is refused.
+        if (next.index != from.statements->size() && !unsafe_marker_of(statement, invariant_prefix).has_value() &&
+            terminates(statement, 0)) {
             return reject("unreachable trailing statements are not modeled");
         }
         return lower_statement(statement, next, locals, depth);
@@ -2712,6 +2874,9 @@ struct BodyLowering {
     std::optional<Expr> lower_statement_form(CXCursor statement, const Continuation& next, const Locals& locals,
                                              unsigned depth) {
         const CXCursorKind kind = clang_getCursorKind(statement);
+        if (const std::optional<CXCursor> marker = unsafe_marker_of(statement, invariant_prefix)) {
+            return lower_unsafe(statement, *marker, next, locals, depth);
+        }
         if (kind == CXCursor_CompoundStmt) {
             const std::vector<CXCursor> nested = children_of(statement);
             return lower_statements(Continuation{&next, &nested, 0}, locals, depth + 1);
@@ -2815,6 +2980,107 @@ struct BodyLowering {
         Continuation entered;
         entered.header = &header;
         return lower_statement(*parts->initialization, entered, locals, depth);
+    }
+
+    // The places an unsafe block could have written: a pointee, the storage a
+    // reference parameter designates, and any local whose address this body
+    // takes or that an unsafe block of this body names. The last set is the
+    // `escaped` one, which `extract_body` widens by every name an unsafe block
+    // uses, because such a block may keep an address and write through it later
+    // (TRUST.md TCB-UNSAFE-002). A reference is followed to its storage.
+    [[nodiscard]] std::vector<std::size_t> unsafe_reach(const Locals& locals) const {
+        std::vector<bool> reached(locals.size(), false);
+        for (std::size_t index = 0; index < locals.size(); ++index) {
+            const Local& entry = locals[index];
+            if (entry.binder.has_value()) {
+                continue;
+            }
+            const bool reachable =
+                entry.is_deref() || entry.external || escaped.contains(clang_hashCursor(entry.declaration));
+            if (!reachable) {
+                continue;
+            }
+            const std::size_t storage = entry.referent.value_or(index);
+            if (storage < reached.size() && !locals[storage].binder.has_value()) {
+                reached[storage] = true;
+            }
+        }
+        std::vector<std::size_t> found;
+        for (std::size_t index = 0; index < reached.size(); ++index) {
+            if (reached[index] && !locals[index].referent.has_value()) {
+                found.push_back(index);
+            }
+        }
+        return found;
+    }
+
+    // An unsafe block on this path (SPEC.md 26, INTERACT-018, BOUNDARYEX-010).
+    //
+    // Its statements run as ordinary C++ and are not lowered: nothing they
+    // compute is known, and they establish no fact (UNSAFE-003, UNSAFE-005).
+    // Every place they could have written gets a version no earlier fact
+    // describes, which inherits nothing -- not even its declared refinement, since
+    // nothing charged the predicate at the block's writes (TRUST.md
+    // TCB-UNSAFE-003). From here on the path holds none of its contract's
+    // capabilities either. A block the path does not simply pass through is
+    // refused: one a return, a goto, or a break or continue of an enclosing loop
+    // leaves would make what follows depend on code nobody checked.
+    std::optional<Expr> lower_unsafe(CXCursor block, CXCursor marker, const Continuation& next, const Locals& locals,
+                                     unsigned depth) {
+        const std::string name = take(clang_getCursorSpelling(marker));
+        const source::SourceLocation where = presumed_location(clang_getCursorLocation(marker));
+        const std::string at = where.file + ":" + std::to_string(where.line);
+        if (const std::optional<std::string> left = leaves_block(block, 0, 0, 0)) {
+            return reject("control leaves the unsafe block at " + at + " through " + *left +
+                          "; a verified body passes through an unsafe block and goes on after it, so nothing in it "
+                          "may return or jump out of it");
+        }
+        // Proof syntax inside the block is refused where it is recognized; a
+        // generated declaration found here anyway is never read as a statement.
+        const auto generated_inside = [&] {
+            std::pair<std::string, bool> found{invariant_prefix, false};
+            clang_visitChildren(
+                block,
+                [](CXCursor cursor, CXCursor, CXClientData data) {
+                    auto& search = *static_cast<std::pair<std::string, bool>*>(data);
+                    const std::string spelled = take(clang_getCursorSpelling(cursor));
+                    if (clang_getCursorKind(cursor) == CXCursor_VarDecl && spelled.starts_with(search.first) &&
+                        !spelled.starts_with(search.first + "unsafe_")) {
+                        search.second = true;
+                        return CXChildVisit_Break;
+                    }
+                    return CXChildVisit_Recurse;
+                },
+                &found);
+            return found.second;
+        };
+        if (generated_inside()) {
+            return reject("the unsafe block at " + at + " holds proof syntax, which no path of the body reaches");
+        }
+
+        Locals state = locals;
+        const std::vector<std::size_t> reached = unsafe_reach(state);
+        for (const std::size_t index : reached) {
+            state[index].version = next_version++;
+        }
+        consumed_unsafe.push_back(name);
+        const std::optional<source::SourceLocation> enclosing = revoked_by;
+        if (!revoked_by.has_value()) {
+            revoked_by = where;
+        }
+        std::optional<Expr> body = lower_statements(next, state, depth + 1);
+        revoked_by = enclosing;
+        if (!body) {
+            return std::nullopt;
+        }
+        for (const std::size_t index : std::views::reverse(reached)) {
+            *body = unknown(state, index, std::move(*body), block);
+        }
+        Expr region;
+        region.type = body->type;
+        region.location = where;
+        region.node = UnsafeRegion{name, {std::move(*body)}};
+        return region;
     }
 
     // The name of the block the projector emitted for a claim that this path
@@ -3097,6 +3363,23 @@ struct BodyLowering {
             mark_writes(*header.increment, locals, written);
         }
         mark_writes(header.body, locals, written);
+        // An unsafe block in the loop may write whatever it reaches on any
+        // iteration, so each such place is carried: at the head it is a fresh
+        // value no fact from before the loop describes (SPEC.md LOOP-005). And
+        // an iteration, like what follows the loop, may come after the block,
+        // so none of them holds a contract's capability.
+        const std::vector<CXCursor> unsafe_inside = unsafe_blocks_in(header.body, invariant_prefix);
+        if (!unsafe_inside.empty()) {
+            for (const std::size_t index : unsafe_reach(locals)) {
+                written[index] = true;
+            }
+        }
+        const std::optional<source::SourceLocation> enclosing_revocation = revoked_by;
+        if (!unsafe_inside.empty() && !revoked_by.has_value()) {
+            if (const std::optional<CXCursor> marker = unsafe_marker_of(unsafe_inside.front(), invariant_prefix)) {
+                revoked_by = presumed_location(clang_getCursorLocation(*marker));
+            }
+        }
         for (std::size_t index = 0; index < locals.size(); ++index) {
             if (written[index]) {
                 frame.carried.push_back(index);
@@ -3142,9 +3425,11 @@ struct BodyLowering {
         std::optional<Expr> once = lower_statements(Continuation{&iteration, &rest, 0}, frame.head, depth + 1);
         frames.pop_back();
         if (!once) {
+            revoked_by = enclosing_revocation;
             return std::nullopt;
         }
         std::optional<Expr> after = lower_statements(*header.exit, frame.head, depth + 1);
+        revoked_by = enclosing_revocation;
         if (!after) {
             return std::nullopt;
         }
@@ -3853,6 +4138,18 @@ void extract_body(Function& function, CXCursor cursor, const std::vector<CXCurso
     lowering.completion_location = presumed_location(clang_getRangeEnd(clang_getCursorExtent(members[body_index])));
     lowering.escaped = escaped_locals(members[body_index]);
     lowering.unconfined = unconfined_locals(members[body_index]);
+    // Whatever an unsafe block names, it may write, and it may keep the address
+    // and write through it later, from another unsafe block that never names it.
+    // So every such name is treated as escaped, which is what makes each unsafe
+    // block reach it, and as unconfined, since the writes there owed no
+    // refinement (SPEC.md UNSAFE-003, TRUST.md TCB-UNSAFE-002).
+    const std::vector<CXCursor> unsafe_blocks = unsafe_blocks_in(members[body_index], invariant_prefix);
+    for (const CXCursor block : unsafe_blocks) {
+        for (const unsigned named : named_declarations(block)) {
+            lowering.escaped.insert(named);
+            lowering.unconfined.insert(named);
+        }
+    }
     Locals candidates;
     for (std::size_t index = 0; index < parameters.size(); ++index) {
         const auto& parameter = function.parameters[index];
@@ -3888,7 +4185,29 @@ void extract_body(Function& function, CXCursor cursor, const std::vector<CXCurso
             }
         }
     }
-    std::vector<bool> needed(candidates.size(), lowering.has_post_state());
+    // A parameter this body does not track has one value throughout it, which
+    // an unsafe block could change without the change being seen. Such a block
+    // is refused rather than followed by a stale value (SPEC.md UNSAFE-005).
+    for (const CXCursor parameter : parameters) {
+        const bool tracked = std::ranges::any_of(candidates, [&](const Local& candidate) {
+            return clang_equalCursors(candidate.declaration, parameter) != 0;
+        });
+        if (tracked) {
+            continue;
+        }
+        for (const CXCursor block : unsafe_blocks) {
+            if (may_rebind(block, parameter)) {
+                const source::SourceLocation at = presumed_location(clang_getCursorLocation(block));
+                function.body_rejection = "the unsafe block at " + at.file + ":" + std::to_string(at.line) +
+                                          " may change parameter '" + take(clang_getCursorSpelling(parameter)) +
+                                          "' itself, which this body does not track, so what it holds afterwards "
+                                          "could not be followed";
+                return;
+            }
+        }
+    }
+    // Every tracked parameter is followed where an unsafe block may reach it.
+    std::vector<bool> needed(candidates.size(), lowering.has_post_state() || !unsafe_blocks.empty());
     mark_writes(members[body_index], candidates, needed);
     WriteScan aliases{&candidates, &needed};
     clang_visitChildren(
@@ -3952,6 +4271,7 @@ void extract_body(Function& function, CXCursor cursor, const std::vector<CXCurso
     function.loop_invariants = std::move(lowering.consumed_invariants);
     function.path_contradictions = std::move(lowering.consumed_contradictions);
     function.path_splits = std::move(lowering.consumed_splits);
+    function.unsafe_regions = std::move(lowering.consumed_unsafe);
 }
 
 std::size_t physical_offset(CXCursor cursor) {

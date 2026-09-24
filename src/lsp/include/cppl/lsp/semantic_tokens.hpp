@@ -70,9 +70,12 @@ struct SemanticToken {
 // says the compile of the preprocessed unit recognized its claims too. A
 // `cases` or `decompose` statement in a verified body is a case split on the
 // same terms (SPEC.md CASE-017), so it and the words of its arms are tokens
-// only when `path_splits_recognized` says so.
+// only when `path_splits_recognized` says so. `unsafe` is a boundary on the
+// same terms too (SPEC.md 26), so its blocks' and declarations' keywords are
+// tokens only when `unsafe_recognized` says so.
 [[nodiscard]] std::vector<SemanticToken> cppl_tokens(const frontend::Syntax& syntax, bool path_claims_recognized,
                                                      bool path_splits_recognized = false,
+                                                     bool unsafe_recognized = false,
                                                      const std::vector<elaboration::ResolvedName>& resolved = {});
 
 // `tokens`, over `text`, as LSP semantic tokens: five integers per token, each

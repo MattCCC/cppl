@@ -1,0 +1,168 @@
+# Machine-readable manifest for the unsafe-boundary feature.
+#
+# Rule IDs are anchors in docs/SPEC.md, the canonical specification. Extract the
+# normative text with:
+#
+#     cppl-spec-rules extract --feature unsafe-boundary
+
+feature: unsafe-boundary
+
+summary: >
+  `unsafe { ... }` and an `unsafe` function declaration mark a runtime boundary
+  whose safety C++L does not establish. The code runs as written and erases to
+  the C++ it marks. In a verified body a block establishes nothing: every place
+  it could have written is unknown after it and keeps no refinement, no memory
+  capability survives it, and control goes on after it. An unsafe function is
+  neither verified nor pure, states no contract, and is called from a verified
+  path only inside a block. Every claim resting on a block, its own or a
+  verified callee's, is reported with each block and never as assumption-free,
+  and every boundary a unit writes is listed. `unsafe` is not `trusted` and adds
+  no assumption.
+
+normative_sources:
+  spec:
+    - "§3 Contextual words"
+    - "§26 unsafe"
+    - "Annex O.12 Unsafe result has no facts"
+    - "Annex V.13 unsafe + verified region"
+  grammar:
+    - "§22 Unsafe blocks"
+    - "§23 Unsafe functions"
+  trust:
+    - "§26 unsafe, unverified code and runtime validation"
+    - "§35 Trust propagation and provenance"
+    - "§36 Assurance statuses and reporting integrity"
+
+rule_families:
+  - UNSAFE
+
+# The rules this feature realizes, within that family and outside it.
+# `cppl-spec-rules extract --feature` reads only the families above; extract
+# the others by ID.
+rules:
+  - UNSAFE-001
+  - UNSAFE-002
+  - UNSAFE-003
+  - UNSAFE-004
+  - UNSAFE-005
+  - BOUNDARYEX-010
+  - INTERACT-018
+  - WORD-002
+  - WORD-011
+  - PURE-005
+  - VERIFIED-013
+  - VERIFIED-043
+
+depends_on:
+  - verified-functions
+  - memory-capabilities
+  - trust-propagation
+  - erasure
+
+implementation:
+  frontend:
+    - compiler/frontend/include/cppl/frontend/syntax.hpp
+    - compiler/frontend/src/recognizer.cpp
+    - compiler/frontend/include/cppl/frontend/projection.hpp
+    - compiler/frontend/src/projection.cpp
+  clang:
+    - clang/include/cppl/clang/ast.hpp
+    - clang/src/bridge.cpp
+  elaboration:
+    - compiler/elaboration/include/cppl/elaboration/elaborate.hpp
+    - compiler/elaboration/src/elaborate.cpp
+  vir:
+    - vir/include/cppl/vir/expr.hpp
+    - vir/src/vir.cpp
+  obligations:
+    - compiler/obligations/include/cppl/obligations/contracts.hpp
+    - compiler/obligations/src/contracts.cpp
+    - compiler/obligations/src/generate.cpp
+    - compiler/obligations/include/cppl/obligations/trust.hpp
+    - compiler/obligations/src/trust.cpp
+  driver:
+    - compiler/driver/src/pipeline.hpp
+    - compiler/driver/src/pipeline.cpp
+    - compiler/driver/src/driver.cpp
+  erasure:
+    - compiler/erasure/src/erase.cpp
+  editors:
+    - src/lsp/src/semantic_tokens.cpp
+    - src/lsp/src/server.cpp
+    - src/lsp/src/completion.cpp
+
+interactions:
+  - refinements written inside a block
+  - pointer and reference parameters, and locals whose address is kept
+  - memory capabilities at dereferences and verified calls
+  - loop invariants across a block
+  - runtime path claims after a block, including one resting on a trusted law
+  - verified-call composition
+  - pure functions
+  - trusted laws
+  - erasure
+  - editors
+  - several translation units including one unsafe declaration
+
+tests:
+  positive:
+    - tests/fixtures/unsafe_boundary.cpp
+    - tests/fixtures/equivalence/unsafe_boundaries.cpp
+  negative:
+    - tests/negative/unsafe_boundary.sh
+    - tests/fixtures/negative/unsafe_false_postcondition.cpp
+    - tests/fixtures/negative/unsafe_result_has_no_facts.cpp
+    - tests/fixtures/negative/unsafe_refinement_smuggled.cpp
+    - tests/fixtures/negative/unsafe_stale_alias.cpp
+    - tests/fixtures/negative/unsafe_reference_parameter.cpp
+    - tests/fixtures/negative/unsafe_loop_counter.cpp
+    - tests/fixtures/negative/unsafe_pointer_rebound.cpp
+    - tests/fixtures/negative/unsafe_capability_revoked_write.cpp
+    - tests/fixtures/negative/unsafe_capability_revoked_call.cpp
+    - tests/fixtures/negative/unsafe_call_outside_block.cpp
+    - tests/fixtures/negative/unsafe_block_return.cpp
+    - tests/fixtures/negative/unsafe_block_break.cpp
+    - tests/fixtures/negative/unsafe_verified_function.cpp
+    - tests/fixtures/negative/unsafe_redeclared_verified.cpp
+    - tests/fixtures/negative/unsafe_pure_function.cpp
+    - tests/fixtures/negative/unsafe_in_proposition.cpp
+    - tests/fixtures/negative/unsafe_contract.cpp
+    - tests/fixtures/negative/unsafe_loop_specification.cpp
+    - tests/fixtures/negative/unsafe_member_function.cpp
+  unit:
+    - tests/unit/trust_closure_test.cpp
+    - tests/unit/recognizer_test.cpp
+    - tests/unit/lsp_semantic_tokens_test.cpp
+    - tests/unit/lsp_completion_test.cpp
+    - tests/unit/formatter_test.cpp
+  end_to_end:
+    - tests/e2e/unsafe_boundary.sh
+    - tests/e2e/erasure_equivalence.sh
+
+required_test_categories:
+  - a block's result has no facts, and a runtime check after it establishes them
+  - a false postcondition across a block is refused
+  - a refinement written inside a block is not kept
+  - an address kept by one block and written by a later one
+  - storage a reference parameter designates
+  - a loop counter a block writes, and one it never names
+  - a pointer a block may rebind, and capabilities after a block
+  - control leaving a block
+  - an unsafe function called outside a block
+  - unsafe combined with verified or pure, however spelled
+  - a contract on an unsafe function, and a proposition about one
+  - proof syntax inside a block
+  - dependencies reported directly, through a verified call, and with a trusted law
+  - every boundary listed, a function declared twice once
+  - C++-first recognition and editor coloring
+  - erasure equivalence and runtime behavior
+  - deterministic report
+  - several translation units
+
+completion_requires:
+  - an unsafe block never adds a fact, a refinement, or a capability
+  - every place a block may reach is unknown after it
+  - no claim resting on a block is reported assumption-free
+  - an unsafe block adds no trusted assumption
+  - a claim resting on a block the report cannot name fails the build
+  - the keyword erases and the code runs unchanged

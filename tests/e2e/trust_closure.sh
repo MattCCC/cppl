@@ -128,6 +128,7 @@ Trust-dependent claims:      20
     rests on broken_counter (trust_closure.cpp:30), through a proof or verified call it uses
   contract of calls_never_seven (trust_closure.cpp:206)
     rests on broken_counter (trust_closure.cpp:30), through a proof or verified call it uses
+Unsafe-dependent claims:     0
 Assumption-free claims:      3
   law plain (trust_closure.cpp:211)
   proof outright (trust_closure.cpp:86)

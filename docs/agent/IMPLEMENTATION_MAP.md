@@ -341,6 +341,72 @@ Not built: carrying a closure across translation units through proof artifacts.
 
 ---
 
+## unsafe-boundary
+
+Manifest: `features/unsafe-boundary.yaml`
+
+Normative sources: `UNSAFE-001`–`UNSAFE-005` (SPEC §26), `BOUNDARYEX-010`
+(Annex O.12), `INTERACT-018` (Annex V.13); GRAMMAR §22, §23; `TRUST.md` §26,
+§35, §36.
+
+### Components
+
+| Component | Responsibility | Paths |
+| --- | --- | --- |
+| recognizer | Read an unsafe block and an unsafe declaration, decided C++-first once the unit is read; refuse `unsafe` with `verified` or `pure`, a contract on an unsafe function, one outside namespace scope, and proof syntax inside a block. | `compiler/frontend/src/recognizer.cpp`, `compiler/frontend/include/cppl/frontend/syntax.hpp` |
+| projection | Blank the keyword; open each block of the analysis text with a marker declaration named where `unsafe` was written. | `compiler/frontend/src/projection.cpp` |
+| bridge | Never lower a block: give every place it may reach an unknown version, widen what any block names to escaped and unconfined, revoke capabilities on the path after it, refuse control leaving it and a parameter it may rebind unfollowed; record it as an `UnsafeRegion`. | `clang/src/bridge.cpp`, `clang/include/cppl/clang/ast.hpp` |
+| elaboration | Convert regions; resolve unsafe functions by identity; refuse one as verified, as pure, or as a callee outside a block, and a pure function holding a block. | `compiler/elaboration/src/elaborate.cpp` |
+| obligations | Revoke call capabilities after a region, at the loop head too; record each region on its contract. | `compiler/obligations/src/contracts.cpp`, `compiler/obligations/include/cppl/obligations/contracts.hpp` |
+| trust closure | Join regions across verified calls to a fixed point; give path and case claims of a body the regions of its contract. | `compiler/obligations/src/trust.cpp`, `compiler/obligations/include/cppl/obligations/trust.hpp` |
+| driver | List every boundary and every claim resting on one; never count such a claim assumption-free; fail on a region it cannot name. | `compiler/driver/src/pipeline.cpp`, `compiler/driver/src/driver.cpp` |
+| erasure | Blank the keyword, keep the block and the function. | `compiler/erasure/src/erase.cpp` |
+| editors | Color the keyword once the compile recognized the boundary; offer the declaration specifier. | `src/lsp/src/semantic_tokens.cpp`, `src/lsp/src/server.cpp`, `src/lsp/src/completion.cpp` |
+
+### Required behavior
+
+```text
+an unsafe block             establishes no fact; what it may reach is unknown
+                            after it and keeps no refinement
+a local an unsafe block     is reachable from every unsafe block of the body
+names
+a capability                does not survive an unsafe block
+control                     passes through an unsafe block
+an unsafe function          is not verified, not pure, states no contract, and
+                            is called from a verified path only in a block
+a claim resting on a block  is listed with every block, never assumption-free
+an unsafe block             is not a trusted assumption
+a unit using `unsafe` as a  keeps every block and declaration ordinary C++
+name
+```
+
+### Interactions
+
+```text
+unsafe x refinement types              UNSAFE-003, TCB-UNSAFE-003
+unsafe x storage and aliasing          UNSAFE-005, TCB-UNSAFE-002
+unsafe x memory capabilities           VERIFIED-043, TCB-UNSAFE-003
+unsafe x loop invariants               INTERACT-018
+unsafe x runtime path claims           VERIFIED-023, UNSAFE-004
+unsafe x verified-call composition     TCB-REPORT-005
+unsafe x pure                          PURE-005, UNSAFE-002
+unsafe x trusted                       SPEC §26.1, ARCH-UNSAFE-001
+unsafe x erasure                       ERASE-003
+```
+
+### Existing surface
+
+```text
+tests/fixtures/unsafe_boundary.cpp                every accepted use
+tests/e2e/unsafe_boundary.sh                      the whole unsafe section, determinism, two units, erasure
+tests/negative/unsafe_boundary.sh                 every rejection, written out in tests/fixtures/negative/
+tests/fixtures/equivalence/unsafe_boundaries.cpp  erasure against a hand-erased twin
+```
+
+Not built: an unsafe member function, which is refused rather than recognized.
+
+---
+
 ## Adding a feature to this map
 
 1. Add the feature to `FEATURE_INDEX.md`.

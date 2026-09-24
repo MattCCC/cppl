@@ -9,6 +9,7 @@
 #include "cppl/vir/module.hpp"
 #include "cppl/vir/types.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -99,6 +100,11 @@ struct Result {
     // a refused proof is a failure of the law, not an invitation to try
     // something else.
     std::vector<vir::LawId> laws_with_refused_proofs;
+
+    // Each function declared unsafe, once however often it is redeclared: the
+    // index in `Syntax::unsafe_functions` of the first declaration that marks
+    // it, in source order.
+    std::vector<std::size_t> unsafe_functions;
 
     [[nodiscard]] const FunctionRejection* rejection(const vir::SymbolId& symbol) const;
 };

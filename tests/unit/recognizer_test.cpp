@@ -767,3 +767,99 @@ CPPL_TEST(a_cases_statement_reads_at_most_sixty_four_arms_counting_omissions) {
     CPPL_CHECK(accepted(statement(63, 1)));
     CPPL_CHECK(arm_count_refused(statement(64, 1)));
 }
+
+// SPEC: UNSAFE-001, WORD-011
+// An unsafe block records where `unsafe` was written, the verified body it
+// stands in if any, and whether another unsafe block holds it.
+CPPL_TEST(unsafe_blocks_are_recognized_with_the_body_that_holds_them) {
+    Recognized result;
+    recognize("unsafe unsigned read_device();\n"
+              "verified unsigned f(unsigned x) ensures (result == x) {\n"
+              "    unsigned y = 0u;\n"
+              "    unsafe { y = read_device(); unsafe { y = y + 1u; } }\n"
+              "    return x;\n"
+              "}\n"
+              "int main() { unsafe { return static_cast<int>(read_device()); } }\n",
+              result);
+    CPPL_CHECK(!result.engine.has_errors());
+    CPPL_CHECK(result.engine.diagnostics().empty());
+    CPPL_CHECK_EQ(result.syntax.unsafe_functions.size(), std::size_t{1});
+    CPPL_CHECK_EQ(result.syntax.unsafe_functions[0].function_name, "read_device");
+    CPPL_CHECK_EQ(result.syntax.unsafe_functions[0].function_location.line, 1u);
+    CPPL_CHECK_EQ(result.syntax.unsafe_blocks.size(), std::size_t{3});
+    const auto& outer = result.syntax.unsafe_blocks[0];
+    CPPL_CHECK(outer.function_index == std::optional<std::size_t>{0});
+    CPPL_CHECK(!outer.nested);
+    CPPL_CHECK_EQ(outer.location.line, 4u);
+    CPPL_CHECK_EQ(outer.location.column, 5u);
+    CPPL_CHECK(result.syntax.unsafe_blocks[1].nested);
+    CPPL_CHECK(!result.syntax.unsafe_blocks[2].function_index.has_value());
+    CPPL_CHECK(!result.syntax.unsafe_blocks[2].nested);
+}
+
+// SPEC: WORD-002, WORD-011
+// `unsafe {x}` constructs a temporary wherever `unsafe` names a type, so the
+// word used for anything else leaves every block and declaration ordinary C++.
+CPPL_TEST(unsafe_named_anywhere_else_keeps_blocks_and_declarations_ordinary_cpp) {
+    Recognized result;
+    recognize("struct unsafe { unsafe(int) {} };\n"
+              "void f() { unsafe {1}; }\n",
+              result);
+    CPPL_CHECK(!result.engine.has_errors());
+    CPPL_CHECK(result.syntax.unsafe_blocks.empty());
+    CPPL_CHECK(result.syntax.unsafe_functions.empty());
+    CPPL_CHECK_EQ(result.engine.diagnostics().size(), std::size_t{1});
+    CPPL_CHECK(result.engine.diagnostics()[0].severity == cppl::diagnostics::Severity::Warning);
+}
+
+// SPEC: UNSAFE-002
+CPPL_TEST(unsafe_combined_with_verified_or_pure_is_refused) {
+    for (const char* text :
+         {"unsafe verified unsigned f(unsigned x) ensures (result == x) { return x; }\n",
+          "verified unsafe unsigned f(unsigned x) ensures (result == x) { return x; }\n",
+          "unsafe pure unsigned f(unsigned x) { return x; }\n", "pure unsafe unsigned f(unsigned x) { return x; }\n"}) {
+        Recognized result;
+        recognize(text, result);
+        CPPL_CHECK(result.engine.has_errors());
+        CPPL_CHECK(result.syntax.unsafe_functions.empty());
+        CPPL_CHECK(result.syntax.pure_markers.empty());
+    }
+}
+
+// SPEC: UNSAFE-003, UNSAFE-004
+// Nothing checks an unsafe function, so a contract written on one is refused
+// rather than becoming a fact its callers rest on.
+CPPL_TEST(a_contract_on_an_unsafe_function_is_refused) {
+    Recognized result;
+    recognize("unsafe unsigned read_device()\n    ensures (result < 10u);\n", result);
+    CPPL_CHECK(result.engine.has_errors());
+    CPPL_CHECK(result.syntax.unsafe_functions.empty());
+    CPPL_CHECK_EQ(result.engine.diagnostics()[0].message, "an unsafe function states no contract");
+}
+
+// SPEC: UNSAFE-001
+CPPL_TEST(an_unsafe_member_function_is_refused_rather_than_half_handled) {
+    Recognized result;
+    recognize("struct S { unsafe unsigned read(); };\n", result);
+    CPPL_CHECK(result.engine.has_errors());
+    CPPL_CHECK(result.syntax.unsafe_functions.empty());
+}
+
+// SPEC: UNSAFE-003
+// An unsafe block's statements are not a path the verifier walks, so proof
+// syntax written there would state what nothing checks.
+CPPL_TEST(proof_syntax_inside_an_unsafe_block_is_refused) {
+    for (const char* text : {"verified unsigned f(unsigned n) ensures (result == 0u) {\n"
+                             "    unsafe { unsigned i = 0u; while (i < n) invariant (i <= n) { ++i; } }\n"
+                             "    return 0u;\n"
+                             "}\n",
+                             "proof pinned(unsigned v) proves (v == v) { refl; }\n"
+                             "verified unsigned f(unsigned x) ensures (result == x) {\n"
+                             "    unsafe { if (x > x) { contradiction pinned(x); } }\n"
+                             "    return x;\n"
+                             "}\n"}) {
+        Recognized result;
+        recognize(text, result);
+        CPPL_CHECK(result.engine.has_errors());
+    }
+}

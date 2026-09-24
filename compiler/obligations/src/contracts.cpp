@@ -209,6 +209,10 @@ void collect_calls(const vir::Expr& expression, const Contracts& contracts, std:
     } else if (const auto* next = std::get_if<vir::Iterate>(&expression.node)) {
         for (const auto& operand : next->operands)
             collect_calls(operand, contracts, calls);
+    } else if (const auto* region = std::get_if<vir::UnsafeRegion>(&expression.node)) {
+        // The block's own calls are not lowered; these are the path's after it.
+        for (const auto& operand : region->operands)
+            collect_calls(operand, contracts, calls);
     }
 }
 
@@ -221,7 +225,9 @@ bool requires_conditions(const vir::Expr& expression) {
         // So does a path claimed not to occur, which also has no value.
         std::holds_alternative<vir::PathContradiction>(expression.node) ||
         // A case split is paths, one per state, and no value.
-        std::holds_alternative<vir::CaseSplit>(expression.node)) {
+        std::holds_alternative<vir::CaseSplit>(expression.node) ||
+        // An unsafe block is not modeled, so no term states what it does.
+        std::holds_alternative<vir::UnsafeRegion>(expression.node)) {
         return true;
     }
     if (const auto* bound = std::get_if<vir::PlaceVersion>(&expression.node)) {
@@ -739,6 +745,9 @@ class Conditions {
     std::vector<Obligation> obligations;
     std::vector<VerificationCondition> conditions;
     std::vector<PathClaim> claims;
+    // Every unsafe block a path of the body passes through, in the order the
+    // walk meets them, each once.
+    std::vector<source::SourceLocation> unsafe_regions;
 
   private:
     // After the parameters, a path binds fresh values and supposes facts, in
@@ -753,6 +762,9 @@ class Conditions {
         VersionBindings versions;
         OpaqueBindings opaque;
         std::vector<std::size_t> relied_on; // contracts whose postconditions are supposed
+        // The unsafe block this path passed through, if any: from there on it
+        // holds none of its contract's capabilities (SPEC.md UNSAFE-003).
+        std::optional<source::SourceLocation> unsafe;
     };
 
     struct Active {
@@ -848,6 +860,13 @@ class Conditions {
                                 : location);
             }
             const std::string owed = kind + "(" + passed->name + ")";
+            if (scope.unsafe.has_value()) {
+                return fail("calling '" + call.callee_name + "' requires '" + owed +
+                                "', which no longer holds after the unsafe block at " + scope.unsafe->file + ":" +
+                                std::to_string(scope.unsafe->line) +
+                                ": what that block did to the storage was not checked",
+                            location);
+            }
             const auto holding = std::ranges::find_if(held, [&](const vir::Capability& candidate) {
                 return candidate.kind == required.kind &&
                        candidate.place.root.kind == vir::PlaceRoot::Kind::Parameter &&
@@ -1166,7 +1185,43 @@ class Conditions {
             return split_path(*split, expression, std::move(scope), loops);
         }
 
+        // An unsafe block (SPEC.md 26, INTERACT-018). It states no fact, so
+        // nothing is supposed here: what it may have written already carries a
+        // fresh version inside its continuation. The contract rests on it, and
+        // from here on the path holds no capability.
+        if (const auto* region = std::get_if<vir::UnsafeRegion>(&expression.node)) {
+            if (region->operands.size() != 1) {
+                return fail("malformed unsafe region", location);
+            }
+            if (std::ranges::find(unsafe_regions, location) == unsafe_regions.end()) {
+                unsafe_regions.push_back(location);
+            }
+            if (!scope.unsafe.has_value()) {
+                scope.unsafe = location;
+            }
+            return walk(region->operands.front(), std::move(scope), loops);
+        }
+
         return returned(expression, std::move(scope));
+    }
+
+    // The first unsafe block a subtree passes through, if any.
+    static std::optional<source::SourceLocation> first_unsafe_region(const vir::Expr& expression) {
+        if (std::holds_alternative<vir::UnsafeRegion>(expression.node)) {
+            return expression.provenance.range.begin;
+        }
+        return std::visit(
+            [](const auto& node) -> std::optional<source::SourceLocation> {
+                if constexpr (requires { node.operands; }) {
+                    for (const vir::Expr& child : node.operands) {
+                        if (std::optional<source::SourceLocation> found = first_unsafe_region(child)) {
+                            return found;
+                        }
+                    }
+                }
+                return std::nullopt;
+            },
+            expression.node);
     }
 
     // A case split on this path (SPEC.md CASE-017). It has no runtime effect,
@@ -1379,6 +1434,18 @@ class Conditions {
         }
 
         Scope head = std::move(scope);
+        // An iteration may follow one that passed through an unsafe block in
+        // the loop, and so may what follows the loop: neither holds a
+        // capability (SPEC.md UNSAFE-003).
+        if (!head.unsafe.has_value()) {
+            // The iteration is the true arm of the head's condition. Where the
+            // head has another shape, all of it is searched, which errs toward
+            // holding fewer capabilities, never more.
+            const vir::Expr& looped = loop.operands.back();
+            const auto* condition = std::get_if<vir::Conditional>(&looped.node);
+            head.unsafe = first_unsafe_region(
+                condition != nullptr && condition->operands.size() == 3 ? condition->operands[1] : looped);
+        }
         for (std::size_t index = 0; index < carried; ++index) {
             head.opaque.emplace(loop.heads[index], head.binders.size());
             head.binders.push_back(types[index]);
@@ -1556,6 +1623,7 @@ std::expected<ContractVerification, Failure> build_partial(const vir::Function& 
     }
     plan.identity = hasher.finish();
     plan.conditions = std::move(generated.conditions);
+    plan.unsafe_regions = std::move(generated.unsafe_regions);
     for (Obligation& obligation : generated.obligations) {
         program.obligations.push_back(std::move(obligation));
     }

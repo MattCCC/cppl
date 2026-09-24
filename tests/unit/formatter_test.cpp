@@ -756,6 +756,27 @@ CPPL_TEST(already_canonical_loop_clause_layout_is_idempotent) {
     CPPL_CHECK_EQ(once, twice);
 }
 
+// SPEC: UNSAFE-001
+// An unsafe block is laid out as the compound statement it delimits, with the
+// keyword where the statement begins, and an unsafe declaration keeps its
+// specifier in front of the return type.
+CPPL_TEST(unsafe_blocks_and_declarations_are_laid_out_like_the_cpp_they_delimit) {
+    const std::string input = "unsafe   unsigned read_device();\n"
+                              "verified unsigned f(unsigned x)\n"
+                              "    ensures (result == x)\n"
+                              "{\n"
+                              "    unsigned y = 0u;\n"
+                              "  unsafe   {\n"
+                              "y = read_device();\n"
+                              "    }\n"
+                              "    return x;\n"
+                              "}\n";
+    const std::string once = format_text(input);
+    CPPL_CHECK(once.find("unsafe unsigned read_device();\n") != std::string::npos);
+    CPPL_CHECK(once.find("\n    unsafe {\n        y = read_device();\n    }\n") != std::string::npos);
+    CPPL_CHECK_EQ(format_text(once), once);
+}
+
 // -----------------------------------------------------------------------------
 // Refinements: where stays attached
 // -----------------------------------------------------------------------------

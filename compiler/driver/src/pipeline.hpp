@@ -20,6 +20,7 @@
 #include "cppl/frontend/syntax.hpp"
 #include "cppl/frontend/token.hpp"
 #include "cppl/obligations/trust.hpp"
+#include "cppl/source/location.hpp"
 
 #include <cstddef>
 #include <filesystem>
@@ -147,6 +148,17 @@ struct PipelineOutcome {
         // TRUST.md 25), and every proven claim with the trusted laws it rests
         // on (TRUST.md 35, 36.1). A claim proven outright rests on none.
         obligations::TrustClosure closure;
+
+        // Every unsafe boundary the unit writes (SPEC.md 26): each outermost
+        // unsafe block, with the verified function it stands in if any, and
+        // each function declared unsafe. Listed whether or not a proven claim
+        // rests on it, so the report can say where guarantees stop.
+        struct UnsafeBoundary {
+            source::SourceLocation location;
+            std::string owner;    // the verified function holding a block, if any
+            std::string function; // the function an unsafe declaration marks
+        };
+        std::vector<UnsafeBoundary> unsafe_boundaries;
     } counters;
 };
 

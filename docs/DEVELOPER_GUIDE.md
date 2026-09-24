@@ -2153,10 +2153,13 @@ Trust admission and runtime validation are different boundaries.
 
 It does not assert that the operation is correct:
 
+<!-- cppl-example: verify -->
+
 ```cpp
 unsafe unsigned read_device();
 
-unsigned poll_device()
+verified unsigned poll_device()
+    ensures (result <= 100u)
 {
     unsigned value = 0u;
 
@@ -2164,6 +2167,9 @@ unsigned poll_device()
         value = read_device();
     }
 
+    if (value > 100u) {
+        return 100u;
+    }
     return value;
 }
 ```
@@ -2174,7 +2180,9 @@ expression form.
 Runtime operations still execute.
 
 Unsafe code cannot produce proof evidence or refinement facts merely because it
-is marked `unsafe`.
+is marked `unsafe`. After the block, `value` could hold anything: the bound comes
+from the check that follows it, which is ordinary runtime validation. Returning
+`value` unchecked, with the same postcondition, is refused.
 
 An unmodeled result remains unverified unless a separately justified validation
 or trust boundary admits it.
@@ -2271,6 +2279,7 @@ Trust-dependent claims:      3
     rests on sensor_identity (guide.cpp:5), named directly
   proof second_link (guide.cpp:18), identity 22fb66e5fc124363
     rests on sensor_identity (guide.cpp:5), through a proof it uses
+Unsafe-dependent claims:     0
 Assumption-free claims:      0
 Unused trusted laws:         0
 ```
@@ -2327,6 +2336,74 @@ claim is a memory proposition: only an explicit assumption may state one. A
 trusted law supplies what it states only to the statements that name it
 (TRUSTED-008), so nothing in this implementation rests on one; the report says so
 rather than leave it looking forgotten.
+
+### 12.4. What an unsafe block leaves unknown, and what rests on it
+
+Inside a verified body, an unsafe block's statements run and are not verified.
+After the block, every place it could have written holds a value nothing
+describes: a local it names or whose address the body takes, what a pointer
+designates, and what a reference parameter designates. A local the block never
+names, and whose address is never taken, keeps its facts:
+
+<!-- cppl-example: verify -->
+
+```cpp
+unsafe unsigned read_sample();
+
+verified unsigned count_samples(unsigned n)
+    ensures (result == n)
+{
+    unsigned i = 0u;
+    unsigned sample = 0u;
+    while (i < n)
+        invariant (i <= n)
+    {
+        unsafe {
+            sample = read_sample();
+        }
+        ++i;
+    }
+    return i;
+}
+```
+
+The block names only `sample`, so `i` and `n` keep what the invariant says of
+them. A block that named `i`, even to pass it by value, could have kept its
+address and written through it later, so `i` would be unknown after it and the
+invariant would not be preserved. Name in a block only what it needs.
+
+No memory capability survives a block either: writing through a pointer after
+one, or passing it to a verified function that requires `writable`, is refused.
+Control goes on after the block, so a `return`, a `goto`, or a `break` or
+`continue` out of it is refused, and so is proof syntax inside it. An unsafe
+function is neither verified nor pure and states no contract; a verified body
+calls one only inside an unsafe block.
+
+A contract proven across an unsafe block holds only as far as that block is
+sound, which nothing checked, and it holds only if the block returns, so it is
+partial correctness. The trust report keeps that visible:
+
+```text
+Function contracts proven:   1
+  partial correctness only:  1
+  assumption-free:           0
+  relative to trusted laws:  0
+  relying on unsafe code:    1
+...
+Unsafe-dependent claims:     1
+  contract of count_samples (guide.cpp:9), identity 97f2b36f7939ef77
+    rests on unsafe block (guide.cpp:11:9), in its own body
+Assumption-free claims:      0
+...
+Unsafe regions:              2
+  unsafe function:         read_sample (guide.cpp:1:17)
+  unsafe block:            guide.cpp:11:9, in verified function count_samples
+```
+
+Every contract that calls `count_samples` rests on the same block, reached
+through a verified call, and is listed the same way. An unsafe block is not a
+trusted assumption: it adds nothing to `Laws trusted`, and nothing it did is ever
+a premise.
 
 ## 13. References, pointers and memory validity
 

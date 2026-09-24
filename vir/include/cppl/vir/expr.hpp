@@ -284,13 +284,25 @@ struct CaseSplit {
     friend bool operator==(const CaseSplit&, const CaseSplit&) = default;
 };
 
+// An unsafe block on a verified body's path (SPEC.md 26, INTERACT-018): runtime
+// code whose safety is not established, passed through without being modeled.
+// It states no fact and no value. `operands` holds the rest of the path, under
+// fresh versions of every place the block may have written; from here on the
+// path holds none of its contract's capabilities, and the contract proven over
+// it rests on the region, which the trust report names (TRUST.md
+// TCB-REPORT-005). The provenance is where `unsafe` was written.
+struct UnsafeRegion {
+    std::vector<Expr> operands; // continuation
+    friend bool operator==(const UnsafeRegion&, const UnsafeRegion&) = default;
+};
+
 struct Expr {
     ExprId id;
     Type type;
     Provenance provenance;
     std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, PlaceVersion, PlaceRef, Loop, Iterate,
                  Projection, Element, FormalEquality, Universal, Implication, Connective, ReturnState, UnknownVersion,
-                 ElementBound, PathContradiction, CaseSplit>
+                 ElementBound, PathContradiction, CaseSplit, UnsafeRegion>
         node;
 
     friend bool operator==(const Expr&, const Expr&) = default;
@@ -306,7 +318,7 @@ struct Expr {
 // alternative fail here first, so the author has to visit every dispatch site
 // and decide what the new node means to each (AGENTS.md 7 "exhaustive
 // handling"). Update the count only together with those sites.
-static_assert(std::variant_size_v<decltype(Expr::node)> == 21,
+static_assert(std::variant_size_v<decltype(Expr::node)> == 22,
               "a VIR expression alternative was added or removed: review every dispatch over Expr::node, "
               "including describe() in vir.cpp, lowering in obligations/generate.cpp, the walk in "
               "obligations/contracts.cpp, and conversion in elaboration/elaborate.cpp");

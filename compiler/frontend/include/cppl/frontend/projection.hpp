@@ -115,6 +115,18 @@ struct PathSplitMarker {
     source::SourceLocation location;
 };
 
+// The declaration an unsafe block is marked with (SPEC.md 26): a `bool` named
+// `name` just inside the block's `{`, in the analysis text only. The body
+// lowering reads it as the start of an unsafe region and does not lower the
+// block's statements as a path. A nested block has none: it is part of the
+// region that contains it.
+struct UnsafeBlockMarker {
+    std::string name;
+    std::size_t block_index = 0; // into Syntax::unsafe_blocks
+    std::optional<std::size_t> function_index;
+    source::SourceLocation location;
+};
+
 // The statement a split marker was projected from.
 [[nodiscard]] const ProofStatement* split_statement(const Syntax& syntax, const PathSplitMarker& marker);
 
@@ -182,6 +194,7 @@ struct Projection {
     std::vector<LoopInvariantMarker> loop_invariants;
     std::vector<PathContradictionMarker> path_contradictions;
     std::vector<PathSplitMarker> path_splits;
+    std::vector<UnsafeBlockMarker> unsafe_blocks;
     std::vector<PropositionProbe> proposition_probes;
     std::vector<RefinementProbe> refinement_probes;
     std::vector<RuntimeLowering> runtime_lowerings;

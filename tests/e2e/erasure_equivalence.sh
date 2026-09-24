@@ -111,4 +111,10 @@ equivalent refinements $'2 50 9 10 70 3 9\n16 4 4 8 12\n1 1 1 1\n2 1' \
 equivalent contextual_words '136 36 55 78 17 5 7 6 7' \
     'Laws proven: +1' 'Function contracts proven: +3'
 
+# SPEC: UNSAFE-001
+# `unsafe` leaves a function declaration and a block alike: the function, the
+# block's braces and every statement in it stay, and run as written.
+equivalent unsafe_boundaries '42 3 9 4' \
+    'Function contracts proven: +2' '  relying on unsafe code: +2' 'Unsafe regions: +5'
+
 echo 'erased C++L behaves as, and is the same code as, its ordinary C++ erasure in c++17, c++20 and c++23'

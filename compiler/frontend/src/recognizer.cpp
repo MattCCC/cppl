@@ -1652,6 +1652,13 @@ bool try_verified(const TokenStream& stream, std::size_t index, diagnostics::Eng
     if (also_pure) {
         ++type_start;
     }
+    if (tokens[type_start].is_identifier("unsafe")) {
+        report(engine, stream, tokens[type_start], diagnostics::Category::CpplSyntax,
+               "'unsafe' cannot be combined with 'verified'",
+               "an unsafe function is not verified: it marks a boundary whose safety is not established, so it "
+               "cannot also claim what 'verified' asks to be checked (SPEC.md UNSAFE-002)");
+        return false;
+    }
     if (type_start >= *name) {
         report(engine, stream, tokens[index], diagnostics::Category::CpplSyntax,
                "a verified function states a return type before its name");
@@ -2279,6 +2286,15 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
     // arms are read whole, so a claim inside one is the split's, never a
     // statement of its own.
     std::vector<Written> written_splits;
+    // Statements spelled `unsafe { ... }`, and declarations led by `unsafe`,
+    // decided the same way: `unsafe {x}` constructs a temporary wherever
+    // `unsafe` names a type (SPEC.md 3.1, GRAMMAR.md 22, 23).
+    std::vector<Written> written_unsafe_blocks;
+    struct WrittenUnsafeDeclaration {
+        std::size_t keyword = 0;
+        bool namespace_scope = false;
+    };
+    std::vector<WrittenUnsafeDeclaration> written_unsafe_declarations;
 
     std::size_t index = 0;
     while (index < tokens.size() && tokens[index].kind != TokenKind::EndOfFile) {
@@ -2358,6 +2374,18 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
                 index = *close + 1;
                 continue;
             }
+        }
+
+        // unsafe compound-statement  (GRAMMAR.md 22). The block's statements
+        // are ordinary C++ and are read on as usual, so the scan goes on into it.
+        if (tokens[index].is_identifier("unsafe") && index + 1 < tokens.size() &&
+            tokens[index + 1].is_punctuator("{") && !scopes.empty() && scopes.back() == ScopeKind::Block &&
+            at_statement_start(tokens, index)) {
+            if (const std::size_t close = matching_brace(tokens, index + 1); close < tokens.size()) {
+                written_unsafe_blocks.push_back(Written{index, close});
+            }
+            ++index;
+            continue;
         }
 
         if (!at_declaration_start(tokens, index)) {
@@ -2494,6 +2522,25 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
             }
         }
 
+        // unsafe T f(parameters);  (GRAMMAR.md 23, SPEC.md UNSAFE-001). Whether
+        // this is C++L is decided once the unit has been read. `unsafe` never
+        // waives what `verified` or `pure` asks for (UNSAFE-002), so it is not
+        // combined with either.
+        if (tokens[index].is_identifier("unsafe") && specifier_introduces_declaration(tokens, index)) {
+            if (tokens[index + 1].is_identifier("verified") || tokens[index + 1].is_identifier("pure")) {
+                report(engine, stream, tokens[index], diagnostics::Category::CpplSyntax,
+                       "'unsafe' cannot be combined with '" + std::string(tokens[index + 1].text) + "'",
+                       "an unsafe function is not verified: it marks a boundary whose safety is not established, so "
+                       "it cannot also claim what '" +
+                           std::string(tokens[index + 1].text) + "' asks to be checked (SPEC.md UNSAFE-002)");
+                index += 2;
+                continue;
+            }
+            written_unsafe_declarations.push_back(WrittenUnsafeDeclaration{index, at_namespace_scope()});
+            ++index;
+            continue;
+        }
+
         if (tokens[index].is_identifier("verified") && specifier_introduces_declaration(tokens, index)) {
             VerifiedFunction verified;
             std::size_t next = index + 1;
@@ -2531,6 +2578,14 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
 
         if (tokens[index].is_identifier("pure") && specifier_introduces_declaration(tokens, index)) {
             const std::optional<std::size_t> name = find_declarator_name(tokens, index);
+            if (tokens[index + 1].is_identifier("unsafe")) {
+                report(engine, stream, tokens[index + 1], diagnostics::Category::CpplSyntax,
+                       "'unsafe' cannot be combined with 'pure'",
+                       "an unsafe function is not verified: it marks a boundary whose safety is not established, so "
+                       "it cannot also claim what 'pure' asks to be checked (SPEC.md UNSAFE-002)");
+                index += 2;
+                continue;
+            }
             if (!name.has_value()) {
                 report(engine, stream, tokens[index], diagnostics::Category::CpplSyntax,
                        "the 'pure' specifier applies to a function declaration",
@@ -2751,6 +2806,134 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
                 syntax.path_contradictions.push_back(std::move(claim));
             }
             syntax.path_splits.push_back(std::move(split));
+        }
+    }
+
+    // `unsafe` follows the same rule: a block or a declaration is C++L only in a
+    // unit that uses the word for nothing else (SPEC.md 3.1). A use inside a
+    // law or a proof is C++L's own.
+    if (!written_unsafe_blocks.empty() || !written_unsafe_declarations.empty()) {
+        const auto claimed = [&](std::size_t at) {
+            return std::ranges::any_of(written_unsafe_blocks,
+                                       [at](const Written& written) { return written.keyword == at; }) ||
+                   std::ranges::any_of(written_unsafe_declarations,
+                                       [at](const WrittenUnsafeDeclaration& written) { return written.keyword == at; });
+        };
+        std::optional<std::size_t> other;
+        for (std::size_t at = 0; at < tokens.size() && !other.has_value(); ++at) {
+            if (tokens[at].is_identifier("unsafe") && !in_proof(tokens[at]) && !claimed(at)) {
+                other = at;
+            }
+        }
+        if (other.has_value()) {
+            const auto warn = [&](std::size_t at) {
+                diagnostics::Diagnostic diagnostic;
+                diagnostic.severity = diagnostics::Severity::Warning;
+                diagnostic.category = diagnostics::Category::CpplSyntax;
+                diagnostic.message = "'unsafe' is also a name in this translation unit, so this is ordinary C++, not "
+                                     "an unsafe boundary";
+                diagnostic.location = stream.location_of(tokens[at]);
+                diagnostic.notes.push_back(
+                    diagnostics::Note{"the name is used here", stream.location_of(tokens[*other])});
+                engine.report(std::move(diagnostic));
+            };
+            for (const Written& written : written_unsafe_blocks) {
+                warn(written.keyword);
+            }
+            for (const WrittenUnsafeDeclaration& written : written_unsafe_declarations) {
+                warn(written.keyword);
+            }
+        } else {
+            for (const Written& written : written_unsafe_blocks) {
+                const Token& open = tokens[written.keyword + 1];
+                const Token& close = tokens[written.terminator];
+                UnsafeBlock block;
+                block.keyword = tokens[written.keyword].span;
+                block.location = stream.location_of(tokens[written.keyword]);
+                block.body = source::ByteSpan{open.span.offset, close.span.end() - open.span.offset};
+                block.nested = std::ranges::any_of(written_unsafe_blocks, [&written](const Written& outer) {
+                    return outer.keyword != written.keyword && outer.keyword < written.keyword &&
+                           written.keyword < outer.terminator;
+                });
+                block.body_open = open.span.end();
+                block.body_open_line = open.line;
+                block.body_open_column = open.column + 1;
+                if (const auto body = std::ranges::find_if(verified_bodies,
+                                                           [&written](const VerifiedBody& candidate) {
+                                                               return candidate.open < written.keyword &&
+                                                                      written.keyword < candidate.close;
+                                                           });
+                    body != verified_bodies.end()) {
+                    block.function_index = body->function;
+                }
+                syntax.unsafe_blocks.push_back(block);
+            }
+            for (const WrittenUnsafeDeclaration& written : written_unsafe_declarations) {
+                const Token& keyword = tokens[written.keyword];
+                const std::optional<std::size_t> name = find_declarator_name(tokens, written.keyword);
+                if (!name.has_value()) {
+                    report(engine, stream, keyword, diagnostics::Category::CpplSyntax,
+                           "the 'unsafe' specifier applies to a function declaration",
+                           "no function declarator follows this specifier; there is no unsafe expression form "
+                           "(SPEC.md UNSAFE-002)");
+                    continue;
+                }
+                if (!written.namespace_scope) {
+                    report(engine, stream, keyword, diagnostics::Category::UnsupportedSemantics,
+                           "'unsafe' is applied outside namespace scope",
+                           "this implementation recognizes unsafe functions at namespace scope only");
+                    continue;
+                }
+                // Nothing checks an unsafe function, so a contract on one would
+                // be a fact its callers rest on that no proof and no trusted
+                // law states (UNSAFE-003, UNSAFE-004).
+                if (std::size_t clause_index = 0; has_specification_clause(tokens, *name, clause_index)) {
+                    report(engine, stream, tokens[clause_index], diagnostics::Category::CpplSyntax,
+                           "an unsafe function states no contract",
+                           "nothing checks an unsafe function, so its callers could not rely on this clause; verify "
+                           "the function, or state the property as a trusted law (SPEC.md UNSAFE-003, UNSAFE-004)");
+                    record_unchecked_clauses(stream, written.keyword, *name, engine, syntax);
+                    continue;
+                }
+                UnsafeFunction function;
+                function.keyword = keyword.span;
+                function.keyword_location = stream.location_of(keyword);
+                function.function_name = std::string(tokens[*name].text);
+                function.function_location = stream.location_of(tokens[*name]);
+                function.function_offset = tokens[*name].span.offset;
+                syntax.unsafe_functions.push_back(std::move(function));
+            }
+        }
+    }
+
+    // What an unsafe block holds is runtime code whose safety is not
+    // established, so no statement inside one is a path the verifier walks.
+    // Proof syntax there would state an obligation nothing discharges, and is
+    // refused rather than dropped (SPEC.md UNSAFE-003).
+    const auto inside_unsafe = [&syntax](std::size_t offset) {
+        return std::ranges::any_of(syntax.unsafe_blocks, [offset](const UnsafeBlock& block) {
+            return offset > block.body.offset && offset < block.body.end();
+        });
+    };
+    for (const LoopSpecification& loop : syntax.loops) {
+        if (inside_unsafe(loop.keyword.offset)) {
+            report(engine, loop.keyword_location, diagnostics::Category::UnsupportedSemantics,
+                   "a loop specification inside an unsafe block would not be checked",
+                   "an unsafe block's statements are not verified, so move the loop out of it or drop its clauses");
+        }
+    }
+    for (const PathContradiction& claim : syntax.path_contradictions) {
+        if (!claim.split.has_value() && inside_unsafe(claim.span.offset)) {
+            report(engine, claim.statement.location, diagnostics::Category::UnsupportedSemantics,
+                   "a claim that a path cannot occur inside an unsafe block would not be checked",
+                   "an unsafe block's statements are not a path the verifier walks");
+        }
+    }
+    for (const PathCaseSplit& split : syntax.path_splits) {
+        if (inside_unsafe(split.span.offset)) {
+            report(engine, split.statement.location, diagnostics::Category::UnsupportedSemantics,
+                   "a case split inside an unsafe block would not be checked",
+                   "an unsafe block's statements are not a path the verifier walks");
         }
     }
 

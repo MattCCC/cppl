@@ -50,6 +50,16 @@ call-capability-pointer	compiler/obligations/src/contracts.cpp	candidate.place.r
 call-capability-extent	compiler/obligations/src/contracts.cpp	if (required.extent.empty() && holding->extent.empty()) {	if (true || (required.extent.empty() && holding->extent.empty())) {	^negative_memory_capabilities$
 memory-assumption-trusted-only	compiler/elaboration/src/elaborate.cpp	    if (!declaration.trusted) {	    if (false && !declaration.trusted) {	^negative_trusted_dependencies$
 verified-specifier-span	compiler/frontend/src/recognizer.cpp	verified.keyword = tokens[index].span;	verified.keyword = source::ByteSpan{tokens[specifiers_start(tokens, index)].span.offset, tokens[index].span.end() - tokens[specifiers_start(tokens, index)].span.offset};	^e2e_erasure_equivalence$
+unsafe-block-havoc	clang/src/bridge.cpp	const std::vector<std::size_t> reached = unsafe_reach(state);	const std::vector<std::size_t> reached;	^negative_unsafe_boundary$
+unsafe-names-escape	clang/src/bridge.cpp	lowering.escaped.insert(named);	(void)named;	^negative_unsafe_boundary$
+unsafe-revokes-capabilities	clang/src/bridge.cpp	revoked_by = where;	(void)where;	^negative_unsafe_boundary$
+unsafe-revokes-call-capabilities	compiler/obligations/src/contracts.cpp	scope.unsafe = location;	(void)location;	^negative_unsafe_boundary$
+unsafe-control-stays-in-block	clang/src/bridge.cpp	left = leaves_block(block, 0, 0, 0)	left = (false ? leaves_block(block, 0, 0, 0) : std::optional<std::string>{})	^negative_unsafe_boundary$
+unsafe-call-outside-block	compiler/elaboration/src/elaborate.cpp	if (unsafe_call != callees.end()) {	if (false && unsafe_call != callees.end()) {	^negative_unsafe_boundary$
+unsafe-pure-refused	compiler/elaboration/src/elaborate.cpp	candidate.pure && contains_unsafe_region(	false && contains_unsafe_region(	^negative_unsafe_boundary$
+unsafe-contract-refused	compiler/frontend/src/recognizer.cpp	if (std::size_t clause_index = 0; has_specification_clause(tokens, *name, clause_index)) {	if (std::size_t clause_index = 0; false && has_specification_clause(tokens, *name, clause_index)) {	^negative_unsafe_boundary$|^unit_recognizer_test$
+unsafe-closure-through-calls	compiler/obligations/src/trust.cpp	regions[index].emplace(where, UnsafeDependency{region.location, false}).second	(false && regions[index].emplace(where, UnsafeDependency{region.location, false}).second)	^e2e_unsafe_boundary$
+unsafe-not-assumption-free	compiler/driver/src/driver.cpp	return claim.premises.empty() && claim.unsafe.empty();	return claim.premises.empty();	^e2e_unsafe_boundary$
 MUTATIONS
 )
 
