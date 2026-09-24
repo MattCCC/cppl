@@ -1,5 +1,10 @@
 cmake_minimum_required(VERSION 3.25)
 
+# Apple's linker warns on every repeated static library; CMake 3.29+ drops repeats only where the linker allows it.
+if(POLICY CMP0156)
+    cmake_policy(SET CMP0156 NEW)
+endif()
+
 project(
     cppl
     VERSION 0.0.1
