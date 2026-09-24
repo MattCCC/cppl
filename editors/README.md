@@ -67,13 +67,14 @@ An extension's own Clang-argument setting adds flags after the build's.
 
 ### Plain C++ files
 
-Every client registers the server for the `cppl` language only: `.cppl` files,
-and whatever a project maps to that language. The server handles plain C++
-exactly as Clang does, since C++ is C++L with no Laws in it, so a C++L project
-can hand it its `.cpp` files too. It never claims C++ files on its own: two
-language servers on one file publish two diagnostic streams for it, so a file
-has one owner, chosen by the project. Where `cppl-lsp` owns a project's C++,
-turn off the other C++ extension's IntelliSense for those files.
+Every client registers the server for the `cppl` language: `.cppl` files, and
+whatever a project maps to that language. The server handles plain C++ exactly
+as Clang does, since C++ is C++L with no Laws in it, so a C++L project can hand
+it its `.cpp` files too. In VS Code, `cppl.serveCpp` does this for every C++
+file. It is off by default, and no client claims C++ files on its own. Two
+language servers on one file publish two diagnostic streams for it, so each
+file should have one owner, and the project chooses it. Where `cppl-lsp` owns a
+project's C++, turn off the other C++ extension's IntelliSense for those files.
 
 The server's semantic tokens color what the grammar cannot: a proof statement
 spelled like a C++ declaration, such as `exact h;` or `contradiction name;`,

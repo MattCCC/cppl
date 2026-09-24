@@ -1111,11 +1111,12 @@ It routes the relevant semantic work to Clang.
 
 A file with no C++L at all is handed to Clang exactly as written, so every
 editor service works on plain C++ as it does on C++L. Which files the server
-owns is still the editor's choice, made per file or per project: the clients
-register it for the `cppl` language only, and a project that wants its `.cpp`
-files served by `cppl-lsp` maps them to that language. It never claims every
-C++ file by default, since two servers on one file would publish two
-diagnostic streams for it (see "Why `cppl-lsp` owns the whole file").
+owns is still the editor's choice, made per file or per project. The clients
+register it for the `cppl` language, and a project that wants its `.cpp` files
+served by `cppl-lsp` maps them to that language. VS Code's `cppl.serveCpp` does
+this for every C++ file. By default nothing claims every C++ file, since two
+servers on one file would publish two diagnostic streams for it (see "Why
+`cppl-lsp` owns the whole file").
 
 ---
 
@@ -1423,7 +1424,8 @@ pipeline.
 
 A thin client extension lives at `editors/vscode/`. It starts
 `build/dev/bin/cppl-lsp` as a child process and registers it for the `cppl`
-language ID only — it never takes over ordinary `.cpp` files.
+language ID. It takes over ordinary `.cpp` files only when `cppl.serveCpp` is
+on.
 
 To try it against the repository's own fixtures:
 

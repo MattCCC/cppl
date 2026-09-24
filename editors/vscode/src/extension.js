@@ -2,10 +2,10 @@
 //
 // This extension owns no C++L semantics. It locates the cppl-lsp
 // executable, starts it as a child process speaking LSP over stdio, and
-// registers the client for the `cppl` language ID only -- it never attaches
-// to ordinary `cpp` documents (tools/cppl-lsp/README.md, "Editor
-// architecture"). Diagnostics, formatting and code actions all come from the
-// server; nothing here re-derives them.
+// registers the client for the `cppl` language ID. It attaches to ordinary
+// `cpp` documents only when `cppl.serveCpp` asks it to (tools/cppl-lsp/
+// README.md, "Editor architecture"). Diagnostics, formatting and code actions
+// all come from the server; nothing here re-derives them.
 
 const path = require("path");
 const fs = require("fs");
@@ -13,7 +13,24 @@ const vscode = require("vscode");
 const { LanguageClient, TransportKind } = require("vscode-languageclient/node");
 
 let client;
+let starting;
 let outputChannel;
+
+function servesCpp() {
+  return vscode.workspace.getConfiguration("cppl").get("serveCpp") === true;
+}
+
+function served(document) {
+  return document.uri.scheme === "file" && (document.languageId === "cppl" || (servesCpp() && document.languageId === "cpp"));
+}
+
+function documentSelector() {
+  const selector = [{ scheme: "file", language: "cppl" }];
+  if (servesCpp()) {
+    selector.push({ scheme: "file", language: "cpp" });
+  }
+  return selector;
+}
 
 function builtServerPath(workspaceRoot) {
   const executable = process.platform === "win32" ? "cppl-lsp.exe" : "cppl-lsp";
@@ -64,7 +81,7 @@ async function startClient() {
   };
 
   const clientOptions = {
-    documentSelector: [{ scheme: "file", language: "cppl" }],
+    documentSelector: documentSelector(),
     outputChannel,
     // A half-typed buffer is the normal state of a file being edited, so a
     // failed start must report itself rather than surface as an unhandled
@@ -83,12 +100,30 @@ async function startClient() {
 }
 
 async function stopClient() {
+  if (starting) {
+    await starting;
+  }
   if (!client) {
     return;
   }
   const stopping = client.stop();
   client = undefined;
   await stopping;
+}
+
+// The server starts once a document it serves is open, so a C++ workspace
+// that never opens a C++L file never runs it unless `cppl.serveCpp` is on.
+async function ensureStarted() {
+  if (client || starting) {
+    return starting;
+  }
+  if (!vscode.workspace.textDocuments.some(served)) {
+    return undefined;
+  }
+  starting = startClient().finally(() => {
+    starting = undefined;
+  });
+  return starting;
 }
 
 async function activate(context) {
@@ -103,10 +138,22 @@ async function activate(context) {
     }),
     vscode.commands.registerCommand("cppl.showOutput", () => {
       outputChannel.show();
+    }),
+    vscode.workspace.onDidOpenTextDocument((document) => {
+      if (served(document)) {
+        ensureStarted();
+      }
+    }),
+    // Which documents the client serves is fixed when it starts.
+    vscode.workspace.onDidChangeConfiguration(async (event) => {
+      if (event.affectsConfiguration("cppl.serveCpp")) {
+        await stopClient();
+        await ensureStarted();
+      }
     })
   );
 
-  await startClient();
+  await ensureStarted();
 }
 
 function deactivate() {

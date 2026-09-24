@@ -5,7 +5,8 @@ C++L language server.
 
 This extension owns no C++L semantics. It locates the `cppl-lsp` executable,
 starts it as a child process speaking LSP over stdio, and registers itself for
-the `cppl` language ID only. It does not attach to ordinary `.cpp` files.
+the `cppl` language ID. It attaches to ordinary `.cpp` files only when
+`cppl.serveCpp` is on.
 
 ## Install
 
@@ -42,10 +43,34 @@ instead. See [`editors/README.md`](../README.md) for the publishing process.
 | `cppl.serverPath` | `build/dev/bin/cppl-lsp`, then `PATH` | Path to the `cppl-lsp` executable. |
 | `cppl.clangPath` | (cppl-lsp's own default) | Clang driver, forwarded as `cppl-lsp --clang`. |
 | `cppl.clangArguments` | `[]` | Extra flags for Clang, one `--clang-arg` per entry, after the flags the file's `compile_commands.json` entry gives it. |
+| `cppl.serveCpp` | `false` | Also serve ordinary C++ files (the `cpp` language). See "Serving all C++" below. |
 | `cppl.trace.server` | `off` | Trace JSON-RPC traffic to the output channel. |
 
 Commands: **C++L: Restart Language Server** and **C++L: Show Language Server
 Output**.
+
+### Serving all C++
+
+With `cppl.serveCpp` on, `cppl-lsp` also serves every `.cpp` and header file:
+
+- diagnostics from the compiler;
+- navigation, references, hover, completion, signature help, outline, folding
+  and selection, all from Clang;
+- formatting.
+
+C++ is C++L with no Laws in it, so a C++L project can let one server read all
+of its code.
+
+The setting is off by default. Another C++ extension, such as Microsoft's
+C/C++ or clangd, usually serves those files. Two servers on one file publish
+two sets of diagnostics and answer every request twice. So when this is on,
+turn the other extension's IntelliSense off for the files `cppl-lsp` serves
+(for Microsoft's C/C++, `"C_Cpp.intelliSenseEngine": "disabled"`).
+
+The server starts only once a file it serves is open. A workspace that never
+opens a C++L file does not run it unless this setting is on.
+
+### Build flags
 
 Each file is read with the flags its build compiles it with, taken from the
 nearest `compile_commands.json`. That file can be in the file's directory, in a

@@ -15,7 +15,7 @@
   },
   "categories": ["Programming Languages", "Linters", "Formatters"],
   "keywords": ["cppl", "c++", "verification", "proofs"],
-  "activationEvents": ["onLanguage:cppl"],
+  "activationEvents": ["onLanguage:cppl", "onLanguage:cpp"],
   "main": "./src/extension.js",
   "contributes": {
     "languages": [
@@ -72,6 +72,11 @@
           "items": { "type": "string" },
           "default": [],
           "description": "Extra arguments forwarded to Clang for every document (include paths, defines, -std=), forwarded as repeated cppl-lsp --clang-arg. They follow the flags the document's compile_commands.json entry gives it, which are read automatically."
+        },
+        "cppl.serveCpp": {
+          "type": "boolean",
+          "default": false,
+          "description": "Also serve ordinary C++ files (the cpp language) from cppl-lsp: diagnostics, navigation, completion, hover, outline and formatting. Off by default, because another C++ extension usually serves them and two servers on one file publish two sets of diagnostics. When it is on, turn that extension's IntelliSense off for the files cppl-lsp serves."
         },
         "cppl.trace.server": {
           "type": "string",
