@@ -33,6 +33,7 @@ editors/
 | Verification status (code lens) | `cppl-lsp` | yes | unverified | unverified | yes |
 | Outline (document symbols) | `cppl-lsp` | yes | unverified | unverified | yes |
 | Folding, expand selection | `cppl-lsp` | yes | unverified | unverified | unverified |
+| Inlay hints (parameter names, deduced types) | `cppl-lsp` | yes | unverified | unverified | unverified |
 | Build flags from `compile_commands.json` | `cppl-lsp` | yes | yes | yes | yes |
 | Syntax coloring | `editors/shared` | yes | — | — | yes |
 | Proof-statement coloring | `cppl-lsp` | yes | unverified | unverified | yes |

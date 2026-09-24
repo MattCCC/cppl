@@ -316,6 +316,8 @@ class Dispatcher {
             handle_folding_range(id_value, params);
         } else if (method == "textDocument/selectionRange") {
             handle_selection_range(id_value, params);
+        } else if (method == "textDocument/inlayHint") {
+            handle_inlay_hint(id_value, params);
         } else if (is_request) {
             respond_error(*id_value, kMethodNotFound, "method not found: " + method);
         } else {
@@ -463,6 +465,8 @@ class Dispatcher {
         // the C++L structure the recognizer found.
         capabilities.set("foldingRangeProvider", json::Value(true));
         capabilities.set("selectionRangeProvider", json::Value(true));
+        // Parameter names at arguments and the types `auto` deduced, from Clang.
+        capabilities.set("inlayHintProvider", json::Value(true));
 
         // What became of each Law's, proof's and verified function's
         // obligations, stated over its name; a lens runs no command.
@@ -971,6 +975,44 @@ class Dispatcher {
             }
             if (!fold.kind.empty()) {
                 item.set("kind", json::Value(fold.kind));
+            }
+            items.push_back(std::move(item));
+        }
+        respond_result(*id, std::move(items));
+    }
+
+    void handle_inlay_hint(const json::Value* id, const json::Value* params) {
+        if (id == nullptr) {
+            return;
+        }
+        const json::Value* document = params != nullptr ? params->find("textDocument") : nullptr;
+        const auto uri = document != nullptr ? document->find_string("uri") : std::nullopt;
+        const json::Value* range_value = params != nullptr ? params->find("range") : nullptr;
+        const std::optional<Range> range = range_value != nullptr ? parse_range(*range_value) : std::nullopt;
+        if (!uri || !range) {
+            respond_error(*id, kInvalidParams,
+                          "textDocument/inlayHint needs 'textDocument.uri' and a well-formed 'range'");
+            return;
+        }
+        TextDocumentIdentifier document_id;
+        document_id.uri = *uri;
+        const std::optional<std::vector<InlayHint>> hints = server_.text_document_inlay_hint(document_id, *range);
+        if (!hints.has_value()) {
+            respond_result(*id, json::Value(nullptr));
+            return;
+        }
+        json::Value items = json::Value::array();
+        for (const InlayHint& hint : *hints) {
+            json::Value item = json::Value::object();
+            json::Value position = json::Value::object();
+            position.set("line", json::Value(hint.position.line));
+            position.set("character", json::Value(hint.position.character));
+            item.set("position", std::move(position));
+            item.set("label", json::Value(hint.label));
+            item.set("kind", json::Value(static_cast<int>(hint.kind)));
+            // A parameter's name reads `name: argument`; a type `name: type`.
+            if (hint.kind == InlayHintKind::Parameter) {
+                item.set("paddingRight", json::Value(true));
             }
             items.push_back(std::move(item));
         }

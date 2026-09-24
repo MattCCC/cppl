@@ -114,6 +114,12 @@ The folding arrows in the gutter come from the server when
 - proof bodies and `cases` arms;
 - Laws and refinement types that span several lines.
 
+Inlay hints show, inside the text, the name of the parameter each argument is
+passed to and the type each variable declared `auto` was deduced as.
+`editor.inlayHints.enabled` turns them on and off. A call inside a Law's
+proposition is annotated where the Law writes it. An argument that already
+spells its parameter's name gets no hint.
+
 Expand Selection and Shrink Selection (`Shift+Alt+Right` and `Shift+Alt+Left`)
 grow a selection one construct at a time. For C++, that is what Clang parsed.
 For C++L, it runs through a clause, a proof statement, an arm, a proof body and

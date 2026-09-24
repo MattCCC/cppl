@@ -125,6 +125,18 @@ CPPL_TEST(every_cpp_body_and_include_run_folds) {
     expect(folds_of(text), "0-1(imports) 3-21 5-7 10-12 15-19 16-17", __LINE__);
 }
 
+CPPL_TEST(a_body_in_an_expression_a_macro_begins_still_folds) {
+    // Clang places an expression that begins with a macro in the macro, not in
+    // the file, though the file writes the lambda inside it.
+    expect(folds_of("#define ONE 1\n"
+                    "int f() {\n"
+                    "    return ONE + [] {\n"
+                    "        return 2;\n"
+                    "    }();\n"
+                    "}\n"),
+           "1-4 2-3", __LINE__);
+}
+
 CPPL_TEST(a_client_that_folds_within_lines_folds_between_the_braces) {
     expect(folds_of("int f() {\n    return 1;\n}\n", false), "0:9-2:0", __LINE__);
     expect(folds_of("int f() {\n    return 1;\n}\n", true), "0-1", __LINE__);

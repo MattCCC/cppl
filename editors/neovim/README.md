@@ -62,6 +62,8 @@ require("cppl").setup({
   -- Fold by the server's folding ranges (0.11 and newer), all folds open at
   -- first; false leaves the window's folding as you configured it.
   folding = true,
+  -- Parameter names at arguments and `auto`'s deduced types, inline.
+  inlay_hints = true,
 })
 ```
 
@@ -115,6 +117,12 @@ ranges (`foldexpr` set to `vim.lsp.foldexpr()`). Folds cover C++ bodies,
 `#include` runs, conditional branches, comment blocks, proof bodies, `cases`
 arms, and multi-line Laws and refinement types. Every fold starts open, and
 `zc`, `zo` and `zM` work as usual.
+
+`setup()` also turns on inlay hints for C++L buffers
+(`vim.lsp.inlay_hint.enable()`). Each argument shows the name of the parameter
+it is passed to, unless it already spells that name. Each variable declared
+`auto` shows the type it was deduced as. A call inside a Law's proposition is
+annotated where the Law writes it. `inlay_hints = false` leaves them off.
 
 The server also answers `textDocument/selectionRange`: each step selects a
 construct that holds the one before it, whether Clang parsed it or the C++L

@@ -195,6 +195,20 @@ struct ClientCapabilities {
     bool line_folding_only = false;
 };
 
+enum class InlayHintKind : std::uint8_t {
+    Type = 1,
+    Parameter = 2,
+};
+
+// A label shown inside the text without being written there (LSP
+// `InlayHint`): a parameter's name before an argument, a deduced type after a
+// name.
+struct InlayHint {
+    Position position;
+    std::string label;
+    InlayHintKind kind = InlayHintKind::Parameter;
+};
+
 // A region a client may fold away (LSP `FoldingRange`). A body folds between
 // its braces, for a client that folds within lines; anything else folds whole
 // lines and states no characters.

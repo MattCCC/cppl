@@ -28,6 +28,9 @@ local defaults = {
   -- Fold by the server's folding ranges (0.11 and newer), every fold open
   -- when the buffer is shown. Off leaves the window's folding as configured.
   folding = true,
+  -- Show each argument's parameter name and each `auto`'s deduced type
+  -- inline (0.10 and newer).
+  inlay_hints = true,
 }
 
 M.options = vim.deepcopy(defaults)
@@ -173,6 +176,9 @@ function M.setup(options)
             end)
           end,
         })
+      end
+      if M.options.inlay_hints and vim.lsp.inlay_hint ~= nil and client.server_capabilities.inlayHintProvider then
+        vim.lsp.inlay_hint.enable(true, { bufnr = event.buf })
       end
       if M.options.folding and vim.lsp.foldexpr ~= nil and client.server_capabilities.foldingRangeProvider then
         for _, window in ipairs(vim.fn.win_findbuf(event.buf)) do

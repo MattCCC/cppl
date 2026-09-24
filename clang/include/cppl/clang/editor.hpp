@@ -185,6 +185,21 @@ struct Fold {
     Extent extent;
 };
 
+// A label an editor shows inside the text without it being written there.
+struct Hint {
+    enum class Kind : std::uint8_t {
+        // The name of the parameter an argument is passed to, before the
+        // argument.
+        Parameter,
+        // The type `auto` was deduced as, after the name it declares.
+        Type,
+    };
+    Kind kind = Kind::Parameter;
+    // Where the label stands: an argument's first byte, or just past a name.
+    FilePosition at;
+    std::string label;
+};
+
 // What encloses a position, as far as what may be declared there goes.
 enum class Scope : std::uint8_t {
     Namespace,
@@ -298,6 +313,13 @@ class EditorUnit {
     // expression, the statements and blocks around it, the declaration, the
     // classes and namespaces around that.
     [[nodiscard]] std::vector<Extent> enclosing(std::size_t offset) const;
+
+    // The hints for the main file's text: the name of the parameter each
+    // written argument of a call is passed to, and the type each variable
+    // declared `auto` was deduced as. An argument that already spells its
+    // parameter's name, one a macro wrote, a default argument, an overloaded
+    // operator's operands and a lambda's type get none.
+    [[nodiscard]] std::vector<Hint> hints() const;
 
   private:
     struct State;

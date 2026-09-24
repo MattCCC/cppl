@@ -106,6 +106,12 @@ class EditorView {
     // the recognizer found that holds it, each holding the one before.
     [[nodiscard]] std::vector<Range> selection(const Position& position) const;
 
+    // The hints Clang gives for the part of the document `range` covers, each
+    // where the text it annotates was written: an argument inside a Law's
+    // proposition is annotated where the Law writes it, and nothing the
+    // projection generated is annotated at all.
+    [[nodiscard]] std::vector<InlayHint> inlay_hints(const Range& range) const;
+
     // The number of refreshes that had to parse the unit from scratch, for
     // tests that check an edit reuses what Clang kept.
     [[nodiscard]] std::size_t parses() const noexcept {

@@ -1,6 +1,7 @@
-// Folding and selection ranges (editor_view.hpp): the structure Clang parsed
-// and the C++L structure the recognizer found, traced back to the text as
-// written. Nothing here reads C++ or C++L structure from the text itself.
+// Folding and selection ranges and inlay hints (editor_view.hpp): the
+// structure Clang parsed and the C++L structure the recognizer found, traced
+// back to the text as written. Nothing here reads C++ or C++L structure from
+// the text itself.
 
 #include "cppl/clang/editor.hpp"
 #include "cppl/frontend/structure.hpp"
@@ -247,6 +248,36 @@ std::vector<Range> EditorView::selection(const Position& position) const {
         chain.push_back(Range{position, position});
     }
     return chain;
+}
+
+std::vector<InlayHint> EditorView::inlay_hints(const Range& range) const {
+    std::vector<InlayHint> hints;
+    if (main_ == nullptr || unit_ == nullptr) {
+        return hints;
+    }
+    const ProjectedFile& file = *main_;
+    const PositionMapper mapper(file.text());
+    const std::size_t begin = mapper.position_to_byte_offset(range.start);
+    const std::size_t end = mapper.position_to_byte_offset(range.end);
+    for (const clangbridge::Hint& hint : unit_->hints()) {
+        // A parameter hint stands before an argument's first byte, a type hint
+        // just past a name's last.
+        std::optional<std::size_t> at;
+        if (hint.kind == clangbridge::Hint::Kind::Parameter) {
+            at = file.to_written(hint.at.offset);
+        } else if (hint.at.offset > 0) {
+            if (const std::optional<std::size_t> last = file.to_written(hint.at.offset - 1)) {
+                at = *last + 1;
+            }
+        }
+        if (!at.has_value() || *at < begin || *at > end) {
+            continue;
+        }
+        hints.push_back(InlayHint{mapper.byte_offset_to_position(*at), hint.label,
+                                  hint.kind == clangbridge::Hint::Kind::Parameter ? InlayHintKind::Parameter
+                                                                                  : InlayHintKind::Type});
+    }
+    return hints;
 }
 
 } // namespace cppl::lsp

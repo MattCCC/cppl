@@ -148,6 +148,12 @@ class Server {
     [[nodiscard]] std::optional<std::vector<std::vector<Range>>> text_document_selection_range(
         const TextDocumentIdentifier& id, const std::vector<Position>& positions);
 
+    // The parameter names and deduced types Clang gives for `range` of the
+    // document (LSP `textDocument/inlayHint`). `std::nullopt` means the
+    // document is unknown.
+    [[nodiscard]] std::optional<std::vector<InlayHint>> text_document_inlay_hint(const TextDocumentIdentifier& id,
+                                                                                 const Range& range);
+
     [[nodiscard]] const ClientCapabilities& client_capabilities() const noexcept {
         return client_;
     }

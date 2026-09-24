@@ -1403,6 +1403,7 @@ AI output must always be independently verified.
 | LSP: document outline                | `PROTOTYPE`   |
 | LSP: folding and selection ranges    | `PROTOTYPE`   |
 | LSP: build flags (compile_commands)  | `PROTOTYPE`   |
+| LSP: inlay hints                     | `PROTOTYPE`   |
 | LSP: other token kinds               | `NOT STARTED` |
 | IDE proof goals                      | `PROTOTYPE`   |
 | Proof navigation                     | `PROTOTYPE`   |
@@ -1495,6 +1496,11 @@ entry's container.
 It also folds each C++L proof body, arm block, arm body, bodiless Law and
 refinement type that the recognizer found, and each comment block or run of
 whole-line comments that the frontend's lexer passed over.
+
+`inlayHintProvider` labels each argument with the name of its parameter and
+each variable declared `auto` with its deduced type, from Clang, where the text
+was written. An argument that already spells the name, a default argument, an
+overloaded operator's operands and a call a macro's body writes get none.
 
 `selectionRangeProvider` grows a selection from the token under the cursor. It
 goes through each construct Clang parsed and each C++L span the recognizer

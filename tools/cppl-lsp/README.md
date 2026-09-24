@@ -48,6 +48,8 @@ textDocument/foldingRange                   C++ bodies, includes, conditionals
                                             from Clang; C++L from the frontend
 textDocument/selectionRange                 Clang's constructs and the
                                             recognizer's C++L spans, nested
+textDocument/inlayHint                      parameter names, deduced types,
+                                            from Clang
 ```
 
 Diagnostics come from `driver::compile_buffer` over the live buffer — the same
@@ -172,8 +174,8 @@ The server advertises `textDocumentSync`, `documentFormattingProvider`,
 document, one token type, `keyword`), `definitionProvider`,
 `declarationProvider`, `typeDefinitionProvider`, `implementationProvider`,
 `referencesProvider`, `documentHighlightProvider`, `codeLensProvider`,
-`signatureHelpProvider`, `documentSymbolProvider`, `foldingRangeProvider` and
-`selectionRangeProvider`.
+`signatureHelpProvider`, `documentSymbolProvider`, `foldingRangeProvider`,
+`selectionRangeProvider` and `inlayHintProvider`.
 The rest of navigation specified below, and the semantic-token categories
 beyond proof-statement keywords, are not implemented and not advertised: an
 editor is told what the server can do, never what it intends to do.
@@ -761,6 +763,26 @@ the cursor. Each step is a construct that holds the one before it:
 - and the recognizer's C++L spans, in this order: a clause's expression, the
   clause, a proof statement, an arm's body, the arm, the arms, the statement,
   a proof's body, and the declaration.
+
+### Inlay hints
+
+Inlay hints are Clang's, read back through the source map. Each argument of a
+call is labelled with the name of the parameter it is passed to, and each
+variable declared `auto` with the type it was deduced as. A call inside a Law's
+proposition or a contract is labelled where the author wrote it. The projection
+repeats that text in generated declarations, but each argument is labelled
+once, and nothing generated is labelled.
+
+Some arguments are not labelled:
+
+- one that already spells its parameter's name;
+- a default argument, which is written nowhere;
+- the operands of an overloaded operator;
+- the arguments of a call that a macro's body writes.
+
+A macro used as an argument is labelled where it is used. A lambda's type, a
+type still to be deduced in a template, and a type longer than 32 characters
+are not shown.
 
 ---
 

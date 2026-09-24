@@ -287,6 +287,15 @@ std::optional<std::vector<FoldingRange>> Server::text_document_folding_range(con
     return view->folding_ranges(client_.line_folding_only);
 }
 
+std::optional<std::vector<InlayHint>> Server::text_document_inlay_hint(const TextDocumentIdentifier& id,
+                                                                       const Range& range) {
+    EditorView* view = view_for(id.uri);
+    if (view == nullptr) {
+        return std::nullopt;
+    }
+    return view->inlay_hints(range);
+}
+
 std::optional<std::vector<std::vector<Range>>> Server::text_document_selection_range(
     const TextDocumentIdentifier& id, const std::vector<Position>& positions) {
     EditorView* view = view_for(id.uri);

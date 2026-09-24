@@ -41,6 +41,16 @@ bool same(CXCursor lhs, CXCursor rhs) {
     return clang_equalCursors(lhs, rhs) != 0;
 }
 
+// Whether a walk of the main file keeps `cursor`, met beneath `parent`. At the
+// top of the unit, a declaration is kept only when the main file writes it,
+// since every header's declarations are the unit's too. Beneath one,
+// everything is kept: Clang places an expression a macro began in the macro,
+// not in the file, though the file writes the rest of it.
+bool in_main_file(CXCursor cursor, CXCursor parent) {
+    return clang_getCursorKind(parent) != CXCursor_TranslationUnit ||
+           clang_Location_isFromMainFile(clang_getCursorLocation(cursor)) != 0;
+}
+
 // What a unit reads in place of the disk. The strings stay owned by `files`,
 // which outlives every call that is handed the result.
 std::vector<CXUnsavedFile> unsaved_view(const std::vector<FileContent>& files) {
@@ -469,6 +479,116 @@ struct EditorUnit::State {
             return std::nullopt;
         }
         return extent;
+    }
+
+    // Where `cursor` starts in the main file, when that is where it is written
+    // rather than where a macro that wrote it is used.
+    [[nodiscard]] std::optional<FilePosition> written_start(CXCursor cursor) const {
+        const CXSourceLocation start = clang_getRangeStart(clang_getCursorExtent(cursor));
+        CXFile expanded_in = nullptr;
+        CXFile spelled_in = nullptr;
+        unsigned expanded = 0;
+        unsigned spelled = 0;
+        clang_getExpansionLocation(start, &expanded_in, nullptr, nullptr, &expanded);
+        clang_getSpellingLocation(start, &spelled_in, nullptr, nullptr, &spelled);
+        if (expanded_in == nullptr || spelled_in == nullptr || clang_File_isEqual(expanded_in, spelled_in) == 0 ||
+            expanded != spelled) {
+            return std::nullopt;
+        }
+        FilePosition at = place(start);
+        if (!at.in_main_file) {
+            return std::nullopt;
+        }
+        return at;
+    }
+
+    // The names of what `callee` declares its parameters as, in order.
+    static std::vector<std::string> parameter_names(CXCursor callee) {
+        std::vector<std::string> names;
+        clang_visitChildren(
+            callee,
+            [](CXCursor child, CXCursor, CXClientData data) {
+                if (clang_getCursorKind(child) == CXCursor_ParmDecl) {
+                    static_cast<std::vector<std::string>*>(data)->push_back(take(clang_getCursorSpelling(child)));
+                }
+                return CXChildVisit_Continue;
+            },
+            &names);
+        return names;
+    }
+
+    void parameter_hints(CXCursor call, std::vector<Hint>& into) const {
+        const CXCursor callee = clang_getCursorReferenced(call);
+        const int arguments = clang_Cursor_getNumArguments(call);
+        if (is_null(callee) || arguments <= 0 || take(clang_getCursorSpelling(callee)).starts_with("operator")) {
+            return;
+        }
+        // A call a macro's body writes is annotated nowhere: its arguments
+        // stand, at best, where the macro is used.
+        const std::optional<FilePosition> call_start = written_start(call);
+        if (!call_start.has_value()) {
+            return;
+        }
+        const std::vector<std::string> names = parameter_names(callee);
+        const auto count = std::min(names.size(), static_cast<std::size_t>(arguments));
+        for (std::size_t position = 0; position < count; ++position) {
+            // A library's reserved spelling, `__x`, is shown as the name it is.
+            std::string_view name = names[position];
+            while (name.starts_with('_')) {
+                name.remove_prefix(1);
+            }
+            const CXCursor argument = clang_Cursor_getArgument(call, static_cast<unsigned>(position));
+            // Where the argument is written, or where the macro that writes
+            // it is used.
+            const FilePosition at = place(clang_getRangeStart(clang_getCursorExtent(argument)));
+            // A default argument is written nowhere in the call, and an
+            // implicit conversion or construction writes no call around it.
+            if (name.empty() || !at.in_main_file || call_start->offset == at.offset) {
+                continue;
+            }
+            const FilePosition end = place(clang_getRangeEnd(clang_getCursorExtent(argument)));
+            if (end.in_main_file && end.offset == at.offset + name.size() &&
+                std::string_view(main.text).substr(at.offset, name.size()) == name) {
+                continue; // the argument spells its parameter's name already
+            }
+            into.push_back(Hint{Hint::Kind::Parameter, at, std::string(name) + ":"});
+        }
+    }
+
+    void type_hint(CXCursor variable, std::vector<Hint>& into) const {
+        CXType declared = clang_getCursorType(variable);
+        bool is_auto = false;
+        for (bool looking = true; looking;) {
+            switch (declared.kind) {
+                case CXType_Auto:
+                    is_auto = true;
+                    looking = false;
+                    break;
+                case CXType_Pointer:
+                case CXType_LValueReference:
+                case CXType_RValueReference:
+                    declared = clang_getPointeeType(declared);
+                    break;
+                case CXType_Elaborated:
+                    declared = clang_Type_getNamedType(declared);
+                    break;
+                default:
+                    looking = false;
+                    break;
+            }
+        }
+        const std::string type = take(clang_getTypeSpelling(clang_getCursorType(variable)));
+        // Not yet deduced (in a template), a lambda's unnameable type, or a
+        // type too long to read inline.
+        constexpr std::size_t kLongest = 32;
+        if (!is_auto || type.empty() || type.find("auto") != std::string::npos ||
+            type.find("lambda") != std::string::npos || type.size() > kLongest || !written_start(variable)) {
+            return;
+        }
+        const std::optional<Extent> name = name_extent(variable);
+        if (name.has_value() && name->end.in_main_file) {
+            into.push_back(Hint{Hint::Kind::Type, name->end, ": " + type});
+        }
     }
 
     // Each branch of each conditional directive in the main file, paired as
@@ -1502,9 +1622,9 @@ std::vector<Fold> EditorUnit::folds() const {
     } walk{state_.get(), &found};
     clang_visitChildren(
         clang_getTranslationUnitCursor(state_->unit),
-        [](CXCursor cursor, CXCursor, CXClientData data) {
+        [](CXCursor cursor, CXCursor parent, CXClientData data) {
             const Walk& walk = *static_cast<Walk*>(data);
-            if (clang_Location_isFromMainFile(clang_getCursorLocation(cursor)) == 0) {
+            if (!in_main_file(cursor, parent)) {
                 return CXChildVisit_Continue;
             }
             std::optional<Extent> body;
@@ -1555,9 +1675,9 @@ std::vector<Extent> EditorUnit::enclosing(std::size_t offset) const {
     } walk{state_.get(), offset, &found};
     clang_visitChildren(
         clang_getTranslationUnitCursor(state_->unit),
-        [](CXCursor cursor, CXCursor, CXClientData data) {
+        [](CXCursor cursor, CXCursor parent, CXClientData data) {
             const Walk& walk = *static_cast<Walk*>(data);
-            if (clang_Location_isFromMainFile(clang_getCursorLocation(cursor)) == 0) {
+            if (!in_main_file(cursor, parent)) {
                 return CXChildVisit_Continue;
             }
             const CXSourceRange range = clang_getCursorExtent(cursor);
@@ -1572,6 +1692,34 @@ std::vector<Extent> EditorUnit::enclosing(std::size_t offset) const {
         },
         &walk);
     std::ranges::reverse(found);
+    return found;
+}
+
+std::vector<Hint> EditorUnit::hints() const {
+    std::vector<Hint> found;
+    if (state_->unit == nullptr) {
+        return found;
+    }
+    struct Walk {
+        const State* state;
+        std::vector<Hint>* found;
+    } walk{state_.get(), &found};
+    clang_visitChildren(
+        clang_getTranslationUnitCursor(state_->unit),
+        [](CXCursor cursor, CXCursor parent, CXClientData data) {
+            const Walk& walk = *static_cast<Walk*>(data);
+            if (!in_main_file(cursor, parent)) {
+                return CXChildVisit_Continue;
+            }
+            const CXCursorKind kind = clang_getCursorKind(cursor);
+            if (kind == CXCursor_CallExpr) {
+                walk.state->parameter_hints(cursor, *walk.found);
+            } else if (kind == CXCursor_VarDecl) {
+                walk.state->type_hint(cursor, *walk.found);
+            }
+            return CXChildVisit_Recurse;
+        },
+        &walk);
     return found;
 }
 
