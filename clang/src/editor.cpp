@@ -141,7 +141,7 @@ struct EditorUnit::State {
         clang_getFileLocation(location, &file, &line, &column, &offset);
         if (file != nullptr) {
             result.file = take(clang_getFileName(file));
-            const CXFile main_entry = main_file();
+            CXFile main_entry = main_file();
             result.in_main_file = main_entry != nullptr && clang_File_isEqual(file, main_entry) != 0;
         }
         result.line = line;
@@ -186,7 +186,7 @@ struct EditorUnit::State {
     }
 
     [[nodiscard]] CXCursor cursor_at(std::size_t offset) const {
-        const CXFile file = main_file();
+        CXFile file = main_file();
         if (file == nullptr) {
             return clang_getNullCursor();
         }
@@ -195,7 +195,7 @@ struct EditorUnit::State {
 
     // The token written at `offset`, when one is: its kind and spelling.
     [[nodiscard]] std::optional<std::pair<CXTokenKind, std::string>> token_at(std::size_t offset) const {
-        const CXFile file = main_file();
+        CXFile file = main_file();
         if (file == nullptr) {
             return std::nullopt;
         }
@@ -330,7 +330,7 @@ struct EditorUnit::State {
         if (!extent.has_value()) {
             return;
         }
-        const CXFile file = clang_getFile(unit, extent->begin.file.c_str());
+        CXFile file = clang_getFile(unit, extent->begin.file.c_str());
         if (file == nullptr) {
             return;
         }
@@ -916,7 +916,7 @@ std::optional<Description> EditorUnit::describe(std::size_t offset) const {
     if (state.unit == nullptr || offset > state.main.text.size()) {
         return std::nullopt;
     }
-    const CXFile file = state.main_file();
+    CXFile file = state.main_file();
     if (file == nullptr) {
         return std::nullopt;
     }
