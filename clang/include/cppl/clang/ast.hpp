@@ -312,6 +312,34 @@ struct PathContradiction {
     std::vector<Expr> operands;
 };
 
+// The projector's block for a case split on a runtime path, read where the
+// statement stood (SPEC.md CASE-017). `operands` are the subject, read at the
+// versions current there, then the label of each arm that has an expression
+// for one, then each arm's continuation of the path in written order. Which
+// case an arm denotes is not decided here: the bridge knows the resolved C++
+// and nothing about the representation's states.
+struct CaseSplit {
+    struct Arm {
+        // The position among `operands` of this arm's label, when it has one
+        // that is an expression rather than a name the representation reserves.
+        std::optional<std::uint32_t> label;
+        std::uint32_t binders = 0;
+    };
+    std::string marker;
+    std::vector<Arm> arms;
+    std::vector<Expr> operands; // subject, labels, one continuation per arm
+};
+
+// A binder of an arm of a case split on a runtime path: the value the arm's
+// case exposes, never storage. `type` of the enclosing `Expr` is the type Clang
+// resolved for the binder's declaration; which value it names is the
+// representation's to say.
+struct CaseBinder {
+    std::string marker;
+    std::uint32_t arm = 0;
+    std::uint32_t index = 0;
+};
+
 // A construct Clang resolved but C++L does not model. Carrying the reason
 // keeps the failure explainable instead of silently dropping the expression.
 // Completion carries the value and the parameter values in the post-state.
@@ -346,7 +374,7 @@ struct Expr {
     source::SourceLocation location;
     std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, PlaceVersion, PlaceRef, Loop, Iterate,
                  Projection, Element, FormalEquality, Universal, Implication, Connective, ReturnState, UnknownVersion,
-                 ElementBound, PathContradiction, Unsupported>
+                 ElementBound, PathContradiction, CaseSplit, CaseBinder, Unsupported>
         node;
 };
 
@@ -418,6 +446,16 @@ struct Function {
     // read as the end of a path. Every one the projector emitted for this
     // function must be here.
     std::vector<std::string> path_contradictions;
+
+    // The blocks of the case splits the body lowering read, each with the type
+    // Clang resolved for its subject. Every one the projector emitted for this
+    // function must be here; the subject's type is what an arm's binders are
+    // declared at on the next pass.
+    struct SplitSubject {
+        std::string marker;
+        Type type;
+    };
+    std::vector<SplitSubject> path_splits;
 };
 
 enum class Severity : std::uint8_t {

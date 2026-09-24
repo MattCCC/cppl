@@ -74,7 +74,9 @@ binder names, so an accepted completion already has the right binder count for
 that state's payload. Hover names the subject's resolved representation, which
 provider modeled it, and the full partition with the written arms checked off.
 An omitted case is marked as claimed impossible, not as proven: hover reads the
-written syntax, and whether the claim checks is reported as a diagnostic.
+written syntax, and whether the claim checks is reported as a diagnostic. A case
+split written in a verified body is a case site the same way, served from the
+states the compiler recorded while elaborating the body.
 
 Semantic tokens cover what the editors' TextMate grammar cannot: a proof
 statement spelled like a C++ declaration, such as `exact h;`, `assume h : P;`
@@ -85,7 +87,10 @@ where the whole translation unit, headers included, uses the word for nothing
 else (SPEC.md WORD-002), and only the compile of the preprocessed unit sees the
 headers. So such a claim is reported only when that compile recognized claims
 too; where it did not, or could not run, the statement is left uncolored, as
-the grammar leaves it.
+the grammar leaves it. A `cases` or `decompose` statement in a verified body is
+a case split on the same terms (SPEC.md WORD-012): it and the keywords in its
+arms are reported only when that compile recognized splits, and a claim in an
+arm is reported once, as the split's.
 
 The server advertises `textDocumentSync`, `documentFormattingProvider`,
 `documentRangeFormattingProvider`, `documentOnTypeFormattingProvider`,

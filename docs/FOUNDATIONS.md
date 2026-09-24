@@ -2348,6 +2348,27 @@ branch.
 
 The kernel checks each branch according to ordinary evidence rules.
 
+A split on a runtime path (`SPEC.md` 20.7) uses the same branches with the
+goal replaced by the path's verification conditions. Each condition after the
+split is stated once per branch, under that branch's suppositions:
+
+```text
+D1 -> vc
+!D1 & D2 -> vc
+...
+!D1 & ... & !Dn -> vc
+----------------------
+vc
+```
+
+The branches' suppositions are exhaustive by excluded middle on each `Di` in
+turn, whatever the representation, so establishing every branch establishes the
+condition without them. That inference is made by the verification-condition
+generator, as it is for a conditional's two arms, not by the kernel; its one
+obligation is that no branch is left out (`TRUST.md` `TCB-DECOMP-007`). Each
+`Di` mentions the subject's value where the split stands, so a condition about a
+later version of its storage gains nothing from it.
+
 ---
 
 # 78. Scoped enumeration partition

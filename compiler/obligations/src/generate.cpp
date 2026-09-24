@@ -441,6 +441,10 @@ class TermLowering {
                         location);
         }
 
+        if (std::holds_alternative<vir::CaseSplit>(expr.node)) {
+            return fail("a case split has no value: each of its arms is a path of its own, walked as one", location);
+        }
+
         return fail("this expression has no core representation", location);
     }
 
@@ -2245,10 +2249,14 @@ void discharge_path_claims(Program& program, diagnostics::Engine& engine) {
             obligation.refusal = "'" + claim.evidence + "' names no proof declaration";
             continue;
         }
+        // An omission in a split's arm uses this mechanism for a claim of its
+        // own, and is refused in its own words (SPEC.md CASE-012, CASE-016).
+        const bool omission = obligation.origin == Origin::OmittedCase;
         const auto proof = std::ranges::find(program.proofs, *claim.proof, &WrittenProof::id);
         if (proof == program.proofs.end()) {
-            refuse("proof '" + claim.evidence + "' was not admitted, so the claim that runtime path '" +
-                       obligation.subject + "' cannot occur has no evidence",
+            refuse("proof '" + claim.evidence + "' was not admitted, so the claim that " +
+                       (omission ? obligation.subject : "runtime path '" + obligation.subject + "'") +
+                       " cannot occur has no evidence",
                    "the reason it was not admitted is reported above");
             continue;
         }
@@ -2352,12 +2360,15 @@ void discharge_path_claims(Program& program, diagnostics::Engine& engine) {
         std::expected<kernel::ProofTerm, Unestablished> absurd = detail::refute(
             program.context, kernel::ArithmeticFact{named, kernel::Box<kernel::ProofTerm>{std::move(term)}}, standing);
         if (!absurd.has_value()) {
-            refuse("runtime path '" + obligation.subject + "' is not shown to be unreachable",
+            refuse(omission ? "omitted " + obligation.subject + " is not shown to be impossible"
+                            : "runtime path '" + obligation.subject + "' is not shown to be unreachable",
                    absurd.error().kind == Unestablished::Kind::Unreadable
                        ? "the facts established on that path cannot be stated as linear arithmetic: " +
                              absurd.error().detail
                        : "'" + claim.evidence + "' establishes " + kernel::describe(named) +
-                             ", and no contradiction with the facts established on that path was found");
+                             (omission ? ", and no contradiction with the facts established on that path, including "
+                                         "the case's own discriminator, was found"
+                                       : ", and no contradiction with the facts established on that path was found"));
             continue;
         }
 

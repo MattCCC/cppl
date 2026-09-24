@@ -77,18 +77,26 @@ Erased erase(const frontend::TokenStream& stream, const frontend::Syntax& syntax
         spans.push_back(loop.clause_region);
     }
     // A claim that a path cannot occur leaves its `;` behind as an empty
-    // statement, so only the words before it are erased.
+    // statement, so only the words before it are erased. A claim inside a
+    // split's arm goes with that split.
     for (const frontend::PathContradiction& claim : syntax.path_contradictions) {
-        spans.push_back(claim.erased);
+        if (!claim.split.has_value()) {
+            spans.push_back(claim.erased);
+        }
     }
 
     // A refinement type is runtime-bearing: what must stand in its place is the
     // alias it means, recomputed here from the declaration so that nothing the
     // projector produced is taken on trust (SPEC.md 17.8).
     std::vector<Lowering> lowerings;
-    lowerings.reserve(syntax.refinement_types.size());
+    lowerings.reserve(syntax.refinement_types.size() + syntax.path_splits.size());
     for (const frontend::RefinementType& refinement : syntax.refinement_types) {
         lowerings.push_back(Lowering{refinement.range.span, frontend::canonical_lowering(stream, refinement)});
+    }
+    // A case split on a runtime path becomes an empty statement, so whatever
+    // statement it was the body of still has one (SPEC.md CASE-017, ERASE-016).
+    for (const frontend::PathCaseSplit& split : syntax.path_splits) {
+        lowerings.push_back(Lowering{split.span, frontend::erased_split(stream, split)});
     }
     std::ranges::sort(lowerings,
                       [](const Lowering& lhs, const Lowering& rhs) { return lhs.span.offset < rhs.span.offset; });

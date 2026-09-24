@@ -23,6 +23,7 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -165,6 +166,182 @@ vir::BinaryOp convert_operator(clangbridge::BinaryOp op) {
     return vir::BinaryOp::Add;
 }
 
+// The cases of a partition the arms of one statement have accounted for so far.
+struct Coverage {
+    std::vector<bool> named;
+    bool residual = false;
+};
+
+// Which case of a partition one written arm denotes.
+struct MatchedArm {
+    std::optional<std::uint32_t> descriptor; // a named case, or none for the residual
+    std::string label;
+    const std::vector<decomposition::ProofBinding>* bindings = nullptr;
+};
+
+// Matches one written arm to the case it denotes: a reserved label against the
+// partition's own labels, and an expression label by what Clang resolved it to
+// (`label`), as the provider reads it. A case claimed twice, a label that is
+// not a case of the subject, and an arm naming a number of binders its case
+// does not supply are refused here. This is the one rule for arms, whether the
+// split stands in a proof body or on a runtime path (SPEC.md CASE-004,
+// CASE-006, CASE-017).
+std::optional<MatchedArm> match_arm(const frontend::ProofArm& arm, const vir::Expr* label,
+                                    const decomposition::SumDecomposition& sum, const decomposition::Provider& provider,
+                                    const vir::Type& subject, Coverage& coverage, diagnostics::Engine& engine) {
+    const bool residual_required = sum.exhaustiveness == decomposition::ExhaustivenessModel::ResidualRequired;
+    MatchedArm matched;
+    if (arm.keyword_label) {
+        // A reserved label names the residual state, so it is matched against
+        // the partition's own residual label rather than resolved as an
+        // expression.
+        const std::string& written = arm.spelling;
+        const auto named =
+            std::ranges::find_if(sum.cases, [&](const auto& candidate) { return candidate.label.text == written; });
+        if (named != sum.cases.end()) {
+            const auto index = static_cast<std::size_t>(named - sum.cases.begin());
+            if (coverage.named[index]) {
+                report(engine, diagnostics::Category::Elaboration, arm.location, "duplicate case '" + written + "'");
+                return std::nullopt;
+            }
+            coverage.named[index] = true;
+            matched.descriptor = static_cast<std::uint32_t>(index);
+            matched.label = written;
+            matched.bindings = &named->bindings;
+        } else {
+            if (!residual_required || written != sum.residual.text) {
+                report(engine, diagnostics::Category::Elaboration, arm.location,
+                       "'" + written + "' is not a case of '" + describe(subject) + "'");
+                return std::nullopt;
+            }
+            if (coverage.residual) {
+                report(engine, diagnostics::Category::Elaboration, arm.location, "duplicate case '" + written + "'");
+                return std::nullopt;
+            }
+            coverage.residual = true;
+            matched.label = sum.residual.text;
+            matched.bindings = &sum.residual_bindings;
+        }
+    } else {
+        const std::optional<std::size_t> index =
+            label != nullptr ? provider.resolve_label(sum, *label) : std::optional<std::size_t>{};
+        if (!index || !(label->type == subject)) {
+            report(engine, diagnostics::Category::Elaboration, arm.location,
+                   "this label does not name a case of '" + describe(subject) + "'");
+            return std::nullopt;
+        }
+        const decomposition::CaseDescriptor& descriptor = sum.cases[*index];
+        if (coverage.named[*index]) {
+            report(engine, diagnostics::Category::Elaboration, arm.location,
+                   "duplicate case '" + descriptor.label.text + "'", "labels that denote one state name one case");
+            return std::nullopt;
+        }
+        coverage.named[*index] = true;
+        matched.descriptor = static_cast<std::uint32_t>(*index);
+        matched.label = descriptor.label.text;
+        matched.bindings = &descriptor.bindings;
+    }
+
+    // A case supplies exactly the bindings its provider describes, so an arm
+    // names exactly that many. An omitted case has no body, so it binds
+    // nothing.
+    if (!arm.omitted && arm.binders.size() != matched.bindings->size()) {
+        report(engine, diagnostics::Category::Elaboration, arm.location,
+               "case '" + matched.label + "' binds " + std::to_string(matched.bindings->size()) +
+                   " value(s), but this arm names " + std::to_string(arm.binders.size()));
+        return std::nullopt;
+    }
+    return matched;
+}
+
+// Exhaustiveness comes from the partition the provider described. A state it
+// lists and no arm claims is a missing case, so adding a state to a
+// representation makes a split that did not account for it stop being
+// exhaustive (SPEC.md CASE-004, CASE-005).
+bool exhaustive(const decomposition::SumDecomposition& sum, const Coverage& coverage, const vir::Type& subject,
+                const source::SourceLocation& location, diagnostics::Engine& engine) {
+    for (std::size_t index = 0; index < sum.cases.size(); ++index) {
+        if (!coverage.named[index]) {
+            report(engine, diagnostics::Category::ProofFailure, location,
+                   "non-exhaustive cases: '" + sum.cases[index].label.text + "' has no arm");
+            return false;
+        }
+    }
+    if (sum.exhaustiveness == decomposition::ExhaustivenessModel::ResidualRequired && !coverage.residual) {
+        report(engine, diagnostics::Category::ProofFailure, location,
+               "non-exhaustive cases: '" + sum.residual.text + "' has no arm",
+               "'" + describe(subject) +
+                   "' has states beyond the ones it names, and "
+                   "no wildcard absorbs them");
+        return false;
+    }
+    return true;
+}
+
+// A product is decomposed by one `components` arm naming every component. A
+// sum is never decomposed, and a product never split into cases (SPEC.md
+// CASE-003, CASE-007).
+bool product_arm(const frontend::ProofStatement& statement, const decomposition::ProductDecomposition& product,
+                 diagnostics::Engine& engine) {
+    if (statement.kind != frontend::ProofStatementKind::Decompose || statement.arms.size() != 1 ||
+        statement.arms[0].spelling != "components") {
+        report(engine, diagnostics::Category::Elaboration, statement.location,
+               "product decomposition requires decompose subject { components(binders) => { proof } }");
+        return false;
+    }
+    const auto& arm = statement.arms[0];
+    if (arm.binders.size() != product.fields.size()) {
+        report(engine, diagnostics::Category::Elaboration, arm.location,
+               "product binds " + std::to_string(product.fields.size()) + " value(s), but this arm names " +
+                   std::to_string(arm.binders.size()));
+        return false;
+    }
+    return true;
+}
+
+// Records what the engine decided about one statement's subject, for editors.
+// This is a read-only byproduct: nothing consults it while elaborating, so it
+// cannot change which proofs or bodies are accepted. A statement elaborated
+// more than once, as a split on a runtime path is once per path reaching it, is
+// recorded once.
+void record_states(const frontend::ProofStatement& statement, const vir::Type& subject,
+                   const decomposition::Decomposition& decomposed, std::vector<SubjectStates>* recorded) {
+    const decomposition::Provider* modeled = decomposition::provider_for(subject);
+    if (recorded == nullptr || modeled == nullptr || std::ranges::any_of(*recorded, [&](const SubjectStates& entry) {
+            return entry.location == statement.location;
+        })) {
+        return;
+    }
+    SubjectStates record;
+    record.location = statement.location;
+    record.subject = statement.reference;
+    record.representation = describe(subject);
+    record.provider = std::string(modeled->name());
+    if (const auto* product = std::get_if<decomposition::ProductDecomposition>(&decomposed)) {
+        record.product = true;
+        SubjectStates::State components{"components", {}, false};
+        for (const auto& field : product->fields)
+            components.binders.push_back(field.name);
+        record.states.push_back(std::move(components));
+    } else if (const auto* sum = std::get_if<decomposition::SumDecomposition>(&decomposed)) {
+        for (const auto& described_case : sum->cases) {
+            SubjectStates::State state{described_case.label.text, {}, false};
+            for (const auto& binding : described_case.bindings)
+                state.binders.push_back(binding.name);
+            record.states.push_back(std::move(state));
+        }
+        if (sum->exhaustiveness == decomposition::ExhaustivenessModel::ResidualRequired) {
+            SubjectStates::State state{sum->residual.text, {}, true};
+            for (const auto& binding : sum->residual_bindings)
+                state.binders.push_back(binding.name);
+            record.states.push_back(std::move(state));
+        }
+    } else {
+        return;
+    }
+    recorded->push_back(std::move(record));
+}
+
 // Converts resolved Clang expressions into VIR.
 //
 // Every expression C++L cannot represent stops the conversion with a reason at
@@ -174,14 +351,32 @@ vir::BinaryOp convert_operator(clangbridge::BinaryOp op) {
 struct ResolvedClaim {
     std::optional<vir::ProofId> proof;
     std::string evidence;
+    // The case an omission in a split's arm accounts for (SPEC.md CASE-012).
+    std::optional<std::string> omitted;
 };
 using ResolvedClaims = std::map<std::string, ResolvedClaim, std::less<>>;
 
+// The statement each case split on a runtime path was written as, by the
+// marker of its block (SPEC.md CASE-017).
+using ResolvedSplits = std::map<std::string, const frontend::ProofStatement*, std::less<>>;
+
 class ExpressionElaborator {
   public:
-    explicit ExpressionElaborator(std::uint32_t& next_id, const ResolvedClaims* claims = nullptr)
+    explicit ExpressionElaborator(std::uint32_t& next_id, const ResolvedClaims* claims = nullptr,
+                                  const ResolvedSplits* splits = nullptr, diagnostics::Engine* engine = nullptr,
+                                  std::vector<SubjectStates>* states = nullptr)
         : next_id_(next_id),
-          claims_(claims) {}
+          claims_(claims),
+          splits_(splits),
+          engine_(engine),
+          states_(states) {}
+
+    // Whether conversion stopped at a case split whose arms were refused. That
+    // refusal was reported where it was found, in the words a proof-side split
+    // would have been refused in, so nothing more general need be said.
+    [[nodiscard]] bool refused() const noexcept {
+        return refused_;
+    }
 
     struct Failure {
         std::string reason;
@@ -496,7 +691,7 @@ class ExpressionElaborator {
                                    expr.location};
                 return std::nullopt;
             }
-            vir::PathContradiction converted{resolved->proof, resolved->evidence, {}};
+            vir::PathContradiction converted{resolved->proof, resolved->evidence, {}, resolved->omitted};
             for (const auto& operand : claim->operands) {
                 auto value = convert(operand);
                 if (!value)
@@ -505,6 +700,28 @@ class ExpressionElaborator {
             }
             result.node = std::move(converted);
             return result;
+        }
+        if (const auto* split = std::get_if<clangbridge::CaseSplit>(&expr.node)) {
+            return convert_split(*split, expr, std::move(result));
+        }
+        // A binder of an arm is the value its case exposes. The type Clang
+        // resolved for its declaration must be that value's type, or what the
+        // arm said about it was resolved at some other type.
+        if (const auto* binder = std::get_if<clangbridge::CaseBinder>(&expr.node)) {
+            const auto found = binders_.find(std::tuple{binder->marker, binder->arm, binder->index});
+            if (found == binders_.end()) {
+                failure_ = Failure{"a case binder is read where its arm does not stand", expr.location};
+                return std::nullopt;
+            }
+            if (!(found->second.type == result.type)) {
+                failure_ = Failure{"a case binder was resolved at type '" + describe(result.type) +
+                                       "', but its case binds a value of type '" + describe(found->second.type) + "'",
+                                   expr.location};
+                return std::nullopt;
+            }
+            vir::Expr value = found->second;
+            value.provenance = result.provenance;
+            return value;
         }
         // Every other node kind is refused by name rather than assumed to be
         // `Unsupported`. A kind added to the bridge with no handler here used
@@ -524,8 +741,149 @@ class ExpressionElaborator {
     }
 
   private:
+    // A case split on a runtime path (SPEC.md CASE-017). The partition is asked
+    // of the provider for the subject as elaborated, and the written arms are
+    // matched to it by the same rules a proof-side split uses. Each arm's
+    // continuation is elaborated with the arm's binders standing for the values
+    // its case exposes, so a binder never reaches the formal core as anything
+    // but that value.
+    std::optional<vir::Expr> convert_split(const clangbridge::CaseSplit& split, const clangbridge::Expr& expr,
+                                           vir::Expr result) {
+        const auto refuse = [&](std::string reason) -> std::optional<vir::Expr> {
+            failure_ = Failure{std::move(reason), expr.location};
+            return std::nullopt;
+        };
+        const auto refused = [&]() -> std::optional<vir::Expr> {
+            refused_ = true;
+            return refuse("a case split in its body was refused");
+        };
+        const frontend::ProofStatement* statement = nullptr;
+        if (splits_ != nullptr) {
+            if (const auto found = splits_->find(split.marker); found != splits_->end()) {
+                statement = found->second;
+            }
+        }
+        if (statement == nullptr || engine_ == nullptr) {
+            return refuse("a case split is written where this implementation does not read one");
+        }
+        if (split.operands.size() < 1 + split.arms.size() || split.arms.size() != statement->arms.size()) {
+            return refuse("malformed case split");
+        }
+        const std::size_t first_arm = split.operands.size() - split.arms.size();
+
+        std::optional<vir::Expr> subject = convert(split.operands.front());
+        if (!subject) {
+            return std::nullopt;
+        }
+        const decomposition::Decomposition decomposed = decomposition::decompose({*subject, statement->location});
+        if (const auto* unsupported = std::get_if<decomposition::Unsupported>(&decomposed)) {
+            report(*engine_, diagnostics::Category::UnsupportedSemantics, statement->location,
+                   "proof decomposition is not defined for '" + unsupported->representation + "'", unsupported->reason);
+            return refused();
+        }
+        record_states(*statement, subject->type, decomposed, states_);
+
+        vir::CaseSplit converted;
+        std::vector<std::vector<vir::Expr>> values(split.arms.size());
+        std::vector<vir::Expr> discriminators;
+        if (const auto* product = std::get_if<decomposition::ProductDecomposition>(&decomposed)) {
+            if (!product_arm(*statement, *product, *engine_)) {
+                return refused();
+            }
+            converted.product = true;
+            converted.arms.push_back(vir::CaseSplit::Arm{std::nullopt, "components", statement->arms[0].location});
+            for (const auto& field : product->fields) {
+                vir::Expr value = field.value;
+                value.type = field.type;
+                values[0].push_back(std::move(value));
+            }
+        } else {
+            if (statement->kind == frontend::ProofStatementKind::Decompose) {
+                report(*engine_, diagnostics::Category::Elaboration, statement->location,
+                       "decompose requires a product; use cases for alternative states");
+                return refused();
+            }
+            const auto& sum = std::get<decomposition::SumDecomposition>(decomposed);
+            const decomposition::Provider& provider = *decomposition::provider_for(subject->type);
+            Coverage coverage{std::vector<bool>(sum.cases.size(), false), false};
+            for (std::size_t position = 0; position < split.arms.size(); ++position) {
+                const frontend::ProofArm& arm = statement->arms[position];
+                std::optional<vir::Expr> label;
+                if (split.arms[position].label.has_value()) {
+                    if (*split.arms[position].label >= first_arm) {
+                        return refuse("malformed case split");
+                    }
+                    label = convert(split.operands[*split.arms[position].label]);
+                    if (!label) {
+                        return std::nullopt;
+                    }
+                } else if (!arm.keyword_label) {
+                    return refuse("malformed case split");
+                }
+                const std::optional<MatchedArm> matched =
+                    match_arm(arm, label ? &*label : nullptr, sum, provider, subject->type, coverage, *engine_);
+                if (!matched) {
+                    return refused();
+                }
+                converted.arms.push_back(vir::CaseSplit::Arm{matched->descriptor, matched->label, arm.location});
+                if (!arm.omitted) {
+                    for (const auto& binding : *matched->bindings) {
+                        vir::Expr value = binding.value;
+                        value.type = binding.type;
+                        values[position].push_back(std::move(value));
+                    }
+                }
+            }
+            if (!exhaustive(sum, coverage, subject->type, statement->location, *engine_)) {
+                return refused();
+            }
+            converted.residual = sum.exhaustiveness == decomposition::ExhaustivenessModel::ResidualRequired;
+            for (const auto& described : sum.cases) {
+                discriminators.push_back(described.discriminator);
+            }
+        }
+
+        converted.discriminators = static_cast<std::uint32_t>(discriminators.size());
+        converted.operands.push_back(std::move(*subject));
+        for (auto& discriminator : discriminators) {
+            converted.operands.push_back(std::move(discriminator));
+        }
+        for (std::size_t position = 0; position < split.arms.size(); ++position) {
+            if (split.arms[position].binders != values[position].size()) {
+                return refuse("malformed case split");
+            }
+            for (std::uint32_t index = 0; index < values[position].size(); ++index) {
+                binders_.insert_or_assign(std::tuple{split.marker, static_cast<std::uint32_t>(position), index},
+                                          values[position][index]);
+            }
+            std::optional<vir::Expr> continued = convert(split.operands[first_arm + position]);
+            for (std::uint32_t index = 0; index < values[position].size(); ++index) {
+                binders_.erase(std::tuple{split.marker, static_cast<std::uint32_t>(position), index});
+            }
+            if (!continued) {
+                return std::nullopt;
+            }
+            // An omitted case's arm is its claim and nothing else, and that
+            // claim is the omission's own (SPEC.md CASE-004, CASE-012).
+            const auto* claim = std::get_if<vir::PathContradiction>(&continued->node);
+            if (statement->arms[position].omitted != (claim != nullptr && claim->omitted.has_value())) {
+                return refuse("malformed omitted case");
+            }
+            converted.operands.push_back(std::move(*continued));
+        }
+        result.node = std::move(converted);
+        return result;
+    }
+
     std::uint32_t& next_id_;
     const ResolvedClaims* claims_;
+    const ResolvedSplits* splits_;
+    diagnostics::Engine* engine_;
+    std::vector<SubjectStates>* states_;
+    bool refused_ = false;
+    // The value each binder of the arms being elaborated stands for, by the
+    // split's marker, the arm's position and the binder's position.
+    std::map<std::tuple<std::string, std::uint32_t, std::uint32_t>, vir::Expr> binders_;
     std::optional<Failure> failure_;
 };
 
@@ -802,54 +1160,12 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
                     return std::nullopt;
                 }
 
-                // Record what the engine just decided, for editors. This is a
-                // read-only byproduct: nothing below consults it, so it cannot
-                // change which proofs are accepted.
-                if (subject_states != nullptr) {
-                    if (const decomposition::Provider* modeled = decomposition::provider_for(subject->type)) {
-                        SubjectStates record;
-                        record.location = statement.location;
-                        record.subject = statement.reference;
-                        record.representation = describe(subject->type);
-                        record.provider = std::string(modeled->name());
-                        if (const auto* product = std::get_if<decomposition::ProductDecomposition>(&decomposed)) {
-                            record.product = true;
-                            SubjectStates::State components{"components", {}, false};
-                            for (const auto& field : product->fields)
-                                components.binders.push_back(field.name);
-                            record.states.push_back(std::move(components));
-                        } else {
-                            const auto& sum = std::get<decomposition::SumDecomposition>(decomposed);
-                            for (const auto& described_case : sum.cases) {
-                                SubjectStates::State state{described_case.label.text, {}, false};
-                                for (const auto& binding : described_case.bindings)
-                                    state.binders.push_back(binding.name);
-                                record.states.push_back(std::move(state));
-                            }
-                            if (sum.exhaustiveness == decomposition::ExhaustivenessModel::ResidualRequired) {
-                                SubjectStates::State state{sum.residual.text, {}, true};
-                                for (const auto& binding : sum.residual_bindings)
-                                    state.binders.push_back(binding.name);
-                                record.states.push_back(std::move(state));
-                            }
-                        }
-                        subject_states->push_back(std::move(record));
-                    }
-                }
+                record_states(statement, subject->type, decomposed, subject_states);
                 if (const auto* product = std::get_if<decomposition::ProductDecomposition>(&decomposed)) {
-                    if (statement.kind != frontend::ProofStatementKind::Decompose || statement.arms.size() != 1 ||
-                        statement.arms[0].spelling != "components") {
-                        report(engine, diagnostics::Category::Elaboration, statement.location,
-                               "product decomposition requires decompose subject { components(binders) => { proof } }");
+                    if (!product_arm(statement, *product, engine)) {
                         return std::nullopt;
                     }
                     const auto& arm = statement.arms[0];
-                    if (arm.binders.size() != product->fields.size()) {
-                        report(engine, diagnostics::Category::Elaboration, arm.location,
-                               "product binds " + std::to_string(product->fields.size()) +
-                                   " value(s), but this arm names " + std::to_string(arm.binders.size()));
-                        return std::nullopt;
-                    }
                     const auto outer_aliases = aliases.size();
                     const auto outer_assumed = assumed.size();
                     for (std::size_t i = 0; i < arm.binders.size(); ++i) {
@@ -879,74 +1195,28 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
                 }
                 const auto& sum = std::get<decomposition::SumDecomposition>(decomposed);
                 const decomposition::Provider& provider = *decomposition::provider_for(subject->type);
-                const bool residual_required =
-                    sum.exhaustiveness == decomposition::ExhaustivenessModel::ResidualRequired;
 
                 vir::CasesStep cases{*subject, {}};
-                std::vector<bool> covered(sum.cases.size(), false);
-                bool residual = false;
+                Coverage coverage{std::vector<bool>(sum.cases.size(), false), false};
 
                 for (const auto& arm : statement.arms) {
                     vir::CaseArm converted;
                     converted.location = arm.location;
                     converted.omitted = arm.omitted;
 
-                    // A reserved label names the residual state, so it is
-                    // matched against the partition's own residual label rather
-                    // than resolved as an expression.
-                    const std::vector<decomposition::ProofBinding>* bindings = nullptr;
-                    if (arm.keyword_label) {
-                        const std::string& written = arm.spelling;
-                        const auto named = std::ranges::find_if(
-                            sum.cases, [&](const auto& candidate) { return candidate.label.text == written; });
-                        if (named != sum.cases.end()) {
-                            const auto index = static_cast<std::size_t>(named - sum.cases.begin());
-                            if (covered[index]) {
-                                report(engine, diagnostics::Category::Elaboration, arm.location,
-                                       "duplicate case '" + written + "'");
-                                return std::nullopt;
-                            }
-                            covered[index] = true;
-                            converted.descriptor = static_cast<std::uint32_t>(index);
-                            converted.label = written;
-                            bindings = &named->bindings;
-                        } else {
-                            if (!residual_required || written != sum.residual.text) {
-                                report(engine, diagnostics::Category::Elaboration, arm.location,
-                                       "'" + written + "' is not a case of '" + describe(subject->type) + "'");
-                                return std::nullopt;
-                            }
-                            if (residual) {
-                                report(engine, diagnostics::Category::Elaboration, arm.location,
-                                       "duplicate case '" + written + "'");
-                                return std::nullopt;
-                            }
-                            residual = true;
-                            converted.label = sum.residual.text;
-                            bindings = &sum.residual_bindings;
-                        }
-                    } else {
-                        auto label = convert_probe(projected.case_names, next_case, arm.location);
+                    std::optional<vir::Expr> label;
+                    if (!arm.keyword_label) {
+                        label = convert_probe(projected.case_names, next_case, arm.location);
                         if (!label)
                             return std::nullopt;
-                        const std::optional<std::size_t> index = provider.resolve_label(sum, *label);
-                        if (!index || !(label->type == subject->type)) {
-                            report(engine, diagnostics::Category::Elaboration, arm.location,
-                                   "this label does not name a case of '" + describe(subject->type) + "'");
-                            return std::nullopt;
-                        }
-                        const decomposition::CaseDescriptor& descriptor = sum.cases[*index];
-                        if (covered[*index]) {
-                            report(engine, diagnostics::Category::Elaboration, arm.location,
-                                   "duplicate case '" + descriptor.label.text + "'",
-                                   "labels that denote one state name one case");
-                            return std::nullopt;
-                        }
-                        covered[*index] = true;
-                        converted.descriptor = static_cast<std::uint32_t>(*index);
-                        converted.label = descriptor.label.text;
-                        bindings = &descriptor.bindings;
                     }
+                    const std::optional<MatchedArm> matched =
+                        match_arm(arm, label ? &*label : nullptr, sum, provider, subject->type, coverage, engine);
+                    if (!matched)
+                        return std::nullopt;
+                    converted.descriptor = matched->descriptor;
+                    converted.label = matched->label;
+                    const std::vector<decomposition::ProofBinding>* bindings = matched->bindings;
 
                     // An omitted case has no body, so it binds nothing and
                     // introduces no binder scope. Its contradiction statement
@@ -960,15 +1230,6 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
                         converted.steps = std::move(*discharge);
                         cases.arms.push_back(std::move(converted));
                         continue;
-                    }
-
-                    // A case supplies exactly the bindings its provider
-                    // describes, so an arm names exactly that many.
-                    if (arm.binders.size() != bindings->size()) {
-                        report(engine, diagnostics::Category::Elaboration, arm.location,
-                               "case '" + converted.label + "' binds " + std::to_string(bindings->size()) +
-                                   " value(s), but this arm names " + std::to_string(arm.binders.size()));
-                        return std::nullopt;
                     }
 
                     const auto enclosing_assumed = assumed.size();
@@ -996,23 +1257,7 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
                     cases.arms.push_back(std::move(converted));
                 }
 
-                // Exhaustiveness comes from the partition the provider
-                // described. A state it lists and no arm claims is a missing
-                // case, so adding a state to a representation makes a proof
-                // that did not account for it stop being exhaustive.
-                for (std::size_t index = 0; index < sum.cases.size(); ++index) {
-                    if (!covered[index]) {
-                        report(engine, diagnostics::Category::ProofFailure, statement.location,
-                               "non-exhaustive cases: '" + sum.cases[index].label.text + "' has no arm");
-                        return std::nullopt;
-                    }
-                }
-                if (residual_required && !residual) {
-                    report(engine, diagnostics::Category::ProofFailure, statement.location,
-                           "non-exhaustive cases: '" + sum.residual.text + "' has no arm",
-                           "'" + describe(subject->type) +
-                               "' has states beyond the ones it names, and "
-                               "no wildcard absorbs them");
+                if (!exhaustive(sum, coverage, subject->type, statement.location, engine)) {
                     return std::nullopt;
                 }
                 step.node = std::move(cases);
@@ -1186,16 +1431,34 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
 // program itself.
 void elaborate_contract(const Request& request, const frontend::VerifiedFunction& declaration,
                         const frontend::ContractFunctions& projected, const clangbridge::Function& function,
-                        const std::string& body_rejection, std::uint32_t& next_expression_id, vir::Function& converted,
-                        diagnostics::Engine& engine) {
+                        const std::string& body_rejection, bool rejection_reported, std::uint32_t& next_expression_id,
+                        vir::Function& converted, diagnostics::Engine& engine) {
     if (!body_rejection.empty() || !converted.returned_value.has_value()) {
-        report(engine, diagnostics::Category::UnsupportedSemantics, declaration.function_location,
-               "verified function '" + function.qualified_name +
-                   "' has a body this implementation cannot state as a value" +
-                   (body_rejection.empty() ? "" : ": " + body_rejection),
-               "a contract is discharged from the body, and this implementation models a body "
-               "using only modeled if/else, loops, blocks, and returned expressions");
+        if (!rejection_reported) {
+            report(engine, diagnostics::Category::UnsupportedSemantics, declaration.function_location,
+                   "verified function '" + function.qualified_name +
+                       "' has a body this implementation cannot state as a value" +
+                       (body_rejection.empty() ? "" : ": " + body_rejection),
+                   "a contract is discharged from the body, and this implementation models a body "
+                   "using only modeled if/else, loops, blocks, and returned expressions");
+        }
         return;
+    }
+
+    // Every case split written in this body, nested ones included, must have
+    // been read on a path of it. One that was not stands in a lambda or a local
+    // class, and dropping it would drop the obligations of its arms.
+    for (const frontend::PathSplitMarker& marker : request.projection.path_splits) {
+        if (marker.function_index == projected.function_index &&
+            std::ranges::none_of(function.path_splits, [&marker](const clangbridge::Function::SplitSubject& read) {
+                return read.marker == marker.name;
+            })) {
+            report(engine, diagnostics::Category::UnsupportedSemantics, marker.location,
+                   "this case split is not on a runtime path of verified function '" + function.qualified_name + "'",
+                   "a case split is checked as a statement of the function's own body, not inside a lambda or a "
+                   "local class");
+            return;
+        }
     }
 
     // Every claim that a path cannot occur written in this body must have ended
@@ -1613,7 +1876,7 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
     ResolvedClaims claims;
     for (const frontend::PathContradictionMarker& marker : request.projection.path_contradictions) {
         const frontend::PathContradiction& written = request.syntax.path_contradictions[marker.claim_index];
-        ResolvedClaim resolved{std::nullopt, written.statement.reference};
+        ResolvedClaim resolved{std::nullopt, written.statement.reference, written.omitted};
         const auto declared = std::ranges::find_if(request.syntax.proofs, [&](const frontend::ProofDeclaration& proof) {
             return proof.name == written.statement.reference;
         });
@@ -1626,6 +1889,12 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
                 vir::ProofId{static_cast<std::uint32_t>(std::distance(request.syntax.proofs.begin(), declared))};
         }
         claims.emplace(marker.name, std::move(resolved));
+    }
+    ResolvedSplits splits;
+    for (const frontend::PathSplitMarker& marker : request.projection.path_splits) {
+        if (const frontend::ProofStatement* statement = frontend::split_statement(request.syntax, marker)) {
+            splits.emplace(marker.name, statement);
+        }
     }
 
     for (const Candidate& candidate : candidates) {
@@ -1654,6 +1923,7 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
         converted.parameters = *parameters;
 
         std::string rejection;
+        bool rejection_reported = false;
         if (!function->has_body) {
             rejection = "it is declared but not defined in this translation unit";
         } else if (function->body_rejection.has_value()) {
@@ -1663,11 +1933,14 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
         }
 
         if (rejection.empty()) {
-            ExpressionElaborator elaborator(next_expression_id, candidate.contract != nullptr ? &claims : nullptr);
+            ExpressionElaborator elaborator(next_expression_id, candidate.contract != nullptr ? &claims : nullptr,
+                                            candidate.contract != nullptr ? &splits : nullptr, &engine,
+                                            &result.subject_states);
             std::optional<vir::Expr> body = elaborator.convert(*function->returned_value);
             if (!body.has_value()) {
                 const auto& failure = elaborator.failure();
                 rejection = failure.has_value() ? failure->reason : "its body is not modeled";
+                rejection_reported = elaborator.refused();
             } else {
                 // The value the body produces is what a contract is about, so
                 // it is kept whatever the function's purity. Purity decides
@@ -1691,7 +1964,8 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
                            !std::holds_alternative<vir::PlaceVersion>(converted.returned_value->node) &&
                            !std::holds_alternative<vir::Loop>(converted.returned_value->node) &&
                            !std::holds_alternative<vir::ReturnState>(converted.returned_value->node) &&
-                           !std::holds_alternative<vir::PathContradiction>(converted.returned_value->node)) {
+                           !std::holds_alternative<vir::PathContradiction>(converted.returned_value->node) &&
+                           !std::holds_alternative<vir::CaseSplit>(converted.returned_value->node)) {
                     converted.purity = vir::Purity::Pure;
                 } else if (candidate.pure && candidate.contract == nullptr) {
                     rejection = "pure specification helpers require a single return expression";
@@ -1708,7 +1982,7 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
 
         if (candidate.contract != nullptr) {
             elaborate_contract(request, *candidate.declaration, *candidate.contract, *function, rejection,
-                               next_expression_id, converted, engine);
+                               rejection_reported, next_expression_id, converted, engine);
         }
 
         result.module.functions.push_back(std::move(converted));

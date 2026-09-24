@@ -641,6 +641,64 @@ CPPL_TEST(a_refinement_lowered_to_anything_but_its_base_alias_is_refused) {
     }
 }
 
+// SPEC: CASE-017, ERASE-016
+// A split erases to an empty statement where its closing brace was, and Clang is
+// given a block in its place: the split's marker and subject, each expression
+// label, and per arm its marker, its binders under their written names and its
+// claims.
+CPPL_TEST(a_split_on_a_path_leaves_an_empty_statement_behind) {
+    const std::string text = "proof pinned(unsigned v) proves (v == v) { refl; }\n"
+                             "verified unsigned f(E s, bool flag) ensures (result == 0u) {\n"
+                             "    if (flag)\n"
+                             "        cases s { E::a => {} unnamed(value) => { contradiction pinned(value); } }\n"
+                             "    return 0u;\n"
+                             "}\n";
+    cppl::diagnostics::Engine engine;
+    const auto stream = cppl::frontend::lex(text, "splits.cpp");
+    const auto syntax = cppl::frontend::recognize(stream, engine);
+    CPPL_CHECK(!engine.has_errors());
+    CPPL_CHECK_EQ(syntax.path_splits.size(), std::size_t{1});
+    const auto projection = cppl::frontend::project(stream, syntax, {});
+    const auto erased = cppl::erasure::erase(stream, syntax, projection, engine);
+    CPPL_CHECK(!engine.has_errors());
+    CPPL_CHECK(erased.report.only_deletions);
+    CPPL_CHECK(erased.report.lowerings_canonical);
+    CPPL_CHECK(erased.report.lines_preserved);
+
+    const auto& split = syntax.path_splits[0];
+    CPPL_CHECK_EQ(projection.runtime[split.span.end() - 1], ';');
+    CPPL_CHECK(projection.runtime.find("cases") == std::string::npos);
+    CPPL_CHECK(projection.runtime.find("contradiction") == std::string::npos);
+    CPPL_CHECK(projection.runtime.find("    return 0u;") != std::string::npos);
+
+    CPPL_CHECK_EQ(projection.path_splits.size(), std::size_t{1});
+    const std::string& name = projection.path_splits[0].name;
+    CPPL_CHECK(projection.analysis.find("bool " + name + " = true;") != std::string::npos);
+    CPPL_CHECK(projection.analysis.find("decltype(auto) " + name + "_subject = (") != std::string::npos);
+    CPPL_CHECK(projection.analysis.find("decltype(auto) " + name + "_label_0 = (") != std::string::npos);
+    CPPL_CHECK(projection.analysis.find(name + "_label_1") == std::string::npos);
+    CPPL_CHECK(projection.analysis.find("bool " + name + "_arm_1 = true;") != std::string::npos);
+    CPPL_CHECK(projection.analysis.find("& value = ") != std::string::npos);
+    // The claim in the arm is the split's, projected inside the arm's block.
+    CPPL_CHECK_EQ(projection.path_contradictions.size(), std::size_t{1});
+    const std::string& claim = projection.path_contradictions[0].name;
+    CPPL_CHECK(projection.analysis.find("bool " + claim + " = true;") > projection.analysis.find(name + "_arm_1"));
+    CPPL_CHECK_EQ(projection.binding_probes.size(), std::size_t{1});
+    CPPL_CHECK_EQ(projection.binding_probes[0].subject, name);
+    CPPL_CHECK_EQ(projection.binding_probes[0].label, "unnamed");
+
+    // The text after the split keeps its line and column in the analysis.
+    const auto analysis = cppl::frontend::lex(projection.analysis, "splits.cpp");
+    bool found = false;
+    for (const auto& token : analysis.tokens()) {
+        if (token.text == "return" && analysis.location_of(token).line == 5 &&
+            analysis.location_of(token).column == 5) {
+            found = true;
+        }
+    }
+    CPPL_CHECK(found);
+}
+
 // SPEC: VERIFIED-045, ERASE-016
 // TRUST.md TCB-ERASE-010
 CPPL_TEST(a_claim_that_a_path_cannot_occur_leaves_an_empty_statement_behind) {

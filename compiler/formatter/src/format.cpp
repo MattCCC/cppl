@@ -351,6 +351,39 @@ std::size_t layout_depth_at(const frontend::TokenStream& stream, std::size_t off
     return depth;
 }
 
+// The column a case split on a runtime path starts at: the body's own depth,
+// and one level more where the split is the unbraced body of `if`, `else`,
+// `while`, `for` or `do`, as clang-format indents any other statement there.
+std::size_t split_column(const frontend::TokenStream& stream, const frontend::ProofStatement& statement) {
+    const std::size_t column = layout_depth_at(stream, statement.keyword.offset) * kIndentWidth;
+    const std::vector<frontend::Token>& tokens = stream.tokens();
+    const auto keyword = std::ranges::lower_bound(tokens, statement.keyword.offset, {},
+                                                  [](const frontend::Token& token) { return token.span.offset; });
+    if (keyword == tokens.begin()) {
+        return column;
+    }
+    const auto before = static_cast<std::size_t>(keyword - tokens.begin()) - 1;
+    if (tokens[before].is_identifier("else") || tokens[before].is_identifier("do")) {
+        return column + kIndentWidth;
+    }
+    if (!tokens[before].is_punctuator(")")) {
+        return column;
+    }
+    std::size_t depth = 0;
+    for (std::size_t index = before + 1; index > 0; --index) {
+        const frontend::Token& token = tokens[index - 1];
+        if (token.is_punctuator(")")) {
+            ++depth;
+        } else if (token.is_punctuator("(") && --depth == 0) {
+            const bool control =
+                index >= 2 && (tokens[index - 2].is_identifier("if") || tokens[index - 2].is_identifier("while") ||
+                               tokens[index - 2].is_identifier("for"));
+            return control ? column + kIndentWidth : column;
+        }
+    }
+    return column;
+}
+
 // One region per law/verified-function clause block and loop invariant
 // block. `where` on a refinement type is deliberately never visited: it
 // stays inline (the request is explicit about this).
@@ -529,6 +562,10 @@ bool spans_overlap(source::ByteSpan lhs, source::ByteSpan rhs) {
 struct ArmRegion {
     const frontend::ProofStatement* statement = nullptr;
     std::size_t declaration_column = 0; // the cases/decompose/induction keyword's own column
+    // Where a statement following the block begins. It is the keyword's own
+    // column, except after a split that is the unbraced body of a control
+    // statement, whose next statement belongs to the control statement's level.
+    std::optional<std::size_t> following_column = std::nullopt;
 };
 
 // Every OUTERMOST Cases/Decompose/Induction statement directly in
@@ -787,7 +824,10 @@ std::optional<FormatEdit> make_arm_edit(std::string_view text, const ArmRegion& 
         block +=
             std::string(region.declaration_column >= kIndentWidth ? region.declaration_column - kIndentWidth : 0, ' ');
     } else if (end < text.size() && text[end] != ';') {
-        block += ' ';
+        // Another statement of the same block, as follows a split on a runtime
+        // path: it starts its own line.
+        block += '\n';
+        block += std::string(region.following_column.value_or(region.declaration_column), ' ');
     }
 
     if (text.substr(widened.offset, widened.length) == block) {
@@ -1106,6 +1146,15 @@ FormatResult format_ranges_once(const FormatRequest& request, const std::vector<
     for (const frontend::ProofDeclaration& proof : syntax.proofs) {
         collect_arm_regions(stream, proof.statements, all_arm_regions);
     }
+    // A case split on a runtime path lays its arms out as one in a proof body
+    // does (GRAMMAR.md 49).
+    for (const frontend::PathCaseSplit& split : syntax.path_splits) {
+        if (split.statement.arms_span.length != 0) {
+            all_arm_regions.push_back(
+                ArmRegion{&split.statement, split_column(stream, split.statement),
+                          layout_depth_at(stream, split.statement.keyword.offset) * kIndentWidth});
+        }
+    }
 
     const bool whole_document = ranges.empty();
     // A zero-length range is a cursor position, not an empty interval: it
@@ -1241,6 +1290,25 @@ FormatResult format_ranges_once(const FormatRequest& request, const std::vector<
         const std::size_t line_start = request.text.rfind('\n', arms.offset);
         const std::size_t keyword = line_start == std::string::npos ? 0 : line_start;
         cppl_spans.push_back(widen_over_whitespace(request.text, {keyword, arms.end() - keyword}));
+    }
+    // A split on a runtime path is a statement of the body, withheld from
+    // clang-format with its keyword's line above, so its keyword is indented
+    // here to the body's own depth when it begins its line.
+    for (const frontend::PathCaseSplit& split : syntax.path_splits) {
+        const source::ByteSpan& keyword = split.statement.keyword;
+        if (!overlaps_request(split.statement.arms_span)) {
+            continue;
+        }
+        const std::size_t newline = request.text.rfind('\n', keyword.offset);
+        const std::size_t start = newline == std::string::npos ? 0 : newline + 1;
+        const std::string_view leading = std::string_view(request.text).substr(start, keyword.offset - start);
+        if (leading.find_first_not_of(" \t") != std::string_view::npos) {
+            continue;
+        }
+        const std::string indentation(split_column(stream, split.statement), ' ');
+        if (leading != indentation) {
+            edits.push_back({source::ByteSpan{start, leading.size()}, indentation});
+        }
     }
 
     // The line ranges to ask clang-format to look at: the requested range(s),

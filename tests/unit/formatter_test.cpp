@@ -845,6 +845,36 @@ CPPL_TEST(cases_arms_are_expanded_and_separated_by_one_blank_line) {
     CPPL_CHECK(formatted.find("}\n\n        Flag::off => {") != std::string::npos);
 }
 
+// SPEC: CASE-017
+// A split in a verified body lays its arms out as a proof body's does, and the
+// statement after it keeps a line of its own at the split's indentation.
+CPPL_TEST(a_split_on_a_runtime_path_lays_out_its_arms_and_keeps_the_next_statement_apart) {
+    const std::string input = "enum class Flag { on, off };\n"
+                              "verified int f(Flag f) ensures(result==0){\n"
+                              "cases f { Flag::on=>{} Flag::off=>{} unnamed(v)=>{} } return 0;\n"
+                              "}\n";
+    const std::string formatted = format_text(input);
+    CPPL_CHECK(formatted.find("    cases f {\n        Flag::on => {\n        }\n\n        Flag::off => {") !=
+               std::string::npos);
+    CPPL_CHECK(formatted.find("        unnamed(v) => {\n        }\n    }\n    return 0;\n}") != std::string::npos);
+    CPPL_CHECK_EQ(format_text(formatted), formatted);
+}
+
+// SPEC: CASE-017
+// As the unbraced body of an `if`, a split is indented as any other statement
+// there, and the statement after it returns to the `if`'s own level.
+CPPL_TEST(a_split_as_an_unbraced_if_body_is_indented_as_its_body) {
+    const std::string input = "enum class Flag { on, off };\n"
+                              "verified int f(Flag f, bool b) ensures(result==0){\n"
+                              "if (b)\n"
+                              "cases f { Flag::on=>{} Flag::off=>{} unnamed(v)=>{} } return 0;\n"
+                              "}\n";
+    const std::string formatted = format_text(input);
+    CPPL_CHECK(formatted.find("    if (b)\n        cases f {\n            Flag::on => {\n") != std::string::npos);
+    CPPL_CHECK(formatted.find("            }\n        }\n    return 0;\n}") != std::string::npos);
+    CPPL_CHECK_EQ(format_text(formatted), formatted);
+}
+
 CPPL_TEST(proof_arm_binders_have_no_space_before_binding_parenthesis) {
     const std::string input = "proof p(unsigned n) proves(n==n){\n"
                               "induction n { zero=>{refl;} successor(pred)=>{refl;} }\n"

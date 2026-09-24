@@ -15,8 +15,11 @@
 #include "cppl/vir/place.hpp"
 #include "cppl/vir/types.hpp"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -205,7 +208,79 @@ o::Program anchored() {
     return program;
 }
 
+// A case split on the body's path, `cases x { x == 1 => ...; residual => ... }`,
+// against `result == x`. Each arm returns what `bodies` holds for it
+// (SPEC.md CASE-018).
+v::Function split(std::vector<v::CaseSplit::Arm> arms, std::vector<v::Expr> bodies) {
+    auto function = first();
+    v::CaseSplit node;
+    node.residual = true;
+    node.discriminators = 1;
+    node.arms = std::move(arms);
+    node.operands.push_back(parameter(0));
+    node.operands.push_back(equality(parameter(0), number(1)));
+    for (auto& body : bodies) {
+        node.operands.push_back(std::move(body));
+    }
+    CPPL_CHECK(function.returned_value.has_value());
+    function.returned_value->node = std::move(node);
+    return function;
+}
+
+bool every_obligation_proven(v::Function function) {
+    cppl::elaboration::Result elaborated;
+    elaborated.module.functions.push_back(std::move(function));
+    cppl::diagnostics::Engine engine;
+    const auto program = o::generate(elaborated.module, elaborated, engine);
+    CPPL_CHECK(!engine.has_errors());
+    CPPL_CHECK_EQ(program.contracts.size(), std::size_t{1});
+    cppl::diagnostics::Engine verified;
+    const auto results = cppl::automation::verify(program, verified);
+    return !results.empty() &&
+           std::ranges::all_of(results, [](const auto& result) { return result.verdict.is_proven(); });
+}
+
 } // namespace
+
+// SPEC: CASE-018
+// The named case's arm returns 1, which is `x` only because that arm supposes
+// `x == 1`. The residual arm returns `x` itself.
+CPPL_TEST(each_arm_of_a_case_split_supposes_its_own_case) {
+    CPPL_CHECK(
+        every_obligation_proven(split({{0U, "one", {}}, {std::nullopt, "unnamed", {}}}, {number(1), parameter(0)})));
+}
+
+// SPEC: CASE-018
+// The refused half: the arms are swapped, so the residual arm returns 1 while
+// supposing `x != 1`. Were it given the named case's fact, this would pass.
+CPPL_TEST(an_arm_of_a_case_split_is_not_given_another_arms_case) {
+    CPPL_CHECK(
+        !every_obligation_proven(split({{0U, "one", {}}, {std::nullopt, "unnamed", {}}}, {parameter(0), number(1)})));
+}
+
+// SPEC: CASE-018
+// A split whose arms leave a state uncovered would drop that state's path. The
+// walk refuses it whatever built the split, rather than verifying fewer paths.
+CPPL_TEST(a_case_split_that_leaves_a_state_without_an_arm_is_refused) {
+    // Refused for that reason, by name: a split walked with a state missing
+    // would otherwise fail, if at all, only on whatever it walked instead.
+    const auto refused = [](std::vector<v::CaseSplit::Arm> arms, std::vector<v::Expr> bodies,
+                            const std::string& reason) {
+        cppl::elaboration::Result elaborated;
+        elaborated.module.functions.push_back(split(std::move(arms), std::move(bodies)));
+        cppl::diagnostics::Engine engine;
+        const auto program = o::generate(elaborated.module, elaborated, engine);
+        return program.contracts.empty() && std::ranges::any_of(engine.diagnostics(), [&](const auto& diagnostic) {
+                   return diagnostic.message.find(reason) != std::string::npos;
+               });
+    };
+    const std::string uncovered = "leaves a state of its subject without an arm";
+    CPPL_CHECK(refused({{0U, "one", {}}}, {number(1)}, uncovered));
+    CPPL_CHECK(refused({{std::nullopt, "unnamed", {}}}, {parameter(0)}, uncovered));
+    CPPL_CHECK(refused({{0U, "one", {}}, {0U, "one", {}}}, {number(1), number(1)}, "malformed case split"));
+    CPPL_CHECK(refused({{0U, "one", {}}, {std::nullopt, "unnamed", {}}, {std::nullopt, "unnamed", {}}},
+                       {number(1), parameter(0), parameter(0)}, "malformed case split"));
+}
 
 CPPL_TEST(a_return_observes_the_version_its_path_established) {
     const auto latest = assigned(1);

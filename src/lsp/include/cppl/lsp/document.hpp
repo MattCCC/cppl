@@ -82,6 +82,15 @@ class Document {
         path_claims_recognized_ = recognized;
     }
 
+    // The same, for a `cases` or `decompose` statement in a verified body read
+    // as a case split on its path (SPEC.md CASE-017).
+    [[nodiscard]] bool path_splits_recognized() const noexcept {
+        return path_splits_recognized_;
+    }
+    void set_path_splits_recognized(bool recognized) noexcept {
+        path_splits_recognized_ = recognized;
+    }
+
   private:
     std::string uri_;
     std::string path_;
@@ -94,6 +103,7 @@ class Document {
     std::vector<diagnostics::Diagnostic> diagnostics_;
     std::vector<elaboration::SubjectStates> subject_states_;
     bool path_claims_recognized_ = false;
+    bool path_splits_recognized_ = false;
 };
 
 // Manages all open documents

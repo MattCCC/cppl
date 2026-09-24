@@ -27,14 +27,24 @@ void collect_keywords(const std::vector<frontend::ProofStatement>& statements,
 } // namespace
 
 std::vector<std::uint32_t> proof_keyword_tokens(const frontend::Syntax& syntax, std::string_view text,
-                                                bool path_claims_recognized) {
+                                                bool path_claims_recognized, bool path_splits_recognized) {
     std::vector<source::ByteSpan> keywords;
     for (const frontend::ProofDeclaration& proof : syntax.proofs) {
         collect_keywords(proof.statements, keywords);
     }
     if (path_claims_recognized) {
         for (const frontend::PathContradiction& claim : syntax.path_contradictions) {
-            keywords.push_back(claim.statement.keyword);
+            if (!claim.split.has_value()) {
+                keywords.push_back(claim.statement.keyword);
+            }
+        }
+    }
+    if (path_splits_recognized) {
+        for (const frontend::PathCaseSplit& split : syntax.path_splits) {
+            keywords.push_back(split.statement.keyword);
+            for (const frontend::ProofArm& arm : split.statement.arms) {
+                collect_keywords(arm.statements, keywords);
+            }
         }
     }
     std::ranges::sort(keywords, {}, &source::ByteSpan::offset);

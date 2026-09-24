@@ -277,9 +277,27 @@ does not make a class a sum. A statement is read with at most 64 arms, omissions
 included, and arms nest at most 32 deep. See `SPEC.md` 20.1 and 20.4 for the
 boundary, and `TRUST.md` 19 for what each provider does and does not state.
 
-`cases` and `decompose` appear only in proof bodies, which contain no mutation,
-so no case fact can go stale; they are not yet available over values that can
-change. That extension is sequenced in `ROADMAP.md`.
+`cases` and `decompose` are also `IMPLEMENTED` as statements of a verified
+function's body (`SPEC.md` 20.7, `CASE-017` to `CASE-020`), over values that can
+change. The subject is read at the versions current where the split is written;
+each arm continues the path with its case's discriminator as a fact, and the rest
+of the body is verified once per arm, exactly as the proof-side split supposes
+each case. An arm holds only nested splits and a `contradiction` claim that ends
+its path; an omitted case is an omitted-case obligation checked against the
+path's facts. A case fact is about one version: after a write, a write through a
+reference that may alias it, a call that may change it, or at the head of a loop
+that writes it, the storage has a new version that no earlier fact describes.
+Invalidation is the storage model's own, not a mechanism of the case engine. The
+path walk re-checks that every state has exactly one arm, so no state's path can
+be dropped. A split erases to an empty statement.
+
+What a split can reach is what verified bodies model. A local aggregate is
+tracked member by member and has no single value, so it is split through its
+members. Verified code cannot write a `std::optional`, `std::variant` or
+`std::expected` or reassign a pointer local, so splits over those read values
+that do not change within the body. A split's binders are declared once for the
+statement as written, so in a function template whose specializations bind
+values of different types, the specializations that disagree are refused.
 
 This slice does **not** implement induction, loop termination, ghost state,
 `unsafe`, proof `let`, solvers, proof caching, or any verification of the C++
@@ -379,6 +397,7 @@ The project should not claim broad language implementation before the proof sema
 | multi-statement proof bodies  | `PROTOTYPE`   |
 | proof `let`                   | `SPECIFIED`   |
 | proof case analysis `cases`   | `PROTOTYPE`   |
+| case splits in verified code  | `PROTOTYPE`   |
 | proposition types             | `PROTOTYPE`   |
 | explicit `Eq<T>` propositions | `PROTOTYPE`   |
 | direct proposition proofs     | `PROTOTYPE`   |
@@ -1059,8 +1078,9 @@ RFC 0005).
 | Product decomposition providers             | `IMPLEMENTED` |
 | Formal value model for the above            | `IMPLEMENTED` |
 | Cross-provider nested decomposition         | `IMPLEMENTED` |
-| `cases` over values that can change         | `SPECIFIED`   |
-| Impossible cases                            | `SPECIFIED`   |
+| Case splits on a runtime path               | `IMPLEMENTED` |
+| Case facts invalidated with their version   | `IMPLEMENTED` |
+| Impossible cases (`omit ... by ...`)        | `PROTOTYPE`   |
 | `induction` with explicit arms / short form | `SPECIFIED`   |
 | Machine-integer induction principles        | `SPECIFIED`   |
 | Pointer-structure induction (premised)      | `SPECIFIED`   |
@@ -1424,7 +1444,9 @@ engine recorded while elaborating the buffer (`elaboration::SubjectStates`),
 so the server still has no decomposition or exhaustiveness engine of its own;
 where the compiler has not confirmed a subject's states, they offer nothing
 rather than guess. Elaboration runs on publish rather than per keystroke, so
-offered labels may lag the buffer by one edit.
+offered labels may lag the buffer by one edit. A case split in a verified body
+is served the same way, from the states the compiler recorded while elaborating
+the body.
 
 `semanticTokensProvider` reports, as `keyword` tokens, the proof statements
 the editors' TextMate grammar cannot tell from C++ declarations, such as
@@ -1432,7 +1454,9 @@ the editors' TextMate grammar cannot tell from C++ declarations, such as
 recognizer read, at the positions it recorded in the buffer as written. A
 `contradiction` statement in a verified body is reported only when the compile
 of the whole unit, headers included, also recognized claims, since a header
-that names `contradiction` makes the statement ordinary C++ (WORD-002).
+that names `contradiction` makes the statement ordinary C++ (WORD-002). A case
+split in a verified body, with the keywords of its arms, is reported on the same
+terms, when the compile of the whole unit recognized splits (WORD-012).
 
 Go-to-definition, the other semantic-token categories and incremental sync are
 designed in `tools/cppl-lsp/README.md` but not implemented, and are deliberately
@@ -1846,8 +1870,7 @@ The credibility of a proof-oriented language depends on maintaining those distin
 
 The core supports nominal abstract values and typed logical projections, with
 independent malformed-evidence and substitution tests. The source decomposition
-providers built on it are implemented and listed above. Nothing here promotes
-mutation analysis or the unimplemented editor capabilities to implemented
-status: `cases` is still unavailable over values that can change, and the
-language server offers only what [Developer tooling status](#developer-tooling-status)
-lists.
+providers built on it are implemented and listed above, over proof parameters
+and, through case splits on a runtime path, over values read from storage. The
+language server offers only what
+[Developer tooling status](#developer-tooling-status) lists.

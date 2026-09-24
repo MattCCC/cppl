@@ -12,8 +12,9 @@ for alternatives. Whitespace separates tokens; canonical layout is section 49.
 `where`, `expects`, `ensures`, `decreases`, `invariant`, `forall`, and `exists`
 are contextual words. `refl`, `exact`, `apply`, `assume`, `rewrite`,
 `contradiction`, `cases`, `decompose`, and `induction` are contextual proof
-statements; `contradiction` also begins a statement in a verified function's body
-where the translation unit gives the word no other meaning (section 5.6). `omit`
+statements; `contradiction`, `cases` and `decompose` also begin a statement in a
+verified function's body where the translation unit gives the word no other
+meaning (sections 5.6 and 5.7). `omit`
 and `by` have meaning only in a case omission (section 5.7),
 and `omit` begins one only where a case label followed by `by` comes after it.
 `result`, `old`, and `self` have only the scopes defined below. C++ keywords take
@@ -155,6 +156,17 @@ own discriminator premise, exactly as an arm's body would be. The engine never
 searches the surrounding context to decide that a missing arm was intentional
 (SPEC `CASE-005`). A case omission has no binders, because it has no body to
 bind them in.
+
+Written as a statement of a verified function's body, either statement splits
+the rest of the path by the states of its subject's value where it is written
+(SPEC `CASE-017`). Each arm continues the path with its case's facts; it holds
+only nested `cases` or `decompose` statements and a `contradiction` claim that
+ends its path, because there is no goal on a path for anything else to close
+(SPEC `CASE-019`). A later write, aliased write, call effect or loop gives the
+subject's storage a new version that no earlier case fact describes (SPEC
+`CASE-020`). It is ordinary C++ wherever the translation unit gives the word any
+other meaning, and ill-formed in a function that is not verified (SPEC
+`WORD-012`). It erases to an empty statement (SPEC `ERASE-016`).
 
 ### 5.8 `induction`
 
@@ -525,7 +537,11 @@ one line, `omit label by contradiction evidence;`, separated from its neighbours
 the same way, with the statement after `by` kept as written. A comment between
 arms keeps its place: one on the line of the `{`, `}` or `;` before it stays on
 that line, and one on a line of its own stays on its own line, before the arm
-that follows or before the block's closing `}`. `where` stays on the
+that follows or before the block's closing `}`. A case split in a verified body
+is a statement of that body: its keyword starts a line at the statement's
+indentation, one level deeper as the unbraced body of `if`, `else`, `while`,
+`for` or `do`, its arms follow the same rules, and the statement after its
+closing `}` starts a line of its own. `where` stays on the
 refinement declaration subject to normal ColumnLimit wrapping. Predicates use
 the same indentation and line-width configuration as C++ expressions.
 

@@ -224,6 +224,9 @@ std::expected<Evidence, std::string> Composition::propose_condition(const Condit
     if (stated.origin == obligations::Origin::ImpossiblePath) {
         return std::unexpected("a runtime path is shown not to occur only by the contradiction written for it");
     }
+    if (stated.origin == obligations::Origin::OmittedCase) {
+        return std::unexpected("an omitted case is shown not to occur only by the contradiction written for it");
+    }
     const auto candidate = automation::propose(program_.context, stated.goal);
     if (!candidate.has_value()) {
         return std::unexpected("no strategy produced candidate evidence");

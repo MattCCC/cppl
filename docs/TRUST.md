@@ -693,6 +693,8 @@ it could hand an arm a false premise. Omission therefore adds no correspondence
 of its own, and a provider defect is as much a soundness defect for it as for an
 arm.
 
+**[TCB-DECOMP-007]** A case split on a runtime path (`SPEC.md` 20.7) adds no kernel rule, axiom or assumption, but it is a verification-condition split, and the decision to split lies in the correspondence layer the same way a conditional's does (§12.1). Each arm's conditions MUST suppose exactly the proof-side split's facts for that case, and every state of the partition MUST have exactly one arm walked; a state with no arm would drop its path from verification without any kernel ever seeing it. The path walk re-checks that coverage itself rather than trusting the split it was given. The subject MUST be read through the one storage read, so a case fact names the version current where the split stands and never a later one. TCB delta: the split's path walk (`compiler/obligations/src/contracts.cpp` `split_path`) and its lowering (`clang/src/bridge.cpp` `lower_split`).
+
 ## 19.1 Standard representation obligations
 
 For each modeled standard representation, the correspondence TCB must correctly identify semantic identity and public state space. At minimum:

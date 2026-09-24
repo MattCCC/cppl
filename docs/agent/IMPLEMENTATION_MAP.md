@@ -117,7 +117,8 @@ tests/fixtures/verified_storage.cpp
 
 Manifest: `features/case-analysis.yaml`
 
-Normative sources: `CASE-001`–`CASE-010` (SPEC §20), `TCB-DECOMP-*` (TRUST §19).
+Normative sources: `CASE-001`–`CASE-010` and `CASE-017`–`CASE-020` (SPEC §20),
+`WORD-012` (SPEC §3), `ERASE-016` (SPEC §36), `TCB-DECOMP-*` (TRUST §19).
 
 ### Components
 
@@ -130,8 +131,19 @@ Normative sources: `CASE-001`–`CASE-010` (SPEC §20), `TCB-DECOMP-*` (TRUST §
 | analysis | Resolve binder types to a fixpoint for nested statements. | `compiler/analysis/src/analyze.cpp` |
 | obligations | Split the goal on each discriminator in turn; the residual branch holds when none does. | `compiler/obligations/src/generate.cpp` |
 | kernel | Check projections of abstract nominal values; no representation-specific rule. | `kernel/src/term.cpp`, `kernel/src/types.cpp` |
-| erasure | Remove every construct, binder and arm. | `compiler/erasure/src/erase.cpp` |
+| erasure | Remove every construct, binder and arm; a split on a runtime path becomes an empty statement, checked as a lowering. | `compiler/erasure/src/erase.cpp` |
 | formatter, lsp | Lay arms out canonically; complete labels and binders and show case sites from the compiler's own elaboration. | `compiler/formatter/src/format.cpp`, `src/lsp/src/decomposition_view.cpp` |
+
+A split on a runtime path runs through the same components with these
+additions:
+
+| Component | Responsibility | Paths |
+| --- | --- | --- |
+| frontend | Recognize `cases`/`decompose` at a statement's start in a verified body, word by word C++-first; admit only nested splits and claims in arms; record each claim and omission in its arms as the split's. Project a block per split: marker, subject, labels, and per arm its marker, its binders declared from a never-defined function, and its nested blocks. | `compiler/frontend/src/recognizer.cpp`, `compiler/frontend/src/projection.cpp` |
+| bridge | Read the subject and labels through the ordinary reads at the versions current there; lower each arm as the path continued through the rest of the body; read an arm binder as the value it names, never as storage. | `clang/src/bridge.cpp` (`lower_split`) |
+| analysis | Resolve a split's binder types from the subject type the body lowering recorded. | `compiler/analysis/src/analyze.cpp` |
+| elaboration | Match arms by the proof side's rules, substitute each binder by its case's value, and refuse a binder read at a type its case does not bind. | `compiler/elaboration/src/elaborate.cpp` (`convert_split`) |
+| obligations | Walk each arm under exactly the proof-side split's facts for its case, after checking every state has exactly one arm; an omission is an omitted-case obligation checked against the path. | `compiler/obligations/src/contracts.cpp` (`split_path`), `compiler/obligations/src/generate.cpp` |
 
 ### Required behavior
 
@@ -147,6 +159,12 @@ a subject               is one value for the statement; its type must be
                         complete, and C++ instantiates it where it can
 a sum and a product     never stand in for each other
 the construct           erases completely
+a split on a path       reads its subject at the versions current there and
+                        continues the path once per arm, under that case's
+                        facts; a later write gives the storage a version no
+                        case fact describes
+every state             keeps its path: exactly one arm each, checked where
+                        the path is walked
 ```
 
 ### Interactions

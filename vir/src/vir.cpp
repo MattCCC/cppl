@@ -198,11 +198,22 @@ std::string describe(const Expr& expr) {
                 }
                 return text + ")";
             } else if constexpr (std::is_same_v<Node, PathContradiction>) {
-                std::string text = "contradiction " + node.evidence + "(";
+                std::string text = node.omitted ? "omit " + *node.omitted + " by contradiction " + node.evidence + "("
+                                                : "contradiction " + node.evidence + "(";
                 for (std::size_t index = 0; index < node.operands.size(); ++index) {
                     text += (index != 0 ? ", " : "") + describe(node.operands[index]);
                 }
                 return text + ")";
+            } else if constexpr (std::is_same_v<Node, CaseSplit>) {
+                const std::size_t first_arm = 1 + node.discriminators;
+                if (node.operands.size() != first_arm + node.arms.size()) {
+                    return "<malformed-split>";
+                }
+                std::string text = (node.product ? "decompose " : "cases ") + describe(node.operands[0]) + " {";
+                for (std::size_t index = 0; index < node.arms.size(); ++index) {
+                    text += " " + node.arms[index].label + " => " + describe(node.operands[first_arm + index]) + ";";
+                }
+                return text + " }";
             } else {
                 if (node.operands.size() != 2) {
                     return "<malformed-binary>";

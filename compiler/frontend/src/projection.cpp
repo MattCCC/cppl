@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <optional>
 #include <ranges>
+#include <set>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -62,6 +63,21 @@ std::string at_written_position(const TokenStream& stream, const source::ByteSpa
     text.append(at.column > 1 ? at.column - 1 : 0, ' ');
     text += stream.spelling(source::ByteSpan{first->span.offset, expression.end() - first->span.offset});
     text += "\n";
+    return text;
+}
+
+// A line directive and indentation after which the text resumes at the position
+// the token at `offset` was written at, so an insertion before it moves nothing
+// a diagnostic points at.
+std::string resume_at(const TokenStream& stream, std::size_t offset) {
+    const std::vector<Token>& tokens = stream.tokens();
+    const auto at = std::ranges::lower_bound(tokens, offset, {}, [](const Token& token) { return token.span.offset; });
+    if (at == tokens.end() || at->kind == TokenKind::EndOfFile) {
+        return {};
+    }
+    const source::SourceLocation location = stream.location_of(*at);
+    std::string text = line_directive(location.line, location.file);
+    text.append(location.column > 1 ? location.column - 1 : 0, ' ');
     return text;
 }
 
@@ -180,6 +196,37 @@ std::string canonical_lowering(const TokenStream& stream, const RefinementType& 
         }
     }
     return text;
+}
+
+std::string erased_split(const TokenStream& stream, const PathCaseSplit& split) {
+    std::string text(stream.spelling(split.span));
+    for (char& character : text) {
+        if (character != '\n') {
+            character = ' ';
+        }
+    }
+    if (!text.empty()) {
+        text.back() = ';';
+    }
+    return text;
+}
+
+const ProofStatement* split_statement(const Syntax& syntax, const PathSplitMarker& marker) {
+    if (marker.split_index >= syntax.path_splits.size() || marker.route.size() % 2 != 0) {
+        return nullptr;
+    }
+    const ProofStatement* statement = &syntax.path_splits[marker.split_index].statement;
+    for (std::size_t step = 0; step < marker.route.size(); step += 2) {
+        if (marker.route[step] >= statement->arms.size()) {
+            return nullptr;
+        }
+        const ProofArm& arm = statement->arms[marker.route[step]];
+        if (marker.route[step + 1] >= arm.statements.size()) {
+            return nullptr;
+        }
+        statement = &arm.statements[marker.route[step + 1]];
+    }
+    return statement;
 }
 
 Projection project(const TokenStream& stream, const Syntax& syntax, const ProjectionOptions& options) {
@@ -687,41 +734,195 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
     // and whatever statement it was the body of still has one. Clang is given a
     // block at the same point instead, which resolves the evidence's arguments
     // in the scope the statement sees (SPEC.md VERIFIED-023).
+    const auto claim_marker = [&options](std::size_t index) {
+        return options.generated_prefix + "contradiction_" + std::to_string(index) +
+               (options.unit_key.empty() ? "" : "_" + options.unit_key);
+    };
+    const auto claim_block = [&stream](const std::string& name, const ProofStatement& statement) {
+        const std::string& file = statement.location.file;
+        std::string block = "{\n";
+        block += line_directive(statement.location.line, file);
+        // Starting the declaration at the keyword's column is what makes a
+        // diagnostic about the claim point at the `contradiction` written.
+        if (statement.location.column > 1) {
+            block.append(statement.location.column - 1, ' ');
+        }
+        block += "[[maybe_unused]] bool " + name + " = true;\n";
+        for (std::size_t position = 0; position < statement.arguments.size(); ++position) {
+            const ProofArgument& argument = statement.arguments[position];
+            block += line_directive(argument.location.line, file);
+            // `decltype(auto)` over a parenthesized argument binds it as it is,
+            // an lvalue by reference, so nothing is copied or converted.
+            block += "[[maybe_unused]] decltype(auto) " + name + "_argument_" + std::to_string(position) + " = (";
+            block += at_written_position(stream, argument.span);
+            block += ");\n";
+        }
+        block += "}\n";
+        return block;
+    };
     for (std::size_t index = 0; index < syntax.path_contradictions.size(); ++index) {
         const PathContradiction& claim = syntax.path_contradictions[index];
-        blank(projection.runtime, claim.erased);
 
         PathContradictionMarker marker;
-        marker.name = options.generated_prefix + "contradiction_" + std::to_string(index) +
-                      (options.unit_key.empty() ? "" : "_" + options.unit_key);
+        marker.name = claim_marker(index);
         marker.claim_index = index;
         marker.function_index = claim.function_index;
         marker.location = claim.statement.location;
 
-        const std::string& file = claim.statement.location.file;
-        std::string replacement = "{\n";
-        replacement += line_directive(claim.statement.location.line, file);
-        // Starting the declaration at the keyword's column is what makes a
-        // diagnostic about the claim point at the `contradiction` written.
-        if (claim.statement.location.column > 1) {
-            replacement.append(claim.statement.location.column - 1, ' ');
+        // A claim in a split's arm is erased and projected with that split.
+        if (claim.split.has_value()) {
+            projection.path_contradictions.push_back(std::move(marker));
+            continue;
         }
-        replacement += "[[maybe_unused]] bool " + marker.name + " = true;\n";
-        for (std::size_t position = 0; position < claim.statement.arguments.size(); ++position) {
-            const ProofArgument& argument = claim.statement.arguments[position];
-            replacement += line_directive(argument.location.line, file);
-            // `decltype(auto)` over a parenthesized argument binds it as it is,
-            // an lvalue by reference, so nothing is copied or converted.
-            replacement +=
-                "[[maybe_unused]] decltype(auto) " + marker.name + "_argument_" + std::to_string(position) + " = (";
-            replacement += at_written_position(stream, argument.span);
-            replacement += ");\n";
-        }
-        replacement += "}\n";
-        replacement += line_directive(claim.end_line, file);
+        blank(projection.runtime, claim.erased);
+        std::string replacement = claim_block(marker.name, claim.statement);
+        replacement += line_directive(claim.end_line, claim.statement.location.file);
         replacement.append(claim.end_column - 1, ' ');
         edits.push_back(Edit{claim.span, std::move(replacement)});
         projection.path_contradictions.push_back(std::move(marker));
+    }
+
+    // A case split on a runtime path is proof syntax in runtime code too. The
+    // program keeps an empty statement where it stood, and Clang is given a
+    // block at the same point that resolves the subject, the labels and the
+    // binders in the scope the statement sees, together with every nested split
+    // and claim of its arms (SPEC.md CASE-017).
+    //
+    // A binder is declared as a reference obtained from a function that is
+    // declared and never defined: Clang needs it only to resolve what later
+    // expressions in the arm say about it, and the analysis text is never
+    // compiled into code. The bridge reads the binder back as the value its
+    // case exposes, never as storage.
+    std::set<std::size_t> helped;
+    for (std::size_t index = 0; index < syntax.path_splits.size(); ++index) {
+        const PathCaseSplit& split = syntax.path_splits[index];
+        projection.runtime_lowerings.push_back(RuntimeLowering{split.span, erased_split(stream, split)});
+
+        const std::string function_suffix =
+            std::to_string(split.function_index) + (options.unit_key.empty() ? "" : "_" + options.unit_key);
+        const std::string completes = options.generated_prefix + "split_completes_" + function_suffix;
+        const std::string binder_type = options.generated_prefix + "split_type_" + function_suffix;
+        const std::string binder_value = options.generated_prefix + "split_value_" + function_suffix;
+        // Decomposing needs the subject's type complete, as a member access
+        // would. Asking for `sizeof` in a SFINAE context instantiates a class
+        // template specialization where C++ can and answers false, without an
+        // error, for a type that is genuinely incomplete, which the provider
+        // then refuses by name.
+        if (split.function_index < syntax.verified_functions.size() && helped.insert(split.function_index).second) {
+            const VerifiedFunction& verified = syntax.verified_functions[split.function_index];
+            const std::size_t before =
+                verified.template_header.length != 0 ? verified.template_header.offset : verified.keyword.offset;
+            std::string declared = "\n";
+            declared += line_directive(verified.function_location.line, verified.function_location.file);
+            declared += "template<class T, class = void> struct ";
+            declared += completes;
+            declared += " { static constexpr bool value = false; }; template<class T> struct ";
+            declared += completes;
+            declared +=
+                "<T, decltype(void(sizeof(T)))> { static constexpr bool value = true; }; template<class T> struct ";
+            declared += binder_type;
+            declared += " { using type = T; }; template<class T> T& ";
+            declared += binder_value;
+            declared += "();\n";
+            declared += resume_at(stream, before);
+            edits.push_back(Edit{source::ByteSpan{before, 0}, std::move(declared)});
+        }
+
+        const std::string& file = split.statement.location.file;
+        std::size_t next_claim = 0;
+        std::string replacement;
+        const auto emit_split = [&](auto&& self, const ProofStatement& statement, const std::string& marker,
+                                    const std::vector<std::uint32_t>& route) -> void {
+            projection.path_splits.push_back(
+                PathSplitMarker{marker, index, route, split.function_index, statement.location});
+            replacement += "{\n";
+            replacement += line_directive(statement.location.line, file);
+            if (statement.location.column > 1) {
+                replacement.append(statement.location.column - 1, ' ');
+            }
+            replacement += "[[maybe_unused]] bool ";
+            replacement += marker;
+            replacement += " = true;\n[[maybe_unused]] decltype(auto) ";
+            replacement += marker;
+            replacement += "_subject = (";
+            replacement += at_written_position(stream, statement.proposition);
+            replacement += ");\nstatic_assert(";
+            replacement += completes;
+            replacement += "<decltype(";
+            replacement += marker;
+            replacement += "_subject)>::value || true);\n";
+            for (std::size_t arm = 0; arm < statement.arms.size(); ++arm) {
+                if (statement.arms[arm].keyword_label) {
+                    continue;
+                }
+                replacement += "[[maybe_unused]] decltype(auto) ";
+                replacement += marker;
+                replacement += "_label_";
+                replacement += std::to_string(arm);
+                replacement += " = (";
+                replacement += at_written_position(stream, statement.arms[arm].label);
+                replacement += ");\n";
+            }
+            std::uint32_t nested = 0;
+            for (std::size_t position = 0; position < statement.arms.size(); ++position) {
+                const ProofArm& arm = statement.arms[position];
+                replacement += "{\n[[maybe_unused]] bool ";
+                replacement += marker;
+                replacement += "_arm_";
+                replacement += std::to_string(position);
+                replacement += " = true;\n";
+                for (std::size_t binding = 0; binding < arm.binders.size(); ++binding) {
+                    std::string key = marker;
+                    key += "_binding_";
+                    key += std::to_string(position);
+                    key += "_";
+                    key += std::to_string(binding);
+                    const auto known = options.binding_types.find(key);
+                    std::string type = "typename ";
+                    type += binder_type;
+                    type += "<";
+                    type += known == options.binding_types.end() ? "int" : known->second;
+                    type += ">::type";
+                    projection.binding_probes.push_back(BindingProbe{std::move(key), marker, arm.spelling, binding,
+                                                                     statement.kind == ProofStatementKind::Decompose,
+                                                                     arm.location});
+                    replacement += line_directive(arm.location.line, file);
+                    replacement += "[[maybe_unused]] ";
+                    replacement += type;
+                    replacement += "& ";
+                    replacement += arm.binders[binding];
+                    replacement += " = ";
+                    replacement += binder_value;
+                    replacement += "<";
+                    replacement += type;
+                    replacement += ">();\n";
+                }
+                for (std::size_t written = 0; written < arm.statements.size(); ++written) {
+                    const ProofStatement& inner = arm.statements[written];
+                    if (inner.kind == ProofStatementKind::Contradiction) {
+                        if (next_claim < split.claims.size()) {
+                            const std::size_t claim = split.claims[next_claim++];
+                            replacement +=
+                                claim_block(claim_marker(claim), syntax.path_contradictions[claim].statement);
+                        }
+                        continue;
+                    }
+                    std::vector<std::uint32_t> inner_route = route;
+                    inner_route.push_back(static_cast<std::uint32_t>(position));
+                    inner_route.push_back(static_cast<std::uint32_t>(written));
+                    self(self, inner, marker + "_nested_" + std::to_string(nested++), inner_route);
+                }
+                replacement += "}\n";
+            }
+            replacement += "}\n";
+        };
+        emit_split(emit_split, split.statement,
+                   options.generated_prefix + "split_" + std::to_string(index) +
+                       (options.unit_key.empty() ? "" : "_" + options.unit_key),
+                   {});
+        replacement += line_directive(split.end_line, file);
+        replacement.append(split.end_column - 1, ' ');
+        edits.push_back(Edit{split.span, std::move(replacement)});
     }
 
     // An explicit instantiation instantiates a body in this unit, but Clang's

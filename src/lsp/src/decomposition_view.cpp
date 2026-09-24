@@ -92,6 +92,22 @@ std::optional<CaseSite> enclosing_case_site(const frontend::Syntax& syntax,
             break;
         }
     }
+    // A split on a runtime path is one statement with the same arms, so the
+    // same search finds the innermost split around the cursor.
+    for (const frontend::PathCaseSplit& split : syntax.path_splits) {
+        if (statement != nullptr) {
+            break;
+        }
+        for (const frontend::ProofArm& arm : split.statement.arms) {
+            statement = innermost(arm.statements, offset);
+            if (statement != nullptr) {
+                break;
+            }
+        }
+        if (statement == nullptr && encloses(split.statement, offset)) {
+            statement = &split.statement;
+        }
+    }
     if (statement == nullptr) {
         return std::nullopt;
     }

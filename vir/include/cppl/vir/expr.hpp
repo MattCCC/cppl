@@ -243,7 +243,45 @@ struct PathContradiction {
     std::string evidence;       // the name as written
     std::vector<Expr> operands; // the arguments the proof is instantiated at
 
+    // The case of an enclosing split this claim accounts for, when it is
+    // `omit label by contradiction evidence;` rather than a runtime path claimed
+    // not to occur. The mechanism is the same; the claim, its origin and its
+    // report are the omission's own (SPEC.md CASE-012, CASE-016).
+    std::optional<std::string> omitted;
+
     friend bool operator==(const PathContradiction&, const PathContradiction&) = default;
+};
+
+// A split of a verified body's path by the state partition of a value read
+// where the split is written, with no runtime control flow (SPEC.md CASE-017).
+// `operands` are the subject, then the discriminator of each named case of the
+// partition in the provider's order, then each arm's continuation of the path
+// in written order.
+//
+// An arm stands for the named case `descriptor`, or for the residual case when
+// it has none; a product has one arm and no discriminators. The path the arm
+// continues supposes exactly what the proof-side split gives the same case:
+// every earlier discriminator false and its own true, or, for the residual,
+// every one false. Which states have an arm is checked where the split is
+// walked as well as where it was built, because a state left without one would
+// drop its path unchecked.
+struct CaseSplit {
+    struct Arm {
+        std::optional<std::uint32_t> descriptor;
+        std::string label;
+        source::SourceLocation location;
+        friend bool operator==(const Arm&, const Arm&) = default;
+    };
+    bool product = false;
+    // Whether the partition has a residual case. Without one, the last named
+    // case is exactly the negation of the others (decomposition::
+    // ExhaustivenessModel::Complete), and its arm supposes that negation.
+    bool residual = false;
+    std::uint32_t discriminators = 0;
+    std::vector<Arm> arms;
+    std::vector<Expr> operands; // subject, discriminators, one continuation per arm
+
+    friend bool operator==(const CaseSplit&, const CaseSplit&) = default;
 };
 
 struct Expr {
@@ -252,7 +290,7 @@ struct Expr {
     Provenance provenance;
     std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, PlaceVersion, PlaceRef, Loop, Iterate,
                  Projection, Element, FormalEquality, Universal, Implication, Connective, ReturnState, UnknownVersion,
-                 ElementBound, PathContradiction>
+                 ElementBound, PathContradiction, CaseSplit>
         node;
 
     friend bool operator==(const Expr&, const Expr&) = default;
@@ -268,7 +306,7 @@ struct Expr {
 // alternative fail here first, so the author has to visit every dispatch site
 // and decide what the new node means to each (AGENTS.md 7 "exhaustive
 // handling"). Update the count only together with those sites.
-static_assert(std::variant_size_v<decltype(Expr::node)> == 20,
+static_assert(std::variant_size_v<decltype(Expr::node)> == 21,
               "a VIR expression alternative was added or removed: review every dispatch over Expr::node, "
               "including describe() in vir.cpp, lowering in obligations/generate.cpp, the walk in "
               "obligations/contracts.cpp, and conversion in elaboration/elaborate.cpp");

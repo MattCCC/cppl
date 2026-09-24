@@ -64,6 +64,20 @@ std::string spelling(const decomposition::ProofBinding& binding, const vir::Type
         return "bool";
     return {};
 }
+
+// The type Clang resolved for a split's subject: what a proof's subject probe
+// returns, or what the body lowering read for a split on a runtime path.
+const clangbridge::Type* subject_type(const clangbridge::TranslationUnit& unit, const std::string& subject) {
+    if (const auto* probe = unit.find_by_name(subject))
+        return &probe->result;
+    for (const auto& function : unit.functions) {
+        for (const auto& split : function.path_splits) {
+            if (split.marker == subject)
+                return &split.type;
+        }
+    }
+    return nullptr;
+}
 } // namespace
 std::expected<Result, std::string> analyze(const frontend::TokenStream& stream, const frontend::Syntax& syntax,
                                            frontend::ProjectionOptions options, clangbridge::ParseRequest request) {
@@ -92,10 +106,10 @@ std::expected<Result, std::string> analyze(const frontend::TokenStream& stream, 
                 continue;
         }
         for (const auto& probe : result.projection.binding_probes) {
-            const auto* subject = result.unit.find_by_name(probe.subject);
-            if (!subject)
+            const clangbridge::Type* written = subject_type(result.unit, probe.subject);
+            if (!written)
                 continue;
-            auto type = elaboration::resolved_type(subject->result);
+            auto type = elaboration::resolved_type(*written);
             if (!type)
                 continue;
             vir::Expr value;

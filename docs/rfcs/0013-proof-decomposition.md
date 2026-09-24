@@ -152,17 +152,12 @@ representation inductive.
 A representation with no provider is refused at the provider boundary, by name,
 and its states are never guessed. Arm syntax does not make a class a sum.
 
-`cases` and `decompose` are proof statements and appear only in proof bodies,
-which contain no assignment, call, construction or destruction. No case fact can
-go stale, and none can escape: a subject another object can write has reference
-type, and a reference type has no formal meaning, so no law or contract states a
-proposition about it. Mutation and aliasing are excluded structurally rather
-than by analysis. Admitting `cases` over values that can change is future work
-and is governed by SPEC.md 20.5.
-
-When that work happens, the subject stays a logical value. A subject is an
-ordinary C++ expression Clang resolves, so mutable storage reaches a proof only
-along the existing read path:
+In a proof body, `cases` and `decompose` see no assignment, call, construction
+or destruction, so no case fact there can go stale. Written as statements of a
+verified function's body they split that body's path, over values that do
+change (SPEC.md 20.7). The subject stays a logical value. It is an ordinary C++
+expression Clang resolves where the statement stands, so mutable storage
+reaches the split only along the existing read path:
 
 ```text
 Place -> current PlaceVersion -> logical Value -> decomposition
@@ -176,6 +171,43 @@ proof term: a place is not a value, and the kernel's term language stays closed
 precisely because no address-typed term exists (RFC 0014). Making the case
 engine storage-aware would breach that, and is the wrong direction even though
 it looks like the shorter path to mutable subjects.
+
+## Splitting a runtime path
+
+A split in a verified body has no goal to close: the proof obligation it splits
+is the rest of the path. So its arms are that path continued, one per case, and
+the code after the split is verified once in each. Each arm supposes exactly
+what the proof-side split gives the same case: every earlier discriminator
+false and its own true, or every one false for the residual. Those suppositions
+cover every state by excluded middle on each discriminator in turn, whatever the
+provider claimed about completeness, so the only way to lose a state is to lose
+its arm. The path walk therefore re-checks that each state has exactly one arm,
+independently of elaboration, before it walks any of them.
+
+An arm holds what can stand on a path: nested splits, and a `contradiction`
+claim, which ends the arm's path under the claim's own obligation. Statements
+that close a goal have nothing to close there and are refused by the recognizer.
+An omission is the claim form of the proof-side omission and keeps its own
+origin, so the trust report still counts omitted cases and impossible paths
+apart.
+
+Nothing new tracks invalidation. The subject is read by the same `read_place`
+every other read uses, so a case fact is a proposition about the version term
+current there. A write binds a new version, a possible alias write or a call
+effect binds an unknown one, and a loop head binds a fresh one; none of them is
+the term the fact mentions. Tests pin each of those against a matched pair that
+differs only in the write.
+
+What a split can reach is what the body model reaches. The bridge tracks
+integer, Boolean and scoped-enumeration storage, including members and
+elements, so those are the subjects that change. Verified code cannot call the
+standard library, so `std::optional`, `std::variant` and `std::expected`
+subjects are parameters that do not change within the body, and pointer locals
+are not modeled at all. A local aggregate has no whole value, so a split
+reaches it through its members. Binders are declared for Clang once per
+statement as written; a function template whose specializations bind values
+of different types is refused at the specializations the declared type does not
+fit, which the elaborator checks for every binder it reads.
 
 ## Omitting an impossible case
 

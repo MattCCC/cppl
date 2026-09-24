@@ -21,6 +21,7 @@
 #include <expected>
 #include <functional>
 #include <iterator>
+#include <limits>
 #include <map>
 #include <optional>
 #include <ranges>
@@ -217,7 +218,9 @@ bool requires_conditions(const vir::Expr& expression) {
         // A bound states an obligation, which only the path walk emits.
         std::holds_alternative<vir::ElementBound>(expression.node) ||
         // So does a path claimed not to occur, which also has no value.
-        std::holds_alternative<vir::PathContradiction>(expression.node)) {
+        std::holds_alternative<vir::PathContradiction>(expression.node) ||
+        // A case split is paths, one per state, and no value.
+        std::holds_alternative<vir::CaseSplit>(expression.node)) {
         return true;
     }
     if (const auto* bound = std::get_if<vir::PlaceVersion>(&expression.node)) {
@@ -1046,7 +1049,94 @@ class Conditions {
             return impossible(*claim, expression, scope);
         }
 
+        if (const auto* split = std::get_if<vir::CaseSplit>(&expression.node)) {
+            return split_path(*split, expression, std::move(scope), loops);
+        }
+
         return returned(expression, std::move(scope));
+    }
+
+    // A case split on this path (SPEC.md CASE-017). It has no runtime effect,
+    // so nothing is evaluated here: the subject and the discriminators are
+    // terms over the versions current where the split was written, and a later
+    // write gives the place a new version they say nothing about.
+    //
+    // Each arm continues the path supposing exactly what the proof-side split
+    // gives the same case (`prove_cases`): every earlier discriminator false and
+    // its own true, the residual every one false, and, without a residual, the
+    // last named case every other one false. Those suppositions cover every
+    // state by excluded middle on each discriminator in turn, whatever the
+    // provider said, so no path of the body is dropped. That holds only if every
+    // state has exactly one arm, which is checked here as well as where the
+    // split was built.
+    std::expected<void, Failure> split_path(const vir::CaseSplit& split, const vir::Expr& expression, Scope scope,
+                                            std::vector<Active>& loops) {
+        const source::SourceLocation& location = expression.provenance.range.begin;
+        const std::size_t first_arm = 1 + split.discriminators;
+        if (split.arms.empty() || split.operands.size() != first_arm + split.arms.size()) {
+            return fail("malformed case split", location);
+        }
+        if (split.product) {
+            if (split.discriminators != 0 || split.arms.size() != 1 || split.arms.front().descriptor.has_value()) {
+                return fail("malformed case split", location);
+            }
+            return walk(split.operands[first_arm], std::move(scope), loops);
+        }
+
+        constexpr std::size_t unclaimed = std::numeric_limits<std::size_t>::max();
+        std::vector<std::size_t> arm_of(split.discriminators, unclaimed);
+        std::size_t residual_arm = unclaimed;
+        for (std::size_t position = 0; position < split.arms.size(); ++position) {
+            const auto& descriptor = split.arms[position].descriptor;
+            if (descriptor.has_value()) {
+                if (*descriptor >= arm_of.size() || arm_of[*descriptor] != unclaimed) {
+                    return fail("malformed case split", location);
+                }
+                arm_of[*descriptor] = position;
+            } else if (!split.residual || residual_arm != unclaimed) {
+                return fail("malformed case split", location);
+            } else {
+                residual_arm = position;
+            }
+        }
+        if (std::ranges::find(arm_of, unclaimed) != arm_of.end() || (split.residual && residual_arm == unclaimed) ||
+            (!split.residual && arm_of.empty())) {
+            return fail("a case split leaves a state of its subject without an arm", location);
+        }
+
+        std::vector<kernel::Term> discriminators;
+        for (std::size_t index = 0; index < split.discriminators; ++index) {
+            const vir::Expr& discriminator = split.operands[1 + index];
+            if (!discriminator.type.is_boolean()) {
+                return fail("malformed case split", location);
+            }
+            auto condition = lower(discriminator, scope);
+            if (!condition) {
+                return std::unexpected(condition.error());
+            }
+            discriminators.push_back(std::move(*condition));
+        }
+
+        const std::size_t supposed = split.residual ? discriminators.size() : discriminators.size() - 1;
+        for (std::size_t position = 0; position < discriminators.size(); ++position) {
+            Scope arm = scope;
+            for (std::size_t earlier = 0; earlier < position; ++earlier) {
+                arm.events.emplace_back(kernel::predicate(discriminators[earlier], false));
+            }
+            if (position < supposed) {
+                arm.events.emplace_back(kernel::predicate(discriminators[position], true));
+            }
+            if (auto walked = walk(split.operands[first_arm + arm_of[position]], std::move(arm), loops); !walked) {
+                return walked;
+            }
+        }
+        if (split.residual) {
+            for (const kernel::Term& discriminator : discriminators) {
+                scope.events.emplace_back(kernel::predicate(discriminator, false));
+            }
+            return walk(split.operands[first_arm + residual_arm], std::move(scope), loops);
+        }
+        return {};
     }
 
     // `contradiction evidence;` on this path (SPEC.md VERIFIED-023). The path
@@ -1081,14 +1171,19 @@ class Conditions {
             written.argument_types.push_back(*type);
         }
 
+        // An omission in a split's arm claims its case cannot occur here, an
+        // obligation of its own kind even though its mechanism is a claim's
+        // (SPEC.md CASE-012, CASE-016).
         Obligation obligation;
-        obligation.origin = Origin::ImpossiblePath;
-        obligation.subject = function_.qualified_name + " path " + std::to_string(++paths_);
+        obligation.origin = claim.omitted.has_value() ? Origin::OmittedCase : Origin::ImpossiblePath;
+        obligation.subject = claim.omitted.has_value() ? "case '" + *claim.omitted + "' of verified function '" +
+                                                             function_.qualified_name + "'"
+                                                       : function_.qualified_name + " path " + std::to_string(++paths_);
         obligation.range = expression.provenance.range;
         obligation.goal = close(scope, kernel::Proposition::falsity());
         source::Hasher hasher;
         hasher.update_field("partial-correctness-v1");
-        hasher.update_field(identify_impossibility(Origin::ImpossiblePath, program_.context, obligation.subject,
+        hasher.update_field(identify_impossibility(obligation.origin, program_.context, obligation.subject,
                                                    obligation.goal, impossibilities_++)
                                 .digest.to_short_hex(64));
         for (const std::size_t callee : scope.relied_on) {

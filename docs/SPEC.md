@@ -182,7 +182,7 @@ and `contains` have proof-intrinsic meaning only for the mathematical domains
 defined in §19.1. Outside those formal contexts, identically spelled names remain
 ordinary C++ identifiers.
 
-[WORD-002] The following words have special meaning only as proof statements inside a proof body (§15), except that `contradiction` also begins a claim that a path cannot occur in a verified function's body (WORD-011):
+[WORD-002] The following words have special meaning only as proof statements inside a proof body (§15), except that in a verified function's body `contradiction` also begins a claim that a path cannot occur (WORD-011), and `cases` and `decompose` a case split on the path (WORD-012):
 
 ```text
 refl
@@ -279,6 +279,16 @@ meaning, such as the declaration of a local when `contradiction` names a type,
 and the implementation SHOULD warn that it is not a claim. The same statement in
 a function that is not verified is ill-formed C++L rather than an unchecked
 claim.
+
+[WORD-012] In a verified function's body, a statement `cases subject { arms }` or
+`decompose subject { arm }` is a case split on the path it stands on (§20.7,
+CASE-017) only where the translation unit uses that word for nothing outside
+laws, proofs and such splits. There the statement cannot be ordinary C++. Where
+the word names or is used as any C++ entity, the statement keeps its ordinary C++
+meaning, such as the declaration of a local with a braced initializer when
+`cases` names a type, and the implementation SHOULD warn that it is not a case
+split. The same statement in a function that is not verified is ill-formed C++L
+rather than an unchecked split.
 
 ---
 
@@ -2846,6 +2856,73 @@ merely because their final proof terms have the same shape.
 
 `cases`, `decompose`, their binders and their proof branches erase completely.
 
+## 20.7 Case splits on a runtime path
+
+A `cases` or `decompose` statement written in a verified function's body splits
+the verification of the rest of that path by the state partition of a value
+read there. It is the proof-side statement of this section with the proof
+obligation replaced by the path: each arm is the path continued in one case.
+
+```cpp
+enum class Mode : unsigned { idle = 0u, busy = 1u };
+
+proof same(unsigned x)
+    proves (x == x)
+{
+    refl;
+}
+
+verified unsigned settled(Mode m)
+    expects (static_cast<unsigned>(m) <= 1u)
+    ensures (result * result == result)
+{
+    cases m {
+        Mode::idle => {
+        }
+
+        Mode::busy => {
+        }
+
+        omit unnamed by contradiction same(0u);
+    }
+    return static_cast<unsigned>(m);
+}
+```
+
+[CASE-017] A `cases` or `decompose` statement MAY be written as a statement of a verified
+function's body (WORD-012). Its subject is an ordinary C++ expression resolved in
+the scope of the statement and read at the versions current there (§12.8,
+VERIFIED-025), so it denotes one logical value (CASE-008). The statement
+evaluates nothing and creates no runtime control flow: the program keeps an
+empty statement where it was written, so whatever statement it was the body of
+still has one.
+
+[CASE-018] Each arm continues the path the statement stands on, supposing exactly the facts
+a proof-side split gives its case (§20.3): every earlier named case's
+discriminator false and its own true, or, for the residual case, every named
+discriminator false. The arm's binders denote the values its case exposes. The
+rest of the body after the statement is verified once on each arm's path. Arms
+and omissions MUST account for every case exactly as CASE-004 and CASE-005
+require, so these paths together cover every state of the subject; an
+implementation MUST NOT drop the path of a state no arm accounts for.
+
+[CASE-019] An arm of a case split on a runtime path holds no statement that closes a goal,
+because the path it continues has none. It holds only nested `cases` or
+`decompose` statements, and a `contradiction` claim (VERIFIED-045) that ends the
+arm's path, after which nothing in the arm is reached. A case omitted by
+`omit label by contradiction evidence;` is an omitted-case obligation (CASE-012,
+CASE-016), checked against every fact of the path together with that case's own
+discriminator (CASE-013).
+
+[CASE-020] A case fact describes the subject's value where the split was written, and no
+other. A later write to its storage, a write through a place that may alias it,
+the effect of a call that may change it, or a loop that carries it gives that
+storage a new version (§12.8 to §12.10), and no fact about the earlier version
+describes the new one (VERIFIED-028). A later split reads the new version and
+accounts for every case again; what is known of the new version comes only from
+what establishes it, such as the value written or a verified callee's
+postcondition (VERIFIED-032).
+
 ---
 
 # 21. Induction
@@ -3765,6 +3842,9 @@ representation rather than simple token deletion.
 [ERASE-016] A claim that a path cannot occur (VERIFIED-045) erases to an empty statement: its
 words are removed and its `;` remains. A statement it was the body of, such as
 an unbraced `if`, therefore still has one, and the claim changes no control flow.
+A case split on a runtime path (CASE-017) erases the same way: all of it is
+removed, the claims in its arms included, and a `;` stands where its closing `}`
+was.
 
 ---
 

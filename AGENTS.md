@@ -1342,11 +1342,19 @@ cppl-lsp asks the compiler, never re-derives
 
 facts do not outlive what they describe
 
-    Case facts are flow-sensitive. Today they cannot go stale because proof
-    bodies contain no mutation. If decomposition is ever admitted over values
-    that can change, its facts must participate in the same mutation and alias
-    invalidation framework as every other proof fact. A provider must never be
-    given an invalidation mechanism of its own.
+    A case fact is about the version of its subject read where the split
+    stands. A split in a verified body reads its subject through the one
+    storage read, so a later write, aliased write, call effect or loop head
+    gives the storage a version no earlier fact mentions. Never give the case
+    engine or a provider an invalidation mechanism of its own, and never let a
+    split read its subject any other way.
+
+every state keeps its path
+
+    A split on a runtime path verifies the rest of the path once per arm. The
+    path walk re-checks that every state has exactly one arm before walking
+    any, because a state without one would drop its path unseen by the
+    kernel. Never remove that check or move it only into elaboration.
 
 TRUST.md states what is not inferred
 

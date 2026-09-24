@@ -234,7 +234,8 @@ std::optional<std::vector<std::uint32_t>> Server::text_document_semantic_tokens(
     if (doc->syntax() == nullptr) {
         return std::vector<std::uint32_t>{};
     }
-    return proof_keyword_tokens(*doc->syntax(), doc->text(), doc->path_claims_recognized());
+    return proof_keyword_tokens(*doc->syntax(), doc->text(), doc->path_claims_recognized(),
+                                doc->path_splits_recognized());
 }
 
 void Server::publish_diagnostics(const Document& doc) {
@@ -267,6 +268,7 @@ void Server::publish_diagnostics(const Document& doc) {
         mutable_doc->set_subject_states(std::move(outcome.subject_states));
         mutable_doc->set_path_claims_recognized(outcome.syntax != nullptr &&
                                                 !outcome.syntax->path_contradictions.empty());
+        mutable_doc->set_path_splits_recognized(outcome.syntax != nullptr && !outcome.syntax->path_splits.empty());
     }
 
     std::vector<Diagnostic> lsp_diagnostics;

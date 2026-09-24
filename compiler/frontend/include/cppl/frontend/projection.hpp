@@ -7,6 +7,7 @@
 #include "cppl/source/projection.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <map>
 #include <optional>
 #include <set>
@@ -93,6 +94,30 @@ struct PathContradictionMarker {
     source::SourceLocation location;
 };
 
+// The block a case split on a runtime path is projected into (SPEC.md
+// CASE-017): a `bool` named `name`, then the subject bound as `name_subject`,
+// each label that is an expression bound as `name_label_` and its arm's
+// position, and one block per arm in written order. An arm's block opens with
+// `name_arm_` and the arm's position, declares the arm's binders under the names
+// written for them, and then holds the arm's nested splits and claims. A nested
+// split is named after the one it stands in, `name_nested_` and its position
+// among that split's nested splits. Clang resolves everything in the scope the
+// statement sees, and the bridge reads the block back as a split of the path.
+// It exists only in the analysis text.
+struct PathSplitMarker {
+    std::string name;
+    std::size_t split_index = 0; // into Syntax::path_splits
+    // Where a nested split stands in the written statement: an arm position and
+    // a statement position in that arm, repeated for each level. Empty for the
+    // statement itself.
+    std::vector<std::uint32_t> route;
+    std::size_t function_index = 0;
+    source::SourceLocation location;
+};
+
+// The statement a split marker was projected from.
+[[nodiscard]] const ProofStatement* split_statement(const Syntax& syntax, const PathSplitMarker& marker);
+
 // A formal equality is never represented by a C++ operator== or a fabricated
 // Eq template. Its analysis-only probe asks Clang to resolve a two-parameter
 // lambda call at the stated type. The bridge reads the resolved arguments,
@@ -156,6 +181,7 @@ struct Projection {
     std::vector<ContractFunctions> contract_functions;
     std::vector<LoopInvariantMarker> loop_invariants;
     std::vector<PathContradictionMarker> path_contradictions;
+    std::vector<PathSplitMarker> path_splits;
     std::vector<PropositionProbe> proposition_probes;
     std::vector<RefinementProbe> refinement_probes;
     std::vector<RuntimeLowering> runtime_lowerings;
@@ -192,5 +218,11 @@ struct ProjectionOptions {
 // one newline per newline in the declaration, so no line moves. An index written
 // without a type takes the base type.
 [[nodiscard]] std::string canonical_lowering(const TokenStream& stream, const RefinementType& refinement);
+
+// The canonical C++ a case split on a runtime path lowers to: an empty statement
+// where the split was written, so whatever statement it was the body of still
+// has one (SPEC.md CASE-017, ERASE-016). Every byte is blank but its newlines
+// and the last, which becomes the `;`, so no line or column below it moves.
+[[nodiscard]] std::string erased_split(const TokenStream& stream, const PathCaseSplit& split);
 
 } // namespace cppl::frontend

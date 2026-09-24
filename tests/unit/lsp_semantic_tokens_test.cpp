@@ -43,11 +43,11 @@ std::string decoded(const std::vector<std::uint32_t>& data) {
     return out;
 }
 
-std::string tokens_of(const std::string& text, bool path_claims_recognized) {
+std::string tokens_of(const std::string& text, bool path_claims_recognized, bool path_splits_recognized = false) {
     const frontend::TokenStream stream = frontend::lex(text, "main.cpp");
     diagnostics::Engine engine;
     const frontend::Syntax syntax = frontend::recognize(stream, engine);
-    return decoded(proof_keyword_tokens(syntax, text, path_claims_recognized));
+    return decoded(proof_keyword_tokens(syntax, text, path_claims_recognized, path_splits_recognized));
 }
 
 std::string read_fixture(const std::string& name) {
@@ -171,6 +171,34 @@ CPPL_TEST(a_runtime_claim_is_a_token_only_when_the_compile_recognized_claims) {
                              "}\n";
     CPPL_CHECK_EQ(tokens_of(text, false), std::string("3:4:4"));
     CPPL_CHECK_EQ(tokens_of(text, true), std::string("3:4:4 10:8:13"));
+}
+
+// SPEC: WORD-012
+// A split in a verified body, and the claims its arms hold, are tokens only when
+// the compile recognized splits. A claim in an arm is the split's: it is one
+// token under that flag, never a second one under the claims flag.
+CPPL_TEST(a_split_on_a_path_is_tokens_only_when_the_compile_recognized_splits) {
+    const std::string text = "proof nothing()\n"
+                             "    proves (true)\n"
+                             "{\n"
+                             "    refl;\n"
+                             "}\n"
+                             "\n"
+                             "verified int f(State s)\n"
+                             "    ensures (result == 0)\n"
+                             "{\n"
+                             "    cases s {\n"
+                             "        State::idle => {\n"
+                             "            contradiction nothing;\n"
+                             "        }\n"
+                             "        omit State::busy by contradiction nothing;\n"
+                             "        unnamed(v) => {}\n"
+                             "    }\n"
+                             "    return 0;\n"
+                             "}\n";
+    CPPL_CHECK_EQ(tokens_of(text, false, false), std::string("3:4:4"));
+    CPPL_CHECK_EQ(tokens_of(text, true, false), std::string("3:4:4"));
+    CPPL_CHECK_EQ(tokens_of(text, true, true), std::string("3:4:4 9:4:5 11:12:13 13:28:13"));
 }
 
 CPPL_TEST(a_position_counts_utf16_code_units_not_bytes) {

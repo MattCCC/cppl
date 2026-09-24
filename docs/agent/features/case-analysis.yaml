@@ -16,11 +16,17 @@ summary: >
   arms, binders, exhaustiveness, residual cases and evidence; providers only
   state which states exist, the condition that holds in each, and which case a
   Clang-resolved label denotes. Nesting composes across providers with no code
-  specific to any pair of them, and everything erases.
+  specific to any pair of them, and everything erases. Written in a verified
+  body, either statement splits the rest of that path by the states of a value
+  read there, with case facts bound to the version they were read at, so the
+  storage model's own versions invalidate them.
 
 normative_sources:
   spec:
+    - "§3 Contextual C++L words (WORD-012)"
     - "§20 Proof-side case analysis and decomposition"
+    - "§20.7 Case splits on a runtime path"
+    - "§36 Erasure (ERASE-016)"
   grammar:
     - "§5.7 cases and product decomposition"
     - "§5.9 Proof arms"
@@ -52,12 +58,19 @@ rules:
   - CASE-008
   - CASE-009
   - CASE-010
+  - CASE-017
+  - CASE-018
+  - CASE-019
+  - CASE-020
+  - WORD-012
+  - ERASE-016
   - TCB-DECOMP-001
   - TCB-DECOMP-002
   - TCB-DECOMP-003
   - TCB-DECOMP-004
   - TCB-DECOMP-005
   - TCB-DECOMP-006
+  - TCB-DECOMP-007
 
 depends_on:
   - proof-declarations
@@ -91,6 +104,9 @@ implementation:
     - compiler/analysis/src/analyze.cpp
   obligations:
     - compiler/obligations/src/generate.cpp
+    - compiler/obligations/src/contracts.cpp
+  automation:
+    - compiler/automation/src/composition.cpp
   kernel:
     - kernel/include/cppl/kernel/term.hpp
     - kernel/include/cppl/kernel/types.hpp
@@ -104,12 +120,15 @@ implementation:
     - src/lsp/src/decomposition_view.cpp
     - src/lsp/src/semantic_tokens.cpp
     - src/lsp/src/server.cpp
+    - src/lsp/include/cppl/lsp/document.hpp
   editors:
     - editors/shared/cppl.tmLanguage.json
     - editors/neovim/syntax/cppl.vim
 
 interactions:
   - every pair of providers, nested in both directions
+  - writes, aliased writes, verified call effects and loop heads on a verified path
+  - claims and omissions inside a split's arms (checked-contradiction)
   - quantified goals and laws discharged through a case split
   - aliases, alias templates, dependent names and class template members
   - cv-qualified and reference subjects, members and array elements
@@ -121,10 +140,30 @@ tests:
     - tests/fixtures/enum_cases.cpp
     - tests/fixtures/structural_cases.cpp
     - tests/fixtures/expected_cases.cpp
+    - tests/fixtures/case_split.cpp
+    - tests/fixtures/case_split_as_cpp_name.cpp
   negative:
     - tests/negative/proof_cases.sh
     - tests/negative/structural_cases.sh
     - tests/negative/case_providers.sh
+    - tests/negative/case_splits.sh
+    - tests/fixtures/negative/split_needed_for_contract.cpp
+    - tests/fixtures/negative/split_stale_after_write.cpp
+    - tests/fixtures/negative/split_alias_write.cpp
+    - tests/fixtures/negative/split_after_call.cpp
+    - tests/fixtures/negative/split_member_write.cpp
+    - tests/fixtures/negative/split_symbolic_element.cpp
+    - tests/fixtures/negative/split_loop_carried.cpp
+    - tests/fixtures/negative/split_member_binder.cpp
+    - tests/fixtures/negative/split_arm_reachable_claim.cpp
+    - tests/fixtures/negative/split_non_exhaustive.cpp
+    - tests/fixtures/negative/split_wrong_label.cpp
+    - tests/fixtures/negative/split_decompose_sum.cpp
+    - tests/fixtures/negative/split_template_binder_types.cpp
+    - tests/fixtures/negative/split_binder_repeats_name.cpp
+    - tests/fixtures/negative/split_outside_verified.cpp
+    - tests/fixtures/negative/split_arm_closes_goal.cpp
+    - tests/fixtures/negative/split_after_claim.cpp
     - tests/fixtures/negative/enum_top_bit_claimed_false.cpp
     - tests/fixtures/negative/enum_label_of_another_instantiation.cpp
     - tests/fixtures/negative/decompose_undefined_template.cpp
@@ -144,11 +183,14 @@ tests:
     - tests/unit/scoped_enum_provider_test.cpp
     - tests/unit/recognizer_test.cpp
     - tests/unit/projection_test.cpp
+    - tests/unit/contracts_test.cpp
     - tests/unit/formatter_test.cpp
     - tests/unit/lsp_decomposition_view_test.cpp
+    - tests/unit/lsp_semantic_tokens_test.cpp
   end_to_end:
     - tests/e2e/enum_cases.sh
     - tests/e2e/structural_cases.sh
+    - tests/e2e/case_split.sh
     - tests/e2e/erasure_equivalence.sh
 
 required_test_categories:
@@ -167,6 +209,10 @@ required_test_categories:
   - forged branch facts and escaping or shadowing binders
   - kernel-evidence corruption of projections and partitions
   - erasure for every provider in every standard mode
+  - a split on a runtime path whose contract holds only case by case, as a matched pair
+  - a fact after a write, an aliased write, a call, a member or symbolic element write and a loop head
+  - each arm supposing its own case and no other, and a split missing a state refused on the walk
+  - arm contents on a path, a split outside a verified body, and the word used as a C++ name
 
 completion_requires:
   - one engine; providers state states, conditions and label meaning only
@@ -175,4 +221,6 @@ completion_requires:
   - a binder is a projection or alias, never a new object
   - recognition by resolved identity, never by spelling
   - no provider-specific kernel rule
-  - the construct erases completely
+  - the construct erases completely, a split on a path to an empty statement
+  - a split reads its subject through the one storage read, and has no invalidation of its own
+  - every state of a split on a path has exactly one arm, checked where the path is walked

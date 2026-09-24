@@ -272,25 +272,26 @@ providers needed â€” abstract nominal values with checked component projection â
 is implemented with it. Scoped enumerations, `std::variant`, `std::optional`,
 `std::expected`, pointers and every product form (records, `std::pair`,
 `std::tuple`, `std::array`, built-in arrays) each decompose, and nesting
-composes across them generically. `STATUS.md` records the details.
+composes across them generically. `cases` and `decompose` also split a verified
+body's path over values that can change, with case facts bound to the version
+they were read at, so the storage model's own versions invalidate them
+(`SPEC.md` 20.7). `STATUS.md` records the details.
 
-What decomposition still does not do:
+What decomposition still leaves at `PROTOTYPE`: omitted impossible cases and
+impossible runtime paths. `omit label by contradiction e;` (`GRAMMAR.md` 5.7)
+discharges a case through the ordinary proof system rather than letting a
+provider guess it, and `contradiction e;` in a verified body claims a runtime
+path cannot occur (`VERIFIED-045`). Each is an obligation of its own, under its
+own origin (`SPEC.md` `CASE-012`), discharged by one mechanism. A contradiction
+closes a goal of any shape, structured-value equalities included, by falsity
+elimination.
 
-1. **`cases` over values that can change.** Proof bodies contain no mutation, so
-   a case fact cannot go stale today. Admitting decomposition where the subject
-   can be assigned requires case facts to participate in the same mutation and
-   alias invalidation framework as every other proof fact; a provider must never
-   be given an invalidation mechanism of its own (`SPEC.md` 20.5).
-2. **Omitted impossible cases and impossible runtime paths.** At `PROTOTYPE`:
-   `omit label by contradiction e;` (`GRAMMAR.md` 5.7) discharges a case through
-   the ordinary proof system rather than letting a provider guess it, and
-   `contradiction e;` in a verified body claims a runtime path cannot occur
-   (`VERIFIED-045`). Each is an obligation of its own, under its own origin
-   (`SPEC.md` `CASE-012`), discharged by one mechanism. A contradiction closes a
-   goal of any shape, structured-value equalities included, by falsity
-   elimination.
+The reach of a split grows with what verified bodies model, not with the case
+engine: writing a `std::optional` or `std::variant`, reassigning a pointer local,
+and reading a local aggregate as one value are storage-model work, and a split
+over them follows as soon as they exist.
 
-Neither delivers induction or recursive proof admission.
+None of this delivers induction or recursive proof admission.
 
 Implement, over ordinary C++ types:
 

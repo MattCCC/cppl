@@ -2,6 +2,7 @@
 #include "cppl/diagnostics/diagnostic.hpp"
 #include "cppl/frontend/syntax.hpp"
 #include "cppl/frontend/token.hpp"
+#include "cppl/source/location.hpp"
 
 #include <algorithm>
 #include <array>
@@ -230,17 +231,22 @@ bool is_specification_clause(const Token& token) {
     return clause_kind(token).has_value() || token.is_identifier("decreases");
 }
 
-void report(diagnostics::Engine& engine, const TokenStream& stream, const Token& token, diagnostics::Category category,
+void report(diagnostics::Engine& engine, const source::SourceLocation& location, diagnostics::Category category,
             std::string message, std::string note = {}) {
     diagnostics::Diagnostic diagnostic;
     diagnostic.severity = diagnostics::Severity::Error;
     diagnostic.category = category;
     diagnostic.message = std::move(message);
-    diagnostic.location = stream.location_of(token);
+    diagnostic.location = location;
     if (!note.empty()) {
         diagnostic.notes.push_back(diagnostics::Note{std::move(note), diagnostic.location});
     }
     engine.report(std::move(diagnostic));
+}
+
+void report(diagnostics::Engine& engine, const TokenStream& stream, const Token& token, diagnostics::Category category,
+            std::string message, std::string note = {}) {
+    report(engine, stream.location_of(token), category, std::move(message), std::move(note));
 }
 
 void check_clause_sequence(const std::vector<Clause>& clauses, diagnostics::Engine& engine) {
@@ -1763,6 +1769,88 @@ std::optional<std::size_t> contradiction_statement_end(const std::vector<Token>&
     return close + 1;
 }
 
+// Where a `cases` or `decompose` statement beginning at `index` ends: the index
+// of the `}` closing its arms, when the tokens have the statement's one shape, a
+// subject and then a braced arm list (GRAMMAR.md 5.7).
+std::optional<std::size_t> split_statement_end(const std::vector<Token>& tokens, std::size_t index) {
+    std::size_t depth = 0;
+    std::size_t open = index + 1;
+    for (; open < tokens.size() && tokens[open].kind != TokenKind::EndOfFile; ++open) {
+        const Token& token = tokens[open];
+        if (token.is_punctuator("(") || token.is_punctuator("[")) {
+            ++depth;
+        } else if (token.is_punctuator(")") || token.is_punctuator("]")) {
+            if (depth == 0) {
+                return std::nullopt;
+            }
+            --depth;
+        } else if (depth == 0 && (token.is_punctuator(";") || token.is_punctuator("}"))) {
+            return std::nullopt;
+        } else if (depth == 0 && token.is_punctuator("{")) {
+            break;
+        }
+    }
+    if (open >= tokens.size() || open == index + 1 || !tokens[open].is_punctuator("{")) {
+        return std::nullopt;
+    }
+    const std::size_t close = matching_brace(tokens, open);
+    if (close >= tokens.size()) {
+        return std::nullopt;
+    }
+    return close;
+}
+
+// An arm of a split on a runtime path continues that path, so there is no goal
+// in it for `refl`, `exact`, `apply`, `assume` or `rewrite` to close. It holds
+// what can stand on a path: a nested split, and a `contradiction` claiming the
+// path cannot occur, which ends it (SPEC.md CASE-017, VERIFIED-045).
+bool admit_split_arms(diagnostics::Engine& engine, const ProofStatement& statement) {
+    for (const ProofArm& arm : statement.arms) {
+        if (arm.omitted) {
+            continue;
+        }
+        for (std::size_t index = 0; index < arm.statements.size(); ++index) {
+            const ProofStatement& inner = arm.statements[index];
+            if (inner.kind == ProofStatementKind::Cases || inner.kind == ProofStatementKind::Decompose) {
+                if (!admit_split_arms(engine, inner)) {
+                    return false;
+                }
+                continue;
+            }
+            if (inner.kind == ProofStatementKind::Contradiction) {
+                if (index + 1 != arm.statements.size()) {
+                    report(engine, arm.statements[index + 1].location, diagnostics::Category::CpplSyntax,
+                           "nothing after a contradiction in this arm is reached",
+                           "a contradiction ends the path it is written on");
+                    return false;
+                }
+                continue;
+            }
+            report(engine, inner.location, diagnostics::Category::CpplSyntax,
+                   "'" + describe(inner.kind) + "' has no goal to close in a case split on a runtime path",
+                   "an arm of a split in a verified body continues its path, so it holds only a nested 'cases' "
+                   "or 'decompose' and a 'contradiction' that ends the path");
+            return false;
+        }
+    }
+    return true;
+}
+
+// The claims a split's arms hold, nested splits' included, in the order a walk
+// of arms and their statements meets them. The projector walks the same order.
+void split_claims(const ProofStatement& statement,
+                  std::vector<std::pair<const ProofStatement*, const ProofArm*>>& found) {
+    for (const ProofArm& arm : statement.arms) {
+        for (const ProofStatement& inner : arm.statements) {
+            if (inner.kind == ProofStatementKind::Contradiction) {
+                found.emplace_back(&inner, arm.omitted ? &arm : nullptr);
+            } else {
+                split_claims(inner, found);
+            }
+        }
+    }
+}
+
 // Whether a statement can begin at `index`: what precedes it ends a statement
 // or opens a block or a statement's body, and no parenthesis is open around it,
 // as one is in a `for` header.
@@ -1910,6 +1998,11 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
         std::size_t terminator = 0;
     };
     std::vector<Written> written_contradictions;
+    // Statements spelled `cases subject { ... }` or `decompose subject { ... }`
+    // in a function body, decided like claims once the unit has been read. Their
+    // arms are read whole, so a claim inside one is the split's, never a
+    // statement of its own.
+    std::vector<Written> written_splits;
 
     std::size_t index = 0;
     while (index < tokens.size() && tokens[index].kind != TokenKind::EndOfFile) {
@@ -1978,6 +2071,15 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
             if (const std::optional<std::size_t> terminator = contradiction_statement_end(tokens, index)) {
                 written_contradictions.push_back(Written{index, *terminator});
                 index = *terminator + 1;
+                continue;
+            }
+        }
+
+        if ((tokens[index].is_identifier("cases") || tokens[index].is_identifier("decompose")) && !scopes.empty() &&
+            scopes.back() == ScopeKind::Block && at_statement_start(tokens, index)) {
+            if (const std::optional<std::size_t> close = split_statement_end(tokens, index)) {
+                written_splits.push_back(Written{index, *close});
+                index = *close + 1;
                 continue;
             }
         }
@@ -2219,20 +2321,25 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
     // a name denotes. So a statement of that spelling is a claim only in a unit
     // that uses the word for nothing else, where it cannot be ordinary C++. The
     // word's uses inside laws and proofs are C++L's own and do not count; any
-    // other use, a declaration in a header included, does.
-    if (!written_contradictions.empty()) {
-        const auto in_proof = [&syntax](const Token& token) {
-            const auto covers = [&token](const source::ByteSpan& span) {
-                return token.span.offset >= span.offset && token.span.offset < span.end();
-            };
-            return std::ranges::any_of(syntax.proofs,
-                                       [&covers](const ProofDeclaration& proof) { return covers(proof.range.span); }) ||
-                   std::ranges::any_of(syntax.laws,
-                                       [&covers](const LawDeclaration& law) { return covers(law.range.span); });
+    // other use, a declaration in a header included, does. So are its uses
+    // inside a split's arms, which belong to that split.
+    const auto in_proof = [&syntax](const Token& token) {
+        const auto covers = [&token](const source::ByteSpan& span) {
+            return token.span.offset >= span.offset && token.span.offset < span.end();
         };
+        return std::ranges::any_of(syntax.proofs,
+                                   [&covers](const ProofDeclaration& proof) { return covers(proof.range.span); }) ||
+               std::ranges::any_of(syntax.laws,
+                                   [&covers](const LawDeclaration& law) { return covers(law.range.span); });
+    };
+    const auto in_split = [&written_splits](std::size_t at) {
+        return std::ranges::any_of(
+            written_splits, [at](const Written& written) { return written.keyword <= at && at <= written.terminator; });
+    };
+    if (!written_contradictions.empty()) {
         std::optional<std::size_t> other;
         for (std::size_t at = 0; at < tokens.size() && !other.has_value(); ++at) {
-            if (tokens[at].is_identifier("contradiction") && !in_proof(tokens[at]) &&
+            if (tokens[at].is_identifier("contradiction") && !in_proof(tokens[at]) && !in_split(at) &&
                 std::ranges::none_of(written_contradictions,
                                      [at](const Written& written) { return written.keyword == at; })) {
                 other = at;
@@ -2277,6 +2384,80 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
             claim.end_line = terminator.line;
             claim.end_column = terminator.column + 1;
             syntax.path_contradictions.push_back(std::move(claim));
+        }
+    }
+
+    // A split on a runtime path follows the same rule, word by word: `cases x
+    // {...}` is a declaration with a braced initializer wherever `cases` names a
+    // type (SPEC.md 3.1, CASE-017).
+    if (!written_splits.empty()) {
+        const auto other_use = [&](std::string_view word) -> std::optional<std::size_t> {
+            for (std::size_t at = 0; at < tokens.size(); ++at) {
+                if (tokens[at].is_identifier(word) && !in_proof(tokens[at]) && !in_split(at)) {
+                    return at;
+                }
+            }
+            return std::nullopt;
+        };
+        const std::optional<std::size_t> other_cases = other_use("cases");
+        const std::optional<std::size_t> other_decompose = other_use("decompose");
+
+        for (const Written& written : written_splits) {
+            const Token& keyword = tokens[written.keyword];
+            const std::optional<std::size_t>& other = keyword.is_identifier("cases") ? other_cases : other_decompose;
+            const auto body = std::ranges::find_if(verified_bodies, [&written](const VerifiedBody& candidate) {
+                return candidate.open < written.keyword && written.keyword < candidate.close;
+            });
+            if (other.has_value()) {
+                if (body != verified_bodies.end()) {
+                    diagnostics::Diagnostic diagnostic;
+                    diagnostic.severity = diagnostics::Severity::Warning;
+                    diagnostic.category = diagnostics::Category::CpplSyntax;
+                    diagnostic.message = "'" + std::string(keyword.text) +
+                                         "' is also a name in this translation unit, so this statement is ordinary "
+                                         "C++, not a case split";
+                    diagnostic.location = stream.location_of(keyword);
+                    diagnostic.notes.push_back(
+                        diagnostics::Note{"the name is used here", stream.location_of(tokens[*other])});
+                    engine.report(std::move(diagnostic));
+                }
+                continue;
+            }
+            if (body == verified_bodies.end()) {
+                report(engine, stream, keyword, diagnostics::Category::UnsupportedSemantics,
+                       "a case split on a runtime path is checked only in a verified function",
+                       "mark the enclosing function 'verified' so its case split takes part in its verification");
+                continue;
+            }
+            std::vector<ProofStatement> statements;
+            if (!read_proof_statements(stream, written.keyword - 1, written.terminator + 1, engine, statements, 0) ||
+                statements.size() != 1 || !admit_split_arms(engine, statements.front())) {
+                continue;
+            }
+            const Token& close = tokens[written.terminator];
+            PathCaseSplit split;
+            split.function_index = body->function;
+            split.statement = std::move(statements.front());
+            split.span = source::ByteSpan{keyword.span.offset, close.span.end() - keyword.span.offset};
+            split.end_line = close.line;
+            split.end_column = close.column + 1;
+
+            std::vector<std::pair<const ProofStatement*, const ProofArm*>> claims;
+            split_claims(split.statement, claims);
+            for (const auto& [statement, omitted] : claims) {
+                PathContradiction claim;
+                claim.function_index = body->function;
+                claim.statement = *statement;
+                claim.span = statement->keyword;
+                claim.erased = source::ByteSpan{statement->keyword.offset, 0};
+                claim.split = syntax.path_splits.size();
+                if (omitted != nullptr) {
+                    claim.omitted = omitted->spelling;
+                }
+                split.claims.push_back(syntax.path_contradictions.size());
+                syntax.path_contradictions.push_back(std::move(claim));
+            }
+            syntax.path_splits.push_back(std::move(split));
         }
     }
 

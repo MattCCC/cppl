@@ -122,6 +122,35 @@ CPPL_TEST(case_site_resolves_innermost_when_nested) {
     CPPL_CHECK(outer_site->states->subject == "v");
 }
 
+// SPEC: CASE-017
+// A split in a verified body is a case site like one in a proof body, read from
+// the states the compiler recorded while elaborating the body, and the
+// innermost split around the cursor wins.
+CPPL_TEST(case_site_found_in_a_split_on_a_runtime_path) {
+    ProofStatement outer = cases_statement(300, 100, 12, {"alternative<0>"});
+    outer.arms.front().statements.push_back(cases_statement(320, 30, 13, {}));
+    cppl::frontend::PathCaseSplit split;
+    split.statement = std::move(outer);
+    Syntax syntax;
+    syntax.path_splits.push_back(std::move(split));
+    std::vector<SubjectStates> recorded{variant_record(12), variant_record(13)};
+    recorded[1].subject = "inner";
+
+    const auto outer_site = enclosing_case_site(syntax, recorded, 310);
+    CPPL_CHECK(outer_site.has_value());
+    CPPL_CHECK(outer_site->states != nullptr);
+    CPPL_CHECK(outer_site->states->subject == "v");
+    const auto inner_site = enclosing_case_site(syntax, recorded, 330);
+    CPPL_CHECK(inner_site.has_value());
+    CPPL_CHECK(inner_site->states != nullptr);
+    CPPL_CHECK(inner_site->states->subject == "inner");
+    CPPL_CHECK(!enclosing_case_site(syntax, recorded, 401).has_value());
+
+    // The arm already written is not offered again.
+    const auto items = missing_case_completions(*outer_site);
+    CPPL_CHECK_EQ(items.size(), std::size_t{2});
+}
+
 CPPL_TEST(completion_offers_every_unwritten_state) {
     const Syntax syntax = syntax_with({cases_statement(100, 50, 7, {})});
     const std::vector<SubjectStates> recorded{variant_record(7)};

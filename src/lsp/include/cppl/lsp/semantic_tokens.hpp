@@ -26,8 +26,11 @@ inline constexpr std::string_view kKeywordTokenType = "keyword";
 // WORD-002). `syntax` comes from the unpreprocessed buffer, which cannot see
 // its headers, so such a claim is colored only when
 // `path_claims_recognized` says the compile of the preprocessed unit recognized
-// its claims too.
+// its claims too. A `cases` or `decompose` statement in a verified body is a
+// case split on the same terms (SPEC.md CASE-017), so it and the keywords of
+// its arms are colored only when `path_splits_recognized` says so.
 [[nodiscard]] std::vector<std::uint32_t> proof_keyword_tokens(const frontend::Syntax& syntax, std::string_view text,
-                                                              bool path_claims_recognized);
+                                                              bool path_claims_recognized,
+                                                              bool path_splits_recognized = false);
 
 } // namespace cppl::lsp

@@ -248,6 +248,36 @@ struct PathContradiction {
     source::ByteSpan erased;        // the same, less the `;` the program keeps
     std::uint32_t end_line = 0;     // presumed position just past the `;`
     std::uint32_t end_column = 0;
+
+    // A claim written inside an arm of a case split on this path, which that
+    // split erases and projects along with itself. `omitted` is the case an
+    // `omit label by contradiction evidence;` accounts for: its claim is that
+    // the case cannot occur here, an obligation distinct from a runtime path
+    // claimed not to occur (SPEC.md CASE-012, CASE-016).
+    std::optional<std::size_t> split;
+    std::optional<std::string> omitted;
+};
+
+// cases subject { arms }   or   decompose subject { arm }
+//                  written as a statement of a verified function's body
+//                                             (GRAMMAR.md 5.7, SPEC.md CASE-017)
+//
+// Splits the rest of this runtime path by the state partition of the subject's
+// value where it is written, with no runtime control flow: each arm continues
+// the path with its case's discriminator as a fact, and binds that case's
+// values. Proof syntax inside runtime code, so the program keeps an empty
+// statement where it stood, and Clang is given a block at the same point that
+// resolves the subject, labels, binders and nested claims in scope.
+struct PathCaseSplit {
+    std::size_t function_index = 0; // the verified function whose body holds it
+    ProofStatement statement;       // `cases` or `decompose`, arms included
+    source::ByteSpan span;          // the keyword through the closing `}`
+    std::uint32_t end_line = 0;     // presumed position just past the `}`
+    std::uint32_t end_column = 0;
+    // The claims its arms hold, nested splits' included, in the order a walk
+    // of arms and their statements meets them: indices into
+    // `Syntax::path_contradictions`.
+    std::vector<std::size_t> claims;
 };
 
 // type name [(index parameters)] = base-type where (predicate);
@@ -318,6 +348,7 @@ struct Syntax {
     std::vector<VerifiedFunction> verified_functions;
     std::vector<LoopSpecification> loops;
     std::vector<PathContradiction> path_contradictions;
+    std::vector<PathCaseSplit> path_splits;
     std::vector<RefinementType> refinement_types;
     std::vector<ExplicitInstantiation> explicit_instantiations;
 
@@ -333,7 +364,8 @@ struct Syntax {
 
     [[nodiscard]] bool empty() const noexcept {
         return laws.empty() && proofs.empty() && pure_markers.empty() && verified_functions.empty() && loops.empty() &&
-               path_contradictions.empty() && refinement_types.empty() && unchecked_clauses.empty();
+               path_contradictions.empty() && path_splits.empty() && refinement_types.empty() &&
+               unchecked_clauses.empty();
     }
 };
 

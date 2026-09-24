@@ -35,6 +35,7 @@ create alternate syntax.
 | `exists`                                      | None                              | Removed with specification/proof                                           |
 | `cases`                                       | None                              | Removed with proof                                                         |
 | `decompose`                                   | None                              | Removed with proof                                                         |
+| `cases`/`decompose` in a verified body        | Empty statement                   | Statement removed, arms included; a `;` stays where its `}` was            |
 | `induction`                                   | None                              | Removed with proof                                                         |
 | `ghost` local                                 | None                              | Removed                                                                    |
 | `type ... where (...)` refinement declaration | Base C++ representation only      | Predicate and refinement identity removed/lowered                          |
@@ -1815,6 +1816,109 @@ If the verifier cannot establish that contradiction, the omission is an error
 naming the omitted case. When it can, the omission is an obligation of its own,
 checked by the kernel apart from the proof it is written in and counted in the
 trust report as `Omitted cases proven`.
+
+### 9.1. Case splits in a verified body
+
+Written as a statement of a verified function's body, `cases` splits the rest
+of that path by the states of a value read there. Nothing runs: each arm is the
+path continued in one case, with that case's facts, and the code after the split
+is verified once per arm. This proves what arithmetic over the whole range
+cannot, such as a nonlinear fact that holds in each case separately:
+
+<!-- cppl-example: verify -->
+
+```cpp
+enum class Mode : unsigned { idle = 0u, busy = 1u };
+
+proof same(unsigned x)
+    proves (x == x)
+{
+    refl;
+}
+
+verified unsigned settled(Mode m)
+    expects (static_cast<unsigned>(m) <= 1u)
+    ensures (result * result == result)
+{
+    cases m {
+        Mode::idle => {
+        }
+
+        Mode::busy => {
+        }
+
+        omit unnamed by contradiction same(0u);
+    }
+    return static_cast<unsigned>(m);
+}
+```
+
+Without the split, the same contract is refused. `omit unnamed` is checked
+against the path's facts and the residual case's own discriminator, exactly as
+in a proof body; the precondition is what rules the case out.
+
+An arm has no goal of its own to close, because the path it continues has
+none. It holds only a nested `cases` or `decompose`, and a `contradiction`
+claim that ends its path. `refl`, `exact`, `apply`, `assume` and `rewrite` in an
+arm are refused.
+
+A case fact describes the value where the split was written and nothing later.
+After a write, a write through a reference that may be the same object, a call
+that may change it, or inside a loop that writes it, the storage has a new
+version, and a split after that point reads the new one:
+
+<!-- cppl-example: verify -->
+
+```cpp
+enum class Mode : unsigned { idle = 0u, busy = 1u };
+
+proof same(unsigned x)
+    proves (x == x)
+{
+    refl;
+}
+
+verified void rewritten(Mode& m)
+    expects (m == Mode::idle)
+{
+    cases m {
+        Mode::idle => {
+        }
+
+        omit Mode::busy by contradiction same(0u);
+
+        omit unnamed by contradiction same(0u);
+    }
+    m = Mode::busy;
+    cases m {
+        Mode::busy => {
+        }
+
+        omit Mode::idle by contradiction same(0u);
+
+        omit unnamed by contradiction same(0u);
+    }
+}
+```
+
+After the write, omitting `busy` instead is refused: the entry fact was about
+the old version. What is known of a new version comes only from what
+established it, such as the value written or a verified callee's postcondition.
+
+The subject is any expression the body can read: a parameter, a local, a
+member such as `s.mode`, an element such as `modes[0]`, or an arm's binder. A
+local aggregate is tracked member by member and has no single value, so split
+on its members rather than on the whole object. Verified code cannot write a
+`std::optional`, `std::variant` or `std::expected`, and cannot reassign a
+pointer local, since those are calls or forms it does not model; splits over
+them read values that therefore do not change within the body. A split in a
+function template declares its binders once, so a template whose
+specializations bind values of different types is refused at the ones that do
+not match.
+
+Where the translation unit uses `cases` or `decompose` as a C++ name, such as
+a type, the statement is ordinary C++ and the compiler warns that it is not a
+split. In a function that is not verified, a split is refused.
 
 ## 10. Induction
 
@@ -3942,27 +4046,28 @@ decompose point {
 }
 ```
 
-Possible state providers include, where supported:
+The state providers are:
 
 ```text
-scoped enum
-std::variant
-std::optional
-std::expected
-pointer null/non_null
+scoped enum         Enum::name..., unnamed(value)
+std::variant        alternative<i>(value)..., valueless
+std::optional       some(value), none
+std::expected       value(payload), error(reason)      (C++23)
+pointer             null, non_null
 ```
 
-Residual states are explicit:
+Products are records, `std::pair`, `std::tuple`, `std::array` and built-in
+arrays, each with one `components(...)` arm.
 
-```text
-unnamed
-valueless
-```
-
-`_` is not a proof catch-all.
+The last state of each sum is its residual, derived by the engine as none of the
+others holding. `_` is not a proof catch-all.
 
 An omitted state is legal only when the verifier proves that state impossible
 from the existing proof context.
+
+In a verified body, `cases` and `decompose` split the rest of the path by the
+subject's states where they are written (§9.1). An arm there holds only nested
+splits and a `contradiction` claim.
 
 ### Induction
 
