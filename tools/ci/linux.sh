@@ -64,13 +64,22 @@ docker build \
 # build/ci directory, and CMake caches absolute paths, so the two would corrupt
 # each other. The source is mounted read-write because the build is configured
 # from it, but no CI build output reaches the host.
-volume="cppl-ci-linux-build"
+#
+# Each run has a volume of its own, removed when the run ends. Every run starts
+# its preset's tree from scratch anyway, so nothing is lost; one volume shared
+# by every run on the host let two runs of one preset -- from two checkouts, or
+# two sessions -- delete and rebuild each other's tree while tests ran, so a run
+# could test binaries built from sources it was never given.
+volume="cppl-ci-linux-build-$(id -u)-$$"
 
 # Docker creates a named volume owned by root. The container runs as the
 # invoking user -- so that anything written into the source mount stays owned
 # by the developer -- which would otherwise leave the build tree unwritable.
 # Ownership is fixed once, as root, before the build runs as the user.
 docker volume create "${volume}" >/dev/null
+trap 'docker volume rm --force "${volume}" >/dev/null 2>&1 || true' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 docker run \
     --rm \
@@ -79,7 +88,7 @@ docker run \
     "${image}" \
     chown "$(id -u):$(id -g)" /build
 
-exec docker run \
+docker run \
     --rm \
     --init \
     --user "$(id -u):$(id -g)" \

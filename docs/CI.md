@@ -183,7 +183,9 @@ version is pinned there so a local run does not test a materially different
 compiler than the runner does.
 
 The Linux build tree lives in a named Docker volume, not in the checkout, so it
-cannot collide with the host's own `build/ci`.
+cannot collide with the host's own `build/ci`. Each run has a volume of its own,
+removed when the run ends, so two runs at once -- from two checkouts or two
+sessions on one host -- never build into or delete each other's tree.
 
 ---
 
