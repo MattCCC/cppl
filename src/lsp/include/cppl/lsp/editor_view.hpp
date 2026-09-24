@@ -2,6 +2,7 @@
 
 #include "cppl/clang/editor.hpp"
 #include "cppl/lsp/hover.hpp"
+#include "cppl/lsp/position.hpp"
 #include "cppl/lsp/projected_file.hpp"
 #include "cppl/lsp/protocol.hpp"
 #include "cppl/lsp/semantic_tokens.hpp"
@@ -12,6 +13,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace cppl::lsp {
@@ -35,6 +37,9 @@ class EditorView {
     struct Options {
         std::string driver;
         std::vector<std::string> arguments;
+        // Read once, as the workspace index reads a file: no preamble is kept
+        // for an edit to reuse (clangbridge::EditorUnit::Options::once).
+        bool once = false;
     };
 
     // Brings the view up to date with `document` and every other open buffer.
@@ -166,6 +171,10 @@ class EditorView {
         std::shared_ptr<const ProjectedFile> file; // null when it holds no C++L
     };
 
+    // Every place the unit writes a name with an identity, traced to written
+    // text, found once per parse and asked of by every request after it.
+    [[nodiscard]] const std::vector<Named>& named() const;
+
     [[nodiscard]] std::vector<clangbridge::FileContent> unsaved() const;
     // Adds every included C++L header the view has not read yet; true when one
     // was added.
@@ -179,6 +188,30 @@ class EditorView {
     std::unique_ptr<clangbridge::EditorUnit> unit_;
     Options options_;
     std::size_t parses_ = 0;
+    // What the unit says that no request changes, kept until it is parsed
+    // again.
+    mutable std::optional<std::vector<Named>> named_;
+    mutable std::optional<std::vector<DocumentSymbol>> outline_;
+    // Where each byte of a file is, as a line and a character, found once per
+    // file: for each projected file, and for each file Clang read from disk
+    // (null when it cannot be read).
+    struct DiskFile {
+        DiskFile(std::string file_uri, std::string file_text)
+            : uri(std::move(file_uri)),
+              text(std::move(file_text)),
+              mapper(text) {}
+        DiskFile(const DiskFile&) = delete;
+        DiskFile& operator=(const DiskFile&) = delete;
+        DiskFile(DiskFile&&) = delete;
+        DiskFile& operator=(DiskFile&&) = delete;
+        ~DiskFile() = default;
+
+        std::string uri;
+        std::string text;
+        PositionMapper mapper;
+    };
+    mutable std::map<const ProjectedFile*, PositionMapper> mappers_;
+    mutable std::map<std::string, std::unique_ptr<DiskFile>> disk_;
 };
 
 // The normal form of a path Clang reports, so two spellings of one file compare

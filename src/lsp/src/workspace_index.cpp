@@ -14,6 +14,7 @@
 #include "cppl/source/location.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <cctype>
 #include <chrono>
 #include <cstddef>
@@ -27,9 +28,20 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <thread>
 #include <tuple>
 #include <utility>
 #include <vector>
+
+#if defined(__APPLE__)
+#include <pthread/qos.h>
+#include <sys/qos.h>
+#elif defined(__linux__)
+#include <sys/resource.h>
+#include <sys/syscall.h>
+#include <sys/types.h>
+#include <unistd.h>
+#endif
 
 namespace cppl::lsp {
 
@@ -70,11 +82,26 @@ void flatten(const std::vector<DocumentSymbol>& symbols, const std::string& uri,
     }
 }
 
-std::string lowered(std::string_view text) {
-    std::string out(text);
-    std::ranges::transform(out, out.begin(),
-                           [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
-    return out;
+// How many files are read at once: `threads`, or when it is 0, half the
+// processors, so that the editor's own requests and compiles keep the rest.
+std::size_t readers(std::size_t threads) {
+    if (threads != 0) {
+        return threads;
+    }
+    return std::max<std::size_t>(1, std::thread::hardware_concurrency() / 2);
+}
+
+// Reading the workspace yields to the editor: a thread that indexes runs at a
+// lower priority than the thread answering requests.
+void yield_to_the_editor() {
+#if defined(__APPLE__)
+    static_cast<void>(pthread_set_qos_class_self_np(QOS_CLASS_UTILITY, 0));
+#elif defined(__linux__)
+    constexpr int kNicer = 10;
+    // NOLINTNEXTLINE(cppcoreguidelines-pro-type-vararg): the thread's own id has no other interface.
+    const auto thread = static_cast<id_t>(syscall(SYS_gettid));
+    static_cast<void>(setpriority(PRIO_PROCESS, thread, kNicer));
+#endif
 }
 
 using Start = std::tuple<std::string, std::uint32_t, std::uint32_t>;
@@ -96,24 +123,31 @@ int WorkspaceIndex::match(std::string_view name, std::string_view query) {
     if (query.empty()) {
         return 1;
     }
-    const std::string written = lowered(name);
-    const std::string wanted = lowered(query);
-    if (written == wanted) {
-        return 4;
-    }
-    if (written.starts_with(wanted)) {
-        return 3;
-    }
-    if (written.find(wanted) != std::string::npos) {
-        return 2;
+    // Compared a character at a time, ignoring case, so that a search over
+    // every name of a workspace allocates nothing.
+    const auto same = [](char lhs, char rhs) {
+        return std::tolower(static_cast<unsigned char>(lhs)) == std::tolower(static_cast<unsigned char>(rhs));
+    };
+    const auto spelled_at = [&](std::size_t from) {
+        return std::ranges::equal(name.substr(from, query.size()), query, same);
+    };
+    if (name.size() >= query.size()) {
+        if (spelled_at(0)) {
+            return name.size() == query.size() ? 4 : 3;
+        }
+        for (std::size_t from = 1; from + query.size() <= name.size(); ++from) {
+            if (spelled_at(from)) {
+                return 2;
+            }
+        }
     }
     std::size_t at = 0;
-    for (const char character : written) {
-        if (at < wanted.size() && character == wanted[at]) {
+    for (const char character : name) {
+        if (at < query.size() && same(character, query[at])) {
             ++at;
         }
     }
-    return at == wanted.size() ? 1 : 0;
+    return at == query.size() ? 1 : 0;
 }
 
 void WorkspaceIndex::rank(std::vector<Symbol>& symbols, std::string_view query) {
@@ -189,7 +223,9 @@ std::vector<std::filesystem::path> WorkspaceIndex::discover() {
     return files;
 }
 
-WorkspaceIndex::Entry WorkspaceIndex::read(const std::filesystem::path& file, std::filesystem::file_time_type written) {
+WorkspaceIndex::Entry WorkspaceIndex::read(const std::filesystem::path& file, std::filesystem::file_time_type written,
+                                           std::vector<std::string> arguments,
+                                           const std::set<std::filesystem::path>& indexed) const {
     Entry entry;
     entry.written = written;
     const std::optional<std::string> text = read_file(file.string());
@@ -198,23 +234,36 @@ WorkspaceIndex::Entry WorkspaceIndex::read(const std::filesystem::path& file, st
     }
     const std::string path = file.string();
     const std::string uri = path_to_uri(path);
-    std::vector<std::string> arguments = commands_.flags_for(path);
-    arguments.insert(arguments.end(), options_.clang_arguments.begin(), options_.clang_arguments.end());
 
-    // What Clang reads of it, as an open document is read.
+    // What Clang reads of it, as an open document is read. What it finds in a
+    // header the index reads on its own is that header's to record, so that
+    // no place is kept once per file including it.
+    const auto kept = [&](const Location& location) {
+        const std::optional<std::string> written_in = uri_to_path(location.uri);
+        if (!written_in.has_value()) {
+            return true;
+        }
+        const std::filesystem::path place = std::filesystem::path(*written_in).lexically_normal();
+        return place == file || !indexed.contains(place);
+    };
     EditorView view;
     EditorView::Options view_options;
     view_options.driver = options_.driver;
     view_options.arguments = arguments;
+    view_options.once = true;
     if (view.refresh(OpenBuffer{uri, path, &*text}, {}, view_options)) {
         entry.symbols = declared(view.outline(), uri);
         for (EditorView::Named& named : view.all_mentions()) {
-            entry.mentions.push_back(
-                Mention{std::move(named.usr), std::move(named.mention.location), named.mention.role});
+            if (kept(named.mention.location)) {
+                entry.mentions.push_back(
+                    Mention{std::move(named.usr), std::move(named.mention.location), named.mention.role});
+            }
         }
         for (EditorView::Named& named : view.unwritten(nullptr)) {
-            entry.unwritten.push_back(
-                Mention{std::move(named.usr), std::move(named.mention.location), named.mention.role});
+            if (kept(named.mention.location)) {
+                entry.unwritten.push_back(
+                    Mention{std::move(named.usr), std::move(named.mention.location), named.mention.role});
+            }
         }
     }
 
@@ -283,23 +332,60 @@ void WorkspaceIndex::run() {
         }
 
         lock.unlock();
-        if (progress_) {
-            progress_(0, stale.size());
-        }
-        for (std::size_t done = 0; done < stale.size(); ++done) {
-            Entry entry = read(stale[done].first, stale[done].second);
-            lock.lock();
-            entries_.insert_or_assign(stale[done].first, std::move(entry));
-            const bool stop = stopping_;
-            lock.unlock();
-            if (progress_) {
-                progress_(done + 1, stale.size());
-            }
-            if (stop) {
-                break;
-            }
-        }
+        read_all(stale, present);
         lock.lock();
+    }
+}
+
+void WorkspaceIndex::read_all(
+    const std::vector<std::pair<std::filesystem::path, std::filesystem::file_time_type>>& stale,
+    const std::set<std::filesystem::path>& indexed) {
+    // Each file's flags are found here: the compilation database is read by
+    // this thread alone.
+    std::vector<std::vector<std::string>> arguments;
+    arguments.reserve(stale.size());
+    for (const auto& [file, written] : stale) {
+        std::vector<std::string> flags = commands_.flags_for(file.string());
+        flags.insert(flags.end(), options_.clang_arguments.begin(), options_.clang_arguments.end());
+        arguments.push_back(std::move(flags));
+    }
+    std::mutex reporting;
+    std::size_t done = 0;
+    if (progress_) {
+        progress_(0, stale.size());
+    }
+    std::atomic<std::size_t> next = 0;
+    const auto work = [&] {
+        yield_to_the_editor();
+        for (std::size_t at = next++; at < stale.size(); at = next++) {
+            {
+                const std::scoped_lock lock(mutex_);
+                if (stopping_) {
+                    return;
+                }
+            }
+            Entry entry = read(stale[at].first, stale[at].second, arguments[at], indexed);
+            {
+                const std::scoped_lock lock(mutex_);
+                entries_.insert_or_assign(stale[at].first, std::move(entry));
+            }
+            // One report at a time, each counting one more file.
+            const std::scoped_lock lock(reporting);
+            ++done;
+            if (progress_) {
+                progress_(done, stale.size());
+            }
+        }
+    };
+    const std::size_t helpers = std::min(readers(options_.threads), stale.size()) - 1;
+    std::vector<std::thread> workers;
+    workers.reserve(helpers);
+    for (std::size_t helper = 0; helper < helpers; ++helper) {
+        workers.emplace_back(work);
+    }
+    work();
+    for (std::thread& worker : workers) {
+        worker.join();
     }
 }
 

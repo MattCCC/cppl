@@ -1584,9 +1584,9 @@ author wrote. Highlights mark declarations, reads and writes.
 
 A workspace index (`lsp::WorkspaceIndex`) reads every other file of the folders
 the client opened, and each file a compilation database there lists. It reads
-each on a thread of its own as an open document of it would be read: by
-Clang through its projection with its build's flags, and by the compile as far
-as elaboration. Files edited, added or removed on disk are read again within 2
+each as an open document of it would be read, several at once at a lower
+priority than the editor's requests: by Clang through its projection with its
+build's flags, and by the compile as far as elaboration. Files edited, added or removed on disk are read again within 2
 seconds. References reach those files, and `workspace/symbol` lists every
 declaration an outline would show in the open documents and the index. An open
 document always answers as the editor holds it (ARCH-LSP-009), and each pass

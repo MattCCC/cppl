@@ -138,6 +138,7 @@ CPPL_TEST(a_name_matches_a_query_by_how_much_of_it_the_query_spells) {
     CPPL_CHECK_EQ(WorkspaceIndex::match("parse_header", "PARSE"), 3);
     CPPL_CHECK_EQ(WorkspaceIndex::match("parse_header", "head"), 2);
     CPPL_CHECK_EQ(WorkspaceIndex::match("parse_header", "phd"), 1);
+    CPPL_CHECK_EQ(WorkspaceIndex::match("parse_header", "PhD"), 1);
     CPPL_CHECK_EQ(WorkspaceIndex::match("parse_header", "hp"), 0);
     CPPL_CHECK_EQ(WorkspaceIndex::match("parse_header", "parse_headers"), 0);
     CPPL_CHECK_EQ(WorkspaceIndex::match("anything", ""), 1);
@@ -245,6 +246,29 @@ CPPL_TEST(indexing_reports_each_file_read_out_of_those_found) {
     CPPL_CHECK(reported == expected);
 }
 
+CPPL_TEST(files_read_on_several_threads_are_each_read_once_and_reported_in_order) {
+    const cppl::driver::ScratchDirectory scratch;
+    const std::filesystem::path root = scratch.path() / "project";
+    constexpr std::size_t kFiles = 12;
+    for (std::size_t file = 0; file < kFiles; ++file) {
+        write(root / ("f" + std::to_string(file) + ".cpp"), "int in_file_" + std::to_string(file) + "();\n");
+    }
+    std::vector<std::pair<std::size_t, std::size_t>> reported;
+    WorkspaceIndex::Options threaded = options();
+    threaded.threads = 3;
+    {
+        WorkspaceIndex index({root}, threaded,
+                             [&reported](std::size_t done, std::size_t total) { reported.emplace_back(done, total); });
+        CPPL_CHECK(index.wait_until_current(kIndexed));
+        CPPL_CHECK_EQ(index.symbols("in_file_", 100).size(), kFiles);
+    }
+    CPPL_CHECK_EQ(reported.size(), kFiles + 1);
+    for (std::size_t at = 0; at < reported.size(); ++at) {
+        CPPL_CHECK_EQ(reported[at].first, at);
+        CPPL_CHECK_EQ(reported[at].second, kFiles);
+    }
+}
+
 CPPL_TEST(a_workspace_symbol_comes_from_the_open_buffer_and_the_index_for_every_other_file) {
     const cppl::driver::ScratchDirectory scratch;
     const std::filesystem::path root = scratch.path() / "project";
@@ -305,6 +329,28 @@ CPPL_TEST(references_reach_files_no_open_document_holds) {
     CPPL_CHECK(server.wait_for_index(kIndexed));
     CPPL_CHECK_EQ(references(server, root / "first.cpp", use, false),
                   at("first.cpp", first, "shared_value") + " " + at("second.cpp", second_edited, "shared_value"));
+}
+
+CPPL_TEST(a_header_outside_the_workspace_is_found_through_the_files_that_include_it) {
+    // The index reads a header of its own once, and a header it does not read
+    // through each file including it.
+    const cppl::driver::ScratchDirectory scratch;
+    const std::filesystem::path root = scratch.path() / "project";
+    const std::string header =
+        "#pragma once\nint outside_value();\ninline int twice() { return outside_value() * 2; }\n";
+    write(scratch.path() / "outside" / "outside.hpp", header);
+    write(root / "user.cpp", "#include \"../outside/outside.hpp\"\nint user() { return outside_value(); }\n");
+    const std::string open_text = "int outside_value();\nint mine() { return outside_value(); }\n";
+    write(root / "mine.cpp", open_text);
+
+    Server server(CPPL_TEST_DEFAULT_CLANG, {"-std=c++20"});
+    server.initialize({}, {root.string()});
+    CPPL_CHECK(server.wait_for_index(kIndexed));
+    open(server, root / "mine.cpp", open_text);
+    const std::string found = references(server, root / "mine.cpp", position_of(open_text, "outside_value"));
+    CPPL_CHECK(found.find(at("outside.hpp", header, "outside_value")) != std::string::npos);
+    CPPL_CHECK(found.find(at("outside.hpp", header, "outside_value() *")) != std::string::npos);
+    CPPL_CHECK(found.find("user.cpp:1:") != std::string::npos);
 }
 
 CPPL_TEST(a_proof_statement_in_a_closed_file_is_a_use_of_the_law_it_names) {

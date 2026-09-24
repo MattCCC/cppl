@@ -12,6 +12,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <map>
 #include <memory>
 #include <optional>
 #include <ranges>
@@ -68,9 +69,9 @@ std::vector<CXUnsavedFile> unsaved_view(const std::vector<FileContent>& files) {
 
 // Parsing keeps a preamble of the headers the main file starts by including,
 // so a reparse after an edit below them skips them. Warnings are never read.
+constexpr unsigned kReadOnce = CXTranslationUnit_DetailedPreprocessingRecord | CXTranslationUnit_KeepGoing;
 constexpr unsigned kParseOptions =
-    CXTranslationUnit_DetailedPreprocessingRecord | CXTranslationUnit_KeepGoing |
-    CXTranslationUnit_PrecompiledPreamble | CXTranslationUnit_CreatePreambleOnFirstParse |
+    kReadOnce | CXTranslationUnit_PrecompiledPreamble | CXTranslationUnit_CreatePreambleOnFirstParse |
     CXTranslationUnit_CacheCompletionResults | CXTranslationUnit_IncludeBriefCommentsInCodeCompletion;
 
 } // namespace
@@ -81,6 +82,9 @@ struct EditorUnit::State {
     std::vector<FileContent> unsaved;
     CXIndex index = nullptr;
     CXTranslationUnit unit = nullptr;
+    // What each file the unit read holds, found once per parse: Clang finds a
+    // file's contents by searching every file it loaded.
+    mutable std::map<CXFile, std::string_view> contents;
 
     State() = default;
     State(const State&) = delete;
@@ -131,12 +135,24 @@ struct EditorUnit::State {
         CXTranslationUnit parsed = nullptr;
         const CXErrorCode error = clang_parseTranslationUnit2FullArgv(
             index, main.path.c_str(), argv.data(), static_cast<int>(argv.size()), view.data(),
-            static_cast<unsigned>(view.size()), kParseOptions, &parsed);
+            static_cast<unsigned>(view.size()), options.once ? kReadOnce : kParseOptions, &parsed);
         if (error != CXError_Success || parsed == nullptr) {
             return std::unexpected("Clang could not parse '" + main.path + "' for editor services");
         }
         unit = parsed;
+        contents.clear();
         return {};
+    }
+
+    [[nodiscard]] std::string_view contents_of(CXFile file) const {
+        const auto known = contents.find(file);
+        if (known != contents.end()) {
+            return known->second;
+        }
+        std::size_t size = 0;
+        const char* text = clang_getFileContents(unit, file, &size);
+        return contents.emplace(file, text == nullptr ? std::string_view() : std::string_view(text, size))
+            .first->second;
     }
 
     [[nodiscard]] CXFile main_file() const {
@@ -194,6 +210,25 @@ struct EditorUnit::State {
         end.offset += name.size();
         end.column += static_cast<std::uint32_t>(name.size());
         return Extent{begin, end};
+    }
+
+    // Where a declaration's name starts, as `name_extent` finds it.
+    [[nodiscard]] static std::optional<CXSourceLocation> name_start(CXCursor cursor) {
+        if (clang_getCursorKind(cursor) == CXCursor_InclusionDirective) {
+            return std::nullopt;
+        }
+        const CXSourceRange range = clang_Cursor_getSpellingNameRange(cursor, 0, 0);
+        if (clang_Range_isNull(range) == 0) {
+            CXFile file = nullptr;
+            unsigned begin = 0;
+            unsigned end = 0;
+            clang_getFileLocation(clang_getRangeStart(range), &file, nullptr, nullptr, &begin);
+            clang_getFileLocation(clang_getRangeEnd(range), nullptr, nullptr, nullptr, &end);
+            if (file != nullptr && end > begin) {
+                return clang_getRangeStart(range);
+            }
+        }
+        return clang_getCursorLocation(cursor);
     }
 
     [[nodiscard]] CXCursor cursor_at(std::size_t offset) const {
@@ -258,10 +293,8 @@ struct EditorUnit::State {
         if (file == nullptr || name.empty()) {
             return std::nullopt;
         }
-        std::size_t size = 0;
-        const char* contents = clang_getFileContents(unit, file, &size);
-        if (contents == nullptr || offset + name.size() > size ||
-            std::string_view(contents + offset, name.size()) != name) {
+        const std::string_view text = contents_of(file);
+        if (offset + name.size() > text.size() || text.substr(offset, name.size()) != name) {
             return std::nullopt;
         }
         FilePosition begin = place(start);
@@ -273,10 +306,9 @@ struct EditorUnit::State {
 
     struct Walk {
         const State* state = nullptr;
-        // Occurrences of these, or else declarations spelled `name`; or, when
-        // `everything`, every occurrence of every name.
+        // Occurrences of these; or, when `everything`, every occurrence of
+        // every name.
         const std::vector<std::string>* usrs = nullptr;
-        std::string_view name;
         bool everything = false;
         // When set, each use of one of those names that is not written where
         // it is used -- a macro's body spells it -- is noted here too.
@@ -331,32 +363,15 @@ struct EditorUnit::State {
 
     void note_declaration(CXCursor cursor, Walk& walk) const {
         const std::string name = take(clang_getCursorSpelling(cursor));
-        std::string usr;
-        if (walk.everything) {
-            usr = take(clang_getCursorUSR(cursor));
-            if (usr.empty() || name.empty()) {
-                return;
-            }
-        } else if (walk.usrs != nullptr) {
-            usr = take(clang_getCursorUSR(cursor));
-            if (std::ranges::find(*walk.usrs, usr) == walk.usrs->end()) {
-                return;
-            }
-        } else if (name != walk.name) {
-            return;
-        } else {
-            usr = take(clang_getCursorUSR(cursor));
-        }
-        const std::optional<Extent> extent = name_extent(cursor);
-        if (!extent.has_value()) {
+        std::string usr = take(clang_getCursorUSR(cursor));
+        if (walk.everything ? usr.empty() || name.empty() : std::ranges::find(*walk.usrs, usr) == walk.usrs->end()) {
             return;
         }
-        CXFile file = clang_getFile(unit, extent->begin.file.c_str());
-        if (file == nullptr) {
+        const std::optional<CXSourceLocation> start = name_start(cursor);
+        if (!start.has_value()) {
             return;
         }
-        if (std::optional<Extent> written =
-                spelled(clang_getLocationForOffset(unit, file, static_cast<unsigned>(extent->begin.offset)), name)) {
+        if (std::optional<Extent> written = spelled(*start, name)) {
             walk.found.push_back(Occurrence{*written, std::move(usr), Role::Declaration});
         }
     }
@@ -416,7 +431,7 @@ struct EditorUnit::State {
         }
         if (clang_isDeclaration(kind) != 0 || kind == CXCursor_MacroDefinition) {
             walk.state->note_declaration(cursor, walk);
-        } else if ((walk.usrs != nullptr || walk.everything) && is_reference(kind)) {
+        } else if (is_reference(kind)) {
             walk.state->note_reference(cursor, kind, walk);
         }
         return CXChildVisit_Recurse;
@@ -689,14 +704,13 @@ struct EditorUnit::State {
         }
     }
 
-    [[nodiscard]] std::vector<Occurrence> walk(const std::vector<std::string>* usrs, std::string_view name,
-                                               bool everything = false,
+    // Occurrences of `usrs`, or of every name when it is null.
+    [[nodiscard]] std::vector<Occurrence> walk(const std::vector<std::string>* usrs,
                                                std::vector<Occurrence>* unwritten = nullptr) const {
         Walk walk;
         walk.state = this;
         walk.usrs = usrs;
-        walk.name = name;
-        walk.everything = everything;
+        walk.everything = usrs == nullptr;
         walk.unwritten = unwritten;
         if (unit != nullptr) {
             clang_visitChildren(clang_getTranslationUnitCursor(unit), visit, &walk);
@@ -745,6 +759,8 @@ std::expected<void, std::string> EditorUnit::reparse(FileContent main, std::vect
     std::vector<CXUnsavedFile> view = unsaved_view(all);
     const int failed = clang_reparseTranslationUnit(state.unit, static_cast<unsigned>(view.size()), view.data(),
                                                     clang_defaultReparseOptions(state.unit));
+    // A file's handle and contents belong to the parse that read them.
+    state.contents.clear();
     if (failed == 0) {
         return {};
     }
@@ -1012,16 +1028,8 @@ std::vector<Entity> EditorUnit::entities_at(std::size_t offset) const {
     return entities;
 }
 
-std::vector<Occurrence> EditorUnit::occurrences(const std::vector<std::string>& usrs) const {
-    return state_->walk(&usrs, {});
-}
-
-std::vector<Occurrence> EditorUnit::declarations_named(std::string_view name) const {
-    return state_->walk(nullptr, name);
-}
-
 std::vector<Occurrence> EditorUnit::all_occurrences() const {
-    return state_->walk(nullptr, {}, true);
+    return state_->walk(nullptr);
 }
 
 std::vector<std::string> EditorUnit::renamed_together(const std::string& usr) const {
@@ -1030,7 +1038,7 @@ std::vector<std::string> EditorUnit::renamed_together(const std::string& usr) co
 
 std::vector<Occurrence> EditorUnit::unwritten_uses(const std::vector<std::string>* usrs) const {
     std::vector<Occurrence> unwritten;
-    static_cast<void>(state_->walk(usrs, {}, usrs == nullptr, &unwritten));
+    static_cast<void>(state_->walk(usrs, &unwritten));
     return unwritten;
 }
 

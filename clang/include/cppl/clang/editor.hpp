@@ -8,7 +8,6 @@
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -266,6 +265,9 @@ class EditorUnit {
         // Compile flags: include paths, defines, `-std=`. Never the input or
         // an output.
         std::vector<std::string> arguments;
+        // The unit is read once and never reparsed or completed in, as an
+        // index reads a file: no preamble is kept for a reparse to reuse.
+        bool once = false;
     };
 
     // Parses `main` as a C++ translation unit, reading `unsaved` files in place
@@ -303,17 +305,10 @@ class EditorUnit {
     [[nodiscard]] std::vector<Entity> entities_at(std::size_t offset) const;
 
     // Every place, in the main file and the headers it includes that are not
-    // system headers, where a name denoting one of `usrs` is written: each
+    // system headers, where a name with an identity is written: each
     // declaration, and each reference as a read or a write. A name written
     // nowhere, such as an implicit call, is no occurrence: every extent
     // reported spells the name in the text Clang read.
-    [[nodiscard]] std::vector<Occurrence> occurrences(const std::vector<std::string>& usrs) const;
-
-    // Every declaration spelled `name` in those files.
-    [[nodiscard]] std::vector<Occurrence> declarations_named(std::string_view name) const;
-
-    // Every place in those files where any name with an identity is written:
-    // what an index of the workspace records.
     [[nodiscard]] std::vector<Occurrence> all_occurrences() const;
 
     // The identities C++ spells with the same name as `usr`, which renaming it

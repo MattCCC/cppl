@@ -103,6 +103,33 @@ CPPL_TEST(a_local_is_referenced_where_it_is_declared_read_and_written) {
                   std::string("1:8:1 2:4:3 3:4:3 4:4:3 5:11:2"));
 }
 
+CPPL_TEST(references_and_the_outline_follow_each_edit) {
+    // What a parse found is kept for the requests after it, and only until
+    // the text is parsed again.
+    Server server = make_server();
+    const std::string before = "int total = 0;\nint read() { return total; }\n";
+    open(server, "file:///work/edited.cpp", before);
+    CPPL_CHECK_EQ(references(server, "file:///work/edited.cpp", position_of(before, "total")),
+                  at("edited.cpp", before, "total", 0) + " " + at("edited.cpp", before, "total", 1));
+    TextDocumentIdentifier id;
+    id.uri = "file:///work/edited.cpp";
+    CPPL_CHECK_EQ(server.text_document_document_symbol(id).value_or(std::vector<DocumentSymbol>{}).size(),
+                  std::size_t{2});
+
+    const std::string after = "int total = 0;\n\nint read() { return total; }\nint twice() { return total * 2; }\n";
+    VersionedTextDocumentIdentifier versioned;
+    versioned.uri = "file:///work/edited.cpp";
+    versioned.version = 2;
+    TextDocumentContentChangeEvent change;
+    change.text = after;
+    server.text_document_did_change(versioned, {change});
+    CPPL_CHECK_EQ(references(server, "file:///work/edited.cpp", position_of(after, "total")),
+                  at("edited.cpp", after, "total", 0) + " " + at("edited.cpp", after, "total", 1) + " " +
+                      at("edited.cpp", after, "total", 2));
+    CPPL_CHECK_EQ(server.text_document_document_symbol(id).value_or(std::vector<DocumentSymbol>{}).size(),
+                  std::size_t{3});
+}
+
 CPPL_TEST(references_reach_every_open_document_and_the_headers_they_share) {
     Server server = make_server();
     const std::string header = "#pragma once\n"

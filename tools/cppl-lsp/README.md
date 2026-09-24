@@ -758,9 +758,16 @@ Each file is read from disk the way an open document is read. Clang reads it
 through its projection, with the flags its build gives it (`ARCH-LSP-008`).
 The compile reads it as far as elaboration, which says what each name a proof
 statement uses resolves to. The index never verifies, publishes no diagnostic
-and shows no verdict. It runs on a thread of its own. It reads every file
-once, then looks every 2 seconds for files added, removed or edited on disk,
-and reads again only those.
+and shows no verdict. It reads every file once, then looks every 2 seconds for
+files added, removed or edited on disk, and reads again only those.
+
+The index reads several files at once, on half the processors. Each thread
+that reads runs at a lower priority than the thread answering requests: a
+utility quality of service on macOS, a nicer niceness on Linux. A file the
+index reads is parsed once, without the precompiled preamble an open document
+keeps for its next edit. What a file's reading finds in a header that the
+index also reads on its own is left to that header's reading, so each place
+is kept once.
 
 An open document always answers as the editor holds it, and the index answers
 only for the other files (`ARCH-LSP-009`). So an edit not yet saved is what
@@ -1220,6 +1227,66 @@ Important requirements include:
 Performance optimizations must not create a second semantic implementation.
 
 Incrementality is an execution strategy, not a different definition of the language.
+
+### Measured
+
+`tools/cppl-lsp/bench.py` drives any language server over stdio as an editor
+would: it opens one file of a workspace and times each request (see its
+docstring). Measured on 2026-09-24 on an Apple M3 Max (16 cores, 48 GiB, macOS
+26.6), against clangd 22.1.8, the server Clang itself provides. The workspace
+was this repository at `e0287f0`, configured so that `build/` holds its
+compilation database of 209 commands. The file was `src/lsp/src/server.cpp`,
+with 20 repetitions at each of three names. Each server ran three times,
+alternating and cold: clangd's saved index was moved away before each run.
+Each figure is the median of the three runs.
+
+| | cppl-lsp | clangd |
+| --- | --- | --- |
+| `initialize` | 13 ms | 45 ms |
+| first hover, sent as the file opens | 2.70 s | 1.84 s |
+| first diagnostics | 2.70 s | 1.84 s |
+| hover | 0.2 ms | 0.6 ms |
+| definition | 0.1 ms | 0.1 ms |
+| references | 0.7 ms | 0.5 ms |
+| document symbols | 0.3 ms | 0.4 ms |
+| completion after `documents_.` | 26.6 ms | 28.1 ms |
+| workspace symbols | 0.6 ms | 0.3 ms |
+| whole workspace indexed | 22.3 s | 27.3 s |
+| memory once indexed (physical footprint) | 389 MiB | 536 MiB |
+| peak memory (physical footprint) | 1.6 GiB | 1.7 GiB |
+
+Every request above was answered with a result, none empty.
+
+- **The two indexes read different files.** cppl-lsp read 342 files: every
+  source and header under the root, headers on their own too, and the C++L
+  fixtures, which the compile reads as well. clangd read the 209 files its
+  compilation database lists and reached headers through them.
+- **Opening a file is slower.** cppl-lsp reads an opened file twice: the
+  compile reads the preprocessed unit, and the editor unit reads the
+  projection with a precompiled preamble. The editor unit is built on the
+  thread that answers requests, when the first request arrives, and the
+  compile's diagnostics are published only once that thread is free again.
+  clangd builds one tree for both.
+- **Memory is the physical footprint** the system charges, as Activity Monitor
+  shows it. The largest resident set is about 2.1 GiB for either server, most
+  of it memory freed and kept by the allocator.
+
+Microsoft's C/C++ extension is not in the table. Its language server,
+`cpptools`, answers `initialize`, then refuses to run outside Microsoft's
+products, so it can only be measured inside VS Code itself.
+
+To measure again:
+
+```sh
+git archive HEAD | tar -x -C /tmp/ws
+cmake -S /tmp/ws -B /tmp/ws/build -G Ninja -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCPPL_BUILD_TESTS=ON
+python3 tools/cppl-lsp/bench.py --name cppl-lsp --workspace /tmp/ws --file src/lsp/src/server.cpp \
+    --at 'view_for(id.uri)' --at 'documents_.get(' --at 'index_->mentions' \
+    --complete-after 'documents_.' --query Server -- build/dev/bin/cppl-lsp
+python3 tools/cppl-lsp/bench.py --name clangd --workspace /tmp/ws --file src/lsp/src/server.cpp \
+    --at 'view_for(id.uri)' --at 'documents_.get(' --at 'index_->mentions' \
+    --complete-after 'documents_.' --query Server -- clangd --compile-commands-dir=/tmp/ws/build
+```
 
 ---
 

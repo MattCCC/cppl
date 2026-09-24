@@ -2774,7 +2774,7 @@ the server lives, and only while the document still holds exactly the text the
 compile read. A compile of text since edited is dropped, never shown.
 
 The workspace index (`lsp::WorkspaceIndex`) reads every other file of the
-workspace the same way, on a thread of its own. Each file gets an editor unit
+workspace the same way, on threads of its own. Each file gets an editor unit
 with its build's flags, and a compile that stops after elaboration
 (`BufferCompileRequest::stop_after_elaboration`) for the names its proof
 statements use. The index verifies nothing, and it publishes no diagnostic and

@@ -13,15 +13,17 @@
 #include <functional>
 #include <map>
 #include <mutex>
+#include <set>
 #include <string>
 #include <string_view>
 #include <thread>
+#include <utility>
 #include <vector>
 
 namespace cppl::lsp {
 
 // What every file of a workspace declares and where each name is written,
-// kept current on a thread of its own, for the requests an open document
+// kept current on threads of its own, for the requests an open document
 // cannot answer alone: workspace symbols, and references and renames that
 // reach files no open document includes (tools/cppl-lsp/README.md,
 // "Workspace index").
@@ -44,6 +46,9 @@ class WorkspaceIndex {
         std::vector<std::string> clang_arguments;
         // How often files are checked for edits, and the roots for new ones.
         std::chrono::milliseconds poll{2000};
+        // How many files are read at once; 0 for half the processors. Each
+        // thread that reads runs at a lower priority than the editor's.
+        std::size_t threads = 0;
     };
 
     // A declaration a workspace symbol search finds.
@@ -129,7 +134,12 @@ class WorkspaceIndex {
 
     void run();
     [[nodiscard]] std::vector<std::filesystem::path> discover();
-    [[nodiscard]] Entry read(const std::filesystem::path& file, std::filesystem::file_time_type written);
+    // Reads each of `stale` on as many threads as the options say. `indexed`
+    // is every file the index reads.
+    void read_all(const std::vector<std::pair<std::filesystem::path, std::filesystem::file_time_type>>& stale,
+                  const std::set<std::filesystem::path>& indexed);
+    [[nodiscard]] Entry read(const std::filesystem::path& file, std::filesystem::file_time_type written,
+                             std::vector<std::string> arguments, const std::set<std::filesystem::path>& indexed) const;
 
     std::vector<std::filesystem::path> roots_;
     Options options_;

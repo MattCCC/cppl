@@ -18,6 +18,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <ios>
 #include <iterator>
 #include <map>
@@ -94,6 +95,10 @@ std::string resolve_driver(const std::string& configured) {
 }
 
 bool EditorView::refresh(const OpenBuffer& document, const std::vector<OpenBuffer>& open, const Options& options) {
+    named_.reset();
+    outline_.reset();
+    mappers_.clear();
+    disk_.clear();
     uri_ = document.uri;
     main_ = std::make_unique<ProjectedFile>(document.path, *document.text);
 
@@ -130,7 +135,8 @@ bool EditorView::refresh(const OpenBuffer& document, const std::vector<OpenBuffe
     const clangbridge::FileContent main{document.path, main_->analysis()};
     if (rebuild) {
         unit_.reset();
-        auto parsed = clangbridge::EditorUnit::parse({options_.driver, options_.arguments}, main, unsaved());
+        auto parsed =
+            clangbridge::EditorUnit::parse({options_.driver, options_.arguments, options_.once}, main, unsaved());
         if (!parsed.has_value()) {
             return false;
         }
@@ -230,21 +236,29 @@ std::optional<Location> EditorView::locate(const clangbridge::Extent& extent) co
         if (!begin.has_value() || !end.has_value() || *end < *begin) {
             return std::nullopt;
         }
-        const PositionMapper mapper(file->text());
+        auto [known, fresh] = mappers_.try_emplace(file, file->text());
+        const PositionMapper& mapper = known->second;
         return Location{uri, Range{mapper.byte_offset_to_position(*begin), mapper.byte_offset_to_position(*end)}};
     }
 
-    // A file Clang read from disk as it is.
+    // A file Clang read from disk as it is, read once for every place in it.
     if (key.empty()) {
         return std::nullopt;
     }
-    const std::optional<std::string> text = read_file(extent.begin.file);
-    if (!text.has_value() || extent.end.offset > text->size() || extent.end.offset < extent.begin.offset) {
+    auto known = disk_.find(key);
+    if (known == disk_.end()) {
+        std::optional<std::string> text = read_file(extent.begin.file);
+        known = disk_
+                    .emplace(key, text.has_value() ? std::make_unique<DiskFile>(path_to_uri(key), std::move(*text))
+                                                   : nullptr)
+                    .first;
+    }
+    const DiskFile* disk = known->second.get();
+    if (disk == nullptr || extent.end.offset > disk->text.size() || extent.end.offset < extent.begin.offset) {
         return std::nullopt;
     }
-    const PositionMapper mapper(*text);
-    return Location{path_to_uri(key), Range{mapper.byte_offset_to_position(extent.begin.offset),
-                                            mapper.byte_offset_to_position(extent.end.offset)}};
+    return Location{disk->uri, Range{disk->mapper.byte_offset_to_position(extent.begin.offset),
+                                     disk->mapper.byte_offset_to_position(extent.end.offset)}};
 }
 
 namespace {
@@ -303,6 +317,9 @@ std::optional<DocumentSymbol> outline_entry(const ProjectedFile& file, const Pos
 } // namespace
 
 std::vector<DocumentSymbol> EditorView::outline() const {
+    if (outline_.has_value()) {
+        return *outline_;
+    }
     std::vector<DocumentSymbol> outline;
     if (main_ == nullptr) {
         return outline;
@@ -318,6 +335,7 @@ std::vector<DocumentSymbol> EditorView::outline() const {
     for (DocumentSymbol& symbol : cppl_symbols(*main_)) {
         place_symbol(outline, std::move(symbol));
     }
+    outline_ = outline;
     return outline;
 }
 
@@ -362,39 +380,48 @@ EditorView::Target EditorView::renamed_together(Target target) const {
 
 std::vector<EditorView::Mention> EditorView::mentions(const Target& target) const {
     std::vector<Mention> found;
-    if (unit_ == nullptr) {
-        return found;
-    }
-    std::vector<std::string> usrs = target.usrs;
+    const std::vector<Named>& all = named();
+    std::set<std::string, std::less<>> usrs(target.usrs.begin(), target.usrs.end());
+    // A declaration written where the target's is -- a parameter the
+    // projection repeated -- is the target too.
     if (target.declaration.has_value()) {
-        for (const clangbridge::Occurrence& declaration : unit_->declarations_named(target.name)) {
-            const std::optional<Location> written = locate(declaration.name);
-            if (written.has_value() && same_location(*written, *target.declaration) &&
-                std::ranges::find(usrs, declaration.usr) == usrs.end()) {
-                usrs.push_back(declaration.usr);
+        for (const Named& other : all) {
+            if (other.mention.role == clangbridge::Role::Declaration &&
+                same_location(other.mention.location, *target.declaration)) {
+                usrs.insert(other.usr);
             }
         }
     }
-    for (const clangbridge::Occurrence& occurrence : unit_->occurrences(usrs)) {
-        std::optional<Location> location = locate(occurrence.name);
-        if (!location.has_value()) {
+    std::map<std::tuple<std::string, std::uint32_t, std::uint32_t, std::uint32_t, std::uint32_t>, std::size_t> at;
+    for (const Named& occurrence : all) {
+        if (!usrs.contains(occurrence.usr)) {
             continue;
         }
-        const auto known = std::ranges::find_if(
-            found, [&](const Mention& mention) { return same_location(mention.location, *location); });
-        if (known == found.end()) {
-            found.push_back(Mention{std::move(*location), occurrence.role});
-        } else if (occurrence.role == clangbridge::Role::Declaration) {
+        const Range& range = occurrence.mention.location.range;
+        const auto [known, fresh] =
+            at.try_emplace(std::tuple{occurrence.mention.location.uri, range.start.line, range.start.character,
+                                      range.end.line, range.end.character},
+                           found.size());
+        if (fresh) {
+            found.push_back(occurrence.mention);
+        } else if (occurrence.mention.role == clangbridge::Role::Declaration) {
             // Written once, reached as a repetition's reference and as the
             // declaration it repeats: it is the declaration.
-            known->role = occurrence.role;
+            found[known->second].role = occurrence.mention.role;
         }
     }
     return found;
 }
 
 std::vector<EditorView::Named> EditorView::all_mentions() const {
-    std::vector<Named> found;
+    return named();
+}
+
+const std::vector<EditorView::Named>& EditorView::named() const {
+    if (named_.has_value()) {
+        return *named_;
+    }
+    std::vector<Named>& found = named_.emplace();
     if (unit_ == nullptr) {
         return found;
     }
