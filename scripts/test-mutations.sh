@@ -146,6 +146,7 @@ const-receiver-mutable-member	clang/src/bridge.cpp	if (constant && !leaf.mutable
 virtual-member-refused	clang/src/bridge.cpp	if (clang_CXXMethod_isVirtual(cursor) != 0) {	if (false && clang_CXXMethod_isVirtual(cursor) != 0) {	^negative_verified_methods$
 virtual-call-refused	clang/src/bridge.cpp	if (clang_CXXMethod_isVirtual(referenced) != 0) {	if (false && clang_CXXMethod_isVirtual(referenced) != 0) {	^negative_verified_methods$
 member-refinement-kept	clang/src/bridge.cpp	converted.refinements = std::move(*declared);	(void)declared;	^negative_verified_methods$
+container-element-refinement-kept	clang/src/bridge.cpp	auto refinements = refinements_of(declared, element, *known);	auto refinements = decltype(refinements_of(declared, element, *known)){};	^negative_containers$
 reference-aggregate-witness	clang/src/bridge.cpp	if (parameter.type.kind == TypeKind::Value && source::aliases_storage(parameter.passing) &&	if (false && parameter.type.kind == TypeKind::Value && source::aliases_storage(parameter.passing) &&	^negative_verified_storage$
 unsafe-member-write-rooted	clang/src/bridge.cpp	return access.has_value() && !access->dereferenced && clang_equalCursors(access->declaration, declaration) != 0;	return access.has_value() && access->path.empty() && !access->dereferenced && clang_equalCursors(access->declaration, declaration) != 0;	^negative_unsafe_boundary$
 alias-write-charged	clang/src/bridge.cpp	            require(locals[index].type);	            (void)index;	^negative_verified_methods$
