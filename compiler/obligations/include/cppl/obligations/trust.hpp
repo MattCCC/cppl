@@ -5,6 +5,7 @@
 #include "cppl/obligations/status.hpp"
 #include "cppl/source/digest.hpp"
 #include "cppl/source/location.hpp"
+#include "cppl/source/representation.hpp"
 
 #include <cstdint>
 #include <string>
@@ -56,6 +57,16 @@ struct ImportedDependency {
     bool direct = false;
 };
 
+// A standard-library model a proven contract rests on (RFC 0020 §10, TRUST.md
+// 28.1). What the model states of its operations is assumed of the library the
+// program runs with, never verified, so the claim holds only relative to it.
+struct LibraryDependency {
+    source::RepresentationKind model = source::RepresentationKind::None;
+    // Whether the contract's own body or contract uses the model, rather than
+    // the body of a verified function it calls.
+    bool direct = false;
+};
+
 // A proven claim and the trusted laws it rests on: its trust closure (TRUST.md
 // 2.8, 35).
 struct ClaimClosure {
@@ -91,6 +102,12 @@ struct ClaimClosure {
 
     // For a contract, the function's USR, so an interface can record it.
     std::string symbol = {};
+
+    // For a contract, the standard-library models it rests on, its own and
+    // those of every verified function it calls, in model order; a claim that
+    // a path or a case of a verified body cannot occur rests on those of that
+    // body's contract (SPEC.md STDMODEL-018).
+    std::vector<LibraryDependency> library = {};
 };
 
 // Whether a claim rests on a trusted law, of this unit or of another unit whose

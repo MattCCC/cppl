@@ -6,6 +6,7 @@
 #include "cppl/kernel/types.hpp"
 #include "cppl/source/digest.hpp"
 #include "cppl/source/location.hpp"
+#include "cppl/source/representation.hpp"
 #include "cppl/vir/ids.hpp"
 
 #include <cstddef>
@@ -67,6 +68,26 @@ struct ReturnPath {
 struct VerificationCondition {
     std::size_t obligation = 0;
     std::vector<std::size_t> callees; // indices into Program::contracts
+};
+
+// A trusted library summary: what one modeled standard-library operation is
+// assumed to do, stated over the abstract value its model keeps (SPEC.md
+// STDMODEL-013, RFC 0020 §6). It is supposed at a call exactly as a verified
+// callee's postcondition is, after its preconditions are owed, and is never
+// verified: nothing about libc++ or libstdc++ is checked. Every claim resting
+// on a function that uses one names the model in its trust closure
+// (TRUST.md 28.1).
+struct LibrarySummary {
+    std::string symbol; // the identity the bridge gave the call
+    std::string name;   // as the call is written, for diagnostics
+    source::LibraryCall library;
+    std::vector<kernel::Type> parameters;
+    kernel::Type result;
+    // Each over the parameters, in the callee's order.
+    std::vector<kernel::Proposition> preconditions;
+    // Over the parameters -- post-state values in the positions the call
+    // writes -- then the result. Absent when the operation states nothing.
+    std::optional<kernel::Proposition> postcondition;
 };
 
 struct ContractVerification {
@@ -139,6 +160,11 @@ struct ContractVerification {
     // its recursion group's own included, whose calls descend a measure. When
     // false, it states partial correctness: what holds if the function returns.
     bool total = false;
+
+    // The standard-library models the function's contract and body rest on,
+    // each once (RFC 0020 §10). What they state is trusted, so the claim is
+    // reported as resting on them, and so is every claim calling this one.
+    std::vector<source::RepresentationKind> library_models;
 };
 
 } // namespace cppl::obligations

@@ -681,6 +681,79 @@ refused.
 
 ---
 
+## verified-sequences
+
+Manifest: `features/verified-sequences.yaml`
+
+Normative sources: `STDMODEL-010`–`STDMODEL-023` (SPEC Annex J.17),
+`STDMODEL-002`, `STDMODEL-006`, `STDMODEL-007` (Annex J.2, J.7, J.8),
+`STORAGE-008`; `TRUST.md` §28.1; `ARCHITECTURE.md` §66.1; `COMPATIBILITY.md`
+§50.1; RFC 0020.
+
+### Components
+
+| Component | Responsibility | Paths |
+| --- | --- | --- |
+| representation | Name the models (`Vector`, `String`, `Span` beside `StdArray`), the library operations, and a call's library mark. | `compiler/source/include/cppl/source/representation.hpp` |
+| formal projection | Read a capability conjoined with ordinary predicates as a conjunction of shapes. | `compiler/frontend/src/formal_projection.cpp` |
+| bridge | Recognize a specialization by its declaration in `std`; refuse an unmodeled element type, allocator, extent or member by name; give a sequence local a storage generation; form element places at it and owe their bound; lower construction and mutators as library calls with the container's post-state in effect position 0; end views and element references at a new generation and refuse a use after, naming the operation; refuse a span that could outlive its container; check a call's views against the containers it may reallocate; accept a span parameter only with its capability. | `clang/src/bridge.cpp` (`convert_type`, `sequence_refusal`, `sequence_call`, `library_call`, `stale_borrow`, `resolve_sequence_element`, `lower_sequence_statement`, `lower_sequence_declaration`, `handed_storage`, `view_arguments`, `extract_body`), `clang/include/cppl/clang/ast.hpp` |
+| elaboration | Carry each call's library mark; record the models a function's signature, contract and body use; split a mixed `expects` into its capability and predicate channels. | `compiler/elaboration/src/elaborate.cpp`, `vir/include/cppl/vir/expr.hpp`, `vir/include/cppl/vir/module.hpp` |
+| obligations | State every library operation's summary once; owe its precondition and suppose its postcondition at the call as a verified callee's; owe a span argument's and a `data()` argument's capability and extent. | `compiler/obligations/src/library.cpp`, `compiler/obligations/src/contracts.cpp` (`evaluate`, `suppose_call`, `owe_capabilities`), `compiler/obligations/src/generate.cpp` |
+| trust closure, driver | Close each claim over the models its function and its verified callees use; list those claims; never count one assumption-free. | `compiler/obligations/src/trust.cpp`, `compiler/driver/src/driver.cpp` |
+
+### Required behavior
+
+```text
+a subscript                 owes its index below the length current where the
+                            element place is formed
+a modeled operation         is its trusted summary: precondition owed,
+                            postcondition over the length supposed
+an operation that may       gives the storage a new generation; an element
+reallocate, shrink,         place formed before is not matched again, and a
+replace or move it          view or element reference used after is refused
+a span                      is formed only over a container that outlives it,
+                            is never returned, assigned or passed by reference
+a span parameter            holds nothing by existing; its capability is
+                            stated and owed at every call
+a call                      is never handed a view of a container it may
+                            reallocate
+a refined element type      is owed at every entry, and supplied at a read
+                            only while every write was modeled
+a moved-from container      has no facts
+a claim resting on a model  is listed with it, never assumption-free
+the subset                  erases to the program's own code
+```
+
+### Interactions
+
+```text
+sequences x refinement types           STDMODEL-020, REFINE-010
+sequences x memory capabilities        STDMODEL-016, STDMODEL-017, ARCH-CAP-001
+sequences x aliasing                   STDMODEL-015, ARCH-REGION-001
+sequences x loops                      STDMODEL-015
+sequences x unsafe                     STDMODEL-015, TCB-UNSAFE-003
+sequences x verified-call composition  STDMODEL-016, STDMODEL-018
+sequences x trust propagation          STDMODEL-018, TCB-LIB-006
+sequences x erasure                    STDMODEL-022, ERASE-002
+```
+
+### Existing surface
+
+```text
+tests/fixtures/containers.cpp                  every accepted use, each the twin of a refusal
+tests/e2e/containers.sh                        the report, runtime values, erasure at -O0/-O2 in C++20 and C++23
+tests/negative/containers.sh                   every rejection, written out in tests/fixtures/negative/container_*.cpp
+tests/fixtures/equivalence/containers.cpp      erasure against a hand-erased twin
+```
+
+Not built: iterators, range-based `for`, `at`, `front`, `back`, `insert`,
+`erase`, `resize`, `emplace_back`, `subspan`, static-extent spans,
+`std::string_view`, element types other than integers and `bool`, refined
+element types on parameters, and a `std::array` a reference designates; each
+is refused.
+
+---
+
 ## Adding a feature to this map
 
 1. Add the feature to `FEATURE_INDEX.md`.

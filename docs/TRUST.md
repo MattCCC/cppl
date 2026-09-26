@@ -962,6 +962,38 @@ A formal model of a library abstraction is a correspondence claim between public
 
 **[TCB-LIB-005]** A library abstraction that performs hidden allocation, invalidation, aliasing, synchronization, exception propagation or callback execution MUST expose those proof-relevant effects through its model.
 
+## 28.1 The verified sequence models
+
+This implementation models `std::array`, `std::vector`, `std::basic_string<char>` and dynamic-extent `std::span` for verified code (`SPEC.md` J.17, RFC 0020). Nothing of libc++ or libstdc++ is verified. What is believed about them is listed here in full, and every claim that rests on it says so.
+
+**[TCB-LIB-006]** The **library summaries** of `SPEC.md` STDMODEL-013 are trusted assumptions about the library the program runs with. They are stated once, in `compiler/obligations/src/library.cpp`, as kernel propositions over the one observation each sequence's abstract value has, its length:
+
+```text
+construction      length == 0 | k | n | n | literal's characters before its first null
+copy              length(copy) == length(source)
+move              length(result) == length(source before); source afterwards: nothing
+span of v         length(span) == length(v)
+push_back, s += c length' == length + 1  and  length < length'
+pop_back          requires length != 0;  length' == length - 1  and  length' < length
+clear             length' == 0
+reserve           length' == length
+append, s += t    length' == length + length(t), length <= length', length(t) <= length'
+assignment        length' == length(source)
+data              nothing
+```
+
+A summary is supposed at the call exactly as a verified callee's postcondition is, and only on the call's normal return; its precondition is an ordinary obligation. That each summary holds of a conforming library, and that the library conforms, is assumed.
+
+**[TCB-LIB-007]** The **observations** are correspondence assumptions: that `size()` and `length()` return the length the summaries speak of, that `empty()` is `size() == 0`, that `std::array<T, N>::size()` is `N`, and that `operator[](i)` with `i < size()` designates a live element `i` of the storage the container owns or the span views, of the element type, with no other effect. The bound itself is proved by the kernel, never assumed (`TCB-CAP-007`).
+
+**[TCB-LIB-008]** The **generation rules** of `SPEC.md` STDMODEL-015 are correspondence TCB, in `clang/src/bridge.cpp`: which operations establish a new storage generation, that an element place is matched only at the generation it was formed at, and that a span local or element reference used at another generation is refused. The model assumes, conservatively, that every mutator may reallocate: no capacity is modeled, and no operation is assumed to keep `data()` stable, small-string storage included. What it does assume is the C++ object model's disjointness of live objects: a write to a scalar element, local or referent never reaches a container object's own storage, so it leaves every container's length alone (RFC 0020 §3).
+
+**[TCB-LIB-009]** The capability a contract states over a span or pointer parameter includes, as a precondition the caller owes, that the storage it designates is not element storage of a sequence the function reaches by value or by mutable reference (`SPEC.md` STDMODEL-016). A verified caller discharges it structurally at the call; an unverified caller is trusted to meet it, as it is trusted to meet every other precondition. Reading an `expects` clause that conjoins capabilities with predicates apart, the capabilities on their channel and the predicates as preconditions, is correspondence TCB (`split_conjunction` in `clang/src/bridge.cpp`, `elaborate_contract` in `compiler/elaboration/src/elaborate.cpp`); every other clause that conjoins them is refused whole.
+
+**[TCB-LIB-010]** Every claim resting on a verified function whose contract, body or callees use a modeled sequence is reported under `Library-model-dependent claims` with each model it rests on, and is never counted assumption-free (`SPEC.md` STDMODEL-018). The closure is computed with the trusted-law and unsafe closures, over the same call edges, in `compiler/obligations/src/trust.cpp`.
+
+TCB delta of the subset: kernel rules 0, axioms 0, term formers 0; trusted assumptions: the summaries and observations above; correspondence: recognition, the place and generation model, span liveness, the call-site disjointness check, and the split of a conjoined `expects` clause.
+
 ---
 
 # 29. Erasure and lowering trust

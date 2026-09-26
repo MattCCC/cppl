@@ -90,7 +90,10 @@ std::optional<kernel::Type> lower_type(const vir::Type& type) {
 // A homogeneous domain also requires that every element lower alike, so a
 // signature whose components disagree is not one of these.
 std::optional<kernel::Type> lower_indexed_type(const vir::Type& type) {
-    if (!type.is_value() || type.representation.kind != source::RepresentationKind::Array) {
+    // `std::array<T, N>` is observed at an index exactly as `T[N]` is
+    // (SPEC.md STDMODEL-011).
+    if (!type.is_value() || (type.representation.kind != source::RepresentationKind::Array &&
+                             type.representation.kind != source::RepresentationKind::StdArray)) {
         return std::nullopt;
     }
     const auto& projections = std::get<vir::ValueType>(type.node).projections;

@@ -5,6 +5,7 @@
 #include "cppl/kernel/proposition.hpp"
 #include "cppl/kernel/substitution.hpp"
 #include "cppl/kernel/term.hpp"
+#include "cppl/obligations/contracts.hpp"
 #include "cppl/obligations/obligation.hpp"
 #include "cppl/vir/ids.hpp"
 
@@ -83,6 +84,15 @@ kernel::Proposition relative_to(const std::vector<TrustedPremise>& premises, ker
 const RefinementPredicate* Program::refinement(std::string_view name) const {
     for (const RefinementPredicate& candidate : refinements) {
         if ((candidate.identity.empty() ? candidate.name : candidate.identity) == name) {
+            return &candidate;
+        }
+    }
+    return nullptr;
+}
+
+const LibrarySummary* Program::library_summary(std::string_view symbol) const {
+    for (const LibrarySummary& candidate : library) {
+        if (candidate.symbol == symbol) {
             return &candidate;
         }
     }

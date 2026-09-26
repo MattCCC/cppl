@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cppl/source/location.hpp"
+#include "cppl/source/representation.hpp"
 #include "cppl/vir/ids.hpp"
 #include "cppl/vir/place.hpp"
 #include "cppl/vir/types.hpp"
@@ -68,6 +69,12 @@ struct Call {
     std::string callee_name;
     std::vector<Expr> arguments;
     std::vector<CallEffect> effects = {};
+
+    // Set when the callee is a standard-library operation stated by a trusted
+    // library summary rather than a verified function (SPEC.md STDMODEL-013,
+    // RFC 0020 §6). `callee` then identifies the summary, and nothing about the
+    // library's implementation is ever unfolded or verified.
+    std::optional<source::LibraryCall> library = std::nullopt;
 
     friend bool operator==(const Call&, const Call&) = default;
 };

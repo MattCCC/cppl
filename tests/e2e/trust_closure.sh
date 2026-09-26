@@ -136,6 +136,7 @@ Assumption-free claims:      3
 Unused trusted laws:         2
   unused:                  never_used (trust_closure.cpp:34)
   unused:                  device_window (trust_closure.cpp:40), no statement can use a memory proposition
+Library-model-dependent claims: 0
 
 REPORT
 if ! diff -u "$run/closure.expected" "$run/closure.actual" >&2; then

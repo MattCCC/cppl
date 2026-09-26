@@ -128,6 +128,11 @@ struct Call {
     std::string callee_name;
     std::vector<Expr> arguments;
     std::vector<CallEffect> effects = {};
+
+    // A standard-library operation whose meaning is a trusted library summary
+    // (SPEC.md STDMODEL-013, RFC 0020 §6). `callee_usr` then names the summary,
+    // not a declaration Clang resolved: the library's own body is never read.
+    std::optional<source::LibraryCall> library = std::nullopt;
 };
 
 struct Binary {
@@ -524,6 +529,11 @@ struct Function {
         source::SourceLocation location;
     };
     std::vector<GhostCall> ghost_calls;
+
+    // The standard-library models the body lowering used, each once, in
+    // `RepresentationKind` order (RFC 0020 §10). A claim resting on this body
+    // rests on what those models state.
+    std::vector<source::RepresentationKind> library_models;
 };
 
 enum class Severity : std::uint8_t {

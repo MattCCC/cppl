@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cppl/source/location.hpp"
+#include "cppl/source/representation.hpp"
 #include "cppl/source/storage.hpp"
 #include "cppl/vir/capability.hpp"
 #include "cppl/vir/expr.hpp"
@@ -90,6 +91,12 @@ struct Function {
     // linkage), so another unit's verification interface may describe it and
     // this unit's may describe it to others (SPEC.md TUBOUND-004).
     bool external_linkage = false;
+
+    // The standard-library models its contract or body uses, each once, in
+    // `RepresentationKind` order (SPEC.md STDMODEL-018, RFC 0020 §10). What a
+    // model states is a trusted assumption, so every claim resting on this
+    // function's contract names these in its trust closure.
+    std::vector<source::RepresentationKind> library_models;
 
     source::SourceRange range;
 };

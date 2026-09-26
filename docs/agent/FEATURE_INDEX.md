@@ -57,6 +57,7 @@ section numbers move and rule IDs do not.
 | Floating point | `FLOAT-*` | §30 | — | — | — |
 | Undefined behavior | `UB-*`, `DEFINEDBEHAVIOR-*` | §31, Annex T | — | — | §9 |
 | Memory and lifetime | `MEM-*`, `STORAGE-*` | §32, Annex E | — | Storage, capabilities and framing | §10 |
+| Verified sequences and storage generations (`std::array`, `std::vector`, `std::string`, `std::span`) | `STDMODEL-010`–`STDMODEL-023`, `STDMODEL-002`, `STDMODEL-006`, `STDMODEL-007`, `STORAGE-008` | Annex J.17, J.1, J.2, J.7, J.8 | — | Storage, capabilities and framing | §28.1 |
 | Exceptions | `EXCEPT-*`, `EXCEPTCONCUR-*` | §33, Annex K | — | — | — |
 | Concurrency | `CONCUR-*` | §34 | — | — | — |
 

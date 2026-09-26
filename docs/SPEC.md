@@ -6384,6 +6384,116 @@ selected standard-library semantics. Exact vendor/library availability belongs i
 - Ownership of a lock may establish access to protected invariants only when a corresponding
   synchronization invariant is formally defined and justified.
 
+## J.17 The verified sequence subset
+
+[STDMODEL-010] This section states what verified code may do with `std::array`, `std::vector`,
+`std::basic_string<char>` and `std::span`, and how storage those types own or view is kept from
+outliving the facts about it (RFC 0020). A type is a modeled sequence only by its resolved identity: a specialization of
+the class template `array`, `vector`, `basic_string` or `span` declared in namespace `std`,
+inline namespaces transparent, after alias expansion and substitution. A `vector` MUST use
+`std::allocator` of its element type and MUST NOT be `std::vector<bool>`; a `basic_string` MUST
+be `std::basic_string<char, std::char_traits<char>, std::allocator<char>>`; a `span` MUST have
+dynamic extent; every element type MUST be a built-in integer or `bool`. Any other
+specialization is refused where verified code uses it, with the condition it fails.
+
+[STDMODEL-011] `std::array<T, N>` keeps the product model of 20.4. In a verified body a local
+or a by-value parameter of that type is `N` element places exactly as `T[N]` is (12.10,
+STORAGE-005): `a[i]` owes `i < N` and names the element place `i` selects, `a.size()` is `N`
+and `a.empty()` is `N == 0`. An element of a `std::array` a reference designates is not modeled
+and is refused.
+
+[STDMODEL-012] The abstract value of a `vector`, `string` or `span` is its length, of the
+container's `size_type`, and nothing else: not its capacity, its data pointer or its elements.
+`size()`, and `length()` of a string, denote the length; `empty()` denotes `size() == 0`. The
+length has these meanings in contracts, invariants and measures as in bodies. Elements are
+storage: `v[i]` denotes an element place of the storage the object owns or views, and every
+such subscript owes `i < v.size()`, against the length of the object subscripted, where the
+place is formed.
+
+[STDMODEL-013] What a modeled operation does to a sequence's abstract value is a trusted library
+summary. The admitted operations and their summaries are:
+
+```text
+S v;  S v{e0, ..., ek-1};  S v(n);  S v(n, x);  std::string s = "c...";
+                                  length == 0, k, n, n, and the literal's characters
+                                  before its first null character
+S w = v;   S w = std::move(v);    length(w) == length(v); a move writes v, of which
+                                  nothing is known afterwards
+std::span<T> s(v), = v, {v}       length(s) == length(v)
+v.push_back(x), s += c            length' == length + 1 and length < length'
+v.pop_back()                      requires length != 0; length' == length - 1 and
+                                  length' < length
+v.clear()                         length' == 0
+v.reserve(n)                      length' == length
+s.append(t), s += t               length' == length + length(t), length <= length',
+                                  length(t) <= length'
+v = w, v = std::move(w)           length' == length(w)
+```
+
+[STDMODEL-023] A summary's precondition is owed where the operation is made, exactly as a
+verified callee's (VERIFIED-013), and its facts hold on the operation's normal return only (33).
+A mutator is modeled only as a statement of its own. Every other member of a modeled sequence is
+refused. A sequence handed to a verified call by value is copied into the parameter under the
+copy summary and is unchanged by the call; one handed by `const` reference is unchanged by it.
+
+[STDMODEL-014] A span local views a whole `vector` or `string` the body tracks, is formed only
+by the initializer of its declaration, and is never assigned, formed from another span, passed by
+mutable reference or returned. A span passed to a call by value is the same view. A verified
+function whose result is a span is refused.
+
+[STDMODEL-015] Every operation that may reallocate, shrink, replace, move from or end the
+storage a sequence owns establishes a new **storage generation** of that sequence: each
+mutator of STDMODEL-013, a move from it, passing it by mutable reference to a call, an unsafe
+block that may reach it, a write through storage that may be it, and the head of a loop that
+does any of these. An element write does not. An element place is formed at a generation, and
+after the generation changes a subscript forms a new one and owes its bound again. A span local
+and a reference bound to a sequence element each designate storage at the generation they were
+formed at; using either at any other generation is refused.
+
+[STDMODEL-016] A span parameter states a region of caller storage and nothing about its
+validity. Reading one of its elements requires `readable(s)`, and writing one `writable(s)`,
+in the function's `expects` clause; neither takes a count, since the span states its extent.
+Such a capability may be conjoined with ordinary predicates in one `expects` clause: the
+capability is owed and supposed on the capability channel (12.10), the predicates are
+preconditions, and together they mean the conjunction. A capability conjoined with a predicate
+anywhere else, in a postcondition, a law or a law's premise, is refused whole. The storage a capability designates is
+live for the call and is not element storage of a sequence the function can reach by value or
+by mutable reference. A verified call owes each capability: the caller passes a span or pointer
+parameter it holds the same capability for, a live span local, a container of its own
+converted to a span, or a container's data pointer, and a span or data pointer over a container
+passed in the same call by mutable reference is refused.
+
+[STDMODEL-017] `v.data()` is modeled only as an argument of a verified call whose parameter is a
+pointer carrying a capability, over the container's length: `readable(p, n)` owes
+`n <= v.size()`. A call that may write through a span or data pointer it is handed leaves every
+element of the container unknown afterwards, and its length unchanged.
+
+[STDMODEL-018] Every claim resting on a verified function that uses a modeled sequence, in its
+contract, its body or the body of a function it calls, is proven relative to what that model
+states. Such a claim MUST be reported with each model it rests on and MUST NOT be reported as
+assumption-free.
+
+[STDMODEL-019] Iterators, range-based `for`, element access other than `operator[]`, and every
+member of a modeled sequence not named in STDMODEL-011 to STDMODEL-017 are refused in a verified
+body by name. An operation that is refused is never approximated.
+
+[STDMODEL-020] A value entering an element place is a refinement crossing into the element type
+(17.2): a listed element, a fill value, the value-initialized element of a sized construction,
+a pushed element, and a subscript write, including one through a span. An element read supplies
+the element type's refinement exactly where REFINE-060 and REFINE-061 allow: a container local
+whose every element write was modeled here, whose storage was not handed to a call that may
+write it, and that no unsafe block names. A refined element type is admitted only for a local.
+A copy or move MUST NOT introduce a refinement the source's element type does not state, and a
+span or data pointer that lets a callee write a refined container's elements is refused.
+
+[STDMODEL-021] A moved-from sequence holds a valid but unspecified value: nothing about its
+length or elements survives the move. Only a sequence this body owns is moved from, and a
+sequence is never assigned to itself.
+
+[STDMODEL-022] The subset changes nothing at runtime. A container stays the ordinary type of the
+selected standard library, erasure removes only the contract, and generations and places are
+proof bookkeeping (36, ABI-*).
+
 # Normative Annex K — Exceptions, concurrency and coroutines
 
 ## K.1 Exception object construction

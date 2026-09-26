@@ -266,6 +266,29 @@ Manifest: `features/machine-arithmetic.yaml`
 | Property against the host | adversarial | covered — every operation at the edges of eight types and values from a logged seed: the host's defined ones verify and compute the stated value at runtime and after erasure, its undefined ones are refused for definedness alone (`e2e/arithmetic_properties.sh`) |
 | Erasure | erasure | covered — the runtime program keeps every operation as written and no check; its erasure compiled by Clang alone computes the same (`e2e/signed_arithmetic.sh` citing `RUNTIMECHECK-009`) |
 
+### verified-sequences
+
+Manifest: `features/verified-sequences.yaml`
+
+Every refusal in `negative/containers.sh` is a written-out
+`fixtures/negative/container_*.cpp` whose accepted twin, differing in the one
+thing the refusal is about, is a function of `fixtures/containers.cpp`.
+
+| Required case | Category | Status |
+| --- | --- | --- |
+| Bounds | positive, negative | covered — guarded subscripts of an array, a vector, a string and a span verify; each unguarded one is refused, and a bound proved before `pop_back` bounds nothing after it, even for an element read before the pop (`fixtures/containers.cpp`, `negative/containers.sh` citing `STDMODEL-011`, `STDMODEL-012`, `STDMODEL-015`; `container-element-generation` in `scripts/test-mutations.sh`) |
+| Summaries | positive, negative | covered — the length every construction and mutator leaves, a vector counted up in a loop, a caller's vector reset; `pop_back` of a possibly empty vector refused, a by-value argument that grows only the callee's copy; dropping the precondition is mutation-checked (`e2e/containers.sh`, `negative/containers.sh` citing `STDMODEL-013`, `STDMODEL-023`; `container-pop-precondition`) |
+| Storage generations | adversarial | covered — an element reference after `push_back` and `clear`, a span after `push_back`, a move, a mutable-reference call, a loop and `operator+=`, each refused naming the operation; not checking a borrow is mutation-checked (`negative/containers.sh` citing `STDMODEL-015`; `container-stale-view`, `container-mutable-call-aliases`) |
+| Views outliving storage | negative | covered — a span assigned from a vector a block destroys, a returned span, a span parameter by reference (`negative/containers.sh` citing `STDMODEL-014`) |
+| Span validity is stated | negative, adversarial | covered — reading a span without `readable`, forwarding one to a callee without it, a capability after an unsafe block, a call handed a view of a vector it may reallocate, a data pointer over more than the length; skipping the capability and the disjointness check are each mutation-checked (`negative/containers.sh` citing `STDMODEL-016`, `STDMODEL-017`; `container-span-capability`, `container-call-disjointness`) |
+| Capability conjoined with predicates | positive, negative | covered — `expects (readable(in) && i < in.size())` owes and supposes both; the same conjunction in a postcondition, a trusted law's conclusion and a law's premise is refused whole; a predicate or a capability dropped from the split is refused at the call; each guard is mutation-checked (`fixtures/containers.cpp`, `negative/containers.sh`, `negative/verified_storage.sh` citing `STDMODEL-016`; `conjoined-capability-detected`, `conjoined-capability-postcondition`, `conjoined-capability-trusted-law`) |
+| Refined elements | positive, negative | covered — refined array and vector locals verify; a pushed, written, span-written, value-initialized or copied value that breaks the predicate, a refined parameter and a writable view of a refined vector are refused; both refinement checks are mutation-checked (`fixtures/containers.cpp`, `negative/containers.sh` citing `STDMODEL-020`; `container-refined-writable-view`, `container-copy-refinement`) |
+| Moved-from and aliasing | adversarial | covered — a moved-from vector's length, two references naming one vector, and a reference naming its element (`negative/containers.sh` citing `STDMODEL-021`, `STDMODEL-015`) |
+| Unmodeled forms | negative | covered — `at`, `std::vector<bool>`, a custom allocator, an element of a `std::array` a reference designates (`negative/containers.sh` citing `STDMODEL-010`, `STDMODEL-019`) |
+| Trust report | positive, regression | covered — every claim resting on a model listed with it, directly and through a verified call, and only the pointer-only claim assumption-free; counting one assumption-free and not following calls are each mutation-checked (`e2e/containers.sh`, `e2e/trust_closure.sh` citing `STDMODEL-018`, `TCB-LIB-006`; `library-model-not-assumption-free`, `library-model-closure-through-calls`) |
+| Erasure and runtime behavior | erasure | covered — the program prints what its contracts state; identical output and assembly against a hand-erased twin at `-O0` and `-O2` in C++20 and C++23 (`e2e/containers.sh` citing `STDMODEL-022`, `ERASE-002`) |
+| Standard libraries | conformance | covered — the same claims against libc++ (macOS) and libstdc++ (`make ci-linux-gcc`) (`e2e/containers.sh`) |
+
 ### erasure and ABI
 
 Rules: `ERASE-*`, `ERASEMATRIX-*`, `ABI-*` (see `FEATURE_INDEX.md`, Lowering).

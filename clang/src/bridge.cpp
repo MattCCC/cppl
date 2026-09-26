@@ -21,6 +21,7 @@
 #include <map>
 #include <optional>
 #include <ranges>
+#include <set>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -81,6 +82,12 @@ source::SourceLocation presumed_location(CXSourceLocation location) {
     result.line = line;
     result.column = column;
     return result;
+}
+
+// Where a cursor stands, as a diagnostic names it.
+std::string describe_location(CXCursor at) {
+    const source::SourceLocation where = presumed_location(clang_getCursorLocation(at));
+    return where.file + ":" + std::to_string(where.line);
 }
 
 std::vector<CXCursor> children_of(CXCursor cursor) {
@@ -161,7 +168,142 @@ source::RepresentationKind library_kind(CXCursor declaration) {
         return K::Tuple;
     if (name == "array")
         return K::StdArray;
+    // The standard sequences verified code may use (RFC 0020 §1). Which
+    // specializations of them are modeled is decided with their arguments, in
+    // `sequence_refusal`.
+    if (name == "vector")
+        return K::Vector;
+    if (name == "basic_string")
+        return K::String;
+    if (name == "span")
+        return K::Span;
     return K::Record;
+}
+
+// The width in bits of the target's `std::size_t`, which is every modeled
+// sequence's `size_type`, or 0 when the target does not report one.
+//
+// Clang reports the target's pointer width, and `size_t` has that width on every
+// target this implementation compiles for. That correspondence is not assumed
+// where it matters: each length observation checks that the type Clang gave
+// the `size()` call is exactly the modeled one, and refuses it otherwise.
+unsigned size_width(CXCursor anywhere) {
+    CXTargetInfo target = clang_getTranslationUnitTargetInfo(clang_Cursor_getTranslationUnit(anywhere));
+    if (target == nullptr) {
+        return 0;
+    }
+    const int width = clang_TargetInfo_getPointerWidth(target);
+    clang_TargetInfo_dispose(target);
+    return width == 32 || width == 64 ? static_cast<unsigned>(width) : 0U;
+}
+
+// The modeled length of a sequence: the target's `std::size_t`.
+Type length_type(CXCursor anywhere) {
+    Type length;
+    const unsigned width = size_width(anywhere);
+    if (width == 0U) {
+        return length;
+    }
+    length.kind = TypeKind::Int;
+    length.width = static_cast<std::uint16_t>(width);
+    length.is_signed = false;
+    length.spelling = "std::size_t";
+    return length;
+}
+
+// Whether `type`, canonical, is a specialization of the standard class template
+// `name` (inline namespaces are transparent, as in `library_kind`).
+bool is_standard_template(CXType type, std::string_view name) {
+    const CXCursor declaration = clang_getTypeDeclaration(clang_getCanonicalType(type));
+    CXCursor primary = clang_getSpecializedCursorTemplate(declaration);
+    if (clang_Cursor_isNull(primary) != 0) {
+        return false;
+    }
+    primary = clang_getCanonicalCursor(primary);
+    CXCursor parent = clang_getCursorSemanticParent(primary);
+    while (clang_getCursorKind(parent) == CXCursor_Namespace && clang_Cursor_isInlineNamespace(parent) != 0) {
+        parent = clang_getCursorSemanticParent(parent);
+    }
+    return clang_getCursorKind(parent) == CXCursor_Namespace && take(clang_getCursorSpelling(parent)) == "std" &&
+           clang_getCursorKind(clang_getCursorSemanticParent(parent)) == CXCursor_TranslationUnit &&
+           take(clang_getCursorSpelling(primary)) == name;
+}
+
+// Whether an element type is one a modeled sequence may hold: a built-in
+// integer or `bool`, whatever cv-qualification the view adds (RFC 0020 §1).
+// Anything else would give an element place a value no version could state.
+bool modeled_element(CXType element) {
+    switch (clang_getCanonicalType(element).kind) {
+        case CXType_Bool:
+        case CXType_Char_S:
+        case CXType_SChar:
+        case CXType_Short:
+        case CXType_Int:
+        case CXType_Long:
+        case CXType_LongLong:
+        case CXType_Char_U:
+        case CXType_UChar:
+        case CXType_UShort:
+        case CXType_UInt:
+        case CXType_ULong:
+        case CXType_ULongLong:
+            return clang_isVolatileQualifiedType(clang_getCanonicalType(element)) == 0;
+        default:
+            return false;
+    }
+}
+
+// Why a specialization of a modeled sequence is not one this implementation
+// models, if it is not (RFC 0020 §1). Each condition is what the library
+// summaries are stated for: a standard allocator, character traits of `char`,
+// a dynamic extent, and scalar elements. `std::vector<bool>` is excluded by
+// name: its `operator[]` returns a proxy object, not an element.
+std::optional<std::string> sequence_refusal(CXType canonical, CXCursor declaration, source::RepresentationKind kind) {
+    using K = source::RepresentationKind;
+    if (clang_Type_getNumTemplateArguments(canonical) < 1) {
+        return "its template arguments are not resolved";
+    }
+    const CXType element = clang_Type_getTemplateArgumentAsType(canonical, 0);
+    if (kind == K::Vector) {
+        if (clang_Type_getNumTemplateArguments(canonical) != 2 ||
+            !is_standard_template(clang_Type_getTemplateArgumentAsType(canonical, 1), "allocator")) {
+            return "a vector with an allocator other than std::allocator is not modeled";
+        }
+        const CXType allocated = clang_Type_getTemplateArgumentAsType(
+            clang_getCanonicalType(clang_Type_getTemplateArgumentAsType(canonical, 1)), 0);
+        if (clang_equalTypes(clang_getCanonicalType(allocated), clang_getCanonicalType(element)) == 0) {
+            return "a vector whose allocator allocates another type is not modeled";
+        }
+        if (clang_getCanonicalType(element).kind == CXType_Bool) {
+            return "std::vector<bool> is not modeled: its operator[] yields a proxy object rather than an element";
+        }
+    }
+    if (kind == K::String) {
+        const CXType character = clang_getCanonicalType(element);
+        if (clang_Type_getNumTemplateArguments(canonical) != 3 ||
+            (character.kind != CXType_Char_S && character.kind != CXType_Char_U) ||
+            !is_standard_template(clang_Type_getTemplateArgumentAsType(canonical, 1), "char_traits") ||
+            !is_standard_template(clang_Type_getTemplateArgumentAsType(canonical, 2), "allocator")) {
+            return "only std::string, std::basic_string<char> with the standard traits and allocator, is modeled";
+        }
+    }
+    if (kind == K::Span) {
+        // `std::dynamic_extent` is the largest value of `std::size_t`. A span
+        // of static extent states its length in its type; it is not modeled.
+        const unsigned width = size_width(declaration);
+        const unsigned long long dynamic =
+            width >= 64U ? std::numeric_limits<unsigned long long>::max() : (1ULL << width) - 1ULL;
+        if (width == 0U || clang_Type_getNumTemplateArguments(canonical) != 2 ||
+            clang_Cursor_getTemplateArgumentKind(declaration, 1) != CXTemplateArgumentKind_Integral ||
+            clang_Cursor_getTemplateArgumentUnsignedValue(declaration, 1) != dynamic) {
+            return "only a span of dynamic extent is modeled";
+        }
+    }
+    if (!modeled_element(element)) {
+        return "its element type '" + take(clang_getTypeSpelling(element)) +
+               "' is not modeled: a modeled sequence holds built-in integers or bool";
+    }
+    return std::nullopt;
 }
 
 // Whether a reference type is read through to its referent.
@@ -252,6 +394,23 @@ Type convert_type(CXType type, unsigned depth = 0, ReferenceModel references = R
             model.kind = array ? K::Array : library_kind(declaration);
             if (model.identity.empty()) {
                 converted.kind = TypeKind::Unsupported;
+                break;
+            }
+            // A modeled sequence is an abstract value with one observation, its
+            // length (RFC 0020 §2). Its data members are the library's private
+            // layout and are never read (TRUST.md TCB-LIB-002), and it has no
+            // structural state model, so `cases` and `decompose` refuse it.
+            if (source::is_sequence(model.kind)) {
+                if (auto refusal = sequence_refusal(canonical, declaration, model.kind)) {
+                    model.rejection = std::move(*refusal);
+                    break;
+                }
+                Type length = length_type(declaration);
+                if (length.kind != TypeKind::Int) {
+                    model.rejection = "the target does not report the width of std::size_t";
+                    break;
+                }
+                converted.projections.push_back(std::move(length));
                 break;
             }
             if (!array && model.kind == K::Record && clang_Cursor_isNull(definition)) {
@@ -528,6 +687,126 @@ std::expected<std::vector<Refinement>, std::string> refinements_of(CXCursor decl
 
 bool same_term(const Expr& lhs, const Expr& rhs);
 
+// The element type of a modeled sequence as `written` spells it, with the
+// refinements that spelling names (SPEC.md 17.6, RFC 0020 §6).
+//
+// Clang canonicalizes `std::vector<Positive>` to `std::vector<int>`, which is
+// the runtime type and loses what verification needs, so the written type is
+// followed through its aliases to the specialization as written, whose first
+// argument keeps the alias a refinement is named by. A spelling this cannot
+// follow is refused rather than read as an unrefined element.
+std::expected<Type, std::string> sequence_element(CXCursor declared, CXType written,
+                                                  const std::vector<Selection::Refinement>* known) {
+    for (unsigned step = 0; step < kMaxExpressionDepth; ++step) {
+        if (written.kind == CXType_LValueReference || written.kind == CXType_RValueReference) {
+            written = clang_getPointeeType(written);
+            continue;
+        }
+        if (clang_Type_getNumTemplateArguments(written) >= 1) {
+            const CXType element = clang_Type_getTemplateArgumentAsType(written, 0);
+            if (element.kind == CXType_Invalid) {
+                break;
+            }
+            Type converted = convert_type(element);
+            if (converted.kind != TypeKind::Int && converted.kind != TypeKind::Bool) {
+                return std::unexpected("its element type '" + converted.spelling + "' is not modeled");
+            }
+            if (known != nullptr) {
+                auto refinements = refinements_of(declared, element, *known);
+                if (!refinements) {
+                    return std::unexpected("its element type has " + refinements.error());
+                }
+                converted.refinements = std::move(*refinements);
+            }
+            return converted;
+        }
+        if (written.kind == CXType_Elaborated) {
+            written = clang_Type_getNamedType(written);
+            continue;
+        }
+        const CXType underlying = clang_getTypedefDeclUnderlyingType(clang_getTypeDeclaration(written));
+        if (underlying.kind == CXType_Invalid) {
+            break;
+        }
+        written = underlying;
+    }
+    return std::unexpected("its element type could not be read from how its type is written");
+}
+
+// A call of a member function or constructor of a modeled sequence or of
+// `std::array`, decoded from the call Clang resolved (RFC 0020 §6).
+//
+// Which operation it is comes from the resolved method: its class is the
+// specialization, its spelling the member, its parameters the overload. An
+// operator is a call whose object is its first argument; any other member
+// call names its method through a member reference whose object is the one
+// operated on.
+struct SequenceCall {
+    CXCursor method = clang_getNullCursor();
+    CXCursor object = clang_getNullCursor(); // null for a constructor
+    std::vector<CXCursor> arguments;
+    source::RepresentationKind family = source::RepresentationKind::None;
+    std::string name;
+    bool constructor = false;
+};
+
+// A member of a modeled sequence as a diagnostic and the trust report name it:
+// the standard name, without the inline namespace a library puts it in, so the
+// same program is described alike whichever library it is compiled against.
+std::string library_name(source::RepresentationKind family, const std::string& member) {
+    return std::string(source::describe_model(family)) + "::" + member;
+}
+
+std::optional<SequenceCall> sequence_call(CXCursor cursor) {
+    if (clang_getCursorKind(cursor) != CXCursor_CallExpr) {
+        return std::nullopt;
+    }
+    const CXCursor method = clang_getCursorReferenced(cursor);
+    const CXCursorKind kind = clang_getCursorKind(method);
+    if (kind != CXCursor_CXXMethod && kind != CXCursor_Constructor) {
+        return std::nullopt;
+    }
+    const source::RepresentationKind family = library_kind(clang_getCursorSemanticParent(method));
+    if (!source::is_sequence(family) && family != source::RepresentationKind::StdArray) {
+        return std::nullopt;
+    }
+    SequenceCall call;
+    call.method = method;
+    call.family = family;
+    call.name = take(clang_getCursorSpelling(method));
+    call.constructor = kind == CXCursor_Constructor;
+    const int count = clang_Cursor_getNumArguments(cursor);
+    if (count < 0) {
+        return std::nullopt;
+    }
+    std::size_t first = 0;
+    if (!call.constructor) {
+        const std::vector<CXCursor> children = children_of(cursor);
+        if (children.empty()) {
+            return std::nullopt;
+        }
+        if (clang_getCursorKind(children.front()) == CXCursor_MemberRefExpr &&
+            clang_equalCursors(clang_getCursorReferenced(children.front()), method) != 0) {
+            const std::vector<CXCursor> member = children_of(children.front());
+            if (member.size() != 1) {
+                return std::nullopt;
+            }
+            call.object = member.front();
+        } else {
+            // An operator's object is its first argument.
+            if (count < 1) {
+                return std::nullopt;
+            }
+            call.object = clang_Cursor_getArgument(cursor, 0);
+            first = 1;
+        }
+    }
+    for (auto index = static_cast<unsigned>(first); index < static_cast<unsigned>(count); ++index) {
+        call.arguments.push_back(clang_Cursor_getArgument(cursor, index));
+    }
+    return call;
+}
+
 // One tracked place: storage a verified body can read and write under logical
 // versioning (SPEC.md 12.10, RFC 0014 §1).
 //
@@ -592,6 +871,45 @@ struct Local {
     // CLASS-010). A write to it is refused, since its post-state would then
     // be a value this body cannot state member by member.
     bool read_only = false;
+
+    // The root of a modeled sequence (RFC 0020 §3): the entry whose versions
+    // carry a vector's, a string's or a span's abstract value, its length. The
+    // version of a root is the storage generation of what it owns or views
+    // (§4): every operation that may reallocate, shrink, replace or end that
+    // storage establishes a new one, and an element write does not.
+    struct Sequence {
+        source::RepresentationKind kind = source::RepresentationKind::None;
+        // The element type, with the refinements the declaration names. For a
+        // span, that of the container it views, since the elements are that
+        // container's storage.
+        Type element;
+        // Whether the elements are storage a caller owns: those of a container
+        // bound by reference, whatever this body can prove about the object.
+        bool external_elements = false;
+        // For a span local, the root of the container whose storage it views.
+        std::optional<std::size_t> views = std::nullopt;
+        // What established the current generation, for the diagnostic that a
+        // view or reference formed before it is used after it.
+        std::string invalidated;
+    };
+    std::optional<Sequence> sequence = std::nullopt;
+
+    // Where an entry depends on a sequence's storage generation: the root it
+    // belongs to and the generation it was formed at (RFC 0020 §4).
+    struct Generation {
+        std::size_t root = 0;
+        std::uint32_t version = 0;
+    };
+
+    // An element place of a sequence: formed at a generation, it is the place a
+    // subscript names only while that generation is current. After it changes,
+    // the next access forms a new place, which owes its bound again.
+    std::optional<Generation> formed_at = std::nullopt;
+
+    // A span local, or a reference bound to a sequence element: it designates
+    // storage formed at a generation, and using it at any other one is using
+    // storage that may no longer exist, which is refused (STDMODEL-015).
+    std::optional<Generation> borrows = std::nullopt;
 
     [[nodiscard]] bool is_deref() const {
         return pointer.has_value();
@@ -737,14 +1055,54 @@ bool may_write_through(CXType written) {
     return canonical.kind == CXType_Pointer && clang_isConstQualifiedType(clang_getPointeeType(canonical)) == 0U;
 }
 
+// Whether an element place of a sequence is still the place its subscript
+// names: formed at the generation of its sequence that is current (RFC 0020
+// §4). One formed earlier is never matched again, so an access after the
+// storage may have changed forms a place of its own and owes its bound anew,
+// against the length current there.
+bool generation_current(const Locals& locals, const Local& entry) {
+    return !entry.formed_at.has_value() ||
+           (entry.formed_at->root < locals.size() && locals[entry.formed_at->root].version == entry.formed_at->version);
+}
+
 std::optional<std::size_t> find_binding(const Locals& locals, CXCursor declaration,
                                         const std::vector<PlaceStep>& path = {}, const Expr* index_term = nullptr) {
     for (std::size_t index = locals.size(); index > 0; --index) {
-        if (locals[index - 1].same_place(declaration, path, index_term)) {
+        if (locals[index - 1].same_place(declaration, path, index_term) &&
+            generation_current(locals, locals[index - 1])) {
             return index - 1;
         }
     }
     return std::nullopt;
+}
+
+// Why using the view or element reference held in `binding` would use storage
+// that may no longer exist, if it would (SPEC.md STDMODEL-015, RFC 0020 §4).
+//
+// Such a name was formed over a sequence's storage at one generation. Any
+// operation that may reallocate, shrink, replace or end that storage gives the
+// sequence a new one, and the storage the name designates may be gone: using
+// it is undefined behavior, so it is refused rather than read as an unknown.
+std::optional<std::string> stale_borrow(const Locals& locals, std::size_t binding) {
+    const Local& entry = locals[binding];
+    if (!entry.borrows.has_value()) {
+        return std::nullopt;
+    }
+    if (entry.borrows->root >= locals.size()) {
+        return "'" + entry.spelling + "' designates storage this body no longer tracks";
+    }
+    const Local& root = locals[entry.borrows->root];
+    if (root.version == entry.borrows->version) {
+        return std::nullopt;
+    }
+    const std::string what = entry.referent.has_value() ? "refers to an element of" : "views the storage of";
+    const std::string since = root.sequence.has_value() && !root.sequence->invalidated.empty()
+                                  ? root.sequence->invalidated
+                                  : "an operation that may have replaced it";
+    return "'" + entry.spelling + "' " + what + " '" + root.spelling +
+           "', which may have been reallocated or ended by " + since +
+           "; a view or element reference is used only while the storage it was formed over is unchanged "
+           "(SPEC.md STDMODEL-015)";
 }
 
 std::optional<std::size_t> find_local(const Locals& locals, CXCursor declaration,
@@ -1106,6 +1464,26 @@ std::optional<ResolvedAccess> resolve_access(CXCursor cursor) {
                 return std::nullopt;
             }
             return finish(pointer, true);
+        }
+        // A subscript of `std::array` or of a modeled sequence is a call to its
+        // `operator[]`, and selects an element exactly as a built-in subscript
+        // does, so it takes the same step (RFC 0020 §3). What storage the step
+        // lands in -- the array's own, a container's, the one a span views --
+        // is the caller's to decide from the object's root.
+        if (kind == CXCursor_CallExpr) {
+            const std::optional<SequenceCall> call = sequence_call(cursor);
+            if (!call || call->constructor || call->name != "operator[]" || call->arguments.size() != 1) {
+                return std::nullopt;
+            }
+            if (const auto index = constant_index_of(call->arguments.front())) {
+                path.push_back(PlaceStep{PlaceStep::Kind::Element, *index, 0});
+            } else {
+                path.push_back(
+                    PlaceStep{PlaceStep::Kind::SymbolicElement, 0, static_cast<std::uint32_t>(symbolic.size())});
+                symbolic.push_back(call->arguments.front());
+            }
+            cursor = strip_parens(call->object);
+            continue;
         }
         const auto children = children_of(cursor);
         if (kind == CXCursor_MemberRefExpr) {
@@ -1697,6 +2075,411 @@ Expr build_integer_literal(CXCursor cursor) {
     return expr;
 }
 
+// Where the elements a subscript of a modeled sequence select live, and what
+// bounds the index (RFC 0020 §3).
+//
+// A vector's or string's elements are places rooted in the container itself. A
+// span local's are the places of the container it views, so `s[i]` and `v[i]`
+// at one index term are one place; its own length still bounds the index. A span
+// parameter's are places of caller storage, reachable only under a capability.
+struct ElementRegion {
+    CXCursor declaration = clang_getNullCursor(); // what the element places are rooted in
+    std::optional<std::size_t> root;              // the sequence owning them, when this body tracks it
+    std::optional<std::size_t> accessed;          // the root of the object subscripted
+    std::optional<std::uint32_t> parameter;       // a span parameter, by position
+    Type element;
+    bool external = false;
+    source::RepresentationKind family = source::RepresentationKind::None;
+};
+
+std::expected<ElementRegion, std::string> element_region(CXCursor object, const Locals& locals,
+                                                         const Signature& signature) {
+    const std::vector<CXCursor>& parameters = signature.parameters;
+    object = strip_parens(object);
+    if (clang_getCursorKind(object) != CXCursor_DeclRefExpr) {
+        return std::unexpected(
+            std::string("a subscript of a container is modeled only on a local or parameter this body names directly"));
+    }
+    const CXCursor declaration = clang_getCursorReferenced(object);
+    const std::string spelled = take(clang_getCursorSpelling(declaration));
+    if (const auto binding = find_binding(locals, declaration)) {
+        if (auto stale = stale_borrow(locals, *binding)) {
+            return std::unexpected(std::move(*stale));
+        }
+        const std::size_t storage = locals[*binding].referent.value_or(*binding);
+        const Local& accessed = locals[storage];
+        if (!accessed.sequence.has_value()) {
+            return std::unexpected("'" + spelled + "' is not a container this body tracks");
+        }
+        ElementRegion region;
+        region.accessed = storage;
+        const std::size_t root = accessed.sequence->views.value_or(storage);
+        region.root = root;
+        const Local* owner_entry = root < locals.size() ? &locals[root] : nullptr;
+        if (owner_entry == nullptr || !owner_entry->sequence.has_value()) {
+            return std::unexpected("the storage '" + spelled + "' views is not tracked by this body");
+        }
+        region.declaration = owner_entry->declaration;
+        region.element = owner_entry->sequence->element;
+        region.external = owner_entry->sequence->external_elements;
+        region.family = accessed.sequence->kind;
+        return region;
+    }
+    // A span parameter is not tracked: it is a value the call fixed, and its
+    // elements are storage of the caller's (RFC 0020 §7).
+    const auto at = std::ranges::find_if(
+        parameters, [&](CXCursor candidate) { return clang_equalCursors(candidate, declaration); });
+    if (at != parameters.end()) {
+        const Type type = convert_type(clang_getCursorType(declaration));
+        if (type.representation.kind == source::RepresentationKind::Span && type.representation.rejection.empty()) {
+            auto element = sequence_element(declaration, clang_getCursorType(declaration), nullptr);
+            if (!element) {
+                return std::unexpected("span parameter '" + spelled + "': " + element.error());
+            }
+            ElementRegion region;
+            region.declaration = declaration;
+            // By its callable position, past a member function's implicit
+            // object, as a capability names it (SPEC.md CLASS-008).
+            region.parameter = signature.position(static_cast<std::size_t>(at - parameters.begin()));
+            region.element = std::move(*element);
+            region.external = true;
+            region.family = source::RepresentationKind::Span;
+            return region;
+        }
+    }
+    return std::unexpected("'" + spelled + "' is not a container this body tracks");
+}
+
+// The length that bounds a subscript of the object `region` was reached
+// through: that object's own, read at its current version (STDMODEL-012).
+Expr region_length(const ElementRegion& region, const Locals& locals, CXCursor at) {
+    Expr subject;
+    if (region.accessed.has_value()) {
+        const std::size_t accessed = *region.accessed;
+        subject.type = locals[accessed].type;
+        subject.location = presumed_location(clang_getCursorLocation(at));
+        subject.node = PlaceRef{locals[accessed].version, place_of(locals, accessed)};
+    } else if (region.parameter.has_value()) {
+        // A span parameter, by its callable position; the region is rooted in
+        // its declaration.
+        subject.type = convert_type(clang_getCursorType(region.declaration));
+        subject.location = presumed_location(clang_getCursorLocation(at));
+        subject.node = ParameterRef{*region.parameter, take(clang_getCursorSpelling(region.declaration))};
+    } else {
+        return unsupported_expression(at, "the storage a subscript reaches has no length");
+    }
+    Expr length;
+    length.type = subject.type.projections.empty() ? Type{} : subject.type.projections.front();
+    length.location = subject.location;
+    length.node = Projection{0, {std::move(subject)}};
+    return length;
+}
+
+// The index term a subscript selects, stated at the modeled length type so it
+// compares with the bound. A constant is that literal; anything else is the
+// term Clang resolved, which must already be of the length type.
+std::optional<Expr> element_index(const ResolvedAccess& access, const Type& length, const Signature& signature,
+                                  const Locals& locals) {
+    if (access.path.empty()) {
+        return std::nullopt;
+    }
+    const PlaceStep& last = access.path.back();
+    if (last.kind == PlaceStep::Kind::SymbolicElement) {
+        if (access.symbolic_indices.empty()) {
+            return std::nullopt;
+        }
+        return build_expression(access.symbolic_indices.back(), signature, locals, 0);
+    }
+    Expr literal;
+    literal.type = length;
+    literal.node = IntLiteral{static_cast<std::int64_t>(last.index)};
+    return literal;
+}
+
+// The element place of `region` a subscript at `index` names, if this path has
+// already formed it at the current generation.
+std::optional<std::size_t> find_element(const Locals& locals, const ElementRegion& region,
+                                        const std::vector<PlaceStep>& path, const Expr& index) {
+    for (std::size_t position = locals.size(); position > 0; --position) {
+        const Local& candidate = locals[position - 1];
+        if (!candidate.symbolic || candidate.index_value.empty() ||
+            clang_equalCursors(candidate.declaration, region.declaration) == 0 || candidate.path != path ||
+            !same_term(candidate.index_value.front(), index) || !generation_current(locals, candidate)) {
+            continue;
+        }
+        if (region.root.has_value() != candidate.formed_at.has_value() ||
+            (region.root.has_value() && candidate.formed_at->root != *region.root)) {
+            continue;
+        }
+        return position - 1;
+    }
+    return std::nullopt;
+}
+
+std::vector<CXCursor> parameters_of(CXCursor cursor);
+
+// The identity of a library summary: its operation and the resolved type it is
+// stated at (RFC 0020 §6). It names the summary, never a declaration, and is
+// derived from Clang's USR of the specialization so two element types never
+// share one. The mark is analysis only: the program keeps its own call, and
+// nothing about it reaches the runtime translation unit (SPEC.md STDMODEL-022).
+std::string library_symbol(source::LibraryCall library, const Type& container) {
+    return "cppl-library:" + std::string(source::describe_model(library.container)) +
+           "::" + std::string(source::describe(library.operation)) + "#" + container.representation.identity;
+}
+
+Expr library_call(source::LibraryCall library, const Type& container, std::string name, std::vector<Expr> arguments,
+                  Type result, CXCursor at) {
+    Call call;
+    call.callee_usr = library_symbol(library, container);
+    call.callee_name = std::move(name);
+    call.arguments = std::move(arguments);
+    call.library = library;
+    Expr expression;
+    expression.type = std::move(result);
+    expression.location = presumed_location(clang_getCursorLocation(at));
+    expression.node = std::move(call);
+    return expression;
+}
+
+// The argument of `std::move(x)`, when `cursor` is that call: the function
+// `move` Clang resolved in namespace `std`, never a spelling.
+std::optional<CXCursor> moved_operand_of(CXCursor cursor) {
+    cursor = strip_parens(cursor);
+    if (clang_getCursorKind(cursor) != CXCursor_CallExpr || clang_Cursor_getNumArguments(cursor) != 1) {
+        return std::nullopt;
+    }
+    const CXCursor callee = clang_getCursorReferenced(cursor);
+    if (clang_getCursorKind(callee) != CXCursor_FunctionDecl || take(clang_getCursorSpelling(callee)) != "move") {
+        return std::nullopt;
+    }
+    CXCursor parent = clang_getCursorSemanticParent(callee);
+    while (clang_getCursorKind(parent) == CXCursor_Namespace && clang_Cursor_isInlineNamespace(parent) != 0) {
+        parent = clang_getCursorSemanticParent(parent);
+    }
+    if (clang_getCursorKind(parent) != CXCursor_Namespace || take(clang_getCursorSpelling(parent)) != "std" ||
+        clang_getCursorKind(clang_getCursorSemanticParent(parent)) != CXCursor_TranslationUnit) {
+        return std::nullopt;
+    }
+    return clang_Cursor_getArgument(cursor, 0);
+}
+
+// The root of the tracked vector or string `object` names, directly or through
+// a reference, when it names one (RFC 0020 §3). A span is not one: it owns no
+// storage a view could be taken of.
+std::optional<std::size_t> owning_root(CXCursor object, const Locals& locals) {
+    object = strip_parens(object);
+    if (clang_getCursorKind(object) != CXCursor_DeclRefExpr) {
+        return std::nullopt;
+    }
+    const auto binding = find_binding(locals, clang_getCursorReferenced(object));
+    if (!binding) {
+        return std::nullopt;
+    }
+    const std::size_t storage = locals[*binding].referent.value_or(*binding);
+    const Local& root = locals[storage];
+    if (!root.sequence.has_value() || root.sequence->views.has_value() || !root.path.empty()) {
+        return std::nullopt;
+    }
+    return storage;
+}
+
+// A span of a whole tracked container, formed where a call converts the
+// container to the span a parameter takes (RFC 0020 §6, §7). Its length is the
+// container's; its elements are the container's, which the caller owns or
+// borrows by reference, so it is live for the call.
+Expr view_argument(CXCursor source, const Type& span, const Locals& locals, CXCursor at) {
+    if (!span.representation.rejection.empty()) {
+        return unsupported_expression(at, "'" + span.spelling + "' is not modeled: " + span.representation.rejection);
+    }
+    const std::optional<std::size_t> root = owning_root(source, locals);
+    if (!root) {
+        return unsupported_expression(at, "a span is modeled only over a whole vector or string this body tracks");
+    }
+    Expr container;
+    container.type = locals[*root].type;
+    container.location = presumed_location(clang_getCursorLocation(source));
+    container.node = PlaceRef{locals[*root].version, place_of(locals, *root)};
+    return library_call({source::RepresentationKind::Span, source::LibraryOperation::ViewOf}, span,
+                        "std::span(" + locals[*root].spelling + ")", {std::move(container)}, span, at);
+}
+
+bool is_mutator(const SequenceCall& call) {
+    return call.name == "push_back" || call.name == "pop_back" || call.name == "clear" || call.name == "reserve" ||
+           call.name == "append" || call.name == "operator+=" || call.name == "operator=";
+}
+
+// A member call of `std::array` or of a modeled sequence, read as a value
+// (RFC 0020 §6). Observations are terms over the current version; element
+// access reads the element place the statement formed; mutators and data
+// pointers are refused here, because their meaning depends on where they
+// stand, which the statement lowering decides.
+Expr sequence_expression(const SequenceCall& call, CXCursor cursor, const Signature& signature, const Locals& locals,
+                         unsigned depth) {
+    using K = source::RepresentationKind;
+    const std::string qualified = library_name(call.family, call.name);
+    const Type resolved = convert_type(clang_getCursorType(cursor));
+    if (call.constructor) {
+        const std::vector<CXCursor> copied = parameters_of(call.method);
+        // Copying a span copies the view, not the elements: the copy is the
+        // same value, and designates the same storage while it lives
+        // (SPEC.md J.2).
+        if (call.family == K::Span && call.arguments.size() == 1 && copied.size() == 1 &&
+            clang_equalCursors(clang_getTypeDeclaration(clang_getCanonicalType(
+                                   clang_getPointeeType(clang_getCanonicalType(clang_getCursorType(copied.front()))))),
+                               clang_getTypeDeclaration(clang_getCanonicalType(clang_getCursorType(cursor)))) != 0) {
+            return build_expression(call.arguments.front(), signature, locals, depth + 1);
+        }
+        if (call.family == K::Span && call.arguments.size() == 1) {
+            return view_argument(call.arguments.front(), resolved, locals, cursor);
+        }
+        // A copy of a tracked container, or the implicit move of a local a
+        // return statement makes, is a container with the same value: the
+        // length is all the abstract value holds, and both preserve it
+        // (RFC 0020 §6). An explicit `std::move` is not this: it leaves its
+        // operand unknown, so it is modeled only where it initializes a local.
+        const std::vector<CXCursor> formals = parameters_of(call.method);
+        if (source::is_sequence(call.family) && call.arguments.size() == 1 && formals.size() == 1 &&
+            !moved_operand_of(call.arguments.front()).has_value()) {
+            const CXType formal = clang_getCanonicalType(clang_getCursorType(formals.front()));
+            const bool same_class =
+                (formal.kind == CXType_LValueReference || formal.kind == CXType_RValueReference) &&
+                clang_equalCursors(clang_getTypeDeclaration(clang_getCanonicalType(clang_getPointeeType(formal))),
+                                   clang_getTypeDeclaration(clang_getCanonicalType(clang_getCursorType(cursor)))) != 0;
+            if (same_class) {
+                if (const std::optional<std::size_t> root = owning_root(call.arguments.front(), locals)) {
+                    return read_place(locals, *root, cursor);
+                }
+            }
+        }
+        return unsupported_expression(cursor, "constructing '" + resolved.spelling +
+                                                  "' here is not modeled; a container is constructed as the "
+                                                  "initializer of a local (SPEC.md STDMODEL-013)");
+    }
+    const Type object = convert_type(clang_getCursorType(call.object), 0, ReferenceModel::Referent);
+    if (!object.representation.rejection.empty()) {
+        return unsupported_expression(cursor,
+                                      "'" + object.spelling + "' is not modeled: " + object.representation.rejection);
+    }
+    const auto literal = [&](std::int64_t value, const Type& type) {
+        Expr expression;
+        expression.type = type;
+        expression.location = presumed_location(clang_getCursorLocation(cursor));
+        expression.node = IntLiteral{value};
+        return expression;
+    };
+    if (call.family == K::StdArray) {
+        const auto extent = static_cast<std::int64_t>(object.projections.size());
+        if ((call.name == "size" || call.name == "max_size") && call.arguments.empty() &&
+            resolved.kind == TypeKind::Int) {
+            return literal(extent, resolved);
+        }
+        if (call.name == "empty" && call.arguments.empty() && resolved.kind == TypeKind::Bool) {
+            return literal(extent == 0 ? 1 : 0, resolved);
+        }
+        if (call.name == "operator[]" && call.arguments.size() == 1) {
+            // A tracked array's element is its own place; an array held as a
+            // value is observed at the index (FOUNDATIONS.md 45).
+            if (const auto element = tracked_place(cursor, locals, signature)) {
+                return read_place(locals, *element, cursor);
+            }
+            // An array a reference designates is caller storage another
+            // reference may write while the body runs, so it is not read as the
+            // value it had on entry (TRUST.md TCB-MEM-005).
+            if (const CXCursor named = strip_parens(call.object);
+                clang_getCursorKind(named) == CXCursor_DeclRefExpr &&
+                source::aliases_storage(passing_of(clang_getCursorType(clang_getCursorReferenced(named))))) {
+                return unsupported_expression(cursor, "an element of the std::array a reference designates is not "
+                                                      "modeled; take the array by value (SPEC.md STDMODEL-011)");
+            }
+            Expr subject = build_expression(call.object, signature, locals, depth + 1);
+            if (subject.type.representation.kind != K::StdArray) {
+                return unsupported_expression(cursor, "this subscript's array is not a value or storage this body "
+                                                      "models");
+            }
+            if (const auto index = constant_index_of(call.arguments.front())) {
+                if (*index >= subject.type.projections.size()) {
+                    return unsupported_expression(cursor,
+                                                  "proof array index must be a constant within the resolved extent");
+                }
+                Expr projected;
+                projected.type = subject.type.projections[*index];
+                projected.location = presumed_location(clang_getCursorLocation(cursor));
+                projected.node = Projection{*index, {std::move(subject)}};
+                return projected;
+            }
+            return element_observation(std::move(subject), call.arguments.front(), signature, locals, depth, cursor);
+        }
+        return unsupported_expression(cursor, "'" + qualified +
+                                                  "' is not a modeled operation of std::array; size(), empty() and "
+                                                  "operator[] are (SPEC.md STDMODEL-011)");
+    }
+    const bool length = call.name == "size" || (call.family == K::String && call.name == "length");
+    if ((length || call.name == "empty") && call.arguments.empty()) {
+        Expr subject = build_expression(call.object, signature, locals, depth + 1);
+        if (std::holds_alternative<Unsupported>(subject.node)) {
+            return subject;
+        }
+        if (subject.type.representation.kind != call.family || subject.type.projections.size() != 1) {
+            return unsupported_expression(cursor, "the length of this container is not a value this body models");
+        }
+        const Type size = subject.type.projections.front();
+        Expr observed;
+        observed.type = size;
+        observed.location = presumed_location(clang_getCursorLocation(cursor));
+        observed.node = Projection{0, {std::move(subject)}};
+        if (length) {
+            // The modeled length type is what Clang says `size()` returns, or
+            // the observation is refused rather than converted.
+            if (!same_modeled_value(resolved, size)) {
+                return unsupported_expression(cursor, "'" + qualified + "' returns '" + resolved.spelling +
+                                                          "', which is not the modeled length type");
+            }
+            return observed;
+        }
+        if (resolved.kind != TypeKind::Bool) {
+            return unsupported_expression(cursor, "'" + qualified + "' does not return bool");
+        }
+        Expr empty;
+        empty.type = resolved;
+        empty.location = observed.location;
+        empty.node = Binary{BinaryOp::Equal, {std::move(observed), literal(0, size)}};
+        return empty;
+    }
+    if (call.name == "operator[]" && call.arguments.size() == 1) {
+        auto region = element_region(call.object, locals, signature);
+        if (!region) {
+            return unsupported_expression(cursor, region.error());
+        }
+        const auto access = resolve_access(cursor);
+        const Type size = region_length(*region, locals, cursor).type;
+        if (!access) {
+            return unsupported_expression(cursor, "this subscript's index could not be resolved");
+        }
+        const std::optional<Expr> index = element_index(*access, size, signature, locals);
+        if (!index) {
+            return unsupported_expression(cursor, "this subscript's index could not be resolved");
+        }
+        if (const auto element = find_element(locals, *region, access->path, *index)) {
+            return read_place(locals, *element, cursor);
+        }
+        return unsupported_expression(cursor, "this element access is not one the statement holding it formed");
+    }
+    if (call.name == "data") {
+        return unsupported_expression(cursor, "'" + qualified +
+                                                  "' is modeled only as the argument of a verified call whose "
+                                                  "parameter holds a memory capability (SPEC.md STDMODEL-017)");
+    }
+    if (is_mutator(call)) {
+        return unsupported_expression(cursor, "'" + qualified +
+                                                  "' is modeled only as a statement of its own, where the storage it "
+                                                  "may replace is followed (SPEC.md STDMODEL-013)");
+    }
+    return unsupported_expression(cursor, "'" + qualified + "' is not a modeled operation of " +
+                                              std::string(source::describe_model(call.family)) +
+                                              " (SPEC.md STDMODEL-019)");
+}
+
 Expr build_expression(CXCursor cursor, const Signature& signature, const Locals& locals, unsigned depth,
                       bool sequenced_call) {
     if (depth > kMaxExpressionDepth) {
@@ -1837,6 +2620,24 @@ Expr build_expression(CXCursor cursor, const Signature& signature, const Locals&
         }
     }
     if (kind == CXCursor_CallExpr) {
+        if (const std::optional<SequenceCall> call = sequence_call(cursor)) {
+            return sequence_expression(*call, cursor, signature, locals, depth);
+        }
+    }
+    // An explicit `std::span<const T>(v)` is the same conversion an argument
+    // performs implicitly (RFC 0020 §7).
+    if (kind == CXCursor_CXXFunctionalCastExpr) {
+        const auto children = children_of(cursor);
+        const auto operand = std::ranges::find_if(
+            children, [](CXCursor child) { return clang_isExpression(clang_getCursorKind(child)) != 0; });
+        if (operand != children.end()) {
+            if (const std::optional<SequenceCall> call = sequence_call(strip_parens(*operand));
+                call && call->constructor && call->family == source::RepresentationKind::Span) {
+                return sequence_expression(*call, strip_parens(*operand), signature, locals, depth);
+            }
+        }
+    }
+    if (kind == CXCursor_CallExpr) {
         const auto called = clang_getCursorReferenced(cursor);
         const auto children = children_of(cursor);
         if (clang_getCursorKind(called) == CXCursor_CXXMethod && clang_Cursor_getNumArguments(cursor) == 0 &&
@@ -1948,6 +2749,13 @@ Expr build_expression(CXCursor cursor, const Signature& signature, const Locals&
                 convert_type(clang_getEnumDeclIntegerType(clang_getCursorSemanticParent(referenced)));
             expression.node = IntLiteral{enumerator_value(referenced, underlying.is_signed)};
             return expression;
+        }
+        // A view or an element reference designates storage formed at a
+        // generation; read at another it may designate nothing (STDMODEL-015).
+        if (const std::optional<std::size_t> binding = find_binding(locals, referenced)) {
+            if (std::optional<std::string> stale = stale_borrow(locals, *binding)) {
+                return unsupported_expression(cursor, std::move(*stale));
+            }
         }
         if (const std::optional<std::size_t> local = find_local(locals, referenced)) {
             if (const std::optional<CaseBinder>& binder = locals[*local].binder) {
@@ -2131,8 +2939,25 @@ Expr build_expression(CXCursor cursor, const Signature& signature, const Locals&
             return unsupported_expression(cursor, "call arguments could not be resolved");
         }
         for (int index = 0; index < argument_count; ++index) {
-            call.arguments.push_back(build_expression(clang_Cursor_getArgument(cursor, static_cast<unsigned>(index)),
-                                                      signature, locals, depth + 1));
+            const CXCursor argument = clang_Cursor_getArgument(cursor, static_cast<unsigned>(index));
+            // A container's data pointer is admitted here and nowhere else: as
+            // an argument whose parameter a callee's capability describes, over
+            // the container's length (RFC 0020 §7, STDMODEL-017).
+            if (const std::optional<SequenceCall> data = sequence_call(strip_parens(argument));
+                data && !data->constructor && data->name == "data" && data->arguments.empty() &&
+                source::is_sequence(data->family)) {
+                Expr subject = build_expression(data->object, signature, locals, depth + 1);
+                if (std::holds_alternative<Unsupported>(subject.node)) {
+                    call.arguments.push_back(std::move(subject));
+                    continue;
+                }
+                const Type container = subject.type;
+                call.arguments.push_back(library_call({data->family, source::LibraryOperation::DataOf}, container,
+                                                      library_name(data->family, "data"), {std::move(subject)},
+                                                      convert_type(clang_getCursorType(argument)), argument));
+                continue;
+            }
+            call.arguments.push_back(build_expression(argument, signature, locals, depth + 1));
         }
 
         Expr expr;
@@ -2545,6 +3370,14 @@ void mark_write(CXCursor cursor, const WriteScan& scan) {
         target = inner[0];
     }
     if (clang_getCursorKind(target) != CXCursor_DeclRefExpr) {
+        // An element of a vector, a string or a span is storage of the
+        // container it belongs to or views, not of the object named here; what
+        // a write to one reaches is decided with the alias analysis, in
+        // `mark_sequence_writes` (RFC 0020 §3).
+        if (const std::optional<SequenceCall> element = sequence_call(target);
+            element && !element->constructor && element->name == "operator[]" && source::is_sequence(element->family)) {
+            return;
+        }
         // Writing a member or an element writes the object it belongs to, so
         // the entries tracking that storage are the ones this reaches. Which of
         // them the write lands on is decided when the statement is lowered;
@@ -3519,11 +4352,171 @@ struct BodyLowering {
             const Local& candidate = locals[index - 1];
             if (candidate.symbolic && clang_equalCursors(candidate.declaration, declaration) != 0 &&
                 candidate.path == path && !candidate.index_value.empty() &&
-                same_term(candidate.index_value.front(), index_value)) {
+                same_term(candidate.index_value.front(), index_value) && generation_current(locals, candidate)) {
                 return index - 1;
             }
         }
         return std::nullopt;
+    }
+
+    // The standard-library models this body's lowering used (RFC 0020 §10).
+    std::set<source::RepresentationKind> library_models;
+
+    // Form, or find, the element place a subscript of a modeled sequence names
+    // (RFC 0020 §3, SPEC.md STDMODEL-012).
+    //
+    // The place belongs to the storage the object owns or views, at that
+    // storage's current generation, and owes `index < length` where it is
+    // formed, against the length of the object subscripted: a vector's own, or
+    // a span's. A span parameter's elements are caller storage reached only
+    // under the capability the contract states, which is checked on every
+    // access, not only the first, since an unsafe block revokes it.
+    std::optional<std::size_t> resolve_sequence_element(CXCursor cursor, Locals& state, Capability::Kind required) {
+        const std::optional<SequenceCall> call = sequence_call(strip_parens(cursor));
+        if (!call || call->constructor || call->name != "operator[]" || call->arguments.size() != 1 ||
+            !source::is_sequence(call->family)) {
+            return reject("this subscript does not name a modeled container element");
+        }
+        auto region = element_region(call->object, state, signature);
+        if (!region) {
+            return reject(region.error());
+        }
+        library_models.insert(call->family);
+        if (region->parameter.has_value() && !granted(*region->parameter, required)) {
+            const std::string spelled = take(clang_getCursorSpelling(region->declaration));
+            const std::string kind = required == Capability::Kind::Writable ? "writable(" : "readable(";
+            return reject(std::string(required == Capability::Kind::Writable ? "writing an element of '"
+                                                                             : "reading an element of '") +
+                          spelled + "' requires '" + kind + spelled + ")', " +
+                          (revoked_by.has_value()
+                               ? "which no longer holds after the unsafe block at " + revoked_by->file + ":" +
+                                     std::to_string(revoked_by->line) +
+                                     ": what that block did to the storage was not checked"
+                               : "which was not established: a span does not make the storage it views valid (SPEC.md "
+                                 "STDMODEL-016)"));
+        }
+        const auto access = resolve_access(strip_parens(cursor));
+        Expr length = region_length(*region, state, cursor);
+        std::optional<Expr> index = access ? element_index(*access, length.type, signature, state) : std::nullopt;
+        if (!index) {
+            return reject("this subscript's index could not be resolved");
+        }
+        if (const auto existing = find_element(state, *region, access->path, *index)) {
+            return existing;
+        }
+        Local entry;
+        entry.declaration = region->declaration;
+        entry.version = next_version++;
+        entry.type = region->element;
+        entry.path = access->path;
+        entry.spelling = take(clang_getCursorSpelling(clang_getCursorReferenced(strip_parens(call->object)))) + "[...]";
+        entry.external = region->external;
+        entry.symbolic = true;
+        entry.index_value.push_back(std::move(*index));
+        entry.extent.push_back(std::move(length));
+        if (region->root.has_value()) {
+            entry.formed_at = Local::Generation{*region->root, state[*region->root].version};
+        }
+        state.push_back(std::move(entry));
+        return state.size() - 1;
+    }
+
+    // Form the places an expression reads -- dereferences and element places
+    // -- and record each new one, so the statement binds it before anything
+    // reads it (see `bind_formed_derefs`).
+    bool materialize(CXCursor cursor, Locals& state) {
+        const std::size_t before = state.size();
+        if (!materialize_derefs(cursor, state)) {
+            return false;
+        }
+        for (std::size_t index = before; index < state.size(); ++index) {
+            if (state[index].is_deref() || state[index].symbolic) {
+                formed_derefs.push_back(state[index]);
+            }
+        }
+        return true;
+    }
+
+    // Mark every entry a container operation in `root` may write, for a loop
+    // that carries them (RFC 0020 §4, SPEC.md 24.2). A mutator writes the
+    // container's root and whatever may alias it; an element write reaches
+    // what the element place may alias; a container passed by mutable
+    // reference reaches both; a move writes the container moved from. Which
+    // entries those are is the alias analysis's answer, the same one the
+    // lowering gives, so a loop carries exactly what an iteration may change.
+    void mark_sequence_writes(CXCursor root, const Locals& locals, std::vector<bool>& written, unsigned depth = 0) {
+        if (depth > kMaxExpressionDepth) {
+            return;
+        }
+        const auto reach = [&](const Local& target) {
+            for (std::size_t index = 0; index < locals.size(); ++index) {
+                if (!locals[index].referent.has_value() && may_alias(target, locals[index])) {
+                    written[index] = true;
+                }
+            }
+        };
+        const auto container = [&](CXCursor object) {
+            if (const auto found = owning_root(object, locals)) {
+                written[*found] = true;
+                reach(locals[*found]);
+            }
+        };
+        const CXCursorKind kind = clang_getCursorKind(root);
+        if (const std::optional<SequenceCall> call = sequence_call(root)) {
+            if (!call->constructor && is_mutator(*call)) {
+                container(call->object);
+                if (call->name == "operator=" && call->arguments.size() == 1) {
+                    if (const auto moved = moved_operand_of(call->arguments.front())) {
+                        container(*moved);
+                    }
+                }
+            }
+            if (call->constructor && call->arguments.size() == 1) {
+                if (const auto moved = moved_operand_of(call->arguments.front())) {
+                    container(*moved);
+                }
+            }
+        } else if (kind == CXCursor_CallExpr) {
+            const std::vector<CXCursor> formals = parameters_of(clang_getCursorReferenced(root));
+            for (std::size_t index = 0; index < formals.size(); ++index) {
+                if (source::may_write(passing_of(clang_getCursorType(formals[index])))) {
+                    container(clang_Cursor_getArgument(root, static_cast<unsigned>(index)));
+                }
+            }
+        }
+        const bool writes =
+            (kind == CXCursor_BinaryOperator && clang_getCursorBinaryOperatorKind(root) == CXBinaryOperator_Assign) ||
+            kind == CXCursor_CompoundAssignOperator ||
+            (kind == CXCursor_UnaryOperator && (clang_getCursorUnaryOperatorKind(root) == CXUnaryOperator_PreInc ||
+                                                clang_getCursorUnaryOperatorKind(root) == CXUnaryOperator_PostInc ||
+                                                clang_getCursorUnaryOperatorKind(root) == CXUnaryOperator_PreDec ||
+                                                clang_getCursorUnaryOperatorKind(root) == CXUnaryOperator_PostDec));
+        if (writes) {
+            const std::vector<CXCursor> operands = children_of(root);
+            const std::optional<SequenceCall> subscript = !operands.empty() && is_sequence_subscript(operands.front())
+                                                              ? sequence_call(strip_parens(operands.front()))
+                                                              : std::nullopt;
+            if (subscript.has_value()) {
+                if (auto region = element_region(subscript->object, locals, signature)) {
+                    Local element;
+                    element.declaration = region->declaration;
+                    element.path = {PlaceStep{PlaceStep::Kind::SymbolicElement, 0, 0}};
+                    element.external = region->external;
+                    element.symbolic = true;
+                    element.type = region->element;
+                    reach(element);
+                }
+            }
+        }
+        for (const CXCursor child : children_of(root)) {
+            mark_sequence_writes(child, locals, written, depth + 1);
+        }
+    }
+
+    // Whether `cursor` is a subscript of a vector, a string or a span.
+    [[nodiscard]] static bool is_sequence_subscript(CXCursor cursor) {
+        const std::optional<SequenceCall> call = sequence_call(strip_parens(cursor));
+        return call && !call->constructor && call->name == "operator[]" && source::is_sequence(call->family);
     }
 
     // Form the place of every dereference an expression reads, so the read
@@ -3537,6 +4530,35 @@ struct BodyLowering {
             return true;
         }
         const auto kind = clang_getCursorKind(cursor);
+        // A subscript of a vector, a string or a span forms its element place
+        // at the current generation, owing its bound (RFC 0020 §3).
+        if (is_sequence_subscript(cursor)) {
+            if (!resolve_sequence_element(cursor, state, Capability::Kind::Readable)) {
+                return false;
+            }
+            const std::optional<SequenceCall> subscript = sequence_call(strip_parens(cursor));
+            return !subscript || subscript->arguments.empty() ||
+                   materialize_derefs(subscript->arguments.front(), state, depth + 1);
+        }
+        // A subscript of a tracked `std::array` is its element place, exactly as
+        // a built-in array's is; an untracked one is observed as a value.
+        if (kind == CXCursor_CallExpr) {
+            if (const std::optional<SequenceCall> call = sequence_call(cursor);
+                call && call->family == source::RepresentationKind::StdArray && !call->constructor) {
+                library_models.insert(source::RepresentationKind::StdArray);
+                if (call->name == "operator[]" && call->arguments.size() == 1) {
+                    const auto access = resolve_access(cursor);
+                    const bool tracked = access && std::ranges::any_of(state, [&](const Local& entry) {
+                                             return clang_equalCursors(entry.declaration,
+                                                                       clang_getCursorReferenced(access->object)) != 0;
+                                         });
+                    if (tracked && !access->symbolic_indices.empty() && !resolve_symbolic_element(state, *access)) {
+                        return false;
+                    }
+                    return materialize_derefs(call->arguments.front(), state, depth + 1);
+                }
+            }
+        }
         // A symbolic subscript of a tracked array forms its own place.
         if (kind == CXCursor_ArraySubscriptExpr) {
             if (const auto access = resolve_access(cursor);
@@ -3616,6 +4638,17 @@ struct BodyLowering {
     // never taken cannot be the pointee of any pointer -- and that is a fact
     // Clang resolves, not a type-based argument (RFC 0014 §4).
     [[nodiscard]] bool may_alias(const Local& target, const Local& other) const {
+        // A container's modeled value is its length, and its object's storage
+        // is disjoint from every live scalar object: a scalar holds no other
+        // object, and a container's elements live in storage the container
+        // allocated rather than in the container object (C++ [intro.object]).
+        // So a write to a scalar place -- an element, a local, a reference's
+        // referent -- never reaches a container's root (RFC 0020 §3). A write
+        // through a pointer is not such a write: the pointer's declared pointee
+        // type is no evidence about the object it designates.
+        if (other.sequence.has_value() && !target.sequence.has_value() && !target.is_deref()) {
+            return false;
+        }
         if (target.is_deref() || other.is_deref()) {
             if (target.is_deref() && other.is_deref()) {
                 // Same pointer and same pointer version: one place, so the
@@ -3647,6 +4680,18 @@ struct BodyLowering {
         return target.external && other.external;
     }
 
+    // Gives a container's root a new storage generation, recording what
+    // established it for the diagnostic of a view used after it, and returns
+    // the call effect that writes the root in the call's first position
+    // (STDMODEL-015).
+    CallEffect new_generation(Local& root, std::string reason) {
+        root.version = next_version++;
+        if (root.sequence.has_value()) {
+            root.sequence->invalidated = std::move(reason);
+        }
+        return CallEffect{0, root.version, root.type};
+    }
+
     std::vector<std::size_t> invalidate_aliases(std::size_t storage, Locals& state) {
         std::vector<std::size_t> changed;
         const Local target = state[storage];
@@ -3654,12 +4699,165 @@ struct BodyLowering {
             if (index == storage || state[index].referent.has_value()) {
                 continue;
             }
-            if (may_alias(target, state[index])) {
-                state[index].version = next_version++;
+            if (Local& reached = state[index]; may_alias(target, reached)) {
+                reached.version = next_version++;
+                // A container reached this way has a new storage generation
+                // too, and a view of it formed before is stale (STDMODEL-015).
+                if (reached.sequence.has_value()) {
+                    reached.sequence->invalidated =
+                        "a write to '" + target.spelling + "', which may designate the same container";
+                }
                 changed.push_back(index);
             }
         }
         return changed;
+    }
+
+    // The storage an argument hands a callee without passing the container:
+    // the root of the tracked container a span or a data pointer is over, or
+    // the span parameter it passes on (RFC 0020 §7).
+    struct HandedStorage {
+        std::optional<std::size_t> root;
+        std::optional<CXCursor> span_parameter;
+        source::RepresentationKind family = source::RepresentationKind::None;
+    };
+
+    [[nodiscard]] std::optional<HandedStorage> handed_storage(CXCursor argument, const Locals& state) const {
+        CXCursor stripped = strip_parens(argument);
+        if (clang_getCursorKind(stripped) == CXCursor_CXXFunctionalCastExpr) {
+            for (const CXCursor child : children_of(stripped)) {
+                if (clang_isExpression(clang_getCursorKind(child)) != 0) {
+                    stripped = strip_parens(child);
+                    break;
+                }
+            }
+        }
+        if (const std::optional<SequenceCall> call = sequence_call(stripped)) {
+            if (call->constructor && call->family == source::RepresentationKind::Span && call->arguments.size() == 1) {
+                if (const std::optional<std::size_t> root = owning_root(call->arguments.front(), state)) {
+                    return HandedStorage{root, std::nullopt, source::RepresentationKind::Span};
+                }
+                return std::nullopt;
+            }
+            if (!call->constructor && call->name == "data" && source::is_sequence(call->family)) {
+                stripped = strip_parens(call->object);
+            } else {
+                return std::nullopt;
+            }
+        }
+        if (clang_getCursorKind(stripped) != CXCursor_DeclRefExpr) {
+            return std::nullopt;
+        }
+        const CXCursor declaration = clang_getCursorReferenced(stripped);
+        if (const auto binding = find_binding(state, declaration)) {
+            const std::size_t storage = state[*binding].referent.value_or(*binding);
+            const std::optional<Local::Sequence>& held = state[storage].sequence;
+            if (!held.has_value()) {
+                return std::nullopt;
+            }
+            return HandedStorage{held->views.value_or(storage), std::nullopt, held->kind};
+        }
+        const Type type = convert_type(clang_getCursorType(declaration));
+        if (type.representation.kind == source::RepresentationKind::Span &&
+            std::ranges::any_of(parameters,
+                                [&](CXCursor candidate) { return clang_equalCursors(candidate, declaration); })) {
+            return HandedStorage{std::nullopt, declaration, source::RepresentationKind::Span};
+        }
+        return std::nullopt;
+    }
+
+    // What a verified call owes for the container storage it hands its callee
+    // as a span or a data pointer (RFC 0020 §7, SPEC.md STDMODEL-016,
+    // STDMODEL-017).
+    //
+    // The storage a capability designates must not be element storage of a
+    // container the callee may reallocate: a callee may keep reading a span
+    // while it appends to a vector it holds by reference only because the two
+    // are proved apart here. A callee that may write through what it is handed
+    // leaves the elements unknown afterwards, and could store an unrefined value
+    // in a refined container, so that is refused.
+    std::optional<std::string> view_arguments(CXCursor call, const std::vector<CXCursor>& formals, Locals& state,
+                                              std::vector<std::size_t>& invalidated) {
+        // The containers the callee receives by mutable reference, and so may
+        // reallocate.
+        std::vector<std::size_t> reallocatable;
+        for (std::size_t index = 0; index < formals.size(); ++index) {
+            if (!source::may_write(passing_of(clang_getCursorType(formals[index])))) {
+                continue;
+            }
+            if (const auto root = owning_root(clang_Cursor_getArgument(call, static_cast<unsigned>(index)), state)) {
+                reallocatable.push_back(*root);
+            }
+        }
+        for (std::size_t index = 0; index < formals.size(); ++index) {
+            const CXCursor argument = clang_Cursor_getArgument(call, static_cast<unsigned>(index));
+            const CXType written = clang_getCanonicalType(clang_getCursorType(formals[index]));
+            const Type formal = convert_type(written);
+            const bool span = formal.representation.kind == source::RepresentationKind::Span;
+            const bool pointer = written.kind == CXType_Pointer;
+            if (!span && !pointer) {
+                continue;
+            }
+            const std::optional<HandedStorage> handed = handed_storage(argument, state);
+            if (!handed) {
+                continue;
+            }
+            library_models.insert(handed->family);
+            // Whether the callee may write the elements through it: a span of
+            // non-const elements, or a pointer to non-const.
+            const CXType element =
+                span ? clang_Type_getTemplateArgumentAsType(written, 0) : clang_getPointeeType(written);
+            const bool writes = clang_isConstQualifiedType(element) == 0;
+            if (handed->root.has_value()) {
+                const std::size_t root = *handed->root;
+                for (const std::size_t other : reallocatable) {
+                    if (other == root || may_alias(state[other], state[root])) {
+                        return "'" + state[root].spelling + "' is handed to '" +
+                               qualified_name_of(clang_getCursorReferenced(call)) +
+                               "' as a view or data pointer and, in the same call, by a reference through which the "
+                               "callee may reallocate it; the storage a capability designates must not be storage "
+                               "the callee can replace (SPEC.md STDMODEL-016)";
+                    }
+                }
+                if (!writes) {
+                    continue;
+                }
+                if (!state[root].sequence->element.refinements.empty()) {
+                    return "the elements of '" + state[root].spelling +
+                           "' are handed to a callee that may write them, and nothing obliges it to write values "
+                           "satisfying '" +
+                           state[root].sequence->element.refinements.front().name + "'";
+                }
+                // Every element place of the container is unknown after the
+                // call; the container's length is not, since no element write
+                // changes it.
+                for (std::size_t other = 0; other < state.size(); ++other) {
+                    if (state[other].referent.has_value() || !state[other].formed_at.has_value() ||
+                        state[other].formed_at->root != root) {
+                        continue;
+                    }
+                    state[other].version = next_version++;
+                    invalidated.push_back(other);
+                    for (const std::size_t aliased : invalidate_aliases(other, state)) {
+                        invalidated.push_back(aliased);
+                    }
+                }
+            } else if (handed->span_parameter.has_value() && writes) {
+                for (std::size_t other = 0; other < state.size(); ++other) {
+                    if (state[other].referent.has_value() ||
+                        clang_equalCursors(state[other].declaration, *handed->span_parameter) == 0 ||
+                        state[other].path.empty()) {
+                        continue;
+                    }
+                    state[other].version = next_version++;
+                    invalidated.push_back(other);
+                    for (const std::size_t aliased : invalidate_aliases(other, state)) {
+                        invalidated.push_back(aliased);
+                    }
+                }
+            }
+        }
+        return std::nullopt;
     }
 
     // Evaluate a full expression once, then advance the storage touched by its
@@ -3688,6 +4886,11 @@ struct BodyLowering {
             return value;
         const auto callee = clang_getCursorReferenced(cursor);
         const auto params = parameters_of(callee);
+        if (!call->library.has_value()) {
+            if (std::optional<std::string> refused = view_arguments(cursor, params, state, invalidated)) {
+                return reject(std::move(*refused));
+            }
+        }
         // A callee that takes a pointer to non-const may write through it, and
         // the caller's facts about the pointee do not survive that. This is
         // separate from the reference case below: a pointer is passed by value,
@@ -3759,6 +4962,14 @@ struct BodyLowering {
             if (std::ranges::find(targets, storage) == targets.end()) {
                 targets.push_back(storage);
                 state[storage].version = next_version++;
+                // A container the callee holds by mutable reference may be
+                // reallocated there: it has a new storage generation
+                // (STDMODEL-015).
+                if (std::optional<Local::Sequence>& held = state[storage].sequence; held.has_value()) {
+                    held->invalidated = "passing it by mutable reference to '" + qualified_name_of(callee) + "' at " +
+                                        describe_location(cursor);
+                    library_models.insert(held->kind);
+                }
             }
             return state[storage].version;
         };
@@ -3783,6 +4994,13 @@ struct BodyLowering {
             if (!target)
                 return std::nullopt;
             const auto storage = state[*target].referent.value_or(*target);
+            // A span local handed on by mutable reference could be made to view
+            // other storage than the one its generation is followed for.
+            if (const std::optional<Local::Sequence>& handed = state[storage].sequence;
+                handed.has_value() && handed->views.has_value()) {
+                return reject("span '" + state[storage].spelling +
+                              "' is passed by mutable reference; a view is modeled only as a value");
+            }
             const std::uint32_t version = target_version(storage);
             call->effects.push_back(
                 CallEffect{offset + static_cast<std::uint32_t>(index), version, state[storage].type});
@@ -3823,10 +5041,201 @@ struct BodyLowering {
                 invalidated.push_back(other);
             }
         }
+        // A callee holding a container by mutable reference may write any of
+        // its elements, and may reallocate it: whatever may be that container or
+        // one of its elements is unknown after the call (RFC 0020 §3, §4).
+        for (const std::size_t target : targets) {
+            if (!state[target].sequence.has_value()) {
+                continue;
+            }
+            for (std::size_t other = 0; other < state.size(); ++other) {
+                if (other == target || state[other].referent.has_value() ||
+                    std::ranges::find(targets, other) != targets.end() ||
+                    std::ranges::find(invalidated, other) != invalidated.end() ||
+                    !may_alias(state[target], state[other])) {
+                    continue;
+                }
+                state[other].version = next_version++;
+                if (state[other].sequence.has_value()) {
+                    state[other].sequence->invalidated = state[target].sequence->invalidated;
+                }
+                invalidated.push_back(other);
+            }
+        }
         return value;
     }
 
+    // A mutator of a modeled sequence written as a statement (RFC 0020 §6): a
+    // call to a trusted library summary whose effect is a new version of the
+    // container's root, which is a new storage generation (§4). From here on,
+    // no element place formed before is matched and every view or element
+    // reference formed before is stale (STDMODEL-015). A value it puts into an
+    // element owes the element type's refinement before the call.
+    std::optional<Expr> lower_sequence_statement(const SequenceCall& call, CXCursor statement, const Continuation& next,
+                                                 const Locals& locals, unsigned depth) {
+        using K = source::RepresentationKind;
+        using Op = source::LibraryOperation;
+        const std::string qualified = library_name(call.family, call.name);
+        if (!source::is_sequence(call.family) || call.constructor) {
+            return reject("'" + qualified + "' is not a modeled statement (SPEC.md STDMODEL-019)");
+        }
+        Locals state = locals;
+        const std::optional<std::size_t> root = owning_root(call.object, state);
+        if (!root) {
+            return reject("'" + qualified +
+                          "' is modeled only on a vector or string this body names directly (SPEC.md STDMODEL-013)");
+        }
+        library_models.insert(call.family);
+        const std::string name = state[*root].spelling;
+        Type element_type;
+        {
+            // Read before anything is added to `state`, which may move entries.
+            const std::optional<Local::Sequence>& rooted = state[*root].sequence;
+            if (!rooted.has_value()) {
+                return reject("'" + qualified + "' is modeled only on a vector or string this body tracks");
+            }
+            element_type = rooted->element;
+        }
+        const std::vector<CXCursor> formals = parameters_of(call.method);
+        const auto formal = [&](std::size_t position) {
+            return position < formals.size() ? clang_getCanonicalType(clang_getCursorType(formals[position]))
+                                             : CXType{CXType_Invalid, {nullptr, nullptr}};
+        };
+        // Whether a formal parameter is a reference to the container's own
+        // class: the overload taking another container of the same type.
+        const CXCursor own_class =
+            clang_getTypeDeclaration(clang_getCanonicalType(clang_getCursorType(strip_parens(call.object))));
+        const auto of_own_class = [&](CXType reference, CXTypeKind kind) {
+            return reference.kind == kind &&
+                   clang_equalCursors(clang_getTypeDeclaration(clang_getCanonicalType(clang_getPointeeType(reference))),
+                                      own_class) != 0;
+        };
+        std::optional<Op> operation;
+        std::optional<CXCursor> pushed_argument;
+        std::optional<CXCursor> count_argument;
+        std::optional<std::size_t> source;
+        // `s += c` appends one character, as `push_back` does.
+        const bool appends_character = call.family == K::String && call.name == "operator+=" &&
+                                       call.arguments.size() == 1 &&
+                                       (formal(0).kind == CXType_Char_S || formal(0).kind == CXType_Char_U);
+        if ((call.name == "push_back" && call.arguments.size() == 1) || appends_character) {
+            operation = Op::PushBack;
+            pushed_argument = call.arguments.front();
+        } else if (call.family == K::String && (call.name == "operator+=" || call.name == "append") &&
+                   call.arguments.size() == 1 && of_own_class(formal(0), CXType_LValueReference)) {
+            operation = Op::Append;
+            source = owning_root(call.arguments.front(), state);
+        } else if (call.name == "pop_back" && call.arguments.empty()) {
+            operation = Op::PopBack;
+        } else if (call.name == "clear" && call.arguments.empty()) {
+            operation = Op::Clear;
+        } else if (call.name == "reserve" && call.arguments.size() == 1) {
+            operation = Op::Reserve;
+            count_argument = call.arguments.front();
+        } else if (call.name == "operator=" && call.arguments.size() == 1 &&
+                   (of_own_class(formal(0), CXType_LValueReference) ||
+                    of_own_class(formal(0), CXType_RValueReference))) {
+            const bool moving = formal(0).kind == CXType_RValueReference;
+            operation = moving ? Op::MoveAssign : Op::Assign;
+            const std::optional<CXCursor> operand =
+                moving ? moved_operand(call.arguments.front()) : call.arguments.front();
+            source = operand ? owning_root(*operand, state) : std::optional<std::size_t>{};
+        }
+        if (!operation) {
+            return reject("'" + qualified + "' is not a modeled operation of " +
+                          std::string(source::describe_model(call.family)) + " (SPEC.md STDMODEL-019)");
+        }
+        if ((*operation == Op::Append || *operation == Op::Assign || *operation == Op::MoveAssign) && !source) {
+            return reject("'" + qualified + "' is modeled only with a container this body tracks as its argument");
+        }
+        if (source.has_value() && (*operation == Op::Assign || *operation == Op::MoveAssign)) {
+            if (*source == *root) {
+                return reject("assigning '" + name + "' to itself is not modeled");
+            }
+            if (auto gap = refinement_gap(state[*root], state[*source])) {
+                return reject(std::move(*gap));
+            }
+            if (*operation == Op::MoveAssign && state[*source].external) {
+                return reject("'" + name + "' is assigned by moving from '" + state[*source].spelling +
+                              "', which is caller storage; only a container this body owns is moved from");
+            }
+        }
+
+        std::optional<Expr> pushed;
+        if (pushed_argument) {
+            if (!materialize(*pushed_argument, state)) {
+                return std::nullopt;
+            }
+            pushed = build_expression(*pushed_argument, signature, state, 0);
+            if (!std::holds_alternative<Unsupported>(pushed->node) && !same_modeled_value(element_type, pushed->type)) {
+                return reject("pushing '" + pushed->type.spelling + "' into '" + name + "' of element type '" +
+                              element_type.spelling + "' is a conversion that is not modeled");
+            }
+        }
+        std::vector<Expr> arguments{read_root(state, *root, statement), read_root(state, *root, statement)};
+        if (count_argument) {
+            if (!materialize(*count_argument, state)) {
+                return std::nullopt;
+            }
+            Expr count = build_expression(*count_argument, signature, state, 0);
+            if (!std::holds_alternative<Unsupported>(count.node) &&
+                !same_modeled_value(state[*root].type.projections.front(), count.type)) {
+                return reject("reserving '" + count.type.spelling + "' elements of '" + name +
+                              "' is a conversion to its size type that is not modeled");
+            }
+            arguments.push_back(std::move(count));
+        }
+        if (source) {
+            arguments.push_back(read_root(state, *source, statement));
+            if (*operation == Op::MoveAssign) {
+                arguments.push_back(read_root(state, *source, statement));
+            }
+        }
+
+        // Versions in evaluation order: the pushed value, then the effects.
+        const std::optional<std::uint32_t> pushed_version =
+            pushed ? std::optional<std::uint32_t>{next_version++} : std::nullopt;
+        const std::string where = "'" + qualified + "' at " + describe_location(statement);
+        std::vector<CallEffect> effects;
+        effects.push_back(new_generation(state[*root], where));
+        std::vector<std::size_t> invalidated = invalidate_aliases(*root, state);
+        if (*operation == Op::MoveAssign) {
+            CallEffect moved = new_generation(state[*source], "being moved from by " + where);
+            moved.argument = 2;
+            effects.push_back(std::move(moved));
+            for (const std::size_t changed : invalidate_aliases(*source, state)) {
+                if (std::ranges::find(invalidated, changed) == invalidated.end()) {
+                    invalidated.push_back(changed);
+                }
+            }
+        }
+        Type nothing;
+        nothing.kind = TypeKind::Void;
+        nothing.spelling = "void";
+        Expr value = library_call({call.family, *operation}, state[*root].type, qualified, std::move(arguments),
+                                  nothing, statement);
+        std::get<Call>(value.node).effects = std::move(effects);
+        const std::uint32_t discarded = next_version++;
+
+        std::optional<Expr> body = lower_statements(next, state, depth + 1);
+        if (!body) {
+            return std::nullopt;
+        }
+        for (const std::size_t changed : std::views::reverse(invalidated)) {
+            *body = unknown(state, changed, std::move(*body), statement);
+        }
+        body = bind(discarded, anonymous_place("library call"), std::move(value), std::move(*body), statement);
+        if (pushed) {
+            body = bind(*pushed_version, anonymous_place("element pushed into " + name), std::move(*pushed),
+                        std::move(*body), statement, element_type);
+        }
+        return body;
+    }
+
     std::optional<Expr> lower_call(CXCursor statement, const Continuation& next, const Locals& locals, unsigned depth) {
+        if (const std::optional<SequenceCall> call = sequence_call(statement)) {
+            return lower_sequence_statement(*call, statement, next, locals, depth);
+        }
         Locals state = locals;
         std::vector<std::size_t> invalidated;
         auto value = evaluate(statement, state, invalidated);
@@ -3946,6 +5355,14 @@ struct BodyLowering {
         }
         if (kind == CXCursor_CallExpr)
             return lower_call(statement, next, locals, depth);
+        // A container mutator whose argument is a temporary stands inside the
+        // node Clang adds to destroy that temporary at the statement's end.
+        if (kind == CXCursor_UnexposedExpr) {
+            const CXCursor inner = strip_parens(statement);
+            if (clang_getCursorKind(inner) == CXCursor_CallExpr && sequence_call(inner).has_value()) {
+                return lower_call(inner, next, locals, depth);
+            }
+        }
         if (kind == CXCursor_NullStmt)
             return lower_statements(next, locals, depth + 1);
         if (kind == CXCursor_ReturnStmt) {
@@ -4128,7 +5545,9 @@ struct BodyLowering {
         Locals state = locals;
         const std::vector<std::size_t> reached = unsafe_reach(state);
         for (const std::size_t index : reached) {
-            state[index].version = next_version++;
+            // The block may have replaced or ended a container's storage: every
+            // view of it formed before is stale (STDMODEL-015).
+            new_generation(state[index], "the unsafe block at " + at);
         }
         consumed_unsafe.push_back(name);
         const std::optional<source::SourceLocation> enclosing = revoked_by;
@@ -4429,6 +5848,13 @@ struct BodyLowering {
             mark_writes(*header.increment, locals, written);
         }
         mark_writes(header.body, locals, written);
+        if (clang_Cursor_isNull(header.condition) == 0) {
+            mark_sequence_writes(header.condition, locals, written);
+        }
+        if (header.increment) {
+            mark_sequence_writes(*header.increment, locals, written);
+        }
+        mark_sequence_writes(header.body, locals, written);
         // An unsafe block in the loop may write whatever it reaches on any
         // iteration, so each such place is carried: at the head it is a fresh
         // value no fact from before the loop describes (SPEC.md LOOP-005). And
@@ -4449,7 +5875,10 @@ struct BodyLowering {
         for (std::size_t index = 0; index < locals.size(); ++index) {
             if (written[index]) {
                 frame.carried.push_back(index);
-                frame.head[index].version = next_version++;
+                // A container an iteration may reallocate has, at the head, a
+                // generation no view formed before the loop was formed at.
+                new_generation(frame.head[index],
+                               "the loop at " + describe_location(header.statement) + ", which may change it");
             }
         }
 
@@ -4733,7 +6162,13 @@ struct BodyLowering {
                                               const std::vector<PlaceStep>& prefix,
                                               std::vector<AggregateLeaf>& leaves) {
         const auto& components = type.representation.components;
-        const bool array = type.representation.kind == source::RepresentationKind::Array;
+        // `std::array<T, N>` is `N` element places exactly as `T[N]` is
+        // (RFC 0020 §3, SPEC.md STDMODEL-011).
+        const bool array = type.representation.kind == source::RepresentationKind::Array ||
+                           type.representation.kind == source::RepresentationKind::StdArray;
+        if (type.representation.kind == source::RepresentationKind::StdArray) {
+            library_models.insert(source::RepresentationKind::StdArray);
+        }
         if ((type.representation.kind != source::RepresentationKind::Record && !array) || components.empty() ||
             type.projections.size() != components.size()) {
             return "'" + written + "' has type '" + type.spelling + "', which is not modeled";
@@ -4805,7 +6240,8 @@ struct BodyLowering {
                                                    const std::vector<PlaceStep>& prefix,
                                                    std::vector<AggregateLeaf>& leaves) {
         const auto& components = type.representation.components;
-        const bool array = type.representation.kind == source::RepresentationKind::Array;
+        const bool array = type.representation.kind == source::RepresentationKind::Array ||
+                           type.representation.kind == source::RepresentationKind::StdArray;
         if ((type.representation.kind != source::RepresentationKind::Record && !array) || components.empty() ||
             type.projections.size() != components.size()) {
             return "'" + written + "' has type '" + type.spelling + "', which is not modeled";
@@ -4965,6 +6401,296 @@ struct BodyLowering {
                     type);
     }
 
+    [[nodiscard]] static std::optional<CXCursor> moved_operand(CXCursor cursor) {
+        return moved_operand_of(cursor);
+    }
+
+    // Why the elements of `source` are not known to satisfy what `target`'s
+    // element type requires, if they are not: a copy or move carries the
+    // values, never a proof they meet a refinement the source never owed.
+    [[nodiscard]] static std::optional<std::string> refinement_gap(const Local& target, const Local& source) {
+        if (!target.sequence.has_value() || !source.sequence.has_value()) {
+            return "'" + source.spelling + "' and '" + target.spelling + "' are not both containers this body tracks";
+        }
+        const std::vector<Refinement>& held = source.sequence->element.refinements;
+        for (const Refinement& refinement : target.sequence->element.refinements) {
+            if (std::ranges::find(held, refinement) == held.end()) {
+                return "the elements of '" + source.spelling + "' are not known to satisfy '" + refinement.name +
+                       "', which the elements of '" + target.spelling + "' require";
+            }
+        }
+        return std::nullopt;
+    }
+
+    [[nodiscard]] Expr read_root(const Locals& state, std::size_t root, CXCursor at) const {
+        return read_place(state, root, at);
+    }
+
+    // A vector, a string or a span local (RFC 0020 §3, §6): the root of a
+    // modeled sequence, established by one of the modeled constructors as a
+    // trusted library summary whose one fact is the length.
+    //
+    // A value the construction puts into an element is a refinement crossing
+    // into the element type, owed where it enters (SPEC.md 17.2): a listed
+    // element, a fill value, or the value-initialized element of a sized one. A
+    // listed element is also bound to its place, so `v[0]` after `{1, 2}` is 1.
+    std::optional<Expr> lower_sequence_declaration(CXCursor declaration, const std::string& name, const Type& type,
+                                                   const std::vector<CXCursor>& declared, std::size_t index,
+                                                   const Continuation& next, const Locals& locals, unsigned depth) {
+        using K = source::RepresentationKind;
+        const K family = type.representation.kind;
+        if (!type.representation.rejection.empty() || type.projections.size() != 1) {
+            return reject("local '" + name + "' has type '" + type.spelling +
+                          "', which is not modeled: " + type.representation.rejection);
+        }
+        library_models.insert(family);
+        const CXCursor written_initializer = clang_Cursor_getVarDeclInitializer(declaration);
+        if (clang_Cursor_isNull(written_initializer) != 0) {
+            return reject("local '" + name + "' is declared without an initializer, so it holds no modeled value");
+        }
+        const std::optional<SequenceCall> constructed = sequence_call(strip_parens(written_initializer));
+        if (!constructed || !constructed->constructor) {
+            return reject("local '" + name + "' of type '" + type.spelling +
+                          "' is not initialized by a modeled constructor (SPEC.md STDMODEL-013)");
+        }
+        const Type& length = type.projections.front();
+        const auto count_literal = [&](std::int64_t value) {
+            Expr literal;
+            literal.type = length;
+            literal.location = presumed_location(clang_getCursorLocation(written_initializer));
+            literal.node = IntLiteral{value};
+            return literal;
+        };
+        const std::vector<CXCursor> formals = parameters_of(constructed->method);
+        const auto formal = [&](std::size_t position) {
+            return position < formals.size() ? clang_getCanonicalType(clang_getCursorType(formals[position]))
+                                             : CXType{CXType_Invalid, {nullptr, nullptr}};
+        };
+        const auto of_this_class = [&](CXType reference) {
+            return clang_equalCursors(
+                       clang_getTypeDeclaration(clang_getCanonicalType(clang_getPointeeType(reference))),
+                       clang_getTypeDeclaration(clang_getCanonicalType(clang_getCursorType(declaration)))) != 0;
+        };
+
+        Locals declaring = locals;
+        Local root{.declaration = declaration, .type = type, .spelling = name};
+        Local::Sequence& held = root.sequence.emplace();
+        held.kind = family;
+        source::LibraryOperation operation = source::LibraryOperation::Construct;
+        std::vector<Expr> arguments;
+        std::vector<CallEffect> effects;
+        std::vector<std::pair<Expr, Type>> charged;
+        std::vector<Expr> listed;
+        std::vector<std::size_t> invalidated;
+        const std::size_t count = constructed->arguments.size();
+
+        if (family == K::Span) {
+            // A span local views a whole vector or string this body tracks, and
+            // is usable while that storage's generation stands (STDMODEL-015).
+            const std::optional<std::size_t> viewed =
+                count == 1 ? owning_root(constructed->arguments.front(), declaring) : std::nullopt;
+            const std::optional<Local::Sequence>* viewed_sequence =
+                viewed.has_value() ? &declaring[*viewed].sequence : nullptr;
+            if (!viewed || viewed_sequence == nullptr || !viewed_sequence->has_value()) {
+                return reject("span '" + name +
+                              "' is modeled only as a view of a whole vector or string this body tracks "
+                              "(SPEC.md STDMODEL-014)");
+            }
+            operation = source::LibraryOperation::ViewOf;
+            held.element = (*viewed_sequence)->element;
+            held.external_elements = (*viewed_sequence)->external_elements;
+            held.views = viewed;
+            root.borrows = Local::Generation{*viewed, declaring[*viewed].version};
+            arguments.push_back(read_root(declaring, *viewed, written_initializer));
+        } else {
+            auto element = sequence_element(declaration, clang_getCursorType(declaration), refinements);
+            if (!element) {
+                return reject("local '" + name + "': " + element.error());
+            }
+            held.element = std::move(*element);
+            const Type& element_type = held.element;
+            const CXType first = formal(0);
+            if (count == 0) {
+                arguments.push_back(count_literal(0));
+            } else if (count == 1 && is_standard_template(first, "initializer_list")) {
+                CXCursor list = constructed->arguments.front();
+                for (unsigned step = 0;
+                     step < kMaxExpressionDepth && clang_getCursorKind(list) != CXCursor_InitListExpr; ++step) {
+                    const std::vector<CXCursor> inner = children_of(list);
+                    if (inner.size() != 1) {
+                        break;
+                    }
+                    list = inner.front();
+                }
+                if (clang_getCursorKind(list) != CXCursor_InitListExpr) {
+                    return reject("the initializer list of '" + name + "' was not resolved");
+                }
+                for (const CXCursor item : children_of(list)) {
+                    auto value = evaluate(item, declaring, invalidated);
+                    if (!value) {
+                        return std::nullopt;
+                    }
+                    if (!invalidated.empty()) {
+                        return reject("an element of '" + name +
+                                      "' is computed by a call with effects; call it in a "
+                                      "statement of its own");
+                    }
+                    if (!std::holds_alternative<Unsupported>(value->node) &&
+                        !same_modeled_value(element_type, value->type)) {
+                        return reject("an element of '" + name + "' of type '" + element_type.spelling + "' is '" +
+                                      value->type.spelling + "', a conversion that is not modeled");
+                    }
+                    listed.push_back(std::move(*value));
+                }
+                if (listed.size() > kMaxTrackedLeaves) {
+                    return reject("'" + name + "' lists more elements than the proof resource limit allows");
+                }
+                arguments.push_back(count_literal(static_cast<std::int64_t>(listed.size())));
+            } else if ((count == 1 || count == 2) && convert_type(first).kind == TypeKind::Int &&
+                       (count != 2 || family != K::String)) {
+                // `S v(n)` holds `n` value-initialized elements; `S v(n, x)` holds
+                // `n` copies of `x`. Either value enters the element type.
+                if (!materialize(constructed->arguments[0], declaring)) {
+                    return std::nullopt;
+                }
+                Expr size = build_expression(constructed->arguments[0], signature, declaring, 0);
+                if (!std::holds_alternative<Unsupported>(size.node) && !same_modeled_value(length, size.type)) {
+                    return reject("the length of '" + name + "' is '" + size.type.spelling +
+                                  "', a conversion to its size type that is not modeled");
+                }
+                arguments.push_back(std::move(size));
+                if (count == 2) {
+                    if (!materialize(constructed->arguments[1], declaring)) {
+                        return std::nullopt;
+                    }
+                    Expr fill = build_expression(constructed->arguments[1], signature, declaring, 0);
+                    if (!std::holds_alternative<Unsupported>(fill.node) &&
+                        !same_modeled_value(element_type, fill.type)) {
+                        return reject("the fill value of '" + name + "' is a conversion that is not modeled");
+                    }
+                    charged.emplace_back(std::move(fill), element_type);
+                } else if (element_type.kind == TypeKind::Int || element_type.kind == TypeKind::Bool) {
+                    Expr zero;
+                    zero.type = element_type;
+                    zero.location = presumed_location(clang_getCursorLocation(written_initializer));
+                    zero.node = IntLiteral{0};
+                    charged.emplace_back(std::move(zero), element_type);
+                }
+            } else if (family == K::String && count == 1 &&
+                       clang_getCursorKind(strip_parens(constructed->arguments.front())) == CXCursor_StringLiteral) {
+                // `basic_string(const char*)` takes the characters up to the
+                // first null, which is exactly what Clang's evaluation of the
+                // literal as a C string yields.
+                // Clang evaluates the pointer the literal decays to as the
+                // literal it points at.
+                CXEvalResult evaluated = clang_Cursor_Evaluate(constructed->arguments.front());
+                if (evaluated == nullptr) {
+                    return reject("the string literal initializing '" + name + "' could not be evaluated");
+                }
+                const bool text = clang_EvalResult_getKind(evaluated) == CXEval_StrLiteral;
+                const std::size_t characters = text ? std::string_view(clang_EvalResult_getAsStr(evaluated)).size() : 0;
+                clang_EvalResult_dispose(evaluated);
+                if (!text) {
+                    return reject("the string literal initializing '" + name + "' could not be evaluated");
+                }
+                arguments.push_back(count_literal(static_cast<std::int64_t>(characters)));
+            } else if (count == 1 && (first.kind == CXType_LValueReference || first.kind == CXType_RValueReference) &&
+                       of_this_class(first)) {
+                const bool moving = first.kind == CXType_RValueReference;
+                const std::optional<CXCursor> operand =
+                    moving ? moved_operand(constructed->arguments.front()) : constructed->arguments.front();
+                const std::optional<std::size_t> origin =
+                    operand ? owning_root(*operand, declaring) : std::optional<std::size_t>{};
+                if (!origin) {
+                    return reject("'" + name + "' is " + (moving ? "moved" : "copied") +
+                                  " from something other than a container this body tracks");
+                }
+                if (auto gap = refinement_gap(root, declaring[*origin])) {
+                    return reject(std::move(*gap));
+                }
+                arguments.push_back(read_root(declaring, *origin, written_initializer));
+                if (moving) {
+                    // A move takes the source's storage: every view of it and
+                    // every fact about it end here (SPEC.md STORAGE-008,
+                    // STDMODEL-015, STDMODEL-021). A source that is caller storage could be
+                    // what a capability designates, so it is not moved from.
+                    if (declaring[*origin].external) {
+                        return reject("'" + name + "' is moved from '" + declaring[*origin].spelling +
+                                      "', which is caller storage; only a container this body owns is moved from");
+                    }
+                    operation = source::LibraryOperation::Move;
+                    arguments.push_back(read_root(declaring, *origin, written_initializer));
+                    effects.push_back(new_generation(declaring[*origin],
+                                                     "being moved from at " + describe_location(written_initializer)));
+                    invalidated = invalidate_aliases(*origin, declaring);
+                } else {
+                    operation = source::LibraryOperation::Copy;
+                }
+            } else {
+                return reject("this constructor of '" + type.spelling + "' is not modeled (SPEC.md STDMODEL-013)");
+            }
+        }
+
+        // Versions are numbered in evaluation order: what enters an element
+        // first, then the constructed value, then the listed elements.
+        std::vector<std::uint32_t> charged_versions;
+        charged_versions.reserve(charged.size());
+        for (std::size_t position = 0; position < charged.size(); ++position) {
+            charged_versions.push_back(next_version++);
+        }
+        // The root: the constructed value, stated by the summary.
+        Expr constructed_value =
+            library_call({family, operation}, type, library_name(family, std::string(source::describe(operation))),
+                         std::move(arguments), type, written_initializer);
+        std::get<Call>(constructed_value.node).effects = std::move(effects);
+        root.version = next_version++;
+        const std::size_t root_index = declaring.size();
+        declaring.push_back(root);
+
+        // Each listed element is the place `v[j]` names at this generation.
+        std::vector<std::uint32_t> element_versions;
+        for (std::size_t position = 0; position < listed.size(); ++position) {
+            Local element;
+            element.declaration = declaration;
+            element.version = next_version++;
+            element.type = held.element;
+            element.path = {PlaceStep{PlaceStep::Kind::Element, static_cast<std::uint32_t>(position), 0}};
+            element.spelling = name + "[" + std::to_string(position) + "]";
+            element.symbolic = true;
+            element.index_value.push_back(count_literal(static_cast<std::int64_t>(position)));
+            Expr extent;
+            extent.type = length;
+            extent.location = presumed_location(clang_getCursorLocation(declaration));
+            extent.node = Projection{0, {read_root(declaring, root_index, declaration)}};
+            element.extent.push_back(std::move(extent));
+            element.formed_at = Local::Generation{root_index, root.version};
+            element_versions.push_back(element.version);
+            declaring.push_back(std::move(element));
+        }
+
+        std::optional<Expr> body = lower_declaration(declared, index + 1, next, declaring, depth);
+        if (!body) {
+            return std::nullopt;
+        }
+        for (std::size_t position = listed.size(); position > 0; --position) {
+            body = bind(element_versions[position - 1], place_of(declaring, root_index + position),
+                        std::move(listed[position - 1]), std::move(*body), declaration, held.element);
+        }
+        for (const std::size_t changed : std::views::reverse(invalidated)) {
+            *body = unknown(declaring, changed, std::move(*body), declaration);
+        }
+        body = bind(root.version, place_of(declaring, root_index), std::move(constructed_value), std::move(*body),
+                    declaration, type);
+        // A value entering an element owes the element type's refinement where
+        // it enters, before the construction that stores it.
+        for (std::size_t position = charged.size(); position > 0; --position) {
+            body = bind(charged_versions[position - 1], anonymous_place("element of " + name),
+                        std::move(charged[position - 1].first), std::move(*body), declaration,
+                        charged[position - 1].second);
+        }
+        return body;
+    }
+
     std::optional<Expr> lower_declaration(const std::vector<CXCursor>& declared, std::size_t index,
                                           const Continuation& next, const Locals& locals, unsigned depth) {
         if (index == declared.size()) {
@@ -4997,6 +6723,11 @@ struct BodyLowering {
         const bool reference = canonical.kind == CXType_LValueReference || canonical.kind == CXType_RValueReference;
         const CXType value_type = reference ? reference_value_type(written) : written;
         Type type = convert_type(value_type, 0, ReferenceModel::Opaque, refinements);
+        // A vector, a string or a span local is the root of a modeled sequence,
+        // whose versions carry its length (RFC 0020 §3).
+        if (!reference && source::is_sequence(type.representation.kind)) {
+            return lower_sequence_declaration(declaration, name, type, declared, index, next, locals, depth);
+        }
         // A verified body states a local as one modeled value under logical
         // versioning. A structural value has components rather than such a
         // value, so an aggregate local is tracked as one place per member
@@ -5019,7 +6750,34 @@ struct BodyLowering {
             return reject("local '" + name + "' is declared without an initializer, so it holds no modeled value");
         }
         std::optional<std::size_t> referent;
-        if (reference) {
+        std::optional<Local::Generation> borrows;
+        Locals declaring = locals;
+        if (reference && is_sequence_subscript(initializer)) {
+            // A reference to a container element is bound to the element place
+            // at the current generation, and is usable only while that
+            // generation stands (RFC 0020 §4, STDMODEL-015). An element of a
+            // span parameter is reached only under a capability an unsafe
+            // block can revoke, which a reference could outlive, so it is not
+            // bound.
+            const bool constant = clang_isConstQualifiedType(clang_getPointeeType(canonical)) != 0;
+            const std::size_t before = declaring.size();
+            referent = resolve_sequence_element(initializer, declaring,
+                                                constant ? Capability::Kind::Readable : Capability::Kind::Writable);
+            if (!referent) {
+                return std::nullopt;
+            }
+            for (std::size_t formed = before; formed < declaring.size(); ++formed) {
+                formed_derefs.push_back(declaring[formed]);
+            }
+            if (!declaring[*referent].formed_at.has_value()) {
+                return reject("reference '" + name +
+                              "' binds an element of a span parameter; a reference is bound only to an element of a "
+                              "container this body tracks");
+            }
+            borrows = declaring[*referent].formed_at;
+            if (!same_modeled_value(type, declaring[*referent].type))
+                return reject("reference binding changes the modeled value type");
+        } else if (reference) {
             // A reference denotes existing storage (SPEC.md 12.9), so it binds
             // whatever place its initializer names, through the one access
             // resolver: a local, a member, an element, or a member of one.
@@ -5038,7 +6796,6 @@ struct BodyLowering {
             }
             initializer = elements[0];
         }
-        Locals declaring = locals;
         std::vector<std::size_t> invalidated;
         auto evaluated = evaluate(initializer, declaring, invalidated);
         if (!evaluated)
@@ -5051,6 +6808,7 @@ struct BodyLowering {
         const std::uint32_t version = next_version++;
         declaring.push_back(Local{
             .declaration = declaration, .version = version, .type = type, .referent = referent, .spelling = name});
+        declaring.back().borrows = borrows;
         std::optional<Expr> body = lower_declaration(declared, index + 1, next, declaring, depth);
         if (!body) {
             return std::nullopt;
@@ -5069,6 +6827,17 @@ struct BodyLowering {
     // 12.10). Only storage this body tracks is ever written.
     std::optional<std::size_t> written_local(CXCursor target, Locals& locals) {
         target = strip_parens(target);
+        // An element of a vector, a string or a span is written through its
+        // element place at the current generation, owing its bound and the
+        // element type's refinement (RFC 0020 §3, §6).
+        if (is_sequence_subscript(target)) {
+            const std::size_t before = locals.size();
+            const auto element = resolve_sequence_element(target, locals, Capability::Kind::Writable);
+            for (std::size_t index = before; index < locals.size(); ++index) {
+                formed_derefs.push_back(locals[index]);
+            }
+            return element;
+        }
         const auto access = resolve_access(target);
         // A write through a pointer is a write to the pointee place, and owes
         // `writable` there. `readable` does not suffice: an output buffer may
@@ -5137,6 +6906,11 @@ struct BodyLowering {
             }
             return reject("'" + name + "' is not a local of this body");
         }
+        // A reference to a container element is written only while the storage
+        // it was bound to is unchanged (STDMODEL-015).
+        if (std::optional<std::string> stale = stale_borrow(locals, *local)) {
+            return reject(std::move(*stale));
+        }
         return local;
     }
 
@@ -5188,6 +6962,17 @@ struct BodyLowering {
         Expr value = std::move(*evaluated);
         if (!invalidated.empty())
             return reject("assignment call has uncertain aliases; use a separate call statement");
+        // C++ evaluates the assigned value before the place it is assigned to
+        // (C++17 [expr.ass]). A call there that may replace a container's storage
+        // leaves an element or an element reference resolved on the left
+        // designating storage that may be gone (SPEC.md STDMODEL-015).
+        if (std::optional<std::string> stale = stale_borrow(state, *local)) {
+            return reject(std::move(*stale));
+        }
+        if (!generation_current(state, state[*local])) {
+            return reject("the value assigned to this container element is computed by a call that may replace the "
+                          "container's storage; make that call a statement of its own");
+        }
         if (!std::holds_alternative<Unsupported>(value.node) && !same_modeled_value(type, value.type)) {
             return reject("assigning '" + value.type.spelling + "' to '" + state[*local].spelling + "' of type '" +
                           type.spelling + "' is a conversion that is not modeled");
@@ -5240,10 +7025,21 @@ struct BodyLowering {
         }
 
         Locals state = locals;
+        const bool element = is_sequence_subscript(operands[0]);
         // A compound update reads the place and then writes it, so it owes both
         // capabilities. Neither entails the other, so both are required
-        // explicitly (RFC 0014 §3).
-        if (const auto access = resolve_access(strip_parens(operands[0])); access && access->dereferenced) {
+        // explicitly (RFC 0014 §3). A container element read here is formed at
+        // the current generation and bound before the statement, like any
+        // element the statement reads (RFC 0020 §3).
+        if (element) {
+            const std::size_t before = state.size();
+            if (!resolve_sequence_element(operands[0], state, Capability::Kind::Readable)) {
+                return std::nullopt;
+            }
+            for (std::size_t formed = before; formed < state.size(); ++formed) {
+                formed_derefs.push_back(state[formed]);
+            }
+        } else if (const auto access = resolve_access(strip_parens(operands[0])); access && access->dereferenced) {
             if (!resolve_storage(strip_parens(operands[0]), state, Capability::Kind::Readable)) {
                 return rejection.empty() ? reject("updating through a pointer requires a readable capability")
                                          : std::nullopt;
@@ -5256,9 +7052,12 @@ struct BodyLowering {
         const Local target = state[*local];
         const std::string name = target.spelling;
         // The promotion question is about the storage being updated, which for a
-        // member is the member's own type, not its object's.
-        if (promoted_before_arithmetic(clang_getCursorType(
-                target.path.empty() ? target.declaration : clang_getCursorReferenced(operands[0])))) {
+        // member is the member's own type, not its object's, and for a container
+        // element is the element's.
+        if (promoted_before_arithmetic(element ? clang_getCursorType(strip_parens(operands[0]))
+                                               : clang_getCursorType(target.path.empty()
+                                                                         ? target.declaration
+                                                                         : clang_getCursorReferenced(operands[0])))) {
             return reject("updating '" + name + "' of type '" + target.type.spelling +
                           "' computes in 'int' after promotion and converts back, which is not modeled");
         }
@@ -5269,7 +7068,7 @@ struct BodyLowering {
 
         Expr amount;
         if (operands.size() == 2) {
-            if (!materialize_derefs(operands[1], state)) {
+            if (!materialize(operands[1], state)) {
                 return std::nullopt;
             }
             amount = build_expression(operands[1], signature, state, 0);
@@ -5345,6 +7144,17 @@ void extract_body(Function& function, CXCursor cursor, const Signature& signatur
             return;
         }
     }
+    // A view cannot be returned: it would outlive every storage this body could
+    // have formed it over, or designate caller storage no contract says stays
+    // valid (SPEC.md STDMODEL-015, RFC 0020 §5).
+    if (executable_state && function.result.representation.kind == source::RepresentationKind::Span) {
+        function.body_rejection = "it returns a span, and a view is not returned: it could outlive the storage it "
+                                  "views (SPEC.md STDMODEL-015)";
+        return;
+    }
+    if (executable_state && source::is_sequence(function.result.representation.kind)) {
+        lowering.library_models.insert(function.result.representation.kind);
+    }
     Locals candidates;
     // A member function's implicit object is caller storage, one place per
     // leaf, rooted in the object's class: distinct members of it are distinct
@@ -5364,6 +7174,52 @@ void extract_body(Function& function, CXCursor cursor, const Signature& signatur
             continue;
         }
         const auto& parameter = function.parameters[signature.position(index)];
+        // A vector or string parameter is the root of a modeled sequence: its
+        // versions carry its length, and its element places are formed on
+        // access. A span parameter is not tracked: it is a value the call
+        // fixed, whose elements are caller storage reached under a capability
+        // (RFC 0020 §3, §7).
+        if (source::is_sequence(parameter.type.representation.kind)) {
+            const std::string name = take(clang_getCursorSpelling(parameters[index]));
+            if (!parameter.type.representation.rejection.empty()) {
+                function.body_rejection = "parameter '" + name + "' has type '" + parameter.type.spelling +
+                                          "', which is not modeled: " + parameter.type.representation.rejection;
+                return;
+            }
+            auto element = sequence_element(parameters[index], clang_getCursorType(parameters[index]), &refinements);
+            if (!element) {
+                function.body_rejection = "parameter '" + name + "': " + element.error();
+                return;
+            }
+            // No caller proof could establish that every element of a
+            // container it passes satisfies a refinement, and an unverified
+            // caller passes the same C++ type (SPEC.md STDMODEL-020).
+            if (!element->refinements.empty()) {
+                function.body_rejection = "parameter '" + name +
+                                          "' is a container of refined elements, whose element validity no call can "
+                                          "establish; a refined element type is modeled only for a local "
+                                          "(SPEC.md STDMODEL-020)";
+                return;
+            }
+            lowering.library_models.insert(parameter.type.representation.kind);
+            if (parameter.type.representation.kind == source::RepresentationKind::Span) {
+                if (parameter.passing != source::ParameterPassing::Value) {
+                    function.body_rejection = "span parameter '" + name + "' is modeled only by value";
+                    return;
+                }
+                continue;
+            }
+            Local root{.declaration = parameters[index],
+                       .type = parameter.type,
+                       .external = source::aliases_storage(parameter.passing),
+                       .spelling = name};
+            root.sequence = Local::Sequence{};
+            root.sequence->kind = parameter.type.representation.kind;
+            root.sequence->element = std::move(*element);
+            root.sequence->external_elements = source::aliases_storage(parameter.passing);
+            candidates.push_back(std::move(root));
+            continue;
+        }
         if (parameter.type.kind == TypeKind::Int || parameter.type.kind == TypeKind::Bool) {
             candidates.push_back(Local{.declaration = parameters[index],
                                        .type = parameter.type,
@@ -5431,6 +7287,13 @@ void extract_body(Function& function, CXCursor cursor, const Signature& signatur
     }
     // Every tracked parameter is followed where an unsafe block may reach it.
     std::vector<bool> needed(candidates.size(), lowering.has_post_state() || !unsafe_blocks.empty());
+    // A container parameter is always followed: its length is read through its
+    // root wherever the body names it.
+    for (std::size_t index = 0; index < candidates.size(); ++index) {
+        if (candidates[index].sequence.has_value()) {
+            needed[index] = true;
+        }
+    }
     mark_writes(members[body_index], candidates, needed);
     WriteScan aliases{&candidates, &needed};
     clang_visitChildren(
@@ -5515,6 +7378,7 @@ void extract_body(Function& function, CXCursor cursor, const Signature& signatur
     function.path_contradictions = std::move(lowering.consumed_contradictions);
     function.path_splits = std::move(lowering.consumed_splits);
     function.unsafe_regions = std::move(lowering.consumed_unsafe);
+    function.library_models.assign(lowering.library_models.begin(), lowering.library_models.end());
 }
 
 std::size_t physical_offset(CXCursor cursor) {
@@ -5912,8 +7776,16 @@ std::expected<Capability, std::string> build_capability(CXCursor cursor, source:
         parameters, [&](CXCursor candidate) { return clang_equalCursors(candidate, declaration) != 0; });
     if (at == parameters.end())
         return std::unexpected("a memory capability names a pointer parameter of this function");
-    if (clang_getCanonicalType(clang_getCursorType(declaration)).kind != CXType_Pointer)
-        return std::unexpected("a memory capability names a pointer");
+    // A span parameter states its own extent, so its capability covers every
+    // element it views and takes no count (SPEC.md STDMODEL-016).
+    const Type named = convert_type(clang_getCursorType(declaration));
+    const bool span = named.representation.kind == source::RepresentationKind::Span;
+    if (span && !named.representation.rejection.empty())
+        return std::unexpected("'" + named.spelling + "' is not modeled: " + named.representation.rejection);
+    if (span && arguments != 2)
+        return std::unexpected("a span states its own extent, so a capability of a span takes no element count");
+    if (!span && clang_getCanonicalType(clang_getCursorType(declaration)).kind != CXType_Pointer)
+        return std::unexpected("a memory capability names a pointer or a span");
     capability.pointer.root.kind = PlaceRoot::Kind::Parameter;
     // The callable position, past a member function's implicit object.
     capability.pointer.root.id = signature.position(static_cast<std::size_t>(at - parameters.begin()));
@@ -5966,6 +7838,75 @@ std::expected<std::vector<Capability>, std::string> build_capabilities(CXCursor 
     return capabilities;
 }
 
+bool is_capability_shape(const source::ProjectionShape& shape) {
+    return shape.kind == source::ProjectionKind::Readable || shape.kind == source::ProjectionKind::Writable ||
+           shape.kind == source::ProjectionKind::Capabilities;
+}
+
+// Whether a conjunction joins a memory capability with an ordinary predicate
+// somewhere among its conjuncts.
+bool mixes_capabilities(const source::ProjectionShape& shape, unsigned depth = 0) {
+    if (depth > kMaxExpressionDepth || shape.kind != source::ProjectionKind::Conjunction) {
+        return false;
+    }
+    return std::ranges::any_of(shape.children, [&](const source::ProjectionShape& child) {
+        return is_capability_shape(child) || mixes_capabilities(child, depth + 1);
+    });
+}
+
+// A conjunction of memory capabilities and ordinary predicates, read apart
+// (SPEC.md STDMODEL-016, ARCHITECTURE.md 25): each capability leaves on the
+// capability channel, and the predicates, conjoined in the order written, are
+// the proposition the clause states to the kernel. The two channels together
+// mean exactly the conjunction: a caller owes every part, and the body supposes
+// every part.
+std::expected<void, std::string> split_conjunction(CXCursor cursor, const source::ProjectionShape& shape,
+                                                   const Signature& signature, std::vector<Capability>& capabilities,
+                                                   std::vector<Expr>& propositions, unsigned depth) {
+    if (depth > kMaxExpressionDepth) {
+        return std::unexpected("formal proposition nests too deeply");
+    }
+    if (is_capability_shape(shape)) {
+        auto found = build_capabilities(cursor, shape, signature, depth + 1);
+        if (!found) {
+            return std::unexpected(found.error());
+        }
+        capabilities.insert(capabilities.end(), std::make_move_iterator(found->begin()),
+                            std::make_move_iterator(found->end()));
+        return {};
+    }
+    if (!mixes_capabilities(shape)) {
+        auto proposition = build_formal(cursor, shape, signature, depth + 1);
+        if (!proposition) {
+            return std::unexpected(proposition.error());
+        }
+        propositions.push_back(std::move(*proposition));
+        return {};
+    }
+    cursor = strip_parens(cursor);
+    if (clang_getCursorKind(cursor) != CXCursor_LambdaExpr || shape.children.size() != 2) {
+        return std::unexpected("malformed conjunction of a memory capability and a predicate");
+    }
+    std::vector<CXCursor> bodies;
+    for (const auto child : children_of(cursor)) {
+        if (clang_getCursorKind(child) == CXCursor_CompoundStmt) {
+            bodies.push_back(child);
+        }
+    }
+    if (bodies.size() != 1 || children_of(bodies.front()).size() != 2) {
+        return std::unexpected("malformed conjunction of a memory capability and a predicate");
+    }
+    const std::vector<CXCursor> operands = children_of(bodies.front());
+    for (std::size_t index = 0; index < 2; ++index) {
+        if (auto split = split_conjunction(operands[index], shape.children[index], signature, capabilities,
+                                           propositions, depth + 1);
+            !split) {
+            return split;
+        }
+    }
+    return {};
+}
+
 void extract_formal(Function& function, CXCursor cursor, const Signature& signature,
                     const source::ProjectionShape& shape) {
     function.has_body = true;
@@ -5973,6 +7914,7 @@ void extract_formal(Function& function, CXCursor cursor, const Signature& signat
     const bool is_capability = shape.kind == source::ProjectionKind::Readable ||
                                shape.kind == source::ProjectionKind::Writable ||
                                shape.kind == source::ProjectionKind::Capabilities;
+    const bool mixed = mixes_capabilities(shape);
     for (const auto child : children_of(cursor)) {
         if (clang_getCursorKind(child) != CXCursor_CompoundStmt)
             continue;
@@ -5996,6 +7938,31 @@ void extract_formal(Function& function, CXCursor cursor, const Signature& signat
         const auto values = children_of(statements[0]);
         if (values.size() != 1)
             return;
+        if (mixed) {
+            std::vector<Capability> capabilities;
+            std::vector<Expr> propositions;
+            if (auto split = split_conjunction(values[0], shape, signature, capabilities, propositions, 0); !split) {
+                function.body_rejection = split.error();
+                return;
+            }
+            if (propositions.empty() || capabilities.empty()) {
+                return;
+            }
+            Expr conjoined = std::move(propositions.front());
+            for (std::size_t index = 1; index < propositions.size(); ++index) {
+                Expr next;
+                next.type.kind = TypeKind::Proposition;
+                next.type.spelling = "Prop";
+                next.location = conjoined.location;
+                next.node =
+                    Connective{Connective::Kind::Conjunction, {std::move(conjoined), std::move(propositions[index])}};
+                conjoined = std::move(next);
+            }
+            function.capabilities = std::move(capabilities);
+            function.returned_value = std::move(conjoined);
+            function.body_rejection.reset();
+            return;
+        }
         auto expression = build_formal(values[0], shape, signature, 0);
         if (!expression) {
             function.body_rejection = expression.error();
@@ -6258,7 +8225,7 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
     for (const auto& probe : request.selection.proposition_probes) {
         if (probe.shape.kind != source::ProjectionKind::Readable &&
             probe.shape.kind != source::ProjectionKind::Writable &&
-            probe.shape.kind != source::ProjectionKind::Capabilities) {
+            probe.shape.kind != source::ProjectionKind::Capabilities && !mixes_capabilities(probe.shape)) {
             continue;
         }
         const auto at = std::ranges::find_if(collector.functions, [&](CXCursor candidate) {

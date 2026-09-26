@@ -1060,9 +1060,11 @@ proven; `negative_memory_capabilities` pins the refusals and matched pairs.
 user functions, and they never become runtime calls. They are recognized
 contextually, so ordinary C++ that already spells a function or variable
 `readable` keeps its own meaning. Because a contract states one `expects`
-clause, several capabilities are written joined by `&&`; mixing a capability
-with an ordinary predicate in one clause is refused, since the two belong to
-different channels.
+clause, several capabilities are written joined by `&&`, and a capability may
+be conjoined with ordinary predicates there too: the clause is read apart, the
+capabilities on their channel and the predicates as preconditions, and a
+caller owes both (`SPEC.md` STDMODEL-016). A capability combined any other way
+is refused.
 
 A capability never reaches the proof kernel. It is a property of the execution
 state rather than a computable function of any value, so encoding it as a term
@@ -1301,7 +1303,7 @@ A theorem about C++ execution is not meaningful if undefined behavior or incorre
 | Shift validity                        | `SPECIFIED`   |
 | Bounds checking                       | `SPECIFIED`   |
 | Nullability reasoning                 | `SPECIFIED`   |
-| Object lifetime model                 | `SPECIFIED`   |
+| Object lifetime model                 | `PARTIAL`     |
 | Reference validity                    | `SPECIFIED`   |
 | Pointer arithmetic                    | `SPECIFIED`   |
 | Pointer provenance                    | `SPECIFIED`   |
@@ -1331,7 +1333,7 @@ never silently verified.
 
 | Capability                     | Status        |
 | ------------------------------ | ------------- |
-| Lifetime model                 | `SPECIFIED`   |
+| Lifetime model                 | `PARTIAL`     |
 | Ownership model                | `SPECIFIED`   |
 | Borrowing/equivalent reasoning | `SPECIFIED`   |
 | Aliasing rules                 | `SPECIFIED`   |
@@ -1339,8 +1341,15 @@ never silently verified.
 | Mutation model                 | `SPECIFIED`   |
 | Move semantics                 | `SPECIFIED`   |
 | Destructor semantics           | `SPECIFIED`   |
-| Standard container models      | `NOT STARTED` |
+| Standard container models      | `PARTIAL`     |
 | Memory verifier                | `NOT STARTED` |
+
+The lifetime model is `PARTIAL`: the storage generations of the standard
+container subset (see [Standard library verification
+status](#standard-library-verification-status)) end every view and element
+reference of a container's storage where the storage may be reallocated,
+replaced or moved, and a view is formed only over a container that outlives
+it. Lifetimes outside that subset are still refused or unmodeled.
 
 The exact formal memory calculus is not yet frozen.
 
@@ -1870,15 +1879,49 @@ not checked; the compile reports them.
 | Area                       | Status        |
 | -------------------------- | ------------- |
 | Primitive types            | `NOT STARTED` |
-| `std::array`               | `NOT STARTED` |
-| `std::span`                | `NOT STARTED` |
+| `std::array`               | `PARTIAL`     |
+| `std::span`                | `PARTIAL`     |
 | `std::optional`            | `NOT STARTED` |
 | `std::variant`             | `NOT STARTED` |
-| `std::vector`              | `NOT STARTED` |
-| `std::string`              | `NOT STARTED` |
+| `std::vector`              | `PARTIAL`     |
+| `std::string`              | `PARTIAL`     |
 | Smart pointers             | `NOT STARTED` |
 | Standard algorithms        | `NOT STARTED` |
 | libc++ specification layer | `NOT STARTED` |
+
+`std::array`, `std::vector`, `std::string` and dynamic-extent `std::span` are
+`PARTIAL`: verified code uses them through the subset `SPEC.md` J.17 states
+(RFC 0020). A `vector`, `string` or `span` is an abstract value whose one
+observation is its length; `size()`, `length()` and `empty()` read it in a body
+and in a contract alike. Its elements are places of the storage it owns or
+views, and every subscript owes `i < size()`, proved by the kernel, where the
+element place is formed. `std::array` is its `N` element places, as `T[N]` is.
+Construction (default, a list, a count, a fill, a string literal, a copy, a
+move), `push_back`, `pop_back`, `clear`, `reserve`, `append`, `+=` and
+assignment are trusted library summaries over the length, supposed at the call
+as a callee's postcondition is; `pop_back` owes a non-empty vector. A value
+entering an element owes the element type's refinement, and a read supplies it
+for a local container whose writes were all modeled.
+
+Every operation that may reallocate, shrink, replace, move from or end a
+container's storage gives it a new storage generation: an element place formed
+before is not matched again, and a span local or element reference formed
+before is refused where it is used after, naming the operation. A loop that may
+do this gives the container a fresh generation at its head. A span parameter
+needs `readable(s)` or `writable(s)`; a verified call owes it, and refuses a
+span or `data()` of a container it also passes by mutable reference.
+`data()` is modeled only as such a capability argument, over the length.
+
+Every claim resting on a function that uses a container, directly or through a
+call, is listed under `Library-model-dependent claims` and never counted
+assumption-free. Iterators, range-`for`, `at`, `front`, `insert`, `resize`,
+`emplace_back`, `subspan`, `std::string_view`, static-extent spans, custom
+allocators, `std::vector<bool>`, element types other than integers and `bool`,
+refined element types on parameters, and an element of a `std::array` a
+reference designates are refused. A container handed to a verified call by
+value is copied into the parameter, and the caller's is unchanged. The same
+claims verify against libc++ and libstdc++, and the erased program is the same
+code as its hand-erased twin (`tests/e2e/containers.sh`).
 
 ---
 

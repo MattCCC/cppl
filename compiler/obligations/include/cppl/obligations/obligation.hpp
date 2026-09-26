@@ -224,6 +224,14 @@ struct Program {
     std::vector<ContractVerification> contracts;
     std::vector<RefinementPredicate> refinements;
 
+    // The library summaries the unit's verified bodies call, each once
+    // (RFC 0020 §6). Kept apart from `contracts`: a summary is assumed, never
+    // proven, and nothing may report one as a proven contract.
+    std::vector<LibrarySummary> library;
+
+    // The summary a library call names, or null when none was stated for it.
+    [[nodiscard]] const LibrarySummary* library_summary(std::string_view symbol) const;
+
     // Claims that a runtime path cannot occur whose evidence is built once the
     // written proofs have been lowered. Empty after generation completes.
     std::vector<PathClaim> path_claims;

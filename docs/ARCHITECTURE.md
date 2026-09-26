@@ -2568,6 +2568,42 @@ model to that implementation layout.
 library implementation satisfies that model. That correspondence belongs to
 `TRUST.md`.
 
+## 66.1 The verified sequence models
+
+The first models, `std::array`, `std::vector`, `std::basic_string<char>` and
+dynamic-extent `std::span` (`SPEC.md` J.17, RFC 0020), live in the stages the
+rest of verified code already uses; nothing about them enters the kernel.
+
+```text
+bridge        recognizes the specialization by its declaration in the
+              standard namespace, lowers a body's use to places, versions and
+              calls marked as library operations, and ends views at a new
+              storage generation
+elaboration   carries the library mark on each call and the set of models a
+              function uses
+obligations   builds each library operation's summary (precondition, and a
+              postcondition over the length observation) and supposes it at
+              the call exactly as a verified callee's contract
+trust         closes a claim over the models its function and its verified
+              callees use; the driver lists those claims and never counts them
+              assumption-free
+```
+
+A `vector`, `string` or `span` is a kernel value type with one projection, its
+length, at the target's `size_t` width. Its elements are places keyed by the
+root's version: the version of a container root is its storage generation, and
+any operation that may reallocate, shrink, replace or move it gives the root a
+new one. An element place records the generation it was formed at and is not
+matched once that changes; a span local or element reference records the
+generation it borrows, and a use after it changes is refused where it is
+written. This is `ARCH-REGION-001` for container storage: a view keeps no
+capability past the event that invalidates it.
+
+A span parameter carries no validity of its own. Its contract states
+`readable(s)` or `writable(s)` on the capability channel (§25), which may be
+conjoined with ordinary predicates in one `expects`; the bridge reads the two
+channels apart and a caller owes both.
+
 ---
 
 # 67. Foreign-code boundaries

@@ -1,0 +1,187 @@
+# Machine-readable manifest for the verified-sequences feature.
+#
+# Rule IDs are anchors in docs/SPEC.md, the canonical specification. Extract the
+# normative text with:
+#
+#     cppl-spec-rules extract --feature verified-sequences
+
+feature: verified-sequences
+
+summary: >
+  Verified code uses `std::array`, `std::vector`, `std::string` and
+  dynamic-extent `std::span` through a stated subset (RFC 0020). A `vector`,
+  `string` or `span` is a length and element places at a storage generation; an
+  array is its element places. Every subscript owes its bound. Construction and
+  the modeled mutators are trusted library summaries over the length, supposed
+  at the call as a callee's postcondition is, and `pop_back` owes a non-empty
+  vector. Every operation that may reallocate, shrink, replace or move a
+  container's storage gives it a new generation, and a view or element
+  reference used after it is refused. A span parameter holds nothing by
+  existing: `readable(s)` or `writable(s)` is stated and owed. A refined element
+  type is owed at every entry. Every claim resting on a model is reported so and
+  never assumption-free. The subset erases to the program's own code.
+
+normative_sources:
+  spec:
+    - "Annex J.1 std::array, J.2 std::span, J.7 std::vector, J.8 std::basic_string"
+    - "Annex J.17 The verified sequence subset"
+    - "§20.4 Product decomposition (std::array)"
+    - "§32 Memory and lifetime, Annex E storage"
+  trust:
+    - "§28.1 The verified sequence models"
+  architecture:
+    - "§66.1 The verified sequence models"
+  compatibility:
+    - "§50.1 The verified sequence models"
+  rfc:
+    - "docs/rfcs/0020-verified-containers-and-lifetime.md"
+
+rule_families:
+  - STDMODEL
+
+# The rules this feature realizes, within that family and outside it.
+# `cppl-spec-rules extract --feature` reads only the families above; extract
+# the others by ID.
+rules:
+  - STDMODEL-002
+  - STDMODEL-006
+  - STDMODEL-007
+  - STDMODEL-010
+  - STDMODEL-011
+  - STDMODEL-012
+  - STDMODEL-013
+  - STDMODEL-014
+  - STDMODEL-015
+  - STDMODEL-016
+  - STDMODEL-017
+  - STDMODEL-018
+  - STDMODEL-019
+  - STDMODEL-020
+  - STDMODEL-021
+  - STDMODEL-022
+  - STDMODEL-023
+  - STORAGE-008
+  - ERASE-002
+
+depends_on:
+  - verified-functions
+  - memory-capabilities
+  - refinement-types
+  - case-analysis
+  - trust-propagation
+  - erasure
+
+implementation:
+  source:
+    - compiler/source/include/cppl/source/representation.hpp
+  frontend:
+    - compiler/frontend/src/formal_projection.cpp
+  clang:
+    - clang/include/cppl/clang/ast.hpp
+    - clang/src/bridge.cpp
+  vir:
+    - vir/include/cppl/vir/expr.hpp
+    - vir/include/cppl/vir/module.hpp
+  elaboration:
+    - compiler/elaboration/src/elaborate.cpp
+  obligations:
+    - compiler/obligations/include/cppl/obligations/contracts.hpp
+    - compiler/obligations/include/cppl/obligations/obligation.hpp
+    - compiler/obligations/src/library.hpp
+    - compiler/obligations/src/library.cpp
+    - compiler/obligations/src/contracts.cpp
+    - compiler/obligations/src/generate.cpp
+    - compiler/obligations/src/status.cpp
+    - compiler/obligations/include/cppl/obligations/trust.hpp
+    - compiler/obligations/src/trust.cpp
+  driver:
+    - compiler/driver/src/driver.cpp
+
+interactions:
+  - refinement types as element types
+  - memory capabilities on span parameters and data pointers
+  - verified-call composition and call-site disjointness
+  - loop invariants over a container a loop mutates
+  - unsafe blocks and calls that take a container by mutable reference
+  - aliasing between reference parameters and element references
+  - moves
+  - trust propagation through verified calls
+  - erasure
+
+tests:
+  positive:
+    - tests/fixtures/containers.cpp
+    - tests/fixtures/equivalence/containers.cpp
+    - tests/fixtures/equivalence/containers.reference.cpp
+  negative:
+    - tests/negative/containers.sh
+    - tests/fixtures/negative/container_array_out_of_bounds.cpp
+    - tests/fixtures/negative/container_array_reference_parameter.cpp
+    - tests/fixtures/negative/container_by_value_call.cpp
+    - tests/fixtures/negative/container_custom_allocator.cpp
+    - tests/fixtures/negative/container_data_overrun.cpp
+    - tests/fixtures/negative/container_element_after_pop.cpp
+    - tests/fixtures/negative/container_element_reused_after_pop.cpp
+    - tests/fixtures/negative/container_external_alias.cpp
+    - tests/fixtures/negative/container_forward_without_capability.cpp
+    - tests/fixtures/negative/container_moved_from_size.cpp
+    - tests/fixtures/negative/container_pop_empty.cpp
+    - tests/fixtures/negative/container_reference_after_clear.cpp
+    - tests/fixtures/negative/container_reference_alias.cpp
+    - tests/fixtures/negative/container_refined_copy.cpp
+    - tests/fixtures/negative/container_refined_parameter.cpp
+    - tests/fixtures/negative/container_refined_push.cpp
+    - tests/fixtures/negative/container_refined_span_write.cpp
+    - tests/fixtures/negative/container_refined_value_initialized.cpp
+    - tests/fixtures/negative/container_refined_writable_view.cpp
+    - tests/fixtures/negative/container_refined_write.cpp
+    - tests/fixtures/negative/container_returned_span.cpp
+    - tests/fixtures/negative/container_self_view_call.cpp
+    - tests/fixtures/negative/container_span_after_move.cpp
+    - tests/fixtures/negative/container_span_after_unsafe.cpp
+    - tests/fixtures/negative/container_span_out_of_bounds.cpp
+    - tests/fixtures/negative/container_span_outlives_vector.cpp
+    - tests/fixtures/negative/container_span_without_capability.cpp
+    - tests/fixtures/negative/container_stale_after_mutable_call.cpp
+    - tests/fixtures/negative/container_stale_reference.cpp
+    - tests/fixtures/negative/container_stale_span.cpp
+    - tests/fixtures/negative/container_stale_span_in_loop.cpp
+    - tests/fixtures/negative/container_string_out_of_bounds.cpp
+    - tests/fixtures/negative/container_string_stale_view.cpp
+    - tests/fixtures/negative/container_unmodeled_member.cpp
+    - tests/fixtures/negative/container_vector_bool.cpp
+    - tests/fixtures/negative/container_vector_out_of_bounds.cpp
+    - tests/fixtures/negative/container_view_by_reference.cpp
+    - tests/fixtures/negative/capability_conjoined_postcondition.cpp
+    - tests/fixtures/negative/capability_conjoined_trusted_law.cpp
+    - tests/fixtures/negative/capability_conjoined_law_premise.cpp
+    - tests/negative/verified_storage.sh
+  end_to_end:
+    - tests/e2e/containers.sh
+    - tests/e2e/trust_closure.sh
+
+required_test_categories:
+  - array, vector, string and span subscripts proved in bounds, and refused unguarded
+  - a bound proved before a shrinking mutator bounds nothing after it
+  - every modeled mutator's length, and pop_back's precondition
+  - an element reference and a span used after reallocation, clear, a move, a mutable-reference call, a loop and an unsafe block
+  - a span formed only over a container that outlives it, never returned or passed by reference
+  - a span parameter read or written without its capability, and a capability forwarded
+  - a call handed a view of a container it may also reallocate
+  - data() only over a capability of at most the length
+  - refined elements owed at every entry and supplied at every read
+  - a moved-from container has no facts
+  - two references naming one vector, and a reference naming its element
+  - unmodeled members, element types, allocators and vector<bool> refused by name
+  - claims resting on a model, directly and through a verified call, never assumption-free
+  - erasure equivalence at -O0 and -O2, C++20 and C++23, and runtime behavior
+  - the same claims against libc++ and libstdc++
+
+completion_requires:
+  - no element is read or written without its bound proved
+  - no view or element reference is used after its storage may have changed
+  - a span parameter's validity is never assumed from its existence
+  - every library summary is listed in TRUST.md and its use reported
+  - no claim resting on a model is reported assumption-free
+  - the subset adds no kernel rule and no axiom
+  - the program erases to its own code

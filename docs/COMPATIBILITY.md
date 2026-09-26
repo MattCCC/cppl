@@ -1345,6 +1345,26 @@ under another profile when the modeled semantics may differ.
 **[COMPAT-STDLIB-002]** A runtime library being link-compatible does not make its
 unmodeled behavior verified.
 
+## 50.1 The verified sequence models
+
+The models of `std::array`, `std::vector`, `std::basic_string<char>` and
+dynamic-extent `std::span` (`SPEC.md` J.17, RFC 0020) state only what the
+standard guarantees of every conforming library: a length, element places
+within it, the length each modeled operation leaves, and the operations that
+may reallocate. They name no member, capacity policy or small-string layout of
+any library, so one model serves libc++ and libstdc++ alike; the test suite
+verifies the same claims against both (`tests/e2e/containers.sh`, run on macOS
+with libc++ and in the Linux GCC job with libstdc++). MSVC STL is not yet
+exercised.
+
+A specialization receives the model by its primary template's declaration in
+namespace `std`, with the library's inline namespaces transparent, and only
+with the default allocator and, for strings, the default character traits of
+`char`; a vendor extension, a user type of the same spelling, `std::pmr`
+containers and `std::vector<bool>` are refused. The length is `size_t` at the
+target's pointer width. `std::span` needs C++20; a program in an earlier mode
+does not have it, and the other three models apply in every supported mode.
+
 ---
 
 # 51. Standard-library feature availability

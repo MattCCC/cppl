@@ -385,6 +385,11 @@ Exit criterion:
 
 This is one of the most important systems milestones.
 
+Storage generations (RFC 0020) are the first lifetime rule in verified bodies:
+a standard container's views and element references end where its storage may
+be reallocated, shrunk, replaced or moved from, a use after is refused, and a
+view is formed only over a container that outlives it.
+
 Implement proof rules for:
 
 - object lifetime
@@ -512,6 +517,16 @@ Exit criterion:
 ---
 
 # Phase 15 - Standard-library specifications
+
+Current sequence: `std::array`, `std::vector`, `std::string` and
+dynamic-extent `std::span` are prototyped as the verified sequence subset
+(RFC 0020, `SPEC.md` J.17): a container is a length and element places at a
+storage generation, its operations are trusted library summaries over that
+length (`TRUST.md` 28.1), and every claim resting on one says so in the trust
+report. Iterators, range-`for`, algorithms, `std::string_view`, `subspan`,
+static-extent spans, the rest of each container's members and element types
+beyond integers and `bool` are next; `std::optional` and `std::variant` read
+through the case engine (Phase 7) but are not yet written.
 
 Provide verified models for common abstractions.
 

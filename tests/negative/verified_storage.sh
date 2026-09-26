@@ -249,12 +249,19 @@ CPP
 
 # A capability and an ordinary predicate travel on different channels: only the
 # predicate reaches the kernel, while the capability is a context hypothesis of
-# the obligation layer (RFC 0014 §10). Conjoining them in one clause would put a
-# term the kernel never sees inside a proposition it is asked to prove, so the
-# two are kept apart. A contract states one `expects` clause, so several
-# capabilities necessarily arrive joined by `&&`, and that stays legal.
-reject a_capability_does_not_conjoin_with_a_predicate 'belong in separate clauses' <<'CPP'
-verified int f(int* p, int n) expects (readable(p) && n > 0) ensures (result == result) { return *p; }
+# the obligation layer (RFC 0014 §10). A contract states one `expects` clause,
+# so the two may be conjoined there, and the clause is read apart: it states
+# both, and a caller owes both (SPEC.md STDMODEL-016). A caller holding the
+# capability and not proving the predicate is refused, and so is one proving
+# the predicate and holding no capability.
+# SPEC: STDMODEL-016
+reject a_conjoined_predicate_is_still_owed 'call-site precondition' <<'CPP'
+verified int read(int* p, int n) expects (readable(p) && n > 0) ensures (result == result) { return *p; }
+verified int f(int* p) expects (readable(p)) ensures (result == result) { return read(p, 0); }
+CPP
+reject a_conjoined_capability_is_still_owed "requires 'readable\(p\)'" <<'CPP'
+verified int read(int* p, int n) expects (readable(p) && n > 0) ensures (result == result) { return *p; }
+verified int f(int* p) ensures (result == result) { return read(p, 1); }
 CPP
 reject a_capability_does_not_combine_by_disjunction "combines only with '&&'" <<'CPP'
 verified int f(int* p, int* q) expects (readable(p) || readable(q)) ensures (result == result) { return *p; }

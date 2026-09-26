@@ -9,6 +9,7 @@ add_library(cppl_obligations STATIC
     src/contradiction.cpp
     src/interface.cpp
     src/definedness.cpp
+    src/library.cpp
     src/status.cpp
     src/trust.cpp)
 

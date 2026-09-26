@@ -2814,6 +2814,100 @@ A few things to know:
   values), and a quotient by an unknown divisor is left unknown; shifts,
   bitwise operators and `bool` conversions are refused.
 
+### 13.4. Standard containers and views
+
+Verified code may use `std::array`, `std::vector`, `std::string` and
+`std::span` through a small, stated set of operations (`SPEC.md` J.17,
+RFC 0020). A `vector`, `string` or `span` is reasoned about by its length:
+`size()`, `length()` and `empty()` are that length, in a body and in a contract
+alike. Every subscript owes `i < size()`, proved like any other bound, and a
+mutator states the length it leaves:
+
+<!-- cppl-example: verify -->
+
+```cpp
+#include <cstddef>
+#include <vector>
+
+verified std::size_t collect(std::size_t n)
+    ensures (result == n)
+{
+    std::vector<unsigned> values;
+    std::size_t i = 0ul;
+    while (i < n)
+        invariant (values.size() == i && i <= n)
+        decreases (n - i)
+    {
+        values.push_back(1u);
+        ++i;
+    }
+    return values.size();
+}
+
+verified unsigned first_or_zero(const std::vector<unsigned>& values)
+    ensures (true)
+{
+    if (!values.empty()) {
+        return values[0];
+    }
+    return 0u;
+}
+```
+
+What `push_back`, `pop_back`, `clear`, `reserve`, `append` and the rest do is a
+trusted **library summary**: nothing about libc++ or libstdc++ is verified, and
+the trust report lists every claim resting on one under
+`Library-model-dependent claims`, never as assumption-free.
+
+Storage can now end or move, so every view is tied to it. Any operation that
+may reallocate, shrink, replace or move a container's storage gives it a new
+**storage generation**: a span or element reference formed before is refused
+where it is used after, and an element is read again only under a bound proved
+against the new length. Nothing is assumed to keep `data()` stable, small
+strings included:
+
+```cpp
+std::vector<unsigned> v{1u, 2u};
+unsigned& first = v[0];
+v.push_back(3u);        // may reallocate
+return first;           // refused: 'first' refers to an element of 'v', which may
+                        // have been reallocated or ended by 'std::vector::push_back'
+```
+
+A `std::span` parameter holds no validity by existing: reading it needs
+`readable(s)`, writing it `writable(s)`, conjoined with ordinary predicates in
+the one `expects` clause. A caller passes a span it holds that capability for,
+a live span of its own, or its container converted to a span, and never a span
+of a container it also passes by mutable reference. This is what lets a parser
+read its input while it appends to an output vector (C++20):
+
+```cpp
+verified std::size_t copy_into(std::span<const unsigned> in, std::vector<unsigned>& out)
+    expects (readable(in))
+    ensures (result == in.size())
+{
+    std::size_t i = 0ul;
+    while (i < in.size())
+        invariant (i <= in.size())
+        decreases (in.size() - i)
+    {
+        out.push_back(in[i]);
+        ++i;
+    }
+    return i;
+}
+```
+
+A refined element type (`std::vector<Positive>`) owes its predicate wherever a
+value enters an element and supplies it wherever one is read, for a local
+container; a container parameter with a refined element type is refused, since
+no call could establish every element's validity. Everything else a container
+offers -- iterators, `at`, `insert`, `resize`, `front`, a span assigned or
+returned -- is refused until a model states it. A container passed to a
+verified call by value is the callee's own copy; the caller's is unchanged.
+Only `expects` conjoins a capability with a predicate: the same conjunction in
+`ensures` or a law is refused.
+
 ## 14. Templates
 
 Templates retain ordinary C++ syntax.
@@ -4233,6 +4327,10 @@ ensures (...)
 
 decreases (...)
     execution must make this well-founded measure decrease
+
+expects (readable(s) && i < s.size())
+    a span's elements may be read, and i bounds them: the capability
+    is owed on its own channel, the predicate as a precondition
 ```
 
 A verified function still runs at runtime.

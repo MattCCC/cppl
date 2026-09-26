@@ -291,9 +291,15 @@ FormulaProjection formula(const TokenStream& stream, source::ByteSpan expression
             if (kind != Kind::Conjunction) {
                 return FormulaProjection{{}, {}, "a memory capability combines only with '&&'"};
             }
+            // A capability conjoined with an ordinary predicate is an ordinary
+            // conjunction whose capability operands the contract reads apart:
+            // the capabilities leave on their own channel and the predicates
+            // stay preconditions (SPEC.md STDMODEL-016). Anywhere else a
+            // capability is refused where the proposition is read.
             if (!is_capability(left.shape.kind) || !is_capability(right.shape.kind)) {
-                return FormulaProjection{
-                    {}, {}, "a memory capability and an ordinary predicate belong in separate clauses"};
+                return FormulaProjection{{Kind::Conjunction, {left.shape, right.shape}},
+                                         "[=]() { (" + left.expression + "); (" + right.expression + "); }",
+                                         {}};
             }
             return FormulaProjection{{Kind::Capabilities, {left.shape, right.shape}},
                                      "[=]() { (" + left.expression + "); (" + right.expression + "); }",

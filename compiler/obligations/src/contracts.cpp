@@ -11,6 +11,7 @@
 #include "cppl/obligations/obligation.hpp"
 #include "cppl/source/digest.hpp"
 #include "cppl/source/location.hpp"
+#include "cppl/source/representation.hpp"
 #include "cppl/source/storage.hpp"
 #include "cppl/vir/capability.hpp"
 #include "cppl/vir/expr.hpp"
@@ -18,6 +19,7 @@
 #include "cppl/vir/place.hpp"
 #include "cppl/vir/types.hpp"
 #include "definedness.hpp"
+#include "library.hpp"
 #include "lowering.hpp"
 
 #include <algorithm>
@@ -179,7 +181,9 @@ void collect_calls(const vir::Expr& expression, const Contracts& contracts, std:
         for (const auto& argument : call->arguments) {
             collect_calls(argument, contracts, calls);
         }
-        if (contracts.contains(call->callee.usr)) {
+        // A library call is evaluated like a verified one, against its
+        // trusted summary rather than a contract (RFC 0020 §6).
+        if (contracts.contains(call->callee.usr) || call->library.has_value()) {
             calls.push_back(&expression);
         }
     } else if (const auto* returned = std::get_if<vir::ReturnState>(&expression.node)) {
@@ -508,6 +512,7 @@ std::expected<void, Failure> state_contract(const vir::Function& function, const
     plan.function = function.id;
     plan.name = function.qualified_name;
     plan.symbol = function.symbol.usr;
+    plan.library_models = function.library_models;
     if (!function.contract.has_value()) {
         return std::unexpected(Failure{"the function states no contract", function.range.begin, {}});
     }
@@ -945,16 +950,49 @@ class Conditions {
                             location);
             }
             const std::string kind = vir::describe(required.kind);
-            const auto* passed = std::get_if<vir::ParameterRef>(&call.arguments[position].node);
-            if (passed == nullptr) {
+            const vir::Expr& actual = call.arguments[position];
+            const auto* passed = std::get_if<vir::ParameterRef>(&actual.node);
+            // Storage the caller hands on without holding a stated capability
+            // for it: a span of a container it tracks, a live span local, or a
+            // container's data pointer. The bridge certified each where the
+            // call was lowered -- the container live and its storage at the
+            // generation the view was formed at, and apart from any container
+            // the same call passes by mutable reference (SPEC.md STDMODEL-016,
+            // STDMODEL-017). A data pointer designates as many elements as the
+            // container has; a span designates its own extent.
+            bool certified = false;
+            std::optional<kernel::Term> region;
+            if (const auto* handed = std::get_if<vir::Call>(&actual.node);
+                handed != nullptr && handed->library.has_value() && handed->arguments.size() == 1) {
+                const vir::Expr& container = handed->arguments.front();
+                if (handed->library->operation == source::LibraryOperation::ViewOf) {
+                    certified = true;
+                } else if (handed->library->operation == source::LibraryOperation::DataOf) {
+                    // A span parameter's data is under the capability the
+                    // caller holds for that span; a tracked container's is the
+                    // caller's own.
+                    passed = std::get_if<vir::ParameterRef>(&container.node);
+                    certified = passed == nullptr;
+                    const std::optional<kernel::Type> domain = core_type(container.type);
+                    auto lowered = lower(container, scope);
+                    if (!domain || !domain->is_value() || !lowered) {
+                        return fail("the length of the container whose data is passed for '" + required.place.spelling +
+                                        "' is not a value the formal core represents",
+                                    location);
+                    }
+                    region = kernel::Term::project(*domain, 0, std::move(*lowered));
+                }
+            } else if (std::holds_alternative<vir::PlaceRef>(actual.node) &&
+                       actual.type.representation.kind == source::RepresentationKind::Span) {
+                certified = true;
+            }
+            if (passed == nullptr && !certified) {
                 return fail("calling '" + call.callee_name + "' requires '" + kind + "' of the pointer passed for '" +
                                 required.place.spelling + "', and only a pointer parameter of '" +
                                 function_.qualified_name + "' whose contract states that capability can supply it",
-                            call.arguments[position].provenance.range.begin.is_valid()
-                                ? call.arguments[position].provenance.range.begin
-                                : location);
+                            actual.provenance.range.begin.is_valid() ? actual.provenance.range.begin : location);
             }
-            const std::string owed = kind + "(" + passed->name + ")";
+            const std::string owed = kind + "(" + (passed != nullptr ? passed->name : vir::describe(actual)) + ")";
             if (scope.unsafe.has_value()) {
                 return fail("calling '" + call.callee_name + "' requires '" + owed +
                                 "', which no longer holds after the unsafe block at " + scope.unsafe->file + ":" +
@@ -962,24 +1000,38 @@ class Conditions {
                                 ": what that block did to the storage was not checked",
                             location);
             }
-            const auto holding = std::ranges::find_if(held, [&](const vir::Capability& candidate) {
-                return candidate.kind == required.kind &&
-                       candidate.place.root.kind == vir::PlaceRoot::Kind::Parameter &&
-                       candidate.place.root.id == passed->parameter;
-            });
-            if (holding == held.end()) {
-                return fail("calling '" + call.callee_name + "' requires '" + owed +
-                                "', which is not established: the contract of '" + function_.qualified_name +
-                                "' states no such capability, and 'p != nullptr' does not imply it",
-                            location);
+            const vir::Capability* holding = nullptr;
+            if (!certified) {
+                const auto found = std::ranges::find_if(held, [&](const vir::Capability& candidate) {
+                    return candidate.kind == required.kind &&
+                           candidate.place.root.kind == vir::PlaceRoot::Kind::Parameter &&
+                           candidate.place.root.id == passed->parameter;
+                });
+                if (found == held.end()) {
+                    return fail("calling '" + call.callee_name + "' requires '" + owed +
+                                    "', which is not established: the contract of '" + function_.qualified_name +
+                                    "' states no such capability, and 'p != nullptr' does not imply it",
+                                location);
+                }
+                holding = &*found;
             }
-            if (required.extent.empty() && holding->extent.empty()) {
+            const bool held_sized = holding != nullptr && !holding->extent.empty();
+            if (required.extent.empty() && !held_sized && !region.has_value()) {
                 continue;
             }
             const vir::Expr* owed_count = required.extent.empty() ? nullptr : &required.extent.front();
-            const vir::Expr* held_count = holding->extent.empty() ? nullptr : &holding->extent.front();
-            const std::optional<kernel::Type> type =
-                core_type(owed_count != nullptr ? owed_count->type : held_count->type);
+            const vir::Expr* held_count = held_sized ? &holding->extent.front() : nullptr;
+            std::optional<kernel::Type> type = owed_count != nullptr   ? core_type(owed_count->type)
+                                               : held_count != nullptr ? core_type(held_count->type)
+                                                                       : std::nullopt;
+            if (!type.has_value() && region.has_value()) {
+                const std::optional<kernel::Type> domain =
+                    core_type(std::get<vir::Call>(actual.node).arguments.front().type);
+                if (domain.has_value() && domain->is_value() &&
+                    !std::get<kernel::ValueType>(domain->node).projections.empty()) {
+                    type = std::get<kernel::ValueType>(domain->node).projections.front();
+                }
+            }
             if (!type || !type->is_integer()) {
                 return fail("the element count of '" + owed + "' is not an integer the formal core represents",
                             location);
@@ -1010,6 +1062,19 @@ class Conditions {
                     return std::unexpected(lowered.error());
                 }
                 available = std::move(*lowered);
+            } else if (region.has_value()) {
+                // A data pointer designates the container's elements: as many
+                // as it has, at the type its length is stated at.
+                const auto* length = std::get_if<kernel::Projection>(&region->node);
+                if (length == nullptr || !length->domain.is_value() ||
+                    std::get<kernel::ValueType>(length->domain.node).projections.front() != kernel::Type{integer}) {
+                    return fail("calling '" + call.callee_name +
+                                    "' compares an element count against a container "
+                                    "length of another type, and the conversion "
+                                    "between them is not modeled",
+                                location);
+                }
+                available = std::move(*region);
             }
             std::vector<kernel::Type> binders = callee.parameters;
             binders.emplace_back(integer);
@@ -1094,14 +1159,6 @@ class Conditions {
                 continue;
             }
             const auto& call = std::get<vir::Call>(site->node);
-            const auto found = established_.find(call.callee.usr);
-            if (found == established_.end()) {
-                return fail("'" + call.callee_name + "' has no established contract", site->provenance.range.begin);
-            }
-            const ContractVerification& callee = program_.contracts[found->second];
-            if (call.arguments.size() != callee.parameters.size()) {
-                return fail("call argument count differs from the contract", site->provenance.range.begin);
-            }
             std::vector<kernel::Term> arguments;
             for (const vir::Expr& argument : call.arguments) {
                 auto lowered = lower(argument, scope);
@@ -1109,6 +1166,43 @@ class Conditions {
                     return std::unexpected(lowered.error());
                 }
                 arguments.push_back(std::move(*lowered));
+            }
+            // A library operation is evaluated against its trusted summary
+            // exactly as a verified call is against its contract: its
+            // preconditions are owed here, and its postcondition is supposed of
+            // fresh values (SPEC.md STDMODEL-013, STDMODEL-023, RFC 0020 §6).
+            if (call.library.has_value()) {
+                const LibrarySummary* summary = program_.library_summary(call.callee.usr);
+                if (summary == nullptr) {
+                    return fail("the library operation '" + call.callee_name + "' has no stated summary",
+                                site->provenance.range.begin);
+                }
+                if (call.arguments.size() != summary->parameters.size()) {
+                    return fail("library call argument count differs from its summary", site->provenance.range.begin);
+                }
+                for (const auto& precondition : summary->preconditions) {
+                    emit(scope, Origin::CallPrecondition, function_.qualified_name + " -> " + call.callee_name,
+                         site->provenance.range, specialize(precondition, summary->parameters, arguments));
+                }
+                if (auto supposed = suppose_call(call, *site, summary->parameters, summary->result,
+                                                 std::move(arguments), summary->postcondition, scope);
+                    !supposed) {
+                    return supposed;
+                }
+                // The summary's postcondition is the last event supposed; an
+                // operation that states none leaves only its result's binder.
+                if (summary->postcondition.has_value()) {
+                    posts.push_back(Supposed{site, scope.events.size() - 1});
+                }
+                continue;
+            }
+            const auto found = established_.find(call.callee.usr);
+            if (found == established_.end()) {
+                return fail("'" + call.callee_name + "' has no established contract", site->provenance.range.begin);
+            }
+            const ContractVerification& callee = program_.contracts[found->second];
+            if (call.arguments.size() != callee.parameters.size()) {
+                return fail("call argument count differs from the contract", site->provenance.range.begin);
             }
             if (auto owed = owe_capabilities(call, callee, arguments, scope, *site); !owed) {
                 return owed;
@@ -1125,55 +1219,78 @@ class Conditions {
                     return descent;
                 }
             }
-            // All post-state values are fresh. Their facts come only from the
-            // proven callee contract, never from the erased parameter type.
-            std::map<std::uint32_t, std::size_t> post_positions;
-            for (const auto& effect : call.effects) {
-                if (!post_positions.contains(effect.version))
-                    post_positions.emplace(effect.version, post_positions.size());
+            if (auto supposed = suppose_call(call, *site, callee.parameters, callee.result, std::move(arguments),
+                                             callee.postcondition, scope);
+                !supposed) {
+                return supposed;
             }
-            const auto fresh = static_cast<std::uint32_t>(post_positions.size() + 1);
-            for (auto& argument : arguments)
-                argument = kernel::shift(argument, fresh);
-            std::vector<std::uint32_t> effect_arguments;
-            const auto first_post = scope.binders.size();
-            for (const auto& effect : call.effects) {
-                if (effect.argument >= arguments.size() || scope.versions.contains(effect.version) ||
-                    std::ranges::find(effect_arguments, effect.argument) != effect_arguments.end())
-                    return fail("malformed call mutation", site->provenance.range.begin);
-                const auto type = core_type(effect.declared);
-                if (!type || *type != callee.parameters[effect.argument])
-                    return fail("call mutation type mismatch", site->provenance.range.begin);
-                effect_arguments.push_back(effect.argument);
-                const auto position = post_positions.at(effect.version);
-                if (auto existing = scope.opaque.find(effect.version); existing != scope.opaque.end()) {
-                    if (existing->second != first_post + position || scope.binders[existing->second] != *type)
-                        return fail("malformed shared call mutation", site->provenance.range.begin);
-                } else {
-                    scope.opaque.emplace(effect.version, scope.binders.size());
-                    scope.binders.push_back(*type);
-                    scope.events.emplace_back(*type);
-                }
-                arguments[effect.argument] = kernel::Term::variable(
-                    kernel::VarIndex{static_cast<std::uint32_t>(post_positions.size() - position)});
-            }
-            scope.calls.emplace(site->id.value, scope.binders.size());
-            scope.binders.push_back(callee.result);
-            scope.events.emplace_back(callee.result);
-            scope.events.emplace_back(postcondition_at(callee, arguments, kernel::Term::variable(kernel::VarIndex{0})));
+            // The callee's postcondition is the last event supposed.
             posts.push_back(Supposed{site, scope.events.size() - 1});
             if (std::ranges::find(scope.relied_on, found->second) == scope.relied_on.end()) {
                 scope.relied_on.push_back(found->second);
             }
-            for (const auto& effect : call.effects) {
-                const auto required = membership(program_, effect.declared, arguments[effect.argument]);
-                if (!required)
-                    return std::unexpected(required.error());
-                if (*required)
-                    emit(scope, Origin::RefinementIntroduction,
-                         function_.qualified_name + " -> " + effect.declared.refinements.front().name,
-                         site->provenance.range, **required);
+        }
+        return {};
+    }
+
+    // What a call leaves on its path once its entry obligations are owed: a
+    // fresh post-state value for each argument it writes, a fresh result, and
+    // the postcondition supposed of them (SPEC.md VERIFIED-014). The values are
+    // fresh, and their facts come only from the stated postcondition, never
+    // from the erased parameter type. `postcondition` is stated over the
+    // parameters and then the result.
+    std::expected<void, Failure> suppose_call(const vir::Call& call, const vir::Expr& site,
+                                              const std::vector<kernel::Type>& parameters, const kernel::Type& result,
+                                              std::vector<kernel::Term> arguments,
+                                              const std::optional<kernel::Proposition>& postcondition, Scope& scope) {
+        std::map<std::uint32_t, std::size_t> post_positions;
+        for (const auto& effect : call.effects) {
+            if (!post_positions.contains(effect.version))
+                post_positions.emplace(effect.version, post_positions.size());
+        }
+        const auto fresh = static_cast<std::uint32_t>(post_positions.size() + 1);
+        for (auto& argument : arguments)
+            argument = kernel::shift(argument, fresh);
+        std::vector<std::uint32_t> effect_arguments;
+        const auto first_post = scope.binders.size();
+        for (const auto& effect : call.effects) {
+            if (effect.argument >= arguments.size() || scope.versions.contains(effect.version) ||
+                std::ranges::find(effect_arguments, effect.argument) != effect_arguments.end())
+                return fail("malformed call mutation", site.provenance.range.begin);
+            const auto type = core_type(effect.declared);
+            if (!type || *type != parameters[effect.argument])
+                return fail("call mutation type mismatch", site.provenance.range.begin);
+            effect_arguments.push_back(effect.argument);
+            const auto position = post_positions.at(effect.version);
+            if (auto existing = scope.opaque.find(effect.version); existing != scope.opaque.end()) {
+                if (existing->second != first_post + position || scope.binders[existing->second] != *type)
+                    return fail("malformed shared call mutation", site.provenance.range.begin);
+            } else {
+                scope.opaque.emplace(effect.version, scope.binders.size());
+                scope.binders.push_back(*type);
+                scope.events.emplace_back(*type);
             }
+            arguments[effect.argument] =
+                kernel::Term::variable(kernel::VarIndex{static_cast<std::uint32_t>(post_positions.size() - position)});
+        }
+        scope.calls.emplace(site.id.value, scope.binders.size());
+        scope.binders.push_back(result);
+        scope.events.emplace_back(result);
+        if (postcondition.has_value()) {
+            std::vector<kernel::Type> binders = parameters;
+            binders.push_back(result);
+            std::vector<kernel::Term> instantiated = arguments;
+            instantiated.push_back(kernel::Term::variable(kernel::VarIndex{0}));
+            scope.events.emplace_back(specialize(*postcondition, binders, instantiated));
+        }
+        for (const auto& effect : call.effects) {
+            const auto required = membership(program_, effect.declared, arguments[effect.argument]);
+            if (!required)
+                return std::unexpected(required.error());
+            if (*required)
+                emit(scope, Origin::RefinementIntroduction,
+                     function_.qualified_name + " -> " + effect.declared.refinements.front().name,
+                     site.provenance.range, **required);
         }
         return {};
     }
@@ -2365,9 +2482,11 @@ void generate_contracts(const vir::Module& module, const DefinitionMap& pure_def
     struct Candidate {
         const vir::Function* function;
         const vir::Expr* returned_value;
-        std::vector<const vir::Expr*> calls;    // every verified call the body makes
-        std::vector<std::size_t> callees;       // the candidates those calls reach, each once
-        std::vector<std::string> external = {}; // the functions defined elsewhere they reach, each once
+        std::vector<const vir::Expr*> calls;            // every verified call the body makes
+        std::vector<std::size_t> callees;               // the candidates those calls reach, each once
+        std::vector<std::string> external = {};         // the functions defined elsewhere they reach, each once
+        bool library = false;                           // whether the body calls a library summary
+        std::optional<Failure> unstated = std::nullopt; // a library call no summary could be stated for
     };
     std::vector<Candidate> candidates;
     // A verified function declared here and defined in another unit states a
@@ -2380,7 +2499,7 @@ void generate_contracts(const vir::Module& module, const DefinitionMap& pure_def
         }
         if (function.contract.has_value() && function.returned_value.has_value()) {
             contracts.emplace(function.symbol.usr, &function);
-            candidates.push_back({&function, &function.returned_value.value(), {}, {}});
+            candidates.push_back({&function, &function.returned_value.value(), {}, {}, {}, false, std::nullopt});
         } else if (function.contract.has_value() && function.defined_elsewhere) {
             contracts.emplace(function.symbol.usr, &function);
             externals.push_back(&function);
@@ -2390,8 +2509,27 @@ void generate_contracts(const vir::Module& module, const DefinitionMap& pure_def
     for (std::size_t position = 0; position < candidates.size(); ++position) {
         position_of.emplace(candidates[position].function->symbol.usr, position);
     }
+    // Every library operation a body calls is stated once, from its trusted
+    // summary, before any body is built (RFC 0020 §6). A call no summary can be
+    // stated for fails where it is made, with the reason.
     for (Candidate& candidate : candidates) {
         collect_calls(*candidate.returned_value, contracts, candidate.calls);
+        std::erase_if(candidate.calls, [&](const vir::Expr* site) {
+            const auto& call = std::get<vir::Call>(site->node);
+            if (!call.library.has_value()) {
+                return false;
+            }
+            candidate.library = true;
+            if (program.library_summary(call.callee.usr) == nullptr) {
+                auto summary = library_summary(call, *site);
+                if (summary) {
+                    program.library.push_back(std::move(*summary));
+                } else if (!candidate.unstated.has_value()) {
+                    candidate.unstated = summary.error();
+                }
+            }
+            return true;
+        });
         for (const vir::Expr* site : candidate.calls) {
             const std::string& usr = std::get<vir::Call>(site->node).callee.usr;
             if (const auto callee = position_of.find(usr); callee != position_of.end()) {
@@ -2610,6 +2748,12 @@ void generate_contracts(const vir::Module& module, const DefinitionMap& pure_def
             }
             const Candidate& candidate = candidates[unit->members.front()];
             const vir::Function& function = *candidate.function;
+            if (candidate.unstated.has_value()) {
+                report(engine, function, *candidate.unstated, explain);
+                unit = pending.erase(unit);
+                progress = true;
+                continue;
+            }
             // A loop, or a call whose contract is itself partial, leaves the
             // body without a total term; its contract is then partial too. So
             // does a call whose callee states memory capabilities: what such a
@@ -2617,8 +2761,10 @@ void generate_contracts(const vir::Module& module, const DefinitionMap& pure_def
             // VERIFIED-043), which only the conditions walk does. So does an
             // operation C++ defines only under a condition: the condition is
             // owed where the path evaluates the operation, and the contract
-            // rests on it (SPEC.md ARITH-009).
-            const bool partial = requires_conditions(*candidate.returned_value) ||
+            // rests on it (SPEC.md ARITH-009). So does a library operation,
+            // which has no definition to unfold: only its summary is known,
+            // supposed where the path makes it (RFC 0020 §6).
+            const bool partial = candidate.library || requires_conditions(*candidate.returned_value) ||
                                  first_definedness_site(*candidate.returned_value).has_value() ||
                                  std::ranges::any_of(candidate.calls, [&](const vir::Expr* call) {
                                      const std::string& callee = std::get<vir::Call>(call->node).callee.usr;

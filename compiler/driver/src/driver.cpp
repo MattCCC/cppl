@@ -13,6 +13,7 @@
 #include "cppl/obligations/obligation.hpp"
 #include "cppl/obligations/trust.hpp"
 #include "cppl/source/location.hpp"
+#include "cppl/source/representation.hpp"
 #include "interface_io.hpp"
 #include "pipeline.hpp"
 
@@ -309,11 +310,12 @@ std::string reached_through(obligations::ClaimKind kind) {
     return "through what it uses";
 }
 
-// A claim proven outright: it rests on no trusted law, on no unsafe code, and
-// on no contract of another unit, which only an interface vouches for (SPEC.md
-// TUBOUND-006, TRUST.md 31).
+// A claim proven outright: it rests on no trusted law, on no unsafe code, on
+// no contract of another unit, which only an interface vouches for (SPEC.md
+// TUBOUND-006, TRUST.md 31), and on no standard-library model, whose
+// statements are assumed of the library the program runs with (TRUST.md 28.1).
 bool assumption_free(const obligations::ClaimClosure& claim) {
-    return claim.premises.empty() && claim.unsafe.empty() && claim.imported.empty();
+    return claim.premises.empty() && claim.unsafe.empty() && claim.imported.empty() && claim.library.empty();
 }
 
 std::string written_at(const source::SourceLocation& location) {
@@ -461,6 +463,24 @@ void print_trust_report(const Options& options, const Summary& summary) {
     for (const obligations::TrustedMemoryAssumption& assumption : summary.memory_trusted) {
         std::cout << "  unused:                  " << declared_at(assumption)
                   << ", no statement can use a memory proposition\n";
+    }
+    // Each claim proven with a standard container's operations taken from its
+    // model holds only if the library the program runs with behaves as the
+    // model states, which nothing checked (SPEC.md STDMODEL-018, TRUST.md
+    // 28.1). It is PROVEN relative to that, never assumption-free.
+    const auto library_reliant = std::ranges::count_if(
+        summary.claims, [](const obligations::ClaimClosure& claim) { return !claim.library.empty(); });
+    std::cout << "Library-model-dependent claims: " << library_reliant << "\n";
+    for (const obligations::ClaimClosure& claim : summary.claims) {
+        if (claim.library.empty()) {
+            continue;
+        }
+        std::cout << "  " << claim_name(claim) << ", identity " << claim.identity.text() << "\n";
+        for (const obligations::LibraryDependency& dependency : claim.library) {
+            std::cout << "    rests on the " << source::describe_model(dependency.model) << " model, "
+                      << (dependency.direct ? "in its own contract or body" : "through a verified call it makes")
+                      << "\n";
+        }
     }
     std::cout << "\n";
     // Each contract that holds only if its function returns, named, since a

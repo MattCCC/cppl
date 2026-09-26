@@ -4,6 +4,7 @@
 #include "cppl/obligations/obligation.hpp"
 #include "cppl/obligations/status.hpp"
 #include "cppl/source/location.hpp"
+#include "cppl/source/representation.hpp"
 #include "cppl/vir/ids.hpp"
 #include "lowering.hpp"
 
@@ -326,9 +327,43 @@ TrustClosure close_trust(const Program& program, const std::vector<ObligationRes
         return imported;
     };
 
+    // The standard-library models each contract rests on travel the same
+    // edges: a caller proven from a callee's contract rests on what the
+    // callee's model states as surely as the callee does (SPEC.md
+    // STDMODEL-018, TRUST.md 28.1). The same fixed point, over models.
+    using Models = std::map<source::RepresentationKind, LibraryDependency>;
+    std::vector<Models> models(program.contracts.size());
+    for (std::size_t index = 0; index < program.contracts.size(); ++index) {
+        for (const source::RepresentationKind model : program.contracts[index].library_models) {
+            models[index].emplace(model, LibraryDependency{model, true});
+        }
+    }
+    for (bool changed = true; changed;) {
+        changed = false;
+        for (std::size_t index = 0; index < models.size(); ++index) {
+            for (const std::size_t callee : callees[index]) {
+                if (callee == index) {
+                    continue;
+                }
+                for (const auto& [model, dependency] : models[callee]) {
+                    changed = models[index].emplace(model, LibraryDependency{model, false}).second || changed;
+                }
+            }
+        }
+    }
+    const auto listed_models = [](const Models& found) {
+        std::vector<LibraryDependency> library;
+        library.reserve(found.size());
+        for (const auto& [model, dependency] : found) {
+            library.push_back(dependency);
+        }
+        return library;
+    };
+
     for (const auto& [claim, contract] : path_claims) {
         closure.claims[claim].unsafe = listed(regions[contract]);
         closure.claims[claim].imported = imported_list(through[contract]);
+        closure.claims[claim].library = listed_models(models[contract]);
     }
 
     // A contract of a recursion group holds only with the whole group, each
@@ -373,7 +408,7 @@ TrustClosure close_trust(const Program& program, const std::vector<ObligationRes
             anchor < results.size() ? program.obligations[anchor].range.begin : source::SourceLocation{},
             contract.partial ? ObligationId{contract.identity} : program.obligations[contract.obligation].id,
             ordered(std::move(contracts[index])), listed(regions[index]), contract.total, imported_list(through[index]),
-            contract.symbol});
+            contract.symbol, listed_models(models[index])});
     }
 
     return closure;

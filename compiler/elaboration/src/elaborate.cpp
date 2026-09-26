@@ -6,6 +6,7 @@
 #include "cppl/frontend/projection.hpp"
 #include "cppl/frontend/syntax.hpp"
 #include "cppl/source/location.hpp"
+#include "cppl/source/representation.hpp"
 #include "cppl/vir/capability.hpp"
 #include "cppl/vir/expr.hpp"
 #include "cppl/vir/ids.hpp"
@@ -547,6 +548,7 @@ class ExpressionElaborator {
             vir::Call converted;
             converted.callee = vir::SymbolId{call->callee_usr};
             converted.callee_name = call->callee_name;
+            converted.library = call->library;
             for (const clangbridge::Expr& argument : call->arguments) {
                 std::optional<vir::Expr> converted_argument = convert(argument);
                 if (!converted_argument.has_value()) {
@@ -940,7 +942,9 @@ class ExpressionElaborator {
 // be terms the formal core can state. Every node's children are visited, so a
 // node kind added later is searched without being listed here.
 void collect_callees(const vir::Expr& expr, std::vector<vir::SymbolId>& callees) {
-    if (const auto* call = std::get_if<vir::Call>(&expr.node)) {
+    // A library summary is no function of this unit: what it states is a
+    // trusted model assumption, recorded apart (RFC 0020 §6).
+    if (const auto* call = std::get_if<vir::Call>(&expr.node); call != nullptr && !call->library.has_value()) {
         callees.push_back(call->callee);
     }
     std::visit(
@@ -960,6 +964,45 @@ void collect_callees(const vir::Expr& expr, std::vector<vir::SymbolId>& callees)
             if constexpr (requires { node.body; }) {
                 for (const vir::Expr& child : node.body)
                     collect_callees(child, callees);
+            }
+        },
+        expr.node);
+}
+
+// The standard-library model a type is an instance of, recorded in `models`
+// when it is one (RFC 0020 §10).
+void note_model(const vir::Type& type, std::set<source::RepresentationKind>& models) {
+    const source::RepresentationKind kind = type.representation.kind;
+    if (source::is_sequence(kind) || kind == source::RepresentationKind::StdArray) {
+        models.insert(kind);
+    }
+}
+
+// Every standard-library model an expression's values are instances of. Every
+// node's children are visited, so a node kind added later is searched without
+// being listed here.
+void collect_models(const vir::Expr& expr, std::set<source::RepresentationKind>& models) {
+    note_model(expr.type, models);
+    if (const auto* call = std::get_if<vir::Call>(&expr.node); call != nullptr && call->library.has_value()) {
+        models.insert(call->library->container);
+    }
+    std::visit(
+        [&models](const auto& node) {
+            if constexpr (requires { node.operands; }) {
+                for (const vir::Expr& child : node.operands)
+                    collect_models(child, models);
+            }
+            if constexpr (requires { node.arguments; }) {
+                for (const vir::Expr& child : node.arguments)
+                    collect_models(child, models);
+            }
+            if constexpr (requires { node.extent; }) {
+                for (const vir::Expr& child : node.extent)
+                    collect_models(child, models);
+            }
+            if constexpr (requires { node.body; }) {
+                for (const vir::Expr& child : node.body)
+                    collect_models(child, models);
             }
         },
         expr.node);
@@ -1051,11 +1094,33 @@ const clangbridge::Function* proposition_function(
     return find_projected(request.unit, generated, written, arguments);
 }
 
+// Whether a projected clause conjoins memory capabilities with ordinary
+// predicates. Only a verified function's `expects` clause reads such a clause
+// apart (SPEC.md STDMODEL-016); anywhere else its predicates alone would be
+// read and the capabilities silently lost, so every other reader refuses it.
+bool conjoins_capabilities(const clangbridge::Function& function) {
+    return !function.capabilities.empty() && function.returned_value.has_value();
+}
+
+void report_conjoined_capabilities(diagnostics::Engine& engine, const source::SourceLocation& written,
+                                   const std::string& subject) {
+    report(engine, diagnostics::Category::UnsupportedSemantics, written,
+           subject + " conjoins a memory capability with a predicate, which only a verified function's expects "
+                     "clause may do",
+           "'readable' and 'writable' state storage permission; a precondition reads them on their own channel "
+           "(SPEC.md STDMODEL-016), and nothing else can");
+}
+
 std::optional<vir::Expr> convert_projected(const Request& request, std::string_view generated,
                                            const source::SourceLocation& written, std::uint32_t& next_expression_id,
                                            const std::string& subject, diagnostics::Engine& engine,
-                                           const std::vector<clangbridge::TemplateArgument>* arguments = nullptr) {
+                                           const std::vector<clangbridge::TemplateArgument>* arguments = nullptr,
+                                           bool capabilities_read_apart = false) {
     const clangbridge::Function* function = proposition_function(request, generated, written, arguments);
+    if (function != nullptr && !capabilities_read_apart && conjoins_capabilities(*function)) {
+        report_conjoined_capabilities(engine, written, subject);
+        return std::nullopt;
+    }
     if (function == nullptr || !function->returned_value.has_value()) {
         report(engine, diagnostics::Category::Elaboration, written, subject + " was not resolved",
                "Clang did not resolve the projected expression");
@@ -1691,11 +1756,18 @@ void elaborate_contract(const Request& request, const frontend::VerifiedFunction
         if (!capabilities->empty()) {
             contract.capabilities.insert(contract.capabilities.end(), std::make_move_iterator(capabilities->begin()),
                                          std::make_move_iterator(capabilities->end()));
-            continue;
+            // A clause conjoining capabilities with ordinary predicates states
+            // those predicates too, as a precondition like any other
+            // (SPEC.md STDMODEL-016).
+            const clangbridge::Function* stated = proposition_function(request, projected.precondition_names[index],
+                                                                       preconditions[index]->location, arguments);
+            if (stated == nullptr || !stated->returned_value.has_value()) {
+                continue;
+            }
         }
         std::optional<vir::Expr> expected =
             convert_projected(request, projected.precondition_names[index], preconditions[index]->location,
-                              next_expression_id, subject, engine, arguments);
+                              next_expression_id, subject, engine, arguments, true);
         if (!expected.has_value()) {
             return;
         }
@@ -1808,6 +1880,10 @@ void elaborate_refinements(const Request& request, std::uint32_t& next_expressio
 
         const std::string subject = "refinement type '" + declaration.name + "'";
         const clangbridge::Function* function = find_projected(request.unit, probe->probe, probe->location);
+        if (function != nullptr && conjoins_capabilities(*function)) {
+            report_conjoined_capabilities(engine, declaration.predicate_location, "the predicate of " + subject);
+            continue;
+        }
         if (function == nullptr || !function->returned_value.has_value()) {
             report(engine, diagnostics::Category::Elaboration, declaration.predicate_location,
                    "the predicate of " + subject + " was not resolved",
@@ -2359,6 +2435,23 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
             }
         }
 
+        // The standard-library models the function rests on: those its body's
+        // lowering used, and those its signature and contract mention, since a
+        // contract stating `v.size()` means what the model says `size()` is
+        // (RFC 0020 §10).
+        std::set<source::RepresentationKind> models(function->library_models.begin(), function->library_models.end());
+        for (const vir::Parameter& parameter : converted.parameters) {
+            note_model(parameter.type, models);
+        }
+        note_model(converted.result, models);
+        if (converted.contract.has_value()) {
+            for (const vir::Expr& precondition : converted.contract->preconditions) {
+                collect_models(precondition, models);
+            }
+            collect_models(converted.contract->postcondition, models);
+        }
+        converted.library_models.assign(models.begin(), models.end());
+
         result.module.functions.push_back(std::move(converted));
     }
 
@@ -2381,7 +2474,12 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
         }
         // A memory proposition is admitted only as an explicit assumption: no
         // proof establishes one, because it is not a proposition the kernel
-        // checks (SPEC.md TRUSTED-003, VERIFIED-044, RFC 0014 §10).
+        // checks (SPEC.md TRUSTED-003, VERIFIED-044, RFC 0014 §10). One
+        // conjoined with a predicate is refused whole, never admitted in part.
+        if (function != nullptr && conjoins_capabilities(*function)) {
+            report_conjoined_capabilities(engine, declaration.keyword_location, "law '" + declaration.name + "'");
+            continue;
+        }
         if (function != nullptr && !function->capabilities.empty()) {
             elaborate_memory_assumption(request, specification, declaration, *function, next_expression_id, result,
                                         engine);
