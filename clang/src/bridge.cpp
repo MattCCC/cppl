@@ -7725,7 +7725,7 @@ void extract_body(Function& function, CXCursor cursor, const Signature& signatur
             function.body_rejection = "its result: " + element.error();
             return;
         }
-        if (!element->refinements.empty()) {
+        if (const bool refined_result = !element->refinements.empty(); refined_result) {
             function.body_rejection = "its result is a container whose element type is written as the refinement '" +
                                       element->refinements.front().name +
                                       "'; a refined element type states a content invariant of a local and is "

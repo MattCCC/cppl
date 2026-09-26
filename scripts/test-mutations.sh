@@ -47,7 +47,7 @@ erasure-lowering-canonical	compiler/erasure/src/erase.cpp	runtime.substr(runtime
 declarator-list-ends-clauses	compiler/frontend/src/recognizer.cpp	nesting == 0 && token.is_punctuator(",")	false && (nesting == 0 && token.is_punctuator(","))	^unit_recognizer_test$
 call-capability-kind	compiler/obligations/src/contracts.cpp	return candidate.kind == required.kind &&	return true &&	^negative_memory_capabilities$
 call-capability-pointer	compiler/obligations/src/contracts.cpp	candidate.place.root.id == passed->parameter;	(true || candidate.place.root.id == passed->parameter);	^negative_memory_capabilities$
-call-capability-extent	compiler/obligations/src/contracts.cpp	if (required.extent.empty() && holding->extent.empty()) {	if (true || (required.extent.empty() && holding->extent.empty())) {	^negative_memory_capabilities$
+call-capability-extent	compiler/obligations/src/contracts.cpp	if (required.extent.empty() && !held_sized && !region.has_value()) {	if (true || (required.extent.empty() && !held_sized && !region.has_value())) {	^negative_memory_capabilities$
 memory-assumption-trusted-only	compiler/elaboration/src/elaborate.cpp	    if (!declaration.trusted) {	    if (false && !declaration.trusted) {	^negative_trusted_dependencies$
 verified-specifier-span	compiler/frontend/src/recognizer.cpp	verified.keyword = tokens[index].span;	verified.keyword = source::ByteSpan{tokens[specifiers_start(tokens, index)].span.offset, tokens[index].span.end() - tokens[specifiers_start(tokens, index)].span.offset};	^e2e_erasure_equivalence$
 unsafe-block-havoc	clang/src/bridge.cpp	const std::vector<std::size_t> reached = unsafe_reach(state);	const std::vector<std::size_t> reached;	^negative_unsafe_boundary$
@@ -71,6 +71,12 @@ container-call-disjointness	clang/src/bridge.cpp	if (other == root || may_alias(
 container-refined-writable-view	clang/src/bridge.cpp	if (!state[root].sequence->element.refinements.empty()) {	if (false && !state[root].sequence->element.refinements.empty()) {	^negative_containers$
 container-mutable-call-aliases	clang/src/bridge.cpp	!may_alias(state[target], state[other])) {	true) {	^negative_containers$
 container-copy-refinement	clang/src/bridge.cpp	if (auto gap = refinement_gap(root, declaring[*origin])) {	if (auto gap = refinement_gap(root, declaring[*origin]); false) {	^negative_containers$
+container-refined-mutable-reference	clang/src/bridge.cpp	if (handed.sequence.has_value() && !handed.sequence->element.refinements.empty()) {	if (false) {	^negative_containers$
+container-element-beside-view	clang/src/bridge.cpp	if (root == owner || may_alias(state[root], state[owner])) {	if (false) {	^negative_containers$
+container-refined-result	clang/src/bridge.cpp	if (const bool refined_result = !element->refinements.empty(); refined_result) {	if (const bool refined_result = false; refined_result) {	^negative_containers$
+container-refined-std-array	clang/src/bridge.cpp	if (!stated || !stated->empty()) {	if (false) {	^negative_containers$
+container-refined-span-local	clang/src/bridge.cpp	!written || !written->refinements.empty()) {	false) {	^negative_containers$
+capability-const-writable	clang/src/bridge.cpp	if (capability.kind == Capability::Kind::Writable && clang_isConstQualifiedType(element) != 0)	if (false && capability.kind == Capability::Kind::Writable && clang_isConstQualifiedType(element) != 0)	^negative_containers$
 container-pop-precondition	compiler/obligations/src/library.cpp	summary.preconditions.push_back(	(void)(	^negative_containers$
 container-default-allocator	clang/src/bridge.cpp	if (!is_standard_template(held, "allocator") || !inert_allocator(call.arguments.back(), 0)) {	if (held.kind != CXType_Invalid || true) {	^e2e_containers$
 conjoined-capability-detected	compiler/elaboration/src/elaborate.cpp	return !function.capabilities.empty() && function.returned_value.has_value();	return function.capabilities.empty() && false;	^negative_containers$
@@ -93,7 +99,15 @@ xtu-statement-compared	compiler/obligations/src/contracts.cpp	if (!(*plan.statem
 xtu-imported-established	compiler/automation/src/composition.cpp	    if (function.imported.has_value()) {	    if (function.imported.has_value() && false) {	^e2e_cross_tu$|^unit_cross_unit_contracts_test$
 xtu-imported-totality	compiler/obligations/src/contracts.cpp	total[index] = contract.total;	total[index] = true;	^negative_cross_tu$|^unit_cross_unit_contracts_test$
 xtu-partial-record-refused-with-measure	compiler/obligations/src/contracts.cpp	if (!total && function.contract.has_value() && !function.contract->measures.empty()) {	if (false && !total && function.contract.has_value() && !function.contract->measures.empty()) {	^unit_cross_unit_contracts_test$
-xtu-recursion-refused	compiler/obligations/src/contracts.cpp	return local != position_of.end() && reaches(local->second, position);	return local != position_of.end() && (false && reaches(local->second, position));	^unit_cross_unit_contracts_test$
+xtu-recursion-refused	compiler/obligations/src/contracts.cpp	crossing[member] = cyclic && across;	crossing[member] = false && cyclic && across;	^unit_cross_unit_contracts_test$
+xtu-reaching-a-cycle-refused	compiler/obligations/src/contracts.cpp	if (!rests_on_cycle[before]) {	if (false) {	^unit_cross_unit_contracts_test$
+xtu-measure-not-compared-across	compiler/obligations/src/interface.cpp	if (across_units) {	if (false) {	^unit_cross_unit_contracts_test$|^negative_cross_tu$
+xtu-termination-request-compared	compiler/obligations/src/interface.cpp	hasher.update_u8(measures.empty() ? 0 : 1);	hasher.update_u8(0);	^unit_cross_unit_contracts_test$|^negative_cross_tu$
+xtu-semantics-compared	compiler/driver/src/interface_io.cpp	if (recorded.semantics != current.semantics) {	if (false) {	^negative_cross_tu$
+xtu-verifier-compared	compiler/driver/src/interface_io.cpp	if (!(recorded.verifier == current.verifier)) {	if (false) {	^negative_cross_tu$
+xtu-result-identity-dependencies	compiler/artifact/src/interface.cpp	set(std::move(depends));	(void)depends;	^unit_interface_test$
+xtu-library-models-exported	compiler/obligations/src/interface.cpp	entry.models.emplace_back(source::describe_model(dependency.model));	(void)dependency;	^e2e_containers$
+xtu-library-models-through-import	compiler/obligations/src/trust.cpp	return !claim.library.empty() || std::ranges::any_of(claim.imported	return !claim.library.empty() || std::ranges::any_of(std::vector<ImportedDependency>{}	^e2e_containers$
 xtu-internal-linkage-not-imported	compiler/elaboration/src/elaborate.cpp	converted.defined_elsewhere = candidate.contract != nullptr && function->external_linkage;	converted.defined_elsewhere = candidate.contract != nullptr;	^negative_cross_tu$
 xtu-internal-linkage-not-exported	compiler/obligations/src/contracts.cpp	    if (function.external_linkage) {	    if (true) {	^e2e_cross_tu$|^unit_cross_unit_contracts_test$
 xtu-restatements-agree	compiler/obligations/src/contracts.cpp	if (!restatements_agree(function, pure_definitions, program, engine)) {	if (false && !restatements_agree(function, pure_definitions, program, engine)) {	^negative_cross_tu$|^unit_cross_unit_contracts_test$
