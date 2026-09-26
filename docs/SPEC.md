@@ -3576,9 +3576,25 @@ usual arithmetic conversions, as the result reduced modulo `2^w`. That is
 exactly the core's wrapping arithmetic (section 7.1.1), so those operators MAY
 be modeled by it. Operands narrower than `int` are promoted to `int` first, and
 the promoted operation is signed: it MUST NOT be modeled as unsigned wrapping.
-Signed `+`, `-` and `*` MUST NOT be modeled by wrapping arithmetic at all;
-until their no-overflow obligations are generated and discharged (section 31),
-a verified body using them MUST be rejected.
+Signed `+`, `-` and `*` MUST NOT be modeled as wrapping: a signed operation
+denotes its exact result and is admitted only as ARITH-006 states.
+
+[ARITH-006] A signed `+`, `-` or `*` on two operands of one signed type, after
+the integral promotions and the usual arithmetic conversions, and a unary `-` of
+a promoted signed operand, have defined behavior exactly where the exact
+mathematical result is a value of that type. Each evaluation on a verified path
+MUST owe that condition as a proof obligation (DEFINEDBEHAVIOR-001). Where it
+holds the result is the exact one, and a verifier MAY state it with the ring
+operation of section 7.1.1, which then wraps nothing.
+
+```cpp
+verified int next(int x)
+    expects (x < INT_MAX)
+    ensures (result == x + 1)
+{
+    return x + 1;   // owes: x + 1 is a value of int
+}
+```
 
 ---
 
@@ -3594,11 +3610,81 @@ division by zero
 
 cannot occur on a verified reachable path.
 
+[ARITH-007] `/` on integer operands of one type denotes the quotient truncated
+toward zero, and `%` the remainder `a - (a / b) * b`, whose sign is the
+dividend's. Each evaluation MUST owe that the divisor is not zero
+(DEFINEDBEHAVIOR-002), for signed and unsigned operands alike; for a signed type
+it MUST also owe that the operands are not the least value of the type and -1,
+for `/` and `%` both (DEFINEDBEHAVIOR-003).
+
+```cpp
+verified int ratio(int x, int y)
+    expects (y != 0 && x != INT_MIN)
+    ensures (result == x / y)   // -7 / 2 is -3, and -7 % 2 is -1
+{
+    return x / y;
+}
+```
+
 ---
 
 ## 29.4 Shifts
 
 [ARITH-005] Shift amounts and operand conditions MUST satisfy the selected C++ defined-behavior rules.
+
+---
+
+## 29.5 Integral conversions
+
+[ARITH-008] The integral promotions, the usual arithmetic conversions, and the
+conversions of initializers, assignments, arguments and returned values between
+integer types are those the C++ implementation resolved, and an explicit cast
+between integer types is the conversion it names; a verifier MUST NOT derive
+them anew. A conversion to an unsigned type denotes the value reduced modulo
+`2^w`. A conversion to a signed type denotes the value unchanged where the type
+holds it; where it may not, each evaluation MUST owe that it does, in every
+language mode, although C++20 defines the result as the reduced value and
+earlier modes leave it implementation-defined. Conversions to or from `bool`,
+enumerations, floating-point and pointer types MUST NOT be modeled as integral
+conversions.
+
+---
+
+## 29.6 Where definedness is owed
+
+[ARITH-009] A definedness obligation is owed on each runtime path that
+evaluates the operation, and on no other, preserving short-circuit and
+conditional evaluation (BOUNDARYEX-001). It is stated under what the path
+establishes before the operation is evaluated: the path's conditions, the
+outcomes of the `?:`, `&&` and `||` that select the operation, and the
+postconditions of the calls C++ sequences before it, which are the calls within
+its operands and within those selecting conditions. The postcondition of a call
+C++ does not sequence before the operation MUST NOT be supposed. After the
+evaluation, the path MAY suppose each condition it owed.
+
+[ARITH-010] A C++ condition in a specification — a contract clause, a Law or
+proof proposition, a refinement predicate, a loop invariant, or a measure —
+denotes what C++ would compute, and holds only where every operation it would
+evaluate is defined: the definedness conditions of those operations, under the
+outcomes that select them, are part of what it states (ADMISSIBLE-005). A claim
+that a Law holds at an argument whose operations are defined only under a
+condition MUST be rejected.
+
+[ARITH-011] A `pure` function is a total definition its callers unfold with
+nothing owed at the call, so a body that evaluates an operation defined only
+under a condition MUST NOT be admitted as one. A verified function states such
+an operation's condition as an obligation instead.
+
+[ARITH-012] A failed definedness obligation MUST be reported as such, naming the
+operation as written, the condition it owes (signed overflow, a zero divisor,
+the least value divided by -1, an unrepresentable conversion), the types
+involved, and the rule it rests on.
+
+[ARITH-013] A compound assignment `x op= e`, and an increment or decrement, of a
+modeled integer local is the assignment `x = x op e` (or `x op 1`) where C++
+computes it at the local's own type. Where the local's type is promoted, or `e`
+has a wider type, the computation is at a type the update does not show, and the
+update MUST be rejected until that computation is modeled.
 
 ---
 

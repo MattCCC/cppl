@@ -46,7 +46,10 @@ reject impure_call 'not available|not declared pure' \
     'unsigned g(unsigned x) { return x; } verified unsigned f(unsigned x) ensures (result == x) { return g(x); }'
 reject signed_overflow 'signed overflow' \
     'verified int f(int x) ensures (result == x + 1) { return x + 1; }'
-reject conversion 'conversion.*not modeled' \
+# SPEC: ARITH-008
+# An int returned as unsigned is reduced modulo 2^32: the conversion is modeled,
+# so what fails is the false contract, not the conversion.
+reject conversion 'does not satisfy its contract' \
     'verified unsigned f(int x) ensures (result == 0u) { return x; }'
 reject global_read 'not a parameter' \
     'unsigned g = 0u; verified unsigned f(unsigned x) ensures (result == x) { return g; }'
@@ -106,8 +109,10 @@ reject bitwise_not "operator '~' is not modeled" \
     'verified unsigned f(unsigned x) ensures (result == x) { return ~x; }'
 reject conditional_operator_false 'does not satisfy its contract' \
     'verified unsigned f(unsigned x) ensures (result == x) { return x == 0u ? 1u : x; }'
-reject explicit_cast 'explicit conversion is not modeled' \
-    'verified unsigned f(unsigned x) ensures (result == x) { return (unsigned)x; }'
+# A cast between integer types is the conversion it names (ARITH-008); a cast to
+# `bool` converts by truth, which is not modeled.
+reject explicit_cast "conversion from 'bool' to 'unsigned int' is not modeled" \
+    'verified unsigned f(unsigned x) ensures (result == x) { return (unsigned)(bool)x; }'
 reject switch_statement "found a 'switch' statement" \
     'verified unsigned f(unsigned x) ensures (result == x) { switch (x) { default: return x; } }'
 reject try_block "found a 'try' block" \

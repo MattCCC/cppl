@@ -358,6 +358,8 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
                 ++outcome.counters.omitted_cases_proven;
             } else if (result.obligation.origin == obligations::Origin::ImpossiblePath) {
                 ++outcome.counters.impossible_paths_proven;
+            } else if (result.obligation.origin == obligations::Origin::DefinedBehavior) {
+                ++outcome.counters.defined_operations_proven;
             }
             if (result.obligation.law && program.proof_for(result.obligation) != nullptr) {
                 ++outcome.counters.proven_by_written_proof;

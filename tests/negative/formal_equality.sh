@@ -24,7 +24,7 @@ proof first(int x) proves (Eq<int>(x, x)) { refl; }
 proof wrong(int x, int y) proves (Eq<int>(x, y)) { exact first(x); }
 CPP
 reject wrong_type <<'CPP'
-proof wrong(unsigned x) proves (Eq<int>(x, x)) { refl; }
+proof wrong(bool x) proves (Eq<int>(x, x)) { refl; }
 CPP
 reject missing_operand <<'CPP'
 proof wrong(int x) proves (Eq<int>(x)) { refl; }

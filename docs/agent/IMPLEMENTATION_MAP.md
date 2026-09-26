@@ -626,6 +626,61 @@ member definition; each is refused.
 
 ---
 
+## machine-arithmetic
+
+Manifest: `features/machine-arithmetic.yaml`
+
+Normative sources: `ARITH-001`–`ARITH-013` (SPEC §29), `EQ-002`, `EQ-009`
+(SPEC §7.1.1, §7.5), `UB-001`, `UB-002` (SPEC §31), `DEFINEDBEHAVIOR-001`–
+`DEFINEDBEHAVIOR-003` (Annex T), `ADMISSIBLE-005` (Annex U.5); FOUNDATIONS §33,
+§35–§37; `TRUST.md` §5.2, §17; RFC 0006, RFC 0019.
+
+### Components
+
+| Component | Responsibility | Paths |
+| --- | --- | --- |
+| kernel | The total primitives `add_fits`, `sub_fits`, `mul_fits`, `quot`, `rem` and `convert`: typing, folding on literals, and the linear constraints each is stated by. A conversion's operand type is read from the binders the check stands under. | `kernel/src/term.cpp`, `kernel/src/context.cpp` (`type_of_impl`), `kernel/src/arithmetic.cpp` (`normalize_primitive`), `kernel/src/linear.cpp` (`Builder::truth`, `define_conversion`, `define_division`, `product_always_fits`) |
+| refutation | Examine a wide multiple of `2^width`, and a quotient by a constant, value by value over the integers the constraints leave it. Untrusted. | `compiler/refutation/src/refute.cpp` (`project`, `window_of`) |
+| bridge | Read each implicit conversion between modeled integer types and each explicit integral cast as a `Conversion`, `/` and `%` as operators, unary `-` as `Minus`, a negated literal and a character literal as literals, and `/=`, `%=` as updates. Every other conversion stays refused. | `clang/src/bridge.cpp` (`build_expression`, `integral_conversion`, `lower_update`) |
+| elaboration, VIR | Carry `Minus`, `Conversion`, `Div` and `Rem`. | `compiler/elaboration/src/elaborate.cpp`, `vir/include/cppl/vir/expr.hpp`, `vir/src/vir.cpp` |
+| obligations | State each operation with its total primitive; find the operations an expression evaluates and the `?:` outcomes guarding each (`&&` and `||` are routes or connectives, never values there); owe each condition on the path, supposing only the postconditions of calls sequenced before it; conjoin a specification's conditions into what it states; refuse such operations in a pure definition and in a claimed law's arguments. | `compiler/obligations/src/definedness.cpp`, `compiler/obligations/src/generate.cpp` (`TermLowering`, `lower_proposition`), `compiler/obligations/src/contracts.cpp` (`Conditions::evaluate`, `owe_definedness`) |
+| automation, driver | Pass binder types to the constraint builder; name the operation, the condition and the types in a failed obligation; count defined operations. | `compiler/automation/src/arithmetic.cpp`, `compiler/automation/src/evidence.cpp`, `compiler/driver/src/pipeline.cpp`, `compiler/driver/src/driver.cpp` |
+
+### Required behavior
+
+```text
+signed + - * and unary -     owe add_fits / sub_fits / mul_fits of their operands
+/ and %                      owe a nonzero divisor; signed, not MIN over -1
+a conversion to signed T     owes that the value fits T, in every C++ mode
+unsigned + - * and -, and a  owe nothing: C++ defines them modulo 2^width
+  conversion to unsigned
+an obligation                is owed on the path that evaluates the operation,
+                             under its guards and the calls sequenced before it,
+                             and holds on the rest of the path
+a specification's condition  states its operations' definedness as well
+a pure definition            evaluates no such operation
+a law instance's argument    evaluates no such operation
+the runtime program          is unchanged: no check is added
+```
+
+### Existing surface
+
+```text
+tests/kernel/definedness_test.cpp          folding against a host evaluator, every 8-bit pair, typing, certificates
+tests/unit/definedness_arithmetic_test.cpp constraints: every pinned 4-bit value proven, no false one
+tests/fixtures/signed_arithmetic.cpp       every accepted twin, run and checked
+tests/e2e/signed_arithmetic.sh             counts, runtime values, erasure in three standards
+tests/negative/signed_arithmetic.sh        every rejection, written out in tests/fixtures/negative/arith_*.cpp
+tests/e2e/arithmetic_properties.sh         the verifier's decision and value against the host, from a seed
+```
+
+Not built: shifts and bitwise operators, conversions to or from `bool`,
+enumerations and floating point, compound assignment of a promoted type, and
+nonlinear representability beyond products of promoted narrow values, each
+refused.
+
+---
+
 ## Adding a feature to this map
 
 1. Add the feature to `FEATURE_INDEX.md`.

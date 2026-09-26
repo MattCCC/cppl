@@ -93,6 +93,8 @@ enum class BinaryOp : std::uint8_t {
     Add,
     Sub,
     Mul,
+    Div, // C++ `/`: truncating quotient
+    Rem, // C++ `%`: remainder of the truncating quotient
     Equal,
     NotEqual,
     Less,
@@ -135,6 +137,24 @@ struct Binary {
 
 struct Negation {
     std::vector<Expr> operands;
+};
+
+// Arithmetic negation, `-x`, of an integer operand C++ has already promoted:
+// the promotion is the operand's own conversion, and the enclosing `Expr` has
+// the promoted type (SPEC.md ARITH-006).
+struct Minus {
+    std::vector<Expr> operands; // one
+};
+
+// A conversion between two modeled integer types that Clang resolved: an
+// integral promotion, a usual arithmetic conversion, the conversion of an
+// initializer, an assignment, an argument or a returned value, or an explicit
+// cast. The operand is converted to the type of the enclosing `Expr`. Nothing
+// here decides which conversion C++ performs; this records the one Clang put
+// in the program (SPEC.md ARITH-008).
+struct Conversion {
+    std::vector<Expr> operands; // one
+    bool written = false;       // an explicit cast rather than an implicit conversion
 };
 struct Projection {
     std::uint32_t index = 0;
@@ -384,7 +404,7 @@ struct Expr {
     source::SourceLocation location;
     std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, PlaceVersion, PlaceRef, Loop, Iterate,
                  Projection, Element, FormalEquality, Universal, Implication, Connective, ReturnState, UnknownVersion,
-                 ElementBound, PathContradiction, CaseSplit, CaseBinder, UnsafeRegion, Unsupported>
+                 ElementBound, PathContradiction, CaseSplit, CaseBinder, UnsafeRegion, Minus, Conversion, Unsupported>
         node;
 };
 

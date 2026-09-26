@@ -47,7 +47,7 @@ enum class PrimOp : std::uint8_t {
     // Representability (RFC 0019). One when the integer sum, difference or
     // product of the operands' values, computed without any bound, is a value
     // of the type; zero otherwise. These are what a signed C++ operation owes
-    // before its result is the ring operation's (SPEC.md EQ-002,
+    // before its result is the ring operation's (SPEC.md ARITH-006,
     // DEFINEDBEHAVIOR-001): where one holds, the wrapping primitive wrapped
     // nothing.
     AddFits,
@@ -59,7 +59,7 @@ enum class PrimOp : std::uint8_t {
     // signed value over -1) wraps, `x / 0` is 0, and the remainder is always
     // `x` minus the exact quotient times the divisor, so `x % 0` is `x`. The
     // cases C++ leaves undefined are the lowering's obligations, never these
-    // definitions (SPEC.md ARITH-004, DEFINEDBEHAVIOR-002, DEFINEDBEHAVIOR-003).
+    // definitions (SPEC.md ARITH-007, DEFINEDBEHAVIOR-002, DEFINEDBEHAVIOR-003).
     Quotient,
     Remainder,
 
@@ -67,7 +67,7 @@ enum class PrimOp : std::uint8_t {
     // type by two's complement (RFC 0019). That is C++'s conversion to an
     // unsigned type exactly; to a signed type it is C++20's, and the lowering
     // owes representability wherever the value may not fit (SPEC.md
-    // ARITH-002). It is not C++'s conversion to `bool`, which the lowering
+    // ARITH-008). It is not C++'s conversion to `bool`, which the lowering
     // never states with it.
     Convert,
 };

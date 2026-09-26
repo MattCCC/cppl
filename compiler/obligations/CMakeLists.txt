@@ -8,6 +8,7 @@ add_library(cppl_obligations STATIC
     src/contracts.cpp
     src/contradiction.cpp
     src/interface.cpp
+    src/definedness.cpp
     src/status.cpp
     src/trust.cpp)
 

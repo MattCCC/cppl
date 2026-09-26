@@ -45,6 +45,7 @@ struct Summary {
     std::size_t omitted_cases_proven = 0;
     std::size_t impossible_paths_proven = 0;
     std::size_t call_preconditions_proven = 0;
+    std::size_t defined_operations_proven = 0;
     std::size_t proven_by_written_proof = 0;
     std::size_t proofs_proven = 0;
     std::size_t unresolved = 0;
@@ -231,6 +232,7 @@ UnitOutcome compile_unit(const Options& options, const Input& input, const std::
     summary.omitted_cases_proven += result.counters.omitted_cases_proven;
     summary.impossible_paths_proven += result.counters.impossible_paths_proven;
     summary.call_preconditions_proven += result.counters.call_preconditions_proven;
+    summary.defined_operations_proven += result.counters.defined_operations_proven;
     summary.proven_by_written_proof += result.counters.proven_by_written_proof;
     summary.proofs_proven += result.counters.proofs_proven;
     summary.unresolved += result.counters.unresolved;
@@ -386,6 +388,7 @@ void print_trust_report(const Options& options, const Summary& summary) {
         print_depends(imported);
     }
     std::cout << "Call preconditions proven:   " << summary.call_preconditions_proven << "\n";
+    std::cout << "Defined operations proven:   " << summary.defined_operations_proven << "\n";
     std::cout << "Loop invariants proven:      " << summary.loop_invariants_proven << "\n";
     std::cout << "Loop measures proven:        " << summary.loop_measures_proven << "\n";
     std::cout << "Recursive call measures proven: " << summary.call_measures_proven << "\n";

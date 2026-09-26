@@ -206,8 +206,9 @@ crossing between two of them as the implication between their predicates. Next i
 that core are existential quantification with its proof surface,
 induction and termination. Scalar reference storage, void functions, alias
 invalidation and verified call post-state are now prototyped together with their
-refinement crossings. General object and pointer memory reasoning, signed
-arithmetic with overflow obligations, and SMT remain incomplete. Trust propagation
+refinement crossings. Signed arithmetic, division and integral conversions are
+prototyped with their defined-behavior obligations (RFC 0019). General object
+and pointer memory reasoning, and SMT remain incomplete. Trust propagation
 is implemented within a translation unit: a proof may name a `trusted law`, is
 checked relative to it, and the trust report lists every proven claim with the
 trusted laws it rests on. Contracts, with that closure, now cross translation
@@ -367,6 +368,13 @@ Wrapping<T>
 Saturating<T>
 ```
 
+Current sequence: unsigned `+ - *` as the ring modulo `2^width` with linear
+order reasoning (RFC 0006), and signed `+ - *` and unary `-`, `/`, `%` and
+integral conversions with their definedness obligations (RFC 0019), are
+prototyped. Next are products of two bounded unknowns, which need a nonlinear
+certificate step, then shifts and bitwise operators with their own obligations,
+then `Checked<T>`, `Wrapping<T>` and `Saturating<T>`.
+
 Exit criterion:
 
 > Mathematical proofs cannot silently assume arithmetic semantics different from runtime C++.
@@ -417,6 +425,11 @@ At minimum:
 - invalid pointer arithmetic
 - invalid casts
 - aliasing violations
+
+Signed overflow, division by zero, the least value divided by -1 and
+unrepresentable conversions are obligations today, owed on the path that
+evaluates the operation (RFC 0019); the rest of the list is not started or
+belongs to the memory model.
 
 Exit criterion:
 

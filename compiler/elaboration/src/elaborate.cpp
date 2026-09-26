@@ -144,6 +144,10 @@ vir::BinaryOp convert_operator(clangbridge::BinaryOp op) {
             return vir::BinaryOp::Sub;
         case clangbridge::BinaryOp::Mul:
             return vir::BinaryOp::Mul;
+        case clangbridge::BinaryOp::Div:
+            return vir::BinaryOp::Div;
+        case clangbridge::BinaryOp::Rem:
+            return vir::BinaryOp::Rem;
         case clangbridge::BinaryOp::Equal:
             return vir::BinaryOp::Equal;
         case clangbridge::BinaryOp::NotEqual:
@@ -587,6 +591,35 @@ class ExpressionElaborator {
                 converted.operands.push_back(std::move(*value));
             }
             result.node = std::move(converted);
+            return result;
+        }
+        // Arithmetic negation and integral conversions keep the one operand the
+        // bridge read; both are integers, which the lowering checks again
+        // against the types it states them at (SPEC.md ARITH-006, ARITH-008).
+        if (const auto* minus = std::get_if<clangbridge::Minus>(&expr.node)) {
+            if (minus->operands.size() != 1 || !type->is_integer()) {
+                failure_ = Failure{"malformed arithmetic negation", expr.location};
+                return std::nullopt;
+            }
+            auto operand = convert(minus->operands.front());
+            if (!operand)
+                return std::nullopt;
+            result.node = vir::Minus{{std::move(*operand)}};
+            return result;
+        }
+        if (const auto* conversion = std::get_if<clangbridge::Conversion>(&expr.node)) {
+            if (conversion->operands.size() != 1 || !type->is_integer()) {
+                failure_ = Failure{"malformed integral conversion", expr.location};
+                return std::nullopt;
+            }
+            auto operand = convert(conversion->operands.front());
+            if (!operand)
+                return std::nullopt;
+            if (!operand->type.is_integer()) {
+                failure_ = Failure{"a conversion from '" + describe(operand->type) + "' is not modeled", expr.location};
+                return std::nullopt;
+            }
+            result.node = vir::Conversion{{std::move(*operand)}, conversion->written};
             return result;
         }
         if (const auto* branch = std::get_if<clangbridge::Conditional>(&expr.node)) {

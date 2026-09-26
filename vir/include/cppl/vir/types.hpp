@@ -161,4 +161,9 @@ struct Type {
 
 std::string describe(const Type& type);
 
+// The C++ spelling Clang resolved for a type, such as `int` or `unsigned
+// long`, where one is recorded; otherwise its formal description. For
+// diagnostics that name a type the way its author wrote it.
+std::string spelled(const Type& type);
+
 } // namespace cppl::vir

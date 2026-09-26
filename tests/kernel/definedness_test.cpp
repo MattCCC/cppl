@@ -198,7 +198,7 @@ const std::array<k::IntType, 8> kWide{kI8, kU8, kI16, kU16, kI32, kU32, kI64, kU
 
 } // namespace
 
-// SPEC: EQ-002, ARITH-004, DEFINEDBEHAVIOR-001, DEFINEDBEHAVIOR-003
+// SPEC: ARITH-006, ARITH-007, EQ-002, DEFINEDBEHAVIOR-001, DEFINEDBEHAVIOR-003
 CPPL_TEST(folding_agrees_with_the_host_on_every_pair_of_8_bit_values) {
     for (const auto& type : {kI8, kU8}) {
         for (Wide a = least(type); a <= most(type); ++a) {
@@ -209,7 +209,7 @@ CPPL_TEST(folding_agrees_with_the_host_on_every_pair_of_8_bit_values) {
     }
 }
 
-// SPEC: EQ-002, ARITH-004
+// SPEC: ARITH-006, ARITH-007, EQ-002
 CPPL_TEST(folding_agrees_with_the_host_at_the_edges_and_on_sampled_wider_values) {
     Random random{kSeed};
     for (const auto& type : kWide) {
@@ -231,7 +231,7 @@ CPPL_TEST(folding_agrees_with_the_host_at_the_edges_and_on_sampled_wider_values)
     }
 }
 
-// SPEC: ARITH-002, EQ-003
+// SPEC: ARITH-008, EQ-003
 CPPL_TEST(conversions_reduce_every_8_bit_value_and_sampled_wider_ones_into_every_type) {
     Random random{kSeed ^ 0xc0u};
     for (const auto& from : kWide) {
@@ -256,7 +256,7 @@ CPPL_TEST(conversions_reduce_every_8_bit_value_and_sampled_wider_ones_into_every
     }
 }
 
-// SPEC: DEFINEDBEHAVIOR-002, DEFINEDBEHAVIOR-003
+// SPEC: ARITH-007, DEFINEDBEHAVIOR-002, DEFINEDBEHAVIOR-003
 CPPL_TEST(division_folds_only_where_the_total_definition_decides_it) {
     const auto x = var(0);
     const auto normal = [](const k::Term& term) {
@@ -373,7 +373,7 @@ CPPL_TEST(the_kernel_states_representability_as_bounds_on_the_unbounded_result) 
     CPPL_CHECK(product->disjunctions.empty());
 }
 
-// SPEC: EQ-009, EQ-011
+// SPEC: ARITH-008, EQ-009, EQ-011
 CPPL_TEST(a_conversion_is_stated_only_where_its_operand_type_is_known) {
     const auto x = var(0);
     const auto goal = k::Proposition::equality(k::Type{kI32}, prim(k::PrimOp::Convert, kI32, {x}), lit(kI32, 0));

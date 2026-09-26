@@ -1211,6 +1211,13 @@ bool same_term(const Expr& lhs, const Expr& rhs) {
     if (const auto* negation = std::get_if<Negation>(&lhs.node)) {
         return same_terms(negation->operands, std::get<Negation>(rhs.node).operands);
     }
+    if (const auto* minus = std::get_if<Minus>(&lhs.node)) {
+        return same_terms(minus->operands, std::get<Minus>(rhs.node).operands);
+    }
+    // The types are compared above, so one conversion of one term is one value.
+    if (const auto* conversion = std::get_if<Conversion>(&lhs.node)) {
+        return same_terms(conversion->operands, std::get<Conversion>(rhs.node).operands);
+    }
     if (const auto* projection = std::get_if<Projection>(&lhs.node)) {
         const auto& other = std::get<Projection>(rhs.node);
         return projection->index == other.index && same_terms(projection->operands, other.operands);
@@ -1511,6 +1518,25 @@ Expr receiver_argument(const CallObject& object, const std::vector<PlaceStep>& p
 bool same_modeled_value(const Type& outer, const Type& inner) {
     return outer.kind != TypeKind::Unsupported && outer.kind == inner.kind && outer.width == inner.width &&
            outer.is_signed == inner.is_signed && outer.representation == inner.representation;
+}
+
+// Whether a type is a built-in integer type this implementation models, as
+// the operand or the result of an integral conversion. A scoped enum carries
+// its underlying type but is not one: converting it is a cast of its own, and
+// `bool` converts by truth, not by reduction (SPEC.md ARITH-008).
+bool integral(const Type& type) {
+    return type.kind == TypeKind::Int && type.representation.identity.empty() && type.width >= 1 && type.width <= 64;
+}
+
+// The conversion of `operand` to `type`, where Clang converts one modeled
+// integer type to another. Nothing is decided here about which conversion C++
+// performs: `type` is the one Clang recorded.
+Expr integral_conversion(Expr operand, Type type, CXCursor at, bool written) {
+    Expr converted;
+    converted.type = std::move(type);
+    converted.location = presumed_location(clang_getCursorLocation(at));
+    converted.node = Conversion{{std::move(operand)}, written};
+    return converted;
 }
 
 // Whether C++ performs arithmetic on this type only after promoting it to
@@ -1844,29 +1870,53 @@ Expr build_expression(CXCursor cursor, const Signature& signature, const Locals&
         return result;
     }
 
-    // Only the value-preserving scoped-enum -> exact underlying-type cast is
-    // modeled. Clang resolves both types; all other casts still fail closed.
-    if (kind == CXCursor_CXXStaticCastExpr) {
+    // An explicit cast is modeled where it is the value-preserving scoped-enum
+    // -> exact underlying-type cast, or a conversion between two modeled
+    // integer types, which denotes exactly what the implicit conversion between
+    // them would (SPEC.md ARITH-008). Clang resolves both types; every other
+    // cast still fails closed.
+    if (kind == CXCursor_CXXStaticCastExpr || kind == CXCursor_CStyleCastExpr ||
+        kind == CXCursor_CXXFunctionalCastExpr) {
         const auto children = children_of(cursor);
         const auto operand = std::ranges::find_if(
             children, [](CXCursor child) { return clang_isExpression(clang_getCursorKind(child)) != 0; });
         if (operand != children.end()) {
             const Type destination = convert_type(clang_getCursorType(cursor));
             const Type source = convert_type(clang_getCursorType(*operand));
-            if (!source.representation.identity.empty() && destination.representation.identity.empty() &&
-                destination.kind == TypeKind::Int && destination.width == source.width &&
-                destination.is_signed == source.is_signed) {
+            if (kind == CXCursor_CXXStaticCastExpr && !source.representation.identity.empty() &&
+                destination.representation.identity.empty() && destination.kind == TypeKind::Int &&
+                destination.width == source.width && destination.is_signed == source.is_signed) {
                 Expr expression = build_expression(*operand, signature, locals, depth + 1);
                 expression.type = destination;
                 return expression;
             }
+            if (integral(destination) && integral(source)) {
+                Expr expression = build_expression(*operand, signature, locals, depth + 1);
+                if (same_modeled_value(destination, source)) {
+                    // Clang often records a cast's conversion as an implicit
+                    // one beneath it; it is still the conversion written here.
+                    if (auto* conversion = std::get_if<Conversion>(&expression.node)) {
+                        conversion->written = true;
+                    }
+                    expression.type = destination;
+                    return expression;
+                }
+                return integral_conversion(std::move(expression), destination, cursor, true);
+            }
+            return unsupported_expression(cursor, "an explicit conversion from '" + source.spelling + "' to '" +
+                                                      destination.spelling +
+                                                      "' is not modeled: only a scoped enum cast to its exact "
+                                                      "underlying type and a cast between integer types are");
         }
-        return unsupported_expression(cursor, "only a scoped enum cast to its exact underlying type is modeled");
+        return unsupported_expression(cursor, "an explicit conversion is not modeled");
     }
 
     // Nodes Clang inserts that carry no meaning of their own are traversed
-    // through, but only while they do not change the value. A node that changes
-    // the value is a conversion, and conversions are not modeled yet.
+    // through while they do not change the value. One that changes it is a
+    // conversion: between two modeled integer types it is the integral
+    // conversion Clang put there -- a promotion, a usual arithmetic conversion,
+    // or the conversion of an initializer, an argument or a returned value --
+    // and any other is refused (SPEC.md ARITH-008).
     if (kind == CXCursor_UnexposedExpr || kind == CXCursor_ParenExpr) {
         const std::vector<CXCursor> inner = children_of(cursor);
         if (inner.size() != 1) {
@@ -1874,7 +1924,13 @@ Expr build_expression(CXCursor cursor, const Signature& signature, const Locals&
         }
         const CXType outer = clang_getCanonicalType(clang_getCursorType(cursor));
         const CXType nested = clang_getCanonicalType(clang_getCursorType(inner[0]));
-        if (clang_equalTypes(outer, nested) == 0 && !same_modeled_value(convert_type(outer), convert_type(nested))) {
+        const Type converted = convert_type(outer);
+        const Type original = convert_type(nested);
+        if (clang_equalTypes(outer, nested) == 0 && !same_modeled_value(converted, original)) {
+            if (kind == CXCursor_UnexposedExpr && integral(converted) && integral(original)) {
+                return integral_conversion(build_expression(inner[0], signature, locals, depth + 1), converted, cursor,
+                                           false);
+            }
             return unsupported_expression(cursor, "implicit conversion from '" + take(clang_getTypeSpelling(nested)) +
                                                       "' to '" + take(clang_getTypeSpelling(outer)) +
                                                       "' is not modeled");
@@ -1939,8 +1995,64 @@ Expr build_expression(CXCursor cursor, const Signature& signature, const Locals&
                                                   "declaration");
     }
 
-    if (kind == CXCursor_IntegerLiteral || kind == CXCursor_CXXBoolLiteralExpr) {
+    // A character literal is an integer literal of its character type; `char`
+    // is signed or not as the target makes it, which Clang has decided.
+    if (kind == CXCursor_IntegerLiteral || kind == CXCursor_CXXBoolLiteralExpr || kind == CXCursor_CharacterLiteral) {
         return build_integer_literal(cursor);
+    }
+
+    // Unary `+` and `-` on an integer operand C++ has already promoted: the
+    // promotion is the operand's own conversion. `+x` is that value. `-x` is
+    // its negation, which for a signed type owes representability like a
+    // subtraction from zero (SPEC.md ARITH-006). The negation of an integer
+    // literal is a literal: C++ has no negative literals, so `-1` is written
+    // this way, and negating a literal's nonnegative value never overflows.
+    if (kind == CXCursor_UnaryOperator && (clang_getCursorUnaryOperatorKind(cursor) == CXUnaryOperator_Minus ||
+                                           clang_getCursorUnaryOperatorKind(cursor) == CXUnaryOperator_Plus)) {
+        const auto operands = children_of(cursor);
+        const Type type = convert_type(clang_getCursorType(cursor));
+        const bool minus = clang_getCursorUnaryOperatorKind(cursor) == CXUnaryOperator_Minus;
+        if (operands.size() != 1 || !integral(type)) {
+            return unsupported_expression(cursor, std::string("operator '") + (minus ? "-" : "+") + "' on '" +
+                                                      type.spelling + "' is not modeled");
+        }
+        Expr operand = build_expression(operands[0], signature, locals, depth + 1);
+        if (!same_modeled_value(type, operand.type)) {
+            return unsupported_expression(cursor, std::string("operator '") + (minus ? "-" : "+") +
+                                                      "' of an operand of another type is not modeled");
+        }
+        if (!minus) {
+            operand.type = type;
+            return operand;
+        }
+        if (const auto* literal = std::get_if<IntLiteral>(&operand.node)) {
+            if (!type.is_signed) {
+                // Reduction modulo 2^width of the negated bits, kept in the
+                // 64-bit carrier the way an unsigned literal's bits are.
+                const auto bits = static_cast<std::uint64_t>(literal->value);
+                const std::uint64_t mask = type.width >= 64 ? ~std::uint64_t{0} : (std::uint64_t{1} << type.width) - 1u;
+                operand.node = IntLiteral{static_cast<std::int64_t>((std::uint64_t{0} - bits) & mask)};
+                operand.type = type;
+                operand.location = presumed_location(clang_getCursorLocation(cursor));
+                return operand;
+            }
+            // A literal's value is never negative, but a template argument
+            // Clang substituted may be the least value, whose negation is not
+            // a value: that one keeps its negation and the obligation it owes.
+            const std::int64_t greatest =
+                type.width >= 64 ? std::numeric_limits<std::int64_t>::max() : (std::int64_t{1} << (type.width - 1)) - 1;
+            if (literal->value >= -greatest && literal->value <= greatest) {
+                operand.node = IntLiteral{-literal->value};
+                operand.type = type;
+                operand.location = presumed_location(clang_getCursorLocation(cursor));
+                return operand;
+            }
+        }
+        Expr negated;
+        negated.type = type;
+        negated.location = presumed_location(clang_getCursorLocation(cursor));
+        negated.node = Minus{{std::move(operand)}};
+        return negated;
     }
 
     if (kind == CXCursor_CallExpr) {
@@ -2050,6 +2162,10 @@ Expr build_expression(CXCursor cursor, const Signature& signature, const Locals&
             mapped = BinaryOp::Sub;
         } else if (op == CXBinaryOperator_Mul) {
             mapped = BinaryOp::Mul;
+        } else if (op == CXBinaryOperator_Div) {
+            mapped = BinaryOp::Div;
+        } else if (op == CXBinaryOperator_Rem) {
+            mapped = BinaryOp::Rem;
         } else if (op == CXBinaryOperator_EQ) {
             mapped = BinaryOp::Equal;
         } else if (op == CXBinaryOperator_NE) {
@@ -5079,10 +5195,11 @@ struct BodyLowering {
         return write(*local, std::move(value), statement, next, state, depth);
     }
 
-    // `x += e`, `x -= e`, `x *= e`, `++x`, `x++`, `--x` and `x--` as statements.
-    // Each is the assignment `x = x op e` (or `x op 1`) at the local's own type,
-    // which C++ guarantees exactly when that type is not promoted first; the
-    // arithmetic is then modeled or refused like any other (SPEC.md 12.8).
+    // `x += e`, `x -= e`, `x *= e`, `x /= e`, `x %= e`, `++x`, `x++`, `--x` and
+    // `x--` as statements. Each is the assignment `x = x op e` (or `x op 1`) at
+    // the local's own type, which C++ guarantees exactly when that type is not
+    // promoted first and `e` is of that type after its own conversions; the
+    // arithmetic then owes what it owes anywhere (SPEC.md ARITH-013, 12.8).
     std::optional<Expr> lower_update(CXCursor statement, const Continuation& next, const Locals& locals,
                                      unsigned depth) {
         const CXCursorKind kind = clang_getCursorKind(statement);
@@ -5096,6 +5213,10 @@ struct BodyLowering {
                 op = BinaryOp::Sub;
             } else if (written == CXBinaryOperator_MulAssign) {
                 op = BinaryOp::Mul;
+            } else if (written == CXBinaryOperator_DivAssign) {
+                op = BinaryOp::Div;
+            } else if (written == CXBinaryOperator_RemAssign) {
+                op = BinaryOp::Rem;
             } else {
                 return reject("compound assignment '" + take(clang_getBinaryOperatorKindSpelling(written)) +
                               "' is not modeled");

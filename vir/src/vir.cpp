@@ -104,11 +104,25 @@ std::string describe(BinaryOp op) {
             return "&&";
         case BinaryOp::Or:
             return "||";
+        case BinaryOp::Div:
+            return "/";
+        case BinaryOp::Rem:
+            return "%";
     }
     return "<unknown-operator>";
 }
 
+std::string spelled(const Type& type) {
+    return type.representation.name.empty() ? describe(type) : type.representation.name;
+}
+
 std::string describe(const Expr& expr) {
+    // A conversion is spelled as the cast it is, or would be if written, so a
+    // diagnostic shows where C++ converted a value and to what.
+    if (const auto* conversion = std::get_if<Conversion>(&expr.node)) {
+        return conversion->operands.size() == 1 ? "(" + spelled(expr.type) + ")" + describe(conversion->operands[0])
+                                                : "<malformed-conversion>";
+    }
     return std::visit(
         [](const auto& node) -> std::string {
             using Node = std::decay_t<decltype(node)>;
@@ -216,6 +230,11 @@ std::string describe(const Expr& expr) {
                 return text + " }";
             } else if constexpr (std::is_same_v<Node, UnsafeRegion>) {
                 return node.operands.size() == 1 ? "unsafe; " + describe(node.operands.front()) : "<malformed-unsafe>";
+            } else if constexpr (std::is_same_v<Node, Minus>) {
+                return node.operands.size() == 1 ? "-" + describe(node.operands[0]) : "<malformed-minus>";
+            } else if constexpr (std::is_same_v<Node, Conversion>) {
+                // Spelled with its target type above, where the type is known.
+                return node.operands.size() == 1 ? describe(node.operands[0]) : "<malformed-conversion>";
             } else {
                 static_assert(std::is_same_v<Node, Binary>, "every VIR alternative is described by name");
                 if (node.operands.size() != 2) {

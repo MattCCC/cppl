@@ -34,6 +34,8 @@ enum class BinaryOp : std::uint8_t {
     GreaterEqual,
     And, // C++ `&&` between Boolean operands
     Or,  // C++ `||` between Boolean operands
+    Div, // C++ `/` on integers: the truncating quotient (SPEC.md ARITH-007)
+    Rem, // C++ `%` on integers: the remainder of that quotient
 };
 
 std::string describe(BinaryOp op);
@@ -80,6 +82,23 @@ struct Binary {
 struct Negation {
     std::vector<Expr> operands;
     friend bool operator==(const Negation&, const Negation&) = default;
+};
+
+// Arithmetic negation, `-x`, of an integer operand at the expression's type,
+// which is the operand's type after C++ promoted it (SPEC.md ARITH-006).
+struct Minus {
+    std::vector<Expr> operands; // one
+    friend bool operator==(const Minus&, const Minus&) = default;
+};
+
+// The operand converted to the expression's type, an integral conversion Clang
+// resolved: a promotion, a usual arithmetic conversion, the conversion of an
+// initializer, an assignment, an argument or a returned value, or an explicit
+// cast. Both types are modeled integers (SPEC.md ARITH-008).
+struct Conversion {
+    std::vector<Expr> operands; // one
+    bool written = false;       // an explicit cast, for diagnostics
+    friend bool operator==(const Conversion&, const Conversion&) = default;
 };
 
 struct Projection {
@@ -302,7 +321,7 @@ struct Expr {
     Provenance provenance;
     std::variant<ParameterRef, IntLiteral, Call, Binary, Negation, Conditional, PlaceVersion, PlaceRef, Loop, Iterate,
                  Projection, Element, FormalEquality, Universal, Implication, Connective, ReturnState, UnknownVersion,
-                 ElementBound, PathContradiction, CaseSplit, UnsafeRegion>
+                 ElementBound, PathContradiction, CaseSplit, UnsafeRegion, Minus, Conversion>
         node;
 
     friend bool operator==(const Expr&, const Expr&) = default;
@@ -318,7 +337,7 @@ struct Expr {
 // alternative fail here first, so the author has to visit every dispatch site
 // and decide what the new node means to each (AGENTS.md 7 "exhaustive
 // handling"). Update the count only together with those sites.
-static_assert(std::variant_size_v<decltype(Expr::node)> == 22,
+static_assert(std::variant_size_v<decltype(Expr::node)> == 24,
               "a VIR expression alternative was added or removed: review every dispatch over Expr::node, "
               "including describe() in vir.cpp, lowering in obligations/generate.cpp, the walk in "
               "obligations/contracts.cpp, and conversion in elaboration/elaborate.cpp");

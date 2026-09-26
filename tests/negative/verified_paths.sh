@@ -40,14 +40,17 @@ reject wrapping_increment 'does not satisfy its contract' \
     'verified unsigned f(unsigned x) ensures (result > x) { return x + 1u; }'
 reject wrapping_product 'does not satisfy its contract' \
     'verified unsigned f(unsigned x) ensures (result >= x) { return x * 2u; }'
+# SPEC: ARITH-006, ARITH-007, DEFINEDBEHAVIOR-001, DEFINEDBEHAVIOR-002
+# A signed operation owes representability on the path that evaluates it, and a
+# division a nonzero divisor; the path's guard is all it may use.
 reject signed_subtraction 'signed overflow' \
     'verified int f(int x) ensures (result <= 10) { return x - 1; }'
 reject signed_product 'signed overflow' \
-    'verified int f(int x) ensures (result == 0) { return x * 0; }'
-reject division 'not modeled' \
-    'verified unsigned f(unsigned x) ensures (result <= x) { return x / 2u; }'
+    'verified int f(int x) ensures (result == 2 * x) { return x * 2; }'
+reject division 'division by zero' \
+    'verified unsigned f(unsigned x, unsigned y) ensures (result <= x) { return x / y; }'
 reject signed_add 'signed overflow' \
-    'verified int f(int x) ensures (result <= 10) { if (x < 10) return x + 1; return 10; }'
+    'verified int f(int x) ensures (result >= 10) { if (x < 10) return 10; return x + 1; }'
 reject missing_return 'every path must return' \
     'verified unsigned f(unsigned x) ensures (result <= 10u) { if (x <= 10u) return x; }'
 reject effect_guard 'not modeled' \
@@ -55,7 +58,7 @@ reject effect_guard 'not modeled' \
 reject effect_arm 'return path.*does not satisfy' \
     'verified unsigned f(unsigned x) ensures (result <= 10u) { if (x <= 10u) { x = 11u; return x; } return 10u; }'
 reject conversion 'conversion.*not modeled' \
-    'verified unsigned f(unsigned x) ensures (result <= 10u) { if (x <= 10) return x; return 10u; }'
+    'verified unsigned f(unsigned x, bool b) ensures (result <= 10u) { if (x <= b) return x; return 10u; }'
 reject float_comparison 'not modeled' \
     'verified unsigned f(float x) ensures (result <= 10u) { if (x <= 10.0f) return 0u; return 10u; }'
 # `&&` in a condition is elaborated into the routes it selects between, so the

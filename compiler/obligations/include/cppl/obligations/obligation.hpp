@@ -55,7 +55,13 @@ enum class Origin : std::uint8_t {
     OmittedCase,
     // A runtime path is unreachable: `contradiction evidence;` written in a
     // verified body (SPEC.md 12.7 VERIFIED-023, VERIFIED-045).
-    ImpossiblePath
+    ImpossiblePath,
+    // An operation a verified body evaluates has defined behavior where it is
+    // evaluated: a signed result is representable, a divisor is not zero, a
+    // signed division is not the least value over -1, a value converted to a
+    // signed type fits it (SPEC.md ARITH-009, DEFINEDBEHAVIOR-001 to
+    // DEFINEDBEHAVIOR-003).
+    DefinedBehavior
 };
 
 std::string describe(Origin origin);

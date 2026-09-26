@@ -247,6 +247,25 @@ Manifest: `features/verified-methods.yaml`
 | Erasure | erasure | covered — identical output and assembly against a hand-erased twin in three standards, with size, alignment and a member offset asserted on both sides (`e2e/erasure_equivalence.sh`, `e2e/verified_methods.sh` citing `CLASS-013`) |
 | Across translation units | positive, negative | covered — member functions defined out of line in one unit are recorded, and a caller in another uses a mutating and a `const` one, owing a precondition at the object's places, with each claim resting on the imported contracts, and the objects link and run; a stale member fact after an imported mutating call, a missed precondition, and a caller without the interface are refused (`e2e/verified_methods.sh`, `negative/verified_methods.sh` citing `CLASS-011`, `TUBOUND-003`) |
 
+### machine-arithmetic
+
+Manifest: `features/machine-arithmetic.yaml`
+
+| Required case | Category | Status |
+| --- | --- | --- |
+| Boundaries of every width | positive, negative | covered — `MAX + 1` and `MIN - 1` at 32 and 64 bits, 8- and 16-bit sums converted back, each refused with its twin one step inside accepted (`negative/signed_arithmetic.sh`, `fixtures/signed_arithmetic.cpp` citing `ARITH-006`, `ARITH-008`, `DEFINEDBEHAVIOR-001`) |
+| Products | positive, negative | covered — a constant factor one past the bound at 32 and 64 bits; products of promoted 8- and 16-bit values accepted, of two `unsigned short` values refused (`negative/signed_arithmetic.sh`) |
+| Division and remainder | positive, negative, adversarial | covered — a zero divisor, signed and unsigned; `MIN / -1` and `MIN % -1`; truncation and the remainder's sign in every sign combination; the floor and a positive remainder refused as values (`negative/signed_arithmetic.sh` citing `ARITH-007`, `DEFINEDBEHAVIOR-002`, `DEFINEDBEHAVIOR-003`) |
+| Negation | positive, negative | covered — `-MIN` refused, `-x` above it accepted, unsigned negation modular (`negative/signed_arithmetic.sh` citing `EXPR-007`) |
+| Conversions and mixed signedness | positive, negative | covered — implicit and cast narrowing past a signed target refused; unsigned targets reduce; `i < 0u` never holds (`negative/signed_arithmetic.sh` citing `ARITH-008`, `CONSTRUCT-015`) |
+| Where an obligation is owed | positive, negative, adversarial | covered — guards, both arms of `?:`, the right of `&&` and of `||`, loop invariants, refinements, callee postconditions; an operation its route does not protect is refused in each position; a partial callee not sequenced before an overflow excuses nothing (`negative/signed_arithmetic.sh` citing `ARITH-009`, `BOUNDARYEX-001`) |
+| Mutation checks | adversarial | covered — each obligation kind, the outcome each arm of `?:` is owed under, sequencing, a specification's own definedness, the refusal of pure definitions and law arguments, and the kernel's product ranges, widening conversions, remainder bounds and failed representability are disabled in turn and the suite fails (`signed-overflow-owed` to `representability-fails-outside` in `scripts/test-mutations.sh`) |
+| Specifications | positive, negative | covered — a postcondition whose own arithmetic may overflow is not established; one whose operation stands on the else arm of `?:` or the right of `&&` or `||` is defined where that route selects it; a law instance at `x + 1` and a pure function adding signed values are refused (`negative/signed_arithmetic.sh` citing `ARITH-010`, `ARITH-011`, `ADMISSIBLE-005`) |
+| Kernel primitives | adversarial | covered — folding against a host evaluator on every 8-bit pair and sampled wider values; typing and malformed terms; a certificate for a true goal refuses the false one (`kernel/definedness_test.cpp`) |
+| Constraint soundness | adversarial | covered — for every pinned 4-bit value the true representability, quotient, remainder and conversion is proven and no false value is (`unit/definedness_arithmetic_test.cpp`) |
+| Property against the host | adversarial | covered — every operation at the edges of eight types and values from a logged seed: the host's defined ones verify and compute the stated value at runtime and after erasure, its undefined ones are refused for definedness alone (`e2e/arithmetic_properties.sh`) |
+| Erasure | erasure | covered — the runtime program keeps every operation as written and no check; its erasure compiled by Clang alone computes the same (`e2e/signed_arithmetic.sh` citing `RUNTIMECHECK-009`) |
+
 ### erasure and ABI
 
 Rules: `ERASE-*`, `ERASEMATRIX-*`, `ABI-*` (see `FEATURE_INDEX.md`, Lowering).

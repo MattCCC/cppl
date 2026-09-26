@@ -3,7 +3,7 @@
 // function's contract, which is false and must be reported as false rather than
 // dropped without a word.
 verified unsigned halves(unsigned x)
-    ensures (result == x / 2u)
+    ensures (result == x >> 1u)
 {
     return x;
 }

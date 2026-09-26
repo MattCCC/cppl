@@ -17,6 +17,7 @@
 #include "cppl/vir/module.hpp"
 #include "cppl/vir/place.hpp"
 #include "cppl/vir/types.hpp"
+#include "definedness.hpp"
 #include "lowering.hpp"
 
 #include <algorithm>
@@ -203,6 +204,12 @@ void collect_calls(const vir::Expr& expression, const Contracts& contracts, std:
         }
     } else if (const auto* negation = std::get_if<vir::Negation>(&expression.node)) {
         for (const auto& operand : negation->operands)
+            collect_calls(operand, contracts, calls);
+    } else if (const auto* minus = std::get_if<vir::Minus>(&expression.node)) {
+        for (const auto& operand : minus->operands)
+            collect_calls(operand, contracts, calls);
+    } else if (const auto* conversion = std::get_if<vir::Conversion>(&expression.node)) {
+        for (const auto& operand : conversion->operands)
             collect_calls(operand, contracts, calls);
     } else if (const auto* branch = std::get_if<vir::Conditional>(&expression.node)) {
         for (const auto& operand : branch->operands)
@@ -775,6 +782,17 @@ kernel::Proposition lexicographically_below(const std::vector<kernel::Term>& nex
     return below;
 }
 
+// `goal`, preceded by each definedness condition a specification states of
+// the terms it compares (SPEC.md ARITH-010). With none it is `goal` itself.
+kernel::Proposition defined_and(std::vector<kernel::Proposition> defined, kernel::Proposition goal) {
+    std::optional<kernel::Proposition> conditions;
+    for (kernel::Proposition& condition : defined) {
+        conditions = conditions ? kernel::Proposition::conjunction(std::move(*conditions), std::move(condition))
+                                : std::move(condition);
+    }
+    return conditions ? kernel::Proposition::conjunction(std::move(*conditions), std::move(goal)) : goal;
+}
+
 // Partial correctness (SPEC.md 23, 24).
 //
 // A body with a loop is not one total core term, so its contract cannot be a
@@ -1011,7 +1029,64 @@ class Conditions {
     // Each verified call the expression evaluates, where it evaluates it: its
     // precondition is a condition under what the path supposes so far, and its
     // result is a fresh value of which the callee's postcondition is supposed.
+    // Then each operation it evaluates owes its definedness (SPEC.md ARITH-009).
     std::expected<void, Failure> evaluate(const vir::Expr& expression, Scope& scope) {
+        std::vector<Supposed> posts;
+        if (auto called = evaluate_calls(expression, scope, posts); !called) {
+            return called;
+        }
+        return owe_definedness(expression, scope, posts);
+    }
+
+    // Where a call's postcondition stands among a scope's events.
+    struct Supposed {
+        const vir::Expr* call;
+        std::size_t event;
+    };
+
+    // Every operation the expression evaluates whose behavior C++ defines only
+    // under a condition owes that condition on this path (SPEC.md ARITH-009,
+    // DEFINEDBEHAVIOR-001 to DEFINEDBEHAVIOR-003). It is owed under what the
+    // path supposes before the operation: the path so far, the `?:`, `&&` and
+    // `||` outcomes that select it, and the postconditions of the calls C++
+    // sequences before it, which are those in its operands and guards. A call
+    // elsewhere in the expression may run after it, so its postcondition is
+    // not supposed: a callee that need not return could otherwise make the
+    // obligation vacuous while the operation runs first. Once the expression
+    // is evaluated, what it owed holds on the rest of the path.
+    std::expected<void, Failure> owe_definedness(const vir::Expr& expression, Scope& scope,
+                                                 const std::vector<Supposed>& posts) {
+        std::vector<kernel::Proposition> established;
+        for (const DefinednessSite& site : definedness_sites(expression)) {
+            Scope before = scope;
+            std::vector<std::size_t> unsequenced;
+            for (const Supposed& post : posts) {
+                if (!sequenced_before(site, *post.call)) {
+                    unsequenced.push_back(post.event);
+                }
+            }
+            // A supposed proposition binds nothing, so removing one leaves
+            // every binder where it was.
+            for (const std::size_t event : std::views::reverse(unsequenced)) {
+                before.events.erase(before.events.begin() + static_cast<std::ptrdiff_t>(event));
+            }
+            auto condition =
+                definedness_condition(site, [this, &before](const vir::Expr& term) { return lower(term, before); });
+            if (!condition) {
+                return std::unexpected(condition.error());
+            }
+            emit(before, Origin::DefinedBehavior, function_.qualified_name, site.operation->provenance.range,
+                 *condition, explain(site));
+            established.push_back(std::move(*condition));
+        }
+        for (kernel::Proposition& condition : established) {
+            scope.events.emplace_back(std::move(condition));
+        }
+        return {};
+    }
+
+    std::expected<void, Failure> evaluate_calls(const vir::Expr& expression, Scope& scope,
+                                                std::vector<Supposed>& posts) {
         std::vector<const vir::Expr*> sites;
         collect_calls(expression, contracts_, sites);
         for (const vir::Expr* site : sites) {
@@ -1086,6 +1161,7 @@ class Conditions {
             scope.binders.push_back(callee.result);
             scope.events.emplace_back(callee.result);
             scope.events.emplace_back(postcondition_at(callee, arguments, kernel::Term::variable(kernel::VarIndex{0})));
+            posts.push_back(Supposed{site, scope.events.size() - 1});
             if (std::ranges::find(scope.relied_on, found->second) == scope.relied_on.end()) {
                 scope.relied_on.push_back(found->second);
             }
@@ -1507,12 +1583,14 @@ class Conditions {
                 entry.versions.emplace(loop.heads[index], &loop.operands[index]);
             }
             const vir::Expr& written = loop.operands[carried + position];
-            auto invariant = lower(written, entry);
+            // An invariant is a specification: it states that its operations
+            // are defined as well as that it holds (SPEC.md ARITH-010).
+            auto invariant = specified(written, [this, &entry](const vir::Expr& term) { return lower(term, entry); });
             if (!invariant) {
                 return std::unexpected(invariant.error());
             }
             emit(scope, Origin::LoopEntry, invariant_subject(expression, position), written.provenance.range,
-                 kernel::predicate(*invariant, true));
+                 std::move(*invariant));
         }
 
         Scope head = std::move(scope);
@@ -1534,11 +1612,12 @@ class Conditions {
             head.events.emplace_back(types[index]);
         }
         for (std::uint32_t position = 0; position < loop.invariants; ++position) {
-            auto invariant = lower(loop.operands[carried + position], head);
+            auto invariant = specified(loop.operands[carried + position],
+                                       [this, &head](const vir::Expr& term) { return lower(term, head); });
             if (!invariant) {
                 return std::unexpected(invariant.error());
             }
-            head.events.emplace_back(kernel::predicate(*invariant, true));
+            head.events.emplace_back(std::move(*invariant));
         }
 
         loops.push_back(Active{&loop, types});
@@ -1582,13 +1661,15 @@ class Conditions {
             for (std::size_t index = 0; index < carried; ++index) {
                 holes[loop.heads[index]] = scope.binders.size() + index;
             }
-            auto invariant = lower_value(loop.operands[carried + position], definitions_,
-                                         scope.binders.size() + carried, &scope.calls, &scope.versions, &holes);
+            auto invariant = specified(loop.operands[carried + position], [&](const vir::Expr& term) {
+                return lower_value(term, definitions_, scope.binders.size() + carried, &scope.calls, &scope.versions,
+                                   &holes);
+            });
             if (!invariant) {
                 return std::unexpected(invariant.error());
             }
             emit(scope, Origin::LoopPreservation, invariant_subject(expression, position), expression.provenance.range,
-                 specialize(kernel::predicate(*invariant, true), active->carried, values));
+                 specialize(std::move(*invariant), active->carried, values));
         }
         if (loop.measures > 0) {
             if (auto descent = descends(loop, expression, scope, *active, values); !descent) {
@@ -1625,20 +1706,41 @@ class Conditions {
         std::vector<kernel::Term> next;
         std::vector<kernel::Term> here;
         std::vector<kernel::IntType> types;
+        // A measure is a specification: at both readings, the operations it
+        // would evaluate are defined as well as it being smaller (SPEC.md
+        // ARITH-010).
+        std::vector<kernel::Proposition> defined;
         for (std::uint32_t position = 0; position < loop.measures; ++position) {
             const vir::Expr& written = loop.operands[carried + loop.invariants + position];
             auto domain = measure_domain(written, "a loop measure");
             if (!domain) {
                 return std::unexpected(domain.error());
             }
-            auto after = lower_value(written, definitions_, scope.binders.size() + carried, &scope.calls,
-                                     &scope.versions, &holes);
+            const TermLowerer after_iteration = [&](const vir::Expr& term) {
+                return lower_value(term, definitions_, scope.binders.size() + carried, &scope.calls, &scope.versions,
+                                   &holes);
+            };
+            const TermLowerer at_head = [this, &scope](const vir::Expr& term) {
+                return lower(term, scope);
+            };
+            auto after = after_iteration(written);
             if (!after) {
                 return std::unexpected(after.error());
             }
-            auto before = lower(written, scope);
+            auto before = at_head(written);
             if (!before) {
                 return std::unexpected(before.error());
+            }
+            auto defined_after = definedness_of(written, after_iteration);
+            auto defined_before = definedness_of(written, at_head);
+            if (!defined_after || !defined_before) {
+                return std::unexpected(!defined_after ? defined_after.error() : defined_before.error());
+            }
+            if (defined_after->has_value()) {
+                defined.push_back(std::move(**defined_after));
+            }
+            if (defined_before->has_value()) {
+                defined.push_back(kernel::shift(**defined_before, static_cast<std::uint32_t>(carried)));
             }
             next.push_back(std::move(*after));
             // `next` stays abstracted over the head values, so the kernel
@@ -1661,7 +1763,8 @@ class Conditions {
         }
         emit(scope, Origin::LoopDescent, measure_subject(expression),
              loop.operands[carried + loop.invariants].provenance.range,
-             specialize(lexicographically_below(next, here, types), active.carried, values),
+             specialize(defined_and(std::move(defined), lexicographically_below(next, here, types)), active.carried,
+                        values),
              {"the measure is (" + measure + ") at the head of the iteration, and is read again where this path " +
                   (carried == 0 ? std::string("ends it, having changed nothing it reads") : "ends it, at " + carries),
               "the second reading must be strictly smaller, component by component in order; 'x#k' names one "
@@ -1701,6 +1804,7 @@ class Conditions {
         std::vector<kernel::Term> next;
         std::vector<kernel::Term> here;
         std::vector<kernel::IntType> types;
+        std::vector<kernel::Proposition> defined;
         for (std::size_t position = 0; position < mine.size(); ++position) {
             auto caller = measure_domain(mine[position], "a function measure");
             if (!caller) {
@@ -1717,13 +1821,33 @@ class Conditions {
                                 "': the two cannot be compared",
                             location);
             }
-            auto after = lower_value(theirs[position], definitions_, callee.parameters.size());
+            const TermLowerer at_call = [this, &callee](const vir::Expr& term) {
+                return lower_value(term, definitions_, callee.parameters.size());
+            };
+            const TermLowerer at_entry = [this, &scope](const vir::Expr& term) {
+                return lower(term, scope);
+            };
+            auto after = at_call(theirs[position]);
             if (!after) {
                 return std::unexpected(after.error());
             }
-            auto before = lower(mine[position], scope);
+            auto before = at_entry(mine[position]);
             if (!before) {
                 return std::unexpected(before.error());
+            }
+            // Each measure is a specification, defined where it is read
+            // (SPEC.md ARITH-010).
+            auto defined_after = definedness_of(theirs[position], at_call);
+            auto defined_before = definedness_of(mine[position], at_entry);
+            if (!defined_after || !defined_before) {
+                return std::unexpected(!defined_after ? defined_after.error() : defined_before.error());
+            }
+            if (defined_after->has_value()) {
+                defined.push_back(std::move(**defined_after));
+            }
+            if (defined_before->has_value()) {
+                defined.push_back(
+                    kernel::shift(**defined_before, static_cast<std::uint32_t>(callee.parameters.size())));
             }
             next.push_back(std::move(*after));
             here.push_back(kernel::shift(*before, static_cast<std::uint32_t>(callee.parameters.size())));
@@ -1737,7 +1861,8 @@ class Conditions {
             return "(" + text + ")";
         };
         emit(scope, Origin::CallDescent, function_.qualified_name + " -> " + call.callee_name, site.provenance.range,
-             specialize(lexicographically_below(next, here, types), callee.parameters, arguments),
+             specialize(defined_and(std::move(defined), lexicographically_below(next, here, types)), callee.parameters,
+                        arguments),
              {"'" + function_.qualified_name + "' was entered at measure " + described(mine) + "; '" +
                   call.callee_name + "' is called with arguments " + described(call.arguments) + ", at its measure " +
                   described(theirs),
@@ -2489,8 +2614,12 @@ void generate_contracts(const vir::Module& module, const DefinitionMap& pure_def
             // body without a total term; its contract is then partial too. So
             // does a call whose callee states memory capabilities: what such a
             // call owes is checked where the path makes it (SPEC.md 12.10
-            // VERIFIED-043), which only the conditions walk does.
+            // VERIFIED-043), which only the conditions walk does. So does an
+            // operation C++ defines only under a condition: the condition is
+            // owed where the path evaluates the operation, and the contract
+            // rests on it (SPEC.md ARITH-009).
             const bool partial = requires_conditions(*candidate.returned_value) ||
+                                 first_definedness_site(*candidate.returned_value).has_value() ||
                                  std::ranges::any_of(candidate.calls, [&](const vir::Expr* call) {
                                      const std::string& callee = std::get<vir::Call>(call->node).callee.usr;
                                      const vir::Function& declared = *contracts.at(callee);

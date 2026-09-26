@@ -1,0 +1,207 @@
+# Machine-readable manifest for the machine-arithmetic feature.
+#
+# Rule IDs are anchors in docs/SPEC.md, the canonical specification. Extract the
+# normative text with:
+#
+#     cppl-spec-rules extract --feature machine-arithmetic
+
+feature: machine-arithmetic
+
+summary: >
+  C++ integer arithmetic with its exact semantics. Unsigned `+ - *` are the
+  ring of integers modulo 2^width. Signed `+ - *` and unary `-`, `/` and `%`,
+  and a conversion to a signed type that may not fit are defined only under a
+  condition, which every evaluation on a verified path owes as an obligation:
+  the exact result is representable, the divisor is not zero, the operands are
+  not the least value and -1, the converted value fits. Where the condition
+  holds the total core primitive is the C++ value. Promotions and the usual
+  arithmetic conversions are the ones Clang recorded. A specification's C++
+  condition holds only where its operations are defined. Nothing is added to
+  the runtime program.
+
+normative_sources:
+  spec:
+    - "§7.1.1 Machine-integer arithmetic"
+    - "§7.5 Arithmetic reasoning over machine integers"
+    - "§29 Machine arithmetic"
+    - "§31 Undefined behavior"
+    - "Annex B.4, B.6, B.7 Unary, increment and arithmetic expressions"
+    - "Annex T.1 to T.3 Defined-behavior obligations"
+    - "Annex U.5 Admissible arithmetic"
+  foundations:
+    - "33 Machine integer domains"
+    - "35 Machine arithmetic normalization"
+    - "36 Arithmetic proof rules"
+  trust:
+    - "§5.2 Primitive formal semantics"
+    - "§17 Arithmetic, conversions and undefined behavior"
+  rfcs:
+    - "0006 Machine arithmetic"
+    - "0019 Signed arithmetic, division and integer conversions"
+
+rule_families:
+  - ARITH
+
+# The rules this feature realizes, within those families and outside them.
+# `cppl-spec-rules extract --feature` reads only the families above; extract
+# the others by ID.
+rules:
+  - ARITH-001
+  - ARITH-002
+  - ARITH-003
+  - ARITH-004
+  - ARITH-006
+  - ARITH-007
+  - ARITH-008
+  - ARITH-009
+  - ARITH-010
+  - ARITH-011
+  - ARITH-012
+  - ARITH-013
+  - EQ-002
+  - EQ-003
+  - EQ-009
+  - EQ-011
+  - UB-001
+  - UB-002
+  - DEFINEDBEHAVIOR-001
+  - DEFINEDBEHAVIOR-002
+  - DEFINEDBEHAVIOR-003
+  - EXPR-007
+  - EXPR-008
+  - EXPR-009
+  - ADMISSIBLE-005
+  - BOUNDARYEX-001
+  - EDGECASE-029
+  - EDGECASE-030
+  - CONSTRUCT-015
+
+depends_on:
+  - verified-functions
+  - loop-invariants
+  - verified-call-composition
+  - refinement-types
+  - termination
+
+implementation:
+  kernel:
+    - kernel/include/cppl/kernel/term.hpp
+    - kernel/src/term.cpp
+    - kernel/src/context.cpp
+    - kernel/src/arithmetic.cpp
+    - kernel/include/cppl/kernel/linear.hpp
+    - kernel/src/linear.cpp
+    - kernel/src/check.cpp
+  clang:
+    - clang/include/cppl/clang/ast.hpp
+    - clang/src/bridge.cpp
+  elaboration:
+    - compiler/elaboration/src/elaborate.cpp
+  vir:
+    - vir/include/cppl/vir/expr.hpp
+    - vir/src/vir.cpp
+  obligations:
+    - compiler/obligations/src/definedness.hpp
+    - compiler/obligations/src/definedness.cpp
+    - compiler/obligations/src/generate.cpp
+    - compiler/obligations/src/contracts.cpp
+    - compiler/obligations/include/cppl/obligations/obligation.hpp
+  automation:
+    - compiler/automation/src/arithmetic.cpp
+    - compiler/automation/src/evidence.cpp
+  refutation:
+    - compiler/refutation/src/refute.cpp
+  driver:
+    - compiler/driver/src/pipeline.cpp
+    - compiler/driver/src/driver.cpp
+
+interactions:
+  - guards, `?:` arms and the short-circuit routes of `&&` and `||`
+  - contracts, preconditions and postconditions
+  - refinement types
+  - loops, invariants and measures
+  - calls, and which of their postconditions an operation may suppose
+  - templates, verified per specialization
+  - compound assignment and increment
+  - pure functions, which refuse such operations
+  - laws and proofs, whose claimed arguments refuse them
+  - erasure
+
+tests:
+  positive:
+    - tests/fixtures/signed_arithmetic.cpp
+    - tests/fixtures/verified_arithmetic.cpp
+  negative:
+    - tests/negative/signed_arithmetic.sh
+    - tests/fixtures/negative/arith_int32_max_plus_one.cpp
+    - tests/fixtures/negative/arith_int32_min_minus_one.cpp
+    - tests/fixtures/negative/arith_int64_max_plus_one.cpp
+    - tests/fixtures/negative/arith_int64_min_minus_one.cpp
+    - tests/fixtures/negative/arith_int8_sum_past_max.cpp
+    - tests/fixtures/negative/arith_int16_sum_past_min.cpp
+    - tests/fixtures/negative/arith_int32_large_product.cpp
+    - tests/fixtures/negative/arith_int64_large_product.cpp
+    - tests/fixtures/negative/arith_int16_unsigned_product.cpp
+    - tests/fixtures/negative/arith_negate_min.cpp
+    - tests/fixtures/negative/arith_division_by_zero.cpp
+    - tests/fixtures/negative/arith_remainder_by_zero.cpp
+    - tests/fixtures/negative/arith_min_divided_by_minus_one.cpp
+    - tests/fixtures/negative/arith_min_remainder_minus_one.cpp
+    - tests/fixtures/negative/arith_floor_quotient.cpp
+    - tests/fixtures/negative/arith_positive_remainder.cpp
+    - tests/fixtures/negative/arith_narrowing_conversion.cpp
+    - tests/fixtures/negative/arith_unsigned_to_int.cpp
+    - tests/fixtures/negative/arith_explicit_narrowing_cast.cpp
+    - tests/fixtures/negative/arith_mixed_signedness.cpp
+    - tests/fixtures/negative/arith_loop_overflow.cpp
+    - tests/fixtures/negative/arith_unguarded_arm.cpp
+    - tests/fixtures/negative/arith_short_circuit_order.cpp
+    - tests/fixtures/negative/arith_then_arm_overflow.cpp
+    - tests/fixtures/negative/arith_else_arm_overflow.cpp
+    - tests/fixtures/negative/arith_right_of_and.cpp
+    - tests/fixtures/negative/arith_refinement_bound.cpp
+    - tests/fixtures/negative/arith_unsequenced_partial_call.cpp
+    - tests/fixtures/negative/arith_specification_overflow.cpp
+    - tests/fixtures/negative/arith_law_instance_argument.cpp
+    - tests/fixtures/negative/arith_pure_signed_definition.cpp
+    - tests/negative/verified_paths.sh
+    - tests/negative/verified_locals.sh
+    - tests/negative/verified_functions.sh
+    - tests/negative/broken_implementation.sh
+  kernel:
+    - tests/kernel/definedness_test.cpp
+    - tests/kernel/arithmetic_test.cpp
+  unit:
+    - tests/unit/definedness_arithmetic_test.cpp
+    - tests/unit/arithmetic_test.cpp
+  property:
+    - tests/property/arithmetic_oracle.cpp
+    - tests/e2e/arithmetic_properties.sh
+  end_to_end:
+    - tests/e2e/signed_arithmetic.sh
+    - tests/e2e/verified_arithmetic.sh
+
+required_test_categories:
+  - the boundary of every width, rejected, with its twin one step inside accepted
+  - large products, rejected, and products of promoted narrow values accepted
+  - division and remainder by zero, signed and unsigned
+  - the least value over -1, for `/` and `%`
+  - negation of the least value
+  - truncation toward zero and the remainder's sign, in every sign combination
+  - conversions that do not fit a signed target, implicit and cast
+  - mixed signedness through the usual arithmetic conversions
+  - arithmetic proven by a guard, a precondition, a refinement, an invariant, a callee
+  - either arm of `?:` and the right of `&&` and `||`, each owing only on its route
+  - a call not sequenced before an operation lends it nothing
+  - specifications that are defined only where their arithmetic is
+  - pure functions and law instances that refuse such operations
+  - the kernel's folding and constraints against an independent evaluator
+  - the verifier's decision and value against the host, from a logged seed
+  - erasure: the runtime program and its erasure compute the stated values
+
+completion_requires:
+  - every signed operation, division and narrowing conversion owes its condition on its path
+  - no signed overflow is modeled as wrapping
+  - promotions and conversions are read from Clang, never derived
+  - a specification never takes its meaning from undefined behavior
+  - nothing is added to the runtime program

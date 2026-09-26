@@ -3,6 +3,11 @@
 > Surface syntax and formatting in this historical RFC are superseded by
 > [RFC 0015](0015-canonical-language-surface.md) and the
 > [normative grammar](../GRAMMAR.md). Semantic rationale remains applicable.
+>
+> Signed arithmetic, division, remainder and integral conversions, which this
+> RFC refuses, are admitted with their defined-behavior obligations by
+> [RFC 0019](0019-signed-arithmetic-and-division.md); its first unresolved
+> question below is answered there.
 
 Status: implemented by this slice; normative rules are SPEC.md 7.1, 7.5, 12.5
 and 29.

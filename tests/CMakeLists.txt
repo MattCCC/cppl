@@ -408,6 +408,21 @@ cppl_add_script_test(e2e_verified_calls e2e/verified_calls.sh)
 cppl_add_script_test(e2e_verified_paths e2e/verified_paths.sh)
 cppl_add_script_test(e2e_verified_locals e2e/verified_locals.sh)
 cppl_add_script_test(e2e_verified_arithmetic e2e/verified_arithmetic.sh)
+cppl_add_script_test(e2e_signed_arithmetic e2e/signed_arithmetic.sh)
+cppl_add_script_test(negative_signed_arithmetic negative/signed_arithmetic.sh)
+
+# The verifier's decision on each operation against an oracle built from the
+# host compiler's own arithmetic (RFC 0019). The oracle shares nothing with the
+# verifier; the script compares the two over a fixed, printed seed.
+add_executable(arithmetic_oracle property/arithmetic_oracle.cpp)
+target_link_libraries(arithmetic_oracle PRIVATE cppl_project_options)
+add_test(NAME e2e_arithmetic_properties
+         COMMAND bash "${CPPL_BOUNDED}" bash "${CMAKE_CURRENT_SOURCE_DIR}/e2e/arithmetic_properties.sh"
+                 $<TARGET_FILE:cppl> "${CPPL_TEST_FIXTURES}" "${CPPL_TEST_WORK}" "${CPPL_DEFAULT_CLANG}"
+                 $<TARGET_FILE:arithmetic_oracle>)
+set_tests_properties(e2e_arithmetic_properties PROPERTIES
+    LABELS "e2e;script"
+    TIMEOUT ${CPPL_TEST_TIMEOUT})
 cppl_add_script_test(e2e_verified_loops e2e/verified_loops.sh)
 cppl_add_script_test(e2e_verified_methods e2e/verified_methods.sh)
 

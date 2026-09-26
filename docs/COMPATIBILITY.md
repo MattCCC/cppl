@@ -1998,6 +1998,15 @@ Integer proof semantics depend on:
 Proof artifacts involving machine arithmetic must therefore be target/profile
 specific unless their theorem is explicitly independent of those dimensions.
 
+In this implementation (RFC 0019) the widths, the signedness of `char` and every
+promotion and conversion are the ones Clang resolved for the selected target;
+none is assumed. What verification requires does not depend on the language
+mode: a conversion to a signed type that may not fit owes that it fits in C++17,
+where the result is implementation-defined, and in C++20 and C++23 alike, where
+it is reduced. A program that relies on that reduction verifies in no mode. A
+verified program never overflows a signed operation, so `-fwrapv` and `-ftrapv`
+change nothing it does.
+
 ---
 
 # 86. Character-model compatibility

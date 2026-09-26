@@ -61,10 +61,14 @@ reject volatile_local 'not modeled' \
     'verified unsigned f(unsigned x) ensures (result == x) { volatile unsigned y = x; return y; }'
 reject pointer_local 'not modeled' \
     'verified unsigned f(unsigned x) ensures (result == x) { unsigned y = x; unsigned* p = &y; return y; }'
-reject widening_initializer 'not modeled' \
-    'verified unsigned f(unsigned x) ensures (result == x) { unsigned long y = x; return x; }'
-reject narrowing_assignment 'not modeled' \
-    'verified unsigned f(unsigned x, unsigned long z) ensures (result == x) { unsigned y = x; y = z; return y; }'
+# SPEC: ARITH-008
+# Initializing an int from an unsigned owes that the value fits, whether or not
+# the local is read; assigning a wider unsigned reduces it, so the false
+# contract is what fails.
+reject narrowing_initializer 'unrepresentable conversion' \
+    'verified unsigned f(unsigned x) ensures (result == x) { int y = x; return x; }'
+reject narrowing_assignment 'does not satisfy its contract' \
+    'verified unsigned f(unsigned x, unsigned long long z) ensures (result == x) { unsigned y = x; y = z; return y; }'
 # An array local is tracked as one place per element (SPEC.md 12.10), so an
 # element holds what its initializer put there and nothing more. A claim about
 # one that its construction does not establish must still fail.
@@ -88,8 +92,8 @@ reject wrong_increment 'does not satisfy its contract' \
     'verified unsigned f(unsigned x) ensures (result == x) { unsigned y = x; ++y; return y; }'
 reject wrong_compound 'does not satisfy its contract' \
     'verified unsigned f(unsigned x) ensures (result == x) { unsigned y = x; y -= 1u; return y + 2u; }'
-reject division_update "compound assignment '/=' is not modeled" \
-    'verified unsigned f(unsigned x) ensures (result == x) { unsigned y = x; y /= 1u; return y; }'
+reject bitwise_update "compound assignment '&=' is not modeled" \
+    'verified unsigned f(unsigned x) ensures (result == x) { unsigned y = x; y &= x; return y; }'
 reject shift_update "compound assignment '<<=' is not modeled" \
     'verified unsigned f(unsigned x) ensures (result == x) { unsigned y = x; y <<= 0u; return y; }'
 reject signed_increment 'signed type' \
@@ -98,8 +102,10 @@ reject signed_compound 'signed type' \
     'verified int f(int x) ensures (result == x) { int y = x; y += 1; return x; }'
 reject narrow_increment 'after promotion' \
     'verified unsigned f(unsigned char x) ensures (result == 0u) { unsigned char y = x; ++y; return 0u; }'
+# The addition is computed in `long long`, which libclang does not expose as the
+# computation type, so the update is refused rather than derived (ARITH-013).
 reject converted_update 'not modeled' \
-    'verified unsigned f(unsigned x) ensures (result == x) { unsigned y = x; y += 1; return y; }'
+    'verified unsigned f(unsigned x) ensures (result == x) { unsigned y = x; y += 1LL; return y; }'
 reject parameter_increment 'does not satisfy its contract' \
     'verified unsigned f(unsigned x) ensures (result == x) { x++; return x; }'
 reject update_in_value 'not modeled' \

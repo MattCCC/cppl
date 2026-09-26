@@ -1361,8 +1361,12 @@ differs from it by an integer multiple of `2^width`. A quotient and remainder by
 a constant `c` with `|c| ≥ 2` satisfy `a = c·q + r` with `|r| < |c|` and `r` of
 the sign of `a` or zero, which characterizes truncating division exactly. A
 remainder by an unknown divisor is bounded by it where it is positive and has
-the sign of its dividend. Where a definition is not linear nothing is stated,
-which loses completeness and never soundness.
+the sign of its dividend. A product of two unknowns is not linear, but where the
+values its operands can take, bounded by their types or by the narrower types a
+widening conversion took them from, give products that all lie in the type,
+`mul_fits` holds at every assignment and is decided so. Where a definition is
+not linear nothing else is stated, which loses completeness and never
+soundness.
 
 ---
 

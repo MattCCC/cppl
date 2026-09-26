@@ -1999,6 +1999,17 @@ Representative obligation classes include:
 
 Not every obligation is necessarily represented by the same checker language.
 
+Arithmetic definedness (RFC 0019) is a logical obligation with one owner,
+`compiler/obligations/src/definedness.cpp`: it finds the operations an
+expression evaluates, with the `?:` outcomes guarding each, and states each
+one's condition over the total kernel primitives. `&&` and `||` are never values
+there: the bridge splits a condition into the routes they select, and a
+specification states them as connectives of specified operands. The path walk owes
+each where the path evaluates it, under the postconditions of only the calls
+sequenced before it, and the specification lowering conjoins the same conditions
+into what a condition states. No other component decides which C++ operation
+owes what.
+
 ---
 
 # 52. Logical obligations versus structural obligations

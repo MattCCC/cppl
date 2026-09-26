@@ -67,6 +67,8 @@ std::string describe(Origin origin) {
             return "omitted case is impossible";
         case Origin::ImpossiblePath:
             return "runtime path is unreachable";
+        case Origin::DefinedBehavior:
+            return "operation has defined behavior";
     }
     return "obligation";
 }

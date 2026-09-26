@@ -2,12 +2,11 @@
 
 ## Status
 
-Accepted. The kernel primitives and their linear arithmetic are implemented;
-the lowering, which still refuses signed arithmetic, division and conversions,
-is the next change. Extends [RFC 0006](0006-machine-arithmetic.md), whose
+Accepted and implemented. Extends [RFC 0006](0006-machine-arithmetic.md), whose
 refusal of signed arithmetic, division and remainder it replaces. The normative
-rules will be `SPEC.md` 29, with Annex T (`DEFINEDBEHAVIOR-001` to
-`DEFINEDBEHAVIOR-003`) and Annex U.5 (`ADMISSIBLE-005`).
+rules are `SPEC.md` 29 (`ARITH-006` to `ARITH-013`), with Annex T
+(`DEFINEDBEHAVIOR-001` to `DEFINEDBEHAVIOR-003`) and Annex U.5
+(`ADMISSIBLE-005`).
 
 ## Summary
 
@@ -52,7 +51,8 @@ of exactly these.
   `DEFINEDBEHAVIOR-005`), which stay refused.
 - Conversions to or from `bool`, enumerations, floating point and pointers.
 - Nonlinear reasoning: a product of two unknowns is modeled exactly, but
-  nothing decides its representability unless the proof pins a factor.
+  nothing decides its representability unless the proof pins a factor or the
+  operands' types keep every product within the result type.
 - Compound assignment and increment of a type C++ promotes before arithmetic
   (`short s; s += 1;`): libclang does not expose the computation type, and it
   is not derived here.
@@ -97,8 +97,15 @@ exactly or not at all:
 
 - `*_fits` known to be 1 bounds the unbounded sum, difference or product by
   `T`; known to be 0 puts it below the least value or above the greatest, a
-  disjunction. A product is linear only when one factor is a constant; one of
-  two unknowns is left a boolean like any other, which bounds nothing.
+  disjunction. A product is linear only when one factor is a constant. For a
+  product of two unknowns, the kernel judges from the range each operand's
+  variables always lie in, the type's own or, for a widening conversion, the
+  narrower source type's: where the products of those ranges' extremes all fit,
+  `mul_fits` holds whatever the values, so holding states nothing and failing
+  is refuted. Otherwise it is a boolean like any other, which bounds nothing.
+  This decides the product of two values promoted from 8- or 16-bit types,
+  except two `unsigned short` values, whose product can exceed `int`; it
+  decides nothing that needs a bound the facts establish.
 - `convert_T(a : S)` equals `a` where every value of `S` is one of `T`, and is
   otherwise `a` minus a fresh multiple of `2^width(T)`, which bounding the
   conversion by `T` pins. The operand's type is read from the binders the
@@ -113,8 +120,8 @@ exactly or not at all:
   an unknown divisor is left unknown.
 
 Every one of these is a constraint every machine assignment satisfies, so
-nothing false is added; where the definition is not linear nothing is stated,
-which only loses completeness.
+nothing false is added; where the definition is not linear and the product rule
+above does not apply, nothing is stated, which only loses completeness.
 
 ### Lowering and obligations
 
@@ -149,7 +156,8 @@ mode. Wrapping narrowing that C++20 defines is refused, not assumed.
 **Where the obligation is owed.** On every runtime path that evaluates the
 operation, under exactly what that path supposes before it: its guards, the
 arm of every enclosing `?:`, and the postconditions of the calls C++ sequences
-before the operation, which are the calls inside its operands. A call elsewhere
+before the operation, which are the calls inside its operands and in the
+conditions of the `&&`, `||` and `?:` that select it. A call elsewhere
 in the same expression is not sequenced before it, so its postcondition is not
 supposed: a partial callee whose postcondition is false could otherwise make the
 obligation vacuous while the overflow runs first. After the expression, the
@@ -174,9 +182,10 @@ condition states (`ARITH-010`). `ensures (result == x + 1)` states
 `add_fits(x, 1) && result == x + 1`; `expects (!(x + 1 > 5))` holds only where
 `x + 1` is defined, never at `INT_MAX`. A C++ condition whose operations are all
 defined states exactly what it did before, so no existing proposition changes.
-An argument a proof or a claimed law is instantiated at, and a claim's evidence
-argument, is a term the kernel substitutes, never evaluated; one with a
-definedness condition is refused rather than given a meaning C++ does not.
+The argument a proof claims a law at is a term the kernel substitutes into the
+law, never evaluated; one with a definedness condition is refused rather than
+given a meaning C++ does not, and the condition belongs among the law's
+premises instead.
 
 ### Assignments
 
@@ -211,16 +220,17 @@ that path.
 ## Trust impact
 
 The kernel grows by six primitives: their typing, their folding on literals,
-and the constraints linear arithmetic states for them (about 450 lines of
+and the constraints linear arithmetic states for them (about 550 lines of
 kernel code, comments included). No rule, axiom or assumption is added, and no
 existing rule changes meaning; the constraint builder is passed the binder types
 it already had at the check. Kernel and core versions move to 0.8.0, so no
 evidence checked under 0.7.0 is reused.
 
 The refutation search, which is untrusted, now also examines a wrap multiple
-too wide to enumerate and a quotient by a constant value by value, over the
-integers the standing constraints leave it or around zero. Each case it builds
-is an integer split the kernel checks.
+too wide to enumerate and a quotient by a constant value by value: it projects
+the standing constraints onto that variable, and splits over the integers the
+projection leaves it, or around zero when it leaves none or too many. Each case
+it builds is an integer split the kernel checks.
 
 The obligation generator, part of the correspondence layer, decides which
 conditions C++ imposes and where they are owed. That is a stated trust in
@@ -238,8 +248,8 @@ A failed obligation names the function, the operation as written, the
 condition and the operand types, and cites the rule:
 
 ```text
-error [kernel-rejection]: defined behavior of 'f' is not proven: signed overflow: 'x + 1' on the signed type 'int' ...
-note: C++ leaves 'x + 1' undefined unless its exact result is a value of 'int' (SPEC.md ARITH-006, DEFINEDBEHAVIOR-001)
+f.cpp:10:12: error [kernel-rejection]: an operation in verified function 'f' is not shown to have defined behavior: signed overflow: 'x + 1' on the signed type 'int' is not shown to stay within 'int'
+note: C++ leaves a signed addition undefined unless its exact result is a value of its type, so every evaluation owes that it is (SPEC.md ARITH-006, DEFINEDBEHAVIOR-001)
 ```
 
 ## Alternatives considered
@@ -270,12 +280,15 @@ matched twin, branches, refinements, loops, contracts, calls, promotions and
 mixed signedness, and a generated property test compares the verifier's
 accept/refuse decision and the program's computed value with the host on
 random operands from a logged seed. Erasure tests compile the erased program
-with plain Clang and require identical results.
+with plain Clang and require identical results. Each obligation, guard,
+sequencing rule and kernel constraint is disabled in turn by
+`scripts/test-mutations.sh`, and the suite must fail.
 
 ## Unresolved questions
 
-- Nonlinear representability needs a product rule, such as the product of two
-  bounds; none is added here.
+- A product of two unknowns bounded by facts rather than by their types needs
+  a product rule over established bounds; only the rule from the types' own
+  ranges is added here.
 - A `constexpr` call such as `std::numeric_limits<int>::max()` could be read
   as the constant Clang evaluates it to.
 - Shifts and bitwise operators need their own definedness rules.

@@ -70,7 +70,7 @@ refuse trusted_law_overloaded "'overloaded' names more than one proof or trusted
 
 # SPEC: TRUSTED-005 (TRUST.md 2.10)
 # An assumption the formal core cannot state is not supposed in its place.
-refuse trusted_law_unstated "trusted law 'signed_growth' has no stated proposition"
+refuse trusted_law_unstated "trusted law 'doubled_grows' has no stated proposition"
 
 # SPEC: PROOFSRC-007 (TRUST.md TCB-PROV-005)
 # A cycle of proofs has no evidence, whatever else it names.

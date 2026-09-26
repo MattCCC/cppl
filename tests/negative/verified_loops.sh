@@ -89,7 +89,10 @@ reject for_without_condition 'does not satisfy its contract' \
     "$count for (;;) { ++i; if (i == n) return i + 1u; } }"
 reject condition_declaration 'declares a variable' \
     "$count while (unsigned k = n - i) { ++i; } return n; }"
-reject signed_counter 'signed type' \
+# SPEC: ARITH-006
+# A signed counter is verified like any other, and a negative bound leaves the
+# invariant false where the loop is entered.
+reject signed_counter 'does not hold on entry' \
     'verified int f(int n) ensures (result == n) { int i = 0; while (i < n) invariant (i <= n) { ++i; } return i; }'
 reject converted_invariant 'not modeled' \
     "$count while (i < n) invariant (i) { ++i; } return n; }"

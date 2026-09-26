@@ -63,6 +63,7 @@ std::optional<ClaimKind> claim_of(Origin origin) {
         case Origin::CallDescent:
         case Origin::RefinementIntroduction:
         case Origin::ElementBounds:
+        case Origin::DefinedBehavior:
             return std::nullopt;
     }
     return std::nullopt;

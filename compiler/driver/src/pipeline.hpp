@@ -158,6 +158,9 @@ struct PipelineOutcome {
         std::size_t omitted_cases_proven = 0;
         std::size_t impossible_paths_proven = 0;
         std::size_t call_preconditions_proven = 0;
+        // Operations a verified body evaluates, each shown to have defined
+        // behavior where it is evaluated (SPEC.md ARITH-009).
+        std::size_t defined_operations_proven = 0;
         std::size_t proven_by_written_proof = 0;
         std::size_t proofs_proven = 0;
         std::size_t unresolved = 0;

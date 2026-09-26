@@ -2697,16 +2697,22 @@ violations of object lifetime or aliasing rules
 
 For example:
 
+<!-- cppl-example: verify -->
+
 ```cpp
+#include <climits>
+
 verified int divide(int x, int y)
-    expects (y != 0)
+    expects (y != 0 && x != INT_MIN)
+    ensures (result == x / y)
 {
     return x / y;
 }
 ```
 
-needs the precondition because division by zero is not repaired by theorem
-reasoning.
+needs both conditions: division by zero is not repaired by theorem reasoning,
+and `INT_MIN / -1` is a quotient `int` does not hold. Section 13.3 lists what
+each arithmetic operation owes.
 
 Similarly:
 
@@ -2734,6 +2740,79 @@ valid C++L guarantee
 ```
 
 The verifier must fail closed when it cannot establish required definedness.
+
+### 13.3. Signed arithmetic, division and conversions
+
+Integer operations keep their exact C++ meaning (`SPEC.md` 29, RFC 0019).
+Unsigned `+`, `-`, `*` and unary `-` wrap modulo `2^width` and owe nothing.
+The others are defined only under a condition, and each evaluation owes it
+where it happens:
+
+| Operation                                  | Owes, where it is evaluated                            |
+| ------------------------------------------ | ------------------------------------------------------ |
+| signed `a + b`, `a - b`, `a * b`, `-a`     | the exact result is a value of the type                |
+| `a / b`, `a % b`, signed or unsigned       | `b != 0`                                               |
+| signed `a / b`, `a % b`                    | not the least value divided by `-1`                    |
+| a conversion to a signed type, or a cast   | the value fits the target, in every C++ mode           |
+
+The proof uses what the path knows there: guards, preconditions, refinements,
+loop invariants and callee postconditions. Afterwards the path knows the
+condition held, so `x + 1 > x` follows once `x + 1` was computed.
+
+<!-- cppl-example: verify -->
+
+```cpp
+#include <climits>
+
+verified int saturating_increment(int x)
+    ensures (result >= x)
+{
+    if (x < INT_MAX)
+        return x + 1;
+    return x;
+}
+
+verified int sum_below(int n)
+    expects (n >= 0 && n <= 1000)
+    ensures (result >= 0 && result <= n * 1000)
+{
+    int total = 0;
+    for (int i = 0; i < n; ++i)
+        invariant (0 <= i && i <= n && 0 <= total && total <= i * 1000)
+    {
+        total += i;
+    }
+    return total;
+}
+
+verified unsigned bucket(unsigned hash, unsigned size)
+    expects (size > 0u)
+    ensures (result < size)
+{
+    return hash % size;
+}
+```
+
+A few things to know:
+
+- Promotions and the usual arithmetic conversions are the ones Clang puts in the
+  program. Two `short` values are added in `int`, so the sum always fits there,
+  and returning it as `short` is the conversion that owes the bound.
+- A comparison of an `int` with an `unsigned` converts the `int`: `i < 0u` is
+  false for every `i`.
+- `/` truncates toward zero and `%` has the dividend's sign: `-7 / 2` is `-3` and
+  `-7 % 2` is `-1`.
+- A specification means what C++ would compute. `ensures (result + 1 > result)`
+  also requires that `result + 1` is defined, which it is not for `INT_MAX`.
+- Only the calls C++ sequences before an operation lend it their postconditions.
+  In `f(x) + (x + 1)`, `f` may not have returned when `x + 1` runs.
+- A `pure` function is unfolded wherever it is called with nothing owed there,
+  so one that adds two signed values is refused as a definition. Write it as a
+  `verified` function with a contract instead.
+- Today, a product of two unknowns is decided only where their types bound it
+  (two values promoted from 8- or 16-bit types, except two `unsigned short`
+  values), and a quotient by an unknown divisor is left unknown; shifts,
+  bitwise operators and `bool` conversions are refused.
 
 ## 14. Templates
 
@@ -4615,6 +4694,18 @@ decreases (...)
 
 Without required termination proof, verification may establish partial
 correctness only.
+
+### Arithmetic
+
+```text
+signed + - * and unary -       owe: the exact result fits the type
+/ and %                        owe: divisor != 0, and signed: not MIN / -1
+conversion to a signed type    owes: the value fits the target
+unsigned + - * and unary -     wrap modulo 2^width, owe nothing
+```
+
+Each is owed where the operation runs, from what the path knows there, and
+holds afterwards. See section 13.3.
 
 ### Purity
 

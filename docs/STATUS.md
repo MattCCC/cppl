@@ -163,20 +163,37 @@ against a constraint system it states itself, wrapping included. When
 definitional equality and premise rewriting do not close a goal, automation
 tries linear arithmetic over the premises, then rewriting with premise
 equalities and with equalities between variables that arithmetic establishes.
-A contradictory path is proven from its contradiction. Signed arithmetic,
-division, remainder, shifts and bitwise operators are rejected. See `SPEC.md`
-7.1.1, 7.5 and 29.2.
+A contradictory path is proven from its contradiction. See `SPEC.md` 7.1.1, 7.5
+and 29.2.
+
+Signed `+`, `-`, `*` and unary `-`, `/` and `%`, and integral conversions are
+verified with their exact C++ semantics (`SPEC.md` 29, RFC 0019). Each
+operation C++ defines only under a condition owes it on every path that
+evaluates the operation: the exact result is representable, the divisor is not
+zero, the operands are not the least value and `-1`, a value converted to a
+signed type fits it (in every C++ mode). The obligation supposes the path's
+guards, the `?:`, `&&` and `||` outcomes that select the operation, and only
+the postconditions of calls C++ sequences before it; afterwards the path
+supposes what was proven. Promotions and the usual arithmetic conversions are
+the ones Clang recorded, and explicit integral casts are the conversions they
+name. A specification's C++ condition holds only where its operations are
+defined, and a `pure` function, a total definition, refuses them. Quotient and
+remainder by a constant are exact in linear arithmetic; by an unknown divisor
+the remainder is bounded and the quotient is not. A product of two unknowns is
+decided only where the operands' types bound it (two values promoted from 8- or
+16-bit types, except two `unsigned short` values). Shifts, bitwise operators
+and conversions to or from `bool` are rejected.
 
 A body may also declare locals and assign to them. Each write is a logical
 version of the declaration Clang resolved, a read denotes the version current
 where it stands, and what follows a branch is verified once per arm under that
 arm's versions. A call bound to a local is proven where the body makes it, under
 the conditions in force there, on every path that reaches it. `+=`, `-=`, `*=`,
-increment and decrement are the assignments they abbreviate, for locals not
-promoted before arithmetic. Uninitialized, `static`, `thread_local`, reference,
-pointer and `volatile` declarations, other compound assignments, assignment to a
-parameter, self-initialization, and unmodeled initializer conversions are
-rejected. Every value is modeled where it is written, read or not. Each read repeats its
+`/=`, `%=`, increment and decrement are the assignments they abbreviate, for
+locals not promoted before arithmetic. Uninitialized, `static`, `thread_local`,
+reference, pointer and `volatile` declarations, other compound assignments,
+assignment to a parameter, self-initialization, and initializer conversions
+other than integral ones are rejected. Every value is modeled where it is written, read or not. Each read repeats its
 local's value, so bodies whose stated terms exceed a fixed size are rejected
 too. Locals add no kernel rule and no runtime change.
 
@@ -1279,8 +1296,8 @@ A theorem about C++ execution is not meaningful if undefined behavior or incorre
 
 | Capability                            | Status        |
 | ------------------------------------- | ------------- |
-| Signed-overflow reasoning             | `SPECIFIED`   |
-| Division-by-zero reasoning            | `SPECIFIED`   |
+| Signed-overflow reasoning             | `PARTIAL`     |
+| Division-by-zero reasoning            | `PARTIAL`     |
 | Shift validity                        | `SPECIFIED`   |
 | Bounds checking                       | `SPECIFIED`   |
 | Nullability reasoning                 | `SPECIFIED`   |
@@ -1337,20 +1354,28 @@ The exact formal memory calculus is not yet frozen.
 | Fixed-width integer semantics    | `PARTIAL`     |
 | Unsigned `+` `-` `*` (modular)   | `PROTOTYPE`   |
 | Order reasoning (linear)         | `PROTOTYPE`   |
-| Signed `+` `-` `*`               | `NOT STARTED` |
-| Division, remainder, shifts      | `NOT STARTED` |
+| Signed `+` `-` `*` and unary `-` | `PARTIAL`     |
+| Division, remainder              | `PARTIAL`     |
+| Integral conversions             | `PARTIAL`     |
+| Shifts, bitwise operators        | `NOT STARTED` |
 | Checked arithmetic               | `SPECIFIED`   |
 | Wrapping arithmetic              | `SPECIFIED`   |
 | Saturating arithmetic            | `SPECIFIED`   |
 | Big integer proof domain         | `SPECIFIED`   |
 | Bitvector solver integration     | `NOT STARTED` |
-| Overflow diagnostics             | `NOT STARTED` |
+| Overflow diagnostics             | `PROTOTYPE`   |
 
-Fixed-width semantics are `PARTIAL`: unsigned `+`, `-`, `*` and all six
-comparisons are modeled exactly at every width from 1 to 64 bits, and signed
-comparisons are modeled; signed arithmetic is refused until its no-overflow
-obligations exist. `Wrapping arithmetic` above means the explicit `Wrapping<T>`
-facility of the roadmap, which is not the same as C++ unsigned arithmetic.
+Fixed-width semantics are `PARTIAL`: unsigned `+`, `-`, `*`, signed `+`, `-`,
+`*` and unary `-`, `/` and `%`, integral conversions and all six comparisons
+are modeled exactly at every width from 1 to 64 bits, each operation C++
+defines only under a condition owing it where it is evaluated (RFC 0019).
+Signed arithmetic and division are `PARTIAL` because a product of two unknowns
+is decided only where their types bound it, and a quotient by an unknown divisor
+is left unknown; conversions are `PARTIAL` because those to or from `bool`,
+enumerations and floating point are refused, as is compound assignment of a
+promoted type. Shifts and bitwise operators are refused. `Wrapping arithmetic`
+above means the explicit `Wrapping<T>` facility of the roadmap, which is not the
+same as C++ unsigned arithmetic.
 
 ---
 

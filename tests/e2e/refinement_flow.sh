@@ -554,10 +554,19 @@ CPP
 # refused, which is the fail-closed direction. If one begins to verify, that is
 # a deliberate improvement and this suite must be updated to `accept`.
 
-# Casts are refused rather than silently preserving or dropping a refinement.
-refuse cast_is_not_modeled 'only a scoped enum cast' <<'CPP'
+# A cast to a refinement's own base type is the value it casts (SPEC.md
+# ARITH-008), so what is known of that value holds of the result. It creates
+# no refinement: the result is a plain `int`, and a cast into a refined type
+# owes the predicate where the value enters it, like any other crossing.
+accept a_cast_to_the_base_type_keeps_the_value <<'CPP'
 type Positive = int where (self > 0);
 verified int f(Positive x) ensures (result > 0) { return static_cast<int>(x); }
+CPP
+
+# SPEC: REFINEOBL-002, ARITH-008
+refuse a_cast_does_not_establish_a_refinement 'does not satisfy|not shown to satisfy' <<'CPP'
+type Positive = int where (self > 0);
+verified int f(int x) ensures (result > 0) { Positive p = static_cast<Positive>(x); return p; }
 CPP
 
 # An indexed refinement's application is not resolved by the bridge yet.

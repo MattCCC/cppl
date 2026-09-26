@@ -656,9 +656,12 @@ value fits. Where the obligation holds, the total primitive equals the C++
 result, so no wrap is ever relied on. The primitives are logical TCB: their
 typing, their folding on literals and the constraints linear arithmetic states
 for them (`kernel/src/context.cpp`, `kernel/src/arithmetic.cpp`,
-`kernel/src/linear.cpp`, about 450 lines with comments). They add no rule, axiom or
-assumption; each constraint is satisfied by every machine assignment, and where
-a primitive's definition is not linear nothing is stated.
+`kernel/src/term.cpp`, `kernel/src/linear.cpp`, about 550 lines with comments).
+They add no rule, axiom or assumption; each constraint is satisfied by every
+machine assignment, and where a primitive's definition is not linear nothing is
+stated, except that a product of two unknowns is decided where the ranges its
+operands always lie in, their types' or the narrower types a widening
+conversion took them from, keep every product within the type.
 
 Which operation owes which condition, and where, is correspondence TCB
 (`compiler/obligations/src/definedness.cpp`, `compiler/obligations/src/contracts.cpp`):

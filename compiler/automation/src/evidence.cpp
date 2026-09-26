@@ -217,12 +217,20 @@ std::vector<obligations::ObligationResult> verify(const obligations::Program& pr
                 // not something a proof can be written for.
                 diagnostic.message = "this value is not shown to satisfy refinement type '" +
                                      obligation.subject.substr(obligation.subject.rfind(' ') + 1) + "'";
+            } else if (obligation.origin == obligations::Origin::DefinedBehavior) {
+                // The operation, what it owes and the types it owes it at are
+                // the first line of the explanation (SPEC.md ARITH-012).
+                diagnostic.message = "an operation in verified function '" + obligation.subject +
+                                     "' is not shown to have defined behavior" +
+                                     (obligation.explanation.empty() ? "" : ": " + obligation.explanation.front());
             } else {
                 diagnostic.message = "law '" + obligation.subject + "' is not proven";
             }
             diagnostic.location = location;
-            for (const std::string& explained : obligation.explanation) {
-                diagnostic.notes.push_back(diagnostics::Note{explained, location});
+            const bool headline =
+                obligation.origin == obligations::Origin::DefinedBehavior && !obligation.explanation.empty();
+            for (std::size_t line = headline ? 1 : 0; line < obligation.explanation.size(); ++line) {
+                diagnostic.notes.push_back(diagnostics::Note{obligation.explanation[line], location});
             }
             diagnostic.notes.push_back(diagnostics::Note{"goal: " + kernel::describe(obligation.goal), location});
             diagnostic.notes.push_back(

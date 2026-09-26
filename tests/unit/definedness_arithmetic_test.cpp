@@ -122,7 +122,7 @@ std::string at(const std::string& what, Wide a, Wide b) {
 // unknowns is not linear, so nothing decides it, and its falsity in particular
 // must never be proven.
 //
-// SPEC: EQ-009, DEFINEDBEHAVIOR-001
+// SPEC: ARITH-006, EQ-009, DEFINEDBEHAVIOR-001
 CPPL_TEST(representability_is_decided_exactly_for_every_pinned_4_bit_pair) {
     for (const auto& type : {kI4, kU4}) {
         const std::vector<k::Type> binders{k::Type{type}, k::Type{type}};
@@ -160,7 +160,7 @@ CPPL_TEST(representability_is_decided_exactly_for_every_pinned_4_bit_pair) {
 // (which fold), the host's quotient and remainder are proven and their
 // neighbours are not.
 //
-// SPEC: ARITH-004, EQ-009
+// SPEC: ARITH-007, EQ-009
 CPPL_TEST(division_by_a_constant_is_truncating_for_every_pinned_4_bit_dividend) {
     for (const auto& type : {kI4, kU4}) {
         const std::vector<k::Type> binders{k::Type{type}};
@@ -200,7 +200,7 @@ CPPL_TEST(division_by_a_constant_is_truncating_for_every_pinned_4_bit_dividend) 
 // A remainder by an unknown divisor is bounded, never decided: no false value
 // is proven for any pinned pair, a zero divisor included.
 //
-// SPEC: ARITH-004, DEFINEDBEHAVIOR-002
+// SPEC: ARITH-007, DEFINEDBEHAVIOR-002
 CPPL_TEST(a_remainder_by_an_unknown_divisor_proves_no_false_value) {
     for (const auto& type : {kI4, kU4}) {
         const std::vector<k::Type> binders{k::Type{type}, k::Type{type}};
@@ -230,7 +230,7 @@ CPPL_TEST(a_remainder_by_an_unknown_divisor_proves_no_false_value) {
 // not: below a positive divisor, never above an unsigned dividend, and nothing
 // about a zero divisor beyond that.
 //
-// SPEC: ARITH-004, EQ-009
+// SPEC: ARITH-007, EQ-009
 CPPL_TEST(a_remainder_by_an_unknown_divisor_is_bounded_by_it) {
     const std::vector<k::Type> unsigned_pair{k::Type{kU32}, k::Type{kU32}};
     const std::vector<k::Type> signed_pair{k::Type{kI32}, k::Type{kI32}};
@@ -256,7 +256,7 @@ CPPL_TEST(a_remainder_by_an_unknown_divisor_is_bounded_by_it) {
 // and otherwise is the operand reduced modulo 2^width: for every pinned value,
 // the host's reduction is proven and its neighbours are not.
 //
-// SPEC: ARITH-002, EQ-011
+// SPEC: ARITH-008, EQ-011
 CPPL_TEST(conversion_is_reduction_for_every_pinned_value_between_small_types) {
     const std::vector<std::pair<k::IntType, k::IntType>> conversions{
         {kU4, kI3}, {kI4, kU3}, {kI4, kI3}, {kU4, kU3}, {kI3, kU4}, {kU3, kI4}, {kI4, kU4}, {kU4, kI4}, {kI3, kI4}};
@@ -284,7 +284,7 @@ CPPL_TEST(conversion_is_reduction_for_every_pinned_value_between_small_types) {
 // one step inside the type's boundary, refused at the boundary, for every
 // operation the language models.
 //
-// SPEC: EQ-009, DEFINEDBEHAVIOR-001
+// SPEC: ARITH-006, ARITH-009, DEFINEDBEHAVIOR-001
 CPPL_TEST(signed_obligations_hold_one_step_inside_the_boundary_and_fail_at_it) {
     const std::vector<k::Type> one{k::Type{kI32}};
     const auto x = var(0);

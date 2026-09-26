@@ -101,6 +101,22 @@ virtual-call-refused	clang/src/bridge.cpp	if (clang_CXXMethod_isVirtual(referenc
 member-refinement-kept	clang/src/bridge.cpp	converted.refinements = std::move(*refinements);	(void)refinements;	^negative_verified_methods$
 reference-aggregate-witness	clang/src/bridge.cpp	if (parameter.type.kind == TypeKind::Value && source::aliases_storage(parameter.passing) &&	if (false && parameter.type.kind == TypeKind::Value && source::aliases_storage(parameter.passing) &&	^negative_verified_storage$
 unsafe-member-write-rooted	clang/src/bridge.cpp	return access.has_value() && !access->dereferenced && clang_equalCursors(access->declaration, declaration) != 0;	return access.has_value() && access->path.empty() && !access->dereferenced && clang_equalCursors(access->declaration, declaration) != 0;	^negative_unsafe_boundary$
+signed-overflow-owed	compiler/obligations/src/definedness.cpp	return type.is_integer() && type.integer_type().is_signed;	return false && type.is_integer();	^negative_signed_arithmetic$
+zero-divisor-owed	compiler/obligations/src/definedness.cpp	site(Definedness::ZeroDivisor);	(void)0;	^negative_signed_arithmetic$
+quotient-overflow-owed	compiler/obligations/src/definedness.cpp	site(Definedness::QuotientOverflow);	(void)0;	^negative_signed_arithmetic$
+signed-conversion-owed	compiler/obligations/src/definedness.cpp	if (!to.is_integer() || !from.is_integer() || !to.integer_type().is_signed) {	if (true) {	^negative_signed_arithmetic$
+definedness-then-arm	compiler/obligations/src/definedness.cpp	guards.emplace_back(&choice->operands[0], true);	guards.emplace_back(&choice->operands[0], false);	^e2e_signed_arithmetic$|^negative_signed_arithmetic$
+definedness-else-arm	compiler/obligations/src/definedness.cpp	guards.back().second = false;	guards.back().second = true;	^e2e_signed_arithmetic$|^negative_signed_arithmetic$
+specification-definedness	compiler/obligations/src/definedness.cpp	return kernel::Proposition::conjunction(std::move(**defined), std::move(stated));	return stated;	^negative_signed_arithmetic$
+definedness-unsequenced-call	compiler/obligations/src/contracts.cpp	if (!sequenced_before(site, *post.call)) {	if (false && !sequenced_before(site, *post.call)) {	^negative_signed_arithmetic$
+pure-definedness-refused	compiler/obligations/src/generate.cpp	if (const auto site = detail::first_definedness_site(*function.returned_value)) {	if (const auto site = (false ? detail::first_definedness_site(*function.returned_value) : std::nullopt)) {	^negative_signed_arithmetic$
+law-argument-definedness	compiler/obligations/src/generate.cpp	if (const auto sites = detail::definedness_sites(argument); !sites.empty()) {	if (const auto sites = detail::definedness_sites(argument); false && !sites.empty()) {	^negative_signed_arithmetic$
+product-range-corners	kernel/src/linear.cpp	!multiply(a, b, product) || product < lowest(primitive.type) || product > highest(primitive.type)	!multiply(a, b, product)	^kernel_definedness_test$|^unit_definedness_arithmetic_test$|^negative_signed_arithmetic$
+widening-conversion-range	kernel/src/linear.cpp	ranges_.emplace(variable, std::pair{lowest(from), highest(from)});	ranges_.emplace(variable, std::pair{Wide{0}, Wide{0}});	^kernel_definedness_test$|^unit_definedness_arithmetic_test$|^negative_signed_arithmetic$
+conversion-identity-widening-only	kernel/src/linear.cpp	if (lowest(from) >= lowest(target) && highest(from) <= highest(target)) {	if (true) {	^kernel_definedness_test$|^unit_definedness_arithmetic_test$
+truncating-remainder-magnitude	kernel/src/linear.cpp	const Wide largest = (divisor < 0 ? -divisor : divisor) - 1;	const Wide largest = (divisor < 0 ? -divisor : divisor) - 2;	^kernel_definedness_test$|^unit_definedness_arithmetic_test$
+remainder-sign-of-dividend	kernel/src/linear.cpp	return either(negated(*dividend), 0, remainder, 0);	return either(negated(*dividend), 0, remainder, 1);	^kernel_definedness_test$|^unit_definedness_arithmetic_test$
+representability-fails-outside	kernel/src/linear.cpp	return holds ? bound(**exact, primitive->type) : outside(**exact, primitive->type);	return holds ? bound(**exact, primitive->type) : (false ? outside(**exact, primitive->type) : bound(**exact, primitive->type));	^kernel_definedness_test$|^unit_definedness_arithmetic_test$
 MUTATIONS
 )
 

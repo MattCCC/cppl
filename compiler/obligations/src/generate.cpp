@@ -24,6 +24,7 @@
 #include "cppl/vir/module.hpp"
 #include "cppl/vir/place.hpp"
 #include "cppl/vir/types.hpp"
+#include "definedness.hpp"
 #include "lowering.hpp"
 
 #include <algorithm>
@@ -127,6 +128,8 @@ std::optional<kernel::PrimOp> comparison(vir::BinaryOp op) {
         case vir::BinaryOp::Add:
         case vir::BinaryOp::Sub:
         case vir::BinaryOp::Mul:
+        case vir::BinaryOp::Div:
+        case vir::BinaryOp::Rem:
         case vir::BinaryOp::And:
         case vir::BinaryOp::Or:
             return std::nullopt;
@@ -134,10 +137,14 @@ std::optional<kernel::PrimOp> comparison(vir::BinaryOp op) {
     return std::nullopt;
 }
 
-// The wrapping primitive a C++ arithmetic operator denotes on unsigned
-// operands, where C++ defines the result modulo 2^width exactly as the core
-// primitive does (SPEC.md 29.2).
-std::optional<kernel::PrimOp> modular(vir::BinaryOp op) {
+// The total core primitive a C++ arithmetic operator is stated with. On
+// unsigned operands C++ defines `+`, `-` and `*` modulo 2^width exactly as the
+// wrapping primitives do (SPEC.md 29.2). On signed operands, and for `/` and `%`
+// on any, C++ defines the operator only under a condition; where it holds, the
+// primitive's value is the C++ value, and every evaluation owes that condition
+// as an obligation of its own (definedness.cpp, SPEC.md ARITH-006, ARITH-007).
+// Stating a term never proves or assumes one.
+std::optional<kernel::PrimOp> arithmetic(vir::BinaryOp op) {
     switch (op) {
         case vir::BinaryOp::Add:
             return kernel::PrimOp::AddWrap;
@@ -145,6 +152,10 @@ std::optional<kernel::PrimOp> modular(vir::BinaryOp op) {
             return kernel::PrimOp::SubWrap;
         case vir::BinaryOp::Mul:
             return kernel::PrimOp::MulWrap;
+        case vir::BinaryOp::Div:
+            return kernel::PrimOp::Quotient;
+        case vir::BinaryOp::Rem:
+            return kernel::PrimOp::Remainder;
         default:
             return std::nullopt;
     }
@@ -156,6 +167,10 @@ std::string operation(vir::BinaryOp op) {
             return "subtraction";
         case vir::BinaryOp::Mul:
             return "multiplication";
+        case vir::BinaryOp::Div:
+            return "division";
+        case vir::BinaryOp::Rem:
+            return "remainder";
         default:
             return "addition";
     }
@@ -359,33 +374,23 @@ class TermLowering {
                     return std::unexpected(!lhs ? lhs.error() : rhs.error());
                 return kernel::Term::primitive(*op, left->integer_type(), {std::move(*lhs), std::move(*rhs)});
             }
-            const std::optional<kernel::PrimOp> primitive = modular(binary->op);
+            const std::optional<kernel::PrimOp> primitive = arithmetic(binary->op);
             if (!primitive.has_value() || binary->operands.size() != 2) {
                 return fail("'" + vir::describe(binary->op) + "' does not denote a value in the formal core", location);
             }
-            if (!type.has_value() || expr.type.is_boolean()) {
+            if (!type.has_value() || !type->is_integer() || expr.type.is_boolean()) {
                 return fail(operation(binary->op) + " at type '" + vir::describe(expr.type) + "' is not modeled",
                             location);
             }
 
             const kernel::IntType integer = type->integer_type();
-            if (integer.signedness == kernel::Signedness::Signed) {
-                // Unsigned C++ arithmetic is modular and matches the core's
-                // wrapping primitives exactly. Signed C++ arithmetic has
-                // undefined behaviour on overflow, so it is not those
-                // primitives, and the obligation that would justify the
-                // difference is not part of the core yet.
-                return fail(operation(binary->op) + " on the signed type '" + vir::describe(expr.type) +
-                                "' is not modeled: C++ leaves signed overflow undefined, and this "
-                                "implementation cannot yet discharge the obligation that it does not "
-                                "occur",
-                            location);
-            }
-
             std::vector<kernel::Term> operands;
             operands.reserve(binary->operands.size());
             for (const vir::Expr& operand : binary->operands) {
-                if (!(operand.type == expr.type)) {
+                // C++ converted each operand to the operation's type, and each
+                // conversion Clang recorded is a node of its own, so what is
+                // left is that machine type, whatever it was spelled.
+                if (lower_type(operand.type) != type || operand.type.is_boolean()) {
                     return fail("arithmetic requires operands of its own modeled type", location);
                 }
                 std::expected<kernel::Term, Failure> lowered = lower(operand);
@@ -405,6 +410,41 @@ class TermLowering {
             if (!operand)
                 return operand;
             return kernel::Term::primitive(kernel::PrimOp::Not, kernel::kBoolean, {std::move(*operand)});
+        }
+        // `-x` is `0 - x` at the promoted type: modular for an unsigned type,
+        // and for a signed one owing the same representability a subtraction
+        // from zero owes (SPEC.md ARITH-006).
+        if (const auto* minus = std::get_if<vir::Minus>(&expr.node)) {
+            if (minus->operands.size() != 1 || !type || !type->is_integer() || expr.type.is_boolean() ||
+                lower_type(minus->operands[0].type) != type) {
+                return fail("arithmetic negation requires an integer operand of its own type", location);
+            }
+            auto operand = lower(minus->operands[0]);
+            if (!operand)
+                return operand;
+            return kernel::Term::primitive(kernel::PrimOp::SubWrap, type->integer_type(),
+                                           {kernel::Term::literal(type->integer_type(), 0), std::move(*operand)});
+        }
+        // An integral conversion Clang recorded, stated as two's-complement
+        // reduction into the target type. That is C++'s conversion to an
+        // unsigned type; to a signed type the reduction wraps nothing wherever
+        // the value fits, which is what every evaluation owes (SPEC.md
+        // ARITH-008). `bool` converts by truth and is never stated this way.
+        if (const auto* conversion = std::get_if<vir::Conversion>(&expr.node)) {
+            if (conversion->operands.size() != 1 || !type || !type->is_integer() || expr.type.is_boolean() ||
+                conversion->operands[0].type.is_boolean()) {
+                return fail("an integral conversion requires integer operand and result types", location);
+            }
+            const std::optional<kernel::Type> source = lower_type(conversion->operands[0].type);
+            if (!source || !source->is_integer()) {
+                return fail("a conversion from '" + vir::describe(conversion->operands[0].type) +
+                                "' has no core representation",
+                            location);
+            }
+            auto operand = lower(conversion->operands[0]);
+            if (!operand)
+                return operand;
+            return kernel::Term::primitive(kernel::PrimOp::Convert, type->integer_type(), {std::move(*operand)});
         }
         if (const auto* branch = std::get_if<vir::Conditional>(&expr.node)) {
             if (branch->operands.size() != 3 || !type || !branch->operands[0].type.is_boolean() ||
@@ -510,6 +550,16 @@ bool fits_proposition(const vir::Expr& expression, std::size_t copies, std::size
         expression.node);
 }
 
+// Lowers the terms of a specification one at a time, each afresh, so reading a
+// subterm again for its definedness conditions draws on no budget the term
+// itself already spent.
+detail::TermLowerer specification_terms(const DefinitionMap& definitions, std::size_t parameter_count) {
+    return [&definitions, parameter_count](const vir::Expr& term) {
+        TermLowering lowering(definitions, parameter_count);
+        return lowering.lower(term);
+    };
+}
+
 std::expected<kernel::Proposition, Failure> lower_proposition(const vir::Expr& expression,
                                                               const DefinitionMap& definitions,
                                                               std::size_t parameter_count) {
@@ -602,16 +652,18 @@ std::expected<kernel::Proposition, Failure> lower_proposition(const vir::Expr& e
         auto rhs = lowering.lower(equality->operands[1]);
         if (!rhs)
             return std::unexpected(rhs.error());
-        return kernel::Proposition::equality(*type, std::move(*lhs), std::move(*rhs));
+        return detail::specified(expression, kernel::Proposition::equality(*type, std::move(*lhs), std::move(*rhs)),
+                                 specification_terms(definitions, parameter_count));
     }
 
+    // A C++ condition states that it evaluates to true, and that every
+    // operation it would evaluate on the way is defined: undefined behavior
+    // never gives a specification its meaning (SPEC.md ARITH-010,
+    // ADMISSIBLE-005). A condition with no such operation states its truth
+    // alone, exactly as before.
     if (!expression.type.is_boolean())
         return fail("it does not state a comparison", location);
-    TermLowering lowering(definitions, parameter_count);
-    auto condition = lowering.lower(expression);
-    if (!condition)
-        return std::unexpected(condition.error());
-    return kernel::predicate(*condition, true);
+    return detail::specified(expression, specification_terms(definitions, parameter_count));
 }
 
 // Closes a proposition over a declaration's parameters, outermost first.
@@ -651,6 +703,14 @@ void collect_callees(const vir::Expr& expr, std::set<std::string>& callees) {
     }
     if (const auto* negation = std::get_if<vir::Negation>(&expr.node)) {
         for (const auto& operand : negation->operands)
+            collect_callees(operand, callees);
+    }
+    if (const auto* minus = std::get_if<vir::Minus>(&expr.node)) {
+        for (const auto& operand : minus->operands)
+            collect_callees(operand, callees);
+    }
+    if (const auto* conversion = std::get_if<vir::Conversion>(&expr.node)) {
+        for (const auto& operand : conversion->operands)
             collect_callees(operand, callees);
     }
     if (const auto* loop = std::get_if<vir::Loop>(&expr.node)) {
@@ -993,6 +1053,19 @@ std::optional<kernel::Proposition> claimed_proposition(const vir::Proof& proof, 
             return std::nullopt;
         }
 
+        // The claim is the law's proposition at the argument's value. An
+        // argument whose operations C++ defines only under a condition has no
+        // value where the condition fails, and nothing supposes it holds here,
+        // so it is refused rather than given the value of the total primitive
+        // (SPEC.md ARITH-010).
+        if (const auto sites = detail::definedness_sites(argument); !sites.empty()) {
+            report(
+                engine, diagnostics::Category::UnsupportedSemantics, argument.provenance.range.begin,
+                "proof '" + proof.name + "' claims law '" + obligation.subject +
+                    "' at an argument whose behavior is not always defined: " + detail::explain(sites.front()).front(),
+                "state the argument's condition as a premise of the law instead");
+            return std::nullopt;
+        }
         std::expected<kernel::Term, Failure> term = lowering.lower(argument);
         if (!term) {
             report(engine, diagnostics::Category::UnsupportedSemantics, term.error().location,
@@ -2474,6 +2547,22 @@ Program generate(const vir::Module& module, const elaboration::Result& elaborate
                 continue;
             }
 
+            // A definition is a total function the kernel unfolds wherever it
+            // is called, with nothing owed at the call. An operation C++
+            // defines only under a condition would then run unchecked, so a
+            // body that evaluates one is not a definition (SPEC.md ARITH-011).
+            if (const auto site = detail::first_definedness_site(*function.returned_value)) {
+                deferred.emplace(
+                    function.symbol.usr,
+                    Failure{"its body evaluates an operation C++ defines only under a condition (" +
+                                detail::explain(*site).front() +
+                                "), and a pure function is a total definition of the formal core, which owes none",
+                            site->operation->provenance.range.begin,
+                            {}});
+                candidate = pending.erase(candidate);
+                progress = true;
+                continue;
+            }
             TermLowering lowering(definitions, function.parameters.size());
             std::expected<kernel::Term, Failure> body = lowering.lower(*function.returned_value);
             if (!body) {

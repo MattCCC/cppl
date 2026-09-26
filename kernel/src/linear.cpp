@@ -219,6 +219,17 @@ class Builder {
             if (exact->has_value()) {
                 return holds ? bound(**exact, primitive->type) : outside(**exact, primitive->type);
             }
+            // A product of two unknowns is not linear. Where the ranges their
+            // variables always lie in keep every product within the type, as
+            // for two values promoted from narrower types, it holds whatever
+            // they are: holding states nothing, and failing is impossible.
+            auto always = product_always_fits(*primitive);
+            if (!always) {
+                return std::unexpected(always.error());
+            }
+            if (*always) {
+                return holds ? std::expected<void, CoreError>{} : constrain(Expression{}, Wide{1});
+            }
         }
         // Any other boolean is a value like any other.
         auto boolean = value(condition, kBoolean);
@@ -383,6 +394,67 @@ class Builder {
         return std::optional<Expression>{std::move(*product)};
     }
 
+    // Whether every product of a value of the first operand and a value of the
+    // second lies within the type, judged from the ranges their variables are
+    // always in: a value's type, or the narrower type a widening conversion
+    // took it from. A product's extremes are among the products of the
+    // operands' extremes.
+    std::expected<bool, CoreError> product_always_fits(const Prim& primitive) {
+        if (primitive.op != PrimOp::MulFits || primitive.arguments.size() != 2) {
+            return false;
+        }
+        auto lhs = value(primitive.arguments[0], primitive.type);
+        if (!lhs) {
+            return std::unexpected(lhs.error());
+        }
+        auto rhs = value(primitive.arguments[1], primitive.type);
+        if (!rhs) {
+            return std::unexpected(rhs.error());
+        }
+        const auto left = static_range(*lhs);
+        const auto right = static_range(*rhs);
+        if (!left || !right) {
+            return false;
+        }
+        for (const Wide a : {left->first, left->second}) {
+            for (const Wide b : {right->first, right->second}) {
+                Wide product = 0;
+                if (!multiply(a, b, product) || product < lowest(primitive.type) || product > highest(primitive.type)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    // The least and greatest value an expression can take, from the range each
+    // of its variables is always in. None where a variable's range is not
+    // fixed by its construction, as a multiple of 2^width's is not.
+    [[nodiscard]] std::optional<std::pair<Wide, Wide>> static_range(const Expression& expression) const {
+        Wide least = expression.constant;
+        Wide greatest = expression.constant;
+        for (const auto& [variable, coefficient] : expression.terms) {
+            const ArithmeticVariable& known = system_.variables[variable];
+            if (known.role != VariableRole::Value) {
+                return std::nullopt;
+            }
+            Wide low = lowest(known.type);
+            Wide high = highest(known.type);
+            if (const auto narrowed = ranges_.find(variable); narrowed != ranges_.end()) {
+                low = narrowed->second.first;
+                high = narrowed->second.second;
+            }
+            Wide first = 0;
+            Wide second = 0;
+            if (!multiply(coefficient, coefficient >= 0 ? low : high, first) ||
+                !multiply(coefficient, coefficient >= 0 ? high : low, second) || !add(least, first) ||
+                !add(greatest, second)) {
+                return std::nullopt;
+            }
+        }
+        return std::pair{least, greatest};
+    }
+
     // The expression lies below the least value of `type` or above its
     // greatest: one of two constraints holds.
     std::expected<void, CoreError> outside(const Expression& expression, const IntType& type) {
@@ -419,6 +491,9 @@ class Builder {
         Expression converted;
         converted.terms.emplace(variable, Wide{1});
         if (lowest(from) >= lowest(target) && highest(from) <= highest(target)) {
+            // The value is its operand's, so it is always within the source
+            // type's range, which a product's range is judged from.
+            ranges_.emplace(variable, std::pair{lowest(from), highest(from)});
             return equal(converted, *operand);
         }
         // converted = operand - 2^width * wrap, so the wrap lies within
@@ -674,6 +749,8 @@ class Builder {
     std::map<TypedTerm, Expression, TypedTermOrder> values_;
     // The quotients whose division identity is already stated, by their term.
     std::set<TypedTerm, TypedTermOrder> divisions_;
+    // The range a widening conversion's value is always in: its source type's.
+    std::map<std::uint32_t, std::pair<Wide, Wide>> ranges_;
 };
 
 // Checks a certificate against the constraints standing at each node: the
