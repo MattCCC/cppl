@@ -757,6 +757,14 @@ Recognition by spelling alone is insufficient where aliases, namespaces, templat
 
 **[TCB-OBJ-005]** `const` member functions and cv-qualification MUST follow C++ alias/mutation semantics; they MUST NOT create global immutability facts.
 
+**[TCB-OBJ-006]** A verified member function's implicit object is modeled as the scalar places of its class, enumerated from Clang's resolved record layout and numbered as a member access numbers them (`SPEC.md` CLASS-008). The enumeration and the numbering are correspondence code in the Clang bridge: an enumeration that skipped a place a body can reach, or numbered a member as another, would let a write escape the facts it must invalidate. A member whose storage is not modeled is therefore left without a place and refused wherever a verified body names it, never read as some other member, and a class whose storage the model does not cover -- a union, a class with a base -- is refused whole.
+
+**[TCB-OBJ-007]** The implicit object is caller storage. Every place of it MUST be treated as potentially aliasing every other caller-visible place -- a reference or pointer parameter, an object passed by reference, what a call or an unsafe block may reach -- and only distinct members of the one object are disjoint, because Clang resolves them as distinct subobjects (`TCB-ALIAS-001`, `TCB-ALIAS-003`, `SPEC.md` CLASS-010).
+
+**[TCB-OBJ-008]** A call on an object passes the object's places as the callee's implicit-object arguments, and when the callee may write its object -- it is not `const`, it writes a `mutable` member, or it writes through any reference argument -- every place of the object receives a fresh post-call version, of which only the callee's established postcondition is supposed (`SPEC.md` CLASS-011, `TCB-ALIAS-005`). Which places those are is decided from the callee's declaration and the caller's own storage, never from the callee's body (`ARCHITECTURE.md` ARCH-CALL-001).
+
+The member-function model adds no kernel rule, no axiom and no logical assumption: a member function is the verified callable a function is, with more parameters. It grows the correspondence TCB by the receiver enumeration, the implicit-object resolution of `this` and member accesses, and the object places of a member call, all in the Clang bridge (section 7).
+
 ## 21.1 Virtual dispatch
 
 **[TCB-VIRTUAL-001]** Override checking MUST preserve the substitutability rules defined by `SPEC.md`.
@@ -764,6 +772,8 @@ Recognition by spelling alone is insufficient where aliases, namespaces, templat
 **[TCB-VIRTUAL-002]** A virtual call may rely only on pre/post/effect guarantees valid for the dynamic target set admitted by the call.
 
 **[TCB-VIRTUAL-003]** Devirtualization used for proof MUST be justified by the same dynamic-type facts required by C++ execution semantics.
+
+**[TCB-VIRTUAL-004]** Until override substitutability is checked, `verified` on a virtual function and a call to a virtual function from verified code MUST be refused (`SPEC.md` CLASS-014). Whether a function is virtual is read from Clang's resolved declaration, so an override that does not say it is one is refused as surely as one that does.
 
 ---
 

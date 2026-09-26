@@ -719,6 +719,8 @@ obligation generation and the trust closure, never by the kernel.
 | Local versioning (declarations/assignments)       | `PROTOTYPE`   |
 | Weakest-precondition engine                       | `NOT STARTED` |
 | Contract composition                              | `PROTOTYPE`   |
+| Member-function contracts (non-virtual)           | `PROTOTYPE`   |
+| Virtual-function contracts and overrides          | `SPECIFIED`   |
 | Contract reuse across translation units           | `PROTOTYPE`   |
 
 A verified function declared in one translation unit and defined in another is
@@ -804,8 +806,9 @@ pin both directions, and the erasure test shows a refined member lowering to a
 plain member with identical generated code.
 
 Refined array elements use the same place model, at constant and at symbolic
-indices alike. General casts, lambdas, methods, alias-return lifetimes, `old`
-over mutable state, and dependent object flows remain unimplemented.
+indices alike. General casts, lambdas, virtual member functions, constructors
+and destructors, alias-return lifetimes, `old` over mutable state, and dependent
+object flows remain unimplemented.
 
 A record is decomposed from its resolved type rather than from the cursors of
 its definition, so an instantiated class template is decomposed like any other
@@ -926,18 +929,48 @@ and missing it once let a contract promising a positive result verify while
 returning zero. A pointee reached only through a pointer to const survives,
 because writing through one is not something the callee may do.
 
+A non-virtual member function is verified with its implicit object
+(`SPEC.md` CLASS-008 to CLASS-015, `docs/rfcs/0018-verified-member-functions.md`):
+the object's modeled scalar members, members of members and elements of member
+arrays are places, passed as reference parameters before the written ones, so a
+member function is the same verified callable a function is and no part of the
+verifier is specific to it. A `const` member function binds them `const` except
+through a `mutable` member; a write owes the member's refinement and keeps a
+sibling member's facts; a reference parameter, an object passed by reference, a
+call and an unsafe block may each reach the object, and invalidate what was
+known of it. A call on an object the caller names as storage passes the
+object's places and, when the callee may write, gives each a post-call version
+of which only the callee's `ensures` is known. Recursion, loops, ghost state and
+case splits work in a member function as in a function; a static member function
+is a function. `fixtures/verified_methods.cpp` pins each accepted form with the
+refused half of its matched pair beside it (`negative_verified_methods`), and
+`fixtures/equivalence/methods.cpp` pins that a class with verified member
+functions compiles to the same code as the class written without them.
+
+Virtual functions stay refused at the declaration, however the declaration says
+it is virtual and when it overrides without saying so, and a call to one from a
+verified body is refused, which is what closes virtual dispatch rather than
+leaving it open: the dynamic type decides which body runs, so a contract proved
+from a base's body would not cover an override that replaces it (CLASS-014).
+Constructors, destructors, member function templates, members of class
+templates, member functions of a union or of a class with a base, calls through
+pointers to member and `this` as a value are refused by name (CLASS-015). A
+contract is stated on the declaration in the class, and an out-of-line
+definition inherits it. A clause cannot call a member function, which is not a
+definition the formal core unfolds, and without `old(...)` a postcondition
+states the post-state only, so a mutating member function states in `ensures`
+every member its callers rely on afterwards. Member functions consumed across
+translation units carry no exported verification metadata yet.
+
 An object a parameter designates by reference is tracked as one place whose
 version any write that may alias it replaces, so a member read after such a
 write is of a value nothing states, and the object's post-state is what it holds
 at return (`SPEC.md` VERIFIED-030, VERIFIED-031). Before this, the member was
 read as the value it arrived with even after a write through another reference,
-and a contract false at run time was proven
-(`negative/reference_aggregate_stale.cpp`, `negative_verified_storage`).
+and a contract false at run time was proven (`negative/methods_reference_object_stale.cpp`,
+`negative_verified_storage`).
 
-Methods are refused at the declaration, which is what closes virtual dispatch
-rather than leaving it open: the dynamic type decides which body runs, so a
-contract proved from a base's body would not cover an override that replaces
-it. A refinement does not cross a translation unit on a declaration's word
+A refinement does not cross a translation unit on a declaration's word
 either. An ordinary function's refined return is refused as evidence at the
 boundary, including through a header, so the only way a refined value enters is
 where its predicate was proved: in the unit itself, or in another unit whose

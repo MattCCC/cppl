@@ -229,6 +229,23 @@ Manifest: `features/cross-tu-contracts.yaml`
 | Repeated declarations | negative, unit | covered — a header contract restated identically on a definition with loop clauses is used, one restated differently is refused (`e2e/cross_tu.sh`, `negative/cross_tu.sh`, `unit/cross_unit_contracts_test.cpp` citing `TU-003`; `xtu-restatements-agree`) |
 | Erasure and ABI | erasure, ABI | covered — see "Verification metadata across units" below |
 
+### verified-methods
+
+Manifest: `features/verified-methods.yaml`
+
+| Required case | Category | Status |
+| --- | --- | --- |
+| Const and mutating member functions | positive, negative | covered — a `const` getter, a reset, a bump owing its precondition, a postcondition false of the post-state refused (`fixtures/verified_methods.cpp`, `negative/verified_methods.sh` citing `CLASS-008`, `CONTRACT-009`) |
+| Qualifiers and overloads | positive, negative | covered — an overload on the implicit object's constness, `const&` and `&&` qualified member functions, a static member function; a `const` member function writing a `mutable` member is not relied on to leave it, and binding it `const` is mutation-checked (`fixtures/verified_methods.cpp`, `negative/verified_methods.sh` citing `CLASS-009`, `CLASS-012`, `CONTRACT-010`; `const-receiver-mutable-member`) |
+| Member writes and refinements | positive, negative | covered — a write to one member keeps a sibling's fact, a refined member holds on entry and is owed at return, a refined return; a write that breaks a member's refinement refused, and dropping the member's refinement is mutation-checked (`fixtures/verified_methods.cpp`, `negative/verified_methods.sh` citing `CLASS-010`, `REFINEOBL-007`; `member-refinement-kept`) |
+| Calls and composition | positive, negative | covered — a member function calling another on its object with and without `this`, a free function calling member functions on a local and on a parameter passed by reference and by value, a member function calling one on a member of its object, a member function passing a member to a free function; a fact the callee does not restate is gone after a mutating call, and keeping it is mutation-checked (`fixtures/verified_methods.cpp`, `negative/verified_methods.sh` citing `CLASS-011`; `member-call-writes-object`) |
+| Aliasing | adversarial | covered — a reference parameter designating a member, a reference to the whole object, a `const` call on an object whose member a reference argument aliases, an unsafe block writing the object; tracking the object as storage no reference reaches is mutation-checked (`negative/verified_methods.sh` citing `CLASS-010`, `UNSAFE-005`; `receiver-caller-storage`) |
+| Aggregates by reference | adversarial | covered — a by-reference aggregate read after a write through another reference, and a member of an untracked parameter written in an unsafe block, are not read at their entry values; each fix is mutation-checked (`negative/verified_storage.sh`, `negative/unsafe_boundary.sh` citing `CLASS-010`, `UNSAFE-005`; `reference-aggregate-witness`, `unsafe-member-write-rooted`) |
+| Termination | positive, negative | covered — a recursive member function with a measure over a member; a twin that recurses at the same measure refused (`fixtures/verified_methods.cpp`, `negative/verified_methods.sh` citing `TERMINATION-007`) |
+| Virtual dispatch | negative | covered — `virtual`, `override`, `final` and an implicit override refused, a dynamic call and a qualified call to a virtual function refused; each refusal is mutation-checked (`negative/verified_methods.sh`, `negative/refused_declarations.sh` citing `CLASS-014`, `CONTRACT-014`; `virtual-member-refused`, `virtual-call-refused`) |
+| Unmodeled members | negative | covered — constructors, destructors, a member template, a member of a class template, a qualified out-of-line contract, a local class, a union, a class with a base, `this` as a value, an untracked member, a call through a pointer to member (`negative/verified_methods.sh`, `negative/verified_functions.sh` citing `CLASS-015`, `CONTRACT-005`) |
+| Erasure | erasure | covered — identical output and assembly against a hand-erased twin in three standards, with size, alignment and a member offset asserted on both sides (`e2e/erasure_equivalence.sh`, `e2e/verified_methods.sh` citing `CLASS-013`) |
+
 ### erasure and ABI
 
 Rules: `ERASE-*`, `ERASEMATRIX-*`, `ABI-*` (see `FEATURE_INDEX.md`, Lowering).

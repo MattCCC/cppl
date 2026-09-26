@@ -367,31 +367,49 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
     // so there is nothing to specialize and nothing to instantiate.
     bool template_parameters = false;
 
+    // Whether the declaration being projected is a member function with an
+    // implicit object. Its probes are then members of the same class, stated
+    // `const`: a contract is resolved in the scope the body sees, with `this`
+    // and ordinary member lookup (SPEC.md CONTRACT-008), and reads the object
+    // without writing it. A static member's probes are static members, which
+    // the ordinary `static` prefix already declares inside a class.
+    bool implicit_object = false;
+
     // What every generated declaration is introduced by. A templated probe
     // cannot be `static`: it is a template, and its header has to precede the
-    // declaration it introduces.
+    // declaration it introduces. Nor can a probe of a member function with an
+    // implicit object: it has one too.
     const auto templated = [&template_parameters] {
         return template_parameters;
     };
-    const auto declaration_prefix = [&template_header, &templated] {
+    const auto declaration_prefix = [&template_header, &templated, &implicit_object] {
         std::string prefix;
         if (templated()) {
             prefix += template_header;
             prefix += " [[maybe_unused]] ";
             return prefix;
         }
+        if (implicit_object) {
+            return std::string("[[maybe_unused]] ");
+        }
         prefix += "[[maybe_unused]] static ";
         return prefix;
+    };
+    // What follows a probe's parameter list: `const` for a member function's
+    // probe, which reads the implicit object and never writes it.
+    const auto probe_qualifier = [&implicit_object] {
+        return implicit_object ? std::string(" const") : std::string();
     };
 
     // A declaration becomes an ordinary C++ function stating the proposition it
     // carries, emitted where the declaration stood. Everything after this point
     // in the analysis text is C++ that Clang resolves on its own.
-    const auto emit = [&stream, &projection, &options, &declaration_prefix](
+    const auto emit = [&stream, &projection, &options, &declaration_prefix, &probe_qualifier](
                           std::string_view name, const Generated& parameters, const source::ByteSpan& expression,
                           const source::SourceLocation& begin, std::uint32_t end_line,
                           std::size_t* name_offset = nullptr, std::string* proposition_name = nullptr) {
         const std::string prefix = declaration_prefix();
+        const std::string qualifier = probe_qualifier();
         Generated replacement;
         replacement += "\n";
         replacement += line_directive(begin.line, begin.file);
@@ -411,7 +429,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
             projection.diagnostics.push_back(std::move(diagnostic));
         }
         if (formula.shape.kind != source::ProjectionKind::Expression) {
-            replacement += ");\n";
+            replacement += ")" + qualifier + ";\n";
             const std::string probe = options.generated_prefix + "proposition_" +
                                       std::to_string(projection.proposition_probes.size()) +
                                       (options.unit_key.empty() ? "" : "_" + options.unit_key);
@@ -427,12 +445,12 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
             const bool capability = formula.shape.kind == source::ProjectionKind::Readable ||
                                     formula.shape.kind == source::ProjectionKind::Writable ||
                                     formula.shape.kind == source::ProjectionKind::Capabilities;
-            replacement +=
-                capability ? ") { " + formula.expression + "; }\n" : ") { return (" + formula.expression + "); }\n";
+            replacement += capability ? ")" + qualifier + " { " + formula.expression + "; }\n"
+                                      : ")" + qualifier + " { return (" + formula.expression + "); }\n";
             replacement += line_directive(end_line, begin.file);
             return replacement;
         }
-        replacement += ") { return (";
+        replacement += ")" + qualifier + " { return (";
         replacement += at_written_position(stream, expression);
         replacement += "); }\n";
         replacement += line_directive(end_line, begin.file);
@@ -676,6 +694,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         template_header = verified.template_header.length == 0 ? std::string()
                                                                : std::string(stream.spelling(verified.template_header));
         template_parameters = verified.template_header.length != 0 && !verified.explicit_specialization;
+        implicit_object = verified.member && !verified.static_member;
 
         const std::string suffix = std::to_string(index) + (options.unit_key.empty() ? "" : "_" + options.unit_key);
         std::string_view parameters = stream.spelling(verified.parameters);
@@ -718,7 +737,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
             replacement += "\n" + line_directive(verified.function_location.line, verified.function_location.file) +
                            declaration_prefix() + "bool " + projected.postcondition_name + "(";
             replacement += result_parameter;
-            replacement += ") { return true; }\n";
+            replacement += ")" + probe_qualifier() + " { return true; }\n";
         }
         for (const Clause* precondition : verified.preconditions()) {
             std::string name = options.generated_prefix + "expects_" + suffix;
@@ -750,7 +769,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
                 replacement += line_directive(component.location.line, component.location.file);
                 replacement += declaration_prefix() + "auto " + name + "(";
                 replacement += parameter_list;
-                replacement += ") { return (";
+                replacement += ")" + probe_qualifier() + " { return (";
                 replacement += at_written_position(stream, component.expression);
                 replacement += "); }\n";
                 projected.measure_names.push_back(std::move(name));
@@ -826,6 +845,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
     }
     template_header.clear();
     template_parameters = false;
+    implicit_object = false;
 
     // A loop's clauses are not C++ either. Each invariant becomes a `bool`
     // declaration at the start of the body, in the scope the loop head sees,
@@ -990,7 +1010,10 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
             declared +=
                 "<T, decltype(void(sizeof(T)))> { static constexpr bool value = true; }; template<class T> struct ";
             declared += binder_type;
-            declared += " { using type = T; }; template<class T> T& ";
+            // Inside a class the helper is a member, and a static one, so that a
+            // static member function's split resolves it without an object.
+            declared += verified.member ? " { using type = T; }; template<class T> static T& "
+                                        : " { using type = T; }; template<class T> T& ";
             declared += binder_value;
             declared += "();\n";
             declared += resume_at(stream, before);

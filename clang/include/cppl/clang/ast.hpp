@@ -454,6 +454,13 @@ struct Function {
     // is set for a function that has a body.
     std::optional<std::string> body_rejection;
 
+    // Why this member function, marked verified, is not one this
+    // implementation verifies, when it is not: a virtual function, a member of
+    // a class template, a contract stated outside the class, or an implicit
+    // object whose class is not modeled (SPEC.md CLASS-014, CLASS-015). Its
+    // body is not lowered, and elaboration refuses it by name.
+    std::optional<std::string> member_rejection;
+
     // The generated invariant declarations the body lowering attached to a
     // loop. Every one the projector emitted for this function must be here.
     std::vector<std::string> loop_invariants;

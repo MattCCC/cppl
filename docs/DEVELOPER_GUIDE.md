@@ -3263,34 +3263,107 @@ Keep in mind:
 
 Use member lookup and `this`, not a second meaning for `self`.
 
-Put a public member contract on its class declaration:
+A member function marked `verified` is checked like a function whose implicit
+object is storage: each member of the object is a place the body reads and
+writes, and a contract names members as the body does. A precondition reads the
+object on entry; a postcondition reads it where the function returns
+(`SPEC.md` CONTRACT-009, CLASS-008).
+
+<!-- cppl-example: verify -->
 
 ```cpp
 class Account {
 public:
-    unsigned balance_;
+    Account(unsigned balance, unsigned limit) : balance_(balance), limit_(limit) {}
+
+    verified unsigned balance() const
+        ensures (result == balance_)
+    {
+        return balance_;
+    }
+
+    verified void deposit(unsigned amount)
+        expects (amount <= limit_ && balance_ <= limit_ - amount)
+        ensures (balance_ <= limit_)
+    {
+        balance_ = balance_ + amount;
+    }
 
     verified unsigned withdraw(unsigned amount)
         expects (amount <= balance_)
-        ensures (result == old(balance_) - amount && balance_ == result);
-
-    verified pure unsigned balance() const
         ensures (result == balance_);
+
+private:
+    unsigned balance_;
+    unsigned limit_;
 };
 
 unsigned Account::withdraw(unsigned amount)
 {
-    balance_ -= amount;
-    return balance_;
-}
-
-unsigned Account::balance() const
-{
+    balance_ = balance_ - amount;
     return balance_;
 }
 ```
 
-The out-of-line definitions inherit their declarations.
+Put the contract on the declaration in the class. An out-of-line definition
+inherits it and does not restate it: `verified` on a qualified definition such
+as `Account::withdraw` is refused, since the class's members are not in scope
+where it stands (CONTRACT-005).
+
+What a member function may write follows its qualifiers. A `const` one leaves
+its object as it was, so a caller keeps what it knew about the object across
+the call; a `mutable` member is the exception, and a `const` member function
+that may write one is treated as writing its object. A mutating call gives
+every member of its object a new value, of which the caller knows exactly what
+the callee's `ensures` states (CLASS-009, CLASS-011):
+
+<!-- cppl-example: verify -->
+
+```cpp
+struct Counter {
+    unsigned value;
+    unsigned limit;
+
+    verified unsigned get() const
+        ensures (result == value)
+    {
+        return value;
+    }
+
+    verified void reset()
+        ensures (value == 0u)
+    {
+        value = 0u;
+    }
+};
+
+verified unsigned read_after_reset(unsigned start)
+    ensures (result == 0u)
+{
+    Counter counter{start, 10u};
+    counter.reset();
+    return counter.get();
+}
+```
+
+After `counter.reset()` nothing is known of `counter.limit`: `reset` does not
+say it keeps it, and C++L has no `old(...)` yet to say so with. State in
+`ensures` every member a caller relies on after a mutating call.
+
+The object a member function runs on is caller storage, so it may be what a
+reference parameter designates. A write through the parameter is a write that
+may land on a member, and a write to a member is one that may land on what the
+parameter designates; each takes away what was known through the other
+(CLASS-010). Distinct members of one object are distinct storage, so a write to
+one keeps the facts of the others.
+
+A refined member owes its predicate at every write, as a refined local does, and
+holds it on entry to every member function (CLASS-010, REFINEOBL-007).
+
+A static member function has no implicit object and is verified as a function
+is. Member function templates, members of class templates, member functions of
+a union or of a class with a base, and a member function called through a
+pointer to member are refused rather than verified (CLASS-015).
 
 A constructor has no return-value `result`; its postcondition describes the
 initialized object.
@@ -3376,6 +3449,14 @@ that callers were allowed to establish from the base interface.
 If the verifier cannot establish override compatibility, the override is
 rejected.
 
+This implementation does not check override compatibility yet, so it refuses
+`verified` on every virtual function -- one declared `virtual`, `override` or
+`final`, and one that overrides a virtual function without saying so -- and it
+refuses a call to a virtual function from a verified body, whether the call
+dispatches or names one function by qualification (`SPEC.md` CLASS-014). A
+non-virtual member function of a class that also has virtual ones is verified
+as usual.
+
 ### 16.2. Constructors and destructors are lifetime boundaries
 
 Constructors and destructors need special treatment because object lifetime is
@@ -3409,6 +3490,11 @@ Verification of destruction must respect ordinary C++ destruction order,
 subobject lifetime and any effects performed by destructors.
 
 C++L must never reason about an object as still live after its lifetime has ended.
+
+This implementation does not model construction or destruction, so `verified`
+on a constructor or a destructor is refused where it is written (`SPEC.md`
+CLASS-015). Construct an object in a verified body with an aggregate
+initializer, or in ordinary C++, and verify the member functions that run on it.
 
 ## 17. Formatting and editor fixes
 
@@ -4067,6 +4153,38 @@ decreases (...)
 A verified function still runs at runtime.
 
 Contracts do not insert hidden runtime checks.
+
+A member function takes the same clauses, after its qualifiers:
+
+```cpp
+struct Counter {
+    unsigned value;
+
+    verified void bump() &
+        expects (value < 100u)
+        ensures (value <= 100u)
+    {
+        value = value + 1u;
+    }
+};
+```
+
+```text
+member names in a clause
+    the object's members, by ordinary member lookup and `this`
+
+expects
+    reads the object on entry
+
+ensures
+    reads the object where the function returns
+
+const
+    the call leaves the object as it was, unless a `mutable` member is written
+
+virtual, constructors, destructors, member templates
+    refused by this implementation
+```
 
 ### Laws
 
@@ -4737,6 +4855,10 @@ virtual
 verified / expects / ensures
     = C++L
 ```
+
+The grammar admits this declaration. This implementation refuses it, since it
+does not yet check that every override honours the base contract (`SPEC.md`
+CLASS-014).
 
 ### C++L-specific vocabulary
 

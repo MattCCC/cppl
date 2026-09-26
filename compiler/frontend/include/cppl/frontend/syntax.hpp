@@ -255,6 +255,14 @@ struct VerifiedFunction {
     source::SourceLocation function_location;
     std::size_t function_offset = 0; // physical byte offset in the preprocessed input
 
+    // Whether the declaration stands in a class, as a member function. Its
+    // contract uses ordinary member lookup and `this` (SPEC.md CONTRACT-008),
+    // so its probes are members of that class too and resolve every name the
+    // body resolves. A static member has no implicit object: its probes are
+    // static members, and it is verified as a function is (SPEC.md CLASS-008).
+    bool member = false;
+    bool static_member = false;
+
     source::ByteSpan return_type;
     source::ByteSpan parameters;
 

@@ -94,6 +94,13 @@ xtu-withdraw-only-interfaces	compiler/driver/src/interface_io.cpp	if (first != s
 xtu-status-proven-only	compiler/artifact/src/interface.cpp	if (status->fields[1] != "proven") {	if (false) {	^unit_interface_test$|^negative_cross_tu$
 xtu-checksum-verified	compiler/artifact/src/interface.cpp	if (!(source::hash_bytes(text.substr(0, last_start)) == *recorded_checksum)) {	if (false) {	^unit_interface_test$|^negative_cross_tu$|^fuzz_interface_replay$
 xtu-canonical-order	compiler/artifact/src/interface.cpp	if (!previous.empty() && !(previous < line.text)) {	if (false && !previous.empty() && !(previous < line.text)) {	^unit_interface_test$
+member-call-writes-object	clang/src/bridge.cpp	const bool writes = (callee_receiver.has_value() && callee_receiver->writes()) ||	const bool writes = false ||	^negative_verified_methods$
+const-receiver-mutable-member	clang/src/bridge.cpp	if (constant && !leaf.mutable_member) {	if (constant && (true || !leaf.mutable_member)) {	^negative_verified_methods$
+virtual-member-refused	clang/src/bridge.cpp	if (clang_CXXMethod_isVirtual(cursor) != 0) {	if (false && clang_CXXMethod_isVirtual(cursor) != 0) {	^negative_verified_methods$
+virtual-call-refused	clang/src/bridge.cpp	if (clang_CXXMethod_isVirtual(referenced) != 0) {	if (false && clang_CXXMethod_isVirtual(referenced) != 0) {	^negative_verified_methods$
+member-refinement-kept	clang/src/bridge.cpp	converted.refinements = std::move(*refinements);	(void)refinements;	^negative_verified_methods$
+reference-aggregate-witness	clang/src/bridge.cpp	if (parameter.type.kind == TypeKind::Value && source::aliases_storage(parameter.passing) &&	if (false && parameter.type.kind == TypeKind::Value && source::aliases_storage(parameter.passing) &&	^negative_verified_storage$
+unsafe-member-write-rooted	clang/src/bridge.cpp	return access.has_value() && !access->dereferenced && clang_equalCursors(access->declaration, declaration) != 0;	return access.has_value() && access->path.empty() && !access->dereferenced && clang_equalCursors(access->declaration, declaration) != 0;	^negative_unsafe_boundary$
 MUTATIONS
 )
 
@@ -104,11 +111,13 @@ multiline_names=(forall-recursive-evidence implication-recursive-evidence
                  transport-recursive-evidence conditional-false-arm
                  arithmetic-fact-evidence callee-body-linkage
                  call-precondition-gate conjunction-introduction-right
-                 disjunction-right-case conjunction-elimination-evidence)
+                 disjunction-right-case conjunction-elimination-evidence
+                 receiver-caller-storage)
 
 multiline_file() {
     case "$1" in
         callee-body-linkage|call-precondition-gate) echo "compiler/automation/src/composition.cpp" ;;
+        receiver-caller-storage) echo "clang/src/bridge.cpp" ;;
         *) echo "kernel/src/check.cpp" ;;
     esac
 }
@@ -116,6 +125,7 @@ multiline_file() {
 multiline_tests() {
     case "$1" in
         callee-body-linkage) echo '^unit_contracts_test$' ;;
+        receiver-caller-storage) echo '^negative_verified_methods$' ;;
         call-precondition-gate) echo '^unit_contracts_test$|^negative_verified_calls$|^negative_verified_paths$' ;;
         *) echo '^kernel_' ;;
     esac
@@ -188,6 +198,9 @@ multiline_before() {
         conjunction-elimination-evidence)
             printf '%s' '*taken->conjunction, *taken->evidence, limits, depth + 1);
             !evidence)' ;;
+        receiver-caller-storage)
+            printf '%s' '.type = leaf.type,
+                                       .external = true,' ;;
     esac
 }
 
@@ -228,6 +241,9 @@ multiline_after() {
         conjunction-elimination-evidence)
             printf '%s' '*taken->conjunction, *taken->evidence, limits, depth + 1);
             false && !evidence)' ;;
+        receiver-caller-storage)
+            printf '%s' '.type = leaf.type,
+                                       .external = false,' ;;
     esac
 }
 

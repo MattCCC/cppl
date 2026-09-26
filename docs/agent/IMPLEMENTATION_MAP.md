@@ -568,6 +568,61 @@ object to the imported interface, import in `cppl-lsp`, modules.
 
 ---
 
+## verified-methods
+
+Manifest: `features/verified-methods.yaml`
+
+Normative sources: `CLASS-008`–`CLASS-015` (SPEC Annex F.5.1, F.10),
+`CONTRACT-005`, `CONTRACT-008`–`CONTRACT-010`, `CONTRACT-014` (SPEC §11.9,
+§11.11); `ARCHITECTURE.md` §43 (`ARCH-OBJ-002`); `TRUST.md` §21, §21.1
+(TCB-OBJ-006–TCB-OBJ-008, TCB-VIRTUAL-004); RFC 0018.
+
+### Components
+
+| Component | Responsibility | Paths |
+| --- | --- | --- |
+| recognizer | Read `verified` on a member function declared in a class at namespace scope or nested in one; refuse a virtual one, a constructor, a destructor, a member template, a qualified out-of-line declarator and a class local to a body where written. | `compiler/frontend/src/recognizer.cpp` (`try_verified`, `refused_member`), `compiler/frontend/include/cppl/frontend/syntax.hpp` |
+| projection | Emit a member function's clause probes as `const` members of its class, so `this` and member names resolve in a clause as in the body. | `compiler/frontend/src/projection.cpp` (`implicit_object`, `probe_qualifier`) |
+| bridge | Enumerate the implicit object's scalar places and their passing (`receiver_of`); resolve `this->x`, `(*this).x` and `x` to one place rooted in the class (`resolve_access`); track the places as external storage from entry; pass an object's places at a member call and give them post-call versions (`call_object`, `receiver_argument`, `evaluate`); refuse virtual functions and calls, class-template members, unions and classes with bases (`member_standing`). | `clang/src/bridge.cpp`, `clang/include/cppl/clang/ast.hpp` |
+| elaboration | Report a refused member function by name where it is declared. | `compiler/elaboration/src/elaborate.cpp` |
+| obligations, kernel, erasure | Unchanged: the implicit object's places are reference parameters. | — |
+
+### Required behavior
+
+```text
+the implicit object         is the class's scalar places, reference parameters
+                            before the written ones, numbered as a member
+                            access in the body numbers them
+a const member function     reads its object and may write only a mutable member
+a member write              versions that place, owes its refinement, and
+                            invalidates what may alias it; a sibling member
+                            keeps its facts
+a reference argument,       may reach any place of the object, and a write to
+a call, an unsafe block     the object may reach what they designate
+a member call               passes the object's places; if the callee may
+                            write, every place of the object takes a post-call
+                            version known only through the callee's ensures
+a virtual function or call  is refused
+the class                   erases member for member, layout unchanged
+```
+
+### Existing surface
+
+```text
+tests/fixtures/verified_methods.cpp           every accepted form, one half of each matched pair
+tests/e2e/verified_methods.sh                 verification counts, runtime output, erasure
+tests/negative/verified_methods.sh            every rejection, written out in tests/fixtures/negative/methods_*.cpp
+tests/fixtures/equivalence/methods.cpp        erasure and layout against a hand-erased twin
+```
+
+Not built: `old(...)`, member function calls in contracts, virtual functions,
+constructors and destructors, member templates, members of class templates,
+member functions of unions and of classes with bases, calls on objects reached
+through pointers or elements at a term, and use of a member function's contract
+from another translation unit; each is refused.
+
+---
+
 ## Adding a feature to this map
 
 1. Add the feature to `FEATURE_INDEX.md`.

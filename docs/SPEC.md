@@ -5695,6 +5695,69 @@ representation, solver, or TCB implementation.
 - Reference qualifiers, `noexcept`, `override`, `final`, explicit object parameters and
   trailing qualifiers retain ordinary C++ semantics.
 
+### F.5.1 Verified member functions
+
+[CLASS-008] A non-static member function that C++ binds statically is verified as a callable
+whose implicit object is storage. Each scalar subobject of the object that the
+implementation models -- a data member, a member of a member, an element of a member
+array -- is a place of the object, reached by the path of members and elements that names
+it, and the callable takes each such place as a reference parameter, in declaration order,
+before its written parameters. A contract names those places through ordinary member
+lookup and `this` (CONTRACT-008): in a precondition a member denotes its entry value, in a
+postcondition its normal-return value (CONTRACT-009, VERIFIED-031). `verified` applies to a
+member function declared in a class that is itself declared at namespace scope or in
+another such class, and the contract is stated on that declaration: a qualified
+definition outside the class inherits it and MUST NOT restate it (CONTRACT-005). A class
+local to a function body has no verified member functions.
+
+[CLASS-009] How a member function binds its implicit object follows its C++ qualifiers
+(CONTRACT-010). A `const` member function binds each place of the object as a `const`
+reference, except a place reached through a `mutable` member, which it may write; a
+member function without `const` binds every place as writable, and one whose
+ref-qualifier is `&&` binds it as an rvalue reference. No qualifier establishes that a
+place is not written through another access path.
+
+[CLASS-010] In a verified member function's body, a member of the implicit object is read
+and written through the one read and write path (VERIFIED-025, VERIFIED-030): a write
+establishes a new version of exactly the place written, owes the refinement the member
+declared (REFINE-060, REFINEOBL-007) and invalidates every place that may alias it.
+Distinct members of the object are distinct storage, so a write to one leaves the facts
+of another standing. The object is caller storage: a reference or pointer parameter, an
+object passed by reference, a call and an unsafe block may each reach any place of it,
+so a write through any of them invalidates what was known of the object's places, and a
+write to the object's places invalidates what was known through them. A refined place of
+the object satisfies its predicate on entry, and every normal return owes it again.
+
+[CLASS-011] A call to a statically bound member function is made on an object the caller
+names as storage: the caller's own implicit object, a local, a parameter, or a member or
+an element at a constant of one. The object's places are passed as the arguments of the
+callee's implicit object, and the call owes the callee's preconditions at those
+arguments (VERIFIED-013). When the callee may write its object, or writes through any
+reference argument, every place of the object takes a post-call version, and the caller
+knows of those versions only what the callee's postcondition states, once the callee's
+contract and the call's entry obligations are established (VERIFIED-014, VERIFIED-032).
+A place passed as the object's and as a reference argument is one storage with one
+post-call version. A call within a recursion group owes the callees' measure at the
+object's places as at every other argument (TERMINATION-007).
+
+[CLASS-012] A static member function has no implicit object. It is verified as a
+function is, and a call to one is a call to a function.
+
+[CLASS-013] A member function's contract erases with no trace in the program: the
+class keeps exactly its members, bases, layout, member functions, signatures and calling
+convention (ERASE-004, ABI-001). Nothing the verification of a member function uses to
+resolve its contract is part of the runtime program.
+
+[CLASS-015] An implementation that does not model a member function's semantics MUST
+refuse it where it is written rather than verify a weaker program. This includes, where
+not modeled: a constructor or a destructor, whose object's lifetime begins or ends
+(CONTRACT-011, CONTRACT-012); a member function template, and a member of a class
+template, whose contract would have to be checked at every specialization (TEMPLATE-001);
+a member function whose class is a union or has a base subobject; `this` used as a value;
+a member whose storage is not modeled; a call through a pointer to member function; and a
+call on an object the caller does not name as storage, such as one reached through a
+pointer, a temporary or an element selected at a term.
+
 ## F.6 Constructors
 
 - [CLASS-004] A constructor has no return-value `result`.
@@ -5748,6 +5811,13 @@ representation, solver, or TCB implementation.
 - If the base callable is `pure`, an override used through that interface must satisfy the
   corresponding purity guarantee.
 - If termination is part of the base semantic guarantee, an override must preserve it.
+
+[CLASS-014] An implementation that does not check override substitutability (CONTRACT-014,
+CONTRACT-015) MUST refuse `verified` on a virtual function, whether the declaration says
+it is virtual (`virtual`, `override`, `final`) or overrides a virtual function without
+saying so, and MUST refuse from verified code a call to a virtual function, whether the
+call dispatches on the dynamic type or names one function by qualification. A contract
+proved from one body is never evidence about a call that may run another.
 
 ## F.11 Multiple inheritance and virtual bases
 

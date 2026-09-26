@@ -30,6 +30,7 @@ section numbers move and rule IDs do not.
 | Laws | `LAW-*`, `LAWIMPL-*` | §10, §47 | §3 | Propositions as types | §15, §16 |
 | Contracts | `CONTRACT-*`, `CONTRACTCOMP-*` | §11, Annex R | §6, §10–13 | Hoare logic | §6 |
 | `verified` | `VERIFIED-*` | §12 | §8 | Weakest preconditions | §6, §27 |
+| Verified member functions | `CLASS-008`–`CLASS-015`, `CONTRACT-005`, `CONTRACT-008`–`CONTRACT-010`, `CONTRACT-014` | §11.9, Annex F.5.1, F.10 | §8 | Storage, capabilities and framing | §21, §21.1 |
 | `pure` | `PURE-*` | §13 | §9 | — | — |
 | Specification expressions | `SPECEXPR-*`, `ADMISSIBLE-*` | §14, Annex U | §6 | — | — |
 | Proof declarations | `PROOF-*`, `PROOFSRC-*` | §15, Annex H | §4, §5 | Curry–Howard | §4, §13 |

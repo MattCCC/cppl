@@ -2160,6 +2160,19 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
                    "an unsafe declaration states that calls cross an unverified boundary (SPEC.md UNSAFE-002)");
             continue;
         }
+        // A member function this implementation does not verify is refused by
+        // name where it is declared, never verified without its implicit
+        // object or with a contract its dispatch does not honour (SPEC.md
+        // CLASS-014, CLASS-015).
+        if (function->member_rejection.has_value()) {
+            report(engine, diagnostics::Category::UnsupportedSemantics,
+                   candidate.declaration != nullptr ? candidate.declaration->function_location : function->location,
+                   "verified member function '" + function->qualified_name +
+                       "' is not verified by this "
+                       "implementation: " +
+                       *function->member_rejection);
+            continue;
+        }
         vir::Function converted;
         converted.id = vir::FunctionId{next_function_id++};
         converted.symbol = vir::SymbolId{function->usr};

@@ -1,0 +1,153 @@
+# Machine-readable manifest for the verified-methods feature.
+#
+# Rule IDs are anchors in docs/SPEC.md, the canonical specification. Extract the
+# normative text with:
+#
+#     cppl-spec-rules extract --feature verified-methods
+
+feature: verified-methods
+
+summary: >
+  A non-static member function that C++ binds statically is a verified callable
+  whose implicit object is storage: each scalar place of the object is a
+  reference parameter standing before the written ones, bound as the function's
+  qualifiers say. The body reads and writes members through the one read and
+  write path, a write owes the member's refinement and invalidates what may
+  alias it, and a call on an object passes the object's places and gives them
+  the post-call versions the callee's contract describes. The object may alias
+  any reference argument. Virtual functions and calls, constructors,
+  destructors, member templates, members of class templates, unions and classes
+  with bases are refused where written. The class erases to itself.
+
+normative_sources:
+  spec:
+    - "§11.9 Member functions and the implicit object"
+    - "§11.11 Virtual functions and overriding contracts"
+    - "Annex F.5.1 Verified member functions"
+    - "Annex F.10 Virtual functions"
+  grammar:
+    - "§8 Verified functions"
+  foundations:
+    - "§7.2 Storage/capability context"
+  trust:
+    - "§21 Objects, classes, construction and destruction"
+    - "§21.1 Virtual dispatch"
+  architecture:
+    - "§43 (ARCH-OBJ-002)"
+  rfc:
+    - "docs/rfcs/0018-verified-member-functions.md"
+
+rule_families:
+  - CLASS
+
+# The rules this feature realizes, within that family and outside it.
+# `cppl-spec-rules extract --feature` reads only the families above; extract
+# the others by ID.
+rules:
+  - CLASS-008
+  - CLASS-009
+  - CLASS-010
+  - CLASS-011
+  - CLASS-012
+  - CLASS-013
+  - CLASS-014
+  - CLASS-015
+  - CONTRACT-005
+  - CONTRACT-008
+  - CONTRACT-009
+  - CONTRACT-010
+  - CONTRACT-014
+  - TERMINATION-007
+  - REFINEOBL-007
+
+depends_on:
+  - verified-functions
+  - verified-call-composition
+  - refinement-types
+  - termination
+  - unsafe-boundary
+  - erasure
+
+implementation:
+  frontend:
+    - compiler/frontend/include/cppl/frontend/syntax.hpp
+    - compiler/frontend/src/recognizer.cpp
+    - compiler/frontend/src/projection.cpp
+  clang:
+    - clang/include/cppl/clang/ast.hpp
+    - clang/src/bridge.cpp
+  elaboration:
+    - compiler/elaboration/src/elaborate.cpp
+
+interactions:
+  - reference parameters that may designate the object or a member of it
+  - member calls on the object, on locals, parameters and their members
+  - free functions calling member functions and member functions calling free functions
+  - const, mutable and ref-qualified member functions and their overloads
+  - refined members
+  - recursion groups through member functions
+  - unsafe blocks writing the object
+  - by-reference aggregate parameters read after a write that may reach them
+  - virtual dispatch, which is refused
+  - erasure and layout
+
+tests:
+  positive:
+    - tests/fixtures/verified_methods.cpp
+    - tests/fixtures/equivalence/methods.cpp
+    - tests/fixtures/untracked_members.cpp
+  negative:
+    - tests/negative/verified_methods.sh
+    - tests/fixtures/negative/methods_false_postcondition.cpp
+    - tests/fixtures/negative/methods_stale_member_after_call.cpp
+    - tests/fixtures/negative/methods_mutating_call_forgets.cpp
+    - tests/fixtures/negative/methods_reference_alias_member.cpp
+    - tests/fixtures/negative/methods_reference_object_stale.cpp
+    - tests/fixtures/negative/methods_const_call_through_alias.cpp
+    - tests/fixtures/negative/methods_mutable_member.cpp
+    - tests/fixtures/negative/methods_refined_member_write.cpp
+    - tests/fixtures/negative/methods_nondecreasing_recursion.cpp
+    - tests/fixtures/negative/methods_unsafe_block.cpp
+    - tests/fixtures/negative/methods_virtual_function.cpp
+    - tests/fixtures/negative/methods_implicit_override.cpp
+    - tests/fixtures/negative/methods_virtual_call.cpp
+    - tests/fixtures/negative/methods_lifetime_members.cpp
+    - tests/fixtures/negative/methods_member_template.cpp
+    - tests/fixtures/negative/methods_class_template.cpp
+    - tests/fixtures/negative/methods_out_of_line_contract.cpp
+    - tests/fixtures/negative/methods_local_class.cpp
+    - tests/fixtures/negative/methods_unmodeled_receivers.cpp
+    - tests/fixtures/negative/methods_unmodeled_uses.cpp
+    - tests/negative/verified_storage.sh
+    - tests/fixtures/negative/reference_aggregate_stale.cpp
+    - tests/fixtures/negative/member_numbering_gap.cpp
+    - tests/negative/unsafe_boundary.sh
+    - tests/fixtures/negative/unsafe_member_write.cpp
+    - tests/negative/refused_declarations.sh
+    - tests/negative/verified_functions.sh
+  end_to_end:
+    - tests/e2e/verified_methods.sh
+    - tests/e2e/erasure_equivalence.sh
+
+required_test_categories:
+  - const member function
+  - mutating member function
+  - refined member write, matched pair
+  - member postcondition
+  - member function calling member function
+  - member and free function composition, both directions
+  - overloads on const and on ref-qualifier
+  - cv-qualified and ref-qualified implicit objects
+  - an object aliased by a reference argument
+  - decreases, and a non-decreasing twin refused
+  - refined return
+  - a stale member fact refused
+  - virtual function and virtual call refused
+  - erasure to ordinary C++ with unchanged layout
+
+completion_requires:
+  - every place a verified body can reach through the object is a tracked place of it
+  - no disjointness is assumed between the object and any reference argument
+  - a call that may write the object leaves only what the callee's postcondition states
+  - virtual dispatch is refused until override substitutability is checked
+  - the class erases member for member

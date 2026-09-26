@@ -73,8 +73,11 @@ reject runtime_result 'undeclared identifier.*result' \
     'verified unsigned f(unsigned x) ensures (result == x) { return result; }'
 reject result_in_expects 'undeclared identifier.*result' \
     'verified unsigned f(unsigned x) expects (result == 0u) ensures (result == x) { return x; }'
-reject method 'outside namespace scope' \
-    'struct S { verified unsigned f(unsigned x) ensures (result == x) { return x; } };'
+# A member function of a class at namespace scope is verified with its
+# implicit object (e2e/verified_methods.sh); one of a class local to a function
+# body is refused, as every other declaration in a block is (SPEC.md CLASS-008).
+reject local_class_method 'outside namespace scope' \
+    'unsigned g() { struct S { verified unsigned f(unsigned x) ensures (result == x) { return x; } }; return 0u; }'
 reject recursive 'it calls itself and states no measure' \
     'verified pure unsigned f(unsigned x) ensures (result == x) { return f(x); }'
 reject conditional_call 'call.site precondition' \

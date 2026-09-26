@@ -1752,6 +1752,36 @@ possible target satisfies the required substitutability relation.
 Otherwise effects/facts must be conservatively widened or the stronger claim
 rejected.
 
+A statically bound member function is not a second kind of verified entity. The
+Clang bridge gives it one reference parameter per scalar place of its implicit
+object, in the order the class declares them and before the written parameters,
+so from elaboration on it is the verified callable a function is: one contract
+structure, one obligation walk, one call composition, one trust closure
+(`SPEC.md` CLASS-008, `docs/rfcs/0018-verified-member-functions.md`).
+
+```text
+recognizer   `verified` on a member declared in a class at namespace scope;
+             virtual, constructor, destructor, member template and qualified
+             out-of-line forms refused where written
+projection   the contract probes are `const` members of the same class, so a
+             clause resolves `this` and member names as the body does
+bridge       the receiver: the class's scalar places by `field_index_of`
+             numbering, with each member's refinement and its binding from the
+             function's qualifiers; `this->x`, `(*this).x` and `x` resolve to one
+             place rooted in the class; a member call passes the object's places
+             and, when the callee may write, gives each a post-call version;
+             virtual, class-template and union/base-class members refused
+elaboration  a refused member function reported by name; otherwise unchanged
+obligations  unchanged: implicit-object places are reference parameters
+erasure      unchanged: `verified` and the clauses leave, the class stays whole
+```
+
+**[ARCH-OBJ-002]** The implicit object's places MUST be the places a member
+access in the body resolves to, numbered by the same resolver, rooted in one
+object identity, and external: another reference, a call or an unsafe block may
+reach them. A member function MUST NOT gain a read, write, alias or call rule of
+its own; it is the one storage model applied to one more root.
+
 ---
 
 # 44. Templates and dependent C++ contexts

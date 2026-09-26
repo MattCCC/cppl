@@ -334,6 +334,13 @@ Required:
 - pre/postconditions
 - weakest-precondition or equivalent reasoning
 
+Member functions: a statically bound member function is prototyped as a verified
+callable over its implicit object's storage, with member writes, aliasing and
+member calls on the common storage model (`docs/rfcs/0018-verified-member-functions.md`).
+Next are `old(...)` over the implicit object, override substitutability for
+virtual functions, constructors and destructors, and member functions of class
+templates.
+
 Exit criterion:
 
 > Useful imperative C++ can be verified without rewriting it as a purely functional language.

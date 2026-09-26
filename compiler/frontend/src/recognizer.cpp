@@ -1614,11 +1614,80 @@ bool record_unchecked_clauses(const TokenStream& stream, std::size_t keyword_ind
     return true;
 }
 
+// Whether a token between `from` and `to` is the word `word`.
+bool written_between(const std::vector<Token>& tokens, std::size_t from, std::size_t to, std::string_view word) {
+    for (std::size_t cursor = from; cursor < to && cursor < tokens.size(); ++cursor) {
+        if (tokens[cursor].is_identifier(word)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// A member function this implementation does not verify, refused where it is
+// written rather than recognized and left unchecked. A virtual function's body
+// is not what a call through its base interface runs, so a contract proved
+// from it would say nothing about the call (SPEC.md CONTRACT-014, CLASS-014).
+// A constructor and a destructor begin and end an object's lifetime, which the
+// receiver model does not follow (SPEC.md CONTRACT-011, CONTRACT-012,
+// CLASS-015). A member function template's probes would have to be forced at
+// every specialization of a member, which nothing here does (CLASS-015).
+// Whether `verified` on the member at `index`, whose declarator name is `name`,
+// is one of those, and if so the diagnostic has been reported.
+void refuse_lifetime_member(const TokenStream& stream, const Token& at, bool destructor, diagnostics::Engine& engine) {
+    report(engine, stream, at, diagnostics::Category::UnsupportedSemantics,
+           std::string("a verified ") + (destructor ? "destructor" : "constructor") +
+               " is not verified by this implementation",
+           "construction and destruction begin and end the object's lifetime, which the receiver model does not "
+           "follow; verify the member functions that run on the constructed object instead (SPEC.md CONTRACT-011, "
+           "CONTRACT-012, CLASS-015)");
+}
+
+bool refused_member(const TokenStream& stream, std::size_t index, std::size_t name, std::size_t close,
+                    std::string_view class_name, diagnostics::Engine& engine) {
+    const std::vector<Token>& tokens = stream.tokens();
+    const std::size_t declaration_start = specifiers_start(tokens, index);
+    if (template_header_start(tokens, declaration_start).has_value()) {
+        report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
+               "a verified member function template is not verified by this implementation",
+               "its contract would have to be checked at every specialization of the member, which nothing forces "
+               "here; state it on a non-template member (SPEC.md CLASS-015)");
+        return true;
+    }
+    const bool destructor = name > 0 && tokens[name - 1].is_punctuator("~");
+    std::size_t type_start = index + 1;
+    if (type_start < tokens.size() && tokens[type_start].is_identifier("pure")) {
+        ++type_start;
+    }
+    if (destructor || type_start >= name || (!class_name.empty() && tokens[name].is_identifier(class_name))) {
+        refuse_lifetime_member(stream, tokens[index], destructor, engine);
+        return true;
+    }
+    const std::size_t suffix_end = skip_ordinary_declarator_suffix(tokens, close + 1);
+    if (written_between(tokens, declaration_start, name, "virtual") ||
+        written_between(tokens, close + 1, suffix_end, "override") ||
+        written_between(tokens, close + 1, suffix_end, "final")) {
+        report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
+               "a verified virtual function is not verified by this implementation",
+               "a call through the base interface runs whichever override the dynamic type selects, so a contract "
+               "proved from one body says nothing about the call; override substitutability is not checked here "
+               "(SPEC.md CONTRACT-014, CLASS-006, CLASS-014)");
+        return true;
+    }
+    return false;
+}
+
 // `verified` marks a function whose contract this implementation has to
 // discharge. The clauses are delimited here; what they mean is settled once
 // Clang has resolved them, like every other specification expression.
+//
+// `member` is whether the declaration stands in a class: a member function
+// whose contract uses ordinary member lookup and `this` (SPEC.md CONTRACT-008).
+// `refuse_unsupported` refuses here a member this implementation does not
+// verify. A layout-only recognition keeps every well-formed declaration for the
+// formatter, as it always has, so it does not refuse one.
 bool try_verified(const TokenStream& stream, std::size_t index, diagnostics::Engine& engine, VerifiedFunction& verified,
-                  std::size_t& next_index) {
+                  std::size_t& next_index, bool member, bool refuse_unsupported, std::string_view class_name = {}) {
     const std::vector<Token>& tokens = stream.tokens();
     next_index = index + 1;
 
@@ -1627,6 +1696,19 @@ bool try_verified(const TokenStream& stream, std::size_t index, diagnostics::Eng
         report(engine, stream, tokens[index], diagnostics::Category::CpplSyntax,
                "the 'verified' specifier applies to a function declaration",
                "no function declarator follows this specifier");
+        return false;
+    }
+    // A qualified declarator redeclares a function declared elsewhere: a
+    // member of its class, or a function of its namespace. That declaration
+    // states the contract, and this definition inherits it (SPEC.md
+    // CONTRACT-005). A contract stated here instead would be resolved in a
+    // scope the declaration's members are not named in.
+    if (refuse_unsupported && *name > 0 && tokens[*name - 1].is_punctuator("::")) {
+        report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
+               "'verified' is applied to a qualified declarator, which redeclares a function declared elsewhere",
+               "state the contract on the function's declaration -- a member function's on its declaration in the "
+               "class -- and define it here without 'verified' or clauses; the definition inherits the contract "
+               "(SPEC.md CONTRACT-005, CLASS-008)");
         return false;
     }
 
@@ -1645,6 +1727,9 @@ bool try_verified(const TokenStream& stream, std::size_t index, diagnostics::Eng
     }
     const std::size_t close = matching_parenthesis(tokens, open);
     if (close >= tokens.size()) {
+        return false;
+    }
+    if (member && refuse_unsupported && refused_member(stream, index, *name, close, class_name, engine)) {
         return false;
     }
 
@@ -1730,6 +1815,10 @@ bool try_verified(const TokenStream& stream, std::size_t index, diagnostics::Eng
     verified.function_name = std::string(tokens[*name].text);
     verified.function_location = stream.location_of(tokens[*name]);
     verified.function_offset = tokens[*name].span.offset;
+    // A static member function has no implicit object, so its probes are
+    // static members of the class and it is verified as a function is.
+    verified.member = member;
+    verified.static_member = member && written_between(tokens, declaration_start, *name, "static");
     verified.return_type =
         source::ByteSpan{tokens[type_start].span.offset, tokens[*name].span.offset - tokens[type_start].span.offset};
     verified.parameters =
@@ -1779,6 +1868,23 @@ ScopeKind scope_kind_before(const std::vector<Token>& tokens, std::size_t brace)
         }
     }
     return ScopeKind::Block;
+}
+
+// The name a class scope's '{' belongs to: the identifier after the `class`,
+// `struct` or `union` its declaration begins with, or nothing for an unnamed
+// class. What a constructor or a destructor of that class is named.
+std::string_view class_name_before(const std::vector<Token>& tokens, std::size_t brace) {
+    for (std::size_t cursor = brace; cursor > 0; --cursor) {
+        const Token& token = tokens[cursor - 1];
+        if (token.is_punctuator(";") || token.is_punctuator("{") || token.is_punctuator("}")) {
+            break;
+        }
+        if (token.is_identifier("class") || token.is_identifier("struct") || token.is_identifier("union")) {
+            return cursor < brace && tokens[cursor].kind == TokenKind::Identifier ? tokens[cursor].text
+                                                                                  : std::string_view{};
+        }
+    }
+    return {};
 }
 
 bool is_loop_clause(const std::vector<Token>& tokens, std::size_t index) {
@@ -2327,15 +2433,21 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
         return std::ranges::all_of(scopes, [](ScopeKind kind) { return kind == ScopeKind::Namespace; });
     };
     // GRAMMAR.md 36/38: Laws, proofs and verified member contracts also have
-    // class scope. This implementation's semantic layer (elaboration,
-    // obligations) does not yet accept a class-scope contract - Compile mode
-    // keeps rejecting one exactly as before, unchanged by this predicate -
-    // but the formatter (Edit mode) still needs to see and canonically lay
-    // out the construct a developer wrote, the same way it lays out any
-    // other syntactically well-formed but semantically unsupported input.
+    // class scope. This implementation verifies a member function's contract
+    // (`at_member_scope` below) but not a Law or a proof declared in a class -
+    // Compile mode keeps rejecting those exactly as before, unchanged by this
+    // predicate - while the formatter (Edit mode) still needs to see and
+    // canonically lay out the construct a developer wrote, the same way it
+    // lays out any other syntactically well-formed but semantically
+    // unsupported input.
     const auto at_layout_scope = [&scopes] {
         return std::ranges::all_of(
             scopes, [](ScopeKind kind) { return kind == ScopeKind::Namespace || kind == ScopeKind::Class; });
+    };
+    // Directly in a class that is itself declared at namespace scope or in
+    // another such class: where a member function declaration stands.
+    const auto at_member_scope = [&scopes, &at_layout_scope] {
+        return !scopes.empty() && scopes.back() == ScopeKind::Class && at_layout_scope();
     };
     // Edit and Draft keep what Compile refuses; Draft keeps more still.
     const bool tolerant = mode != RecognitionMode::Compile;
@@ -2381,19 +2493,44 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
     };
     std::vector<WrittenGhost> written_ghosts;
 
+    // The name of each class scope, beside `scopes`: what a constructor or a
+    // destructor of the innermost class is named. Empty for every other scope.
+    std::vector<std::string_view> scope_names;
+
     std::size_t index = 0;
     while (index < tokens.size() && tokens[index].kind != TokenKind::EndOfFile) {
         if (tokens[index].is_punctuator("{")) {
             scopes.push_back(scope_kind_before(tokens, index));
+            scope_names.push_back(scopes.back() == ScopeKind::Class ? class_name_before(tokens, index)
+                                                                    : std::string_view{});
             ++index;
             continue;
         }
         if (tokens[index].is_punctuator("}")) {
             if (!scopes.empty()) {
                 scopes.pop_back();
+                scope_names.pop_back();
             }
             ++index;
             continue;
+        }
+
+        // `verified` before a constructor or a destructor of the class it
+        // stands in. Neither declarator has a return type, so the specifier
+        // is not otherwise read as introducing a declaration; it is refused
+        // here rather than left for Clang to report as an unknown type.
+        if (!tolerant && tokens[index].is_identifier("verified") && at_member_scope() &&
+            at_declaration_start(tokens, index) && !scope_names.back().empty()) {
+            const std::string_view class_name = scope_names.back();
+            const bool constructor = index + 2 < tokens.size() && tokens[index + 1].is_identifier(class_name) &&
+                                     tokens[index + 2].is_punctuator("(");
+            const bool destructor = index + 3 < tokens.size() && tokens[index + 1].is_punctuator("~") &&
+                                    tokens[index + 2].is_identifier(class_name) && tokens[index + 3].is_punctuator("(");
+            if (constructor || destructor) {
+                refuse_lifetime_member(stream, tokens[index], destructor, engine);
+                ++index;
+                continue;
+            }
         }
 
         if ((tokens[index].is_identifier("while") || tokens[index].is_identifier("for")) && index + 1 < tokens.size() &&
@@ -2642,13 +2779,20 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
         if (tokens[index].is_identifier("verified") && specifier_introduces_declaration(tokens, index)) {
             VerifiedFunction verified;
             std::size_t next = index + 1;
-            if (try_verified(stream, index, engine, verified, next)) {
-                if (!at_namespace_scope()) {
+            // A member function of a class that stands at namespace scope, or
+            // in another such class, is verified with its implicit object
+            // (SPEC.md CLASS-008). A class local to a function body is not:
+            // its members are not declarations the trust report can name.
+            const bool member = at_member_scope();
+            if (try_verified(stream, index, engine, verified, next, member, !tolerant,
+                             member ? scope_names.back() : std::string_view{})) {
+                if (!at_namespace_scope() && !member) {
                     report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
                            "'verified' is applied outside namespace scope",
-                           "this implementation verifies functions at namespace scope only");
+                           "this implementation verifies functions at namespace scope and member functions of "
+                           "classes declared there");
                 }
-                if (at_namespace_scope() || (tolerant && at_layout_scope())) {
+                if (at_namespace_scope() || member || (tolerant && at_layout_scope())) {
                     // `verified pure` is both: the contract is discharged here,
                     // and the function is still a candidate definition for the
                     // formal core.

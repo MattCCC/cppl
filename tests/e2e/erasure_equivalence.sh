@@ -129,4 +129,11 @@ equivalent ghost_state '3 4' \
 equivalent unsafe_boundaries '42 3 9 4' \
     'Function contracts proven: +2' '  relying on unsafe code: +2' 'Unsafe regions: +5'
 
+# SPEC: CLASS-013, ABI-001
+# A verified member function erases to the member function as written: const,
+# mutating, static, overloaded, reference-qualified and declared in its class,
+# with its class's members, layout and calling convention unchanged.
+equivalent methods $'6 6 7 8 5 2 9\n6 0' \
+    'Function contracts proven: +11' 'Call preconditions proven: +2' 'Loop invariants proven: +2'
+
 echo 'erased C++L behaves as, and is the same code as, its ordinary C++ erasure in c++17, c++20 and c++23'

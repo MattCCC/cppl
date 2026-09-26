@@ -386,6 +386,13 @@ a textual approximation.
 **[COMPAT-CLANG-003]** A Clang version difference that can change proof-relevant
 C++ semantics is a compatibility difference.
 
+A verified member function keeps every C++ property of the member function it
+is: its class's layout, its signature, its qualifiers, its overloading and its
+calling convention are what Clang gives them, and its contract leaves no trace
+in the program (`SPEC.md` CLASS-013). Which member function a call runs, and
+whether it dispatches virtually, is Clang's answer; C++L refuses to verify a
+virtual one rather than choose a body itself (CLASS-014).
+
 ---
 
 # 9. Non-reference C++ compilers

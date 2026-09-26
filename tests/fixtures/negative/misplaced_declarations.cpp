@@ -44,11 +44,11 @@ void trusted_in_a_block() {
         proves (identity(x) == x);
 }
 
-// Class scope is not namespace scope either. The virtual case is the one that
-// matters most: which body runs is decided by the dynamic type, so a proof of
-// the base's body would not cover an override that replaces it. Refusing the
+// A member function is verified with its implicit object, but a virtual one is
+// refused by name: which body runs is decided by the dynamic type, so a proof
+// of the base's body would not cover an override that replaces it. Refusing the
 // specifier outright is what keeps a base's contract from becoming evidence
-// about a call that dispatches elsewhere.
+// about a call that dispatches elsewhere (SPEC.md CLASS-014).
 struct Base {
     verified virtual unsigned get() const
         ensures (result > 0u)

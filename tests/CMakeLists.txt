@@ -403,6 +403,7 @@ cppl_add_script_test(e2e_verified_paths e2e/verified_paths.sh)
 cppl_add_script_test(e2e_verified_locals e2e/verified_locals.sh)
 cppl_add_script_test(e2e_verified_arithmetic e2e/verified_arithmetic.sh)
 cppl_add_script_test(e2e_verified_loops e2e/verified_loops.sh)
+cppl_add_script_test(e2e_verified_methods e2e/verified_methods.sh)
 
 # Contracts across translation units, through verification interfaces
 # (SPEC.md XTU-*, RFC 0017).
@@ -425,6 +426,7 @@ cppl_add_script_test(negative_verified_calls negative/verified_calls.sh)
 cppl_add_script_test(negative_verified_paths negative/verified_paths.sh)
 cppl_add_script_test(negative_verified_locals negative/verified_locals.sh)
 cppl_add_script_test(negative_verified_loops negative/verified_loops.sh)
+cppl_add_script_test(negative_verified_methods negative/verified_methods.sh)
 
 cppl_add_script_test(integration_header_law integration/header_law.sh)
 cppl_add_script_test(integration_source_identity integration/source_identity.sh)
