@@ -1258,6 +1258,27 @@ For signed types, the formal model must distinguish:
 Signed overflow is not modeled as wrapping unless the selected C++ semantics
 explicitly define a different operation.
 
+The core makes that distinction with total primitives and obligations rather
+than with partial operations (RFC 0019). For a machine type `T`:
+
+```text
+add_fits_T(a, b) = 1  iff  value(a) + value(b) ∈ value_set(T)
+sub_fits_T(a, b) = 1  iff  value(a) - value(b) ∈ value_set(T)
+mul_fits_T(a, b) = 1  iff  value(a) * value(b) ∈ value_set(T)
+quot_T(a, b)          = reduce_T(trunc(value(a) / value(b)))   when value(b) ≠ 0,  0 otherwise
+rem_T(a, b)           = value(a) - trunc(value(a) / value(b)) * value(b)   when value(b) ≠ 0,  a otherwise
+convert_T(a : S)      = reduce_T(value(a))
+```
+
+where `reduce_T` is two's-complement reduction into `T` and the operations on
+values are those of the integers. A signed operation of C++ is admitted only
+where its representability holds, and there the wrapping primitive of §35
+denotes the exact result; a division only where the divisor is not zero and,
+signed, the operands are not the least value and `-1`, where `quot` reduces
+nothing; a conversion to a signed type only where the value is in the target's
+value set. The values the total definitions give elsewhere are never those of a
+C++ execution, since no admitted execution reaches them.
+
 ---
 
 # 34. Machine literals
@@ -1304,6 +1325,12 @@ over modular arithmetic.
 A normalization rule valid for one machine width is not automatically valid for
 another.
 
+Representability, quotient, remainder and conversion are opaque to the ring
+normal form: they fold on literals, `add_fits` and `mul_fits` order their
+operands, and `quot` and `rem` fold where their definition decides the value
+(a divisor of 0, 1 or -1, a dividend of 0). No identity of mathematical
+division is definitional; `quot_T(x, 2) * 2` is not `x`.
+
 ---
 
 # 36. Arithmetic proof rules
@@ -1325,6 +1352,17 @@ The mathematical requirement is:
 A producer may search however it wants.
 
 The checker must not accept a result whose translation changes the problem.
+
+The linear translation states each primitive of §33 by constraints every
+machine assignment satisfies. A representability known to hold bounds the
+unbounded result by the type, and known to fail puts it outside, where that
+result is linear in the operands' values. A conversion equals its operand or
+differs from it by an integer multiple of `2^width`. A quotient and remainder by
+a constant `c` with `|c| ≥ 2` satisfy `a = c·q + r` with `|r| < |c|` and `r` of
+the sign of `a` or zero, which characterizes truncating division exactly. A
+remainder by an unknown divisor is bounded by it where it is positive and has
+the sign of its dividend. Where a definition is not linear nothing is stated,
+which loses completeness and never soundness.
 
 ---
 

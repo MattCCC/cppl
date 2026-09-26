@@ -514,8 +514,8 @@ class Prover {
         propositions.reserve(used.size());
         for (const auto& fact : used)
             propositions.push_back(fact.proposition);
-        const auto system =
-            k::arithmetic_system(context_, propositions, stated ? goal : k::Proposition::falsity(), k::CoreLimits{});
+        const auto system = k::arithmetic_system(context_, propositions, stated ? goal : k::Proposition::falsity(),
+                                                 k::CoreLimits{}, binders_);
         if (!system) {
             return std::nullopt;
         }

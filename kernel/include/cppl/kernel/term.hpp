@@ -43,6 +43,33 @@ enum class PrimOp : std::uint8_t {
     Select,
     SubWrap, // two's-complement wrapping subtraction
     MulWrap, // two's-complement wrapping multiplication
+
+    // Representability (RFC 0019). One when the integer sum, difference or
+    // product of the operands' values, computed without any bound, is a value
+    // of the type; zero otherwise. These are what a signed C++ operation owes
+    // before its result is the ring operation's (SPEC.md EQ-002,
+    // DEFINEDBEHAVIOR-001): where one holds, the wrapping primitive wrapped
+    // nothing.
+    AddFits,
+    SubFits,
+    MulFits,
+
+    // Truncating division and its remainder (RFC 0019), made total: the
+    // quotient rounds toward zero, a quotient the type cannot hold (the least
+    // signed value over -1) wraps, `x / 0` is 0, and the remainder is always
+    // `x` minus the exact quotient times the divisor, so `x % 0` is `x`. The
+    // cases C++ leaves undefined are the lowering's obligations, never these
+    // definitions (SPEC.md ARITH-004, DEFINEDBEHAVIOR-002, DEFINEDBEHAVIOR-003).
+    Quotient,
+    Remainder,
+
+    // The value of the one argument, of any integer type, reduced into this
+    // type by two's complement (RFC 0019). That is C++'s conversion to an
+    // unsigned type exactly; to a signed type it is C++20's, and the lowering
+    // owes representability wherever the value may not fit (SPEC.md
+    // ARITH-002). It is not C++'s conversion to `bool`, which the lowering
+    // never states with it.
+    Convert,
 };
 
 std::string describe(PrimOp op);
@@ -50,6 +77,15 @@ bool is_comparison(PrimOp op);
 
 // The operations of the ring of integers modulo 2^width.
 bool is_arithmetic(PrimOp op);
+
+// AddFits, SubFits and MulFits: boolean-valued, of two operands of the type.
+bool is_representability(PrimOp op);
+
+// Whether a primitive's value is a boolean whatever type it is stated at.
+bool yields_boolean(PrimOp op);
+
+// The number of arguments a primitive takes.
+std::size_t arity(PrimOp op);
 inline constexpr IntType kBoolean{1, Signedness::Unsigned};
 
 struct Term;

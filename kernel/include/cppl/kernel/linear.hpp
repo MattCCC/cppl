@@ -64,10 +64,22 @@ struct ArithmeticSystem {
 // two's-complement arithmetic, so nothing true of the machine is lost and
 // nothing false is added. A comparison evaluating to one or zero becomes the
 // order it states or its negation; any other equality is equality of values.
+//
+// The primitives of RFC 0019 are stated by what defines them. A
+// representability known to be one bounds the integer sum, difference or
+// product of its operands by the type, and known to be zero puts it outside,
+// where that integer is linear: always for a sum or a difference, and for a
+// product with a constant factor. A conversion's value is its operand's value
+// less a fresh multiple of 2^width, or equal to it where the conversion widens.
+// A quotient and remainder by a constant satisfy the division identity with the
+// remainder's range and sign; a remainder by an unknown divisor is bounded by
+// it. `locals` types the binders the terms stand under, outermost first, which
+// is what a conversion's operand type is read from.
 [[nodiscard]] std::expected<ArithmeticSystem, CoreError> arithmetic_system(const Context& context,
                                                                            std::span<const Proposition> facts,
                                                                            const Proposition& goal,
-                                                                           const CoreLimits& limits);
+                                                                           const CoreLimits& limits,
+                                                                           std::span<const Type> locals = {});
 
 // Whether `certificate` shows that `system` has no integer solution.
 [[nodiscard]] std::expected<void, std::string> refutes(const ArithmeticSystem& system,

@@ -541,11 +541,13 @@ They act over propositions built from equality, universal quantification,
 implication, conjunction, disjunction and `False`. `False` has no introduction
 rule (`TRUST.md` TCB-CORE-017): evidence for it comes from a hypothesis, from an
 elimination, or from linear arithmetic refuting its facts with no goal taking
-part (core/kernel 0.7.0). The kernel's terms are variables,
+part (core/kernel 0.8.0). The kernel's terms are variables,
 machine-integer literals, applications of admitted definitions, observations of
 an abstract value (at a constant position, or at an index that is itself a
 term), and primitives: wrapping addition, subtraction and multiplication, the
-six comparisons, boolean negation and selection. It admits no recursion, which
+six comparisons, boolean negation and selection, and those of RFC 0019:
+representability of an exact sum, difference or product, truncating quotient
+and remainder, and integer conversion. It admits no recursion, which
 is why it needs no termination checker of its own yet (`SPEC.md` 22.2, 22.4): a
 recursive verified function terminates by its measure's descent obligations,
 which the kernel decides as ordinary propositions, and is never admitted as a

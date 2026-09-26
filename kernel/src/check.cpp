@@ -172,7 +172,7 @@ struct Assumption {
             }
             facts.push_back(fact.proposition);
         }
-        const auto system = arithmetic_system(context, facts, proposition, limits);
+        const auto system = arithmetic_system(context, facts, proposition, limits, locals);
         if (!system) {
             return reject(RejectionKind::CoreFailure, describe(system.error().kind) + ": " + system.error().detail);
         }

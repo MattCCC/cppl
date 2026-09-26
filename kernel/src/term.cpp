@@ -33,12 +33,58 @@ std::string describe(PrimOp op) {
             return "sub_wrap";
         case PrimOp::MulWrap:
             return "mul_wrap";
+        case PrimOp::AddFits:
+            return "add_fits";
+        case PrimOp::SubFits:
+            return "sub_fits";
+        case PrimOp::MulFits:
+            return "mul_fits";
+        case PrimOp::Quotient:
+            return "quot";
+        case PrimOp::Remainder:
+            return "rem";
+        case PrimOp::Convert:
+            return "convert";
     }
     return "<unknown-primitive>";
 }
 
 bool is_arithmetic(PrimOp op) {
     return op == PrimOp::AddWrap || op == PrimOp::SubWrap || op == PrimOp::MulWrap;
+}
+
+bool is_representability(PrimOp op) {
+    return op == PrimOp::AddFits || op == PrimOp::SubFits || op == PrimOp::MulFits;
+}
+
+bool yields_boolean(PrimOp op) {
+    return is_comparison(op) || is_representability(op) || op == PrimOp::Not;
+}
+
+std::size_t arity(PrimOp op) {
+    switch (op) {
+        case PrimOp::Select:
+            return 3;
+        case PrimOp::Not:
+        case PrimOp::Convert:
+            return 1;
+        case PrimOp::AddWrap:
+        case PrimOp::SubWrap:
+        case PrimOp::MulWrap:
+        case PrimOp::Equal:
+        case PrimOp::NotEqual:
+        case PrimOp::Less:
+        case PrimOp::LessEqual:
+        case PrimOp::Greater:
+        case PrimOp::GreaterEqual:
+        case PrimOp::AddFits:
+        case PrimOp::SubFits:
+        case PrimOp::MulFits:
+        case PrimOp::Quotient:
+        case PrimOp::Remainder:
+            return 2;
+    }
+    return 0;
 }
 
 bool is_comparison(PrimOp op) {

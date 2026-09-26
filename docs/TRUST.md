@@ -238,6 +238,7 @@ This includes, where applicable:
 ```text
 machine integer constants and widths
 wrapping arithmetic primitives
+representability, truncating division and integer conversion primitives
 comparisons
 Boolean representation used by the core
 equality and substitution
@@ -644,6 +645,29 @@ A proof about C++ execution is meaningful only when the formal model matches the
 **[TCB-UB-002]** The absence of an observed runtime failure does not establish defined behavior.
 
 **[TCB-UB-003]** A verifier may reject semantics it cannot model, but MUST NOT silently assume the undefined-behavior precondition.
+
+In this implementation (RFC 0019) the precondition TCB-ARITH-003 names is an
+obligation of its own. A signed `+`, `-`, `*` or unary `-` is stated with the
+wrapping primitive and owes `add_fits`, `sub_fits` or `mul_fits` of its operands;
+`/` and `%` are stated with `quot` and `rem`, total by definition, and owe a
+nonzero divisor and, signed, that the operands are not the least value and `-1`;
+a conversion is stated with `convert` and owes, for a signed target, that the
+value fits. Where the obligation holds, the total primitive equals the C++
+result, so no wrap is ever relied on. The primitives are logical TCB: their
+typing, their folding on literals and the constraints linear arithmetic states
+for them (`kernel/src/context.cpp`, `kernel/src/arithmetic.cpp`,
+`kernel/src/linear.cpp`, about 450 lines with comments). They add no rule, axiom or
+assumption; each constraint is satisfied by every machine assignment, and where
+a primitive's definition is not linear nothing is stated.
+
+Which operation owes which condition, and where, is correspondence TCB
+(`compiler/obligations/src/definedness.cpp`, `compiler/obligations/src/contracts.cpp`):
+every operation a runtime path evaluates owes its condition under what the path
+supposes before it, supposing only the postconditions of calls sequenced before
+it, and a specification states the conditions of its operations as part of
+what it states. The conversions C++ performs are read from the ones Clang
+recorded (TCB-ARITH-004) and are never derived again. The refutation search,
+which proposes the certificates, stays untrusted (§6).
 
 ---
 

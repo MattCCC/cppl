@@ -260,6 +260,53 @@ Term less(const IntType& type, Term lhs, Term rhs) {
     return Term::primitive(PrimOp::Less, type, {std::move(lhs), std::move(rhs)});
 }
 
+// The value `term` denotes when it is a literal of `type`.
+std::optional<Wide> literal_value(const Term& term, const IntType& type) {
+    const auto* literal = std::get_if<Literal>(&term.node);
+    if (literal == nullptr || !(literal->type == type)) {
+        return std::nullopt;
+    }
+    return value_of(type, bits_of(type, literal->value));
+}
+
+// Whether the integer result of `op` on two literals is a value of `type`,
+// computed without a bound. An operation too large even for 128 bits is far
+// outside every supported type.
+Term representability(PrimOp op, const IntType& type, std::vector<Term> operands) {
+    const auto lhs = literal_value(operands[0], type);
+    const auto rhs = literal_value(operands[1], type);
+    if (lhs && rhs) {
+        Wide exact = 0;
+        bool overflowed = true;
+        switch (op) {
+            case PrimOp::AddFits:
+                overflowed = __builtin_add_overflow(*lhs, *rhs, &exact);
+                break;
+            case PrimOp::SubFits:
+                overflowed = __builtin_sub_overflow(*lhs, *rhs, &exact);
+                break;
+            default:
+                overflowed = __builtin_mul_overflow(*lhs, *rhs, &exact);
+                break;
+        }
+        return Term::literal(kBoolean, !overflowed && is_representable(type, exact) ? 1 : 0);
+    }
+    // A sum and a product of values do not depend on the order of the values,
+    // so their operands are kept in term order and either spelling is one term.
+    if (op != PrimOp::SubFits && compare(operands[1], operands[0]) < 0) {
+        std::swap(operands[0], operands[1]);
+    }
+    return Term::primitive(op, type, std::move(operands));
+}
+
+// The value `operand` denotes, reduced into `type`, where it is a literal.
+Term conversion(const IntType& type, Term operand) {
+    if (const auto* literal = std::get_if<Literal>(&operand.node); literal != nullptr && is_supported(literal->type)) {
+        return Term::literal(type, wrap_into(type, value_of(literal->type, bits_of(literal->type, literal->value))));
+    }
+    return Term::primitive(PrimOp::Convert, type, {std::move(operand)});
+}
+
 } // namespace
 
 std::strong_ordering compare(const Term& lhs, const Term& rhs) {
@@ -393,8 +440,7 @@ Term render(const Polynomial& polynomial) {
 
 std::expected<Term, CoreError> normalize_primitive(PrimOp op, IntType type, std::vector<Term> operands,
                                                    const CoreLimits& limits, std::uint64_t& steps) {
-    const std::size_t arity = op == PrimOp::Select ? 3u : op == PrimOp::Not ? 1u : 2u;
-    if (operands.size() != arity || !is_supported(type)) {
+    if (operands.size() != arity(op) || !is_supported(type)) {
         // Only well-typed terms reach normalization through the checker; a
         // malformed one is left as it stands, which folds nothing.
         return Term::primitive(op, type, std::move(operands));
@@ -469,9 +515,52 @@ std::expected<Term, CoreError> normalize_primitive(PrimOp op, IntType type, std:
         case PrimOp::GreaterEqual:
             return negate(less(type, std::move(operands[0]), std::move(operands[1])));
 
-        default:
+        case PrimOp::AddFits:
+        case PrimOp::SubFits:
+        case PrimOp::MulFits:
+            return representability(op, type, std::move(operands));
+
+        case PrimOp::Quotient:
+        case PrimOp::Remainder: {
+            // Folded only where the total definition decides the value: a
+            // literal divisor of 0, 1 or -1, a literal dividend of 0, or two
+            // literals. Anything else stays one opaque term (RFC 0019).
+            const bool quotient = op == PrimOp::Quotient;
+            const auto dividend = literal_value(operands[0], type);
+            const auto divisor = literal_value(operands[1], type);
+            if (divisor && *divisor == 0) {
+                return quotient ? Term::literal(type, 0) : std::move(operands[0]);
+            }
+            if (dividend && divisor) {
+                return Term::literal(type, quotient ? wrap_into(type, divide(*dividend, *divisor))
+                                                    : remainder(*dividend, *divisor));
+            }
+            if (dividend && *dividend == 0) {
+                return Term::literal(type, 0);
+            }
+            if (divisor && *divisor == 1) {
+                return quotient ? std::move(operands[0]) : Term::literal(type, 0);
+            }
+            if (divisor && *divisor == -1) {
+                // x / -1 is 0 - x, which wraps the least value to itself.
+                if (!quotient) {
+                    return Term::literal(type, 0);
+                }
+                return normalize_primitive(PrimOp::SubWrap, type, {Term::literal(type, 0), std::move(operands[0])},
+                                           limits, steps);
+            }
             return Term::primitive(op, type, std::move(operands));
+        }
+
+        case PrimOp::Convert:
+            return conversion(type, std::move(operands[0]));
+
+        case PrimOp::AddWrap:
+        case PrimOp::SubWrap:
+        case PrimOp::MulWrap:
+            break;
     }
+    return Term::primitive(op, type, std::move(operands));
 }
 
 } // namespace cppl::kernel

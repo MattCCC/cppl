@@ -125,6 +125,15 @@ std::uint64_t evaluate(const k::Term& term, const std::vector<std::uint64_t>& en
             return values[0] == 0 ? 1u : 0u;
         case k::PrimOp::Select:
             return values[0] != 0 ? values[1] : values[2];
+        // Representability, division and conversion have an evaluator of their
+        // own in definedness_test.cpp; the terms generated here never use them.
+        case k::PrimOp::AddFits:
+        case k::PrimOp::SubFits:
+        case k::PrimOp::MulFits:
+        case k::PrimOp::Quotient:
+        case k::PrimOp::Remainder:
+        case k::PrimOp::Convert:
+            ::cppl::testing::fail(__FILE__, __LINE__, "this evaluator covers the ring and comparisons only");
     }
     return 0;
 }

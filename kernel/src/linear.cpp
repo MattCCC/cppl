@@ -11,6 +11,8 @@
 #include <cstdint>
 #include <expected>
 #include <map>
+#include <optional>
+#include <set>
 #include <span>
 #include <string>
 #include <utility>
@@ -81,7 +83,10 @@ struct Expression {
 
 class Builder {
   public:
-    Builder(const Context& context, const CoreLimits& limits) : context_(context), limits_(limits) {}
+    Builder(const Context& context, std::span<const Type> locals, const CoreLimits& limits)
+        : context_(context),
+          locals_(locals),
+          limits_(limits) {}
 
     std::expected<void, CoreError> fact(const Proposition& proposition) {
         const auto* equality = std::get_if<Eq>(&proposition.node);
@@ -203,6 +208,18 @@ class Builder {
                     break;
             }
         }
+        // Representability: the unbounded integer result lies within the type,
+        // or outside it. Where that integer is not linear -- a product of two
+        // unknowns -- the condition is a boolean like any other (RFC 0019).
+        if (primitive != nullptr && is_representability(primitive->op) && primitive->arguments.size() == 2) {
+            auto exact = unbounded(*primitive);
+            if (!exact) {
+                return std::unexpected(exact.error());
+            }
+            if (exact->has_value()) {
+                return holds ? bound(**exact, primitive->type) : outside(**exact, primitive->type);
+            }
+        }
         // Any other boolean is a value like any other.
         auto boolean = value(condition, kBoolean);
         if (!boolean) {
@@ -304,13 +321,248 @@ class Builder {
         }
         const auto index = static_cast<std::uint32_t>(system_.variables.size());
         system_.variables.push_back(ArithmeticVariable{VariableRole::Value, type, key.term, 0, 0});
+        const Term term = key.term;
         variables_.emplace(std::move(key), index);
         Expression single;
         single.terms.emplace(index, Wide{1});
         if (auto bounded = bound(single, type); !bounded) {
             return std::unexpected(bounded.error());
         }
+        // A factor that is one of RFC 0019's primitives is also stated by what
+        // defines it. The variable is registered first, so a definition that
+        // reads the same term again finds it rather than recursing.
+        if (const auto* primitive = std::get_if<Prim>(&term.node);
+            factors.size() == 1 && primitive != nullptr && primitive->type == type) {
+            if (primitive->op == PrimOp::Convert && primitive->arguments.size() == 1) {
+                if (auto defined = define_conversion(index, *primitive); !defined) {
+                    return std::unexpected(defined.error());
+                }
+            } else if ((primitive->op == PrimOp::Quotient || primitive->op == PrimOp::Remainder) &&
+                       primitive->arguments.size() == 2) {
+                if (auto defined = define_division(*primitive); !defined) {
+                    return std::unexpected(defined.error());
+                }
+            }
+        }
         return index;
+    }
+
+    // The integer an operation computes on its operands' values, with no bound,
+    // as a linear expression; none for a product of two non-constants.
+    std::expected<std::optional<Expression>, CoreError> unbounded(const Prim& primitive) {
+        auto lhs = value(primitive.arguments[0], primitive.type);
+        if (!lhs) {
+            return std::unexpected(lhs.error());
+        }
+        auto rhs = value(primitive.arguments[1], primitive.type);
+        if (!rhs) {
+            return std::unexpected(rhs.error());
+        }
+        if (primitive.op == PrimOp::AddFits) {
+            auto sum = subtract(*lhs, negated(*rhs));
+            if (!sum) {
+                return std::unexpected(sum.error());
+            }
+            return std::optional<Expression>{std::move(*sum)};
+        }
+        if (primitive.op == PrimOp::SubFits) {
+            auto difference = subtract(*lhs, *rhs);
+            if (!difference) {
+                return std::unexpected(difference.error());
+            }
+            return std::optional<Expression>{std::move(*difference)};
+        }
+        const Expression* varying = lhs->terms.empty() ? &*rhs : rhs->terms.empty() ? &*lhs : nullptr;
+        if (varying == nullptr) {
+            return std::optional<Expression>{};
+        }
+        auto product = scaled(*varying, lhs->terms.empty() ? lhs->constant : rhs->constant);
+        if (!product) {
+            return std::unexpected(product.error());
+        }
+        return std::optional<Expression>{std::move(*product)};
+    }
+
+    // The expression lies below the least value of `type` or above its
+    // greatest: one of two constraints holds.
+    std::expected<void, CoreError> outside(const Expression& expression, const IntType& type) {
+        auto below = finish(expression, Wide{1} - lowest(type));
+        if (!below) {
+            return std::unexpected(below.error());
+        }
+        auto above = finish(negated(expression), highest(type) + 1);
+        if (!above) {
+            return std::unexpected(above.error());
+        }
+        system_.disjunctions.push_back({std::move(*below), std::move(*above)});
+        return {};
+    }
+
+    // `variable` is the value of a conversion of the one argument of
+    // `primitive` into the conversion's type. Where every value of the source
+    // type is one of the target, the two are equal; otherwise they differ by a
+    // fresh multiple of 2^width, which bounding `variable` by its type pins.
+    std::expected<void, CoreError> define_conversion(std::uint32_t variable, const Prim& primitive) {
+        const IntType& target = primitive.type;
+        auto source = type_of(context_, locals_, primitive.arguments[0], limits_);
+        if (!source) {
+            return std::unexpected(source.error());
+        }
+        if (!source->is_integer()) {
+            return fail("a conversion's operand must be an integer");
+        }
+        const IntType from = source->integer_type();
+        auto operand = value(primitive.arguments[0], from);
+        if (!operand) {
+            return std::unexpected(operand.error());
+        }
+        Expression converted;
+        converted.terms.emplace(variable, Wide{1});
+        if (lowest(from) >= lowest(target) && highest(from) <= highest(target)) {
+            return equal(converted, *operand);
+        }
+        // converted = operand - 2^width * wrap, so the wrap lies within
+        // [ceil((lowest(from) - highest) / 2^width), floor((highest(from) - lowest) / 2^width)].
+        const Wide least = -floor_divide(highest(target) - lowest(from), modulus(target));
+        const Wide greatest = floor_divide(highest(from) - lowest(target), modulus(target));
+        const auto wrap = static_cast<std::uint32_t>(system_.variables.size());
+        system_.variables.push_back(ArithmeticVariable{VariableRole::Wrap, target,
+                                                       Term::primitive(PrimOp::Convert, target, primitive.arguments),
+                                                       least, greatest});
+        Expression reduced = *operand;
+        reduced.terms.emplace(wrap, -modulus(target));
+        return equal(converted, reduced);
+    }
+
+    // A quotient and a remainder of one dividend by one divisor. Both terms
+    // are given variables, and what relates them to the operands is stated
+    // once for the pair.
+    //
+    // By a constant c, |c| >= 2 (normalization folds 0, 1 and -1): the dividend
+    // is c * quotient + remainder, the remainder is below |c| in magnitude, and
+    // it is never of the opposite sign to the dividend. That is exactly
+    // truncating division, and the quotient cannot leave the type.
+    //
+    // By an unknown divisor only the remainder is bounded: below the divisor
+    // where the divisor is positive, of the dividend's sign, and for an
+    // unsigned type never above the dividend. Each holds for a zero divisor
+    // too, whose remainder is the dividend. The quotient is left unknown.
+    std::expected<void, CoreError> define_division(const Prim& primitive) {
+        const IntType& type = primitive.type;
+        const Term quotient_term = Term::primitive(PrimOp::Quotient, type, primitive.arguments);
+        if (!divisions_.insert(TypedTerm{type, quotient_term}).second) {
+            return {};
+        }
+        auto quotient = variable(type, {quotient_term});
+        if (!quotient) {
+            return std::unexpected(quotient.error());
+        }
+        auto rest = variable(type, {Term::primitive(PrimOp::Remainder, type, primitive.arguments)});
+        if (!rest) {
+            return std::unexpected(rest.error());
+        }
+        auto dividend = value(primitive.arguments[0], type);
+        if (!dividend) {
+            return std::unexpected(dividend.error());
+        }
+        const bool is_signed = type.signedness == Signedness::Signed;
+        Expression remainder;
+        remainder.terms.emplace(*rest, Wide{1});
+        // Either member of a disjunction: `first + a <= 0` or `second + b <= 0`.
+        const auto either = [this](const Expression& first, Wide a, const Expression& second,
+                                   Wide b) -> std::expected<void, CoreError> {
+            auto one = finish(first, a);
+            if (!one) {
+                return std::unexpected(one.error());
+            }
+            auto other = finish(second, b);
+            if (!other) {
+                return std::unexpected(other.error());
+            }
+            system_.disjunctions.push_back({std::move(*one), std::move(*other)});
+            return {};
+        };
+        const auto same_sign = [&]() -> std::expected<void, CoreError> {
+            // dividend >= 0 -> remainder >= 0, and dividend <= -1 -> remainder <= 0.
+            if (auto nonnegative = either(*dividend, 1, negated(remainder), 0); !nonnegative) {
+                return nonnegative;
+            }
+            return either(negated(*dividend), 0, remainder, 0);
+        };
+
+        const auto* literal = std::get_if<Literal>(&primitive.arguments[1].node);
+        if (literal != nullptr && literal->type == type) {
+            const Wide divisor = value_of(type, bits_of(type, literal->value));
+            if (divisor >= -1 && divisor <= 1) {
+                return {};
+            }
+            Expression identity;
+            identity.terms.emplace(*quotient, divisor);
+            identity.terms.emplace(*rest, Wide{1});
+            if (auto divided = equal(*dividend, identity); !divided) {
+                return divided;
+            }
+            const Wide largest = (divisor < 0 ? -divisor : divisor) - 1;
+            if (auto below = constrain(remainder, -largest); !below) {
+                return below;
+            }
+            if (!is_signed) {
+                return {};
+            }
+            if (auto above = constrain(negated(remainder), -largest); !above) {
+                return above;
+            }
+            return same_sign();
+        }
+
+        auto divisor = value(primitive.arguments[1], type);
+        if (!divisor) {
+            return std::unexpected(divisor.error());
+        }
+        // divisor >= 1 -> remainder <= divisor - 1.
+        auto excess = subtract(remainder, *divisor);
+        if (!excess) {
+            return std::unexpected(excess.error());
+        }
+        if (auto below = either(*divisor, 0, *excess, 1); !below) {
+            return below;
+        }
+        if (!is_signed) {
+            // An unsigned remainder never exceeds its dividend.
+            auto within = subtract(remainder, *dividend);
+            if (!within) {
+                return std::unexpected(within.error());
+            }
+            return constrain(*within, 0);
+        }
+        // divisor >= 1 -> remainder >= 1 - divisor.
+        auto shortfall = subtract(negated(remainder), *divisor);
+        if (!shortfall) {
+            return std::unexpected(shortfall.error());
+        }
+        if (auto above = either(*divisor, 0, *shortfall, 1); !above) {
+            return above;
+        }
+        return same_sign();
+    }
+
+    // Every coefficient and the constant multiplied by `factor`, refused where
+    // the product leaves the core's integers.
+    static std::expected<Expression, CoreError> scaled(const Expression& expression, Wide factor) {
+        Expression result;
+        for (const auto& [variable, coefficient] : expression.terms) {
+            Wide product = 0;
+            if (!multiply(coefficient, factor, product)) {
+                return fail("an arithmetic coefficient overflows the core's integers");
+            }
+            if (product != 0) {
+                result.terms.emplace(variable, product);
+            }
+        }
+        if (!multiply(expression.constant, factor, result.constant)) {
+            return fail("an arithmetic constant overflows the core's integers");
+        }
+        return result;
     }
 
     // lowest(type) <= expression <= highest(type)
@@ -415,10 +667,13 @@ class Builder {
     }
 
     const Context& context_;
+    std::span<const Type> locals_;
     const CoreLimits& limits_;
     ArithmeticSystem system_;
     std::map<TypedTerm, std::uint32_t, TypedTermOrder> variables_;
     std::map<TypedTerm, Expression, TypedTermOrder> values_;
+    // The quotients whose division identity is already stated, by their term.
+    std::set<TypedTerm, TypedTermOrder> divisions_;
 };
 
 // Checks a certificate against the constraints standing at each node: the
@@ -538,11 +793,12 @@ class Checker {
 } // namespace
 
 std::expected<ArithmeticSystem, CoreError> arithmetic_system(const Context& context, std::span<const Proposition> facts,
-                                                             const Proposition& goal, const CoreLimits& limits) {
+                                                             const Proposition& goal, const CoreLimits& limits,
+                                                             std::span<const Type> locals) {
     if (facts.size() > limits.max_arithmetic_facts) {
         return fail("an arithmetic step uses more than " + std::to_string(limits.max_arithmetic_facts) + " facts");
     }
-    Builder builder(context, limits);
+    Builder builder(context, locals, limits);
     for (const Proposition& fact : facts) {
         if (auto added = builder.fact(fact); !added) {
             return std::unexpected(added.error());

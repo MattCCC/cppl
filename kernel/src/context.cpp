@@ -127,18 +127,34 @@ std::unexpected<CoreError> fail(CoreErrorKind kind, std::string detail) {
                 if (auto valid = validate_type(type); !valid) {
                     return std::unexpected(valid.error());
                 }
-                if (!is_arithmetic(node.op) && !is_comparison(node.op) && node.op != PrimOp::Not &&
-                    node.op != PrimOp::Select) {
+                if (!is_arithmetic(node.op) && !is_comparison(node.op) && !is_representability(node.op) &&
+                    node.op != PrimOp::Not && node.op != PrimOp::Select && node.op != PrimOp::Quotient &&
+                    node.op != PrimOp::Remainder && node.op != PrimOp::Convert) {
                     return fail(CoreErrorKind::MalformedPrimitive, "unrecognized primitive");
                 }
                 if (node.op == PrimOp::Not && !(node.type == kBoolean)) {
                     return fail(CoreErrorKind::TypeMismatch, "negation requires a boolean");
                 }
-                const std::size_t required_arity = node.op == PrimOp::Select ? 3u : node.op == PrimOp::Not ? 1u : 2u;
+                const std::size_t required_arity = arity(node.op);
                 if (node.arguments.size() != required_arity) {
                     return fail(CoreErrorKind::ArityMismatch,
                                 describe(node.op) + " expects " + std::to_string(required_arity) +
                                     " arguments but received " + std::to_string(node.arguments.size()));
+                }
+                // A conversion's argument is of whatever integer type it is
+                // converted from; that type is the argument's own, so it is
+                // derived here rather than stated, and anything but a
+                // supported integer is refused (RFC 0019).
+                if (node.op == PrimOp::Convert) {
+                    auto argument_type = type_of_impl(context, locals, node.arguments[0], limits, depth + 1);
+                    if (!argument_type) {
+                        return argument_type;
+                    }
+                    if (!argument_type->is_integer()) {
+                        return fail(CoreErrorKind::TypeMismatch,
+                                    "convert operates on an integer but received " + describe(*argument_type));
+                    }
+                    return Type{node.type};
                 }
                 for (std::size_t index = 0; index < node.arguments.size(); ++index) {
                     const auto& argument = node.arguments[index];
@@ -153,7 +169,7 @@ std::unexpected<CoreError> fail(CoreErrorKind kind, std::string detail) {
                                                                      describe(*argument_type));
                     }
                 }
-                return is_comparison(node.op) ? Type{kBoolean} : type;
+                return is_comparison(node.op) || is_representability(node.op) ? Type{kBoolean} : type;
             }
         },
         term.node);

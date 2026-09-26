@@ -91,6 +91,9 @@ target_link_libraries(kernel_paths_test PRIVATE cppl_kernel)
 cppl_add_unit_test(kernel_arithmetic_test kernel/arithmetic_test.cpp)
 target_link_libraries(kernel_arithmetic_test PRIVATE cppl_kernel)
 
+cppl_add_unit_test(kernel_definedness_test kernel/definedness_test.cpp)
+target_link_libraries(kernel_definedness_test PRIVATE cppl_kernel)
+
 cppl_add_unit_test(kernel_adversarial_test kernel/adversarial_kernel_test.cpp)
 target_link_libraries(kernel_adversarial_test PRIVATE cppl_kernel)
 
@@ -151,6 +154,9 @@ target_include_directories(unit_contracts_test PRIVATE
 
 cppl_add_unit_test(unit_arithmetic_test unit/arithmetic_test.cpp)
 target_link_libraries(unit_arithmetic_test PRIVATE cppl_automation)
+
+cppl_add_unit_test(unit_definedness_arithmetic_test unit/definedness_arithmetic_test.cpp)
+target_link_libraries(unit_definedness_arithmetic_test PRIVATE cppl_automation)
 
 cppl_add_unit_test(unit_formal_equality_test unit/formal_equality_test.cpp)
 target_link_libraries(unit_formal_equality_test PRIVATE cppl_automation)
