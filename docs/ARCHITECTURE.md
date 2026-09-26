@@ -1752,35 +1752,48 @@ possible target satisfies the required substitutability relation.
 Otherwise effects/facts must be conservatively widened or the stronger claim
 rejected.
 
-A statically bound member function is not a second kind of verified entity. The
-Clang bridge gives it one reference parameter per scalar place of its implicit
-object, in the order the class declares them and before the written parameters,
-so from elaboration on it is the verified callable a function is: one contract
-structure, one obligation walk, one call composition, one trust closure
-(`SPEC.md` CLASS-008, `docs/rfcs/0018-verified-member-functions.md`).
+A statically bound member function is not a second kind of verified entity. Its
+implicit object is a receiver place, and the object's subobjects are places
+projected from it by the ordinary member and element steps (`SPEC.md` CLASS-008,
+`docs/rfcs/0018-verified-member-functions.md`). The Clang bridge lowers the
+receiver to one reference parameter per scalar place, in the order the class
+declares them and before the written parameters, so from elaboration on it is
+the verified callable a function is: one contract structure, one obligation
+walk, one call composition, one trust closure. The lowering is proof
+bookkeeping, never a runtime parameter (CLASS-013).
 
 ```text
 recognizer   `verified` on a member declared in a class at namespace scope;
              virtual, constructor, destructor, member template and qualified
-             out-of-line forms refused where written
+             out-of-line forms refused where written; `pure` on a static member
 projection   the contract probes are `const` members of the same class, so a
              clause resolves `this` and member names as the body does
 bridge       the receiver: the class's scalar places by `field_index_of`
-             numbering, with each member's refinement and its binding from the
-             function's qualifiers; `this->x`, `(*this).x` and `x` resolve to one
-             place rooted in the class; a member call passes the object's places
-             and, when the callee may write, gives each a post-call version;
-             virtual, class-template and union/base-class members refused
+             numbering, with each member's refinement and the binding its
+             constness gives -- a ref-qualifier constrains the call, not the
+             places; `this->x`, `(*this).x` and `x` resolve to one place rooted in
+             the class; members whose storage may overlap or change unseen have
+             no place; a member call passes the places of the object it names --
+             storage, `std::move` of storage, or what a pointer parameter
+             designates, under its capability -- and gives a post-call version to
+             each place the callee may write or that may be one it writes;
+             validity of refined places received by reference is kept by
+             version (`valid_versions`) and charged at a return only where no
+             route charged it; virtual, volatile, class-template and
+             union/base-class members refused
 elaboration  a refused member function reported by name; otherwise unchanged
-obligations  unchanged: implicit-object places are reference parameters
+obligations  a return owes the stated postcondition; the validity of places
+             received by reference is what callers suppose, not what a return
+             owes (`owed_at_return`)
 erasure      unchanged: `verified` and the clauses leave, the class stays whole
 ```
 
 **[ARCH-OBJ-002]** The implicit object's places MUST be the places a member
 access in the body resolves to, numbered by the same resolver, rooted in one
 object identity, and external: another reference, a call or an unsafe block may
-reach them. A member function MUST NOT gain a read, write, alias or call rule of
-its own; it is the one storage model applied to one more root.
+reach them exactly where the common alias model says so. A member function MUST
+NOT gain a read, write, alias or call rule of its own; it is the one storage
+model applied to one more root.
 
 ---
 

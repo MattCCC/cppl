@@ -3503,12 +3503,15 @@ defined in the class. When the definition is in another translation unit, the
 caller relies on the contract through that unit's verification interface, as
 for any function (15.4).
 
-What a member function may write follows its qualifiers. A `const` one leaves
+What a member function may write follows its constness. A `const` one leaves
 its object as it was, so a caller keeps what it knew about the object across
 the call; a `mutable` member is the exception, and a `const` member function
 that may write one is treated as writing its object. A mutating call gives
 every member of its object a new value, of which the caller knows exactly what
-the callee's `ensures` states (CLASS-009, CLASS-011):
+the callee's `ensures` states (CLASS-009, CLASS-011). A ref-qualifier decides
+only which objects the call may be made on: inside an `&&` member function the
+members are ordinary storage, and a verified caller makes the call on a named
+object with `std::move(object).f()` or `static_cast<T&&>(object).f()`:
 
 <!-- cppl-example: verify -->
 
@@ -3547,16 +3550,93 @@ The object a member function runs on is caller storage, so it may be what a
 reference parameter designates. A write through the parameter is a write that
 may land on a member, and a write to a member is one that may land on what the
 parameter designates; each takes away what was known through the other
-(CLASS-010). Distinct members of one object are distinct storage, so a write to
-one keeps the facts of the others.
+(CLASS-010). Two scalar members of one object are distinct storage, so a write
+to one keeps the facts of the others. That is all the disjointness there is: a
+reference member may designate another member or anything else, a bit-field
+shares a memory location with its neighbours, the members of an anonymous
+union share storage, and a volatile member may change unseen, so a verified
+member function that names one of them is refused.
 
-A refined member owes its predicate at every write, as a refined local does, and
-holds it on entry to every member function (CLASS-010, REFINEOBL-007).
+A call keeps what the caller knew of storage the callee cannot write. A `const`
+member function writing through a reference argument leaves its object's
+members alone when the argument is storage apart from the object, and takes
+them away when it may be one of them:
+
+<!-- cppl-example: verify -->
+
+```cpp
+struct Pair {
+    unsigned a;
+    unsigned b;
+
+    verified void put(unsigned& r) const
+        ensures (r == 9u)
+    {
+        r = 9u;
+    }
+};
+
+verified unsigned kept(unsigned x)
+    ensures (result == x)
+{
+    Pair p{x, 7u};
+    unsigned elsewhere = 0u;
+    p.put(elsewhere); // cannot be `p.a`, so `p.a` is still `x`
+    return p.a;
+}
+
+verified unsigned through_member()
+    ensures (result == 9u)
+{
+    Pair p{1u, 2u};
+    p.put(p.a); // one storage, one post-call version
+    return p.a;
+}
+```
+
+A refined member holds its predicate on entry to every member function, and
+every value that enters it is charged the predicate where it enters: an
+assignment to the member, a write through a reference that may be the member,
+a call that writes it. The function's return then owes nothing more for the
+member. Only a version no such route charged -- what an unsafe block left --
+is charged where the function returns (CLASS-010, REFINE-060 to REFINE-062).
+
+The object a pointer parameter designates is a receiver too, reached under the
+capability the contract states for the pointer: `readable(p)` for a call that
+reads, and `writable(p)` as well for one that may write (CLASS-011,
+VERIFIED-038).
+
+<!-- cppl-example: verify -->
+
+```cpp
+struct Cell {
+    unsigned v;
+
+    verified void set(unsigned x)
+        ensures (v == x)
+    {
+        v = x;
+    }
+};
+
+verified unsigned set_through(Cell* p)
+    expects (readable(p) && writable(p))
+    ensures (result == 4u)
+{
+    p->set(4u);
+    return p->v;
+}
+```
 
 A static member function has no implicit object and is verified as a function
-is. Member function templates, members of class templates, member functions of
-a union or of a class with a base, and a member function called through a
-pointer to member are refused rather than verified (CLASS-015).
+is; one marked `pure` is a definition a contract may use, as a pure function
+at namespace scope is (CLASS-012). Member function templates, members of class
+templates, volatile member functions, member functions of a union or of a
+class with a base, and a member function called through a pointer to member
+are refused rather than verified (CLASS-015). So is a mutating call on an
+object a parameter designates by reference, on an element of an array of class
+type selected at a term, and on a temporary: this implementation forms no place
+for those objects yet.
 
 A constructor has no return-value `result`; its postcondition describes the
 initialized object.
@@ -4379,7 +4459,16 @@ ensures
 const
     the call leaves the object as it was, unless a `mutable` member is written
 
-virtual, constructors, destructors, member templates
+& and &&
+    decide which objects the call may be made on; `std::move(o).f()` is `o`
+
+p->f()
+    the object `p` designates, under `readable(p)`, and `writable(p)` to write
+
+static pure
+    a definition contracts may use
+
+virtual, volatile, constructors, destructors, member templates
     refused by this implementation
 ```
 

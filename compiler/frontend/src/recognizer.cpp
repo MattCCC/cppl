@@ -2848,11 +2848,17 @@ Syntax recognize(const TokenStream& stream, diagnostics::Engine& engine, Recogni
                     // lays out any other syntactically well-formed,
                     // semantically unsupported construct.
                     record_unchecked_clauses(stream, index, *name, engine, syntax);
-                } else if (!at_namespace_scope()) {
+                } else if (!at_namespace_scope() &&
+                           !(at_member_scope() &&
+                             written_between(tokens, specifiers_start(tokens, index), *name, "static"))) {
+                    // A static member function has no implicit object: it is a
+                    // function, and pure as one is (SPEC.md CLASS-012). A member
+                    // function with an implicit object is not a definition of its
+                    // arguments alone.
                     report(engine, stream, tokens[index], diagnostics::Category::UnsupportedSemantics,
                            "'pure' is applied outside namespace scope",
-                           "this implementation recognizes pure functions at namespace scope "
-                           "only");
+                           "this implementation recognizes pure functions at namespace scope, and static member "
+                           "functions of classes declared there");
                 } else {
                     PureMarker marker;
                     marker.keyword = tokens[index].span;

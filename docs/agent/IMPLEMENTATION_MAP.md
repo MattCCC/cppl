@@ -576,36 +576,43 @@ Manifest: `features/verified-methods.yaml`
 
 Normative sources: `CLASS-008`–`CLASS-015` (SPEC Annex F.5.1, F.10),
 `CONTRACT-005`, `CONTRACT-008`–`CONTRACT-010`, `CONTRACT-014` (SPEC §11.9,
-§11.11); `ARCHITECTURE.md` §43 (`ARCH-OBJ-002`); `TRUST.md` §21, §21.1
-(TCB-OBJ-006–TCB-OBJ-008, TCB-VIRTUAL-004); RFC 0018.
+§11.11), `REFINE-060`–`REFINE-062`, `VERIFIED-038`; `ARCHITECTURE.md` §43
+(`ARCH-OBJ-002`); `TRUST.md` §21, §21.1 (TCB-OBJ-006–TCB-OBJ-009,
+TCB-VIRTUAL-004); RFC 0018.
 
 ### Components
 
 | Component | Responsibility | Paths |
 | --- | --- | --- |
-| recognizer | Read `verified` on a member function declared in a class at namespace scope or nested in one; refuse a virtual one, a constructor, a destructor, a member template, a qualified out-of-line declarator and a class local to a body where written. | `compiler/frontend/src/recognizer.cpp` (`try_verified`, `refused_member`), `compiler/frontend/include/cppl/frontend/syntax.hpp` |
+| recognizer | Read `verified` on a member function declared in a class at namespace scope or nested in one, and `pure` on a static one; refuse a virtual one, a constructor, a destructor, a member template, a qualified out-of-line declarator and a class local to a body where written. | `compiler/frontend/src/recognizer.cpp` (`try_verified`, `refused_member`), `compiler/frontend/include/cppl/frontend/syntax.hpp` |
 | projection | Emit a member function's clause probes as `const` members of its class, so `this` and member names resolve in a clause as in the body. | `compiler/frontend/src/projection.cpp` (`implicit_object`, `probe_qualifier`) |
-| bridge | Enumerate the implicit object's scalar places and their passing (`receiver_of`); resolve `this->x`, `(*this).x` and `x` to one place rooted in the class (`resolve_access`); track the places as external storage from entry; pass an object's places at a member call and give them post-call versions (`call_object`, `receiver_argument`, `evaluate`); refuse virtual functions and calls, class-template members, unions and classes with bases (`member_standing`). | `clang/src/bridge.cpp`, `clang/include/cppl/clang/ast.hpp` |
+| bridge | Lower the receiver to its scalar places and their binding from constness (`receiver_of`); resolve `this->x`, `(*this).x` and `x` to one place rooted in the class (`resolve_access`), and refuse a member with no place where it is named (`unmodeled_member`); track the places as external storage from entry; pass the places of the object a call names -- storage, an xvalue of it (`designated_object`), or what a pointer parameter designates, formed under its capability (`form_pointee_receiver`) -- and give a post-call version to each place the callee may write or that may be one it writes (`call_object`, `receiver_argument`, `evaluate`); keep refinement validity by version and charge a return only for an uncharged one (`valid_versions`, `completed`); refuse virtual and volatile functions and calls, class-template members, unions and classes with bases (`member_standing`). | `clang/src/bridge.cpp`, `clang/include/cppl/clang/ast.hpp` |
 | elaboration | Report a refused member function by name where it is declared. | `compiler/elaboration/src/elaborate.cpp` |
-| obligations, kernel, erasure | Unchanged: the implicit object's places are reference parameters. | — |
+| obligations | A return owes the stated postcondition; callers suppose it with the validity of every refined place received by reference (`owed_at_return`). | `compiler/obligations/src/contracts.cpp` |
+| kernel, erasure | Unchanged: the implicit object's places are reference parameters. | — |
 
 ### Required behavior
 
 ```text
-the implicit object         is the class's scalar places, reference parameters
-                            before the written ones, numbered as a member
-                            access in the body numbers them
+the implicit object         is a receiver place; its scalar places are reference
+                            parameters before the written ones, numbered as a
+                            member access in the body numbers them
 a const member function     reads its object and may write only a mutable member
-a member write              versions that place, owes its refinement, and
-                            invalidates what may alias it; a sibling member
-                            keeps its facts
+a ref-qualifier             decides which receivers a call may be made on
+a member write              versions that place, is charged its refinement, and
+                            invalidates what may alias it; a sibling scalar
+                            member keeps its facts
 a reference argument,       may reach any place of the object, and a write to
-a call, an unsafe block     the object may reach what they designate
-a member call               passes the object's places; if the callee may
-                            write, every place of the object takes a post-call
-                            version known only through the callee's ensures
+a pointer, a call,          the object may reach what they designate, as the
+an unsafe block             common alias model says
+a member call               passes the places of the object it names; each
+                            place the callee may write, or that may be one it
+                            writes, takes a post-call version known only through
+                            the callee's ensures; the rest keep theirs
+a refined place             is charged where each value enters it, and at a
+                            return only for a version no route charged
 a virtual function or call  is refused
-the class                   erases member for member, layout unchanged
+the class                   erases member for member, layout and symbols unchanged
 ```
 
 ### Existing surface
@@ -616,13 +623,16 @@ tests/e2e/verified_methods.sh                 verification counts, runtime outpu
 tests/negative/verified_methods.sh            every rejection, written out in tests/fixtures/negative/methods_*.cpp
 tests/fixtures/equivalence/methods.cpp        erasure and layout against a hand-erased twin
 tests/fixtures/methods_cross_tu/              a class defined in one unit, called from another through its interface
+tests/fixtures/methods_scalar_disjoint.cpp    scalar members apart beside `[[no_unique_address]]` and a bit-field
 ```
 
-Not built: `old(...)`, member function calls in contracts, virtual functions,
-constructors and destructors, member templates, members of class templates,
-member functions of unions and of classes with bases, calls on objects reached
-through pointers or elements at a term, and loop clauses in an out-of-line
-member definition; each is refused.
+Not built: `old(...)`, calls in contracts to member functions with an implicit
+object, virtual functions, constructors and destructors, member templates,
+members of class templates, member functions of unions and of classes with
+bases, volatile member functions, a mutating call on an object a parameter
+designates by reference, a call on an element of an array of class type at a
+term, a call through a pointer that is not a parameter, and loop clauses in an
+out-of-line member definition; each is refused.
 
 ---
 

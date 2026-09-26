@@ -123,6 +123,26 @@ struct Pair {
     {
         r = 9u;
     }
+
+    // A `const` call on this object writing through a reference that may be
+    // `a`: `a` is read before it (`negative/methods_const_call_alias_param.cpp`).
+    verified unsigned relay_before(unsigned& other)
+        expects (a == 1u)
+        ensures (result == 1u && other == 9u)
+    {
+        const unsigned seen = a;
+        put(other);
+        return seen;
+    }
+
+    // Writes through `other` first and through the member last: the member's
+    // post-state is what the postcondition states, whatever `other` is.
+    verified void overwrite(unsigned& other)
+        ensures (a == 4u)
+    {
+        other = 3u;
+        a = 4u;
+    }
 };
 
 // A const member function writes nothing, so what the caller knew about the
@@ -166,9 +186,89 @@ verified unsigned const_call_through_alias()
     return p.a;
 }
 
-// SPEC: CLASS-010, REFINE-060
+// The same call writing storage apart from the object: no place of the object
+// can be what the callee writes, so each keeps its version (SPEC.md CLASS-011).
+verified unsigned const_call_apart(unsigned x)
+    ensures (result == x)
+{
+    Pair p{x, 7u};
+    unsigned elsewhere = 0u;
+    p.put(elsewhere);
+    return p.a;
+}
+
+// The member passed as the reference too: one storage and one post-call
+// version, which the callee's postcondition about the member describes
+// (SPEC.md CLASS-011, VERIFIED-031).
+verified unsigned member_as_argument()
+    ensures (result == 4u)
+{
+    Pair p{1u, 2u};
+    p.overwrite(p.a);
+    return p.a;
+}
+
+// SPEC: CLASS-011, REFINE-060
+verified void set_small(Small& s, unsigned v)
+    expects (v < 10u)
+    ensures (s == v)
+{
+    s = v;
+}
+
+// SPEC: CLASS-010, REFINE-060, REFINE-062
 struct Gauge {
     Small level;
+
+    // A write through a reference that may be `level` is charged `Small` for
+    // the value written, which may be what `level` holds afterwards. The
+    // version it leaves in `level` holds `Small` either way, so the return is
+    // charged nothing (`negative/methods_refined_alias_write.cpp`).
+    verified void settle(unsigned& r)
+        ensures (r == 5u)
+    {
+        r = 5u;
+    }
+
+    // A `const` member function writing through a reference that may be
+    // `level` keeps `level` valid, as `settle` does.
+    verified void settle_quietly(unsigned& r) const
+        ensures (r == 5u)
+    {
+        r = 5u;
+    }
+
+    // Calling it with a reference that may be `level`: `level` is a place the
+    // callee only reads that the call's write may reach, so it takes a
+    // post-call version the callee's contract describes, `Small` included,
+    // rather than an unknown one (SPEC.md CLASS-011).
+    verified void relay(unsigned& other)
+        ensures (other == 5u)
+    {
+        settle_quietly(other);
+    }
+
+    // What an unsafe block leaves in `level` is not known to hold `Small`, and
+    // a write charged `Small` establishes it again
+    // (`negative/methods_refined_unsafe_return.cpp`).
+    verified void rescue()
+        ensures (level == 3u)
+    {
+        unsafe {
+            level = 50u;
+        }
+        level = 3u;
+    }
+
+    // A member passed to a `Small&` parameter: the call's effect on `level` is
+    // charged `Small`, which the callee's contract establishes
+    // (`negative/methods_refined_call_effect.cpp`).
+    verified void assign(unsigned v)
+        expects (v < 10u)
+        ensures (level == v)
+    {
+        set_small(level, v);
+    }
 
     // A write to a refined member owes the member's predicate where the value
     // enters it (`negative/methods_refined_member_write.cpp`).
@@ -195,6 +295,20 @@ verified unsigned gauge_round_trip(unsigned x)
 {
     Gauge g{0u};
     g.set(x);
+    return g.get();
+}
+
+// Each route a value takes into `level`, one after another.
+verified unsigned gauge_routes(unsigned x)
+    expects (x < 10u)
+    ensures (result == x)
+{
+    Gauge g{1u};
+    unsigned outside = 0u;
+    g.settle(outside);
+    g.relay(outside);
+    g.rescue();
+    g.assign(x);
     return g.get();
 }
 
@@ -401,6 +515,69 @@ verified unsigned position_of(Cursor c)
     return c.position();
 }
 
+// SPEC: CLASS-009, CLASS-011
+// An `&&` member function called on a named object moved from: the qualifier
+// decides that the call may be made on it, and the call is made on the object's
+// own places (`negative/methods_rvalue_stale.cpp`).
+verified unsigned moved_take(unsigned x)
+    ensures (result == 0u)
+{
+    Meter m{x, {0u}, {0u, 0u, 0u}};
+    const unsigned taken = std::move(m).take();
+    return m.level;
+}
+
+verified unsigned cast_take(unsigned x)
+    ensures (result == 0u)
+{
+    Meter m{x, {0u}, {0u, 0u, 0u}};
+    const unsigned taken = static_cast<Meter&&>(m).take();
+    return m.level;
+}
+
+// SPEC: CLASS-011, VERIFIED-038
+// The object a pointer parameter designates is a place, reached under the
+// capability the contract states for the pointer: `readable` for what the
+// callee may read, `writable` as well for what it may write
+// (`negative/methods_pointer_receiver_capability.cpp`).
+verified unsigned through_pointer(Pair* p)
+    expects (readable(p) && writable(p))
+    ensures (result == 0u)
+{
+    p->zero_a();
+    return p->a;
+}
+
+verified unsigned read_through_pointer(const Pair* p)
+    expects (readable(p))
+    ensures (result == result)
+{
+    return (*p).read_b();
+}
+
+// SPEC: CLASS-012
+// A static member function is a function: a pure one is a definition a
+// contract may use.
+struct Scale {
+    unsigned factor;
+
+    static pure unsigned twice(unsigned x) {
+        return x + x;
+    }
+
+    verified unsigned doubled() const
+        ensures (result == Scale::twice(factor))
+    {
+        return twice(factor);
+    }
+};
+
+verified unsigned scaled(unsigned x)
+    ensures (result == Scale::twice(x) + Scale::twice(x))
+{
+    return Scale::twice(x) + Scale::twice(x);
+}
+
 int main() {
     Counter counter{1u, 5u};
     counter.bump();
@@ -431,5 +608,12 @@ int main() {
     const unsigned apart = cursor.distance(cursor);
     const unsigned before = cursor.before_unsafe();
     std::printf("%u %u %u %u %u %u %u\n", taken, meter.level, left, at, apart, before, cursor.position());
+
+    Pair pair{5u, 6u};
+    const unsigned zeroed = through_pointer(&pair);
+    const Scale scale{21u};
+    std::printf("%u %u %u %u %u %u %u %u %u %u\n", gauge_routes(8u), const_call_apart(4u), member_as_argument(),
+                moved_take(9u), cast_take(9u), zeroed, read_through_pointer(&pair), scale.doubled(), scaled(3u),
+                pair.a);
     return 0;
 }

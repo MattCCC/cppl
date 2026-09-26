@@ -951,22 +951,35 @@ returning zero. A pointee reached only through a pointer to const survives,
 because writing through one is not something the callee may do.
 
 A non-virtual member function is verified with its implicit object
-(`SPEC.md` CLASS-008 to CLASS-015, `docs/rfcs/0018-verified-member-functions.md`):
-the object's modeled scalar members, members of members and elements of member
-arrays are places, passed as reference parameters before the written ones, so a
-member function is the same verified callable a function is and no part of the
-verifier is specific to it. A `const` member function binds them `const` except
-through a `mutable` member; a write owes the member's refinement and keeps a
-sibling member's facts; a reference parameter, an object passed by reference, a
-call and an unsafe block may each reach the object, and invalidate what was
-known of it. A call on an object the caller names as storage passes the
-object's places and, when the callee may write, gives each a post-call version
-of which only the callee's `ensures` is known. Recursion, loops, ghost state and
-case splits work in a member function as in a function; a static member function
-is a function. `fixtures/verified_methods.cpp` pins each accepted form with the
-refused half of its matched pair beside it (`negative_verified_methods`), and
+(`SPEC.md` CLASS-008 to CLASS-015, `docs/rfcs/0018-verified-member-functions.md`).
+The object is a receiver place, and its modeled scalar members, members of
+members and elements of member arrays are places projected from it; this
+implementation lowers them to reference parameters before the written ones, so
+a member function is the same verified callable a function is and no part of
+the verifier is specific to it. A `const` member function binds the places
+`const` except through a `mutable` member; a ref-qualifier constrains only which
+objects the call may be made on, so `std::move(o).f()` is a call on `o`. The
+places relate to every other access path by the common alias model, with no
+type-based argument: a write to a member keeps a sibling scalar member's facts,
+and a write through a reference or pointer, a call's write and an unsafe block
+take away what they may reach. A call gives a post-call version to each place
+the callee may write and to each it only reads that may be one it writes, of
+which only the callee's `ensures` is known; a place no write of the call can
+reach keeps its version. A refined member is charged its predicate where each
+value enters it -- an assignment, a write through a reference that may be it, a
+call's effect -- and not again at the return; a version no route charged, such
+as one an unsafe block left, is charged where the function returns
+(`SPEC.md` REFINE-060 to REFINE-062, `TRUST.md` TCB-OBJ-009). This applies to a
+refined reference parameter of any function alike. The object a pointer
+parameter designates is a receiver, reached under `readable(p)`, and
+`writable(p)` for a call that may write. Recursion, loops, ghost state and case
+splits work in a member function as in a function; a static member function is
+a function, and a `static pure` one is a definition a contract may use.
+`fixtures/verified_methods.cpp` pins each accepted form with the refused half
+of its matched pair beside it (`negative_verified_methods`), and
 `fixtures/equivalence/methods.cpp` pins that a class with verified member
-functions compiles to the same code as the class written without them.
+functions compiles to the same code and the same symbols as the class written
+without them.
 
 Virtual functions stay refused at the declaration, however the declaration says
 it is virtual and when it overrides without saying so, and a call to one from a
@@ -974,8 +987,16 @@ verified body is refused, which is what closes virtual dispatch rather than
 leaving it open: the dynamic type decides which body runs, so a contract proved
 from a base's body would not cover an override that replaces it (CLASS-014).
 Constructors, destructors, member function templates, members of class
-templates, member functions of a union or of a class with a base, calls through
-pointers to member and `this` as a value are refused by name (CLASS-015). A
+templates, volatile member functions, member functions of a union or of a class
+with a base, calls through pointers to member and `this` as a value are refused
+by name (CLASS-015), and so are members whose storage may overlap another place
+or change unseen: reference members, bit-fields, members of anonymous unions and
+structs, and volatile members. These receivers are refused as limitations of
+this implementation, not of `SPEC.md`: a mutating call on an object a parameter
+designates by reference, which is read as one value and never written member by
+member; a call on an element of an array of class type selected at a term,
+whose members get no place; and a call through a pointer that is not a
+parameter, which no contract names a capability for. A
 contract is stated on the declaration in the class, and an out-of-line
 definition inherits it. A clause cannot call a member function, which is not a
 definition the formal core unfolds, and without `old(...)` a postcondition

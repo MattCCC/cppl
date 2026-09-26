@@ -136,4 +136,23 @@ equivalent unsafe_boundaries '42 3 9 4' \
 equivalent methods $'6 6 7 8 5 2 9\n6 0' \
     'Function contracts proven: +11' 'Call preconditions proven: +2' 'Loop invariants proven: +2'
 
+# SPEC: CLASS-013, ABI-002
+# The places the verifier passes for an implicit object are no parameter of the
+# program: each member function keeps the mangled name of its written signature
+# -- `nested` and `declared_here` one `unsigned`, the `const` `get` none -- and
+# the program defines exactly the symbols its erasure by hand defines.
+for level in -O0; do
+    base="$run/methods-c++20$level"
+    for symbol in ZN5Meter13declared_hereEj ZN5Meter6nestedEj ZNK5Meter3getEv; do
+        grep -Eq "^[[:space:]]*\\.globl[[:space:]]+_+$symbol([[:space:]]|\$)" "$base.cppl" || {
+            echo "a member function does not keep the mangled name of its written signature: $symbol ($level)" >&2
+            exit 1
+        }
+    done
+    if [ "$(grep -E '^[[:space:]]*\.globl' "$base.cppl")" != "$(grep -E '^[[:space:]]*\.globl' "$base.reference")" ]; then
+        echo "the methods program and its erasure by hand define different symbols ($level)" >&2
+        exit 1
+    fi
+done
+
 echo 'erased C++L behaves as, and is the same code as, its ordinary C++ erasure in c++17, c++20 and c++23'

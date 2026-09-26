@@ -115,6 +115,72 @@ refuse methods_out_of_line_contract \
 refuse methods_local_class \
     "methods_local_class.cpp:9:9: error [unsupported-semantics]: 'verified' is applied outside namespace scope"
 
+# SPEC: CLASS-010, REFINE-060, REFINE-061, REFINE-062
+# Every route a value takes into a refined member is charged where it enters:
+# a write through a reference that may be the member, a call's effect. A
+# version no route charged -- what an unsafe block left -- is charged where the
+# function hands it back, and nowhere else.
+refuse methods_refined_alias_write \
+    "methods_refined_alias_write.cpp:16:13: error [kernel-rejection]: this value is not shown to satisfy refinement type 'Small'"
+refuse methods_refined_call_effect \
+    "methods_refined_call_effect.cpp:21:9: error [kernel-rejection]: this value is not shown to satisfy refinement type 'Small'"
+refuse methods_refined_unsafe_return \
+    "methods_refined_unsafe_return.cpp:19:6: error [kernel-rejection]: this value is not shown to satisfy refinement type 'Small'"
+refuse methods_refined_unsafe_alias \
+    "methods_refined_unsafe_alias.cpp:21:6: error [kernel-rejection]: this value is not shown to satisfy refinement type 'Small'"
+
+# SPEC: CLASS-010, CLASS-011, VERIFIED-032
+# A call writing through a reference that may be a member leaves the member
+# unknown, as a direct write through it does.
+refuse methods_call_through_alias_member \
+    "methods_call_through_alias_member.cpp:23:9: error [kernel-rejection]: return path 'Pair::forget path 1' does not satisfy its contract"
+# A place the callee only reads takes a post-call version where a write of the
+# call may reach it: a `const` call through a reference that may be a member.
+refuse methods_const_call_alias_param \
+    "methods_const_call_alias_param.cpp:24:9: error [kernel-rejection]: return path 'Pair::relay path 1' does not satisfy its contract"
+
+# SPEC: CLASS-009, CLASS-011
+# An `&&` member function called on `std::move(t)` is called on `t`; one called
+# on a copy of `t` is called on a temporary.
+refuse methods_rvalue_stale \
+    "methods_rvalue_stale.cpp:27:14: error [kernel-rejection]: return path 'stale path 1' does not satisfy its contract" \
+    "methods_rvalue_stale.cpp:33:19: error [unsupported-semantics]: verified function 'copied' has a body this implementation cannot state as a value: the object of this call is not storage this implementation can name"
+
+# SPEC: CLASS-011, VERIFIED-038
+# What a pointer designates is reached only under the capability stated for it,
+# and may be what a reference designates.
+refuse methods_pointer_receiver_capability \
+    "methods_pointer_receiver_capability.cpp:25:19: error [unsupported-semantics]: verified function 'read_unstated' has a body this implementation cannot state as a value: reading 'p' requires 'readable(p)'" \
+    "methods_pointer_receiver_capability.cpp:32:19: error [unsupported-semantics]: verified function 'write_read_only' has a body this implementation cannot state as a value: writing through 'p' requires 'writable(p)'"
+refuse methods_pointer_receiver_alias \
+    "methods_pointer_receiver_alias.cpp:27:5: error [kernel-rejection]: return path 'stale path 2' does not satisfy its contract"
+
+# SPEC: CLASS-010, CLASS-015
+# Members whose storage may overlap another place, or change unseen, have no
+# place, and a body naming one is refused where it does.
+refuse methods_overlapping_members \
+    "methods_overlapping_members.cpp:15:23: error [unsupported-semantics]: verified function 'Holder::through_reference' has a body this implementation cannot state as a value: 'other' is a reference member" \
+    "methods_overlapping_members.cpp:28:23: error [unsupported-semantics]: verified function 'Flags::read_low' has a body this implementation cannot state as a value: 'low' is a bit-field" \
+    "methods_overlapping_members.cpp:41:23: error [unsupported-semantics]: verified function 'Word::through_union' has a body this implementation cannot state as a value: 'alias' is a member of a union" \
+    "methods_overlapping_members.cpp:56:23: error [unsupported-semantics]: verified function 'Split::through_anonymous_struct' has a body this implementation cannot state as a value: 'hi' is a member of an anonymous struct" \
+    "methods_overlapping_members.cpp:67:19: error [unsupported-semantics]: verified function 'Device::clear' has a body this implementation cannot state as a value: 'status' is volatile"
+
+# SPEC: CLASS-009, CLASS-015
+refuse methods_volatile_function \
+    "methods_volatile_function.cpp:9:23: error [unsupported-semantics]: verified member function 'Port::zero' is not verified by this implementation: it is volatile-qualified" \
+    "methods_volatile_function.cpp:15:23: error [unsupported-semantics]: verified member function 'Port::read' is not verified by this implementation: it is volatile-qualified"
+
+# SPEC: CLASS-012
+refuse methods_static_pure_false \
+    "methods_static_pure_false.cpp:16:12: error [proof-failure]: verified function 'wrong' does not satisfy its contract"
+
+# SPEC: CLASS-011, CLASS-015
+# Receivers for which this implementation forms no sound place.
+refuse methods_receiver_forms \
+    "methods_receiver_forms.cpp:24:19: error [unsupported-semantics]: verified function 'through_reference' has a body this implementation cannot state as a value: 'Cell::set' may write the object it is called on, which a parameter designates by reference" \
+    "methods_receiver_forms.cpp:31:19: error [unsupported-semantics]: verified function 'at_index' has a body this implementation cannot state as a value: this subscript's array is not tracked storage of this body" \
+    "methods_receiver_forms.cpp:39:19: error [unsupported-semantics]: verified function 'temporary' has a body this implementation cannot state as a value: the object of this call is not storage this implementation can name"
+
 # SPEC: CLASS-015
 refuse methods_unmodeled_receivers \
     "methods_unmodeled_receivers.cpp:9:23: error [unsupported-semantics]: verified member function 'Word::get' is not verified by this implementation: its implicit object is not one this implementation models: its class is a union" \

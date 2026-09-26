@@ -2,21 +2,91 @@
 
 ## Status
 
-Accepted, prototype implemented for statically bound member functions.
-Virtual functions, constructors, destructors and members of class templates
-remain refused.
+Accepted, prototype implemented for statically bound member functions, and
+revised after the production review recorded under "Revision" below. Virtual
+functions, constructors, destructors and members of class templates remain
+refused.
 
 ## Summary
 
-A non-static member function that C++ binds statically is a verified callable
-whose implicit object is storage. The object is not a new kind of value: each
-scalar subobject the implementation models is a place, and the callable takes
-each such place as a reference parameter standing before its written ones. The
-body then reads and writes members through the one read and write path
-functions already use, a call on an object passes the object's places as the
-callee's object, and everything the obligation layer and kernel already do for
-reference parameters, aliasing, call post-states, refinements and termination
-applies unchanged. No term, rule or axiom is added.
+A non-static member function whose dispatch target is statically determined is
+a verified callable whose implicit object is a receiver place. The object is not
+a new kind of value: each subobject the implementation models is a place
+projected from the receiver by the ordinary member and element steps, and the
+body reads and writes members through the one read and write path functions
+already use. This implementation lowers the receiver to one reference parameter
+per scalar place, standing before the written ones; the lowering is proof
+bookkeeping, not source semantics, and not a runtime parameter. A call on an
+object passes the places of the object it names as the callee's object, and
+everything the obligation layer and kernel already do for reference parameters,
+aliasing, call post-states, refinements and termination applies unchanged. No
+term, rule or axiom is added.
+
+## Revision
+
+The first text of `SPEC.md` F.5.1 tied the rules to this implementation. A
+production review asked for the source-language rule and the implementation to
+be separated, and for two semantic corrections. The rules CLASS-008 to CLASS-015
+now read as the review stated them, and the implementation follows:
+
+- **The receiver is a place (CLASS-008).** Flattening `this` into one parameter
+  per scalar is an internal lowering an implementation MAY use, and MUST keep the
+  object's identity and alias relations. This one does: every place is projected
+  from one root by the numbering a member access resolves to, a caller passes the
+  places of one object as one object, and the places are external storage the
+  common alias model relates to every other access path.
+- **A ref-qualifier constrains the call, not the places (CLASS-009).** The first
+  version bound every place of an `&&` member function as an rvalue reference.
+  Inside the body a member is storage like any other; the qualifier decides which
+  receivers the call may be made on, which Clang's overload resolution settles.
+  A verified caller now makes such a call on a named object through `std::move(o)`,
+  `std::forward<T>(o)` or `static_cast<T&&>(o)`, each of which designates `o`
+  itself; a copy of `o` is a temporary, and stays refused.
+- **Validity is not charged again at a return (CLASS-010, REFINE-060 to
+  REFINE-062).** A refined place received by reference used to owe its predicate
+  at every normal return. Now each value entering the place is charged where it
+  enters, and the return owes nothing for a version so charged. Every route was
+  audited: a direct write charges the place; a write through another access path
+  that may reach the place charges the place's refinement for the value written,
+  and leaves it valid exactly when it was valid before; a call's effect is
+  charged at the caller; an unsafe block, a loop head, a call writing another
+  argument, and any route not listed charge nothing, so the version they leave is
+  not derived valid, and the return is charged for it. The accounting lives in
+  the bridge (`valid_versions`), absent by default, and is a stated trust delta
+  (`TRUST.md` TCB-OBJ-009). It applies to a refined reference parameter of any
+  function, which the same REFINE rules govern.
+- **Disjointness is qualified (CLASS-010).** Two scalar places of one object are
+  disjoint because C++ never lets two scalar objects that are not bit-fields
+  overlap, `[[no_unique_address]]` included. Reference members, bit-fields,
+  members of anonymous unions and structs, and volatile members have no place and
+  are refused where a body names them.
+- **Aliasing follows the common model (CLASS-010, CLASS-011).** The first version
+  filtered the places a call's write reaches by modeled type, which the common
+  alias model does not do and `AGENTS.md` forbids. A call's writes now invalidate
+  exactly what `BodyLowering::may_alias` does not keep apart, and a place the
+  callee only reads keeps its version when no write of the call can reach it.
+- **The receiver is any place the model forms (CLASS-011, CLASS-015).** The object
+  a pointer parameter designates is a receiver, formed as dereference places under
+  `readable(p)`, and `writable(p)` for a callee that may write. Receivers this
+  implementation forms no place for -- a mutating call on an object a parameter
+  designates by reference, an element of an array of class type at a term, a
+  temporary -- are limitations recorded in `docs/STATUS.md`, not language rules.
+- **Static members (CLASS-012).** `pure` applies to a static member function, which
+  is then a definition a contract may use.
+- **Erasure (CLASS-013).** The lowered places are not runtime parameters; the
+  erasure-equivalence test now also requires each member function to keep the
+  mangled name of its written signature and the program to define exactly the
+  symbols its hand erasure defines.
+- **Qualified definitions (CLASS-008).** A member's out-of-class definition may
+  not restate its contract, which is stricter than the identical repetition
+  CONTRACT-005 and TU-003 permit for other functions. The asymmetry is kept as the
+  review stated it.
+
+Auditing the return charge found a defect in the obligation layer, fixed on its
+own: the post-state a return hands back was stated before the calls in the
+returned value were in scope, so `ensures (r == 5u)` was proven of a function
+that never wrote `r` and returned a call whose result was 5
+(`negative/post_state_after_returned_call.cpp`).
 
 ## Motivation
 
@@ -73,8 +143,9 @@ could disagree with them.
 - `old(...)`. A mutating call's post-state is what its postcondition states and
   nothing else; relating it to the entry state needs `old`, which is a separate
   proposal for every function, not only member functions.
-- Calling a member function inside a contract. A contract names members, not
-  member function results.
+- Calling a member function with an implicit object inside a contract. A
+  contract names members, not such a function's results; a `static pure` member
+  function is a definition like any pure function.
 - Member function templates and members of class templates (TEMPLATE-001).
 - Any mechanism of its own across translation units. A member function crosses
   through the verification interface of RFC 0017 as a function does.
@@ -109,53 +180,65 @@ function declared elsewhere.
 
 ## Static semantics
 
-**Implicit object.** For a member function of class `C`, the implementation
-enumerates the scalar places of a `C` object it models: every data member of
-scalar type, every member of a member of class type, and every element of a
-member array, in declaration order, each identified by its path from the
-object. The callable's parameters are those places followed by the written
-parameters (CLASS-008). The places are rooted at the canonical declaration of
-`C`, so every member function of `C` and every caller agrees on them.
+**Implicit object.** For a member function of class `C`, the implicit object is
+a receiver place, and each subobject the implementation models is a place
+projected from it: every data member of scalar type, every member of a member of
+class type, and every element of a member array, each identified by its path
+from the object (CLASS-008). This implementation lowers the receiver to the
+scalar places in declaration order, the callable's parameters being those places
+followed by the written parameters. The places are rooted at the canonical
+declaration of `C`, so every member function of `C` and every caller agrees on
+them.
 
-**Passing.** A `const` member function takes each place as a `const` reference,
-except a place reached through a `mutable` member; a member function without
-`const` takes each place as writable; `&&` takes them as rvalue references
-(CLASS-009). The qualifiers change what the body may write, never what another
-path may write: the object is external storage and may alias any reference
-argument.
+**Qualifiers.** A `const` member function observes each place as `const`,
+except a place reached through a `mutable` member; one without `const` may write
+every place (CLASS-009). A ref-qualifier constrains the value category of the
+receiver the call may be made on, which Clang's overload resolution enforces;
+inside the body the members are ordinary places. No qualifier changes what
+another path may write: the object is external storage. A volatile-qualified
+member function is refused.
 
 **Reads and writes.** A member named in the body, through implicit `this`,
 `this->m` or `(*this).m`, resolves to its place and is read and written through
-the existing path (CLASS-010). A write versions exactly that place, owes the
-member's refinement, and invalidates every place that may alias it. Distinct
-members are distinct places, so a write to `limit` leaves `value`'s fact
-standing; a write through a reference parameter, a call that may write, or an
-unsafe block invalidates every place of the object it may reach, and a write to
-a member invalidates what a reference parameter or an object passed by
-reference may hold of it.
+the existing path (CLASS-010). A write versions exactly that place, is charged
+the refinement of the value entering it, and invalidates every place the common
+alias model does not keep apart from it. Two scalar places of one object are
+apart, so a write to `limit` leaves `value`'s fact standing; a write through a
+reference parameter or a pointer, a call that may write, or an unsafe block
+invalidates every place of the object it may reach, and a write to a member
+invalidates what a reference parameter or an object passed by reference may
+hold of it. A member whose storage may overlap another place or change unseen
+-- a reference member, a bit-field, a member of an anonymous union or struct, a
+volatile member -- has no place.
 
-**Contracts.** A precondition names each member's entry value, a postcondition
-its normal-return value (CONTRACT-009). A refined member's predicate is assumed
-on entry and owed at every normal return, as for a refined reference parameter.
+**Contracts and validity.** A precondition names each member's entry version, a
+postcondition its normal-return version (CONTRACT-009). A refined member's
+predicate holds of its entry version; every operation establishing a later
+version is charged the predicate or leaves the version not derived valid, and a
+normal return is charged the predicate only for a version not derived valid
+(REFINE-060 to REFINE-062).
 
-**Calls.** A call `o.f(args)`, `f(args)` or `this->f(args)` names its object as
-storage: the caller's implicit object, a local, a parameter, or a member or an
-element at a constant of one (CLASS-011). The object's places are the callee's
-leading arguments; the call owes the callee's preconditions at them; a callee
-that may write its object, or writes through any reference argument, gives
-every place of the object a post-call version, about which the caller knows
-exactly the callee's postcondition. A place passed both as part of the object
-and as a reference argument is one storage with one post-call version. A call
-into the caller's recursion group owes the measure at the object's places as
-at every other argument (TERMINATION-007).
+**Calls.** A call `o.f(args)`, `f(args)`, `this->f(args)`, `std::move(o).f()` or
+`p->f(args)` supplies the place its receiver expression resolves to (CLASS-011):
+the caller's implicit object, a local, a parameter, a member or an element at a
+constant of one, or what a pointer parameter designates, under its stated
+capability. The object's places are the callee's leading arguments; the call
+owes the callee's preconditions at them. Each place the callee may write, and
+each place it only reads that the common alias model does not keep apart from
+one it writes, gets a post-call version, about which the caller knows exactly
+the callee's postcondition; a place no write of the call can reach keeps its
+version. A place passed both as part of the object and as a reference argument
+is one storage with one post-call version. A call into the caller's recursion
+group owes the measure at the object's places as at every other argument
+(TERMINATION-007).
 
-**Static member functions** have no implicit object and are functions
-(CLASS-012).
+**Static member functions** have no implicit object and are functions; a
+`static pure` one is a definition a contract may use (CLASS-012).
 
 **Interaction.** Equality, normalization and the kernel are unchanged. A member
-function is never a pure definition that a proposition may unfold; its
-contract is its only interface, as for any verified function with reference
-parameters.
+function with an implicit object is never a pure definition that a proposition
+may unfold; its contract is its only interface, as for any verified function
+with reference parameters.
 
 ## Runtime semantics
 
@@ -168,8 +251,8 @@ C++ that remains after erasure.
   verified ones, are ordinary C++. A verified member function called from
   unverified code is an ordinary call; its precondition is not checked there,
   since verification adds no runtime check (SPEC.md 57). A member function
-  whose ref-qualifier is `&&` is verified, but a verified caller cannot yet
-  name an rvalue object for it, so it is called from unverified code.
+  whose ref-qualifier is `&&` is verified, and a verified caller makes the call
+  on a named object with `std::move`, `std::forward` or `static_cast<T&&>`.
 - **Overload resolution.** Clang resolves every call; the bridge follows the
   resolved declaration. `const`/non-`const` and `&`/`&&` overloads are distinct
   callables.
@@ -177,8 +260,10 @@ C++ that remains after erasure.
   refused (CLASS-015).
 - **ABI and layout.** Unchanged (CLASS-013); the erasure equivalence test
   compiles the program and a hand-erased reference in C++17, C++20 and C++23,
-  requires identical assembly at `-O0` and `-O2` and identical output, and both
-  assert the classes' size, alignment and a member offset.
+  requires identical assembly at `-O0` and `-O2` and identical output, requires
+  each member function to keep the mangled name of its written signature and
+  both programs to define the same symbols, and both assert the classes' size,
+  alignment and a member offset.
 - **Virtual functions.** Refused, together with every call to a function that
   has overrides, qualified or not (CLASS-014). Clang's own answer to "is this
   virtual" (declared or implicit override) is the authority.
@@ -202,29 +287,35 @@ These programs must be rejected, each with a diagnostic at its source:
   block that may have changed it, including through a `const` call on an
   object whose member is aliased by a reference argument;
 - a `const` member function relied on not to write a `mutable` member;
-- a write of a refined member that does not satisfy its refinement;
+- a value entering a refined member that does not satisfy its refinement,
+  whether by assignment, through a reference that may be the member, or by a
+  call's effect, and a version no route charged handed back at a return;
 - a recursive member call not made at a smaller measure;
 - `verified` on a virtual function (explicit, `override`, `final`, or implicit
   override) and a call to a virtual function from verified code;
-- a verified constructor or destructor;
+- a verified constructor or destructor, and a volatile member function;
 - a member function template or a member of a class template;
 - a member function of a union or of a class with a base subobject;
-- `this` as a value, a member whose storage is not modeled, a call through a
-  pointer to member function, and a call on an object not named as storage.
+- `this` as a value, a member whose storage may overlap another place or change
+  unseen, a call through a pointer to member function;
+- a call on what a pointer designates without the capability it needs, and a
+  call on an object for which no sound place is formed.
 
 ## Trust impact
 
 No kernel rule, axiom or proposition is added. The trusted delta is
-correspondence code in the Clang bridge: enumerating the object's places,
-resolving member accesses and calls to them, choosing the passing from the
-qualifiers, and the virtual-dispatch refusals (`TRUST.md` TCB-OBJ-006 to
-TCB-OBJ-008, TCB-VIRTUAL-004). A mistake there could attribute a write to the
-wrong place; the matched pairs and the mutation checks registered for it guard
-exactly those decisions.
+correspondence code in the Clang bridge: lowering the receiver to its places,
+resolving member accesses and calls to them, choosing the binding from the
+constness, forming a pointer's receiver under its capability, the
+virtual-dispatch refusals, and the validity accounting that lets a return owe
+nothing for a version charged where it was established (`TRUST.md` TCB-OBJ-006
+to TCB-OBJ-009, TCB-VIRTUAL-004). A mistake there could attribute a write to the
+wrong place or count an uncharged version as valid; the matched pairs and the
+mutation checks registered for it guard exactly those decisions.
 
 ## Erasure
 
-The contract clauses and `verified` erase to blanks (ERASE-004). The class
+The contract clauses and `verified` erase to blanks (ERASE-002, ERASE-003). The class
 keeps its members, member functions, signatures, qualifiers and layout. The
 analysis probes the projection adds for a member function's clauses are
 confined to analysis text and never reach the runtime program.
@@ -262,6 +353,12 @@ named `Class::function path N`.
 - The places of a large object are all passed, so every call on it versions
   all of them; precision follows only from postconditions.
 - Classes with bases, unions and templates are out of reach for now.
+- A write through a reference that may be a refined member is charged the
+  member's refinement even where the reference is not the member, which costs a
+  false rejection and never soundness.
+- A mutating call on an object a parameter designates by reference, and a call
+  on an element of an array of class type at a term, have no place formed for
+  their receiver yet.
 
 ## Testing strategy
 
@@ -288,3 +385,6 @@ Programs that did were refused before and are verified or refused now.
 - Constructors and destructors as lifetime boundaries of the object's places.
 - Member function calls in contracts, which would need member functions as
   pure definitions.
+- Places for a by-reference aggregate parameter's members, which would admit a
+  mutating call on the object it designates, and for members of an element
+  selected at a term.

@@ -108,7 +108,17 @@ struct ContractVerification {
     // conjunction without a conjunction connective.
     std::vector<kernel::Proposition> preconditions;
     // Scope: function parameters followed by its specification-only result.
+    // What a caller supposes after the call: the stated postcondition, the
+    // refined result's membership, and the declared validity of each refined
+    // place the function receives by reference.
     kernel::Proposition postcondition;
+    // Same scope. What each normal return is charged: the stated postcondition
+    // and the refined result's membership. The validity of a place received by
+    // reference is not charged again at a return: every version the place takes
+    // is charged where it is established, and the lowering charges a return
+    // with the refinement of any version that was not (SPEC.md REFINE-060 to
+    // REFINE-062, CLASS-010).
+    kernel::Proposition owed_at_return;
     kernel::Type result;
     kernel::Term returned_value;
     kernel::Term named_value;

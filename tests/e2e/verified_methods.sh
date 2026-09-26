@@ -16,14 +16,14 @@ CLANG="$4"
 mkdir -p "$WORK"
 run=$(mktemp -d "$WORK/verified-methods.XXXXXX")
 
-expected=$'4 0 3 0\n3 0 2 9 6\n5 1 1 7 2 6 1 4 3\n1 0 3 1 0 1 7'
+expected=$'4 0 3 0\n3 0 2 9 6\n5 1 1 7 2 6 1 4 3\n1 0 3 1 0 1 7\n8 4 4 0 0 0 6 42 12 0'
 
 for standard in c++17 c++20 c++23; do
     "$CPPL" "-std=$standard" "$FIXTURES/verified_methods.cpp" -o "$run/program" \
         --cppl-trust-report "--cppl-emit-projection=$run/runtime.cpp" > "$run/report"
-    for line in 'Function contracts proven: +39' 'Call preconditions proven: +4' 'Loop invariants proven: +2' \
+    for line in 'Function contracts proven: +56' 'Call preconditions proven: +13' 'Loop invariants proven: +2' \
         'Loop measures proven: +1' 'Recursive call measures proven: +1' 'Unresolved obligations: +0' \
-        'Trusted external axioms: +0' 'Unsafe regions: +1'; do
+        'Trusted external axioms: +0' 'Unsafe regions: +2'; do
         if ! grep -Eq "^$line\$" "$run/report"; then
             echo "verified_methods ($standard) does not report '$line'" >&2
             cat "$run/report" >&2
@@ -59,6 +59,14 @@ for standard in c++17 c++20 c++23; do
         exit 1
     fi
 done
+
+# SPEC: CLASS-010
+# Scalar members are disjoint storage beside an empty `[[no_unique_address]]`
+# member and a bit-field (C++20 and later, where the attribute is standard).
+"$CPPL" -std=c++20 --cppl-trust-report "$FIXTURES/methods_scalar_disjoint.cpp" -o "$run/scalar_disjoint" \
+    > "$run/scalar_disjoint.report"
+grep -Eq '^Function contracts proven: +1$' "$run/scalar_disjoint.report"
+test "$("$run/scalar_disjoint")" = '1 5'
 
 # SPEC: CLASS-011, TUBOUND-002, TUBOUND-003, TUBOUND-006
 # Across translation units a member function's contract crosses as a

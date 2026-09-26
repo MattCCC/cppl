@@ -149,6 +149,16 @@ kernel::Proposition postcondition_at(const ContractVerification& callee, std::ve
     return specialize(callee.postcondition, parameters, arguments);
 }
 
+// What a normal return of `function` is charged at its post-state `arguments`
+// and result `value` (SPEC.md REFINE-062, CLASS-010).
+kernel::Proposition owed_at_return(const ContractVerification& function, std::vector<kernel::Term> arguments,
+                                   kernel::Term value) {
+    std::vector<kernel::Type> parameters = function.parameters;
+    parameters.push_back(function.result);
+    arguments.push_back(std::move(value));
+    return specialize(function.owed_at_return, parameters, arguments);
+}
+
 kernel::Proposition close(const ContractVerification& function, const ReturnPath& path, std::size_t prefix,
                           std::size_t conditions, bool abstract, kernel::Proposition goal) {
     for (std::size_t index = prefix; index > 0; --index) {
@@ -568,6 +578,7 @@ std::expected<void, Failure> state_contract(const vir::Function& function, const
             plan.preconditions.push_back(**refined);
         }
     }
+    plan.owed_at_return = plan.postcondition;
     for (std::size_t index = 0; index < function.parameters.size(); ++index) {
         if (!source::aliases_storage(function.parameters[index].passing))
             continue;
@@ -1352,7 +1363,7 @@ class Conditions {
             if (!value)
                 return std::unexpected(value.error());
             emit(scope, Origin::ReturnPath, function_.qualified_name + " path " + std::to_string(++paths_),
-                 expression.provenance.range, postcondition_at(plan_, std::move(arguments), *value));
+                 expression.provenance.range, owed_at_return(plan_, std::move(arguments), *value));
             return {};
         }
 

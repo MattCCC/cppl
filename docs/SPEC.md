@@ -5802,66 +5802,122 @@ representation, solver, or TCB implementation.
 
 ### F.5.1 Verified member functions
 
-[CLASS-008] A non-static member function that C++ binds statically is verified as a callable
-whose implicit object is storage. Each scalar subobject of the object that the
-implementation models -- a data member, a member of a member, an element of a member
-array -- is a place of the object, reached by the path of members and elements that names
-it, and the callable takes each such place as a reference parameter, in declaration order,
-before its written parameters. A contract names those places through ordinary member
-lookup and `this` (CONTRACT-008): in a precondition a member denotes its entry value, in a
-postcondition its normal-return value (CONTRACT-009, VERIFIED-031). `verified` applies to a
-member function declared in a class that is itself declared at namespace scope or in
-another such class, and the contract is stated on that declaration: a qualified
-definition outside the class inherits it and MUST NOT restate it (CONTRACT-005). A class
-local to a function body has no verified member functions.
+[CLASS-008] A non-static member function whose dispatch target is statically determined may
+be verified as a callable with an implicit object designating modeled storage.
 
-[CLASS-009] How a member function binds its implicit object follows its C++ qualifiers
-(CONTRACT-010). A `const` member function binds each place of the object as a `const`
-reference, except a place reached through a `mutable` member, which it may write; a
-member function without `const` binds every place as writable, and one whose
-ref-qualifier is `&&` binds it as an rvalue reference. No qualifier establishes that a
-place is not written through another access path.
+The implicit object is a receiver place. Each modeled subobject of that object is a place
+obtained from the receiver by the ordinary member and element projections of the storage
+model. Reads, writes, aliasing, versions and refinement crossings of those places use the
+same machinery as every other modeled place.
 
-[CLASS-010] In a verified member function's body, a member of the implicit object is read
-and written through the one read and write path (VERIFIED-025, VERIFIED-030): a write
-establishes a new version of exactly the place written, owes the refinement the member
-declared (REFINE-060, REFINEOBL-007) and invalidates every place that may alias it.
-Distinct members of the object are distinct storage, so a write to one leaves the facts
-of another standing. The object is caller storage: a reference or pointer parameter, an
-object passed by reference, a call and an unsafe block may each reach any place of it,
-so a write through any of them invalidates what was known of the object's places, and a
-write to the object's places invalidates what was known through them. A refined place of
-the object satisfies its predicate on entry, and every normal return owes it again.
+An implementation MAY lower the receiver internally to a collection of place parameters,
+but such lowering is not part of the source-language semantics and MUST preserve the
+identity and alias relationships of the original object.
 
-[CLASS-011] A call to a statically bound member function is made on an object the caller
-names as storage: the caller's own implicit object, a local, a parameter, or a member or
-an element at a constant of one. The object's places are passed as the arguments of the
-callee's implicit object, and the call owes the callee's preconditions at those
-arguments (VERIFIED-013). When the callee may write its object, or writes through any
-reference argument, every place of the object takes a post-call version, and the caller
-knows of those versions only what the callee's postcondition states, once the callee's
-contract and the call's entry obligations are established (VERIFIED-014, VERIFIED-032).
-A place passed as the object's and as a reference argument is one storage with one
-post-call version. A call within a recursion group owes the callees' measure at the
-object's places as at every other argument (TERMINATION-007).
+A contract names the receiver and its subobjects through ordinary member lookup and the
+supported uses of `this` (CONTRACT-008). In a precondition a member denotes its entry
+version; in a postcondition it denotes its normal-return version (CONTRACT-009,
+VERIFIED-031).
 
-[CLASS-012] A static member function has no implicit object. It is verified as a
-function is, and a call to one is a call to a function.
+`verified` may apply to a member declared in a class whose declaration is in a supported
+non-local context. The contract is stated on the member's declaration. A qualified
+out-of-class definition inherits that contract and MUST NOT restate or alter it
+(CONTRACT-005). This is stricter than the identical repetition CONTRACT-005 and TU-003
+permit for a function that is not a member.
 
-[CLASS-013] A member function's contract erases with no trace in the program: the
-class keeps exactly its members, bases, layout, member functions, signatures and calling
-convention (ERASE-004, ABI-001). Nothing the verification of a member function uses to
-resolve its contract is part of the runtime program.
+A member of a local class is not verified unless local-class semantics are explicitly
+supported.
 
-[CLASS-015] An implementation that does not model a member function's semantics MUST
-refuse it where it is written rather than verify a weaker program. This includes, where
-not modeled: a constructor or a destructor, whose object's lifetime begins or ends
-(CONTRACT-011, CONTRACT-012); a member function template, and a member of a class
-template, whose contract would have to be checked at every specialization (TEMPLATE-001);
-a member function whose class is a union or has a base subobject; `this` used as a value;
-a member whose storage is not modeled; a call through a pointer to member function; and a
-call on an object the caller does not name as storage, such as one reached through a
-pointer, a temporary or an element selected at a term.
+[CLASS-009] The admissible implicit object follows C++ cv- and ref-qualification
+(CONTRACT-010).
+
+A `const` member function observes the receiver as const except for subobjects that C++
+permits to be modified through `mutable`. A non-const member function may write modeled
+writable subobjects of its receiver.
+
+A ref-qualifier constrains the value category of the receiver on which the call is
+permitted; it does not by itself change each member place into an lvalue or rvalue
+reference.
+
+No cv- or ref-qualifier establishes disjointness from another access path. Aliasing
+remains governed by the general storage and alias model.
+
+Unsupported volatile qualification or other object qualification MUST be refused rather
+than approximated.
+
+[CLASS-010] A verified member function reads and writes the receiver's subobjects through
+the ordinary Place / PlaceVersion machinery (VERIFIED-025, VERIFIED-030).
+
+A write establishes a new version of the place written, charges every semantic validity
+obligation associated with the value entering that place, and invalidates facts about
+every place that may alias the written storage.
+
+A write to one member preserves facts about another only when the modeled C++ object
+semantics establish that their storage is disjoint. The implementation MUST NOT infer such
+disjointness for overlapping or unsupported subobject forms.
+
+The receiver designates storage supplied by the caller. Writes through references,
+pointers, calls, unsafe regions or other access paths invalidate receiver facts exactly
+where the ordinary alias/effect model says those paths may reach the same storage.
+Distinct access paths are not assumed disjoint merely because they have different names.
+
+Semantic validity of a refined receiver place is established for its entry version. Every
+operation establishing a later version must establish the same validity. At normal return
+the validity of the current version is therefore derived from those established versions;
+it MUST NOT be charged again merely because the function returns (REFINE-060 to
+REFINE-062).
+
+[CLASS-011] A statically bound verified member call is supported when its receiver
+expression resolves to a modeled Place whose access, lifetime and capability requirements
+are established.
+
+The receiver place is supplied as the callee's implicit object, and the written arguments
+are supplied normally. The call owes the callee's preconditions at those values and
+places (VERIFIED-013).
+
+For every receiver or argument place the callee may write, the caller obtains a post-call
+version. Facts about earlier versions do not survive unless the callee's effect model
+establishes that the place was preserved. Places proven disjoint from every callee write
+retain their versions.
+
+The caller may use the callee's established postcondition and the declared semantic
+validity of the resulting modeled storage once the call's entry obligations and the callee
+contract have been established (VERIFIED-014, VERIFIED-032).
+
+When the receiver and a reference argument may designate the same storage, they
+participate in the same alias/version model and MUST NOT be represented as independent
+post-call states (VERIFIED-031).
+
+A recursive member call participates in the same recursion group and termination-measure
+rules as every other verified callable (TERMINATION-007).
+
+[CLASS-012] A static member function has no implicit object and is verified by the ordinary
+function-verification rules.
+
+[CLASS-013] Verification of a member function introduces no runtime object, field,
+parameter or calling-convention change.
+
+Contracts and other verification-only syntax erase according to the ordinary erasure
+rules (ERASE-002, ERASE-003). The resulting class and member functions retain the C++
+members, bases, object layout, signatures, mangling and calling convention they would have
+after the specified C++L lowering (ERASE-004, ABI-001).
+
+Verification-only receiver/place representations are not runtime parameters (ABI-002).
+
+[CLASS-015] A member function or call whose required object semantics the implementation
+cannot model MUST be refused rather than verified using a weaker model.
+
+This includes any unsupported constructor or destructor semantics, dynamic dispatch,
+member-function template or class-template specialization, base/union/overlapping-subobject
+semantics, volatile object semantics, pointer-to-member invocation, object lifetime
+transition, use of `this` not represented by the receiver/place model, or receiver
+expression for which a sound Place cannot be formed.
+
+A receiver MUST NOT be refused merely because it is written through a pointer, reference or
+symbolic element selection if the implementation can form a sound Place for that expression
+and establish its required capability, bound, lifetime and alias conditions.
+
+Unsupported receiver forms fail closed.
 
 ## F.6 Constructors
 
@@ -5920,9 +5976,11 @@ pointer, a temporary or an element selected at a term.
 [CLASS-014] An implementation that does not check override substitutability (CONTRACT-014,
 CONTRACT-015) MUST refuse `verified` on a virtual function, whether the declaration says
 it is virtual (`virtual`, `override`, `final`) or overrides a virtual function without
-saying so, and MUST refuse from verified code a call to a virtual function, whether the
-call dispatches on the dynamic type or names one function by qualification. A contract
-proved from one body is never evidence about a call that may run another.
+saying so, and MUST refuse from verified code a call whose target is decided by dynamic
+dispatch. A call that names a virtual function by qualification has a statically
+determined target (CLASS-008), but that target's contract is not verified under this
+rule, so such a call is refused as well. A contract proved from one body is never
+evidence about a call that may run another.
 
 ## F.11 Multiple inheritance and virtual bases
 

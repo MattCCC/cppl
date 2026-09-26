@@ -59,6 +59,13 @@ rules:
   - CONTRACT-014
   - TERMINATION-007
   - REFINEOBL-007
+  - REFINE-060
+  - REFINE-061
+  - REFINE-062
+  - VERIFIED-031
+  - VERIFIED-038
+  - ERASE-002
+  - ABI-002
   - TUBOUND-003
 
 depends_on:
@@ -86,10 +93,14 @@ interactions:
   - member calls on the object, on locals, parameters and their members
   - free functions calling member functions and member functions calling free functions
   - const, mutable and ref-qualified member functions and their overloads
-  - refined members
+  - rvalue receivers named by std::move, std::forward and static_cast<T&&>
+  - receivers a pointer parameter designates, under its capability
+  - refined members, charged where each value enters and not again at a return
   - recursion groups through member functions
   - unsafe blocks writing the object
   - by-reference aggregate parameters read after a write that may reach them
+  - reference members, bit-fields, anonymous unions and structs, volatile members, which have no place
+  - static pure member functions used in contracts
   - virtual dispatch, which is refused
   - member functions defined in another translation unit, through its verification interface
   - erasure and layout
@@ -102,6 +113,8 @@ tests:
     - tests/fixtures/methods_cross_tu/counter.hpp
     - tests/fixtures/methods_cross_tu/counter.cpp
     - tests/fixtures/methods_cross_tu/client.cpp
+    - tests/fixtures/methods_scalar_disjoint.cpp
+    - tests/fixtures/post_state_calls.cpp
   negative:
     - tests/negative/verified_methods.sh
     - tests/fixtures/negative/methods_false_postcondition.cpp
@@ -126,6 +139,20 @@ tests:
     - tests/fixtures/negative/methods_unmodeled_uses.cpp
     - tests/fixtures/negative/methods_cross_tu_stale.cpp
     - tests/fixtures/negative/methods_cross_tu_precondition.cpp
+    - tests/fixtures/negative/methods_refined_alias_write.cpp
+    - tests/fixtures/negative/methods_refined_call_effect.cpp
+    - tests/fixtures/negative/methods_refined_unsafe_return.cpp
+    - tests/fixtures/negative/methods_refined_unsafe_alias.cpp
+    - tests/fixtures/negative/methods_call_through_alias_member.cpp
+    - tests/fixtures/negative/methods_const_call_alias_param.cpp
+    - tests/fixtures/negative/methods_rvalue_stale.cpp
+    - tests/fixtures/negative/methods_pointer_receiver_capability.cpp
+    - tests/fixtures/negative/methods_pointer_receiver_alias.cpp
+    - tests/fixtures/negative/methods_overlapping_members.cpp
+    - tests/fixtures/negative/methods_volatile_function.cpp
+    - tests/fixtures/negative/methods_static_pure_false.cpp
+    - tests/fixtures/negative/methods_receiver_forms.cpp
+    - tests/fixtures/negative/post_state_after_returned_call.cpp
     - tests/negative/verified_storage.sh
     - tests/fixtures/negative/reference_aggregate_stale.cpp
     - tests/fixtures/negative/member_numbering_gap.cpp
@@ -152,11 +179,19 @@ required_test_categories:
   - a stale member fact refused
   - virtual function and virtual call refused
   - a member function defined in another translation unit, used and refused through its interface
-  - erasure to ordinary C++ with unchanged layout
+  - an rvalue receiver named by std::move, and a copy refused
+  - a receiver through a pointer, with and without its capability
+  - each route into a refined member charged, and a return charged only for an uncharged version
+  - a place the callee cannot write kept, and one it may write through an alias taken away
+  - members whose storage may overlap refused, and scalar members kept apart
+  - volatile member functions refused
+  - static pure member functions in contracts
+  - erasure to ordinary C++ with unchanged layout and symbols
 
 completion_requires:
   - every place a verified body can reach through the object is a tracked place of it
-  - no disjointness is assumed between the object and any reference argument
-  - a call that may write the object leaves only what the callee's postcondition states
+  - no disjointness is assumed between the object and any reference argument beyond the common alias model
+  - a call leaves only what the callee's postcondition states of every place it may write
+  - every version of a refined place is charged where it is established, or charged at the return
   - virtual dispatch is refused until override substitutability is checked
-  - the class erases member for member
+  - the class erases member for member, with no verification-only parameter

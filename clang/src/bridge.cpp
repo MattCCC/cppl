@@ -7,6 +7,7 @@
 #include "cppl/source/storage.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <clang-c/CXDiagnostic.h>
 #include <clang-c/CXErrorCode.h>
 #include <clang-c/CXSourceLocation.h>
@@ -1010,19 +1011,6 @@ struct Local {
 
 using Locals = std::vector<Local>;
 
-// Whether two entries are distinct members of one object: rooted in the same
-// declaration, and apart at a step both paths decide. Distinct members of one
-// object are distinct storage, which Clang resolves (RFC 0014 §4, SPEC.md
-// CLASS-010). A symbolic step decides nothing, so an element selected at a
-// term is never distinct from a sibling element.
-bool distinct_members(const Local& lhs, const Local& rhs) {
-    if (lhs.is_deref() || rhs.is_deref() || clang_equalCursors(lhs.declaration, rhs.declaration) == 0 ||
-        lhs.has_symbolic_step() || rhs.has_symbolic_step()) {
-        return false;
-    }
-    return !lhs.covered_by(rhs) && !rhs.covered_by(lhs);
-}
-
 // The place a tracked entry denotes, as the VIR node carries it.
 //
 // The root identifies the object, so every place projected out of one object
@@ -1188,27 +1176,38 @@ struct ReceiverLeaf {
 };
 
 // The implicit object of a non-static member function, as the verified callable
-// sees it (SPEC.md CLASS-008): the class the function belongs to, and the
-// object's scalar leaves, each a reference parameter standing before the
-// written parameters.
+// sees it (SPEC.md CLASS-008): the receiver place, rooted in the class the
+// function belongs to, and the scalar places projected from it.
+//
+// This implementation lowers the receiver to one reference parameter per
+// scalar place, standing before the written parameters. The lowering is proof
+// bookkeeping, never a runtime parameter (CLASS-013), and it keeps the object's
+// identity and alias relations: every place is projected from one root by the
+// numbering a member access in the body resolves to, a caller passes the places
+// of one object as one object, and the places are external storage the common
+// alias model relates to every other access path (`BodyLowering::may_alias`).
 //
 // A member whose type this implementation does not model -- a pointer, a
-// floating-point value, a library type, a class with a base -- has no leaf. It
-// is storage a verified body can neither read nor write, so nothing is known or
-// claimed about it, and a body that names it is refused where it does.
+// reference, a floating-point value, a library type, a volatile object, a class
+// with a base, a union -- has no place. It is storage a verified body can
+// neither read nor write, so nothing is known or claimed about it, and a body
+// that names it is refused where it does.
 struct Receiver {
     CXCursor record = clang_getNullCursor(); // canonical class declaration
     std::vector<ReceiverLeaf> leaves;
     bool constant = false; // a `const` member function
-    bool rvalue = false;   // one whose ref-qualifier is `&&`
 
-    // How the member function binds each leaf (SPEC.md CLASS-009): a `const`
-    // one reads its object and may write only a `mutable` member of it.
+    // How the member function observes each place (SPEC.md CLASS-009): a
+    // `const` one reads its object and may write only a `mutable` member of it,
+    // and any other may write every place. A ref-qualifier is not consulted: it
+    // decides which receivers C++ lets the call be made on, which Clang's
+    // overload resolution has already settled, and inside the body a member of
+    // an `&&` member function's object is storage like any other.
     [[nodiscard]] source::ParameterPassing passing(const ReceiverLeaf& leaf) const {
         if (constant && !leaf.mutable_member) {
             return source::ParameterPassing::ConstReference;
         }
-        return rvalue ? source::ParameterPassing::RvalueReference : source::ParameterPassing::MutableReference;
+        return source::ParameterPassing::MutableReference;
     }
 
     // The position of the leaf at `path`, which is its parameter position.
@@ -1249,7 +1248,21 @@ std::optional<std::string> collect_receiver_leaves(CXType written, CXCursor fiel
     if (path.size() > kMaxPlaceDepth) {
         return std::nullopt;
     }
+    // A volatile object may change by means no program statement shows, so no
+    // version of it could be followed (SPEC.md CLASS-009, CLASS-015).
+    if (clang_isVolatileQualifiedType(written) != 0) {
+        return std::nullopt;
+    }
     const CXType canonical = clang_getCanonicalType(written);
+    // Scalar places are pairwise disjoint: two objects that are not bit-fields
+    // share storage only when one is nested in the other or one has no size
+    // (C++ [intro.object]), and a scalar has a size and nests nothing. That holds
+    // with `[[no_unique_address]]` too, which lets an empty member share an
+    // address, never a scalar's storage. The forms that do overlap are not
+    // followed into: a union, whose members share storage, a bit-field, which
+    // shares a memory location with its neighbours, and a reference member,
+    // which designates storage outside the object that may be any place,
+    // another member of this one included (SPEC.md CLASS-010).
     if (canonical.kind == CXType_Record) {
         const CXCursor declaration = clang_getTypeDeclaration(canonical);
         const CXCursor definition = clang_getCursorDefinition(declaration);
@@ -1302,11 +1315,11 @@ std::optional<std::string> collect_receiver_leaves(CXType written, CXCursor fiel
         return std::nullopt;
     }
     if (known != nullptr) {
-        auto refinements = refinements_of(field, written, *known);
-        if (!refinements) {
-            return "member '" + spelling + "' has " + refinements.error();
+        auto declared = refinements_of(field, written, *known);
+        if (!declared) {
+            return "member '" + spelling + "' has " + declared.error();
         }
-        converted.refinements = std::move(*refinements);
+        converted.refinements = std::move(*declared);
     }
     if (leaves.size() >= kMaxTrackedLeaves) {
         return "the object has more members than the proof resource limit allows";
@@ -1337,7 +1350,6 @@ std::expected<Receiver, std::string> receiver_of(CXCursor method, const std::vec
                                "follow");
     }
     receiver.constant = clang_CXXMethod_isConst(method) != 0;
-    receiver.rvalue = clang_Type_getCXXRefQualifier(clang_getCursorType(method)) == CXRefQualifier_RValue;
     if (auto refused =
             collect_receiver_leaves(type, clang_getNullCursor(), {}, "this->", false, known, receiver.leaves)) {
         return std::unexpected(*refused);
@@ -1718,6 +1730,34 @@ std::optional<std::size_t> tracked_place(CXCursor cursor, const Locals& locals, 
     return std::nullopt;
 }
 
+// The pointer a dereference place records for pointer `pointer`, and the
+// version of it the place reads through: the tracked local holding it, or the
+// parameter at its position, which is never written (`resolve_storage`).
+std::optional<std::pair<std::size_t, std::uint32_t>> pointer_root(const Locals& locals,
+                                                                  const std::vector<CXCursor>& parameters,
+                                                                  CXCursor pointer) {
+    if (const std::optional<std::size_t> tracked = find_local(locals, pointer)) {
+        return std::pair{*tracked, locals[*tracked].version};
+    }
+    const auto at = std::ranges::find_if(
+        parameters, [&](CXCursor candidate) { return clang_equalCursors(candidate, pointer) != 0; });
+    if (at == parameters.end()) {
+        return std::nullopt;
+    }
+    return std::pair{static_cast<std::size_t>(at - parameters.begin()), std::uint32_t{0}};
+}
+
+// The dereference place of the object pointer `pointer` designates, at `path`
+// within it, formed earlier through the pointer's current version.
+std::optional<std::size_t> pointee_place(const Locals& locals, const std::vector<CXCursor>& parameters,
+                                         CXCursor pointer, const std::vector<PlaceStep>& path) {
+    const auto root = pointer_root(locals, parameters, pointer);
+    if (!root) {
+        return std::nullopt;
+    }
+    return find_deref(locals, root->first, root->second, path, nullptr);
+}
+
 // The one read of tracked storage (SPEC.md 12.10, RFC 0014 §17 step 2).
 //
 // A read resolves a place to the version current where the read stands, and
@@ -1733,9 +1773,72 @@ Expr read_place(const Locals& locals, std::size_t entry, CXCursor at) {
     return expr;
 }
 
+// Whether the member access `cursor` is made on the implicit object: `m`,
+// `this->m`, or a member of an anonymous struct or union of it, which C++
+// names as though it were the object's own.
+bool on_implicit_object(CXCursor cursor) {
+    cursor = strip_parens(cursor);
+    for (unsigned depth = 0; depth < kMaxExpressionDepth; ++depth) {
+        if (clang_getCursorKind(cursor) != CXCursor_MemberRefExpr) {
+            return false;
+        }
+        const std::vector<CXCursor> children = children_of(cursor);
+        if (children.empty()) {
+            return true;
+        }
+        if (children.size() != 1) {
+            return false;
+        }
+        if (this_record(children.front()).has_value()) {
+            return true;
+        }
+        cursor = strip_parens(children.front());
+        const CXCursor field = clang_getCursorReferenced(cursor);
+        if (clang_Cursor_isAnonymousRecordDecl(clang_getTypeDeclaration(clang_getCursorType(field))) == 0) {
+            return false;
+        }
+    }
+    return false;
+}
+
+// Why the data member a member access names has no place of the receiver,
+// when its declaration decides it (SPEC.md CLASS-010, CLASS-015). Each is a
+// form whose storage may overlap another place or change unseen, so treating
+// it as a place of its own would keep facts a write elsewhere took away.
+std::optional<std::string> unmodeled_member(CXCursor cursor) {
+    const CXCursor field = clang_getCursorReferenced(strip_parens(cursor));
+    if (clang_getCursorKind(field) != CXCursor_FieldDecl) {
+        return std::nullopt;
+    }
+    const std::string name = "'" + take(clang_getCursorSpelling(field)) + "'";
+    const CXType type = clang_getCursorType(field);
+    const CXTypeKind canonical = clang_getCanonicalType(type).kind;
+    if (canonical == CXType_LValueReference || canonical == CXType_RValueReference) {
+        return name + " is a reference member, which designates storage outside the object that may be any place, "
+                      "another member of this object included";
+    }
+    if (clang_Cursor_isBitField(field) != 0) {
+        return name + " is a bit-field, which shares a memory location with the bit-fields beside it";
+    }
+    if (clang_isVolatileQualifiedType(type) != 0) {
+        return name + " is volatile, so its value may change by means no statement of the program shows";
+    }
+    const CXCursor parent = clang_getCursorSemanticParent(field);
+    if (clang_getCursorKind(parent) == CXCursor_UnionDecl) {
+        return name + " is a member of a union, whose members share one storage";
+    }
+    if (clang_Cursor_isAnonymousRecordDecl(parent) != 0) {
+        return name + " is a member of an anonymous struct, whose members this implementation does not follow";
+    }
+    return std::nullopt;
+}
+
 // Why an access rooted in the implicit object names no leaf of the receiver
 // `signature` has, or nothing when it names one.
 std::optional<std::string> receiver_gap(const ResolvedAccess& access, const Signature& signature) {
+    if (std::optional<std::string> unmodeled = unmodeled_member(access.object); unmodeled.has_value()) {
+        return unmodeled;
+    }
     if (!signature.receiver.has_value()) {
         return "'this' names no object here: only a non-static member function has an implicit object";
     }
@@ -1800,14 +1903,19 @@ bool calls_through_member_pointer(CXCursor call) {
     return op == CXBinaryOperator_PtrMemD || op == CXBinaryOperator_PtrMemI;
 }
 
-// The object a member function call is made on, as storage the caller can name
+// The object a member function call is made on, as a place the caller can form
 // (SPEC.md CLASS-011): the declaration it is rooted in -- the class of the
-// caller's own implicit object, for `this` -- and the path of members and
-// elements from there to the object.
+// caller's own implicit object, for `this`, and the pointer, for an object a
+// pointer designates -- and the path of members and elements from there to
+// the object.
 struct CallObject {
     CXCursor declaration = clang_getNullCursor();
     std::vector<PlaceStep> path;
     bool receiver = false;
+    // The object is the one pointer `declaration` designates, `p->f()` or
+    // `(*p).f()`: its places are dereference places, reached only under the
+    // capability the contract states for the pointer (SPEC.md VERIFIED-038).
+    bool through_pointer = false;
 };
 
 // The object `call`, a call of non-static member function `callee`, is made on.
@@ -1816,6 +1924,65 @@ struct CallObject {
 // of one at a constant. An object reached through a pointer, a temporary, or
 // the base subobject of another object is refused, since the callee's implicit
 // object would then be storage the caller does not track.
+// Whether `function` is declared in namespace `std`, directly or in one of the
+// inline namespaces a library puts its declarations in.
+bool declared_in_std(CXCursor function) {
+    std::string outermost;
+    CXCursor parent = clang_getCursorSemanticParent(function);
+    for (unsigned depth = 0; depth < kMaxExpressionDepth && clang_getCursorKind(parent) == CXCursor_Namespace;
+         ++depth) {
+        outermost = take(clang_getCursorSpelling(parent));
+        parent = clang_getCursorSemanticParent(parent);
+    }
+    return outermost == "std" && clang_getCursorKind(parent) == CXCursor_TranslationUnit;
+}
+
+// Whether the cast `expression` converts to an rvalue reference type:
+// `static_cast<T&&>(o)`. Clang reports such a cast's type without the
+// reference, as the type of the xvalue it forms, so the written target is read
+// from the cast's own tokens: the `&&` closing its template argument.
+bool casts_to_rvalue_reference(CXCursor expression) {
+    CXTranslationUnit unit = clang_Cursor_getTranslationUnit(expression);
+    CXToken* tokens = nullptr;
+    unsigned count = 0;
+    clang_tokenize(unit, clang_getCursorExtent(expression), &tokens, &count);
+    bool rvalue = false;
+    for (unsigned index = 1; index < count; ++index) {
+        if (take(clang_getTokenSpelling(unit, tokens[index])) == ">") {
+            rvalue = take(clang_getTokenSpelling(unit, tokens[index - 1])) == "&&";
+            break;
+        }
+    }
+    clang_disposeTokens(unit, tokens, count);
+    return rvalue;
+}
+
+// The object an expression that names an object as an rvalue designates:
+// `std::move(o)`, `std::forward<T>(o)` and `static_cast<T&&>(o)` each designate
+// `o` itself, so a member function called on one is called on `o`'s storage.
+// A ref-qualifier decides which of these a call may be made on, and Clang has
+// checked it (SPEC.md CLASS-009, CLASS-011). Any other expression is returned
+// as it is: a temporary is a new object, not the one it was made from.
+CXCursor designated_object(CXCursor expression) {
+    expression = strip_parens(expression);
+    const CXCursorKind kind = clang_getCursorKind(expression);
+    if (kind == CXCursor_CallExpr && clang_Cursor_getNumArguments(expression) == 1) {
+        const CXCursor function = clang_getCursorReferenced(expression);
+        const std::string name = take(clang_getCursorSpelling(function));
+        if ((name == "move" || name == "forward") && declared_in_std(function)) {
+            return strip_parens(clang_Cursor_getArgument(expression, 0));
+        }
+    }
+    if (kind == CXCursor_CXXStaticCastExpr && casts_to_rvalue_reference(expression)) {
+        for (const CXCursor child : children_of(expression)) {
+            if (clang_isExpression(clang_getCursorKind(child)) != 0) {
+                return strip_parens(child);
+            }
+        }
+    }
+    return expression;
+}
+
 std::expected<CallObject, std::string> call_object(CXCursor call, CXCursor callee) {
     const std::vector<CXCursor> children = children_of(call);
     const CXCursor callee_record = enclosing_record(callee);
@@ -1839,25 +2006,46 @@ std::expected<CallObject, std::string> call_object(CXCursor call, CXCursor calle
         }
         return CallObject{*record, {}, true};
     }
-    const CXCursor written = strip_parens(member.front());
+    const CXCursor written = designated_object(member.front());
     const auto access = resolve_access(written);
     if (!access.has_value()) {
         return std::unexpected("the object of this call is not storage this implementation can name, such as a "
-                               "local, a parameter or a member of one");
+                               "local, a parameter, a member of one, or what a pointer parameter designates");
     }
-    if (access->dereferenced) {
-        return std::unexpected("a member function called through a pointer is not modeled: the object it designates "
-                               "is a dereference, and a member call states no capability for it");
+    // `p->f()` names the object `p` designates without writing a `*`: the
+    // member access dereferences a pointer-typed operand.
+    CXType object_type = clang_getCanonicalType(clang_getCursorType(written));
+    const bool arrow = object_type.kind == CXType_Pointer;
+    if (arrow) {
+        object_type = clang_getCanonicalType(clang_getPointeeType(object_type));
     }
     if (!access->symbolic_indices.empty()) {
-        return std::unexpected("a member function called on an element selected at a term is not modeled");
+        return std::unexpected("a member function called on an element selected at a term is not modeled: this "
+                               "implementation forms no place for a member of such an element (SPEC.md CLASS-015)");
     }
-    const CXCursor object_record =
-        clang_getCanonicalCursor(clang_getTypeDeclaration(clang_getCanonicalType(clang_getCursorType(written))));
+    const bool through_pointer = arrow || access->dereferenced;
+    // The pointer must be one the contract names, a parameter, since a
+    // capability is stated about a parameter; the object it designates is then
+    // a place, reached under that capability (SPEC.md CLASS-011, VERIFIED-038).
+    if (through_pointer && (clang_getCursorKind(access->declaration) != CXCursor_ParmDecl ||
+                            (arrow && (!access->path.empty() || access->dereferenced)))) {
+        return std::unexpected("a member function called through a pointer is modeled only where the pointer is a "
+                               "parameter a capability is stated for");
+    }
+    const CXCursor object_record = clang_getCanonicalCursor(clang_getTypeDeclaration(object_type));
     if (clang_equalCursors(object_record, callee_record) == 0) {
         return std::unexpected(base_class);
     }
-    return CallObject{access->declaration, access->path, access->receiver};
+    return CallObject{access->declaration, access->path, access->receiver, through_pointer};
+}
+
+// The place of the object a member call is made on, at `path` within the
+// caller's storage: tracked storage of the caller, or the dereference place the
+// statement formed for an object a pointer designates (SPEC.md CLASS-011).
+std::optional<std::size_t> object_place(const Locals& locals, const std::vector<CXCursor>& parameters,
+                                        const CallObject& object, const std::vector<PlaceStep>& path) {
+    return object.through_pointer ? pointee_place(locals, parameters, object.declaration, path)
+                                  : find_local(locals, object.declaration, path);
 }
 
 // What a member call passes for one leaf of the callee's implicit object: the
@@ -1882,8 +2070,12 @@ Expr receiver_argument(const CallObject& object, const std::vector<PlaceStep>& p
         expr.node = ParameterRef{static_cast<std::uint32_t>(*index), signature.receiver->leaves[*index].spelling};
         return expr;
     }
-    if (const std::optional<std::size_t> entry = find_local(locals, object.declaration, path)) {
+    if (const std::optional<std::size_t> entry = object_place(locals, signature.parameters, object, path)) {
         return read_place(locals, *entry, at);
+    }
+    if (object.through_pointer) {
+        return unsupported_expression(at, "the place the callee's '" + leaf.spelling +
+                                              "' stands at in the object this call is made on was not formed");
     }
     // An object this body reads as one whole value is projected to the leaf:
     // one a parameter designates by reference, at the value its place holds
@@ -1936,6 +2128,17 @@ Expr receiver_argument(const CallObject& object, const std::vector<PlaceStep>& p
 // part of a value, so a read of a `const` local is the value it holds; two
 // spellings that Clang laid out identically are the same machine integer. A
 // type C++L does not model is never "the same" as anything.
+// Whether a value of `type` carries a refinement anywhere in it: its own, or
+// one of a member or an element it is made of (SPEC.md 17.2.1). Past the depth
+// places are tracked to, the answer is yes, which only costs an obligation.
+bool carries_refinement(const Type& type, unsigned depth = 0) {
+    if (!type.refinements.empty() || depth > kMaxPlaceDepth) {
+        return true;
+    }
+    return std::ranges::any_of(type.projections,
+                               [depth](const Type& component) { return carries_refinement(component, depth + 1); });
+}
+
 bool same_modeled_value(const Type& outer, const Type& inner) {
     return outer.kind != TypeKind::Unsupported && outer.kind == inner.kind && outer.width == inner.width &&
            outer.is_signed == inner.is_signed && outer.representation == inner.representation;
@@ -2590,6 +2793,11 @@ Expr build_expression(CXCursor cursor, const Signature& signature, const Locals&
     }
     // A member of the implicit object, however it is written: `this->x`,
     // `(*this).x`, or `x` alone (SPEC.md CLASS-008).
+    if (kind == CXCursor_MemberRefExpr && on_implicit_object(cursor)) {
+        if (const std::optional<std::string> unmodeled = unmodeled_member(cursor)) {
+            return unsupported_expression(cursor, *unmodeled + " (SPEC.md CLASS-010, CLASS-015)");
+        }
+    }
     if (kind == CXCursor_MemberRefExpr || kind == CXCursor_ArraySubscriptExpr) {
         if (const auto access = resolve_access(cursor); access && access->receiver) {
             return read_receiver(*access, cursor, signature, locals);
@@ -3458,14 +3666,15 @@ void mark_writes(CXCursor root, const Locals& locals, std::vector<bool>& written
             return CXChildVisit_Recurse;
         },
         &scan);
+    // A written external place may be any other external place: storage the
+    // caller supplies is kept apart only where Clang resolves it apart, which
+    // the lowering decides (`BodyLowering::may_alias`). Following one more
+    // place than a write reaches costs nothing but a version.
     for (std::size_t target = 0; target < locals.size(); ++target) {
         if (!written[target] || !locals[target].external)
             continue;
         for (std::size_t other = 0; other < locals.size(); ++other)
-            if (locals[other].external && !locals[other].referent &&
-                (same_modeled_value(locals[target].type, locals[other].type) ||
-                 locals[other].type.kind == TypeKind::Value) &&
-                !distinct_members(locals[target], locals[other]))
+            if (locals[other].external && !locals[other].referent)
                 written[other] = true;
     }
 }
@@ -3990,6 +4199,19 @@ struct BodyLowering {
     // than `escaped` answers. See `unconfined_locals`.
     std::unordered_set<unsigned> unconfined;
 
+    // The versions whose refinement validity is established (SPEC.md
+    // REFINE-060, CLASS-010): the version a place entered the body with, which
+    // the caller established, one a write established while being charged the
+    // place's refinement, one a call left after the caller was charged it, and
+    // one an aliasing write left in a place whose previous version was valid,
+    // the write having been charged that place's refinement too. Any other
+    // version -- left by an unsafe block, a loop head, a write this lowering
+    // could not charge -- is absent, so its validity is never derived: a
+    // normal return is charged the refinement of such a version, and of no
+    // other (REFINE-061, REFINE-062). Absence is the default, so a version
+    // established by a route not listed here fails closed.
+    std::unordered_set<std::uint32_t> valid_versions;
+
     // Dereference places formed while lowering the statement in hand, awaiting
     // the binding that gives each one an entry value.
     //
@@ -4101,6 +4323,17 @@ struct BodyLowering {
             return value;
         ReturnState state;
         state.operands.push_back(std::move(value));
+        // The places the caller sees again whose current version's refinement
+        // validity was never established: those a normal return is charged
+        // (SPEC.md CLASS-010, REFINE-061). Every other version was charged
+        // where it was established, and is not charged again here (REFINE-062).
+        std::vector<std::size_t> unestablished;
+        const auto returned = [&](std::size_t local) {
+            if (!valid_versions.contains(locals[local].version) && carries_refinement(locals[local].type)) {
+                unestablished.push_back(local);
+            }
+            state.operands.push_back(read_place(locals, local, at));
+        };
         // The implicit object's leaves first, each at the version current where
         // the function returns: the post-state its postcondition describes
         // (SPEC.md CONTRACT-009). Every leaf is tracked from entry.
@@ -4111,13 +4344,13 @@ struct BodyLowering {
                     return unsupported_expression(at, "the implicit object's '" + leaf.spelling +
                                                           "' is not tracked where the function returns");
                 }
-                state.operands.push_back(read_place(locals, *local, at));
+                returned(*local);
             }
         }
         for (std::size_t index = 0; index < parameters.size(); ++index) {
             const auto local = find_local(locals, parameters[index]);
             if (local && source::aliases_storage(passing_of(clang_getCursorType(parameters[index])))) {
-                state.operands.push_back(read_place(locals, *local, at));
+                returned(*local);
             } else {
                 Expr input;
                 input.type = convert_type(clang_getCursorType(parameters[index]), 0, ReferenceModel::Referent);
@@ -4131,6 +4364,18 @@ struct BodyLowering {
         result.location =
             clang_Cursor_isNull(at) ? completion_location : presumed_location(clang_getCursorLocation(at));
         result.node = std::move(state);
+        // Each such version enters its place's refinement here, where it is
+        // handed back to the caller, as a value a write puts in the place does.
+        // A function that runs off its end has no return statement to stand
+        // at; the charge stands where the function completes.
+        const auto where = result.location;
+        for (const std::size_t local : std::ranges::reverse_view(unestablished)) {
+            Expr handed_back = read_place(locals, local, at);
+            handed_back.location = where;
+            result = bind(next_version++, anonymous_place("the post-state of '" + locals[local].spelling + "'"),
+                          std::move(handed_back), std::move(result), at, locals[local].type);
+            result.location = where;
+        }
         return result;
     }
 
@@ -4244,7 +4489,21 @@ struct BodyLowering {
         }
         // The pointee type is what the pointer points to, with its sugar kept
         // so a refinement named on the pointee is still known.
-        const CXType pointee = clang_getPointeeType(clang_getCursorType(declaration));
+        CXType pointee = clang_getPointeeType(clang_getCursorType(declaration));
+        // A member of the object the pointer designates, `p->m` or
+        // `(*p).a.b`, is a place of that member's own type, with the
+        // refinement its declaration names (SPEC.md CLASS-011, 17.6).
+        CXCursor declared_by = declaration;
+        if (!access->path.empty() && !subscripted) {
+            const CXCursor field = clang_getCursorReferenced(strip_parens(cursor));
+            if (clang_getCursorKind(field) != CXCursor_FieldDecl) {
+                rejection = "this member of what '" + take(clang_getCursorSpelling(declaration)) +
+                            "' designates is not one this implementation models";
+                return std::nullopt;
+            }
+            pointee = clang_getCursorType(field);
+            declared_by = field;
+        }
         Type type = convert_type(pointee, 0, ReferenceModel::Opaque, refinements);
         if (type.kind == TypeKind::Unsupported) {
             rejection = "the pointee of '" + take(clang_getCursorSpelling(declaration)) + "' is not modeled";
@@ -4254,7 +4513,7 @@ struct BodyLowering {
         // canonicalizes away, so it is recovered from the written type. Without
         // this a write through `Positive*` would owe nothing (SPEC.md 17.3).
         if (refinements != nullptr) {
-            auto resolved = refinements_of(declaration, pointee, *refinements);
+            auto resolved = refinements_of(declared_by, pointee, *refinements);
             if (!resolved) {
                 rejection =
                     "the pointee of '" + take(clang_getCursorSpelling(declaration)) + "' has " + resolved.error();
@@ -4597,6 +4856,67 @@ struct BodyLowering {
     // A read requires `readable`. The write target is handled separately, by
     // `written_local`, because writing requires `writable` and neither
     // capability entails the other (RFC 0014 §3).
+    // Forms the places of the object a member call through a pointer is made on
+    // (SPEC.md CLASS-011): one dereference place for each place of the
+    // callee's implicit object, each reached under the capability the contract
+    // states for the pointer -- `readable` for every place, since the callee
+    // may read any, and `writable` as well for each it may write
+    // (VERIFIED-038). A place formed earlier is reached again under the same
+    // capabilities. Answers whether `call` is such a call, or nothing, with the
+    // reason in `rejection`, when a place cannot be formed.
+    std::optional<bool> form_pointee_receiver(CXCursor call, Locals& state) {
+        const CXCursor callee = clang_getCursorReferenced(call);
+        if (clang_getCursorKind(callee) != CXCursor_CXXMethod || clang_CXXMethod_isStatic(callee) != 0 ||
+            clang_CXXMethod_isVirtual(callee) != 0) {
+            return false;
+        }
+        const auto object = call_object(call, callee);
+        if (!object || !object->through_pointer) {
+            return false;
+        }
+        // An object this implementation does not model is refused where the
+        // call is lowered, with the reason.
+        const auto receiver = receiver_of(callee, refinements);
+        const auto root = pointer_root(state, parameters, object->declaration);
+        if (!receiver || !root) {
+            return false;
+        }
+        const std::string pointer = take(clang_getCursorSpelling(object->declaration));
+        const auto at = std::ranges::find_if(
+            parameters, [&](CXCursor candidate) { return clang_equalCursors(candidate, object->declaration) != 0; });
+        const std::uint32_t position = signature.position(static_cast<std::size_t>(at - parameters.begin()));
+        for (const ReceiverLeaf& leaf : receiver->leaves) {
+            std::vector<Capability::Kind> required{Capability::Kind::Readable};
+            if (source::may_write(receiver->passing(leaf))) {
+                required.push_back(Capability::Kind::Writable);
+            }
+            for (const Capability::Kind kind : required) {
+                if (!granted(position, kind)) {
+                    rejection = capability_refusal(pointer, kind);
+                    return std::nullopt;
+                }
+            }
+            std::vector<PlaceStep> path = object->path;
+            path.insert(path.end(), leaf.path.begin(), leaf.path.end());
+            if (find_deref(state, root->first, root->second, path, nullptr).has_value()) {
+                continue;
+            }
+            Local entry;
+            entry.declaration = object->declaration;
+            entry.version = next_version++;
+            entry.type = leaf.type;
+            entry.path = std::move(path);
+            entry.pointer = root->first;
+            entry.pointer_version = root->second;
+            constexpr std::string_view implicit = "this->";
+            entry.spelling =
+                pointer + "->" +
+                (leaf.spelling.starts_with(implicit) ? leaf.spelling.substr(implicit.size()) : leaf.spelling);
+            state.push_back(std::move(entry));
+        }
+        return true;
+    }
+
     bool materialize_derefs(CXCursor cursor, Locals& state, unsigned depth = 0) {
         if (depth > kMaxExpressionDepth) {
             return true;
@@ -4629,6 +4949,24 @@ struct BodyLowering {
                     }
                     return materialize_derefs(call->arguments.front(), state, depth + 1);
                 }
+            }
+        }
+        // A member function called on the object a pointer designates forms
+        // that object's places, under the pointer's capability (SPEC.md
+        // CLASS-011). Its arguments form theirs as any expression's do.
+        if (kind == CXCursor_CallExpr) {
+            const std::optional<bool> formed = form_pointee_receiver(cursor, state);
+            if (!formed.has_value()) {
+                return false;
+            }
+            if (*formed) {
+                for (int index = 0; index < clang_Cursor_getNumArguments(cursor); ++index) {
+                    if (!materialize_derefs(clang_Cursor_getArgument(cursor, static_cast<unsigned>(index)), state,
+                                            depth + 1)) {
+                        return false;
+                    }
+                }
+                return true;
             }
         }
         // A symbolic subscript of a tracked array forms its own place.
@@ -5028,39 +5366,42 @@ struct BodyLowering {
                             });
         if (!writes)
             return value;
-        std::vector<std::size_t> targets;
-        // Shared actual arguments must share one post-state value.
-        const auto target_version = [&](std::size_t storage) {
-            if (std::ranges::find(targets, storage) == targets.end()) {
-                targets.push_back(storage);
-                state[storage].version = next_version++;
-                // A container the callee holds by mutable reference may be
-                // reallocated there: it has a new storage generation
-                // (STDMODEL-015).
-                if (std::optional<Local::Sequence>& held = state[storage].sequence; held.has_value()) {
-                    held->invalidated = "passing it by mutable reference to '" + qualified_name_of(callee) + "' at " +
-                                        describe_location(cursor);
-                    library_models.insert(held->kind);
-                }
-            }
-            return state[storage].version;
+        // The caller's storage at each position the callee reads or writes by
+        // reference: its implicit object's places first, then its reference
+        // parameters (SPEC.md CLASS-011). A position is writable where the
+        // callee binds it writable; one bound `const` it only reads.
+        struct Position {
+            std::uint32_t argument = 0;
+            std::size_t storage = 0;
+            bool writable = false;
         };
+        std::vector<Position> positions;
         if (callee_receiver.has_value()) {
             for (std::size_t leaf = 0; leaf < callee_receiver->leaves.size(); ++leaf) {
                 std::vector<PlaceStep> path = object->path;
                 path.insert(path.end(), callee_receiver->leaves[leaf].path.begin(),
                             callee_receiver->leaves[leaf].path.end());
-                const auto target = find_local(state, object->declaration, path);
+                const auto target = object_place(state, parameters, *object, path);
                 if (!target) {
+                    // An object a parameter designates by reference is read as
+                    // one value, never written member by member.
+                    const std::optional<std::size_t> whole = find_local(state, object->declaration);
+                    if (whole.has_value() && state[*whole].read_only) {
+                        return reject("'" + qualified_name_of(callee) + "' may write the object it is called on, " +
+                                      "which a parameter designates by reference; such an object is read here as " +
+                                      "one value and is not written member by member");
+                    }
                     return reject("the object of a member call has storage this body does not track where '" +
                                   callee_receiver->leaves[leaf].spelling + "' stands");
                 }
-                const std::uint32_t version = target_version(*target);
-                call->effects.push_back(CallEffect{static_cast<std::uint32_t>(leaf), version, state[*target].type});
+                positions.push_back(
+                    Position{static_cast<std::uint32_t>(leaf), *target,
+                             source::may_write(callee_receiver->passing(callee_receiver->leaves[leaf]))});
             }
         }
         for (std::size_t index = 0; index < params.size(); ++index) {
-            if (!source::aliases_storage(passing_of(clang_getCursorType(params[index]))))
+            const source::ParameterPassing passing = passing_of(clang_getCursorType(params[index]));
+            if (!source::aliases_storage(passing))
                 continue;
             const auto target = written_local(clang_Cursor_getArgument(cursor, static_cast<unsigned>(index)), state);
             if (!target)
@@ -5073,19 +5414,72 @@ struct BodyLowering {
                 return reject("span '" + state[storage].spelling +
                               "' is passed by mutable reference; a view is modeled only as a value");
             }
-            const std::uint32_t version = target_version(storage);
-            call->effects.push_back(
-                CallEffect{offset + static_cast<std::uint32_t>(index), version, state[storage].type});
+            positions.push_back(
+                Position{offset + static_cast<std::uint32_t>(index), storage, source::may_write(passing)});
+        }
+        // A pointer to non-const lets the callee write storage this call does
+        // not name, so nothing it reads by reference is known to be preserved.
+        const bool through_pointer = std::ranges::any_of(params, [](CXCursor parameter) {
+            const CXType declared = clang_getCursorType(parameter);
+            return !source::aliases_storage(passing_of(declared)) && may_write_through(declared);
+        });
+        std::vector<std::size_t> targets;
+        std::vector<std::size_t> written_storage;
+        for (const Position& position : positions) {
+            if (position.writable) {
+                written_storage.push_back(position.storage);
+            }
+        }
+        // Whether storage the callee only reads may be storage it writes: the
+        // same place, or one the common alias model does not keep apart from a
+        // written one (SPEC.md CLASS-011, VERIFIED-031).
+        const auto reached_by_a_write = [&](std::size_t storage) {
+            return through_pointer || std::ranges::any_of(written_storage, [&](std::size_t written) {
+                       return written == storage || may_alias(state[written], state[storage]);
+                   });
+        };
+        // Shared actual arguments must share one post-state value.
+        const auto target_version = [&](std::size_t storage) {
+            if (std::ranges::find(targets, storage) == targets.end()) {
+                targets.push_back(storage);
+                state[storage].version = next_version++;
+                // The call's effect is a write to this storage: the caller owes
+                // the place's refinement of the value the callee leaves there,
+                // so the new version holds it (SPEC.md REFINE-060, CLASS-011).
+                valid_versions.insert(state[storage].version);
+                // A container the callee holds by mutable reference may be
+                // reallocated there: it has a new storage generation
+                // (STDMODEL-015).
+                if (std::optional<Local::Sequence>& held = state[storage].sequence; held.has_value()) {
+                    held->invalidated = "passing it by mutable reference to '" + qualified_name_of(callee) + "' at " +
+                                        describe_location(cursor);
+                    library_models.insert(held->kind);
+                }
+            }
+            return state[storage].version;
+        };
+        // Storage the callee writes takes a post-call version, and so does
+        // storage it only reads that may be storage it writes: one storage has
+        // one post-call version, however many positions name it. Storage it
+        // only reads that no write can reach keeps its version, and the
+        // callee's contract describes it at the value it had.
+        for (const Position& position : positions) {
+            if (!position.writable && !reached_by_a_write(position.storage)) {
+                continue;
+            }
+            const std::uint32_t version = target_version(position.storage);
+            call->effects.push_back(CallEffect{position.argument, version, state[position.storage].type});
         }
         // Every other place of the object may have been written as well: the
         // callee's leaves are the storage its contract speaks of, and whatever
         // else the object holds -- an element formed at a term, a member the
         // callee does not track -- is unknown after the call rather than kept
         // (SPEC.md CLASS-011).
-        if (object.has_value()) {
+        if (object.has_value() && (callee_receiver->writes() || through_pointer)) {
             for (std::size_t other = 0; other < state.size(); ++other) {
                 const Local& entry = state[other];
-                if (entry.referent || entry.is_deref() || std::ranges::find(targets, other) != targets.end() ||
+                if (entry.referent || entry.is_deref() != object->through_pointer ||
+                    std::ranges::find(targets, other) != targets.end() ||
                     clang_equalCursors(entry.declaration, object->declaration) == 0 ||
                     entry.path.size() < object->path.size() ||
                     !std::equal(object->path.begin(), object->path.end(), entry.path.begin())) {
@@ -5095,20 +5489,16 @@ struct BodyLowering {
                 invalidated.push_back(other);
             }
         }
+        // Whatever the common alias model does not keep apart from storage the
+        // callee writes is unknown after the call (SPEC.md CLASS-010,
+        // VERIFIED-030). No argument about types is used: two places are kept
+        // apart only where Clang resolves them to distinct storage.
         for (std::size_t other = 0; other < state.size(); ++other) {
-            if (!state[other].external || state[other].referent || std::ranges::find(targets, other) != targets.end() ||
+            if (state[other].referent || std::ranges::find(targets, other) != targets.end() ||
                 std::ranges::find(invalidated, other) != invalidated.end())
                 continue;
-            // A written external place may be another external place of its
-            // modeled type, and it may be a member of any object a parameter
-            // designates. Two members of one object are the exception: they
-            // are distinct storage, which Clang resolves (SPEC.md CLASS-010).
-            if (std::ranges::any_of(targets, [&](std::size_t target) {
-                    return state[target].external &&
-                           (same_modeled_value(state[target].type, state[other].type) ||
-                            state[other].type.kind == TypeKind::Value) &&
-                           !distinct_members(state[target], state[other]);
-                })) {
+            if (std::ranges::any_of(written_storage,
+                                    [&](std::size_t written) { return may_alias(state[written], state[other]); })) {
                 state[other].version = next_version++;
                 invalidated.push_back(other);
             }
@@ -6950,6 +7340,13 @@ struct BodyLowering {
             }
             return storage;
         }
+        // A member of the implicit object whose storage may overlap another
+        // place, or change unseen, has no place to write (SPEC.md CLASS-010).
+        if (clang_getCursorKind(target) == CXCursor_MemberRefExpr && on_implicit_object(target)) {
+            if (const std::optional<std::string> unmodeled = unmodeled_member(target)) {
+                return reject(*unmodeled + " (SPEC.md CLASS-010, CLASS-015)");
+            }
+        }
         if (!access) {
             if (clang_getCursorKind(target) == CXCursor_ArraySubscriptExpr) {
                 return reject("this subscript does not name one tracked element: writing through a variable index "
@@ -7009,9 +7406,19 @@ struct BodyLowering {
                     required.refinements.push_back(refinement);
         };
         require(locals[local].type);
+        valid_versions.insert(version);
+        // A place the write may reach holds afterwards either its previous
+        // value or the one written, and the write is charged the place's
+        // refinement too. Its new version is therefore valid exactly when the
+        // previous one was, and is then known to hold a value of its type
+        // (SPEC.md REFINE-060, CLASS-010).
         for (const auto index : invalidated) {
             require(locals[index].type);
-            *body = unknown(assigned, index, std::move(*body), statement);
+            const bool valid = valid_versions.contains(locals[index].version);
+            if (valid) {
+                valid_versions.insert(assigned[index].version);
+            }
+            *body = unknown(assigned, index, std::move(*body), statement, valid);
         }
         return bind(version, place_of(locals, local), std::move(value), std::move(*body), statement, required);
     }
@@ -7386,6 +7793,10 @@ void extract_body(Function& function, CXCursor cursor, const Signature& signatur
         if (!needed[index])
             continue;
         candidates[index].version = lowering.next_version++;
+        // The version a place enters the body with holds its refinement: the
+        // caller established it where the value entered the type (SPEC.md
+        // REFINE-007, CLASS-010), and the contract supposes it on entry.
+        lowering.valid_versions.insert(candidates[index].version);
         entry.push_back(candidates[index]);
     }
     function.returned_value = lowering.lower_statements(Continuation{nullptr, &statements, 0}, entry, 0);
@@ -8056,6 +8467,34 @@ struct MemberStanding {
     std::optional<std::string> rejection;
 };
 
+// Whether member function `method` is volatile-qualified, `f() volatile`. The C
+// API reports `const` directly but not `volatile`, so it is read from the
+// function type Clang prints, `R (P...) const volatile &&`: a qualifier stands
+// after the parameter list closes, outside every parenthesis.
+bool volatile_member_function(CXCursor method) {
+    const std::string spelling = take(clang_getTypeSpelling(clang_getCursorType(method)));
+    int depth = 0;
+    bool parameters_closed = false;
+    std::string word;
+    for (const char character : spelling + " ") {
+        if (std::isalnum(static_cast<unsigned char>(character)) != 0 || character == '_') {
+            word.push_back(character);
+            continue;
+        }
+        if (parameters_closed && depth == 0 && word == "volatile") {
+            return true;
+        }
+        word.clear();
+        if (character == '(') {
+            ++depth;
+        } else if (character == ')') {
+            --depth;
+            parameters_closed = parameters_closed || depth == 0;
+        }
+    }
+    return false;
+}
+
 MemberStanding member_standing(CXCursor cursor, const std::vector<Selection::Refinement>& known) {
     MemberStanding standing;
     if (clang_getCursorKind(cursor) != CXCursor_CXXMethod || clang_CXXMethod_isStatic(cursor) != 0) {
@@ -8067,6 +8506,12 @@ MemberStanding member_standing(CXCursor cursor, const std::vector<Selection::Ref
         standing.rejection = "it is virtual: a call through its base interface runs whichever override the dynamic "
                              "type selects, and override substitutability is not checked by this implementation "
                              "(SPEC.md CONTRACT-014, CLASS-006, CLASS-014)";
+        return standing;
+    }
+    if (volatile_member_function(cursor)) {
+        standing.rejection = "it is volatile-qualified: its object is volatile, whose value may change by means no "
+                             "statement shows, and volatile object semantics are not modeled (SPEC.md CLASS-009, "
+                             "CLASS-015)";
         return standing;
     }
     const CXCursorKind parent = clang_getCursorKind(clang_getCursorSemanticParent(cursor));
