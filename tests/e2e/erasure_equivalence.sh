@@ -140,16 +140,19 @@ equivalent methods $'6 6 7 8 5 2 9\n6 0' \
 # The places the verifier passes for an implicit object are no parameter of the
 # program: each member function keeps the mangled name of its written signature
 # -- `nested` and `declared_here` one `unsigned`, the `const` `get` none -- and
-# the program defines exactly the symbols its erasure by hand defines.
+# the program defines exactly the symbols its erasure by hand defines. A member
+# function defined in its class is inline, which ELF marks `.weak` and Mach-O
+# marks `.globl`.
 for level in -O0; do
     base="$run/methods-c++20$level"
     for symbol in ZN5Meter13declared_hereEj ZN5Meter6nestedEj ZNK5Meter3getEv; do
-        grep -Eq "^[[:space:]]*\\.globl[[:space:]]+_+$symbol([[:space:]]|\$)" "$base.cppl" || {
+        grep -Eq "^[[:space:]]*\\.(globl|weak)[[:space:]]+_+$symbol([[:space:]]|\$)" "$base.cppl" || {
             echo "a member function does not keep the mangled name of its written signature: $symbol ($level)" >&2
             exit 1
         }
     done
-    if [ "$(grep -E '^[[:space:]]*\.globl' "$base.cppl")" != "$(grep -E '^[[:space:]]*\.globl' "$base.reference")" ]; then
+    defined='^[[:space:]]*\.(globl|weak)[[:space:]]'
+    if [ "$(grep -E "$defined" "$base.cppl")" != "$(grep -E "$defined" "$base.reference")" ]; then
         echo "the methods program and its erasure by hand define different symbols ($level)" >&2
         exit 1
     fi
