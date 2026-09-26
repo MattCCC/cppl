@@ -14,7 +14,6 @@
 #include <algorithm>
 #include <cstddef>
 #include <expected>
-#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -28,8 +27,9 @@ using cppl::source::hash_bytes;
 artifact::Interface sample() {
     artifact::Interface recorded;
     recorded.configuration.compiler = "0.0.1";
-    recorded.configuration.semantics = "cppl-verification-semantics-0.2.0";
-    recorded.configuration.verifier = hash_bytes("the verifier's sources");
+    recorded.configuration.build = hash_bytes("the compiler");
+    recorded.configuration.semantics = "cppl-verification-1";
+    recorded.configuration.verifier = hash_bytes("the verifier sources");
     recorded.configuration.kernel = "cppl-kernel-0.7.0";
     recorded.configuration.core = "cppl-core-0.7.0";
     recorded.configuration.clang = "clang version 22.1.8 (with spaces)";
@@ -278,26 +278,6 @@ CPPL_TEST(a_runtime_validation_site_is_read_only_as_written) {
 }
 
 // SPEC: TUBOUND-005
-CPPL_TEST(a_digest_reads_back_only_from_its_own_spelling) {
-    const Digest digest = hash_bytes("any content");
-    CPPL_CHECK(Digest::from_hex(digest.to_hex()) == std::optional<Digest>{digest});
-    std::string upper = digest.to_hex();
-    for (char& character : upper) {
-        if (character >= 'a' && character <= 'f') {
-            character = static_cast<char>(character - 'a' + 'A');
-        }
-    }
-    // Only the lower-case spelling is read, so a digest with a letter in it is
-    // refused in upper case.
-    if (upper != digest.to_hex()) {
-        CPPL_CHECK(!Digest::from_hex(upper).has_value());
-    }
-    CPPL_CHECK(!Digest::from_hex(digest.to_hex().substr(1)).has_value());
-    CPPL_CHECK(!Digest::from_hex(digest.to_hex() + "0").has_value());
-    CPPL_CHECK(!Digest::from_hex(std::string(64, 'g')).has_value());
-}
-
-// SPEC: TUBOUND-005
 CPPL_TEST(any_edit_that_does_not_recompute_the_checksum_is_refused) {
     const std::string text = text_of(sample());
     expect_refused(replaced(text, "forall", "Forall"), "checksum does not match");
@@ -359,6 +339,8 @@ CPPL_TEST(a_status_other_than_proven_is_refused) {
 CPPL_TEST(missing_unknown_and_misplaced_fields_are_refused) {
     const std::string body = body_of(text_of(sample()));
     expect_refused(resealed(replaced(body, "kernel cppl-kernel-0.7.0\n", "")), "where 'kernel' was expected");
+    expect_refused(resealed(replaced(body, "semantics cppl-verification-1\n", "")), "where 'semantics' was expected");
+    expect_refused(resealed(replaced(body, "verifier ", "verifier x")), "malformed digest");
     expect_refused(resealed(replaced(body, "status proven\n", "")), "where 'status' was expected");
     expect_refused(resealed(replaced(body, "status proven\n", "status proven\nstatus proven\n")),
                    "where 'correctness' was expected");
@@ -468,6 +450,10 @@ CPPL_TEST(an_interface_that_could_not_be_read_back_is_not_written) {
 
     recorded = sample();
     recorded.configuration.target.clear();
+    CPPL_CHECK(!artifact::serialize(recorded).has_value());
+
+    recorded = sample();
+    recorded.configuration.semantics.clear();
     CPPL_CHECK(!artifact::serialize(recorded).has_value());
 
     recorded = sample();

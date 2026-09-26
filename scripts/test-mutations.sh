@@ -116,8 +116,7 @@ xtu-recursion-refused	compiler/obligations/src/contracts.cpp	crossing[member] = 
 xtu-reaching-a-cycle-refused	compiler/obligations/src/contracts.cpp	if (!rests_on_cycle[before]) {	if (false) {	^unit_cross_unit_contracts_test$
 xtu-measure-not-compared-across	compiler/obligations/src/interface.cpp	if (across_units) {	if (false) {	^unit_cross_unit_contracts_test$|^negative_cross_tu$
 xtu-termination-request-compared	compiler/obligations/src/interface.cpp	hasher.update_u8(measures.empty() ? 0 : 1);	hasher.update_u8(0);	^unit_cross_unit_contracts_test$|^negative_cross_tu$
-xtu-semantics-compared	compiler/driver/src/interface_io.cpp	if (recorded.semantics != current.semantics) {	if (false) {	^negative_cross_tu$
-xtu-verifier-compared	compiler/driver/src/interface_io.cpp	if (!(recorded.verifier == current.verifier)) {	if (false) {	^negative_cross_tu$
+xtu-compiler-version-compared	compiler/driver/src/interface_io.cpp	if (recorded.compiler != current.compiler) {	if (false) {	^negative_cross_tu$
 xtu-result-identity-dependencies	compiler/artifact/src/interface.cpp	set(std::move(depends));	(void)depends;	^unit_interface_test$
 xtu-internal-linkage-not-imported	compiler/elaboration/src/elaborate.cpp	converted.defined_elsewhere = candidate.contract != nullptr && function->external_linkage;	converted.defined_elsewhere = candidate.contract != nullptr;	^negative_cross_tu$
 xtu-internal-linkage-not-exported	compiler/obligations/src/contracts.cpp	    if (function.external_linkage) {	    if (true) {	^e2e_cross_tu$|^unit_cross_unit_contracts_test$
@@ -135,6 +134,10 @@ xtu-withdraw-only-interfaces	compiler/driver/src/interface_io.cpp	if (first != s
 xtu-status-proven-only	compiler/artifact/src/interface.cpp	if (status->fields[1] != "proven") {	if (false) {	^unit_interface_test$|^negative_cross_tu$
 xtu-checksum-verified	compiler/artifact/src/interface.cpp	if (!(source::hash_bytes(text.substr(0, last_start)) == *recorded_checksum)) {	if (false) {	^unit_interface_test$|^negative_cross_tu$|^fuzz_interface_replay$
 xtu-canonical-order	compiler/artifact/src/interface.cpp	if (!previous.empty() && !(previous < line.text)) {	if (false && !previous.empty() && !(previous < line.text)) {	^unit_interface_test$
+xtu-semantics-compared	compiler/driver/src/interface_io.cpp	if (recorded.semantics != current.semantics) {	if (false) {	^negative_cross_tu$
+xtu-verifier-digest-compared	compiler/driver/src/interface_io.cpp	if (!(recorded.verifier == current.verifier)) {	if (false) {	^negative_cross_tu$
+semantics-digest-covers-kernel	cmake/VerifierSemanticsSources.cmake	    kernel	    kernel_left_out	^architecture_verifier_semantics$
+semantics-sources-classified	cmake/CheckVerifierSemantics.cmake	if(problems)	if(FALSE)	^architecture_verifier_semantics$
 xtu-report-escapes-recorded-text	compiler/artifact/src/interface.cpp	if (byte >= 0x20U && byte <= 0x7EU && byte != '%') {	if (true) {	^unit_interface_test$|^negative_cross_tu$
 xtu-format-version	compiler/artifact/include/cppl/artifact/interface.hpp	inline constexpr std::uint32_t kFormatVersion = 3;	inline constexpr std::uint32_t kFormatVersion = 2;	^unit_interface_test$|^negative_cross_tu$
 xtu-models-written	compiler/artifact/src/interface.cpp	canonical_lines(entry.models, model_line)	canonical_lines(std::vector<Model>{}, model_line)	^unit_interface_test$|^e2e_containers$

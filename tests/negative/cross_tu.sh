@@ -145,40 +145,60 @@ refuse conflicting_interfaces "verification interfaces 'library.cppli' and 'conf
 refuse other_language_mode "it was produced in another C\\+\\+ language mode: it records 'c\\+\\+20', and this compile uses 'c\\+\\+17'" \
     client.cpp --cppl-import-interface=library20.cppli --cppl-import-interface=middle.cppli
 
-# SPEC: TUBOUND-005 -- malformed, of another version, from another verifier:
-# each written out, and each refused before anything in it is read as a
-# contract. The previous format's interface is refused as that, never read as
-# this one.
+# SPEC: TUBOUND-005 -- malformed, of another version, from another build: each
+# written out, and each refused before anything in it is read as a contract.
 refuse truncated_fixture "it is truncated" client.cpp "--cppl-import-interface=$NEGATIVE/xtu_truncated.cppli"
 refuse checksum_fixture "it is corrupt: its checksum does not match its content" \
     client.cpp "--cppl-import-interface=$NEGATIVE/xtu_checksum_mismatch.cppli"
 refuse status_fixture "records status 'refused'; only a proven contract is recorded" \
     client.cpp "--cppl-import-interface=$NEGATIVE/xtu_status_refused.cppli"
-refuse version_fixture "it is format version '2', and this compiler reads only version 3" \
+refuse version_fixture "it is format version '4', and this compiler reads only version 3" \
     client.cpp "--cppl-import-interface=$NEGATIVE/xtu_other_version.cppli"
-refuse verifier_fixture "it was produced by a verifier whose semantics-bearing sources differ from this compiler's" \
-    client.cpp "--cppl-import-interface=$NEGATIVE/xtu_other_verifier.cppli"
-
-# SPEC: TUBOUND-005 -- the declared verification-semantics version and the
-# digest of the sources that implement it are compared separately: a verifier
-# whose code changed is refused even when its declared version did not.
-grep -q '^semantics cppl-verification-semantics-' library.cppli || fail "the interface records no semantics version"
-awk '{ if ($1 == "verifier") print "verifier 0000000000000000000000000000000000000000000000000000000000000000"; else print }' \
-    library.cppli | sed '$d' > reverified.body
-{ cat reverified.body; printf 'checksum %s\n' "$(sha256 < reverified.body)"; } > reverified.cppli
-grep -q "^$(grep '^semantics ' library.cppli)\$" reverified.cppli || fail "the semantics version was changed"
-refuse other_verifier_artifact "cannot use verification interface 'reverified.cppli': it was produced by a verifier whose semantics-bearing sources differ" \
-    client.cpp --cppl-import-interface=reverified.cppli --cppl-import-interface=middle.cppli
-awk '{ if ($1 == "semantics") print "semantics cppl-verification-semantics-9.9.9"; else print }' \
-    library.cppli | sed '$d' > resemantic.body
-{ cat resemantic.body; printf 'checksum %s\n' "$(sha256 < resemantic.body)"; } > resemantic.cppli
-refuse other_semantics_artifact "it was produced under other verification semantics: it records 'cppl-verification-semantics-9.9.9'" \
-    client.cpp --cppl-import-interface=resemantic.cppli --cppl-import-interface=middle.cppli
-# SPEC: TUBOUND-005, STDMODEL-018 -- an intact interface of the format before
-# models were recorded cannot say whether a contract rested on one, so it is
-# refused whole rather than read as resting on none (TRUST.md TCB-LIB-010).
+# SPEC: TUBOUND-005, STDMODEL-018, RUNTIMECHECK-015 -- an intact interface of a
+# format before models (version 1) or runtime validation sites (version 2) were
+# recorded cannot say whether a contract rested on one, so it is refused whole
+# rather than read as resting on none (TRUST.md TCB-LIB-010).
 refuse format_v1_fixture "it is format version '1', and this compiler reads only version 3" \
     client.cpp "--cppl-import-interface=$NEGATIVE/xtu_format_v1.cppli"
+refuse format_v2_fixture "it is format version '2', and this compiler reads only version 3" \
+    client.cpp "--cppl-import-interface=$NEGATIVE/xtu_format_v2.cppli"
+refuse semantics_fixture "it was verified under other verification semantics: it records 'cppl-verification-0'" \
+    client.cpp "--cppl-import-interface=$NEGATIVE/xtu_other_semantics.cppli"
+
+# reseal <interface> <output> <sed expression>: the interface with its content
+# edited and its checksum recomputed, as an edit that knows the format leaves
+# it, so what is decided is the edited field alone.
+reseal() {
+    sed '$d' "$1" | sed "$3" > "$2.body"
+    sed '$d' "$1" | cmp -s - "$2.body" && fail "the edit making $2 changed nothing"
+    { cat "$2.body"; printf 'checksum %s\n' "$(sha256 < "$2.body")"; } > "$2"
+}
+
+# SPEC: TUBOUND-005, TUBOUND-013 -- an interface is bound to the compiler version
+# and to the verification semantics, declared and mechanical, each compared
+# alone: a record whose compiler version, semantics version or verifier
+# semantics digest differs is refused, while one whose executable digest alone
+# differs, another build of the same sources, is used (TRUST.md TCB-XTU-008).
+reseal library.cppli other_release.cppli 's/^compiler .*/compiler 9.9.9/'
+refuse other_release "cannot use verification interface 'other_release.cppli': it was produced by another C\\+\\+L compiler version: it records '9\\.9\\.9'" \
+    client.cpp --cppl-import-interface=other_release.cppli --cppl-import-interface=middle.cppli
+reseal library.cppli other_binary.cppli 's/^build .*/build 0000000000000000000000000000000000000000000000000000000000000000/'
+accept other_binary client.cpp --cppl-import-interface=other_binary.cppli --cppl-import-interface=middle.cppli
+reseal library.cppli other_semantics.cppli 's/^semantics .*/semantics cppl-verification-0/'
+refuse other_semantics "cannot use verification interface 'other_semantics.cppli': it was verified under other verification semantics" \
+    client.cpp --cppl-import-interface=other_semantics.cppli --cppl-import-interface=middle.cppli
+reseal library.cppli other_verifier.cppli 's/^verifier .*/verifier 0000000000000000000000000000000000000000000000000000000000000000/'
+refuse other_verifier "cannot use verification interface 'other_verifier.cppli': it was produced by a verifier built from other semantic sources" \
+    client.cpp --cppl-import-interface=other_verifier.cppli --cppl-import-interface=middle.cppli
+
+# SPEC: TUBOUND-005 -- staleness is content, never time or place: a source touched
+# but unchanged leaves the interface usable, and so does a copy of the interface
+# kept at another path.
+touch -t 203001010000 library.cpp library.hpp
+accept touched_sources client.cpp --cppl-import-interface=library.cppli --cppl-import-interface=middle.cppli
+mkdir -p elsewhere
+cp library.cppli elsewhere/copied.cppli
+accept copied_interface client.cpp --cppl-import-interface=elsewhere/copied.cppli --cppl-import-interface=middle.cppli
 
 # SPEC: TUBOUND-005 -- the real artifact, damaged after it was written.
 head -c 300 library.cppli > cut.cppli

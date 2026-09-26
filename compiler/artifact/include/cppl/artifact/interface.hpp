@@ -49,11 +49,18 @@ inline constexpr std::size_t kMaxEntryItems = std::size_t{1} << 14U;
 
 // What must be the same where an interface is produced and where it is used for
 // a recorded contract to mean the same thing in both places (SPEC.md TUBOUND-005).
-// Each field is compared exactly; a consumer names the first that differs.
+// The compiler version, the verification semantics version, the verifier
+// semantics digest, the kernel, core, Clang, language and target are compared
+// exactly, and a consumer names the first that differs. The digest of the
+// compiler's executable is provenance, recorded so a record can be traced to the
+// build that wrote it (TRUST.md TCB-VERSION-004) and never compared: two builds
+// of one compiler version from the same semantic sources use each other's
+// interfaces.
 struct Configuration {
     std::string compiler;    // the C++L compiler version
-    std::string semantics;   // the declared verification-semantics version
-    source::Digest verifier; // the digest of the verifier's semantics-bearing sources
+    source::Digest build;    // the SHA-256 of the compiler executable, for audit
+    std::string semantics;   // the verification semantics version, declared by hand
+    source::Digest verifier; // the verifier semantics digest, computed from its sources
     std::string kernel;      // kernel::kKernelVersion
     std::string core;        // kernel::kFormalCoreVersion
     std::string clang;       // the Clang that resolved C++ semantics

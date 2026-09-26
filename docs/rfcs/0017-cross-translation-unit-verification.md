@@ -311,21 +311,31 @@ statement's text and where a trusted law is written are shown, not compared, so
 the identity is not that of the record's bytes (`SPEC.md` TUBOUND-009).
 
 **Configuration and staleness (the manifest).** Compared exactly, and refused
-naming the first difference: compiler version; the declared
-verification-semantics version (`compiler/driver/include/cppl/driver/semantics.hpp`);
-the verifier-semantics digest, computed at build time from the relative path
-and content of every source of the semantics-bearing set that
-`cmake/VerifierSemantics.cmake` defines (a declared version can be left
-unchanged when the code is not, `TRUST.md` TCB-VERSION-004, and the digest
-cannot); kernel, formal core, the Clang that resolves C++ semantics, language
-mode and target triple. Earlier builds bound an interface to the digest of the
-compiler executable instead, which changed with every rebuild and said nothing
-about which change mattered. The meaning-changing command-line options are
-recorded for audit and not compared: what a contract means to the consumer is
-rebuilt from the consumer's own preprocessing, and what the body means is fixed
-by the producer's own compile, which those options drove. Staleness is by
-content: every file the producing unit was preprocessed from is recorded with
-its digest and rehashed on import; a timestamp is never consulted.
+naming the first difference: the compiler's release version; the verification
+semantics, identified twice, by a version declared by hand
+(`obligations::kVerificationSemanticsVersion`) and by the verifier semantics
+digest the build computes from every source of the components that implement
+verification (`cmake/VerifierSemanticsSources.cmake`, with every source under the
+code roots classified as semantic or, with a reason, not); then kernel, formal
+core, the Clang that resolves C++ semantics, language mode and target triple.
+The SHA-256 of the compiler's executable is recorded for audit (`TRUST.md`
+TCB-VERSION-004) and not compared: an interface is bound to a release and to what
+a result means, not to the binary that wrote it, so two builds of one release
+from the same semantic sources use each other's interfaces. The declared version
+is the statement of compatibility, and keeping it honest is a reuse-TCB
+obligation; the digest guards it mechanically, so a semantic change nobody
+declared still invalidates the interfaces written before it (`TRUST.md`
+TCB-XTU-008). The first implementation compared the executable's digest, which
+refused every interface after any rebuild; a later revision stopped comparing
+the release as well, which the reconciliation with the verification-semantics
+design restored (`SPEC.md` TUBOUND-005). The
+meaning-changing command-line options are recorded for audit and not compared:
+what a contract means to the consumer is rebuilt from the consumer's own
+preprocessing, and what the body means is fixed by the producer's own compile,
+which those options drove. Staleness is by content: every file the producing
+unit was preprocessed from is recorded with its digest and rehashed on import;
+a timestamp is never consulted, and neither is the path the interface is read
+from.
 
 **Closure across units.** A record is usable only while every record it rests on
 is imported with the result identity it had when the dependent proof was made,

@@ -3402,9 +3402,12 @@ the call resolves to another overload or another specialization
     f<5> is never proven by f<4>'s record
 
 the interface is not usable here
-    malformed, truncated, altered, of another format version, produced by
-    another cppl build, kernel, Clang, -std or target, or stale: a file its
-    unit was compiled from changed after it was written
+    malformed, truncated, altered, of another format version, verified by a
+    cppl implementing other verification semantics, or under another kernel,
+    Clang, -std or target, or stale: a file its unit was compiled from changed
+    in content after it was written (touching it changes nothing, and neither
+    does another cppl build of the same sources or a copy of the interface at
+    another path)
 
 what the record rests on is not imported
     a unit proven through a third unit's contract needs that interface too,

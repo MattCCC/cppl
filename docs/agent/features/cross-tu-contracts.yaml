@@ -138,10 +138,13 @@ tests:
     - tests/fixtures/negative/xtu_checksum_mismatch.cppli
     - tests/fixtures/negative/xtu_status_refused.cppli
     - tests/fixtures/negative/xtu_other_version.cppli
-    - tests/fixtures/negative/xtu_other_build.cppli
+    - tests/fixtures/negative/xtu_format_v1.cppli
+    - tests/fixtures/negative/xtu_other_semantics.cppli
   unit:
     - tests/unit/interface_test.cpp
     - tests/unit/cross_unit_contracts_test.cpp
+  architecture:
+    - tests/architecture/verifier_semantics.sh
   fuzz:
     - tests/fuzz/interface.cpp
   end_to_end:
@@ -153,7 +156,9 @@ required_test_categories:
   - overload and specialization identity
   - declaration without a record refused
   - stronger and weaker declared contracts refused
-  - malformed, truncated, altered, other version, other build, other mode, stale
+  - malformed, truncated, altered, other version, other semantics version, other verifier semantics digest, other mode, stale
+  - another build or release, touched sources and a moved interface still used
+  - the verifier semantics digest follows every semantic source and nothing else, and every source is classified
   - trust closure through the imported contract, a local call and a third unit
   - totality as recorded; a partial record of a measured function refused
   - recursion across units refused

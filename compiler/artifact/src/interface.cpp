@@ -767,6 +767,7 @@ std::expected<std::string, std::string> serialize(const Interface& recorded) {
     };
     line(std::string(kMagic) + " " + std::to_string(kFormatVersion));
     line("compiler " + encode(configuration.compiler));
+    line("build " + configuration.build.to_hex());
     line("semantics " + encode(configuration.semantics));
     line("verifier " + configuration.verifier.to_hex());
     line("kernel " + encode(configuration.kernel));
@@ -859,6 +860,15 @@ std::expected<Interface, ParseError> parse(std::string_view text) {
         return std::unexpected(compiler.error());
     }
     configuration.compiler = std::move(*compiler);
+    auto build_line = parser.take("build", 1);
+    if (!build_line) {
+        return std::unexpected(build_line.error());
+    }
+    auto build = digest_field(*build_line, 1);
+    if (!build) {
+        return std::unexpected(build.error());
+    }
+    configuration.build = *build;
     auto semantics = single_text(parser, "semantics");
     if (!semantics) {
         return std::unexpected(semantics.error());

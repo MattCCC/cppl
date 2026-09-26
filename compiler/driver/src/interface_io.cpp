@@ -5,11 +5,10 @@
 #include "cppl/diagnostics/diagnostic.hpp"
 #include "cppl/driver/process.hpp"
 #include "cppl/driver/scratch.hpp"
-#include "cppl/driver/semantics.hpp"
-#include "cppl/driver/verifier_semantics.hpp"
 #include "cppl/kernel/version.hpp"
 #include "cppl/obligations/interface.hpp"
 #include "cppl/source/digest.hpp"
+#include "cppl/verifier_semantics.hpp"
 
 #include <algorithm>
 #include <array>
@@ -28,6 +27,18 @@
 #include <utility>
 #include <vector>
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#elif defined(__APPLE__)
+#include <mach-o/dyld.h>
+#endif
+
 namespace cppl::driver::detail {
 namespace {
 
@@ -40,6 +51,32 @@ void report(diagnostics::Engine& engine, std::string message, std::string note =
         diagnostic.notes.push_back(diagnostics::Note{std::move(note), {}});
     }
     engine.report(std::move(diagnostic));
+}
+
+// The file this process was started from. The digest of the compiler's own
+// build is recorded in every interface it writes, so a record can be traced to
+// the build that wrote it (TRUST.md TCB-VERSION-004); what decides whether an
+// interface may be used is the verification semantics version, not the build.
+std::optional<std::filesystem::path> executable_path() {
+#ifdef _WIN32
+    std::array<wchar_t, 32768> buffer{};
+    const DWORD length = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+    if (length == 0 || length >= buffer.size()) {
+        return std::nullopt;
+    }
+    return std::filesystem::path(std::wstring(buffer.data(), length));
+#elif defined(__APPLE__)
+    std::uint32_t size = 0;
+    _NSGetExecutablePath(nullptr, &size);
+    std::string buffer(size, '\0');
+    if (size == 0 || _NSGetExecutablePath(buffer.data(), &size) != 0) {
+        return std::nullopt;
+    }
+    buffer.resize(buffer.find('\0'));
+    return std::filesystem::path(buffer);
+#else
+    return std::filesystem::path("/proc/self/exe");
+#endif
 }
 
 // The largest file a unit may be recorded as preprocessed from. A path an
@@ -138,24 +175,28 @@ class SourceDigests {
     std::map<std::string, std::optional<source::Digest>> known_;
 };
 
-// The first field in which two configurations differ, described, or nothing.
+// The first compared field in which two configurations differ, described, or
+// nothing. The digest of the compiler's executable is provenance and is not
+// compared: two builds of one compiler version from the same semantic sources
+// use each other's interfaces (SPEC.md TUBOUND-005, TRUST.md TCB-XTU-008).
 std::optional<std::string> configuration_difference(const artifact::Configuration& recorded,
                                                     const artifact::Configuration& current) {
     const auto differs = [](std::string_view what, const std::string& there, const std::string& here) {
-        return std::string(what) + ": it records '" + there + "', and this compile uses '" + here + "'";
+        return std::string(what) + ": it records '" + artifact::displayed(there) + "', and this compile uses '" +
+               artifact::displayed(here) + "'";
     };
     if (recorded.compiler != current.compiler) {
         return differs("it was produced by another C++L compiler version", recorded.compiler, current.compiler);
     }
     if (recorded.semantics != current.semantics) {
-        return differs("it was produced under other verification semantics", recorded.semantics, current.semantics);
+        return differs("it was verified under other verification semantics", recorded.semantics, current.semantics);
     }
-    // The declared version can be left unchanged when the code is not, so the
-    // sources that implement the semantics are compared too.
+    // The declared version may have been left as it was when a semantic source
+    // changed; the digest of those sources has not (TRUST.md TCB-XTU-008).
     if (!(recorded.verifier == current.verifier)) {
-        return "it was produced by a verifier whose semantics-bearing sources differ from this compiler's: it "
-               "records verifier-semantics digest " +
-               recorded.verifier.to_short_hex(16) + ", and this compiler has " + current.verifier.to_short_hex(16);
+        return differs("it was produced by a verifier built from other semantic sources",
+                       "verifier semantics digest " + recorded.verifier.to_hex(),
+                       "verifier semantics digest " + current.verifier.to_hex());
     }
     if (recorded.kernel != current.kernel) {
         return differs("it was checked by another proof kernel", recorded.kernel, current.kernel);
@@ -196,12 +237,15 @@ std::expected<artifact::Configuration, std::string> current_configuration(const 
                                                                           const std::string& standard) {
     artifact::Configuration configuration;
     configuration.compiler = CPPL_VERSION;
-    configuration.semantics = kVerificationSemanticsVersion;
-    const std::optional<source::Digest> verifier = source::Digest::from_hex(kVerifierSemanticsDigest);
-    if (!verifier.has_value()) {
-        return std::unexpected("this compiler's verifier-semantics digest is malformed");
+    const std::optional<std::filesystem::path> self = executable_path();
+    const std::optional<source::Digest> build = self.has_value() ? digest_of_file(*self) : std::nullopt;
+    if (!build.has_value()) {
+        return std::unexpected("this compiler cannot identify its own build, which a verification interface "
+                               "records");
     }
-    configuration.verifier = *verifier;
+    configuration.build = *build;
+    configuration.semantics = obligations::kVerificationSemanticsVersion;
+    configuration.verifier.bytes = kVerifierSemanticsDigest;
     configuration.kernel = kernel::kKernelVersion;
     configuration.core = kernel::kFormalCoreVersion;
     configuration.clang = clangbridge::clang_version();

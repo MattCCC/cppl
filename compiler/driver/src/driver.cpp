@@ -7,8 +7,6 @@
 #include "cppl/driver/options.hpp"
 #include "cppl/driver/process.hpp"
 #include "cppl/driver/scratch.hpp"
-#include "cppl/driver/semantics.hpp"
-#include "cppl/driver/verifier_semantics.hpp"
 #include "cppl/frontend/syntax.hpp"
 #include "cppl/kernel/version.hpp"
 #include "cppl/obligations/interface.hpp"
@@ -16,6 +14,7 @@
 #include "cppl/obligations/trust.hpp"
 #include "cppl/source/location.hpp"
 #include "cppl/source/representation.hpp"
+#include "cppl/verifier_semantics.hpp"
 #include "interface_io.hpp"
 #include "pipeline.hpp"
 #include "version.hpp"
@@ -620,8 +619,10 @@ void print_trust_report(const Options& options, const Summary& summary) {
     std::cout << "Kernel version:              " << kernel::kKernelVersion << "\n";
     std::cout << "Formal core version:         " << kernel::kFormalCoreVersion << "\n";
     std::cout << "Compiler version:            " << CPPL_VERSION << "\n";
-    std::cout << "Verification semantics:      " << kVerificationSemanticsVersion << "\n";
-    std::cout << "Verifier-semantics digest:   " << kVerifierSemanticsDigest << "\n";
+    std::cout << "Verification semantics:      " << obligations::kVerificationSemanticsVersion << "\n";
+    source::Digest verifier;
+    verifier.bytes = kVerifierSemanticsDigest;
+    std::cout << "Verifier-semantics digest:   " << verifier.to_hex() << "\n";
     std::cout << "Clang:                       " << clangbridge::clang_version() << "\n";
     std::cout << "C++ mode:                    " << (options.standard.empty() ? "compiler default" : options.standard)
               << "\n";

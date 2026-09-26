@@ -4,10 +4,11 @@
 #include "cppl/clang/bridge.hpp"
 #include "cppl/driver/process.hpp"
 #include "cppl/driver/scratch.hpp"
-#include "cppl/driver/semantics.hpp"
 #include "cppl/driver/source_identity.hpp"
-#include "cppl/driver/verifier_semantics.hpp"
 #include "cppl/kernel/version.hpp"
+#include "cppl/obligations/interface.hpp"
+#include "cppl/source/digest.hpp"
+#include "cppl/verifier_semantics.hpp"
 
 #include <cstddef>
 #include <filesystem>
@@ -171,8 +172,13 @@ int print_version(const std::string& clang, const std::vector<std::string>& argu
     line("Source tag:", kSourceTag);
     line("Source tree:", kSourceTree);
     line("Built with:", built_with());
-    line("Verification semantics:", kVerificationSemanticsVersion);
-    line("Verifier-semantics digest:", kVerifierSemanticsDigest);
+    // The same two identities every interface this compiler writes records and
+    // every one it reads is compared by (SPEC.md TUBOUND-005, TRUST.md
+    // TCB-XTU-008).
+    line("Verification semantics:", obligations::kVerificationSemanticsVersion);
+    source::Digest verifier;
+    verifier.bytes = kVerifierSemanticsDigest;
+    line("Verifier-semantics digest:", verifier.to_hex());
     line("Kernel version:", kernel::kKernelVersion);
     line("Formal core version:", kernel::kFormalCoreVersion);
     line("Interface format version:", std::to_string(artifact::kFormatVersion));

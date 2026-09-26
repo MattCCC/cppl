@@ -93,7 +93,7 @@ implementation:
   driver:
     - compiler/driver/src/pipeline.cpp
     - compiler/driver/src/driver.cpp
-    - compiler/driver/include/cppl/driver/semantics.hpp
+    - compiler/obligations/include/cppl/obligations/interface.hpp
 
 interactions:
   - refined locals, members, array elements and vector content invariants

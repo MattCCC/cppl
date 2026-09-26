@@ -1137,6 +1137,11 @@ the reader and validator    that a refused interface is refused: format,
                             closure and cross-unit cycles
                             (compiler/artifact, compiler/driver/src/interface_io,
                             generate_contracts in obligations/src/contracts.cpp)
+the semantics identity      that two compilers of one release with one declared
+                            semantics version and one verifier semantics digest
+                            give a recorded result one meaning; the version is
+                            kept by hand, the digest and the classification of
+                            sources it covers by the build (TCB-XTU-008)
 the statement identity      that two statements with one identity are one
                             contract (obligations/src/interface.cpp); this is
                             correspondence TCB as well, since it decides which
@@ -1144,8 +1149,6 @@ the statement identity      that two statements with one identity are one
 the result identity         that two records with one verification-result
                             identity let a caller conclude the same thing
                             (artifact::identify)
-the semantics digest        that cmake/VerifierSemantics.cmake names every
-                            source that can change what the verifier concludes
 the interface's provenance  that the interface imported is the one the
                             producing compile wrote: nothing authenticates it,
                             and its integrity digest detects only a change
@@ -1173,7 +1176,7 @@ runtime validation site     a runtime check a proof took a refinement from
 
 **[TCB-XTU-007]** A claim proven through an imported contract MUST be reported with that contract, the interface that recorded it and the verification-result identity of the record, and, each in its own category, with every trusted law, library model, unsafe dependency and runtime validation site the producing unit's proof rested on and every further imported contract it was proven through, transitively across units. An imported contract MUST NOT be reported as a trusted law or as a library model. The claim MUST NOT be reported as assumption-free, and the imported contract MUST NOT be counted as proven by the consuming unit. The report states that interface provenance is unauthenticated whenever an interface was imported, so `Assumption-free` cannot be read as saying that any artifact was authenticated.
 
-**[TCB-XTU-008]** An interface MUST be bound to the configuration that gives its records meaning, compared exactly: the compiler version, the declared verification-semantics version, the verifier-semantics digest, the kernel and formal-core versions, the Clang that resolved C++ semantics, the language mode and the target. The verifier-semantics digest is computed at build time from the relative path and content of every source in the semantics-bearing set that `cmake/VerifierSemantics.cmake` defines, and from nothing else: no timestamp, absolute path, document or byte of the built executable, so two builds of one source agree and a change to that code changes it whether or not the declared version was raised (`tests/architecture/verifier_semantics.sh`). An interface MUST also be bound to the content of every file its unit was preprocessed from, so an edit after it was written makes it stale. Content is compared, never a timestamp.
+**[TCB-XTU-008]** An interface MUST be bound to the configuration that gives its records meaning, compared exactly: the compiler version; the verification semantics the producing compiler implements, identified twice, by the version `obligations::kVerificationSemanticsVersion` declares and by the verifier semantics digest computed at build time from every source of the components that implement verification (`cmake/VerifierSemanticsSources.cmake`); the kernel and formal-core versions; the Clang that resolved C++ semantics; the language mode and the target. It MUST also be bound to the content of every file its unit was preprocessed from, so an edit after it was written makes it stale. Content is compared, never a timestamp or a path of the interface. The digest of the compiler's executable is recorded for audit (TCB-VERSION-004) and not compared, so two builds of one compiler version from the same semantic sources use each other's interfaces. Keeping the declared version honest is an obligation of the reuse TCB: it MUST change with any change that could make a recorded result mean something else (TCB-VERSION-003). The digest is the mechanical guard on that obligation, not a replacement for it: a change to a byte of a semantic source, or a file added to a semantic component, changes it whether or not the version was bumped, and every source under the code roots is classified as semantic or, with a stated reason, not (`tests/architecture/verifier_semantics.sh`). What the digest does not cover is a semantic change made outside those sources, such as in the toolchain that compiles them; the compiler, kernel, core and Clang versions and the target stand for that.
 
 **[TCB-XTU-009]** A record MUST be usable only while every record it rests on is imported with the verification-result identity it had when the dependent proof was made, and two records of one function with different verification-result identities MUST make both unusable. Identities are compared, never bytes: a record's name, the text of its statement and the locations of its trusted laws are shown, not compared. Staleness therefore propagates along the dependency chain rather than stopping at the unit that changed.
 

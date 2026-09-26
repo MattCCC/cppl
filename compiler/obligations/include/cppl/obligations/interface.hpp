@@ -12,6 +12,16 @@
 
 namespace cppl::obligations {
 
+// The version of the verification semantics this compiler implements: what
+// every obligation it generates means, what its models of C++ and of the
+// standard library state, and what a contract it records states and rests on.
+// An interface is used only by a compiler implementing the same version,
+// whatever build or release that compiler is (SPEC.md TUBOUND-005), so the
+// version is maintained by hand. It MUST change with any change that could
+// make a recorded result mean something else to a consumer; keeping it honest
+// is an obligation of the reuse TCB (TRUST.md TCB-XTU-008, TCB-VERSION-003).
+inline constexpr std::string_view kVerificationSemanticsVersion = "cppl-verification-1";
+
 // A contract another translation unit proved, offered to this one by the
 // verification interface that recorded it (SPEC.md TUBOUND-003).
 //

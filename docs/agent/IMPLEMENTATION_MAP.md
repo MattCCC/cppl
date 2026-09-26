@@ -511,6 +511,7 @@ Normative sources: `TUBOUND-001`–`TUBOUND-014` (SPEC Annex L.1, L.2.1),
 | Component | Responsibility | Paths |
 | --- | --- | --- |
 | artifact | The interface format: canonical writer, strict bounded reader, entry identity. | `compiler/artifact/` |
+| build | The verifier semantics digest of every source of the semantic components, generated into a header the driver records and compares; the classification of every source as semantic or not. | `cmake/VerifierSemanticsSources.cmake`, `cmake/ComputeVerifierSemantics.cmake`, `cmake/CheckVerifierSemantics.cmake`, `compiler/driver/CMakeLists.txt` |
 | bridge | Whether a function has external linkage. | `clang/src/bridge.cpp` (`Function::external_linkage`) |
 | elaboration | A verified declaration without a definition and with external linkage is `defined_elsewhere` and states its contract; a declaration-only template specialization is refused; each repeated `verified` declaration's contract is read (`redeclared_contracts`). | `compiler/elaboration/src/elaborate.cpp` |
 | obligations | The canonical statement identity; restatements compared (TU-003); an external contract established only from a record with the same statement (`import_contract`); a partial record of a measured function refused; recursion through another unit refused; totality as recorded; entries exported with their closure. | `compiler/obligations/src/interface.cpp`, `compiler/obligations/src/contracts.cpp` |

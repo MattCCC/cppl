@@ -2537,14 +2537,19 @@ producing unit, --cppl-emit-interface=<file>
                 interface entry, carrying on what imported contracts rest on; a
                 library model becomes a `model` item, an identity and a name
                 (library_model), so the format names no model itself
-  driver        after the object is produced, binds the entries to the compiler
-                version, the declared verification-semantics version, the
-                verifier-semantics digest (generated at build time by
-                cmake/VerifierSemantics.cmake from the semantics-bearing
-                sources), kernel, core, Clang, language mode, target and the
-                digest of every file the unit was preprocessed from, and writes
-                the canonical text (compiler/artifact) atomically; a unit that
-                fails removes an interface it left before
+  driver        after the object is produced, binds the entries to the
+                compiler version, the verification semantics version, the
+                verifier semantics digest, kernel, core, Clang, language mode,
+                target and the digest of every file the unit was preprocessed
+                from, records the executable digest for audit, and writes the
+                canonical text (compiler/artifact) atomically; a unit that fails
+                removes an interface it left before
+build           cmake/ComputeVerifierSemantics.cmake digests every source of the
+                semantic components cmake/VerifierSemanticsSources.cmake lists
+                into a generated header the driver reads, when the project is
+                configured and whenever such a source changes; every source
+                under the code roots is classified semantic or, with a reason,
+                not (tests/architecture/verifier_semantics.sh)
 consuming unit, --cppl-import-interface=<file>...
   driver        reads each file strictly (compiler/artifact: canonical text,
                 bounded, integrity-checked), refuses one of another

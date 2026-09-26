@@ -822,13 +822,16 @@ only when the statement identities agree, so a stronger postcondition, a weaker
 precondition, a changed pure definition the contract reaches, another
 overload, another specialization or another request to terminate is refused; the
 measure that proved a total contract is the proving unit's and is not compared.
-An interface of another compiler version, verification semantics (a declared
-version and a digest of the verifier's semantics-bearing sources), kernel, core,
-Clang, language mode or target, or one whose unit's files changed since it was
-written, is refused whole; so is a malformed, truncated or integrity-failing one,
-two interfaces recording different verification-result identities for one
-function, and a record whose own dependencies are not imported with the
-identities they were proven with. A claim resting on an
+An interface written by another compiler release, under another verification
+semantics, identified by a declared version and by a digest the build computes
+from the verifier's semantic sources, or under another kernel, core, Clang,
+language mode or target, or one whose unit's files changed in content since it
+was written, is refused whole, while one from another build of the same release
+and sources, one whose sources were only touched, and a copy at another path
+are used; so is a malformed, truncated or integrity-failing one, two interfaces
+recording different verification-result identities for one function, and a
+record whose own dependencies are not imported with the identities they were
+proven with. A claim resting on an
 imported contract is PROVEN relative to that record and reported with it and
 with everything its proof rested on, transitively; it is never listed as
 assumption-free. Totality crosses as recorded, and a cycle of verified contracts
