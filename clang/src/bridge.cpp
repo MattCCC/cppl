@@ -6937,7 +6937,9 @@ struct BodyLowering {
 
         Locals declaring = locals;
         Local root{.declaration = declaration, .type = type, .spelling = name};
-        Local::Sequence& held = root.sequence.emplace();
+        // Clang caches a nested aggregate as not default-constructible while its
+        // enclosing class is incomplete, so emplace() would not compile.
+        Local::Sequence& held = root.sequence.emplace(Local::Sequence{});
         held.kind = family;
         source::LibraryOperation operation = source::LibraryOperation::Construct;
         std::vector<Expr> arguments;
