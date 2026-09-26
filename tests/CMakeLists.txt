@@ -462,6 +462,14 @@ cppl_add_script_test(e2e_verified_methods e2e/verified_methods.sh)
 cppl_add_script_test(e2e_cross_tu e2e/cross_tu.sh)
 cppl_add_script_test(negative_cross_tu negative/cross_tu.sh)
 
+# Cross-TU contracts, member functions, signed arithmetic and the sequence
+# models in one multi-unit parser-and-ledger program, with matched refused twins
+# (fixtures/integration/, RFC 0017 to RFC 0020).
+cppl_add_script_test(e2e_integration_ledger e2e/integration_ledger.sh)
+cppl_add_script_test(negative_integration_ledger negative/integration_ledger.sh)
+cppl_add_script_test(e2e_cross_feature e2e/cross_feature.sh)
+cppl_add_script_test(negative_cross_feature negative/cross_feature.sh)
+
 # Erasure against programs written without C++L: runtime behaviour and code,
 # native ABI across a translation-unit boundary, and source positions.
 cppl_add_script_test(e2e_erasure_equivalence e2e/erasure_equivalence.sh)

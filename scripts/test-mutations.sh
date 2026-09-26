@@ -64,7 +64,7 @@ unsafe-closure-through-calls	compiler/obligations/src/trust.cpp	regions[index].e
 unsafe-not-assumption-free	compiler/driver/src/driver.cpp	return claim.premises.empty() && claim.unsafe.empty() && claim.imported.empty() && claim.library.empty();	return claim.premises.empty() && claim.imported.empty() && claim.library.empty();	^e2e_unsafe_boundary$
 library-model-not-assumption-free	compiler/driver/src/driver.cpp	return claim.premises.empty() && claim.unsafe.empty() && claim.imported.empty() && claim.library.empty();	return claim.premises.empty() && claim.unsafe.empty() && claim.imported.empty();	^e2e_containers$
 library-model-closure-through-calls	compiler/obligations/src/trust.cpp	changed = models[index].emplace(model, LibraryDependency{model, false}).second || changed;	changed = (models[index].contains(model) && false) || changed;	^e2e_containers$
-container-stale-view	clang/src/bridge.cpp	if (root.version == entry.borrows->version) {	if (true) {	^negative_containers$
+container-stale-view	clang/src/bridge.cpp	if (root.version == entry.borrows->version) {	if (true) {	^negative_containers$|^negative_integration_ledger$|^negative_cross_feature$
 container-element-generation	clang/src/bridge.cpp	return !entry.formed_at.has_value() ||	return true ||	^negative_containers$
 container-span-capability	clang/src/bridge.cpp	if (region->parameter.has_value() && !granted(*region->parameter, required)) {	if (false && region->parameter.has_value() && !granted(*region->parameter, required)) {	^negative_containers$
 container-call-disjointness	clang/src/bridge.cpp	if (other == root || may_alias(state[other], state[root])) {	if (false && (other == root || may_alias(state[other], state[root]))) {	^negative_containers$
@@ -122,8 +122,8 @@ xtu-result-identity-dependencies	compiler/artifact/src/interface.cpp	set(std::mo
 xtu-internal-linkage-not-imported	compiler/elaboration/src/elaborate.cpp	converted.defined_elsewhere = candidate.contract != nullptr && function->external_linkage;	converted.defined_elsewhere = candidate.contract != nullptr;	^negative_cross_tu$
 xtu-internal-linkage-not-exported	compiler/obligations/src/contracts.cpp	    if (function.external_linkage) {	    if (true) {	^e2e_cross_tu$|^unit_cross_unit_contracts_test$
 xtu-restatements-agree	compiler/obligations/src/contracts.cpp	if (!restatements_agree(function, pure_definitions, program, engine)) {	if (false && !restatements_agree(function, pure_definitions, program, engine)) {	^negative_cross_tu$|^unit_cross_unit_contracts_test$
-xtu-trusted-through-import	compiler/obligations/src/trust.cpp	return !claim.premises.empty() || std::ranges::any_of(claim.imported	return !claim.premises.empty() || std::ranges::any_of(std::vector<ImportedDependency>{}	^e2e_cross_tu$
-xtu-unsafe-through-import	compiler/obligations/src/trust.cpp	return !claim.unsafe.empty() || std::ranges::any_of(claim.imported	return !claim.unsafe.empty() || std::ranges::any_of(std::vector<ImportedDependency>{}	^e2e_cross_tu$
+xtu-trusted-through-import	compiler/obligations/src/trust.cpp	return !claim.premises.empty() || std::ranges::any_of(claim.imported	return !claim.premises.empty() || std::ranges::any_of(std::vector<ImportedDependency>{}	^e2e_cross_tu$|^e2e_integration_ledger$
+xtu-unsafe-through-import	compiler/obligations/src/trust.cpp	return !claim.unsafe.empty() || std::ranges::any_of(claim.imported	return !claim.unsafe.empty() || std::ranges::any_of(std::vector<ImportedDependency>{}	^e2e_cross_tu$|^e2e_integration_ledger$|^e2e_cross_feature$
 xtu-import-not-assumption-free	compiler/driver/src/driver.cpp	return claim.premises.empty() && claim.unsafe.empty() && claim.imported.empty() && claim.library.empty();	return claim.premises.empty() && claim.unsafe.empty() && claim.library.empty();	^e2e_cross_tu$|^negative_cross_tu$
 xtu-imported-closure-through-calls	compiler/obligations/src/trust.cpp	changed = through[index].emplace(imported, false).second || changed;	(void)imported;	^e2e_cross_tu$
 xtu-configuration-compared	compiler/driver/src/interface_io.cpp	std::optional<std::string> unusable = configuration_difference(recorded->configuration, configuration);	std::optional<std::string> unusable = false ? configuration_difference(recorded->configuration, configuration) : std::nullopt;	^negative_cross_tu$
@@ -145,8 +145,8 @@ member-call-writes-object	clang/src/bridge.cpp	const bool writes = (callee_recei
 const-receiver-mutable-member	clang/src/bridge.cpp	if (constant && !leaf.mutable_member) {	if (constant && (true || !leaf.mutable_member)) {	^negative_verified_methods$
 virtual-member-refused	clang/src/bridge.cpp	if (clang_CXXMethod_isVirtual(cursor) != 0) {	if (false && clang_CXXMethod_isVirtual(cursor) != 0) {	^negative_verified_methods$
 virtual-call-refused	clang/src/bridge.cpp	if (clang_CXXMethod_isVirtual(referenced) != 0) {	if (false && clang_CXXMethod_isVirtual(referenced) != 0) {	^negative_verified_methods$
-member-refinement-kept	clang/src/bridge.cpp	converted.refinements = std::move(*declared);	(void)declared;	^negative_verified_methods$
-container-element-refinement-kept	clang/src/bridge.cpp	auto refinements = refinements_of(declared, element, *known);	auto refinements = decltype(refinements_of(declared, element, *known)){};	^negative_containers$
+member-refinement-kept	clang/src/bridge.cpp	converted.refinements = std::move(*declared);	(void)declared;	^negative_verified_methods$|^negative_cross_feature$
+container-element-refinement-kept	clang/src/bridge.cpp	auto refinements = refinements_of(declared, element, *known);	auto refinements = decltype(refinements_of(declared, element, *known)){};	^negative_containers$|^negative_integration_ledger$
 reference-aggregate-witness	clang/src/bridge.cpp	if (parameter.type.kind == TypeKind::Value && source::aliases_storage(parameter.passing) &&	if (false && parameter.type.kind == TypeKind::Value && source::aliases_storage(parameter.passing) &&	^negative_verified_storage$
 unsafe-member-write-rooted	clang/src/bridge.cpp	return access.has_value() && !access->dereferenced && clang_equalCursors(access->declaration, declaration) != 0;	return access.has_value() && access->path.empty() && !access->dereferenced && clang_equalCursors(access->declaration, declaration) != 0;	^negative_unsafe_boundary$
 alias-write-charged	clang/src/bridge.cpp	            require(locals[index].type);	            (void)index;	^negative_verified_methods$
@@ -158,7 +158,7 @@ call-effect-common-alias-model	clang/src/bridge.cpp	[&](std::size_t written) { r
 pointer-receiver-capability	clang/src/bridge.cpp	if (!granted(position, kind)) {	if (false && !granted(position, kind)) {	^negative_verified_methods$
 rvalue-receiver-is-the-object	clang/src/bridge.cpp	return strip_parens(clang_Cursor_getArgument(expression, 0));	return (void)clang_Cursor_getArgument(expression, 0), expression;	^e2e_verified_methods$
 volatile-member-function-refused	clang/src/bridge.cpp	if (volatile_member_function(cursor)) {	if (false && volatile_member_function(cursor)) {	^negative_verified_methods$
-signed-overflow-owed	compiler/obligations/src/definedness.cpp	return type.is_integer() && type.integer_type().is_signed;	return false && type.is_integer();	^negative_signed_arithmetic$
+signed-overflow-owed	compiler/obligations/src/definedness.cpp	return type.is_integer() && type.integer_type().is_signed;	return false && type.is_integer();	^negative_signed_arithmetic$|^negative_integration_ledger$|^negative_cross_feature$
 zero-divisor-owed	compiler/obligations/src/definedness.cpp	site(Definedness::ZeroDivisor);	(void)0;	^negative_signed_arithmetic$
 quotient-overflow-owed	compiler/obligations/src/definedness.cpp	site(Definedness::QuotientOverflow);	(void)0;	^negative_signed_arithmetic$
 signed-conversion-owed	compiler/obligations/src/definedness.cpp	if (!to.is_integer() || !from.is_integer() || !to.integer_type().is_signed) {	if (true) {	^negative_signed_arithmetic$
