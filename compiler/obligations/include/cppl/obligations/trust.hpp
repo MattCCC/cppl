@@ -74,8 +74,11 @@ struct ImportedDependency {
     source::Digest entry; // the record's verification-result identity
     bool total = false;
     std::vector<artifact::Premise> premises;
+    // The models of code outside the program the other unit's proof rests on,
+    // transitively, such as the standard-library models its body used
+    // (SPEC.md STDMODEL-018, TUBOUND-006).
+    std::vector<artifact::Model> models;
     std::vector<artifact::UnsafeBlock> unsafe;
-    std::vector<std::string> models;
     std::vector<artifact::Dependency> depends;
     // Whether the claim's own body calls it, rather than a verified function
     // of this unit that the body calls.
@@ -152,8 +155,9 @@ struct ClaimClosure {
 // contract it was proven through (TRUST.md TCB-REPORT-005).
 [[nodiscard]] bool rests_on_unsafe_code(const ClaimClosure& claim);
 
-// Whether a claim rests on a library model, used here or by the proof of
-// another unit's contract it was proven through (SPEC.md STDMODEL-018).
+// Whether a claim rests on a standard-library model, used by this unit or by
+// the proof of a contract of another unit it was proven through (SPEC.md
+// STDMODEL-018, TUBOUND-006, TRUST.md TCB-LIB-010).
 [[nodiscard]] bool rests_on_library_models(const ClaimClosure& claim);
 
 // Whether a claim rests on a runtime validation site, of this unit or of

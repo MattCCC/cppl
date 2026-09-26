@@ -25,8 +25,8 @@ struct ImportedContract {
     std::string origin;   // the interface file
     source::Digest entry; // the record's verification-result identity
     std::vector<artifact::Premise> premises;
+    std::vector<artifact::Model> models;
     std::vector<artifact::UnsafeBlock> unsafe;
-    std::vector<std::string> models;
     std::vector<artifact::Dependency> depends;
     std::vector<artifact::RuntimeCheck> runtime = {};
 };

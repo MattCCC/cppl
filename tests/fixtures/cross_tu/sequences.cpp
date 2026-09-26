@@ -13,3 +13,9 @@ verified std::size_t three_listed()
     std::vector<unsigned> v{1u, 2u, 3u};
     return v.size();
 }
+
+verified std::size_t three_counted()
+    ensures (result == 3ul)
+{
+    return 3ul;
+}

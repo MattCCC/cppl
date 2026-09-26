@@ -3415,7 +3415,10 @@ and a unit that no longer verifies removes its interface.
 What a caller proves through another unit's contract is `PROVEN` relative to
 that record. `--cppl-trust-report` lists every imported contract, and under
 `Interface-dependent claims` every claim resting on one, together with any
-trusted law and unsafe block the other unit's proof rested on:
+trusted law and unsafe block the other unit's proof rested on; a standard
+container model that proof used, even only in the other unit's body, is listed
+under `Library-model-dependent claims` with the record it arrived through
+(`TRUST.md` TCB-LIB-010):
 
 ```text
 Function contracts imported: 1

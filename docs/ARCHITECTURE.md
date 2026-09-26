@@ -2534,7 +2534,9 @@ producing unit, --cppl-emit-interface=<file>
                 laws, library models, unsafe blocks, and the imported contracts
                 it rests on, each category apart
   obligations   exported_contracts turns each proven contract's closure into an
-                interface entry, carrying on what imported contracts rest on
+                interface entry, carrying on what imported contracts rest on; a
+                library model becomes a `model` item, an identity and a name
+                (library_model), so the format names no model itself
   driver        after the object is produced, binds the entries to the compiler
                 version, the declared verification-semantics version, the
                 verifier-semantics digest (generated at build time by
@@ -2564,7 +2566,8 @@ consuming unit, --cppl-import-interface=<file>...
                 established; every condition that supposes it is still checked
                 by the kernel
   trust         the imported contract is no claim of this unit; each claim
-                through it carries it and what its record rests on
+                through it carries it and what its record rests on, its models
+                included
   driver        the trust report lists imported contracts with their closures
                 and every claim that is interface-dependent, never as
                 assumption-free, and states that interface provenance is

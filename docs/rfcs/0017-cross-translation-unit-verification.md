@@ -279,11 +279,14 @@ oracle.
 the kernel prints it, for diagnostics only; `status proven`, the only status
 written or read; `total` or `partial`; and what the proof rests on, each
 category apart (`SPEC.md` TUBOUND-002): trusted laws by identity, name and
-location, unsafe blocks by location, library models by name, and imported
-contracts by symbol and verification-result identity, transitively. A
-function with internal linkage is never recorded or matched: its USR can be
-spelled the same in two units that mean two functions. Format version 2 added
-the library models; an interface of version 1 is refused as that.
+location, models of code outside the program (the standard-library models of
+RFC 0020) by identity and name, unsafe blocks by location, and imported
+contracts by symbol and verification-result identity, transitively.
+Models were added in format version 2, and a version 1 interface is refused,
+since it could not say whether a contract rested on one; the format knows no
+model by name, so adding one changes no format. A function with internal
+linkage is never recorded or matched: its USR can be spelled the same in two
+units that mean two functions.
 
 **Identity (step 4 and 5).** Rather than a manifest compared field by field,
 the consumer rebuilds the contract statement from its own declaration and

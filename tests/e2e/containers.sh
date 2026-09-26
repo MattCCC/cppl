@@ -115,40 +115,65 @@ done
 # SPEC: STDMODEL-018, TUBOUND-002, TUBOUND-006
 # Container contracts cross translation units through a verification interface.
 # A claim proven through one rests on the imported contract and is never
-# assumption-free, and it rests on every model the other unit's proof used:
-# the interface records them, apart from trusted laws and unsafe code, and a
-# claim whose own body uses no container still names them (TRUST.md
-# TCB-LIB-010).
+# assumption-free, and it names every model the other unit's proof used: in
+# the imported declaration, and in the other unit's body, which the interface
+# records with the contract and every unit after it carries on, apart from
+# trusted laws and unsafe code (TRUST.md TCB-LIB-010). `three_listed` and
+# `three_counted` differ only in whether the body uses a container, and so do
+# the claims proven through them.
 units="$run/units"
 mkdir -p "$units"
 cp "$FIXTURES/cross_tu/sequences.hpp" "$FIXTURES/cross_tu/sequences.cpp" "$FIXTURES/cross_tu/sequences_client.cpp" \
-    "$units/"
+    "$FIXTURES/cross_tu/sequences_middle.hpp" "$FIXTURES/cross_tu/sequences_middle.cpp" "$units/"
 (
     cd "$units"
     "$CPPL" -std=c++20 -c sequences.cpp -o sequences.o --cppl-emit-interface=sequences.cppli --cppl-trust-report \
         > sequences.report
+    "$CPPL" -std=c++20 -c sequences_middle.cpp -o middle.o --cppl-import-interface=sequences.cppli \
+        --cppl-emit-interface=middle.cppli --cppl-trust-report > middle.report
     "$CPPL" -std=c++20 -c sequences_client.cpp -o client.o --cppl-import-interface=sequences.cppli \
-        --cppl-trust-report > client.report
-    "$CLANG" sequences.o client.o -o program
+        --cppl-import-interface=middle.cppli --cppl-trust-report > client.report
+    "$CLANG" sequences.o middle.o client.o -o program
 )
-for line in 'Function contracts proven: +2' 'Library-model-dependent claims: 2'; do
+for line in 'Function contracts proven: +3' 'Library-model-dependent claims: 2'; do
     grep -Eq "^$line\$" "$units/sequences.report" || { echo "sequences.cpp does not report '$line'" >&2; exit 1; }
 done
-for line in 'Function contracts proven: +2' 'Function contracts imported: +2' 'Assumption-free claims: +0' \
-    'Library-model-dependent claims: 2' \
-    '    rests on the std::vector model, through the imported contract of three_listed \[c:@F@three_listed#\].*' \
-    '      whose proof rests on the std::vector model' \
-    'Interface provenance: +unauthenticated; 2 imported contracts are believed on the build.s word.*'; do
+# The record of each contract names the models its proof rested on, and no
+# other: the body that used a vector, and not its twin.
+recorded_models() {
+    awk -v symbol="$2" '$1 == "entry" { inside = ($2 == symbol) } inside && $1 == "model" { print $3 } $1 == "end" { inside = 0 }' "$1"
+}
+[ "$(recorded_models "$units/sequences.cppli" 'c:@F@three_listed#')" = 'std::vector%20model' ] ||
+    { echo "the record of three_listed does not name the std::vector model" >&2; exit 1; }
+[ -z "$(recorded_models "$units/sequences.cppli" 'c:@F@three_counted#')" ] ||
+    { echo "the record of three_counted names a model its proof did not use" >&2; exit 1; }
+[ "$(recorded_models "$units/middle.cppli" 'c:@F@listed_in_the_middle#')" = 'std::vector%20model' ] ||
+    { echo "the middle unit did not carry on the model its import rested on" >&2; exit 1; }
+for line in 'Function contracts proven: +4' 'Function contracts imported: +4' 'Assumption-free claims: +0' \
+    'Library-model-dependent claims: 3' '      whose proof rests on the std::vector model' \
+    'Interface provenance: +unauthenticated; 4 imported contracts are believed on the build.s word.*'; do
     grep -Eq "^$line\$" "$units/client.report" || {
         echo "the client does not report '$line'" >&2
         cat "$units/client.report" >&2
         exit 1
     }
 done
-sed -n '/^Library-model-dependent claims:/,$p' "$units/client.report" > "$units/models.listed"
-grep -q '^  contract of through_copy ' "$units/models.listed" || { echo "through_copy is not listed" >&2; exit 1; }
-if [ "$("$units/program")" != "3 3" ]; then
-    echo "the program built from two units printed '$("$units/program")'" >&2
+sed -n '/^Library-model-dependent claims:/,/^$/p' "$units/client.report" > "$units/models.listed"
+for listed in '^  contract of through_copy ' '^  contract of through_listed ' '^  contract of through_middle ' \
+    '^    rests on the std::vector model, identity [0-9a-f]{16}, through the imported contract of three_listed ' \
+    '^    rests on the std::vector model, identity [0-9a-f]{16}, through the imported contract of listed_in_the_middle '; do
+    grep -Eq "$listed" "$units/models.listed" || {
+        echo "the client does not list '$listed'" >&2
+        cat "$units/models.listed" >&2
+        exit 1
+    }
+done
+if grep -q 'through_counted' "$units/models.listed"; then
+    echo "a claim whose callee's proof used no model was listed as resting on one" >&2
+    exit 1
+fi
+if [ "$("$units/program")" != "3 3 3 3" ]; then
+    echo "the program built from three units printed '$("$units/program")'" >&2
     exit 1
 fi
 

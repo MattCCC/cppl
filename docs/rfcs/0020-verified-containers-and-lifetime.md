@@ -378,11 +378,15 @@ contract or body or through a verified call it makes. The closure is per model,
 not per operation: every operation of a model is one trusted statement of
 `TRUST.md` 28.1, listed there word for word.
 
-A verification interface (RFC 0017) records, for each contract, the models its
-proof rested on, as library-model dependencies apart from its trusted laws and
-unsafe blocks (interface format version 2, `SPEC.md` TUBOUND-002). A claim proven
-through an imported contract names each of them, through that contract, and it
-rests on the imported contract as well, so it is never assumption-free.
+A verification interface (RFC 0017) records the models each contract's proof
+rested on, as it records its premises and unsafe blocks, and every unit that
+imports the contract carries them on: a claim proven through an imported
+contract names the models of the other unit's declaration, body and callees,
+however many units away. The interface records a model as an identity the
+compiler gives it and a name, so the format itself names no container. This
+took interface format version 2; a version 1 interface, which could not say
+whether a contract rested on a model, is refused (`TRUST.md` TCB-LIB-010,
+`tests/e2e/containers.sh`, `tests/negative/cross_tu.sh`).
 
 ## 11. Erasure and ABI
 

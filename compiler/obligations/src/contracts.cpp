@@ -2633,7 +2633,7 @@ std::expected<ContractVerification, Refusal> import_contract(const vir::Function
     identity.update_field(recorded->identity.to_hex());
     plan.identity = identity.finish();
     plan.imported = ImportedContract{recorded->origin,       recorded->identity,     recorded->entry.premises,
-                                     recorded->entry.unsafe, recorded->entry.models, recorded->entry.depends,
+                                     recorded->entry.models, recorded->entry.unsafe, recorded->entry.depends,
                                      recorded->entry.runtime};
     return plan;
 }

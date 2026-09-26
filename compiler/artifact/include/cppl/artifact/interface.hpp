@@ -32,6 +32,10 @@ namespace cppl::artifact {
 // last line is the SHA-256 of every byte before it.
 
 inline constexpr std::string_view kMagic = "cppl-verification-interface";
+// Version 2 records the models of code outside the program an entry rests on
+// (`Model`), and version 3 the runtime validation sites (`RuntimeCheck`). A
+// reader refuses an interface of an earlier version, which could not say
+// whether a contract rested on either (SPEC.md TUBOUND-005).
 inline constexpr std::uint32_t kFormatVersion = 3;
 
 // Bounds on what a reader accepts and a writer produces. A reader never scans or
@@ -80,6 +84,20 @@ struct Premise {
     std::uint32_t line = 0;
 
     friend bool operator==(const Premise&, const Premise&) = default;
+};
+
+// A trusted model a recorded contract rests on that is not a law of the
+// program: what the producing compiler takes code outside the program, such as
+// the standard library the program runs with, to do, which nothing verified
+// (SPEC.md TUBOUND-006, STDMODEL-018). The format knows nothing of what is
+// modeled: the identity is the producing compiler's, and the name is what a
+// report shows. Like a premise, it is carried and reported by every unit whose
+// claims rest on the entry, never re-affirmed.
+struct Model {
+    source::Digest identity;
+    std::string name;
+
+    friend bool operator==(const Model&, const Model&) = default;
 };
 
 // An unsafe block a recorded contract rests on (SPEC.md TUBOUND-006).
@@ -139,10 +157,8 @@ struct Entry {
     std::string contract;
     Correctness correctness = Correctness::Partial;
     std::vector<Premise> premises;
+    std::vector<Model> models;
     std::vector<UnsafeBlock> unsafe;
-    // The standard-library models the proof rests on, by the name the trust
-    // report gives each (SPEC.md STDMODEL-018).
-    std::vector<std::string> models;
     std::vector<RuntimeCheck> runtime;
     std::vector<Dependency> depends;
 

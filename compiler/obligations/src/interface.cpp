@@ -339,6 +339,14 @@ const RefusedEntry* Imports::refusal(std::string_view symbol) const {
     return found == refused.end() ? nullptr : &*found;
 }
 
+artifact::Model library_model(source::RepresentationKind model) {
+    const std::string name(source::describe_model(model));
+    source::Hasher hasher;
+    hasher.update_field("cppl-library-model-v1");
+    hasher.update_field(name);
+    return artifact::Model{hasher.finish(), name + " model"};
+}
+
 std::vector<artifact::Entry> exported_contracts(const Program& program, const TrustClosure& closure) {
     std::vector<artifact::Entry> exported;
     for (const ClaimClosure& claim : closure.claims) {
@@ -365,12 +373,15 @@ std::vector<artifact::Entry> exported_contracts(const Program& program, const Tr
             entry.premises.push_back(
                 artifact::Premise{premise.identity.digest, premise.name, premise.location.file, premise.location.line});
         }
+        // Every model the contract rests on, its own body's and contract's and
+        // those of what it calls, as the trust closure computed them (SPEC.md
+        // STDMODEL-018).
+        for (const LibraryDependency& dependency : claim.library) {
+            entry.models.push_back(library_model(dependency.model));
+        }
         for (const UnsafeDependency& dependency : claim.unsafe) {
             entry.unsafe.push_back(
                 artifact::UnsafeBlock{dependency.location.file, dependency.location.line, dependency.location.column});
-        }
-        for (const LibraryDependency& dependency : claim.library) {
-            entry.models.emplace_back(source::describe_model(dependency.model));
         }
         for (const RuntimeCheck& check : claim.runtime) {
             entry.runtime.push_back(artifact::RuntimeCheck{check.location.file, check.location.line,
@@ -381,8 +392,8 @@ std::vector<artifact::Entry> exported_contracts(const Program& program, const Tr
         // TUBOUND-002, TUBOUND-006, TUBOUND-009).
         for (const ImportedDependency& imported : claim.imported) {
             entry.premises.insert(entry.premises.end(), imported.premises.begin(), imported.premises.end());
-            entry.unsafe.insert(entry.unsafe.end(), imported.unsafe.begin(), imported.unsafe.end());
             entry.models.insert(entry.models.end(), imported.models.begin(), imported.models.end());
+            entry.unsafe.insert(entry.unsafe.end(), imported.unsafe.begin(), imported.unsafe.end());
             entry.runtime.insert(entry.runtime.end(), imported.runtime.begin(), imported.runtime.end());
             entry.depends.push_back(artifact::Dependency{imported.symbol, imported.entry});
             entry.depends.insert(entry.depends.end(), imported.depends.begin(), imported.depends.end());

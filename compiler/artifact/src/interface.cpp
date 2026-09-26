@@ -135,12 +135,12 @@ std::string premise_line(const Premise& premise) {
            " " + encode(premise.name);
 }
 
-std::string unsafe_line(const UnsafeBlock& block) {
-    return "unsafe " + std::to_string(block.line) + " " + std::to_string(block.column) + " " + encode(block.file);
+std::string model_line(const Model& model) {
+    return "model " + model.identity.to_hex() + " " + encode(model.name);
 }
 
-std::string model_line(const std::string& model) {
-    return "model " + encode(model);
+std::string unsafe_line(const UnsafeBlock& block) {
+    return "unsafe " + std::to_string(block.line) + " " + std::to_string(block.column) + " " + encode(block.file);
 }
 
 std::string runtime_line(const RuntimeCheck& check) {
@@ -189,11 +189,11 @@ std::string entry_text(const Entry& entry) {
     for (const std::string& premise : canonical_lines(entry.premises, premise_line)) {
         line(premise);
     }
-    for (const std::string& block : canonical_lines(entry.unsafe, unsafe_line)) {
-        line(block);
-    }
     for (const std::string& model : canonical_lines(entry.models, model_line)) {
         line(model);
+    }
+    for (const std::string& block : canonical_lines(entry.unsafe, unsafe_line)) {
+        line(block);
     }
     for (const std::string& check : canonical_lines(entry.runtime, runtime_line)) {
         line(check);
@@ -215,6 +215,11 @@ std::optional<std::string> entry_problem(const Entry& entry) {
             return "a premise of '" + entry.name + "' lacks its name or location";
         }
     }
+    for (const Model& model : entry.models) {
+        if (model.name.empty()) {
+            return "a model '" + entry.name + "' rests on lacks its name";
+        }
+    }
     for (const UnsafeBlock& block : entry.unsafe) {
         if (block.file.empty() || block.line == 0) {
             return "an unsafe block of '" + entry.name + "' lacks its location";
@@ -230,13 +235,13 @@ std::optional<std::string> entry_problem(const Entry& entry) {
             return "a dependency of '" + entry.name + "' lacks its symbol";
         }
     }
-    for (const std::string& model : entry.models) {
-        if (!is_library_model(model)) {
-            return "'" + entry.name + "' rests on '" + model + "', which is not a library model";
+    for (const Model& model : entry.models) {
+        if (!is_library_model(model.name)) {
+            return "'" + entry.name + "' rests on '" + model.name + "', which is not a library model";
         }
     }
-    if (entry.premises.size() > kMaxEntryItems || entry.unsafe.size() > kMaxEntryItems ||
-        entry.models.size() > kMaxEntryItems || entry.runtime.size() > kMaxEntryItems ||
+    if (entry.premises.size() > kMaxEntryItems || entry.models.size() > kMaxEntryItems ||
+        entry.unsafe.size() > kMaxEntryItems || entry.runtime.size() > kMaxEntryItems ||
         entry.depends.size() > kMaxEntryItems) {
         return "'" + entry.name + "' rests on more than " + std::to_string(kMaxEntryItems) + " items of one kind";
     }
@@ -504,6 +509,38 @@ std::expected<Entry, ParseError> parse_entry(Parser& parser, const Line& opening
 
     previous = {};
     while (true) {
+        auto line = parser.take_if("model", 2);
+        if (!line) {
+            return std::unexpected(line.error());
+        }
+        if (!line->has_value()) {
+            break;
+        }
+        const Line& model_line = **line;
+        if (entry.models.size() == kMaxEntryItems) {
+            return malformed("an entry rests on more than " + std::to_string(kMaxEntryItems) + " models", model_line);
+        }
+        if (auto ordered = in_order(previous, model_line, "models"); !ordered) {
+            return std::unexpected(ordered.error());
+        }
+        previous = model_line.text;
+        auto identity = digest_field(model_line, 1);
+        auto modeled = text_field(model_line, 2);
+        if (!identity || !modeled) {
+            return std::unexpected(!identity ? identity.error() : modeled.error());
+        }
+        // A model this compiler does not have could not be reported, and a
+        // claim resting on it would lose a premise (SPEC.md TUBOUND-006).
+        if (!is_library_model(*modeled)) {
+            return malformed("the entry for " + quoted(entry.name) + " rests on " + quoted(*modeled) +
+                                 ", which is not a library model this compiler has",
+                             model_line);
+        }
+        entry.models.push_back(Model{*identity, std::move(*modeled)});
+    }
+
+    previous = {};
+    while (true) {
         auto line = parser.take_if("unsafe", 3);
         if (!line) {
             return std::unexpected(line.error());
@@ -527,38 +564,6 @@ std::expected<Entry, ParseError> parse_entry(Parser& parser, const Line& opening
             return std::unexpected(!at ? at.error() : !column ? column.error() : file.error());
         }
         entry.unsafe.push_back(UnsafeBlock{std::move(*file), *at, *column});
-    }
-
-    previous = {};
-    while (true) {
-        auto line = parser.take_if("model", 1);
-        if (!line) {
-            return std::unexpected(line.error());
-        }
-        if (!line->has_value()) {
-            break;
-        }
-        const Line& model_line = **line;
-        if (entry.models.size() == kMaxEntryItems) {
-            return malformed("an entry rests on more than " + std::to_string(kMaxEntryItems) + " library models",
-                             model_line);
-        }
-        if (auto ordered = in_order(previous, model_line, "library models"); !ordered) {
-            return std::unexpected(ordered.error());
-        }
-        previous = model_line.text;
-        auto model = text_field(model_line, 1);
-        if (!model) {
-            return std::unexpected(model.error());
-        }
-        // A model this compiler does not have could not be reported, and a
-        // claim resting on it would lose a premise (SPEC.md TUBOUND-006).
-        if (!is_library_model(*model)) {
-            return malformed("the entry for " + quoted(entry.name) + " rests on " + quoted(*model) +
-                                 ", which is not a library model this compiler has",
-                             model_line);
-        }
-        entry.models.push_back(std::move(*model));
     }
 
     previous = {};
@@ -668,7 +673,12 @@ source::Digest identify(const Entry& entry) {
         unsafe.push_back(unsafe_line(block));
     }
     set(std::move(unsafe));
-    set(entry.models);
+    std::vector<std::string> models;
+    models.reserve(entry.models.size());
+    for (const Model& model : entry.models) {
+        models.push_back(model.identity.to_hex());
+    }
+    set(std::move(models));
     // A runtime validation site is where it is and what it enters; the
     // predicate is shown, not identified (SPEC.md RUNTIMECHECK-015).
     std::vector<std::string> runtime;
@@ -689,7 +699,7 @@ source::Digest identify(const Entry& entry) {
 bool is_library_model(std::string_view name) {
     using K = source::RepresentationKind;
     return std::ranges::any_of(std::array{K::StdArray, K::Vector, K::String, K::Span},
-                               [name](K kind) { return source::describe_model(kind) == name; });
+                               [name](K kind) { return std::string(source::describe_model(kind)) + " model" == name; });
 }
 
 std::expected<std::string, std::string> serialize(const Interface& recorded) {

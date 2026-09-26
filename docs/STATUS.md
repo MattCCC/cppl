@@ -2082,9 +2082,13 @@ and `writable` of `const` elements is refused where it is stated.
 
 Every claim resting on a function that uses a container, directly or through a
 call, is listed under `Library-model-dependent claims` and never counted
-assumption-free. Across translation units the list is whole: a verification
-interface records the models each contract's proof rested on, and a claim
-proven through an imported contract names each of them through it. Iterators, range-`for`, `at`, `front`, `insert`, `resize`,
+assumption-free. Across translation units the list is complete: a verification
+interface (format version 2 onwards) records with each contract the models its proof
+used, in its declaration, its body and its callees, and every unit that
+imports it carries them on, so a claim proven through an imported contract
+names each of them with the record it arrived through (`TRUST.md`
+TCB-LIB-010). An interface of the earlier format, which could not say, is
+refused. Iterators, range-`for`, `at`, `front`, `insert`, `resize`,
 `emplace_back`, `subspan`, `std::string_view`, static-extent spans, custom
 allocators, `std::vector<bool>`, element types other than integers and `bool`,
 refined element types anywhere but a `vector` local (parameters, results, spans

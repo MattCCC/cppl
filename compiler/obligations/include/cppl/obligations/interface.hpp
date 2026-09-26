@@ -4,6 +4,7 @@
 #include "cppl/obligations/obligation.hpp"
 #include "cppl/obligations/trust.hpp"
 #include "cppl/source/digest.hpp"
+#include "cppl/source/representation.hpp"
 
 #include <string>
 #include <string_view>
@@ -46,12 +47,17 @@ struct Imports {
     [[nodiscard]] const RefusedEntry* refusal(std::string_view symbol) const;
 };
 
+// A standard-library model as a verification interface records it: the
+// identity this compiler gives the model and the name a report shows (RFC 0020
+// §10, TRUST.md TCB-LIB-010). The interface format itself names no model.
+[[nodiscard]] artifact::Model library_model(source::RepresentationKind model);
+
 // The contracts this unit proved, as its own verification interface records
 // them (SPEC.md TUBOUND-002): each with its statement identity, whether it is total,
-// and what it rests on, its own trusted laws and unsafe blocks and those of
-// every contract of another unit it was proven through (TUBOUND-006). A contract
-// imported rather than proven here is not among them, and neither is one whose
-// statement identity could not be computed.
+// and what it rests on, its own trusted laws, standard-library models and unsafe
+// blocks and those of every contract of another unit it was proven through
+// (TUBOUND-006, STDMODEL-018). A contract imported rather than proven here is not
+// among them, and neither is one whose statement identity could not be computed.
 [[nodiscard]] std::vector<artifact::Entry> exported_contracts(const Program& program, const TrustClosure& closure);
 
 } // namespace cppl::obligations

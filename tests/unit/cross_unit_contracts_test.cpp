@@ -16,7 +16,9 @@
 #include "cppl/obligations/interface.hpp"
 #include "cppl/obligations/obligation.hpp"
 #include "cppl/obligations/status.hpp"
+#include "cppl/obligations/trust.hpp"
 #include "cppl/source/digest.hpp"
+#include "cppl/source/representation.hpp"
 #include "cppl/source/storage.hpp"
 #include "cppl/testing/test.hpp"
 #include "cppl/vir/expr.hpp"
@@ -145,7 +147,7 @@ bool mentions(const cppl::diagnostics::Engine& engine, std::string_view text) {
 }
 
 o::ImportedEntry record(const std::string& symbol, cppl::source::Digest statement, artifact::Correctness correctness,
-                        std::vector<artifact::Dependency> depends = {}) {
+                        std::vector<artifact::Dependency> depends = {}, std::vector<artifact::Model> models = {}) {
     artifact::Entry entry;
     entry.symbol = symbol;
     entry.name = symbol;
@@ -153,13 +155,14 @@ o::ImportedEntry record(const std::string& symbol, cppl::source::Digest statemen
     entry.contract = "recorded";
     entry.correctness = correctness;
     entry.depends = std::move(depends);
+    entry.models = std::move(models);
     return o::ImportedEntry{"other.cppli", entry, artifact::identify(entry)};
 }
 
 o::Imports recording(const std::string& symbol, cppl::source::Digest statement, artifact::Correctness correctness,
-                     std::vector<artifact::Dependency> depends = {}) {
+                     std::vector<artifact::Dependency> depends = {}, std::vector<artifact::Model> models = {}) {
     o::Imports imports;
-    imports.entries.push_back(record(symbol, statement, correctness, std::move(depends)));
+    imports.entries.push_back(record(symbol, statement, correctness, std::move(depends), std::move(models)));
     return imports;
 }
 
@@ -394,6 +397,68 @@ CPPL_TEST(a_diamond_of_contracts_across_units_is_accepted) {
     for (const std::string& symbol : {b, c, d, std::string("c:@F@a#i#")}) {
         CPPL_CHECK(contract_of(diamond.program, symbol) != nullptr);
     }
+}
+
+// A model another unit's proof rested on is not re-affirmed here: it arrives
+// with the record, stays in the closure of every claim proven through it, and
+// is recorded again for a unit further on. The pair differs only in whether the
+// record names one.
+//
+// SPEC: TUBOUND-006, TUBOUND-002, STDMODEL-018
+CPPL_TEST(a_model_a_recorded_contract_rests_on_reaches_every_claim_proven_through_it) {
+    const std::string callee = "c:@F@callee#i#";
+    const std::string caller = "c:@F@caller#i#";
+    const artifact::Model model = o::library_model(cppl::source::RepresentationKind::Vector);
+    CPPL_CHECK_EQ(model.name, std::string("std::vector model"));
+    CPPL_CHECK(!(model.identity == o::library_model(cppl::source::RepresentationKind::Span).identity));
+
+    const auto closed = [&](std::vector<artifact::Model> models) {
+        Generated generated =
+            generate({function(0, callee, std::nullopt), function(1, caller, call(callee, parameter(0, "x"), 7))},
+                     recording(callee, statement_of({}), artifact::Correctness::Total, {}, std::move(models)));
+        CPPL_CHECK(!generated.engine.has_errors());
+        cppl::diagnostics::Engine verified;
+        const std::vector<o::ObligationResult> results = cppl::automation::verify(generated.program, verified);
+        const o::TrustClosure closure =
+            o::close_trust(generated.program, results, cppl::automation::classify_crossings(generated.program));
+        CPPL_CHECK(closure.faults.empty());
+        const auto claim = std::ranges::find(closure.claims, caller, &o::ClaimClosure::symbol);
+        CPPL_CHECK(claim != closure.claims.end());
+        const std::vector<artifact::Entry> exported = o::exported_contracts(generated.program, closure);
+        const auto entry = std::ranges::find(exported, caller, &artifact::Entry::symbol);
+        CPPL_CHECK(entry != exported.end());
+        return std::pair{o::rests_on_library_models(*claim), entry->models};
+    };
+
+    const auto [rests, recorded] = closed({model});
+    CPPL_CHECK(rests);
+    CPPL_CHECK(recorded == std::vector<artifact::Model>{model});
+
+    const auto [rests_without, recorded_without] = closed({});
+    CPPL_CHECK(!rests_without);
+    CPPL_CHECK(recorded_without.empty());
+}
+
+// A model this unit's own body used is recorded for the contract that used it,
+// and for no other.
+//
+// SPEC: TUBOUND-002, STDMODEL-018
+CPPL_TEST(a_model_a_body_uses_is_recorded_with_its_contract) {
+    v::Function uses = function(0, "c:@F@uses#i#", literal(0));
+    uses.library_models = {cppl::source::RepresentationKind::String};
+    Generated generated = generate({std::move(uses), function(1, "c:@F@plain#i#", literal(0))});
+    CPPL_CHECK(!generated.engine.has_errors());
+    cppl::diagnostics::Engine verified;
+    const std::vector<o::ObligationResult> results = cppl::automation::verify(generated.program, verified);
+    const o::TrustClosure closure =
+        o::close_trust(generated.program, results, cppl::automation::classify_crossings(generated.program));
+    const std::vector<artifact::Entry> exported = o::exported_contracts(generated.program, closure);
+    const auto uses_entry = std::ranges::find(exported, std::string("c:@F@uses#i#"), &artifact::Entry::symbol);
+    const auto plain_entry = std::ranges::find(exported, std::string("c:@F@plain#i#"), &artifact::Entry::symbol);
+    CPPL_CHECK(uses_entry != exported.end() && plain_entry != exported.end());
+    CPPL_CHECK(uses_entry->models ==
+               std::vector<artifact::Model>{o::library_model(cppl::source::RepresentationKind::String)});
+    CPPL_CHECK(plain_entry->models.empty());
 }
 
 // SPEC: TU-003

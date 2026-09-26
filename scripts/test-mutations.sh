@@ -119,8 +119,6 @@ xtu-termination-request-compared	compiler/obligations/src/interface.cpp	hasher.u
 xtu-semantics-compared	compiler/driver/src/interface_io.cpp	if (recorded.semantics != current.semantics) {	if (false) {	^negative_cross_tu$
 xtu-verifier-compared	compiler/driver/src/interface_io.cpp	if (!(recorded.verifier == current.verifier)) {	if (false) {	^negative_cross_tu$
 xtu-result-identity-dependencies	compiler/artifact/src/interface.cpp	set(std::move(depends));	(void)depends;	^unit_interface_test$
-xtu-library-models-exported	compiler/obligations/src/interface.cpp	entry.models.emplace_back(source::describe_model(dependency.model));	(void)dependency;	^e2e_containers$
-xtu-library-models-through-import	compiler/obligations/src/trust.cpp	return !claim.library.empty() || std::ranges::any_of(claim.imported	return !claim.library.empty() || std::ranges::any_of(std::vector<ImportedDependency>{}	^e2e_containers$
 xtu-internal-linkage-not-imported	compiler/elaboration/src/elaborate.cpp	converted.defined_elsewhere = candidate.contract != nullptr && function->external_linkage;	converted.defined_elsewhere = candidate.contract != nullptr;	^negative_cross_tu$
 xtu-internal-linkage-not-exported	compiler/obligations/src/contracts.cpp	    if (function.external_linkage) {	    if (true) {	^e2e_cross_tu$|^unit_cross_unit_contracts_test$
 xtu-restatements-agree	compiler/obligations/src/contracts.cpp	if (!restatements_agree(function, pure_definitions, program, engine)) {	if (false && !restatements_agree(function, pure_definitions, program, engine)) {	^negative_cross_tu$|^unit_cross_unit_contracts_test$
@@ -137,6 +135,12 @@ xtu-withdraw-only-interfaces	compiler/driver/src/interface_io.cpp	if (first != s
 xtu-status-proven-only	compiler/artifact/src/interface.cpp	if (status->fields[1] != "proven") {	if (false) {	^unit_interface_test$|^negative_cross_tu$
 xtu-checksum-verified	compiler/artifact/src/interface.cpp	if (!(source::hash_bytes(text.substr(0, last_start)) == *recorded_checksum)) {	if (false) {	^unit_interface_test$|^negative_cross_tu$|^fuzz_interface_replay$
 xtu-canonical-order	compiler/artifact/src/interface.cpp	if (!previous.empty() && !(previous < line.text)) {	if (false && !previous.empty() && !(previous < line.text)) {	^unit_interface_test$
+xtu-format-version	compiler/artifact/include/cppl/artifact/interface.hpp	inline constexpr std::uint32_t kFormatVersion = 3;	inline constexpr std::uint32_t kFormatVersion = 2;	^unit_interface_test$|^negative_cross_tu$
+xtu-models-written	compiler/artifact/src/interface.cpp	canonical_lines(entry.models, model_line)	canonical_lines(std::vector<Model>{}, model_line)	^unit_interface_test$|^e2e_containers$
+xtu-models-exported	compiler/obligations/src/interface.cpp	entry.models.push_back(library_model(dependency.model));	(void)dependency;	^e2e_containers$|^unit_cross_unit_contracts_test$
+xtu-models-carried	compiler/obligations/src/interface.cpp	entry.models.insert(entry.models.end(), imported.models.begin(), imported.models.end());	(void)imported.models;	^e2e_containers$|^unit_cross_unit_contracts_test$
+xtu-models-imported	compiler/obligations/src/contracts.cpp	recorded->entry.models, recorded->entry.unsafe	std::vector<artifact::Model>{}, recorded->entry.unsafe	^e2e_containers$|^unit_cross_unit_contracts_test$
+xtu-models-reported	compiler/obligations/src/trust.cpp	return !claim.library.empty() || std::ranges::any_of(claim.imported	return !claim.library.empty() || std::ranges::any_of(std::vector<ImportedDependency>{}	^e2e_containers$|^unit_cross_unit_contracts_test$
 member-call-writes-object	clang/src/bridge.cpp	const bool writes = (callee_receiver.has_value() && callee_receiver->writes()) ||	const bool writes = false ||	^negative_verified_methods$
 const-receiver-mutable-member	clang/src/bridge.cpp	if (constant && !leaf.mutable_member) {	if (constant && (true || !leaf.mutable_member)) {	^negative_verified_methods$
 virtual-member-refused	clang/src/bridge.cpp	if (clang_CXXMethod_isVirtual(cursor) != 0) {	if (false && clang_CXXMethod_isVirtual(cursor) != 0) {	^negative_verified_methods$

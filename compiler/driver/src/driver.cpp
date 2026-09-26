@@ -351,8 +351,8 @@ void print_depends(const obligations::ImportedDependency& imported) {
         std::cout << "      whose proof rests on unsafe block (" << block.file << ":" << block.line << ":"
                   << block.column << ")\n";
     }
-    for (const std::string& model : imported.models) {
-        std::cout << "      whose proof rests on the " << model << " model\n";
+    for (const artifact::Model& model : imported.models) {
+        std::cout << "      whose proof rests on the " << model.name << "\n";
     }
     for (const artifact::RuntimeCheck& check : imported.runtime) {
         std::cout << "      whose proof rests on the runtime check of " << check.refinement << " (" << check.file << ":"
@@ -493,7 +493,9 @@ void print_trust_report(const Options& options, const Summary& summary) {
     // Each claim proven with a standard container's operations taken from its
     // model holds only if the library the program runs with behaves as the
     // model states, which nothing checked (SPEC.md STDMODEL-018, TRUST.md
-    // 28.1). It is PROVEN relative to that, never assumption-free.
+    // 28.1). It is PROVEN relative to that, never assumption-free. A model
+    // another unit's proof used arrives with the contract recorded for it,
+    // however many units away (TCB-LIB-010, SPEC.md TUBOUND-006).
     const auto library_reliant = std::ranges::count_if(summary.claims, obligations::rests_on_library_models);
     std::cout << "Library-model-dependent claims: " << library_reliant << "\n";
     for (const obligations::ClaimClosure& claim : summary.claims) {
@@ -509,9 +511,9 @@ void print_trust_report(const Options& options, const Summary& summary) {
         // The models another unit's proof used: a model is a model wherever the
         // proof that rests on it was made (SPEC.md TUBOUND-006).
         for (const obligations::ImportedDependency& imported : claim.imported) {
-            for (const std::string& model : imported.models) {
-                std::cout << "    rests on the " << model << " model, through the imported " << imported_from(imported)
-                          << "\n";
+            for (const artifact::Model& model : imported.models) {
+                std::cout << "    rests on the " << model.name << ", identity " << model.identity.to_short_hex(16)
+                          << ", through the imported " << imported_from(imported) << "\n";
             }
         }
     }

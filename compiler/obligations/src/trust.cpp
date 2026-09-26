@@ -316,7 +316,7 @@ TrustClosure close_trust(const Program& program, const std::vector<ObligationRes
         const ContractVerification& contract = program.contracts[index];
         const ImportedContract& recorded = *contract.imported;
         return ImportedDependency{contract.name,     contract.symbol, recorded.origin, recorded.entry,   contract.total,
-                                  recorded.premises, recorded.unsafe, recorded.models, recorded.depends, direct,
+                                  recorded.premises, recorded.models, recorded.unsafe, recorded.depends, direct,
                                   recorded.runtime};
     };
     const auto imported_list = [&](const std::map<std::size_t, bool>& found) {

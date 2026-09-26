@@ -18,8 +18,8 @@ contract forall%20(x:%20u32).%20x%20<%20100%20->%20result%20<%204
 status proven
 correctness total
 premise 8f1f74adf65864c86d3d471ea8ca9e329d4282489edc156c99604264090774bf 3 /work/src/clamp.cpp bounded
+model 6daaf7dd69b0088d0ace33bd97c4a56fe3e84cd5937b00a5103a893e3f7fbdf1 std::vector%20model
 unsafe 12 5 /work/src/clamp.cpp
-model std::vector
 depends e81d3b0e9d82feaaf5f6e55bdff24731d7eee08632ffa63801e6397290c5d20a c:@F@helper#i#
 end
 checksum 0000bb1c04c53b5019657702dfff97651f611d46e009cbcb81a1e5dd08ee3fc8

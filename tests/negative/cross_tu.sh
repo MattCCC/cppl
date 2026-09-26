@@ -174,6 +174,11 @@ awk '{ if ($1 == "semantics") print "semantics cppl-verification-semantics-9.9.9
 { cat resemantic.body; printf 'checksum %s\n' "$(sha256 < resemantic.body)"; } > resemantic.cppli
 refuse other_semantics_artifact "it was produced under other verification semantics: it records 'cppl-verification-semantics-9.9.9'" \
     client.cpp --cppl-import-interface=resemantic.cppli --cppl-import-interface=middle.cppli
+# SPEC: TUBOUND-005, STDMODEL-018 -- an intact interface of the format before
+# models were recorded cannot say whether a contract rested on one, so it is
+# refused whole rather than read as resting on none (TRUST.md TCB-LIB-010).
+refuse format_v1_fixture "it is format version '1', and this compiler reads only version 3" \
+    client.cpp "--cppl-import-interface=$NEGATIVE/xtu_format_v1.cppli"
 
 # SPEC: TUBOUND-005 -- the real artifact, damaged after it was written.
 head -c 300 library.cppli > cut.cppli

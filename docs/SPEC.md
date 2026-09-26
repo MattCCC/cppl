@@ -6651,7 +6651,9 @@ through two arguments of one call has no single post-state.
 [STDMODEL-018] Every claim resting on a verified function that uses a modeled sequence, in its
 contract, its body or the body of a function it calls, is proven relative to what that model
 states. Such a claim MUST be reported with each model it rests on and MUST NOT be reported as
-assumption-free.
+assumption-free. A model is one of the trusted assumptions a proof rests on in the sense of
+TUBOUND-002 and TUBOUND-006, so a function defined in another translation unit carries the
+models of its body to every claim proven through its recorded contract.
 
 [STDMODEL-019] Iterators, range-based `for`, element access other than `operator[]`, and every
 member of a modeled sequence not named in STDMODEL-011 to STDMODEL-017 are refused in a verified
