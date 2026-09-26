@@ -288,6 +288,7 @@ thing the refusal is about, is a function of `fixtures/containers.cpp`.
 | Trust report | positive, regression | covered — every claim resting on a model listed with it, directly and through a verified call, and only the pointer-only claim assumption-free; counting one assumption-free and not following calls are each mutation-checked (`e2e/containers.sh`, `e2e/trust_closure.sh` citing `STDMODEL-018`, `TCB-LIB-006`; `library-model-not-assumption-free`, `library-model-closure-through-calls`) |
 | Erasure and runtime behavior | erasure | covered — the program prints what its contracts state; identical output and assembly against a hand-erased twin at `-O0` and `-O2` in C++20 and C++23 (`e2e/containers.sh` citing `STDMODEL-022`, `ERASE-002`) |
 | Standard libraries | conformance | covered — the same claims against libc++ (macOS) and libstdc++ (`make ci-linux-gcc`) (`e2e/containers.sh`) |
+| Across translation units | positive, regression | covered — a contract over a vector parameter and one whose body alone uses a vector, proven in one unit and used in another through its interface; neither caller is assumption-free, and the one whose own body uses a vector names the model; the program linked from both runs as stated (`e2e/containers.sh`, `fixtures/cross_tu/sequences*.cpp` citing `STDMODEL-018`, `TUBOUND-006`). The models of the other unit's body are not recorded (`TRUST.md` TCB-LIB-010) |
 
 ### erasure and ABI
 

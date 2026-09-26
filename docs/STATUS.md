@@ -1917,7 +1917,10 @@ span or `data()` of a container it also passes by mutable reference.
 
 Every claim resting on a function that uses a container, directly or through a
 call, is listed under `Library-model-dependent claims` and never counted
-assumption-free. Iterators, range-`for`, `at`, `front`, `insert`, `resize`,
+assumption-free. Across translation units the list is short: a verification
+interface records no library models, so a claim proven through an imported
+contract names only the models that contract's own declaration uses. It is
+still never assumption-free, since it rests on the imported contract. Iterators, range-`for`, `at`, `front`, `insert`, `resize`,
 `emplace_back`, `subspan`, `std::string_view`, static-extent spans, custom
 allocators, `std::vector<bool>`, element types other than integers and `bool`,
 refined element types on parameters, and an element of a `std::array` a

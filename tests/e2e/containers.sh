@@ -88,4 +88,40 @@ for standard in c++20 c++23; do
     done
 done
 
+# SPEC: STDMODEL-018, TUBOUND-006
+# Container contracts cross translation units through a verification interface.
+# A claim proven through one rests on the imported contract and is never
+# assumption-free; the models it names are those its own body uses and those
+# the imported declaration uses, since an interface records no models of the
+# other unit's body (TRUST.md TCB-LIB-010).
+units="$run/units"
+mkdir -p "$units"
+cp "$FIXTURES/cross_tu/sequences.hpp" "$FIXTURES/cross_tu/sequences.cpp" "$FIXTURES/cross_tu/sequences_client.cpp" \
+    "$units/"
+(
+    cd "$units"
+    "$CPPL" -std=c++20 -c sequences.cpp -o sequences.o --cppl-emit-interface=sequences.cppli --cppl-trust-report \
+        > sequences.report
+    "$CPPL" -std=c++20 -c sequences_client.cpp -o client.o --cppl-import-interface=sequences.cppli \
+        --cppl-trust-report > client.report
+    "$CLANG" sequences.o client.o -o program
+)
+for line in 'Function contracts proven: +2' 'Library-model-dependent claims: 2'; do
+    grep -Eq "^$line\$" "$units/sequences.report" || { echo "sequences.cpp does not report '$line'" >&2; exit 1; }
+done
+for line in 'Function contracts proven: +2' 'Function contracts imported: +2' 'Assumption-free claims: +0' \
+    'Library-model-dependent claims: 1'; do
+    grep -Eq "^$line\$" "$units/client.report" || {
+        echo "the client does not report '$line'" >&2
+        cat "$units/client.report" >&2
+        exit 1
+    }
+done
+sed -n '/^Library-model-dependent claims:/,$p' "$units/client.report" > "$units/models.listed"
+grep -q '^  contract of through_copy ' "$units/models.listed" || { echo "through_copy is not listed" >&2; exit 1; }
+if [ "$("$units/program")" != "3 3" ]; then
+    echo "the program built from two units printed '$("$units/program")'" >&2
+    exit 1
+fi
+
 echo 'every verified container operation rests on its model, runs as stated, and erases to the same code'

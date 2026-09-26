@@ -113,6 +113,9 @@ tests:
     - tests/fixtures/containers.cpp
     - tests/fixtures/equivalence/containers.cpp
     - tests/fixtures/equivalence/containers.reference.cpp
+    - tests/fixtures/cross_tu/sequences.hpp
+    - tests/fixtures/cross_tu/sequences.cpp
+    - tests/fixtures/cross_tu/sequences_client.cpp
   negative:
     - tests/negative/containers.sh
     - tests/fixtures/negative/container_array_out_of_bounds.cpp

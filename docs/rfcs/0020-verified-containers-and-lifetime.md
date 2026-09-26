@@ -349,6 +349,13 @@ contract or body or through a verified call it makes. The closure is per model,
 not per operation: every operation of a model is one trusted statement of
 `TRUST.md` 28.1, listed there word for word.
 
+A verification interface (RFC 0017) records no library models. A claim proven
+through an imported contract names the models that contract's own declaration
+uses, and not those the other unit's body uses; it rests on the imported
+contract, so it is never assumption-free either way. Recording the models in
+the interface, as its premises and unsafe blocks are, is left to a later change
+of the interface format.
+
 ## 11. Erasure and ABI
 
 Nothing is added to the program: a container stays the ordinary `std::` type of
