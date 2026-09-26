@@ -22,8 +22,8 @@ namespace cppl::obligations {
 // is never taken from here: it is the one this unit stated from its own
 // declaration, which is used only because the record states the same one.
 struct ImportedContract {
-    std::string origin;   // the interface file
-    source::Digest entry; // the record's verification-result identity
+    std::string origin; // the interface file
+    source::Digest entry;
     std::vector<artifact::Premise> premises;
     std::vector<artifact::Model> models;
     std::vector<artifact::UnsafeBlock> unsafe;
@@ -211,17 +211,21 @@ struct ContractVerification {
 
     // The canonical identity of what the contract states, the same in every
     // unit that states it: parameter and result types, passing modes,
-    // preconditions, postcondition, memory capabilities, whether termination
-    // is asked for, and every pure definition they reach, by content rather
-    // than by name or by the number this unit gave a definition (SPEC.md
-    // TUBOUND-004). Absent when it could not be computed; such a contract is
-    // neither recorded in an interface nor matched against one.
+    // preconditions, postcondition, memory capabilities, measures and every
+    // pure definition they reach, transitively, by content rather than by name
+    // or by the number this unit gave a definition. Two declarations of one
+    // function in one unit are compared by it (SPEC.md TU-003): within a unit a
+    // measure is what recursive calls descend by. Absent when it could not be
+    // computed; such a contract is neither recorded in an interface nor matched
+    // against one.
     std::optional<source::Digest> statement;
 
-    // The same, with the measure itself in place of whether one is stated:
-    // what one unit's declarations of the function must agree on (SPEC.md
-    // TU-003). Present exactly when `statement` is.
-    std::optional<source::Digest> restatement;
+    // The same identity with each measure replaced by the one fact a caller in
+    // another unit relies on, that the declaration asks the function to
+    // terminate: recursion never crosses units (SPEC.md TUBOUND-008), so which
+    // measure proved termination is the proof's own affair there. This is what
+    // an interface records and a consumer compares (SPEC.md TUBOUND-004).
+    std::optional<source::Digest> interface_statement;
 };
 
 } // namespace cppl::obligations

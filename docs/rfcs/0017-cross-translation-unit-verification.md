@@ -294,21 +294,25 @@ compares a canonical statement identity with the recorded one. That identity
 hashes parameter and result types and passing modes, every precondition
 (refined parameters' predicates included), the postcondition (a refined result
 and reference post-states included), memory capabilities and whether the
-function asks to terminate, as kernel terms, with every pure definition they
-reach encoded by content in the order first reached, so it does not depend on
-how either unit numbered its definitions. Parameter names do not enter it, and
-neither does the measure: it is how the proving unit ranked its recursion, and
-recursion is never verified across units (`SPEC.md` TUBOUND-004). A second
-identity, the same with the measure itself, decides `TU-003` for two
-`verified` declarations of one function in one unit, which a header contract
-with a definition stating loop clauses needs.
+function is asked to terminate, as kernel terms, with every pure definition
+they reach, and every one those reach, transitively, encoded by content in the
+order first reached, so it does not depend on how either unit numbered its
+definitions. Parameter names do not enter it. The measure that proves
+termination does not either: `decreases` on a declaration asks for termination
+(`SPEC.md` TERMINATION-006), and which measure establishes it matters only to
+recursive calls, which never cross units (TUBOUND-008), so a producer may prove
+the same total contract under another measure than a consumer's declaration
+spells. The first implementation compared the measure too; the owner's review
+separated it. Within one unit a measure is what recursion descends by, so
+`TU-003` compares two `verified` declarations of one function with their
+measures, through the same encoding.
 
-A record's **verification-result identity** (`artifact::identify`) is what one
-record is compared with another by: the function, the statement identity,
-totality, and the identity of every dependency of every category, each
-imported contract by its own result identity. The function's name, the
-statement's text and where a trusted law is written are shown, not compared, so
-the identity is not that of the record's bytes (`SPEC.md` TUBOUND-009).
+A record is named by other records through an identity of the verification
+result (`artifact::identify`): the callable, the statement identity, the
+totality and, by identity, every trusted law, model, unsafe block and further
+record it rests on. Its name, its description and the names and locations of
+its assumptions are provenance and do not enter, so a dependent record survives
+a rewording and never survives a different result (TUBOUND-009).
 
 **Configuration and staleness (the manifest).** Compared exactly, and refused
 naming the first difference: the compiler's release version; the verification
@@ -353,13 +357,18 @@ report says that interface provenance is unauthenticated.
 **Totality and recursion.** A record is total or partial as recorded; totality
 follows it through callers, and a function asking to terminate cannot rest on a
 partial one. A record describing a function whose declaration states `decreases`
-as partial is refused. Recursion across units is refused as a property of the
-whole verified-contract dependency graph: a strongly connected component of it
-that includes an imported record, whether or not the importing unit's own
-functions lie on it, is refused with everything that reaches it (`SPEC.md`
-TUBOUND-008). Honest builds cannot produce one, since no unit on it could verify
-first, but a record claiming one is refused all the same
-(`tests/unit/cross_unit_contracts_test.cpp`).
+as partial is refused. Recursion across units is refused: honest builds cannot
+produce it, since neither unit could verify first, but a record claiming it is
+refused as well. The check is on a graph: every function of the consuming unit
+with an edge to each function it calls, and every record reached, with an edge to
+each contract its record says the proof rests on, whether a function of this
+unit or a record of a third. A strongly connected component of that graph with a
+record in it and a cycle (more than one member, or a record resting on itself)
+crosses units, and a contract whose proof reaches one is refused, whether the
+caller is in the cycle or only relies on it; a diamond, with no cycle, is used
+(`tests/unit/cross_unit_contracts_test.cpp`). The first implementation followed
+only the edges from a record back into this unit, which missed a cycle through a
+third unit's record whose own record was not transitive.
 
 **Templates.** An explicit specialization declared with its own contract is a
 function like any other, keyed by its USR, and crosses; `f<4>`'s record never

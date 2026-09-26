@@ -181,15 +181,14 @@ struct Interface {
     friend bool operator==(const Interface&, const Interface&) = default;
 };
 
-// The verification-result identity of one entry (SPEC.md TUBOUND-009): the
-// function, the statement, whether it is total, and the identity of every
-// dependency of every kind, runtime validation sites included, each dependency
-// on another unit's contract by that contract's own result identity. Two
-// entries share it exactly when a caller may conclude the same from either.
-// What is recorded only to be shown -- the function's name, the statement as
-// text, where a trusted law is written, the predicate a runtime check
-// established -- takes no part, so the identity is not that of the entry's
-// bytes.
+// The verification-result identity of one entry by meaning (SPEC.md
+// TUBOUND-009): the callable, the statement identity, whether it is total, and
+// by identity every trusted law, model, unsafe block, runtime validation site
+// and contract of another unit it rests on, each once. Two entries share it
+// exactly when a caller may conclude the same from either. The name, the
+// contract's description, the names and locations a law or model is reported
+// with and the predicate a runtime check established are provenance and do not
+// enter, so rewording one changes no dependent record.
 [[nodiscard]] source::Digest identify(const Entry& entry);
 
 // Whether a name is one a library model is reported under.

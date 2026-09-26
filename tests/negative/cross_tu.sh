@@ -191,6 +191,29 @@ reseal library.cppli other_verifier.cppli 's/^verifier .*/verifier 0000000000000
 refuse other_verifier "cannot use verification interface 'other_verifier.cppli': it was produced by a verifier built from other semantic sources" \
     client.cpp --cppl-import-interface=other_verifier.cppli --cppl-import-interface=middle.cppli
 
+# SPEC: TUBOUND-004 -- a contract's identity follows every pure definition it
+# reaches, transitively, and a measure only as the request to terminate: a
+# consumer declaring the same pure functions and another measure uses the
+# records, one whose inner pure function differs, or that does not ask to
+# terminate, is refused.
+accept identity identity.cpp --cppl-emit-interface=identity.cppli
+accept identity_client identity_client.cpp --cppl-import-interface=identity.cppli
+refuse transitive_differs "the contract this translation unit declares for 'stepped' is not the one 'identity.cppli' records as verified" \
+    "$NEGATIVE/xtu_transitive_differs.cpp" --cppl-import-interface=identity.cppli
+refuse measure_unrequested "the contract this translation unit declares for 'counted_down' is not the one 'identity.cppli' records as verified" \
+    "$NEGATIVE/xtu_measure_unrequested.cpp" --cppl-import-interface=identity.cppli
+
+# SPEC: TUBOUND-009 -- a record is identified by what it says was verified, not
+# how it says it: rewording clamp4's record leaves the middle unit's record,
+# proven through it, usable; recording it partial instead is another result,
+# and what rests on it is refused.
+reseal library.cppli reworded.cppli '/^entry c:@F@clamp4#i#$/,/^end$/ { s/^name .*/name clamp_to_four/; s/^contract .*/contract reworded/; }'
+accept reworded_record client.cpp --cppl-import-interface=reworded.cppli --cppl-import-interface=middle.cppli
+grep -q "^correctness total$" library.cppli || fail "library.cppli records no total contract to make partial"
+reseal library.cppli repartial.cppli '/^entry c:@F@clamp4#i#$/,/^end$/ s/^correctness total$/correctness partial/'
+refuse repartial_record "it was proven through the contract of 'c:@F@clamp4#i#', and no imported interface records that contract as it was" \
+    client.cpp --cppl-import-interface=repartial.cppli --cppl-import-interface=middle.cppli
+
 # SPEC: TUBOUND-005 -- staleness is content, never time or place: a source touched
 # but unchanged leaves the interface usable, and so does a copy of the interface
 # kept at another path.

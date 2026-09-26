@@ -3396,7 +3396,9 @@ no imported interface records the function
     a declaration is not evidence
 
 the declaration here states another contract than the one recorded
-    a stronger postcondition, a weaker precondition, another refinement
+    a stronger postcondition, a weaker precondition, another refinement, a
+    pure function it reaches (at any depth) defined otherwise, or `decreases`
+    written on one side only; the measure inside `decreases` may differ
 
 the call resolves to another overload or another specialization
     f<5> is never proven by f<4>'s record
@@ -3411,7 +3413,12 @@ the interface is not usable here
 
 what the record rests on is not imported
     a unit proven through a third unit's contract needs that interface too,
-    as it was when the proof was made
+    recording the same result as when the proof was made (a reworded record
+    is the same result; one that became partial, or rests on something else,
+    is not)
+
+two interfaces record different results for one function
+    an error naming both files; rebuild so that one unit records it
 ```
 
 A unit whose proof used another unit's contract records that it did, so a

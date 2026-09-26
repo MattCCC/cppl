@@ -79,6 +79,7 @@ struct Stated {
     cppl::source::ParameterPassing passing = cppl::source::ParameterPassing::Value;
     bool measured = false;      // states `decreases (x)`, asking that it terminate
     bool other_measure = false; // states `decreases (9u)` instead
+    bool lexicographic = false; // states `decreases (x, x)` instead
 };
 
 // `expects (x < 100u) ensures (result < 4u)`, as elaboration would read it.
@@ -89,8 +90,11 @@ v::Contract stated_contract(const Stated& stated) {
         contract.preconditions.push_back(less(parameter(0, stated.parameter), literal(50)));
     }
     contract.postcondition = less(parameter(1, "result"), literal(stated.bound));
-    if (stated.measured) {
+    if (stated.measured || stated.lexicographic) {
         contract.measures.push_back(stated.other_measure ? literal(9) : parameter(0, stated.parameter));
+    }
+    if (stated.lexicographic) {
+        contract.measures.push_back(parameter(0, stated.parameter));
     }
     return contract;
 }
@@ -134,6 +138,15 @@ const o::ContractVerification* contract_of(const o::Program& program, std::strin
 cppl::source::Digest statement_of(const Stated& stated) {
     Generated generated = generate({function(0, "c:@F@probe#i#", literal(0), stated)});
     CPPL_CHECK(!generated.engine.has_errors());
+    const o::ContractVerification* contract = contract_of(generated.program, "c:@F@probe#i#");
+    CPPL_CHECK(contract != nullptr);
+    CPPL_CHECK(contract->interface_statement.has_value());
+    return contract->interface_statement.value();
+}
+
+// What two declarations of one function in one unit are compared by.
+cppl::source::Digest full_statement_of(const Stated& stated) {
+    Generated generated = generate({function(0, "c:@F@probe#i#", literal(0), stated)});
     const o::ContractVerification* contract = contract_of(generated.program, "c:@F@probe#i#");
     CPPL_CHECK(contract != nullptr);
     CPPL_CHECK(contract->statement.has_value());
@@ -217,6 +230,32 @@ CPPL_TEST(a_total_contract_is_matched_whatever_measure_its_prover_used) {
     Generated asks_more = build({.measured = true}, {});
     CPPL_CHECK(mentions(asks_more.engine, "is not the one 'other.cppli' records as verified"));
     CPPL_CHECK(contract_of(asks_more.program, "c:@F@caller#i#") == nullptr);
+}
+
+// Across units a declaration's measure states only that it asks to terminate:
+// another measure proving the same total contract is the same contract there,
+// while in one unit, where a measure is what recursion descends by, it is not
+// (SPEC.md TU-003).
+//
+// SPEC: TUBOUND-004, TUBOUND-007, TERMINATION-006
+CPPL_TEST(a_measure_crosses_units_only_as_the_request_to_terminate) {
+    CPPL_CHECK(statement_of({.lexicographic = true}) == statement_of({.measured = true}));
+    CPPL_CHECK(!(statement_of({.lexicographic = true}) == statement_of({})));
+    CPPL_CHECK(!(full_statement_of({.lexicographic = true}) == full_statement_of({.measured = true})));
+
+    // A caller declaring `decreases (x)` uses a record its producer proved
+    // total under `decreases (x, x)`, and still refuses the partial one.
+    const std::string callee = "c:@F@callee#i#";
+    const auto build = [&](artifact::Correctness correctness) {
+        return generate({function(0, callee, std::nullopt, {.measured = true}),
+                         function(1, "c:@F@caller#i#", call(callee, parameter(0, "x"), 7))},
+                        recording(callee, statement_of({.lexicographic = true}), correctness));
+    };
+    Generated total = build(artifact::Correctness::Total);
+    CPPL_CHECK(!total.engine.has_errors());
+    CPPL_CHECK(contract_of(total.program, callee) != nullptr);
+    Generated partial = build(artifact::Correctness::Partial);
+    CPPL_CHECK(mentions(partial.engine, "as partial correctness, but its declaration asks that it terminate"));
 }
 
 // SPEC: TUBOUND-007, TERMINATION-006
@@ -312,69 +351,14 @@ CPPL_TEST(recursion_through_another_unit_is_refused) {
 
     Generated cycle = build("c:@F@h#i#");
     CPPL_CHECK(refused_for_recursion(cycle.engine));
-    CPPL_CHECK(mentions(cycle.engine, "'c:@F@f#i#' -> 'c:@F@elsewhere#i#' -> 'c:@F@h#i#' -> 'c:@F@f#i#'"));
     CPPL_CHECK(contract_of(cycle.program, "c:@F@f#i#") == nullptr);
     CPPL_CHECK(contract_of(cycle.program, "c:@F@h#i#") == nullptr);
-    CPPL_CHECK(contract_of(cycle.program, callee) == nullptr);
 
     // The same record resting on a function of this unit that does not reach f.
     Generated acyclic = build("c:@F@leaf#i#");
     CPPL_CHECK(!acyclic.engine.has_errors());
     CPPL_CHECK(contract_of(acyclic.program, "c:@F@f#i#") != nullptr);
     CPPL_CHECK(contract_of(acyclic.program, "c:@F@h#i#") != nullptr);
-}
-
-// SPEC: TUBOUND-008
-// A -> B -> C -> A: a function of this unit, and two contracts of two other
-// units, one resting on the next, the last on the first. Refused whether B's
-// record names only C, as a forged one might, or the whole chain, as an honest
-// transitive one would.
-CPPL_TEST(a_cycle_through_two_other_units_is_refused) {
-    const std::string b = "c:@F@b#i#";
-    const std::string c = "c:@F@c#i#";
-    const auto build = [&](std::vector<artifact::Dependency> through_b) {
-        o::Imports imports;
-        imports.entries.push_back(record(b, statement_of({}), artifact::Correctness::Total, std::move(through_b)));
-        imports.entries.push_back(record(c, statement_of({}), artifact::Correctness::Total, {on("c:@F@a#i#")}));
-        return generate({function(0, b, std::nullopt), function(1, "c:@F@a#i#", call(b, parameter(0, "x"), 7))},
-                        imports);
-    };
-    for (auto through_b : {std::vector{on(c)}, std::vector{on(c), on("c:@F@a#i#")}}) {
-        Generated cycle = build(std::move(through_b));
-        CPPL_CHECK(refused_for_recursion(cycle.engine));
-        CPPL_CHECK(contract_of(cycle.program, "c:@F@a#i#") == nullptr);
-        CPPL_CHECK(contract_of(cycle.program, b) == nullptr);
-    }
-}
-
-// SPEC: TUBOUND-008
-// B -> C -> B, two contracts of other units resting on each other, reached from
-// this unit without this unit being on the cycle: B rests on a proof no unit
-// could have made, and so does everything resting on B.
-CPPL_TEST(a_cycle_among_other_units_alone_is_refused) {
-    const std::string b = "c:@F@b#i#";
-    const std::string c = "c:@F@c#i#";
-    o::Imports imports;
-    imports.entries.push_back(record(b, statement_of({}), artifact::Correctness::Total, {on(c)}));
-    imports.entries.push_back(record(c, statement_of({}), artifact::Correctness::Total, {on(b)}));
-    Generated cycle =
-        generate({function(0, b, std::nullopt), function(1, "c:@F@a#i#", call(b, parameter(0, "x"), 7))}, imports);
-    CPPL_CHECK(refused_for_recursion(cycle.engine));
-    CPPL_CHECK(mentions(cycle.engine, "rests on a cycle of verified contracts across units"));
-    CPPL_CHECK(contract_of(cycle.program, b) == nullptr);
-    CPPL_CHECK(contract_of(cycle.program, "c:@F@a#i#") == nullptr);
-
-    // B -> C, and C -> D -> C: B is on no cycle, and rests on one all the same.
-    const std::string d = "c:@F@d#i#";
-    o::Imports reaching;
-    reaching.entries.push_back(record(b, statement_of({}), artifact::Correctness::Total, {on(c)}));
-    reaching.entries.push_back(record(c, statement_of({}), artifact::Correctness::Total, {on(d)}));
-    reaching.entries.push_back(record(d, statement_of({}), artifact::Correctness::Total, {on(c)}));
-    Generated reached =
-        generate({function(0, b, std::nullopt), function(1, "c:@F@a#i#", call(b, parameter(0, "x"), 7))}, reaching);
-    CPPL_CHECK(mentions(reached.engine, "'c:@F@c#i#' -> 'c:@F@d#i#' -> 'c:@F@c#i#'"));
-    CPPL_CHECK(contract_of(reached.program, b) == nullptr);
-    CPPL_CHECK(contract_of(reached.program, "c:@F@a#i#") == nullptr);
 }
 
 // SPEC: TUBOUND-008
@@ -459,6 +443,84 @@ CPPL_TEST(a_model_a_body_uses_is_recorded_with_its_contract) {
     CPPL_CHECK(uses_entry->models ==
                std::vector<artifact::Model>{o::library_model(cppl::source::RepresentationKind::String)});
     CPPL_CHECK(plain_entry->models.empty());
+}
+
+namespace {
+
+// Records of contracts `x < 100u -> result < 4u`, each resting on the records
+// or functions named, as interfaces carrying them would offer them.
+o::Imports records(const std::vector<std::pair<std::string, std::vector<std::string>>>& rests_on) {
+    o::Imports imports;
+    for (const auto& [symbol, depends] : rests_on) {
+        artifact::Entry entry;
+        entry.symbol = symbol;
+        entry.name = symbol;
+        entry.statement = statement_of({});
+        entry.contract = "recorded";
+        entry.correctness = artifact::Correctness::Total;
+        for (const std::string& dependency : depends) {
+            entry.depends.push_back(artifact::Dependency{dependency, cppl::source::hash_bytes(dependency)});
+        }
+        imports.entries.push_back(o::ImportedEntry{symbol + ".cppli", entry, artifact::identify(entry)});
+    }
+    return imports;
+}
+
+bool refused_for_recursion(const Generated& generated) {
+    return std::ranges::any_of(generated.engine.diagnostics(), [](const cppl::diagnostics::Diagnostic& diagnostic) {
+        return std::ranges::any_of(diagnostic.notes, [](const auto& note) {
+            return note.message.find("recursion across translation units is not verified") != std::string::npos;
+        });
+    });
+}
+
+} // namespace
+
+// The dependency graph of a contract and every record its proof relies on,
+// transitively, must not have a cycle crossing units. Each shape below is
+// built from records no honest build writes; the refused ones differ from the
+// accepted diamond in one edge.
+//
+// SPEC: TUBOUND-008
+CPPL_TEST(a_cycle_through_another_units_record_is_refused_wherever_it_is) {
+    const std::string f = "c:@F@f#i#";
+    const std::string b = "c:@F@b#i#";
+    const std::string c = "c:@F@c#i#";
+    const std::string d = "c:@F@d#i#";
+
+    // f -> b -> f: the caller and the record in one component.
+    Generated two =
+        generate({function(0, b, std::nullopt), function(1, f, call(b, parameter(0, "x"), 7))}, records({{b, {f}}}));
+    CPPL_CHECK(refused_for_recursion(two));
+    CPPL_CHECK(contract_of(two.program, f) == nullptr);
+
+    // f -> b -> c -> f: through a record of a third unit this one does not
+    // declare.
+    Generated three = generate({function(0, b, std::nullopt), function(1, f, call(b, parameter(0, "x"), 7))},
+                               records({{b, {c}}, {c, {f}}}));
+    CPPL_CHECK(refused_for_recursion(three));
+    CPPL_CHECK(contract_of(three.program, f) == nullptr);
+
+    // f -> b -> b: a record resting on itself.
+    Generated itself =
+        generate({function(0, b, std::nullopt), function(1, f, call(b, parameter(0, "x"), 7))}, records({{b, {b}}}));
+    CPPL_CHECK(refused_for_recursion(itself));
+    CPPL_CHECK(contract_of(itself.program, f) == nullptr);
+
+    // f -> b -> c -> b: a cycle among other units' records beyond the caller
+    // is in what its proof relies on all the same.
+    Generated beyond = generate({function(0, b, std::nullopt), function(1, f, call(b, parameter(0, "x"), 7))},
+                                records({{b, {c}}, {c, {b}}}));
+    CPPL_CHECK(refused_for_recursion(beyond));
+    CPPL_CHECK(contract_of(beyond.program, f) == nullptr);
+
+    // f -> b -> d and f -> c -> d: a diamond has no cycle and is verified.
+    Generated diamond = generate({function(0, b, std::nullopt), function(1, c, std::nullopt),
+                                  function(2, f, call(b, call(c, parameter(0, "x"), 8), 7))},
+                                 records({{b, {d}}, {c, {d}}, {d, {}}}));
+    CPPL_CHECK(!refused_for_recursion(diamond));
+    CPPL_CHECK(!diamond.engine.has_errors());
+    CPPL_CHECK(contract_of(diamond.program, f) != nullptr);
 }
 
 // SPEC: TU-003

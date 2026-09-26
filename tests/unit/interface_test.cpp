@@ -137,8 +137,8 @@ CPPL_TEST(the_text_of_an_interface_does_not_depend_on_the_order_it_was_assembled
     CPPL_CHECK_EQ(text_of(first), text_of(second));
 }
 
-// SPEC: TUBOUND-002, TUBOUND-009
-CPPL_TEST(a_result_identity_covers_the_contract_and_every_dependency_of_every_kind) {
+// SPEC: TUBOUND-004, TUBOUND-009
+CPPL_TEST(an_entry_identity_covers_every_field_of_meaning) {
     const artifact::Entry base = sample().entries.front();
     const Digest identity = artifact::identify(base);
     CPPL_CHECK(artifact::identify(base) == identity);
@@ -198,6 +198,25 @@ CPPL_TEST(a_result_identity_covers_the_contract_and_every_dependency_of_every_ki
     changed = base;
     changed.depends.front().symbol = "c:@F@other_helper#i#";
     CPPL_CHECK(differs(changed));
+    changed = base;
+    changed.unsafe.front().line = 13;
+    CPPL_CHECK(differs(changed));
+
+    // What only describes the record is provenance: rewording it, renaming
+    // the function or an assumption, moving where a law is written, or showing
+    // a runtime check's predicate otherwise leaves every dependent record
+    // usable (SPEC.md TUBOUND-009, RUNTIMECHECK-015).
+    changed = base;
+    changed.contract = "forall (x: u32). x < 100 -> result < 5";
+    changed.name = "clamp_to_four";
+    changed.premises.front().name = "bounded_again";
+    changed.premises.front().file = "/elsewhere/clamp.cpp";
+    changed.premises.front().line = 30;
+    changed.models.front().name = "the vector model, renamed";
+    changed.runtime.front().predicate = "(self <= 3)";
+    CPPL_CHECK(!differs(changed));
+    changed.premises.push_back(changed.premises.front());
+    CPPL_CHECK(!differs(changed));
 
     // One dependency of each kind never stands for one of another kind.
     artifact::Entry only_premise = base;

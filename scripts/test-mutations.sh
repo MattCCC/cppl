@@ -90,7 +90,7 @@ runtime-check-closure-through-calls	compiler/obligations/src/trust.cpp	changed =
 runtime-check-imported-closure	compiler/obligations/src/trust.cpp	recorded.runtime};	std::vector<artifact::RuntimeCheck>{}};	^e2e_runtime_validation$
 runtime-check-exported	compiler/obligations/src/interface.cpp	entry.runtime.push_back(artifact::RuntimeCheck{	(void)(artifact::RuntimeCheck{	^e2e_runtime_validation$
 runtime-check-carried-on	compiler/obligations/src/interface.cpp	entry.runtime.insert(entry.runtime.end(), imported.runtime.begin(), imported.runtime.end());	(void)imported.runtime;	^e2e_runtime_validation$
-runtime-check-interface-identity	compiler/artifact/src/interface.cpp	set(std::move(runtime));	(void)runtime;	^unit_interface_test$|^e2e_runtime_validation$
+runtime-check-interface-identity	compiler/artifact/src/interface.cpp	{"runtime", unique(entry.runtime, runtime_identity)},	{"runtime", unique(decltype(entry.runtime){}, runtime_identity)},	^unit_interface_test$|^e2e_runtime_validation$
 container-default-allocator	clang/src/bridge.cpp	if (!is_standard_template(held, "allocator") || !inert_allocator(call.arguments.back(), 0)) {	if (held.kind != CXType_Invalid || true) {	^e2e_containers$
 conjoined-capability-detected	compiler/elaboration/src/elaborate.cpp	return !function.capabilities.empty() && function.returned_value.has_value();	return function.capabilities.empty() && false;	^negative_containers$
 conjoined-capability-postcondition	compiler/elaboration/src/elaborate.cpp	if (function != nullptr && !capabilities_read_apart && conjoins_capabilities(*function)) {	if (false && !capabilities_read_apart) {	^negative_containers$
@@ -108,16 +108,16 @@ totality-unmeasured-loop	compiler/obligations/src/contracts.cpp	total[index] = c
 totality-through-callees	compiler/obligations/src/contracts.cpp	            if (total[index] &&	            if (false && total[index] &&	^negative_termination$
 lexicographic-first-stays	compiler/obligations/src/contracts.cpp	compare(kernel::PrimOp::Equal, index)	compare(kernel::PrimOp::GreaterEqual, index)	^negative_refused_declarations$|^negative_termination$
 do-loop-exit-decided	clang/src/bridge.cpp	        if (!frame.condition_last) {	        if (true) {	^negative_termination$
-xtu-statement-compared	compiler/obligations/src/contracts.cpp	if (!(*plan.statement == recorded->entry.statement)) {	if (false && !(*plan.statement == recorded->entry.statement)) {	^negative_cross_tu$|^unit_cross_unit_contracts_test$
+xtu-statement-compared	compiler/obligations/src/contracts.cpp	if (!(*plan.interface_statement == recorded->entry.statement)) {	if (false && !(*plan.interface_statement == recorded->entry.statement)) {^negative_cross_tu$|^unit_cross_unit_contracts_test$
 xtu-imported-established	compiler/automation/src/composition.cpp	    if (function.imported.has_value()) {	    if (function.imported.has_value() && false) {	^e2e_cross_tu$|^unit_cross_unit_contracts_test$
 xtu-imported-totality	compiler/obligations/src/contracts.cpp	total[index] = contract.total;	total[index] = true;	^negative_cross_tu$|^unit_cross_unit_contracts_test$
 xtu-partial-record-refused-with-measure	compiler/obligations/src/contracts.cpp	if (!total && function.contract.has_value() && !function.contract->measures.empty()) {	if (false && !total && function.contract.has_value() && !function.contract->measures.empty()) {	^unit_cross_unit_contracts_test$
-xtu-recursion-refused	compiler/obligations/src/contracts.cpp	crossing[member] = cyclic && across;	crossing[member] = false && cyclic && across;	^unit_cross_unit_contracts_test$
-xtu-reaching-a-cycle-refused	compiler/obligations/src/contracts.cpp	if (!rests_on_cycle[before]) {	if (false) {	^unit_cross_unit_contracts_test$
-xtu-measure-not-compared-across	compiler/obligations/src/interface.cpp	if (across_units) {	if (false) {	^unit_cross_unit_contracts_test$|^negative_cross_tu$
-xtu-termination-request-compared	compiler/obligations/src/interface.cpp	hasher.update_u8(measures.empty() ? 0 : 1);	hasher.update_u8(0);	^unit_cross_unit_contracts_test$|^negative_cross_tu$
+xtu-recursion-refused	compiler/obligations/src/contracts.cpp	if (through_record && cyclic) {	if (through_record && cyclic && component.empty()) {	^unit_cross_unit_contracts_test$
+xtu-recursion-through-records	compiler/obligations/src/contracts.cpp	const bool through_record =	const bool through_record = false &&	^unit_cross_unit_contracts_test$
+xtu-recursion-self-dependency	compiler/obligations/src/contracts.cpp	std::ranges::find(graph[component.front()], component.front()) !=	std::ranges::find(graph[component.front()], graph.size()) !=	^unit_cross_unit_contracts_test$
+xtu-recursion-record-edges	compiler/obligations/src/contracts.cpp	graph[node].push_back(target);	graph[node].reserve(target);	^unit_cross_unit_contracts_test$
 xtu-compiler-version-compared	compiler/driver/src/interface_io.cpp	if (recorded.compiler != current.compiler) {	if (false) {	^negative_cross_tu$
-xtu-result-identity-dependencies	compiler/artifact/src/interface.cpp	set(std::move(depends));	(void)depends;	^unit_interface_test$
+xtu-result-identity-dependencies	compiler/artifact/src/interface.cpp	{"depends", unique(entry.depends, dependency_line)}	{"depends", std::vector<std::string>{}}	^unit_interface_test$
 xtu-internal-linkage-not-imported	compiler/elaboration/src/elaborate.cpp	converted.defined_elsewhere = candidate.contract != nullptr && function->external_linkage;	converted.defined_elsewhere = candidate.contract != nullptr;	^negative_cross_tu$
 xtu-internal-linkage-not-exported	compiler/obligations/src/contracts.cpp	    if (function.external_linkage) {	    if (true) {	^e2e_cross_tu$|^unit_cross_unit_contracts_test$
 xtu-restatements-agree	compiler/obligations/src/contracts.cpp	if (!restatements_agree(function, pure_definitions, program, engine)) {	if (false && !restatements_agree(function, pure_definitions, program, engine)) {	^negative_cross_tu$|^unit_cross_unit_contracts_test$
@@ -134,6 +134,10 @@ xtu-withdraw-only-interfaces	compiler/driver/src/interface_io.cpp	if (first != s
 xtu-status-proven-only	compiler/artifact/src/interface.cpp	if (status->fields[1] != "proven") {	if (false) {	^unit_interface_test$|^negative_cross_tu$
 xtu-checksum-verified	compiler/artifact/src/interface.cpp	if (!(source::hash_bytes(text.substr(0, last_start)) == *recorded_checksum)) {	if (false) {	^unit_interface_test$|^negative_cross_tu$|^fuzz_interface_replay$
 xtu-canonical-order	compiler/artifact/src/interface.cpp	if (!previous.empty() && !(previous < line.text)) {	if (false && !previous.empty() && !(previous < line.text)) {	^unit_interface_test$
+xtu-pure-identity-transitive	compiler/obligations/src/interface.cpp	for (std::size_t position = 0; position < order_.size(); ++position) {	for (std::size_t position = 0, reached = order_.size(); position < reached; ++position) {	^negative_cross_tu$
+xtu-measure-as-request	compiler/obligations/src/interface.cpp	if (measures == Measures::Requested) {	if (false) {	^negative_cross_tu$|^unit_cross_unit_contracts_test$
+xtu-termination-request-identified	compiler/obligations/src/interface.cpp	hasher.update_u8(contract.measures.empty() ? 0 : 1);	hasher.update_u8(0);	^negative_cross_tu$|^unit_cross_unit_contracts_test$
+xtu-entry-identity-by-meaning	compiler/artifact/src/interface.cpp	hasher.update_field(entry.symbol);	hasher.update_field(entry.symbol + entry.name);	^negative_cross_tu$|^unit_interface_test$
 xtu-semantics-compared	compiler/driver/src/interface_io.cpp	if (recorded.semantics != current.semantics) {	if (false) {	^negative_cross_tu$
 xtu-verifier-digest-compared	compiler/driver/src/interface_io.cpp	if (!(recorded.verifier == current.verifier)) {	if (false) {	^negative_cross_tu$
 semantics-digest-covers-kernel	cmake/VerifierSemanticsSources.cmake	    kernel	    kernel_left_out	^architecture_verifier_semantics$

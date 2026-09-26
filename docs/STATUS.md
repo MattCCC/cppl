@@ -819,9 +819,12 @@ refused). `--cppl-import-interface=<file>`, repeatable, makes a
 unit's contracts available to another. The consumer never reads a proposition
 from the file: it states the contract from its own declaration and uses a record
 only when the statement identities agree, so a stronger postcondition, a weaker
-precondition, a changed pure definition the contract reaches, another
-overload, another specialization or another request to terminate is refused; the
-measure that proved a total contract is the proving unit's and is not compared.
+precondition, another overload, another specialization or another request to
+terminate is refused, and so is a pure function the contract reaches, at any
+depth, defined otherwise; a declaration's measure crosses only as the request to
+terminate, so another measure proving the same total contract is the same
+contract there. A record is named by those resting on it through an identity of
+its result by meaning, which rewording its name or description does not change.
 An interface written by another compiler release, under another verification
 semantics, identified by a declared version and by a digest the build computes
 from the verifier's semantic sources, or under another kernel, core, Clang,

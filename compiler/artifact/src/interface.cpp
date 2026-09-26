@@ -660,55 +660,41 @@ std::string displayed(std::string_view text) {
 }
 
 source::Digest identify(const Entry& entry) {
+    // What the record says was verified, and what that verification rests on,
+    // each item once and in canonical order. The name and the contract's
+    // description are for diagnostics, and a premise's or a model's name and
+    // a premise's location only say where an assumption with that identity was
+    // written: none of them enters (SPEC.md TUBOUND-009).
+    const auto unique = []<typename Item, typename Key>(const std::vector<Item>& items, Key key) {
+        std::vector<std::string> keys;
+        keys.reserve(items.size());
+        for (const Item& item : items) {
+            keys.push_back(key(item));
+        }
+        std::ranges::sort(keys);
+        const auto repeated = std::ranges::unique(keys);
+        keys.erase(repeated.begin(), repeated.end());
+        return keys;
+    };
     source::Hasher hasher;
-    hasher.update_field("cppl-verification-result-v2");
+    hasher.update_field("cppl-verification-interface-entry-v4");
     hasher.update_field(entry.symbol);
     hasher.update_field(entry.statement.to_hex());
     hasher.update_field(describe(entry.correctness));
-    // Each kind of dependency as a set of identities, counted, so no item of
-    // one kind can be read as one of another.
-    const auto set = [&hasher](std::vector<std::string> items) {
-        std::ranges::sort(items);
-        const auto repeated = std::ranges::unique(items);
-        items.erase(repeated.begin(), repeated.end());
-        hasher.update_u64(items.size());
-        for (const std::string& item : items) {
-            hasher.update_field(item);
-        }
-    };
-    std::vector<std::string> premises;
-    premises.reserve(entry.premises.size());
-    for (const Premise& premise : entry.premises) {
-        premises.push_back(premise.identity.to_hex());
-    }
-    set(std::move(premises));
-    // An unsafe block has no identity but where it is.
-    std::vector<std::string> unsafe;
-    unsafe.reserve(entry.unsafe.size());
-    for (const UnsafeBlock& block : entry.unsafe) {
-        unsafe.push_back(unsafe_line(block));
-    }
-    set(std::move(unsafe));
-    std::vector<std::string> models;
-    models.reserve(entry.models.size());
-    for (const Model& model : entry.models) {
-        models.push_back(model.identity.to_hex());
-    }
-    set(std::move(models));
     // A runtime validation site is where it is and what it enters; the
     // predicate is shown, not identified (SPEC.md RUNTIMECHECK-015).
-    std::vector<std::string> runtime;
-    runtime.reserve(entry.runtime.size());
-    for (const RuntimeCheck& check : entry.runtime) {
-        runtime.push_back(runtime_identity(check));
+    for (const auto& [kind, keys] : std::array<std::pair<std::string_view, std::vector<std::string>>, 5>{
+             {{"premises", unique(entry.premises, [](const Premise& item) { return item.identity.to_hex(); })},
+              {"models", unique(entry.models, [](const Model& item) { return item.identity.to_hex(); })},
+              {"unsafe", unique(entry.unsafe, unsafe_line)},
+              {"runtime", unique(entry.runtime, runtime_identity)},
+              {"depends", unique(entry.depends, dependency_line)}}}) {
+        hasher.update_field(kind);
+        hasher.update_u64(keys.size());
+        for (const std::string& key : keys) {
+            hasher.update_field(key);
+        }
     }
-    set(std::move(runtime));
-    std::vector<std::string> depends;
-    depends.reserve(entry.depends.size());
-    for (const Dependency& dependency : entry.depends) {
-        depends.push_back(dependency_line(dependency));
-    }
-    set(std::move(depends));
     return hasher.finish();
 }
 

@@ -117,7 +117,12 @@ tests:
     - tests/fixtures/cross_tu/middle.cpp
     - tests/fixtures/cross_tu/client.cpp
     - tests/fixtures/cross_tu/rival.cpp
+    - tests/fixtures/cross_tu/identity.hpp
+    - tests/fixtures/cross_tu/identity.cpp
+    - tests/fixtures/cross_tu/identity_client.cpp
   negative:
+    - tests/fixtures/negative/xtu_transitive_differs.cpp
+    - tests/fixtures/negative/xtu_measure_unrequested.cpp
     - tests/negative/cross_tu.sh
     - tests/fixtures/negative/xtu_false_postcondition.cpp
     - tests/fixtures/negative/xtu_missing_precondition.cpp
@@ -154,6 +159,8 @@ required_test_categories:
   - recording, determinism, internal linkage not recorded
   - precondition, postcondition, refined result, reference post-state
   - overload and specialization identity
+  - transitive pure-definition identity; a measure crossing only as the request to terminate
+  - a record identified by meaning: rewording keeps dependents, another result breaks them
   - declaration without a record refused
   - stronger and weaker declared contracts refused
   - malformed, truncated, altered, other version, other semantics version, other verifier semantics digest, other mode, stale
