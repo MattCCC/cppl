@@ -367,8 +367,8 @@ CPPL_TEST(a_cycle_among_other_units_alone_is_refused) {
     reaching.entries.push_back(record(b, statement_of({}), artifact::Correctness::Total, {on(c)}));
     reaching.entries.push_back(record(c, statement_of({}), artifact::Correctness::Total, {on(d)}));
     reaching.entries.push_back(record(d, statement_of({}), artifact::Correctness::Total, {on(c)}));
-    Generated reached = generate(
-        {function(0, b, std::nullopt), function(1, "c:@F@a#i#", call(b, parameter(0, "x"), 7))}, reaching);
+    Generated reached =
+        generate({function(0, b, std::nullopt), function(1, "c:@F@a#i#", call(b, parameter(0, "x"), 7))}, reaching);
     CPPL_CHECK(mentions(reached.engine, "'c:@F@c#i#' -> 'c:@F@d#i#' -> 'c:@F@c#i#'"));
     CPPL_CHECK(contract_of(reached.program, b) == nullptr);
     CPPL_CHECK(contract_of(reached.program, "c:@F@a#i#") == nullptr);
