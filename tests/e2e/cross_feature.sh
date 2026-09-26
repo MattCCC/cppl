@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPEC: CLASS-008, CLASS-011, STDMODEL-012, STDMODEL-013, STDMODEL-015, STDMODEL-016, STDMODEL-018
-# SPEC: ARITH-006, ARITH-008, TUBOUND-002, TUBOUND-003, TUBOUND-006
-# TRUST.md TCB-XTU-007, TCB-LIB-010, TCB-REPORT-005
+# SPEC: ARITH-006, ARITH-008, TUBOUND-002, TUBOUND-003, TUBOUND-006, CLASS-010, REFINE-060, REFINE-062
+# TRUST.md TCB-XTU-007, TCB-LIB-010, TCB-REPORT-005, TCB-OBJ-009
 #
 # The combinations of member functions, the sequence models, signed
 # arithmetic and verification interfaces that tests/e2e/integration_ledger.sh
@@ -90,5 +90,22 @@ for standard in c++20 c++23; do
     [ "$("./program-$standard")" = '8 1 6 y 14 64 3 5' ] || fail "the program printed '$("./program-$standard")'"
 done
 
+# SPEC: CLASS-011, REFINE-060, REFINE-062, TUBOUND-003 -- a refined place a
+# function holds by reference gets a new value by routes each charged where it
+# is established: the effect of another unit's contract on a member of the
+# implicit object and on a reference parameter, charged at the call, and a loop,
+# whose head value the return is charged and the invariant shows (TRUST.md
+# TCB-OBJ-009). The refused twins are in tests/negative/cross_feature.sh.
+"$CPPL" -std=c++20 -c effects.cpp -o effects.o --cppl-emit-interface=effects.cppli --cppl-trust-report \
+    > effects.report
+reports effects.report '^Function contracts proven: +2$' '^Unresolved obligations: +0$'
+"$CPPL" -std=c++20 -c effects_client.cpp -o effects_client.o --cppl-import-interface=effects.cppli \
+    --cppl-trust-report > effects_client.report
+reports effects_client.report '^Function contracts proven: +4$' '^Function contracts imported: +2$' \
+    '^Unresolved obligations: +0$' '^Interface-dependent claims: +3$' '^  contract of Gauge::assign_five ' \
+    '^  contract of Gauge::settle ' '^  contract of through_reference '
+"$CLANG" effects.o effects_client.o -o effects_program
+[ "$(./effects_program)" = 5 ] || fail "the effects program printed '$(./effects_program)'"
+
 echo 'member functions over spans, vectors and strings, signed arithmetic over their values, and an unsafe' \
-     'dependency cross units with every trust dependency named'
+     'dependency cross units with every trust dependency named; a refined place is charged on every route'

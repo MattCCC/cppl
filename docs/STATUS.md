@@ -1123,7 +1123,15 @@ member; the container is passed as a parameter instead
 (`negative/cross_feature_container_member.cpp`). No disjointness of an object and
 a reference argument is assumed, from their types or otherwise, so after a call
 that may write through a reference argument only the callee's `ensures` is known
-of the object. A member function defined in another translation
+of the object. The accounting of refined places (`TRUST.md` TCB-OBJ-009) is
+checked across the slices: the effect of another unit's contract on a refined
+member is charged at the call, and a refined member or reference parameter is
+charged at the return after a loop, after an unsafe write that a `break` or a
+`return` inside the loop leaves with, and after a `push_back` through a
+reference argument that may reach the object; each such route has a refused
+twin that could leave a value outside the refinement, and counting the unsafe
+block's or the loop head's version valid is mutation-checked
+(`e2e_cross_feature`, `negative_cross_feature`). A member function defined in another translation
 unit crosses through a verification interface as a function does: the unit
 defining it records the contract its class declares, with the implicit object's
 places among the parameters, and a caller uses it only when its own declaration

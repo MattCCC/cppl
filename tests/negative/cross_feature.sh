@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# SPEC: CLASS-008, CLASS-011, CLASS-015, STDMODEL-015, STDMODEL-019, ARITH-006
+# SPEC: CLASS-008, CLASS-010, CLASS-011, CLASS-015, STDMODEL-015, STDMODEL-019, ARITH-006
+# SPEC: REFINE-060, REFINE-061, UNSAFE-005, TUBOUND-003
+# TRUST.md TCB-OBJ-009
 #
 # The refused twins of tests/e2e/cross_feature.sh, each a written-out file in
 # fixtures/negative/cross_feature_*.cpp that differs in one thing from what
@@ -8,6 +10,14 @@
 # without its guard. One is a combination the implementation refuses, shown
 # refused for the reason stated rather than silently accepted: a container
 # member of the object a member function runs on.
+#
+# The rest try each route by which a refined place a function holds by
+# reference could be left counted valid without a charge, where TRUST.md
+# TCB-OBJ-009 says it is not: another unit's contract writing a refined member
+# through a plain `unsigned&`, an unsafe block inside a loop, one before a
+# `break` and one before a `return` inside a loop, and a `push_back` through a
+# reference argument that may reach the object. Each could leave a value
+# outside the refinement, and each is charged it where it is shown here.
 set -euo pipefail
 
 CPPL="$1"
@@ -55,4 +65,26 @@ refuse unguarded_sum "signed overflow: 'total#2 \\+ value#5' on the signed type 
 refuse container_member "this member of the implicit object is not tracked storage: its type is not one this implementation models" \
     "$NEGATIVE/cross_feature_container_member.cpp"
 
-echo 'cross-feature twins fail closed: a stale view, an unguarded sum and a container member'
+# SPEC: CLASS-011, REFINE-060, TUBOUND-003 -- another unit's contract writing a
+# refined member through a plain reference: the caller is charged at the call.
+"$CPPL" -std=c++20 -c effects.cpp -o effects.o --cppl-emit-interface=effects.cppli > /dev/null
+charged() {
+    local name="$1" line="$2" refinement="$3"
+    shift 3
+    refuse "$name" "cross_feature_$name\\.cpp:$line: error \\[kernel-rejection\\]: this value is not shown to satisfy refinement type '$refinement'" \
+        "$NEGATIVE/cross_feature_$name.cpp" "$@"
+}
+charged imported_unrefined_effect 15:9 Small --cppl-import-interface=effects.cppli
+# SPEC: CLASS-010, UNSAFE-005, LOOP-005, REFINE-061 -- the value leaving a loop
+# is the one at its head, and an unsafe write inside it is charged at return.
+charged loop_unsafe_refined_member 24:6 Small
+# SPEC: LOOP-001, REFINE-061 -- a `break` leaves with what the block wrote.
+charged loop_break_refined_member 28:6 Small
+# SPEC: REFINE-061 -- and so does a `return` inside the loop.
+charged loop_return_refined_reference 19:13 Small
+# SPEC: CLASS-010, STDMODEL-015 -- a `push_back` through a reference argument
+# may reach the object, and nothing establishes its refined member afterwards.
+charged refined_receiver_push 20:9 Position
+
+echo 'cross-feature twins fail closed: a stale view, an unguarded sum, a container member, and every route' \
+     'that could leave a refined place unchecked'
