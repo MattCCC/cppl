@@ -47,9 +47,9 @@ enum class PrimOp : std::uint8_t {
     // Representability (RFC 0019). One when the integer sum, difference or
     // product of the operands' values, computed without any bound, is a value
     // of the type; zero otherwise. These are what a signed C++ operation owes
-    // before its result is the ring operation's (SPEC.md ARITH-006,
-    // DEFINEDBEHAVIOR-001): where one holds, the wrapping primitive wrapped
-    // nothing.
+    // before its result is used (SPEC.md ARITH-006, DEFINEDBEHAVIOR-001):
+    // where one holds, the ring result read as a signed value is proven equal
+    // to the exact result.
     AddFits,
     SubFits,
     MulFits,
