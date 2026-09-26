@@ -4018,6 +4018,18 @@ struct BodyLowering {
         return granted_capability(parameter, kind) != nullptr;
     }
 
+    // Why dereferencing pointer parameter `spelling` is refused for want of the
+    // capability `required`.
+    [[nodiscard]] std::string capability_refusal(const std::string& spelling, Capability::Kind required) const {
+        const bool writing = required == Capability::Kind::Writable;
+        return std::string(writing ? "writing through '" : "reading '") + spelling + "' requires '" +
+               (writing ? "writable(" : "readable(") + spelling + ")', " +
+               (revoked_by.has_value()
+                    ? "which no longer holds after the unsafe block at " + revoked_by->file + ":" +
+                          std::to_string(revoked_by->line) + ": what that block did to the storage was not checked"
+                    : "which was not established; 'p != nullptr' does not imply it");
+    }
+
     // Whether a normal return states the storage the caller can see afterwards:
     // a void function's, and one taking a parameter by reference. A member
     // function's implicit object is such storage whenever it has a leaf, since
@@ -4122,6 +4134,18 @@ struct BodyLowering {
         }
         if (auto existing = find_deref(state, root, version, access->path, selected_index ? &*selected_index : nullptr);
             existing.has_value()) {
+            // A place formed earlier is reached again only under the capability
+            // this access needs, still held here (SPEC.md VERIFIED-038): a write
+            // needs `writable` even where a read formed the place, a read needs
+            // `readable` even where a write formed it, and no capability
+            // survives an unsafe block (VERIFIED-043). The capability names the
+            // pointer by its callable position (SPEC.md CLASS-008).
+            const bool held = at != parameters.end() &&
+                              granted(signature.position(static_cast<std::size_t>(at - parameters.begin())), required);
+            if (!held) {
+                rejection = capability_refusal(take(clang_getCursorSpelling(declaration)), required);
+                return std::nullopt;
+            }
             return existing;
         }
         if (at == parameters.end()) {
@@ -4134,14 +4158,7 @@ struct BodyLowering {
         // past a member function's implicit object (SPEC.md CLASS-008).
         const auto index = signature.position(static_cast<std::size_t>(at - parameters.begin()));
         if (!granted(index, required)) {
-            const std::string spelling = take(clang_getCursorSpelling(declaration));
-            rejection = std::string(required == Capability::Kind::Writable ? "writing through '" : "reading '") +
-                        spelling + "' requires '" +
-                        (required == Capability::Kind::Writable ? "writable(" : "readable(") + spelling + ")', " +
-                        (revoked_by.has_value() ? "which no longer holds after the unsafe block at " +
-                                                      revoked_by->file + ":" + std::to_string(revoked_by->line) +
-                                                      ": what that block did to the storage was not checked"
-                                                : "which was not established; 'p != nullptr' does not imply it");
+            rejection = capability_refusal(take(clang_getCursorSpelling(declaration)), required);
             return std::nullopt;
         }
         // A capability permits reaching the pointer's storage; it does not say

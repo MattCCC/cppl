@@ -119,6 +119,7 @@ tests:
     - tests/fixtures/negative/unsafe_pointer_rebound.cpp
     - tests/fixtures/negative/unsafe_capability_revoked_write.cpp
     - tests/fixtures/negative/unsafe_capability_revoked_call.cpp
+    - tests/fixtures/negative/unsafe_capability_revoked_read.cpp
     - tests/fixtures/negative/unsafe_call_outside_block.cpp
     - tests/fixtures/negative/unsafe_block_return.cpp
     - tests/fixtures/negative/unsafe_block_break.cpp

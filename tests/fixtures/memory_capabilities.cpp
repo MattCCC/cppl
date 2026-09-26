@@ -48,8 +48,31 @@ verified void narrower(unsigned* q, unsigned m)
     }
 }
 
+// SPEC: VERIFIED-038
+// A place formed by a read is written and read again under the capabilities
+// stated for `p` itself, which a member function names past its implicit
+// object. Twins of `memory_capability_write_after_read` and
+// `memory_capability_read_after_write`.
+struct Cell {
+    unsigned seen;
+
+    verified unsigned swap_in(unsigned* p)
+        expects (readable(p) && writable(p))
+        ensures (result == result)
+    {
+        unsigned first = *p;
+        *p = 5u;
+        return *p + first;
+    }
+};
+
 int main() {
     unsigned cells[4] = {0u, 0u, 0u, 0u};
+    Cell cell{0u};
+    unsigned spare = 1u;
+    if (cell.swap_in(&spare) != 6u) {
+        return 1;
+    }
     holds(&cells[0]);
     holds_sized(&cells[0], 4u);
     narrower(&cells[0], 4u);

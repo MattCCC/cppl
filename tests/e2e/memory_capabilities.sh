@@ -24,7 +24,7 @@ expect() {
     fi
 }
 
-expect '^Function contracts proven: +5$'
+expect '^Function contracts proven: +6$'
 expect '^Unresolved obligations: +0$'
 # `m <= m`, `m - 1u <= m` and `1u <= m`: one obligation for each sized
 # capability passed on, and none where both sides state one object.

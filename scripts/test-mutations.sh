@@ -53,6 +53,8 @@ verified-specifier-span	compiler/frontend/src/recognizer.cpp	verified.keyword = 
 unsafe-block-havoc	clang/src/bridge.cpp	const std::vector<std::size_t> reached = unsafe_reach(state);	const std::vector<std::size_t> reached;	^negative_unsafe_boundary$
 unsafe-names-escape	clang/src/bridge.cpp	lowering.escaped.insert(named);	(void)named;	^negative_unsafe_boundary$
 unsafe-revokes-capabilities	clang/src/bridge.cpp	revoked_by = where;	(void)where;	^negative_unsafe_boundary$
+capability-rechecked-on-reuse	clang/src/bridge.cpp	if (!held) {	if (false && !held) {	^negative_unsafe_boundary$|^negative_memory_capabilities$
+capability-reuse-callable-position	clang/src/bridge.cpp	granted(signature.position(static_cast<std::size_t>(at - parameters.begin())), required);	granted(static_cast<std::uint32_t>(at - parameters.begin()), required);	^e2e_memory_capabilities$
 unsafe-revokes-call-capabilities	compiler/obligations/src/contracts.cpp	scope.unsafe = location;	(void)location;	^negative_unsafe_boundary$
 unsafe-control-stays-in-block	clang/src/bridge.cpp	left = leaves_block(block, 0, 0, 0)	left = (false ? leaves_block(block, 0, 0, 0) : std::optional<std::string>{})	^negative_unsafe_boundary$
 unsafe-call-outside-block	compiler/elaboration/src/elaborate.cpp	if (unsafe_call != callees.end()) {	if (false && unsafe_call != callees.end()) {	^negative_unsafe_boundary$

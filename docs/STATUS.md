@@ -1042,7 +1042,10 @@ supplies: `p != nullptr` establishes neither, and a failed capability is a
 diagnostic rather than a silent assumption (`SPEC.md` 12.10 VERIFIED-037,
 VERIFIED-043). A pointer computed by arithmetic or returned by a call names no
 place this implementation can identify and stays refused. Reading requires
-`readable` and writing requires `writable`; neither entails the other.
+`readable` and writing requires `writable`; neither entails the other. Each
+access owes its own: a place a read formed is written again only under
+`writable`, one a write formed is read again only under `readable`, and after an
+unsafe block no place formed before it is reached again at all.
 
 A verified call owes the capabilities its callee's contract states, as it owes
 the callee's precondition (`SPEC.md` VERIFIED-013, VERIFIED-043, `TRUST.md`

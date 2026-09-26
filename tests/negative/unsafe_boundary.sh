@@ -95,6 +95,10 @@ refuse unsafe_capability_revoked_write \
 refuse unsafe_capability_revoked_call \
     "calling 'touch' requires 'writable(q)', which no longer holds after the unsafe block at" \
     "unsafe_capability_revoked_call.cpp:13: what that block did to the storage was not checked"
+# A place read before the block is not readable after it on that account.
+refuse unsafe_capability_revoked_read \
+    "reading 'p' requires 'readable(p)', which no longer holds after the unsafe block at" \
+    "unsafe_capability_revoked_read.cpp:12: what that block did to the storage was not checked"
 
 # SPEC: UNSAFE-002
 # A verified path calls an unsafe function only inside an unsafe block.

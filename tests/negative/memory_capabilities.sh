@@ -64,4 +64,12 @@ refuse memory_capability_other_pointer \
 refuse memory_capability_region_exceeded "call-site precondition for 'caller -> fill' is not proven"
 refuse memory_capability_empty_region "call-site precondition for 'caller -> touch' is not proven"
 
+# SPEC: VERIFIED-038
+# A place a read formed is written again only under `writable`, and one a
+# write formed is read again only under `readable`.
+refuse memory_capability_write_after_read \
+    "writing through 'p' requires 'writable(p)', which was not established"
+refuse memory_capability_read_after_write \
+    "reading 'p' requires 'readable(p)', which was not established"
+
 echo 'no verified call passes on a memory capability its caller does not hold'
