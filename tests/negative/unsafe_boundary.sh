@@ -85,6 +85,10 @@ refuse unsafe_loop_counter \
 # capability survives the block for a write or for a verified call.
 refuse unsafe_pointer_rebound \
     "the unsafe block at" "unsafe_pointer_rebound.cpp:7 may change parameter 'p' itself, which this body does not track"
+# A member written is the object it belongs to written, however the parameter
+# is left untracked.
+refuse unsafe_member_write \
+    "the unsafe block at" "unsafe_member_write.cpp:22 may change parameter 's' itself, which this body does not track"
 refuse unsafe_capability_revoked_write \
     "writing through 'q' requires 'writable(q)', which no longer holds after the unsafe block at" \
     "unsafe_capability_revoked_write.cpp:8: what that block did to the storage was not checked"

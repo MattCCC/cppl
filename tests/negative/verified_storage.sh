@@ -366,3 +366,28 @@ verified int f(unsigned i) expects (i < 3u) ensures (result == 5) {
     return a[0];
 }
 CPP
+
+# Written-out fixtures, each refused for the stated reason, and the accepted
+# halves of their matched pairs.
+FIXTURES="$2"
+refuse_fixture() {
+    local name="$1" pattern="$2"
+    if "$CPPL" -std=c++20 "$FIXTURES/negative/$name.cpp" -o "$run/$name" > "$run/$name.out" 2> "$run/$name.err"; then
+        echo "accepted invalid storage reasoning: $name" >&2
+        exit 1
+    fi
+    test ! -e "$run/$name"
+    if grep -q PROVEN "$run/$name.out" "$run/$name.err" || ! grep -Eq "$pattern" "$run/$name.err"; then
+        cat "$run/$name.err" >&2
+        exit 1
+    fi
+}
+
+# A member the representation cannot model leaves a gap in its components, and
+# tracking the object anyway put one member's place under another's number: an
+# access to `s.a` read what `s.b` held, and a claim false at run time was
+# proven. Such an object is not tracked as places; its members are read by name.
+# SPEC: STORAGE-002
+refuse_fixture member_numbering_gap 'does not satisfy its contract'
+"$CPPL" -std=c++20 "$FIXTURES/untracked_members.cpp" -o "$run/untracked_members" > "$run/untracked_members.out"
+test "$("$run/untracked_members")" = '2 3'

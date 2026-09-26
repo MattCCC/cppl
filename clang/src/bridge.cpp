@@ -1977,17 +1977,26 @@ std::optional<std::string> leaves_block(CXCursor cursor, unsigned loops, unsigne
     return std::nullopt;
 }
 
-// Whether `cursor` names `declaration` itself, parentheses aside.
-bool names(CXCursor cursor, CXCursor declaration) {
-    cursor = strip_parens(cursor);
-    return clang_getCursorKind(cursor) == CXCursor_DeclRefExpr &&
-           clang_equalCursors(clang_getCursorReferenced(cursor), declaration) != 0;
+// Whether `cursor` names storage of `declaration`: the declaration itself, or a
+// member or an element of it, parentheses and value-preserving conversions
+// aside. A dereference names what a pointer designates rather than the
+// pointer's own storage, so it is not storage of the pointer.
+//
+// A member is part of its object, so writing one changes what the object holds.
+// Asking only whether the declaration is named directly would miss `s.x = 5`,
+// and an unsafe block writing a member of a parameter this body does not track
+// would leave a stale value standing after it (SPEC.md UNSAFE-005).
+bool rooted_in(CXCursor cursor, CXCursor declaration) {
+    const auto access = resolve_access(strip_parens(cursor));
+    return access.has_value() && !access->dereferenced &&
+           clang_equalCursors(clang_getCursorReferenced(access->object), declaration) != 0;
 }
 
 // Whether code in `root` may change what `declaration` itself holds, now or
-// later: by writing it, by taking its address, by binding a reference to it that
-// is not const, or by capturing it in a lambda. Reading it, passing it by value
-// and reaching what it points to leave it as it was.
+// later: by writing it or a member or element of it, by taking the address of
+// any of those, by binding a reference to one that is not const, by calling a
+// member function on it, or by capturing it in a lambda. Reading it, passing it
+// by value and reaching what it points to leave it as it was.
 bool may_rebind(CXCursor root, CXCursor declaration, unsigned depth = 0) {
     if (depth > kMaxExpressionDepth) {
         return true;
@@ -2000,10 +2009,10 @@ bool may_rebind(CXCursor root, CXCursor declaration, unsigned depth = 0) {
     }
     if (((kind == CXCursor_BinaryOperator && clang_getCursorBinaryOperatorKind(root) == CXBinaryOperator_Assign) ||
          kind == CXCursor_CompoundAssignOperator) &&
-        !children.empty() && names(children.front(), declaration)) {
+        !children.empty() && rooted_in(children.front(), declaration)) {
         return true;
     }
-    if (kind == CXCursor_UnaryOperator && children.size() == 1 && names(children.front(), declaration)) {
+    if (kind == CXCursor_UnaryOperator && children.size() == 1 && rooted_in(children.front(), declaration)) {
         const enum CXUnaryOperatorKind op = clang_getCursorUnaryOperatorKind(root);
         if (op == CXUnaryOperator_PreInc || op == CXUnaryOperator_PostInc || op == CXUnaryOperator_PreDec ||
             op == CXUnaryOperator_PostDec || op == CXUnaryOperator_AddrOf) {
@@ -2013,19 +2022,30 @@ bool may_rebind(CXCursor root, CXCursor declaration, unsigned depth = 0) {
     if (kind == CXCursor_VarDecl && source::aliases_storage(passing_of(clang_getCursorType(root))) &&
         passing_of(clang_getCursorType(root)) != source::ParameterPassing::ConstReference) {
         const CXCursor initializer = clang_Cursor_getVarDeclInitializer(root);
-        if (clang_Cursor_isNull(initializer) == 0 && names(initializer, declaration)) {
+        if (clang_Cursor_isNull(initializer) == 0 && rooted_in(initializer, declaration)) {
             return true;
         }
     }
     if (kind == CXCursor_CallExpr) {
-        const std::vector<CXCursor> parameters = parameters_of(clang_getCursorReferenced(root));
+        const CXCursor callee = clang_getCursorReferenced(root);
+        const std::vector<CXCursor> parameters = parameters_of(callee);
         const int count = clang_Cursor_getNumArguments(root);
         for (int index = 0; index >= 0 && index < count; ++index) {
             const CXCursor argument = clang_Cursor_getArgument(root, static_cast<unsigned>(index));
             const bool by_reference =
                 static_cast<std::size_t>(index) < parameters.size() &&
                 source::may_write(passing_of(clang_getCursorType(parameters[static_cast<std::size_t>(index)])));
-            if (by_reference && names(argument, declaration)) {
+            if (by_reference && rooted_in(argument, declaration)) {
+                return true;
+            }
+        }
+        // A member function called on the object may write it through `this`,
+        // whatever its qualifiers: a `const` one may still write a `mutable`
+        // member (SPEC.md CONTRACT-010).
+        if (clang_getCursorKind(callee) == CXCursor_CXXMethod && clang_CXXMethod_isStatic(callee) == 0 &&
+            !children.empty() && clang_getCursorKind(children.front()) == CXCursor_MemberRefExpr) {
+            const std::vector<CXCursor> object = children_of(children.front());
+            if (object.size() == 1 && rooted_in(object.front(), declaration)) {
                 return true;
             }
         }
@@ -3904,6 +3924,9 @@ struct BodyLowering {
             type.projections.size() != components.size()) {
             return "'" + written + "' has type '" + type.spelling + "', which is not modeled";
         }
+        if (const std::string& unmodeled = type.representation.rejection; !unmodeled.empty()) {
+            return "'" + written + "' has type '" + type.spelling + "', which is not modeled: " + unmodeled;
+        }
         if (prefix.size() >= kMaxPlaceDepth) {
             return "'" + written + "' nests deeper than this implementation tracks";
         }
@@ -3972,6 +3995,15 @@ struct BodyLowering {
         if ((type.representation.kind != source::RepresentationKind::Record && !array) || components.empty() ||
             type.projections.size() != components.size()) {
             return "'" + written + "' has type '" + type.spelling + "', which is not modeled";
+        }
+        // A member the representation could not model is left out of its
+        // components, so the components no longer stand at the positions
+        // `field_index_of` numbers members by: the place of `s.x` would be
+        // tracked under the number an access to the member before it resolves
+        // to. Such a type is not tracked at all, rather than tracked with every
+        // member after the gap under another member's name.
+        if (const std::string& unmodeled = type.representation.rejection; !unmodeled.empty()) {
+            return "'" + written + "' has type '" + type.spelling + "', which is not modeled: " + unmodeled;
         }
         if (prefix.size() >= kMaxPlaceDepth) {
             return "'" + written + "' nests deeper than this implementation tracks";

@@ -840,6 +840,15 @@ Writing a member of a by-value aggregate *parameter* is still refused: the
 parameter is not tracked storage, so the write has no modeled effect. The
 refusal is the same for an ordinary record and for a specialization.
 
+A type with a member this implementation does not model -- a floating-point
+value, a union, a base subobject -- is never tracked as places, at any depth.
+Its representation leaves that member out of its components, so the components
+no longer stand at the positions an access numbers members by, and tracking the
+object anyway once put the place of `s.b` where an access to `s.a` resolved: a
+claim false at run time was proven (`negative/member_numbering_gap.cpp`). Such
+an object's modeled members are still read by name, as projections of the value
+it arrived with (`fixtures/untracked_members.cpp`).
+
 A contract may name types a template supplies, including dependent names
 spelled through one, because each clause is projected under the header its
 declaration stands under. A contract on a template itself is parameterized by
@@ -1392,7 +1401,10 @@ TCB-UNSAFE-003): what a pointer designates, the storage a reference parameter
 designates, and every local whose address the body takes or that any unsafe
 block of the body names, since a block may keep an address and write through it
 later from a block that never names it. A parameter the body does not follow
-that a block may rebind is refused. No memory capability of the contract holds
+that a block may rebind is refused, and writing a member or an element of one,
+taking its address, binding a reference to it or calling a member function on
+it is rebinding it: a member is part of its object. No memory capability of the
+contract holds
 after a block, for a dereference or for a verified call. Control passes through a
 block: a `return`, a `goto`, or a `break` or `continue` leaving it is refused,
 and so is proof syntax inside it. A contract proven across a block is partial
