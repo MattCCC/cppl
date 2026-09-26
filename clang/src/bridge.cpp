@@ -1960,9 +1960,12 @@ Expr integral_conversion(Expr operand, Type type, CXCursor at, bool written) {
     return converted;
 }
 
-// Whether C++ performs arithmetic on this type only after promoting it to
-// `int`. An update of such a local converts the promoted result back, which is
-// a conversion C++L does not model.
+// Whether C++ may perform arithmetic on this type only after an integral
+// promotion: to `int` where `int` holds every value, otherwise to `unsigned
+// int`. libclang does not expose the type a compound assignment computes in, so
+// this errs toward yes: every type but those of `int`'s rank or above counts as
+// promoted, and an update of such a local, which converts the promoted result
+// back, is refused rather than given a computation type derived here.
 bool promoted_before_arithmetic(CXType type) {
     const auto canonical = clang_getCanonicalType(type);
     if (canonical.kind == CXType_LValueReference || canonical.kind == CXType_RValueReference)
@@ -2596,6 +2599,15 @@ Expr build_expression(CXCursor cursor, const Signature& signature, const Locals&
         const auto field = clang_getCursorReferenced(cursor);
         const auto children = children_of(cursor);
         if (clang_getCursorKind(field) == CXCursor_FieldDecl && children.size() == 1) {
+            // A bit-field holds only the values of its width, and C++ promotes
+            // it by that width rather than by its declared type: `unsigned x :
+            // 31` promotes to `int`, `unsigned y : 32` to `unsigned int`. Its
+            // value is not modeled, so a read fails closed (SPEC.md ARITH-003).
+            if (clang_getFieldDeclBitWidth(field) >= 0) {
+                return unsupported_expression(cursor, "bit-field '" + take(clang_getCursorSpelling(field)) +
+                                                          "' is not modeled: its values and its promotion follow its "
+                                                          "width, not its declared type");
+            }
             // A member of a tracked object is its own place, so it is read at
             // its own current version rather than projected out of a value of
             // the whole object: a later write to a sibling must not disturb it,
@@ -7120,7 +7132,7 @@ struct BodyLowering {
                                                                          ? target.declaration
                                                                          : clang_getCursorReferenced(operands[0])))) {
             return reject("updating '" + name + "' of type '" + target.type.spelling +
-                          "' computes in 'int' after promotion and converts back, which is not modeled");
+                          "' is computed after promotion to a wider type and converted back, which is not modeled");
         }
 
         // The update reads the place it writes, through the one read path: a

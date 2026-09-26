@@ -140,13 +140,15 @@ std::optional<kernel::PrimOp> comparison(vir::BinaryOp op) {
     return std::nullopt;
 }
 
-// The total core primitive a C++ arithmetic operator is stated with. On
-// unsigned operands C++ defines `+`, `-` and `*` modulo 2^width exactly as the
-// wrapping primitives do (SPEC.md 29.2). On signed operands, and for `/` and `%`
-// on any, C++ defines the operator only under a condition; where it holds, the
-// primitive's value is the C++ value, and every evaluation owes that condition
-// as an obligation of its own (definedness.cpp, SPEC.md ARITH-006, ARITH-007).
-// Stating a term never proves or assumes one.
+// The total core primitive a C++ arithmetic operator is stated with, at the
+// common type Clang gave the operation after the integral promotions and the
+// usual arithmetic conversions. Where that type is unsigned, C++ defines `+`,
+// `-` and `*` modulo 2^width exactly as the wrapping primitives do (SPEC.md
+// ARITH-003). Where it is signed, and for `/` and `%` at any type, C++ defines
+// the operator only under a condition, which every evaluation owes as an
+// obligation of its own (definedness.cpp, SPEC.md ARITH-006, ARITH-007); once
+// it is discharged, the linear rule proves the primitive's value is the exact
+// C++ result. Stating a term never proves or assumes one.
 std::optional<kernel::PrimOp> arithmetic(vir::BinaryOp op) {
     switch (op) {
         case vir::BinaryOp::Add:
@@ -430,9 +432,10 @@ class TermLowering {
         }
         // An integral conversion Clang recorded, stated as two's-complement
         // reduction into the target type. That is C++'s conversion to an
-        // unsigned type; to a signed type the reduction wraps nothing wherever
-        // the value fits, which is what every evaluation owes (SPEC.md
-        // ARITH-008). `bool` converts by truth and is never stated this way.
+        // unsigned type. To a signed type, every evaluation owes that the value
+        // is representable in the target, and where it is the reduction's value
+        // is proven to be that value unchanged (SPEC.md ARITH-008). `bool`
+        // converts by truth and is never stated this way.
         if (const auto* conversion = std::get_if<vir::Conversion>(&expr.node)) {
             if (conversion->operands.size() != 1 || !type || !type->is_integer() || expr.type.is_boolean() ||
                 conversion->operands[0].type.is_boolean()) {

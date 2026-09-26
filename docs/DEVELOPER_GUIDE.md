@@ -2743,21 +2743,24 @@ The verifier must fail closed when it cannot establish required definedness.
 
 ### 13.3. Signed arithmetic, division and conversions
 
-Integer operations keep their exact C++ meaning (`SPEC.md` 29, RFC 0019).
-Unsigned `+`, `-`, `*` and unary `-` wrap modulo `2^width` and owe nothing.
-The others are defined only under a condition, and each evaluation owes it
-where it happens:
+Integer operations keep their exact C++ meaning (`SPEC.md` 29, RFC 0019). An
+operation is performed in the common type the integral promotions and the usual
+arithmetic conversions give it. Where that type is unsigned, `+`, `-`, `*` and
+unary `-` wrap modulo `2^width` and owe nothing. The others are defined only
+under a condition, and each evaluation owes it where it happens:
 
-| Operation                                  | Owes, where it is evaluated                            |
-| ------------------------------------------ | ------------------------------------------------------ |
-| signed `a + b`, `a - b`, `a * b`, `-a`     | the exact result is a value of the type                |
-| `a / b`, `a % b`, signed or unsigned       | `b != 0`                                               |
-| signed `a / b`, `a % b`                    | not the least value divided by `-1`                    |
-| a conversion to a signed type, or a cast   | the value fits the target, in every C++ mode           |
+| Operation                                        | Owes, where it is evaluated                          |
+| ------------------------------------------------ | ---------------------------------------------------- |
+| `a + b`, `a - b`, `a * b`, `-a` in a signed type | the exact result is representable in that type       |
+| `a / b`, `a % b`, signed or unsigned             | `b != 0`                                             |
+| signed `a / b`, `a % b`                          | not the least value divided by `-1`                  |
+| a conversion to a signed type, or a cast         | the value fits the target, in every C++ mode         |
 
-The proof uses what the path knows there: guards, preconditions, refinements,
-loop invariants and callee postconditions. Afterwards the path knows the
-condition held, so `x + 1 > x` follows once `x + 1` was computed.
+The proof uses what the path knows before the operation: guards, preconditions,
+refinements, loop invariants and callee postconditions. Never the operation's
+own result: in `int y = x + 1; if (y < x) return 0;` the test comes too late to
+protect `x + 1`. Afterwards the path knows the condition held, so `x + 1 > x`
+follows once `x + 1` was computed.
 
 <!-- cppl-example: verify -->
 
@@ -2796,8 +2799,17 @@ verified unsigned bucket(unsigned hash, unsigned size)
 A few things to know:
 
 - Promotions and the usual arithmetic conversions are the ones Clang puts in the
-  program. Two `short` values are added in `int`, so the sum always fits there,
-  and returning it as `short` is the conversion that owes the bound.
+  program. An operand narrower than `int` promotes to `int` where `int` holds
+  all its values, and otherwise to `unsigned int`. So two `unsigned char`
+  values are added as `int`, not wrapped at 8 bits, and two `unsigned short`
+  values multiply in `int`, where `65535 * 65535` overflows. Two `short` values
+  are added in `int`, so the sum always fits there, and returning it as `short`
+  is the conversion that owes the bound. `char16_t`, `char32_t`, `wchar_t` and
+  bit-fields are not modeled and are refused where they appear.
+- The obligation belongs to each evaluation: in a loop it is owed on every
+  iteration, under the invariant; in a template it is owed per
+  specialization, so `a + b` owes representability for `int` and nothing for
+  `unsigned`.
 - A comparison of an `int` with an `unsigned` converts the `int`: `i < 0u` is
   false for every `i`.
 - `/` truncates toward zero and `%` has the dividend's sign: `-7 / 2` is `-3` and
@@ -4798,14 +4810,19 @@ correctness only.
 ### Arithmetic
 
 ```text
-signed + - * and unary -       owe: the exact result fits the type
+the operation's type           the common type after promotions and the usual
+                               arithmetic conversions: unsigned char + unsigned
+                               char is int
++ - * and unary - in a signed  owe: the exact result is representable in it
+  type
 / and %                        owe: divisor != 0, and signed: not MIN / -1
 conversion to a signed type    owes: the value fits the target
-unsigned + - * and unary -     wrap modulo 2^width, owe nothing
++ - * and unary - in an        wrap modulo 2^width, owe nothing
+  unsigned type
 ```
 
-Each is owed where the operation runs, from what the path knows there, and
-holds afterwards. See section 13.3.
+Each is owed at every evaluation, from what the path knows before it, never
+from its result, and holds afterwards. See section 13.3.
 
 ### Purity
 

@@ -41,8 +41,9 @@ verified long long int64_above_min_minus_one(long long x)
     return x - 1;
 }
 
-// Narrow operands are promoted to `int`, where their sum always fits; the
-// conversion back to the narrow type is what owes the bound (ARITH-008).
+// Narrow operands promote to `int`, which holds all their values, and their
+// sum always fits there; the conversion back to the narrow type is what owes
+// the bound (ARITH-008).
 verified signed char int8_sum_within(signed char a, signed char b)
     expects (a + b <= 127 && a + b >= -128)
     ensures (result == a + b)
@@ -57,7 +58,9 @@ verified short int16_sum_within(short a, short b)
     return a + b;
 }
 
-// The product of two values promoted from 8 or 16 bits always fits `int`.
+// The product of two `unsigned char` values, or of two `short` values, promoted
+// to `int` always fits it. Two `unsigned short` values do not
+// (arith_int16_unsigned_product) unless a factor is bounded.
 verified int int8_product(unsigned char a, unsigned char b)
     ensures (result == a * b)
 {
@@ -66,6 +69,25 @@ verified int int8_product(unsigned char a, unsigned char b)
 
 verified int int16_product(short a, short b)
     ensures (result == a * b)
+{
+    return a * b;
+}
+
+// SPEC: ARITH-003, ARITH-006
+// Two `unsigned char` operands promote to `int`, so `a + b` is a signed `int`
+// addition that owes representability, which their types discharge: 255 + 255
+// is 510, not 8-bit wrapping (arith_unsigned_char_not_wrapped).
+verified int unsigned_char_sum(unsigned char a, unsigned char b)
+    ensures (result == a + b && result <= 510)
+{
+    return a + b;
+}
+
+// Two `unsigned short` operands multiply in `int` too; a bounded factor keeps
+// the product representable there.
+verified int unsigned_short_doubled(unsigned short a, unsigned short b)
+    expects (b == 2)
+    ensures (result == a * b && result <= 131070)
 {
     return a * b;
 }
@@ -312,6 +334,55 @@ verified int stepped_if_small(int x)
     return x;
 }
 
+// SPEC: ARITH-006, ARITH-009, DEFINEDBEHAVIOR-001
+// An obligation is proven from what the path knows before the operation, never
+// from its result. Here the precondition proves it and the test after it is only
+// a test (arith_result_guard_too_late refuses the body without it).
+verified int successor_or_zero(int x)
+    expects (x < INT_MAX)
+    ensures (result >= x || result == 0)
+{
+    int y = x + 1;
+    if (y < x)
+        return 0;
+    return y;
+}
+
+// A postcondition is proven of the result and never supposed to excuse the
+// operation computing it (arith_postcondition_not_supposed).
+verified int successor_above(int x)
+    expects (x < INT_MAX)
+    ensures (result > x)
+{
+    return x + 1;
+}
+
+// `(x + 1) - 1 == x` is a modular identity; as a signed claim it needs `x + 1`
+// representable, which the precondition gives (arith_modular_identity).
+verified int predecessor_of_successor(int x)
+    expects (x < INT_MAX)
+    ensures (result - 1 == x)
+{
+    return x + 1;
+}
+
+verified int successor_cancels(int x)
+    expects (x < INT_MAX)
+    ensures (x + 1 - 1 == x)
+{
+    return x;
+}
+
+// `x + 1` in the callee owes its obligation under the callee's precondition,
+// and each call site owes that precondition (arith_call_site_precondition).
+verified int second_successor(int x)
+    expects (x < INT_MAX - 1)
+    ensures (result == x + 2)
+{
+    int y = int_below_max_plus_one(x);
+    return int_below_max_plus_one(y);
+}
+
 // A division on the right of `||` runs only where the left is false.
 verified int ratio_or_zero(int x, int y)
     expects (x != INT_MIN)
@@ -461,6 +532,16 @@ verified T incremented(T x)
     return x + 1;
 }
 
+// SPEC: ARITH-003, ARITH-006
+// The same written `a + b` in an unsigned common type wraps and owes nothing;
+// at `int` it owes representability (arith_template_signed_instance).
+template <typename T>
+verified T wrapped_sum(T a, T b)
+    ensures (result == a + b)
+{
+    return a + b;
+}
+
 int main() {
     int failures = 0;
     const auto check = [&failures](bool holds) {
@@ -521,5 +602,14 @@ int main() {
     check(incremented<int>(99) == 100);
     check(incremented<unsigned char>(99) == 100);
     check(incremented<long long>(-5) == -4);
+    check(wrapped_sum<unsigned>(4294967295u, 2u) == 1u);
+    check(wrapped_sum<unsigned long long>(18446744073709551615ull, 3ull) == 2ull);
+    check(unsigned_char_sum(255, 255) == 510);
+    check(unsigned_short_doubled(65535, 2) == 131070);
+    check(successor_or_zero(41) == 42);
+    check(successor_above(-1) == 0);
+    check(predecessor_of_successor(-2147483647 - 1) == -2147483647);
+    check(successor_cancels(7) == 7);
+    check(second_successor(40) == 42);
     return failures;
 }

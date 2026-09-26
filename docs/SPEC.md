@@ -3571,28 +3571,47 @@ signed arithmetic with undefined overflow
 checked arithmetic
 ```
 
-[ARITH-003] C++ defines `+`, `-` and `*` on two unsigned operands of one type, after the
-usual arithmetic conversions, as the result reduced modulo `2^w`. That is
-exactly the core's wrapping arithmetic (section 7.1.1), so those operators MAY
-be modeled by it. Operands narrower than `int` are promoted to `int` first, and
-the promoted operation is signed: it MUST NOT be modeled as unsigned wrapping.
-Signed `+`, `-` and `*` MUST NOT be modeled as wrapping: a signed operation
-denotes its exact result and is admitted only as ARITH-006 states.
+[ARITH-003] For the built-in binary arithmetic operators, integral promotions
+are applied and the usual arithmetic conversions determine the common type in
+which the operation is performed. Where that common type is an unsigned integer
+type of width `w`, C++ defines `+`, `-` and `*` modulo `2^w`. That is exactly
+the core's wrapping arithmetic (section 7.1.1), so those operations MAY be
+modeled by it. An operand of integer type narrower than `int` undergoes integral
+promotion: it promotes to `int` when `int` can represent all of its values, and
+otherwise according to the C++ integral-promotion rules, including promotion to
+`unsigned int` where required. Therefore an operation whose original operands
+are unsigned is not necessarily an unsigned operation after promotion. Where the
+common type is signed, `+`, `-` and `*` MUST NOT be modeled as C++ wrapping
+arithmetic. A signed operation is admitted only as ARITH-006 states.
 
-[ARITH-006] A signed `+`, `-` or `*` on two operands of one signed type, after
-the integral promotions and the usual arithmetic conversions, and a unary `-` of
-a promoted signed operand, have defined behavior exactly where the exact
-mathematical result is a value of that type. Each evaluation on a verified path
-MUST owe that condition as a proof obligation (DEFINEDBEHAVIOR-001). Where it
-holds the result is the exact one, and a verifier MAY state it with the ring
-operation of section 7.1.1, which then wraps nothing.
+```cpp
+unsigned char a = 200, b = 100;
+auto x = a + b;   // both promote to int where int holds every unsigned char:
+                  // x is the int 300, a signed int addition, not 8-bit wrapping
+```
+
+[ARITH-006] Where the common type produced by the integral promotions and usual
+arithmetic conversions is a signed integer type, a built-in `+`, `-` or `*` has
+defined behavior exactly when its exact mathematical result is representable in
+that type. Unary `-` of a promoted signed operand likewise has defined behavior
+exactly when the exact mathematical negation is representable in its result
+type. Each such evaluation on a verified path MUST owe representability as a
+proof obligation (DEFINEDBEHAVIOR-001). Only after that obligation is discharged
+may the verifier use the operation's result in verified reasoning. The value
+then denotes the exact mathematical result interpreted in the signed result
+type. An implementation MAY represent the operation internally using the
+fixed-width ring operation of section 7.1.1, provided that the representability
+obligation is established independently and the interpretation of the ring
+result as the signed value is proven to equal that exact mathematical result.
+Modular arithmetic MUST NOT be used to justify a signed operation whose exact
+result is not representable.
 
 ```cpp
 verified int next(int x)
     expects (x < INT_MAX)
     ensures (result == x + 1)
 {
-    return x + 1;   // owes: x + 1 is a value of int
+    return x + 1;   // owes: mathematical x + 1 is representable as int
 }
 ```
 

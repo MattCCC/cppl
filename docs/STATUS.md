@@ -173,10 +173,12 @@ evaluates the operation: the exact result is representable, the divisor is not
 zero, the operands are not the least value and `-1`, a value converted to a
 signed type fits it (in every C++ mode). The obligation supposes the path's
 guards, the `?:`, `&&` and `||` outcomes that select the operation, and only
-the postconditions of calls C++ sequences before it; afterwards the path
-supposes what was proven. Promotions and the usual arithmetic conversions are
-the ones Clang recorded, and explicit integral casts are the conversions they
-name. A specification's C++ condition holds only where its operations are
+the postconditions of calls C++ sequences before it, never the operation's own
+result; afterwards the path supposes what was proven. Promotions and the usual
+arithmetic conversions are the ones Clang recorded, and each operation is
+performed in the common type they select, so two `unsigned char` values add as
+a signed `int`; explicit integral casts are the conversions they name.
+`char8_t`, `char16_t`, `char32_t`, `wchar_t` and bit-fields are refused. A specification's C++ condition holds only where its operations are
 defined, and a `pure` function, a total definition, refuses them. Quotient and
 remainder by a constant are exact in linear arithmetic; by an unknown divisor
 the remainder is bounded and the quotient is not. A product of two unknowns is
@@ -1377,15 +1379,18 @@ The exact formal memory calculus is not yet frozen.
 | Bitvector solver integration     | `NOT STARTED` |
 | Overflow diagnostics             | `PROTOTYPE`   |
 
-Fixed-width semantics are `PARTIAL`: unsigned `+`, `-`, `*`, signed `+`, `-`,
-`*` and unary `-`, `/` and `%`, integral conversions and all six comparisons
-are modeled exactly at every width from 1 to 64 bits, each operation C++
+Fixed-width semantics are `PARTIAL`: `+`, `-`, `*` and unary `-` in an
+unsigned or a signed common type (the one the integral promotions and the usual
+arithmetic conversions select), `/` and `%`, integral conversions and all six
+comparisons are modeled exactly at every width from 1 to 64 bits, each operation C++
 defines only under a condition owing it where it is evaluated (RFC 0019).
 Signed arithmetic and division are `PARTIAL` because a product of two unknowns
 is decided only where their types bound it, and a quotient by an unknown divisor
 is left unknown; conversions are `PARTIAL` because those to or from `bool`,
 enumerations and floating point are refused, as is compound assignment of a
-promoted type. Shifts and bitwise operators are refused. `Wrapping arithmetic`
+promoted type, and `char8_t`, `char16_t`, `char32_t`, `wchar_t` and bit-fields,
+whose promotion is not modeled, are refused where they are named. Shifts and
+bitwise operators are refused. `Wrapping arithmetic`
 above means the explicit `Wrapping<T>` facility of the roadmap, which is not the
 same as C++ unsigned arithmetic.
 

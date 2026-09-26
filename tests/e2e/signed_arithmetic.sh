@@ -28,9 +28,10 @@ for standard in c++17 c++20 c++23; do
     "$CPPL" "-std=$standard" "$FIXTURES/signed_arithmetic.cpp" -o "$run/program" \
         --cppl-trust-report "--cppl-emit-projection=$run/runtime.cpp" > "$run/report"
     # SPEC: ARITH-006, ARITH-007, ARITH-008, ARITH-009
-    expect '^Function contracts proven: +56$'
+    expect '^Function contracts proven: +65$'
     expect '^  partial correctness only: +3$'
-    expect '^Defined operations proven: +77$'
+    expect '^Call preconditions proven: +2$'
+    expect '^Defined operations proven: +82$'
     expect '^Loop invariants proven: +10$'
     expect '^Loop measures proven: +1$'
     expect '^Unresolved obligations: +0$'

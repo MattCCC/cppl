@@ -4,9 +4,13 @@
 
 Accepted and implemented. Extends [RFC 0006](0006-machine-arithmetic.md), whose
 refusal of signed arithmetic, division and remainder it replaces. The normative
-rules are `SPEC.md` 29 (`ARITH-006` to `ARITH-013`), with Annex T
+rules are `SPEC.md` 29 (`ARITH-003`, `ARITH-006` to `ARITH-013`), with Annex T
 (`DEFINEDBEHAVIOR-001` to `DEFINEDBEHAVIOR-003`) and Annex U.5
-(`ADMISSIBLE-005`).
+(`ADMISSIBLE-005`). `ARITH-003` and `ARITH-006` were revised after review: the
+common type is the one the integral promotions and the usual arithmetic
+conversions select, which is not always `int` for a narrow operand, and the
+ring term stands for a signed result only through the representability
+obligation, never through modular reduction.
 
 ## Summary
 
@@ -131,6 +135,20 @@ cast as a conversion node, `/` and `%` as binary operators, and unary `-` as
 negation of its promoted operand. A negated integer literal is a literal. A
 character literal is an integer literal of its character type.
 
+The type an operation is performed in is the common type Clang gave it after
+the integral promotions and the usual arithmetic conversions, never one derived
+from how its operands are spelled (`ARITH-003`). An operand narrower than `int`
+promotes to `int` where `int` holds all its values and otherwise, under the C++
+promotion rules, to `unsigned int`; so `a + b` of two `unsigned char` values is
+a signed `int` addition that owes representability, not 8-bit wrapping, and two
+`unsigned short` values multiply in `int`, where `65535 * 65535` overflows.
+Every operand of an arithmetic operation must already be of the operation's
+type, each promotion being a conversion node of its own, or the operation is
+refused. Types whose promotion this RFC does not model fail closed where they
+are named: `char8_t`, `char16_t`, `char32_t` and `wchar_t` are not modeled
+types, and a bit-field is not modeled as a value, since its values and its
+promotion follow its width rather than its declared type.
+
 The core term of each operation is its total primitive: a signed `a + b` is
 `add_wrap(a, b)`, `-a` is `sub_wrap(0, a)`, `a / b` is `quot(a, b)`, a conversion
 is `convert`. Each evaluation owes, as a `DefinedBehavior` obligation:
@@ -144,9 +162,15 @@ conversion of a to signed T   MIN_T <= a && a <= MAX_T, stated at the source typ
                               each side only where the source type exceeds it
 ```
 
-Under the obligation the wrapping term wrapped nothing: `add_fits(a, b)` makes
-`add_wrap(a, b)` the exact sum, so signed overflow is never modeled as wrapping
-(`EQ-002`, `ARITH-003`). Unsigned `+ - *` and unary `-` stay modular with no
+The ring term is a representation, not the meaning. The core's ring is
+modular, so even a valid signed operation reduces at the level of the encoding
+(`-1 + -1` is `-2` through a reduction modulo `2^32`). What makes its value the
+signed result is the obligation: it is established independently of the ring
+term, from facts established before the evaluation, and once `add_fits(a, b)`
+holds the linear rule proves that `add_wrap(a, b)`, read as a signed value, is
+the exact sum. Before that, the result enters no verified reasoning, and no
+modular identity justifies a signed operation whose exact result is not
+representable (`ARITH-006`, `EQ-002`). Unsigned `+ - *` and unary `-` stay modular with no
 obligation, and a conversion to an unsigned type is reduction modulo `2^w`,
 which C++ defines. A conversion to a signed type that may not fit is
 implementation-defined before C++20 and modular since; this RFC requires
@@ -164,6 +188,15 @@ obligation vacuous while the overflow runs first. After the expression, the
 path supposes every condition it proved, so what follows may use `x + 1 > x`.
 `&&`, `||` and `?:` in a condition are already routes, so an operation in a
 right operand is owed only where the left one let it run (`BOUNDARYEX-001`).
+
+The obligation belongs to each evaluation, not to the operator as written. An
+operator in a loop body owes it on every iteration, under the invariant; one in
+a template owes it in each specialization, at that specialization's common
+type, so `a + b` owes representability at `int` and nothing at `unsigned`; one
+in a function called from several places owes it once, under the callee's
+precondition, which every call site owes in turn. Nothing the evaluation
+produces is supposed when its own obligation is proven: not its value, not a
+later guard on it, not the function's postcondition.
 
 **Bodies and definitions.** A verified body that evaluates any such operation
 is verified by the conditions walk of RFC 0007, as a body with a loop is, so

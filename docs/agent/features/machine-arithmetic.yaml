@@ -8,16 +8,21 @@
 feature: machine-arithmetic
 
 summary: >
-  C++ integer arithmetic with its exact semantics. Unsigned `+ - *` are the
-  ring of integers modulo 2^width. Signed `+ - *` and unary `-`, `/` and `%`,
-  and a conversion to a signed type that may not fit are defined only under a
-  condition, which every evaluation on a verified path owes as an obligation:
-  the exact result is representable, the divisor is not zero, the operands are
-  not the least value and -1, the converted value fits. Where the condition
-  holds the total core primitive is the C++ value. Promotions and the usual
-  arithmetic conversions are the ones Clang recorded. A specification's C++
-  condition holds only where its operations are defined. Nothing is added to
-  the runtime program.
+  C++ integer arithmetic with its exact semantics. Each operation is performed
+  in the common type the integral promotions and the usual arithmetic
+  conversions select, as Clang recorded them: two `unsigned char` values add as
+  a signed `int`. In an unsigned common type `+ - *` are the ring of integers
+  modulo 2^width. In a signed one `+ - *` and unary `-`, and `/` and `%` at any
+  type, and a conversion to a signed type that may not fit are defined only
+  under a condition, which every evaluation on a verified path owes as an
+  obligation: the exact result is representable, the divisor is not zero, the
+  operands are not the least value and -1, the converted value fits. The
+  obligation is proven from what the path established before the evaluation,
+  never from its result. Once it is discharged, the ring term read as a signed
+  value is proven equal to the exact result; modular arithmetic never
+  justifies a signed operation whose exact result is out of range. A
+  specification's C++ condition holds only where its operations are defined.
+  Nothing is added to the runtime program.
 
 normative_sources:
   spec:
@@ -164,6 +169,14 @@ tests:
     - tests/fixtures/negative/arith_specification_overflow.cpp
     - tests/fixtures/negative/arith_law_instance_argument.cpp
     - tests/fixtures/negative/arith_pure_signed_definition.cpp
+    - tests/fixtures/negative/arith_unsigned_char_not_wrapped.cpp
+    - tests/fixtures/negative/arith_character_types_not_modeled.cpp
+    - tests/fixtures/negative/arith_bit_field_not_modeled.cpp
+    - tests/fixtures/negative/arith_result_guard_too_late.cpp
+    - tests/fixtures/negative/arith_postcondition_not_supposed.cpp
+    - tests/fixtures/negative/arith_modular_identity.cpp
+    - tests/fixtures/negative/arith_template_signed_instance.cpp
+    - tests/fixtures/negative/arith_call_site_precondition.cpp
     - tests/negative/verified_paths.sh
     - tests/negative/verified_locals.sh
     - tests/negative/verified_functions.sh
@@ -184,6 +197,12 @@ tests:
 required_test_categories:
   - the boundary of every width, rejected, with its twin one step inside accepted
   - large products, rejected, and products of promoted narrow values accepted
+  - unsigned narrow operands promoted to a signed int, owing and computing as int
+  - types whose promotion is not modeled (char16_t, char32_t, wchar_t, bit-fields), refused
+  - no obligation discharged by its own result, a later guard or the postcondition
+  - the ring value under a discharged obligation is the exact signed result, negative operands included
+  - a modular identity never proving a signed claim whose exact result is out of range
+  - each evaluation owing its own obligation: per iteration, per specialization, per call site
   - division and remainder by zero, signed and unsigned
   - the least value over -1, for `/` and `%`
   - negation of the least value
@@ -201,7 +220,8 @@ required_test_categories:
 
 completion_requires:
   - every signed operation, division and narrowing conversion owes its condition on its path
-  - no signed overflow is modeled as wrapping
+  - no signed overflow is modeled as wrapping, and no modular identity stands in for representability
+  - no obligation is discharged from the operation's own result
   - promotions and conversions are read from Clang, never derived
   - a specification never takes its meaning from undefined behavior
   - nothing is added to the runtime program

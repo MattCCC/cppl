@@ -315,3 +315,167 @@ CPPL_TEST(signed_obligations_hold_one_step_inside_the_boundary_and_fail_at_it) {
     CPPL_CHECK(proven(closed(one, {fits(k::PrimOp::AddFits, 1)}, successor)));
     CPPL_CHECK(!proven(closed(one, {}, successor)));
 }
+
+// Under a discharged representability obligation the ring operation's value,
+// read as a signed value, is the exact mathematical result, negative operands
+// included. For every pinned 4-bit signed pair whose exact sum, difference,
+// product by a constant or negation is representable, the obligation is among
+// the premises and that exact value is proven, and its neighbours are not.
+//
+// SPEC: ARITH-006, DEFINEDBEHAVIOR-001, EQ-002
+CPPL_TEST(a_discharged_obligation_makes_the_ring_value_the_exact_signed_result) {
+    const std::vector<k::Type> two{k::Type{kI4}, k::Type{kI4}};
+    const std::vector<k::Type> one{k::Type{kI4}};
+    const auto representable = [](Wide value) {
+        return value >= least(kI4) && value <= most(kI4);
+    };
+    const auto exactly = [&](const std::vector<k::Type>& binders, std::vector<k::Proposition> premises,
+                             const k::Term& ring, Wide exact, const std::string& what) {
+        const auto equals = [&](Wide value) {
+            return closed(binders, premises, k::Proposition::equality(k::Type{kI4}, ring, lit(kI4, value)));
+        };
+        expect(proven(equals(exact)), what);
+        for (const Wide wrong : {exact - 1, exact + 1}) {
+            if (representable(wrong)) {
+                expect(!proven(equals(wrong)), "false " + what);
+            }
+        }
+    };
+    for (Wide a = least(kI4); a <= most(kI4); ++a) {
+        for (Wide b = least(kI4); b <= most(kI4); ++b) {
+            std::vector<k::Proposition> premises = pinned(kI4, var(1), a);
+            for (auto& premise : pinned(kI4, var(0), b)) {
+                premises.push_back(std::move(premise));
+            }
+            const struct {
+                Wide exact;
+                const char* name;
+                k::PrimOp fits;
+                k::PrimOp ring;
+            } operations[] = {{a + b, "sum", k::PrimOp::AddFits, k::PrimOp::AddWrap},
+                              {a - b, "difference", k::PrimOp::SubFits, k::PrimOp::SubWrap}};
+            for (const auto& operation : operations) {
+                if (!representable(operation.exact)) {
+                    continue;
+                }
+                std::vector<k::Proposition> discharged = premises;
+                discharged.push_back(truth(prim(operation.fits, kI4, {var(1), var(0)}), true));
+                exactly(two, std::move(discharged), prim(operation.ring, kI4, {var(1), var(0)}), operation.exact,
+                        at(operation.name, a, b));
+            }
+            // A product by a constant is linear; the constant is `b`.
+            if (representable(a * b)) {
+                std::vector<k::Proposition> discharged = pinned(kI4, var(0), a);
+                discharged.push_back(truth(prim(k::PrimOp::MulFits, kI4, {var(0), lit(kI4, b)}), true));
+                exactly(one, std::move(discharged), prim(k::PrimOp::MulWrap, kI4, {var(0), lit(kI4, b)}), a * b,
+                        at("product", a, b));
+            }
+        }
+        if (representable(-a)) {
+            std::vector<k::Proposition> discharged = pinned(kI4, var(0), a);
+            discharged.push_back(truth(prim(k::PrimOp::SubFits, kI4, {lit(kI4, 0), var(0)}), true));
+            exactly(one, std::move(discharged), prim(k::PrimOp::SubWrap, kI4, {lit(kI4, 0), var(0)}), -a,
+                    at("negation", a, 0));
+        }
+    }
+}
+
+// The instances the review names, at 32 bits: -1 + -1 is -2, MIN + 0 is MIN,
+// and -MAX - 1 is MIN, each with its obligations discharged. The ring reduces
+// modulo 2^32 on the way to each; what makes the value the signed result is
+// the obligation, not the reduction.
+//
+// SPEC: ARITH-006, DEFINEDBEHAVIOR-001
+CPPL_TEST(negative_operands_denote_their_exact_signed_results) {
+    const std::vector<k::Type> one{k::Type{kI32}};
+    const std::vector<k::Type> two{k::Type{kI32}, k::Type{kI32}};
+    const Wide min = least(kI32);
+    const Wide max = most(kI32);
+    const auto fits = [](k::PrimOp op, const k::Term& a, const k::Term& b) {
+        return truth(prim(op, kI32, {a, b}), true);
+    };
+    const auto equals = [](const k::Term& term, Wide value) {
+        return k::Proposition::equality(k::Type{kI32}, term, lit(kI32, value));
+    };
+
+    std::vector<k::Proposition> minus_ones = pinned(kI32, var(1), -1);
+    for (auto& premise : pinned(kI32, var(0), -1)) {
+        minus_ones.push_back(std::move(premise));
+    }
+    minus_ones.push_back(fits(k::PrimOp::AddFits, var(1), var(0)));
+    const k::Term sum = prim(k::PrimOp::AddWrap, kI32, {var(1), var(0)});
+    CPPL_CHECK(proven(closed(two, minus_ones, equals(sum, -2))));
+    CPPL_CHECK(!proven(closed(two, minus_ones, equals(sum, -1))));
+    CPPL_CHECK(!proven(closed(two, minus_ones, equals(sum, -3))));
+
+    std::vector<k::Proposition> least_value = pinned(kI32, var(0), min);
+    least_value.push_back(fits(k::PrimOp::AddFits, var(0), lit(kI32, 0)));
+    CPPL_CHECK(proven(closed(one, least_value, equals(prim(k::PrimOp::AddWrap, kI32, {var(0), lit(kI32, 0)}), min))));
+
+    // -MAX is `0 - x` at x = MAX, then `- 1`; both owe and both fit.
+    const k::Term negated = prim(k::PrimOp::SubWrap, kI32, {lit(kI32, 0), var(0)});
+    std::vector<k::Proposition> greatest = pinned(kI32, var(0), max);
+    greatest.push_back(fits(k::PrimOp::SubFits, lit(kI32, 0), var(0)));
+    greatest.push_back(fits(k::PrimOp::SubFits, negated, lit(kI32, 1)));
+    const k::Term below = prim(k::PrimOp::SubWrap, kI32, {negated, lit(kI32, 1)});
+    CPPL_CHECK(proven(closed(one, greatest, equals(below, min))));
+    CPPL_CHECK(!proven(closed(one, greatest, equals(below, max))));
+}
+
+// A signed claim that holds of the exact result follows from the obligation,
+// never from the ring. `x + y > x` for a positive `y`, `x - y < x`, `2 * x > x`
+// for a positive `x` and `-x > 0` for a negative `x` are proven with the
+// obligation among the premises and are not without it, because the ring value
+// wraps where the exact result leaves the type. For every pinned 4-bit pair
+// whose exact sum is not representable, neither the claim nor the obligation is
+// proven, although the ring gives the operation a value there.
+//
+// SPEC: ARITH-006, ARITH-001, DEFINEDBEHAVIOR-001
+CPPL_TEST(modular_arithmetic_never_justifies_a_signed_claim) {
+    const std::vector<k::Type> one{k::Type{kI32}};
+    const std::vector<k::Type> two{k::Type{kI32}, k::Type{kI32}};
+    const auto x = var(1);
+    const auto y = var(0);
+    const auto order = [](k::PrimOp op, const k::Term& a, const k::Term& b) {
+        return truth(prim(op, kI32, {a, b}), true);
+    };
+    const k::Term zero = lit(kI32, 0);
+    const auto positive_y = order(k::PrimOp::Less, zero, y);
+
+    const auto grows = order(k::PrimOp::Greater, prim(k::PrimOp::AddWrap, kI32, {x, y}), x);
+    CPPL_CHECK(proven(closed(two, {positive_y, order(k::PrimOp::AddFits, x, y)}, grows)));
+    CPPL_CHECK(!proven(closed(two, {positive_y}, grows)));
+
+    const auto shrinks = order(k::PrimOp::Less, prim(k::PrimOp::SubWrap, kI32, {x, y}), x);
+    CPPL_CHECK(proven(closed(two, {positive_y, order(k::PrimOp::SubFits, x, y)}, shrinks)));
+    CPPL_CHECK(!proven(closed(two, {positive_y}, shrinks)));
+
+    const auto only = var(0);
+    const auto doubled = order(k::PrimOp::Greater, prim(k::PrimOp::MulWrap, kI32, {only, lit(kI32, 2)}), only);
+    const auto positive = order(k::PrimOp::Less, zero, only);
+    CPPL_CHECK(proven(closed(one, {positive, order(k::PrimOp::MulFits, only, lit(kI32, 2))}, doubled)));
+    CPPL_CHECK(!proven(closed(one, {positive}, doubled)));
+
+    const auto flipped = order(k::PrimOp::Less, zero, prim(k::PrimOp::SubWrap, kI32, {zero, only}));
+    const auto negative = order(k::PrimOp::Less, only, zero);
+    CPPL_CHECK(proven(closed(one, {negative, order(k::PrimOp::SubFits, zero, only)}, flipped)));
+    CPPL_CHECK(!proven(closed(one, {negative}, flipped)));
+
+    const std::vector<k::Type> small{k::Type{kI4}, k::Type{kI4}};
+    for (Wide a = 1; a <= most(kI4); ++a) {
+        for (Wide b = 1; b <= most(kI4); ++b) {
+            if (a + b <= most(kI4)) {
+                continue;
+            }
+            std::vector<k::Proposition> premises = pinned(kI4, var(1), a);
+            for (auto& premise : pinned(kI4, var(0), b)) {
+                premises.push_back(std::move(premise));
+            }
+            const auto claim =
+                truth(prim(k::PrimOp::Greater, kI4, {prim(k::PrimOp::AddWrap, kI4, {var(1), var(0)}), var(1)}), true);
+            expect(!proven(closed(small, premises, claim)), at("a wrapped sum claimed larger", a, b));
+            expect(!proven(closed(small, premises, truth(prim(k::PrimOp::AddFits, kI4, {var(1), var(0)}), true))),
+                   at("a wrapped sum claimed representable", a, b));
+        }
+    }
+}

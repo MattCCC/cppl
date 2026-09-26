@@ -1247,7 +1247,11 @@ value_set(T) = { 0, ..., 2^w - 1 }
 ```
 
 and same-type unsigned addition/subtraction/multiplication follow the C++ modular
-semantics after the actual C++ conversions have selected that operation.
+semantics after the actual C++ conversions have selected that operation. The
+operation's type is the common type the integral promotions and the usual
+arithmetic conversions select, not the operands' written type: two `unsigned
+char` operands promote to `int`, which holds all their values, and are a signed
+operation.
 
 For signed types, the formal model must distinguish:
 
@@ -1271,9 +1275,21 @@ convert_T(a : S)      = reduce_T(value(a))
 ```
 
 where `reduce_T` is two's-complement reduction into `T` and the operations on
-values are those of the integers. A signed operation of C++ is admitted only
-where its representability holds, and there the wrapping primitive of §35
-denotes the exact result; a division only where the divisor is not zero and,
+values are those of the integers. The wrapping primitive of §35 is modular for
+every operand, a valid signed operation included: `-1 + -1` on 32-bit patterns
+reduces modulo `2^32` on the way to `-2`. Since `reduce_T` is the identity on
+`value_set(T)`,
+
+```text
+add_fits_T(a, b) = 1  ⟹  value(add_wrap_T(a, b)) = value(a) + value(b)
+```
+
+and likewise for `sub` and `mul`. That implication, not the reduction, is what
+lets the ring term stand for a signed result. A signed operation of C++ is
+admitted only where its representability is established, independently of the
+ring term and before its result is used, and there the ring term interpreted as
+a signed value is that exact result; modular arithmetic never justifies one whose
+exact result lies outside `value_set(T)`. A division only where the divisor is not zero and,
 signed, the operands are not the least value and `-1`, where `quot` reduces
 nothing; a conversion to a signed type only where the value is in the target's
 value set. The values the total definitions give elsewhere are never those of a

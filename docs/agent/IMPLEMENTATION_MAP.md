@@ -641,7 +641,7 @@ Normative sources: `ARITH-001`–`ARITH-013` (SPEC §29), `EQ-002`, `EQ-009`
 | --- | --- | --- |
 | kernel | The total primitives `add_fits`, `sub_fits`, `mul_fits`, `quot`, `rem` and `convert`: typing, folding on literals, and the linear constraints each is stated by. A conversion's operand type is read from the binders the check stands under. | `kernel/src/term.cpp`, `kernel/src/context.cpp` (`type_of_impl`), `kernel/src/arithmetic.cpp` (`normalize_primitive`), `kernel/src/linear.cpp` (`Builder::truth`, `define_conversion`, `define_division`, `product_always_fits`) |
 | refutation | Examine a wide multiple of `2^width`, and a quotient by a constant, value by value over the integers the constraints leave it. Untrusted. | `compiler/refutation/src/refute.cpp` (`project`, `window_of`) |
-| bridge | Read each implicit conversion between modeled integer types and each explicit integral cast as a `Conversion`, `/` and `%` as operators, unary `-` as `Minus`, a negated literal and a character literal as literals, and `/=`, `%=` as updates. Every other conversion stays refused. | `clang/src/bridge.cpp` (`build_expression`, `integral_conversion`, `lower_update`) |
+| bridge | Read each implicit conversion between modeled integer types and each explicit integral cast as a `Conversion`, `/` and `%` as operators, unary `-` as `Minus`, a negated literal and a character literal as literals, and `/=`, `%=` as updates. Every operation keeps the common type Clang gave it. Every other conversion stays refused, and so does a bit-field read. | `clang/src/bridge.cpp` (`build_expression`, `integral_conversion`, `lower_update`) |
 | elaboration, VIR | Carry `Minus`, `Conversion`, `Div` and `Rem`. | `compiler/elaboration/src/elaborate.cpp`, `vir/include/cppl/vir/expr.hpp`, `vir/src/vir.cpp` |
 | obligations | State each operation with its total primitive; find the operations an expression evaluates and the `?:` outcomes guarding each (`&&` and `||` are routes or connectives, never values there); owe each condition on the path, supposing only the postconditions of calls sequenced before it; conjoin a specification's conditions into what it states; refuse such operations in a pure definition and in a claimed law's arguments. | `compiler/obligations/src/definedness.cpp`, `compiler/obligations/src/generate.cpp` (`TermLowering`, `lower_proposition`), `compiler/obligations/src/contracts.cpp` (`Conditions::evaluate`, `owe_definedness`) |
 | automation, driver | Pass binder types to the constraint builder; name the operation, the condition and the types in a failed obligation; count defined operations. | `compiler/automation/src/arithmetic.cpp`, `compiler/automation/src/evidence.cpp`, `compiler/driver/src/pipeline.cpp`, `compiler/driver/src/driver.cpp` |
@@ -675,9 +675,10 @@ tests/e2e/arithmetic_properties.sh         the verifier's decision and value aga
 ```
 
 Not built: shifts and bitwise operators, conversions to or from `bool`,
-enumerations and floating point, compound assignment of a promoted type, and
-nonlinear representability beyond products of promoted narrow values, each
-refused.
+enumerations and floating point, compound assignment of a promoted type,
+`char8_t`, `char16_t`, `char32_t`, `wchar_t` and bit-field values, whose
+promotion is not modeled, and nonlinear representability beyond products of
+promoted narrow values, each refused.
 
 ---
 

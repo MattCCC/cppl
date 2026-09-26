@@ -52,9 +52,10 @@ defined() {
 }
 
 # SPEC: ARITH-006, ARITH-012, DEFINEDBEHAVIOR-001
-# Representability at the boundary of every width. A narrow type is promoted to
-# `int`, where the sum always fits, and the conversion back owes the bound. Each
-# diagnostic names the operation, the condition, the types and the rule.
+# Representability at the boundary of every width. A narrow type promotes to
+# `int`, which holds all its values and where the sum always fits, and the
+# conversion back owes the bound. Each diagnostic names the operation, the
+# condition, the types and the rule.
 refuse arith_int32_max_plus_one \
     "arith_int32_max_plus_one.cpp:10:12: error [kernel-rejection]: $(defined int_at_max_plus_one \
         "signed overflow: 'x + 1' on the signed type 'int' is not shown to stay within 'int'")" \
@@ -84,6 +85,49 @@ refuse arith_int64_large_product \
     "$(defined int64_doubled_too_far "signed overflow: 'x * (long long)2' on the signed type 'long long'")"
 refuse arith_int16_unsigned_product \
     "$(defined unsigned_short_product "signed overflow: '(int)a * (int)b' on the signed type 'int'")"
+
+# SPEC: ARITH-003, ARITH-006
+# The operation's type is the common type after the integral promotions, read
+# from Clang: two `unsigned char` operands add as `int`, so the 8-bit wrapped
+# value is not the result. A type whose promotion is not modeled -- a character
+# type that may promote to `unsigned int`, a bit-field that promotes by its
+# width -- is refused where it is named, not given a promotion derived here.
+refuse arith_unsigned_char_not_wrapped \
+    "arith_unsigned_char_not_wrapped.cpp:11:12: error [kernel-rejection]: return path 'unsigned_char_wrapped path 1' does not satisfy its contract"
+refuse arith_character_types_not_modeled \
+    "'char32_sum' has a parameter of type 'char32_t', which is not modeled" \
+    "'char16_sum' has a parameter of type 'char16_t', which is not modeled" \
+    "'wide_sum' has a parameter of type 'wchar_t', which is not modeled"
+refuse arith_bit_field_not_modeled \
+    "arith_bit_field_not_modeled.cpp:12:14: error [unsupported-semantics]: verified function 'low_successor'" \
+    "bit-field 'low' is not modeled: its values and its promotion follow its width, not its declared type" \
+    "bit-field 'all' is not modeled"
+
+# SPEC: ARITH-006, ARITH-009, DEFINEDBEHAVIOR-001
+# An obligation is discharged only from what the path established before the
+# evaluation: not from the result tested afterwards, not from the postcondition
+# claimed of it, not from a modular identity the ring satisfies. Each contract
+# here holds of the wrapped value; only the definedness is missing.
+refuse arith_result_guard_too_late \
+    "arith_result_guard_too_late.cpp:11:13: error [kernel-rejection]: $(defined successor_tested_after \
+        "signed overflow: 'x + 1' on the signed type 'int'")"
+refuse arith_postcondition_not_supposed \
+    "arith_postcondition_not_supposed.cpp:9:12: error [kernel-rejection]: $(defined successor_claimed_above \
+        "signed overflow: 'x + 1' on the signed type 'int'")"
+refuse arith_modular_identity \
+    "arith_modular_identity.cpp:11:12: error [kernel-rejection]: $(defined successor_by_identity \
+        "signed overflow: 'x + 1' on the signed type 'int'")" \
+    "arith_modular_identity.cpp:17:12: error [proof-failure]: verified function 'cancelled_by_identity' does not satisfy its contract"
+
+# SPEC: ARITH-009, ARITH-003, DEFINEDBEHAVIOR-001
+# The obligation belongs to each evaluation: a template's `a + b` owes it in the
+# specialization whose common type is signed, and a callee's `x + 1` owes it
+# once under the precondition every call site then owes.
+refuse arith_template_signed_instance \
+    "arith_template_signed_instance.cpp:11:12: error [kernel-rejection]: $(defined wrapped_sum \
+        "signed overflow: 'a + b' on the signed type 'int'")"
+refuse arith_call_site_precondition \
+    "arith_call_site_precondition.cpp:21:12: error [kernel-rejection]: call-site precondition for 'second_successor -> successor' is not proven"
 
 # SPEC: ARITH-006, EXPR-007
 refuse arith_negate_min \

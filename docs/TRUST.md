@@ -652,8 +652,13 @@ wrapping primitive and owes `add_fits`, `sub_fits` or `mul_fits` of its operands
 `/` and `%` are stated with `quot` and `rem`, total by definition, and owe a
 nonzero divisor and, signed, that the operands are not the least value and `-1`;
 a conversion is stated with `convert` and owes, for a signed target, that the
-value fits. Where the obligation holds, the total primitive equals the C++
-result, so no wrap is ever relied on. The primitives are logical TCB: their
+value fits. The wrapping primitive is modular for every operand, so a valid
+signed operation such as `-1 + -1` still reduces at the level of the encoding;
+what the verifier relies on is that, once the obligation is discharged, the
+kernel's linear rule proves the primitive's value, read as a signed value, equal
+to the exact C++ result. The obligation is proven from what the path
+established before the evaluation, never from the result, a later guard or the
+postcondition, and no modular identity stands in for it. The primitives are logical TCB: their
 typing, their folding on literals and the constraints linear arithmetic states
 for them (`kernel/src/context.cpp`, `kernel/src/arithmetic.cpp`,
 `kernel/src/term.cpp`, `kernel/src/linear.cpp`, about 550 lines with comments).
@@ -669,7 +674,11 @@ every operation a runtime path evaluates owes its condition under what the path
 supposes before it, supposing only the postconditions of calls sequenced before
 it, and a specification states the conditions of its operations as part of
 what it states. The conversions C++ performs are read from the ones Clang
-recorded (TCB-ARITH-004) and are never derived again. The refutation search,
+recorded (TCB-ARITH-004) and are never derived again: each operation is stated
+at the common type Clang gave it after the integral promotions and the usual
+arithmetic conversions, and an operand not already of that type is refused.
+Types whose promotion is not modeled (`char8_t`, `char16_t`, `char32_t`,
+`wchar_t`, bit-fields) fail closed where they are named. The refutation search,
 which proposes the certificates, stays untrusted (§6).
 
 ---

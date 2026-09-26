@@ -7,7 +7,10 @@
 > Signed arithmetic, division, remainder and integral conversions, which this
 > RFC refuses, are admitted with their defined-behavior obligations by
 > [RFC 0019](0019-signed-arithmetic-and-division.md); its first unresolved
-> question below is answered there.
+> question below is answered there. "Unsigned operands" below means operands
+> whose common type, after the integral promotions and the usual arithmetic
+> conversions, is unsigned (SPEC.md ARITH-003): two `unsigned char` or
+> `unsigned short` operands promote to `int` and are a signed operation.
 
 Status: implemented by this slice; normative rules are SPEC.md 7.1, 7.5, 12.5
 and 29.

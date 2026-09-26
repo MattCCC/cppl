@@ -133,6 +133,8 @@ conversion-identity-widening-only	kernel/src/linear.cpp	if (lowest(from) >= lowe
 truncating-remainder-magnitude	kernel/src/linear.cpp	const Wide largest = (divisor < 0 ? -divisor : divisor) - 1;	const Wide largest = (divisor < 0 ? -divisor : divisor) - 2;	^kernel_definedness_test$|^unit_definedness_arithmetic_test$
 remainder-sign-of-dividend	kernel/src/linear.cpp	return either(negated(*dividend), 0, remainder, 0);	return either(negated(*dividend), 0, remainder, 1);	^kernel_definedness_test$|^unit_definedness_arithmetic_test$
 representability-fails-outside	kernel/src/linear.cpp	return holds ? bound(**exact, primitive->type) : outside(**exact, primitive->type);	return holds ? bound(**exact, primitive->type) : (false ? outside(**exact, primitive->type) : bound(**exact, primitive->type));	^kernel_definedness_test$|^unit_definedness_arithmetic_test$
+definedness-not-self-supposed	compiler/obligations/src/contracts.cpp	emit(before, Origin::DefinedBehavior, function_.qualified_name, site.operation->provenance.range,	before.events.emplace_back(*condition); emit(before, Origin::DefinedBehavior, function_.qualified_name, site.operation->provenance.range,	^negative_signed_arithmetic$
+bit-field-read-refused	clang/src/bridge.cpp	if (clang_getFieldDeclBitWidth(field) >= 0) {	if (false && clang_getFieldDeclBitWidth(field) >= 0) {	^negative_signed_arithmetic$
 MUTATIONS
 )
 
