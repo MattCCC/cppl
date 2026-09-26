@@ -14,11 +14,13 @@
 // This header is a private implementation detail of cppl_driver: it is not
 // installed and no other library includes it.
 
+#include "cppl/artifact/interface.hpp"
 #include "cppl/diagnostics/diagnostic.hpp"
 #include "cppl/driver/buffer_compile.hpp"
 #include "cppl/elaboration/elaborate.hpp"
 #include "cppl/frontend/syntax.hpp"
 #include "cppl/frontend/token.hpp"
+#include "cppl/obligations/interface.hpp"
 #include "cppl/obligations/trust.hpp"
 #include "cppl/source/location.hpp"
 
@@ -89,6 +91,12 @@ struct PipelineRequest {
     // generating or verifying an obligation. An editor's index of the
     // workspace needs no more, and verification is the costly part.
     bool stop_after_elaboration = false;
+
+    // The contracts of other units the verification interfaces this unit
+    // imports record, already validated as artifacts (SPEC.md TUBOUND-003, TUBOUND-005).
+    // Null when none were imported; a verified function declared and not
+    // defined here is then refused, as it always was.
+    const obligations::Imports* imports = nullptr;
 };
 
 struct PipelineOutcome {
@@ -119,6 +127,15 @@ struct PipelineOutcome {
     // and not failed before erasure). Empty otherwise.
     std::string runtime_path;
 
+    // Every file the preprocessor read the unit from, as its line markers name
+    // them, so a verification interface can record what the unit was verified
+    // from (SPEC.md TUBOUND-005). Set whenever the text was lexed.
+    std::vector<std::string> files;
+
+    // The contracts this unit proved, as its verification interface records
+    // them (SPEC.md TUBOUND-002). Set once verification has run.
+    std::vector<artifact::Entry> exported;
+
     // Aggregate verification counts, for callers that report a trust summary
     // (the CLI). The LSP does not need these and may ignore them.
     struct Counters {
@@ -145,6 +162,9 @@ struct PipelineOutcome {
         std::size_t proofs_proven = 0;
         std::size_t unresolved = 0;
         std::size_t trusted = 0;
+        // Contracts of other units established from verification interfaces.
+        // Never counted as proven here (SPEC.md TUBOUND-006).
+        std::size_t contracts_imported = 0;
 
         // Every explicit trusted assumption the unit declares, named so the
         // trust report can list it rather than only count it (SPEC.md 27,

@@ -284,8 +284,50 @@ TrustClosure close_trust(const Program& program, const std::vector<ObligationRes
         }
         return unsafe;
     };
+    // The contracts of other units each contract was proven through travel the
+    // same edges: its own calls' first, then those of every contract it calls
+    // (SPEC.md TUBOUND-006). Keyed by contract index, marked direct where the body
+    // itself makes the call.
+    std::vector<std::map<std::size_t, bool>> through(program.contracts.size());
+    for (std::size_t index = 0; index < program.contracts.size(); ++index) {
+        for (const std::size_t callee : callees[index]) {
+            if (program.contracts[callee].imported.has_value()) {
+                through[index][callee] = true;
+            }
+        }
+    }
+    for (bool changed = true; changed;) {
+        changed = false;
+        for (std::size_t index = 0; index < through.size(); ++index) {
+            for (const std::size_t callee : callees[index]) {
+                if (callee == index) {
+                    continue;
+                }
+                for (const auto& [imported, direct] : through[callee]) {
+                    changed = through[index].emplace(imported, false).second || changed;
+                }
+            }
+        }
+    }
+    const auto imported_dependency = [&program](std::size_t index, bool direct) {
+        const ContractVerification& contract = program.contracts[index];
+        const ImportedContract& recorded = *contract.imported;
+        return ImportedDependency{contract.name,     contract.symbol, recorded.origin,  recorded.entry, contract.total,
+                                  recorded.premises, recorded.unsafe, recorded.depends, direct};
+    };
+    const auto imported_list = [&](const std::map<std::size_t, bool>& found) {
+        std::vector<ImportedDependency> imported;
+        imported.reserve(found.size());
+        for (const auto& [index, direct] : found) {
+            imported.push_back(imported_dependency(index, direct));
+        }
+        std::ranges::sort(imported, {}, &ImportedDependency::symbol);
+        return imported;
+    };
+
     for (const auto& [claim, contract] : path_claims) {
         closure.claims[claim].unsafe = listed(regions[contract]);
+        closure.claims[claim].imported = imported_list(through[contract]);
     }
 
     // A contract of a recursion group holds only with the whole group, each
@@ -297,6 +339,13 @@ TrustClosure close_trust(const Program& program, const std::vector<ObligationRes
     };
     for (std::size_t index = 0; index < program.contracts.size(); ++index) {
         const ContractVerification& contract = program.contracts[index];
+        // Another unit's contract is no claim of this one: nothing here proved
+        // it. It is listed so the report names every contract assumed from an
+        // interface, and every claim of this unit that rests on it names it.
+        if (contract.imported.has_value()) {
+            closure.imports.push_back(imported_dependency(index, false));
+            continue;
+        }
         const bool proven = contract.partial
                                 ? conditions_proven(contract) &&
                                       std::ranges::all_of(contract.recursion,
@@ -322,10 +371,23 @@ TrustClosure close_trust(const Program& program, const std::vector<ObligationRes
             ClaimKind::Contract, contract.name,
             anchor < results.size() ? program.obligations[anchor].range.begin : source::SourceLocation{},
             contract.partial ? ObligationId{contract.identity} : program.obligations[contract.obligation].id,
-            ordered(std::move(contracts[index])), listed(regions[index]), contract.total});
+            ordered(std::move(contracts[index])), listed(regions[index]), contract.total, imported_list(through[index]),
+            contract.symbol});
     }
 
     return closure;
+}
+
+bool rests_on_trusted_laws(const ClaimClosure& claim) {
+    return !claim.premises.empty() || std::ranges::any_of(claim.imported, [](const ImportedDependency& imported) {
+        return !imported.premises.empty();
+    });
+}
+
+bool rests_on_unsafe_code(const ClaimClosure& claim) {
+    return !claim.unsafe.empty() || std::ranges::any_of(claim.imported, [](const ImportedDependency& imported) {
+        return !imported.unsafe.empty();
+    });
 }
 
 } // namespace cppl::obligations

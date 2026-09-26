@@ -719,7 +719,38 @@ obligation generation and the trust closure, never by the kernel.
 | Local versioning (declarations/assignments)       | `PROTOTYPE`   |
 | Weakest-precondition engine                       | `NOT STARTED` |
 | Contract composition                              | `PROTOTYPE`   |
-| Contract reuse across translation units           | `NOT STARTED` |
+| Contract reuse across translation units           | `PROTOTYPE`   |
+
+A verified function declared in one translation unit and defined in another is
+verified where it is defined, and used where it is only declared through a
+verification interface (`SPEC.md` Annex L.2.1, TUBOUND-002 to TUBOUND-009, RFC
+0017). `cppl --cppl-emit-interface=<file>` writes one for a unit that verified
+and produced its object: every contract it proved for a function with external
+linkage, by Clang's USR, with a canonical identity of what the contract states,
+whether it is total, and the trusted laws, unsafe blocks and contracts of other
+units its proof rests on. `--cppl-import-interface=<file>`, repeatable, makes a
+unit's contracts available to another. The consumer never reads a proposition
+from the file: it states the contract from its own declaration and uses a record
+only when the statement identities agree, so a stronger postcondition, a weaker
+precondition, another overload or another specialization is refused. An
+interface of another compiler build, kernel, core, Clang, language mode or
+target, or one whose unit's files changed since it was written, is refused
+whole; so is a malformed, truncated or checksum-failing one, two interfaces
+recording different contracts for one function, and a record whose own
+dependencies are not imported as they were proven. A claim resting on an
+imported contract is PROVEN relative to that record and reported with it and
+with everything its proof rested on, transitively; it is never listed as
+assumption-free. Totality crosses as recorded, and recursion across units is
+refused. Nothing here re-checks another unit's proof: the interface is artifact
+and reuse TCB (`TRUST.md` 31.1), and a deliberately edited interface whose
+checksum is recomputed is not detected. What binds the object linked to the
+interface imported is left to the build. `cppl-lsp` does not import interfaces
+yet, so an editor refuses such a call as the CLI without imports does.
+
+A function's header declaration and its definition may both be marked
+`verified` and state its contract, as a definition whose body states loop
+clauses must be; the two must state the same contract, compared by meaning, or
+the function is refused (`SPEC.md` TU-003).
 
 ---
 
@@ -855,10 +886,12 @@ refused whichever order they are written in. `extern template` is an
 instantiation declaration rather than a definition, so it instantiates nothing
 here and is still reported as uninstantiated (TEMPLATE-001).
 
-Verified function templates are `PROTOTYPE`. A specialization consumed across
-translation units carries no exported verification metadata, so a use in another
-unit is not verified there; `docs/rfcs/0017-cross-translation-unit-verification.md`
-proposes the mechanism and nothing implements it yet.
+Verified function templates are `PROTOTYPE`. An explicit specialization declared
+with its own contract crosses translation units through a verification interface
+like any function (TUBOUND-004); `f<4>`'s record never serves `f<5>`, even when
+the two state the same contract. A specialization of a template a unit only
+declares is not instantiated there, so its contract cannot be stated to compare
+with a record, and it is refused rather than guessed.
 
 A lambda is a closure object with its own call operator, and it is refused on
 every route into a verified body: bound to a local, called without ever
@@ -890,7 +923,8 @@ contract proved from a base's body would not cover an override that replaces
 it. A refinement does not cross a translation unit on a declaration's word
 either. An ordinary function's refined return is refused as evidence at the
 boundary, including through a header, so the only way a refined value enters is
-where its predicate was proved.
+where its predicate was proved: in the unit itself, or in another unit whose
+verification interface records the verified function's contract (TUBOUND-004).
 
 Binding a conditional to a local splits the route on its condition, so each arm
 is proved under what its own path supposes rather than as one opaque `select`
@@ -1315,10 +1349,13 @@ A runtime path claim is the one way a trusted premise enters a verified body, so
 a contract rests on a trusted law only through one, in its own body or in a
 function it calls. A recursion group is closed the same way, to a fixed point
 over its cycle, which `tests/unit/trust_closure_test.cpp` exercises with trusted
-laws and unsafe blocks. Trust is propagated within one translation
-unit: no proof artifact or cache carries a closure across units yet. A verified
-call to a function defined in another unit is refused, so no claim rests on an
-assumption this unit cannot list.
+laws and unsafe blocks. Across translation units, a verification interface
+carries each recorded contract's closure: a claim proven through an imported
+contract rests on that record and on the trusted laws, unsafe blocks and further
+imported contracts its proof rested on, each named in the report with the
+interface and record it came from (`SPEC.md` TUBOUND-006). A verified call to a
+function defined in another unit whose interface is not imported is refused, so
+no claim rests on an assumption this unit cannot list.
 
 A trusted law may admit a memory proposition, `readable(p)` or `writable(p, n)`,
 under an ordinary premise (`SPEC.md` TRUSTED-003, VERIFIED-044). It is recorded
@@ -1437,9 +1474,10 @@ identical assembly at `-O0` and `-O2` in `c++17`, `c++20` and `c++23`
 a library whose interface uses refinements and contracts, and by linking an
 ordinary C++ client, compiled by Clang alone, against it
 (`tests/e2e/abi_equivalence.sh`). Both are `PARTIAL`: they cover the constructs
-this implementation accepts, on the host's ABI; cross-translation-unit
-verification metadata is not implemented, and a use of it is refused rather
-than erased (`tests/negative/erasure.sh`).
+this implementation accepts, on the host's ABI. Units that use one another's
+contracts through verification interfaces compile to exactly the code of their
+erasures written by hand, and each links with the other's plain C++
+(`tests/e2e/cross_tu.sh`): an interface is never compiled and reaches no object.
 
 C++L's intended mature pipeline is:
 

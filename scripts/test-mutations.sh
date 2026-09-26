@@ -59,7 +59,7 @@ unsafe-call-outside-block	compiler/elaboration/src/elaborate.cpp	if (unsafe_call
 unsafe-pure-refused	compiler/elaboration/src/elaborate.cpp	candidate.pure && contains_unsafe_region(	false && contains_unsafe_region(	^negative_unsafe_boundary$
 unsafe-contract-refused	compiler/frontend/src/recognizer.cpp	if (std::size_t clause_index = 0; has_specification_clause(tokens, *name, clause_index)) {	if (std::size_t clause_index = 0; false && has_specification_clause(tokens, *name, clause_index)) {	^negative_unsafe_boundary$|^unit_recognizer_test$
 unsafe-closure-through-calls	compiler/obligations/src/trust.cpp	regions[index].emplace(where, UnsafeDependency{region.location, false}).second	(false && regions[index].emplace(where, UnsafeDependency{region.location, false}).second)	^e2e_unsafe_boundary$
-unsafe-not-assumption-free	compiler/driver/src/driver.cpp	return claim.premises.empty() && claim.unsafe.empty();	return claim.premises.empty();	^e2e_unsafe_boundary$
+unsafe-not-assumption-free	compiler/driver/src/driver.cpp	return claim.premises.empty() && claim.unsafe.empty() && claim.imported.empty();	return claim.premises.empty() && claim.imported.empty();	^e2e_unsafe_boundary$
 ghost-runtime-use	clang/src/bridge.cpp	            if (is_ghost(referenced)) {	            if (false && is_ghost(referenced)) {	^negative_ghost_state$
 ghost-initializer-effect	clang/src/bridge.cpp	if (const std::optional<std::string> effect = ghost_effect(initializer, 0)) {	if (const std::optional<std::string> effect = (false ? ghost_effect(initializer, 0) : std::optional<std::string>{})) {	^negative_ghost_state$
 ghost-initializer-pure	compiler/elaboration/src/elaborate.cpp	            if (!pure_symbols.contains(call.callee_usr)) {	            if (false && !pure_symbols.contains(call.callee_usr)) {	^negative_ghost_state$
@@ -73,6 +73,27 @@ totality-unmeasured-loop	compiler/obligations/src/contracts.cpp	total[index] = c
 totality-through-callees	compiler/obligations/src/contracts.cpp	            if (total[index] &&	            if (false && total[index] &&	^negative_termination$
 lexicographic-first-stays	compiler/obligations/src/contracts.cpp	compare(kernel::PrimOp::Equal, index)	compare(kernel::PrimOp::GreaterEqual, index)	^negative_refused_declarations$|^negative_termination$
 do-loop-exit-decided	clang/src/bridge.cpp	        if (!frame.condition_last) {	        if (true) {	^negative_termination$
+xtu-statement-compared	compiler/obligations/src/contracts.cpp	if (!(*plan.statement == recorded->entry.statement)) {	if (false && !(*plan.statement == recorded->entry.statement)) {	^negative_cross_tu$|^unit_cross_unit_contracts_test$
+xtu-imported-established	compiler/automation/src/composition.cpp	    if (function.imported.has_value()) {	    if (function.imported.has_value() && false) {	^e2e_cross_tu$|^unit_cross_unit_contracts_test$
+xtu-imported-totality	compiler/obligations/src/contracts.cpp	total[index] = contract.total;	total[index] = true;	^negative_cross_tu$|^unit_cross_unit_contracts_test$
+xtu-partial-record-refused-with-measure	compiler/obligations/src/contracts.cpp	if (!total && function.contract.has_value() && !function.contract->measures.empty()) {	if (false && !total && function.contract.has_value() && !function.contract->measures.empty()) {	^unit_cross_unit_contracts_test$
+xtu-recursion-refused	compiler/obligations/src/contracts.cpp	return local != position_of.end() && reaches(local->second, position);	return local != position_of.end() && (false && reaches(local->second, position));	^unit_cross_unit_contracts_test$
+xtu-internal-linkage-not-imported	compiler/elaboration/src/elaborate.cpp	converted.defined_elsewhere = candidate.contract != nullptr && function->external_linkage;	converted.defined_elsewhere = candidate.contract != nullptr;	^negative_cross_tu$
+xtu-internal-linkage-not-exported	compiler/obligations/src/contracts.cpp	    if (function.external_linkage) {	    if (true) {	^e2e_cross_tu$|^unit_cross_unit_contracts_test$
+xtu-restatements-agree	compiler/obligations/src/contracts.cpp	if (!restatements_agree(function, pure_definitions, program, engine)) {	if (false && !restatements_agree(function, pure_definitions, program, engine)) {	^negative_cross_tu$|^unit_cross_unit_contracts_test$
+xtu-trusted-through-import	compiler/obligations/src/trust.cpp	return !claim.premises.empty() || std::ranges::any_of(claim.imported	return !claim.premises.empty() || std::ranges::any_of(std::vector<ImportedDependency>{}	^e2e_cross_tu$
+xtu-unsafe-through-import	compiler/obligations/src/trust.cpp	return !claim.unsafe.empty() || std::ranges::any_of(claim.imported	return !claim.unsafe.empty() || std::ranges::any_of(std::vector<ImportedDependency>{}	^e2e_cross_tu$
+xtu-import-not-assumption-free	compiler/driver/src/driver.cpp	return claim.premises.empty() && claim.unsafe.empty() && claim.imported.empty();	return claim.premises.empty() && claim.unsafe.empty();	^e2e_cross_tu$|^negative_cross_tu$
+xtu-imported-closure-through-calls	compiler/obligations/src/trust.cpp	changed = through[index].emplace(imported, false).second || changed;	(void)imported;	^e2e_cross_tu$
+xtu-configuration-compared	compiler/driver/src/interface_io.cpp	std::optional<std::string> unusable = configuration_difference(recorded->configuration, configuration);	std::optional<std::string> unusable = false ? configuration_difference(recorded->configuration, configuration) : std::nullopt;	^negative_cross_tu$
+xtu-stale-sources	compiler/driver/src/interface_io.cpp	if (std::optional<std::string> stale = stale_source(*recorded, digests)) {	if (std::optional<std::string> stale = (false ? stale_source(*recorded, digests) : std::nullopt)) {	^negative_cross_tu$
+xtu-dependencies-imported	compiler/driver/src/interface_io.cpp	return found == accepted.end() || !(found->second.identity == d.entry);	return false && (found == accepted.end() || !(found->second.identity == d.entry));	^negative_cross_tu$
+xtu-conflicting-records	compiler/driver/src/interface_io.cpp	if (added || existing->second.identity == imported.identity) {	if (true) {	^negative_cross_tu$
+xtu-withdrawn-on-failure	compiler/driver/src/interface_io.cpp	    std::filesystem::remove(path, error);	    (void)path;	^negative_cross_tu$
+xtu-withdraw-only-interfaces	compiler/driver/src/interface_io.cpp	if (first != std::string(artifact::kMagic) + " ") {	if (false && first != std::string(artifact::kMagic) + " ") {	^negative_cross_tu$
+xtu-status-proven-only	compiler/artifact/src/interface.cpp	if (status->fields[1] != "proven") {	if (false) {	^unit_interface_test$|^negative_cross_tu$
+xtu-checksum-verified	compiler/artifact/src/interface.cpp	if (!(source::hash_bytes(text.substr(0, last_start)) == *recorded_checksum)) {	if (false) {	^unit_interface_test$|^negative_cross_tu$|^fuzz_interface_replay$
+xtu-canonical-order	compiler/artifact/src/interface.cpp	if (!previous.empty() && !(previous < line.text)) {	if (false && !previous.empty() && !(previous < line.text)) {	^unit_interface_test$
 MUTATIONS
 )
 

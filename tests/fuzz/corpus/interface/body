@@ -1,0 +1,22 @@
+cppl-verification-interface 1
+compiler 0.0.1
+build 2045b830beb9090694d5730c1cdb8ff6d29e8d60594f5b993185148f2544bd4c
+kernel cppl-kernel-0.7.0
+core cppl-core-0.7.0
+clang clang%20version%2022.1.8
+language c++20
+target x86_64-unknown-linux-gnu
+flag -fwrapv
+unit /work/src/clamp.cpp
+source 1e0584a25d9f43bf5cbd0aec01eb1af2220ed085b4e7f1837b0d89958cae353a /work/include/clamp.hpp
+source 41cf6794ba4200b839c53531555f0f3998df4cbb01a4d5cb0b94e3ca5e23947d /work/src/clamp.cpp
+entry c:@F@clamp4#i#
+name clamp4
+statement b111c6e1d318f203063e5c16bab43c108326af0aa2f7b65760c95547a43dbe52
+contract forall%20(x:%20u32).%20x%20<%20100%20->%20result%20<%204
+status proven
+correctness total
+premise 8f1f74adf65864c86d3d471ea8ca9e329d4282489edc156c99604264090774bf 3 /work/src/clamp.cpp bounded
+unsafe 12 5 /work/src/clamp.cpp
+depends e81d3b0e9d82feaaf5f6e55bdff24731d7eee08632ffa63801e6397290c5d20a c:@F@helper#i#
+end

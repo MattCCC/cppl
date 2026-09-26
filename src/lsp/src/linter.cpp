@@ -373,6 +373,9 @@ Diagnostic Linter::convert_diagnostic(const diagnostics::Diagnostic& diag, const
         case diagnostics::Category::KernelRejection:
             lsp_diag.code = "cppl.kernel.rejection";
             break;
+        case diagnostics::Category::VerificationInterface:
+            lsp_diag.code = "cppl.verification.interface";
+            break;
         case diagnostics::Category::Policy:
             lsp_diag.code = "cppl.policy";
             break;

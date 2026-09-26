@@ -7,6 +7,7 @@ add_library(cppl_driver STATIC
     src/buffer_compile.cpp
     src/crash.cpp
     src/driver.cpp
+    src/interface_io.cpp
     src/options.cpp
     src/pipeline.cpp
     src/process.cpp
@@ -17,7 +18,7 @@ target_include_directories(cppl_driver PUBLIC
 
 target_link_libraries(cppl_driver
     PUBLIC cppl_analysis cppl_frontend cppl_clang cppl_elaboration cppl_obligations cppl_automation
-           cppl_erasure cppl_diagnostics cppl_kernel
+           cppl_erasure cppl_diagnostics cppl_kernel cppl_artifact
     PRIVATE cppl_project_options)
 
 target_compile_definitions(cppl_driver PRIVATE

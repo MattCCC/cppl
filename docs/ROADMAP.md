@@ -210,9 +210,11 @@ refinement crossings. General object and pointer memory reasoning, signed
 arithmetic with overflow obligations, and SMT remain incomplete. Trust propagation
 is implemented within a translation unit: a proof may name a `trusted law`, is
 checked relative to it, and the trust report lists every proven claim with the
-trusted laws it rests on. Carrying that closure across translation units waits
-on proof artifacts, and trusted memory propositions are not started. See
-`STATUS.md` for the supported fragment.
+trusted laws it rests on. Contracts, with that closure, now cross translation
+units through verification interfaces (RFC 0017, `SPEC.md` Annex L.2.1), which
+record what a unit proved without carrying evidence to re-check; transporting
+evidence, and authenticating interfaces, come later. Trusted memory propositions
+are not started. See `STATUS.md` for the supported fragment.
 
 Implement:
 

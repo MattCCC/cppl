@@ -26,6 +26,12 @@ struct Options {
     // Where to write the runtime program for inspection. Observability only:
     // it changes nothing about what is compiled.
     std::string emit_projection;
+    // Where to write this unit's verification interface: the contracts it
+    // proved, for other units to use (SPEC.md TUBOUND-002). Empty means none.
+    std::string emit_interface;
+    // Verification interfaces of other units whose contracts this compile may
+    // use, each validated before any of it is believed (SPEC.md TUBOUND-003).
+    std::vector<std::string> import_interfaces;
     bool passthrough = false;       // the command does not compile anything
     bool explicit_language = false; // -x was given
     std::string standard;           // -std=..., for reporting

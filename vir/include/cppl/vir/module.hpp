@@ -69,10 +69,27 @@ struct Function {
     Purity purity = Purity::Unknown;
     std::optional<Contract> contract;
 
+    // The contract each later `verified` declaration of the same function
+    // states, as a header declaration and the definition both may. One function
+    // has one contract, so each must state exactly `contract`; the obligation
+    // layer compares them by meaning and refuses a conflict (SPEC.md TU-003).
+    std::vector<Contract> redeclared_contracts;
+
     // The returned expression or conditional return tree. Absent when the body shape
     // is outside the modeled fragment; such a function cannot be admitted as a
     // formal definition.
     std::optional<Expr> returned_value;
+
+    // A verified function this unit declares and does not define. Its contract is
+    // stated from the declaration, and it is established here only by a validated
+    // verification interface of the unit that defines it (SPEC.md TUBOUND-003); it
+    // never has a body to discharge it from.
+    bool defined_elsewhere = false;
+
+    // Whether the function is one entity across translation units (external
+    // linkage), so another unit's verification interface may describe it and
+    // this unit's may describe it to others (SPEC.md TUBOUND-004).
+    bool external_linkage = false;
 
     source::SourceRange range;
 };

@@ -6309,6 +6309,66 @@ selected standard-library semantics. Exact vendor/library availability belongs i
 - If required evidence is unavailable, verification fails closed rather than assuming the
   summary.
 
+### L.2.1 Verification interfaces
+
+In this annex, a **verification interface** is the build artifact through which one
+translation unit makes what it proved available to others. It records results; it never
+carries a proposition another unit reads as the meaning of a contract.
+
+- [TUBOUND-002] A translation unit that verifies without error may record, in a
+  verification interface, each function contract it proved for a function with external
+  linkage: the function's resolved identity, the identity of the contract's statement,
+  whether the contract is total or partial correctness, and the trusted assumptions,
+  unsafe code and contracts of other translation units its proof rests on, directly or
+  transitively. It records no contract it did not prove, no contract of a function with
+  internal linkage, and no contract of another unit as its own. A unit that does not
+  verify leaves no interface describing it.
+
+- [TUBOUND-003] A verified function declared, and not defined, in a translation unit
+  states a contract that a caller in that unit may rely on only when an imported
+  verification interface records that contract as proven and every requirement of
+  TUBOUND-004 to TUBOUND-009 holds. Otherwise the declaration is refused, and so is every
+  caller that relies on it. Its spelling, `verified` included, establishes nothing.
+
+- [TUBOUND-004] The contract a caller relies on is the one its own translation unit
+  states from its own declaration. A recorded contract is used only when the function it
+  describes is the same entity, as the implementation resolves it: the same qualified
+  declaration, overload, parameter and result types, qualifiers and template arguments,
+  with external linkage, and when its statement is the same contract: the same parameter
+  and result types and passing, the same preconditions and postcondition, including the
+  predicates of refined parameters and a refined result, the same memory capabilities
+  and measure, and the same content of every pure definition these mention, compared by
+  meaning after parameter renaming. A specialization is a different function from every
+  other specialization of its template.
+
+- [TUBOUND-005] A verification interface is untrusted input. It is refused whole when it
+  is malformed, truncated or altered since it was written, of a format version the
+  implementation does not read, produced by another build of the implementation or under
+  another proof kernel, formal core, C++ semantic authority, language mode or target, or
+  stale: when any file its unit was produced from no longer has the content it had then.
+  A refused interface establishes nothing, and its refusal is a diagnostic.
+
+- [TUBOUND-006] A claim proven through a contract of another translation unit rests on
+  that contract's record and on everything the other unit's proof rests on: its trusted
+  assumptions, its unsafe code, and the contracts of further units it was proven through.
+  Trust reporting names each of them for the claim; such a claim is never reported as
+  free of assumptions, and the imported contract is never counted as proven by the unit
+  that uses it.
+
+- [TUBOUND-007] A recorded contract is total or partial correctness as recorded, and a
+  contract proven through a partial one is partial (CORRECT-006). A function that asks
+  to terminate cannot rest on a partial one (TERMINATION-006), and a record stating a
+  contract whose declaration asks that its function terminate as partial is refused.
+
+- [TUBOUND-008] Recursion is not verified across translation units. A call that relies
+  on a recorded contract whose proof rests on a function of the calling unit from which
+  the caller is reachable again is refused.
+
+- [TUBOUND-009] A recorded contract is used only while every contract of another unit
+  its proof rests on is imported too, recorded exactly as it was when that proof was
+  made. Two imported interfaces recording different contracts for one function make that
+  function's contract unavailable.
+
 ## L.3 Headers
 
 - Existing C++ headers may carry C++L declarations.

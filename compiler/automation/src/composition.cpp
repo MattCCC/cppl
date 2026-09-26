@@ -200,8 +200,17 @@ bool Composition::owns(std::size_t obligation) const {
 // A total contract is established once its theorem about the callee's
 // definition has been exported; a partial one once every one of its
 // conditions has been accepted.
+//
+// A contract of another unit is established by a verification interface that
+// recorded its proof there and that the obligation layer validated against this
+// unit's own statement of it (SPEC.md TUBOUND-003, TUBOUND-004). It is the one contract
+// established without an obligation of this unit, and every claim resting on it
+// names it (TUBOUND-006). The kernel still checks each condition that supposes it.
 bool Composition::established(std::size_t contract) const {
     const auto& function = program_.contracts[contract];
+    if (function.imported.has_value()) {
+        return true;
+    }
     return function.partial ? partial_established_.contains(contract) : callees_.contains(function.function.value);
 }
 

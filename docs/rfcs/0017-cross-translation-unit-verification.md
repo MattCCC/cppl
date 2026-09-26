@@ -2,7 +2,8 @@
 
 ## Status
 
-Draft
+Accepted; implemented as `PROTOTYPE` (see "Implementation" below, and
+`SPEC.md` Annex L.2.1, TUBOUND-002 to TUBOUND-009).
 
 ## Summary
 
@@ -253,13 +254,98 @@ No break. A build that emits no interfaces behaves exactly as today, because
 absence means "unavailable" and the existing fail-closed path runs. Nothing
 about accepted single-unit programs changes.
 
+## Implementation
+
+What was built, and every decision the design above left to it.
+
+**Surface.** Placement is the build system's: `cppl --cppl-emit-interface=<file>`
+writes the interface of the one unit a command compiles, and
+`--cppl-import-interface=<file>`, repeatable, imports one. Nothing is written
+beside an object implicitly, so a build that asks for nothing behaves exactly as
+before. The interface is written only after the unit verified and its object was
+produced, atomically, and a unit that fails removes an interface of an earlier
+compile at that path.
+
+**Format.** A versioned, line-oriented text (`compiler/artifact`): magic and
+format version first, then configuration, the unit, its source files, one entry
+per contract, and a SHA-256 checksum of every preceding byte. Every field is one
+token with a single canonical escape; repeated items are in canonical order; the
+reader accepts only exactly the text the writer produces for what it read, with
+bounds on size, line length and counts, and reports why anything else is
+refused. It is fuzzed (`tests/fuzz/interface.cpp`) with that round trip as its
+oracle.
+
+**Entry.** Clang's USR for the function; a statement identity; the contract as
+the kernel prints it, for diagnostics only; `status proven`, the only status
+written or read; `total` or `partial`; and what the proof rests on: trusted laws
+by identity, name and location, unsafe blocks by location, and imported
+contracts by symbol and entry identity, transitively. A function with internal
+linkage is never recorded or matched: its USR can be spelled the same in two
+units that mean two functions.
+
+**Identity (step 4 and 5).** Rather than a manifest compared field by field,
+the consumer rebuilds the contract statement from its own declaration and
+compares a canonical statement identity with the recorded one. That identity
+hashes parameter and result types and passing modes, every precondition
+(refined parameters' predicates included), the postcondition (a refined result
+and reference post-states included), memory capabilities and the measure, as
+kernel terms, with every pure definition they reach encoded by content in the
+order first reached, so it does not depend on how either unit numbered its
+definitions. Parameter names do not enter it. The same identity decides `TU-003`
+for two `verified` declarations of one function in one unit, which a header
+contract with a definition stating loop clauses needs.
+
+**Configuration and staleness (the manifest).** Compared exactly, and refused
+naming the first difference: compiler version, the SHA-256 of the compiler
+executable itself (a version string does not change as the compiler does,
+`TRUST.md` TCB-VERSION-004), kernel, formal core, the Clang that resolves C++
+semantics, language mode and target triple. The meaning-changing command-line
+options are recorded for audit and not compared: what a contract means to the
+consumer is rebuilt from the consumer's own preprocessing, and what the body
+means is fixed by the producer's own compile, which those options drove.
+Staleness is by content: every file the producing unit was preprocessed from is
+recorded with its digest and rehashed on import; a timestamp is never consulted.
+
+**Closure across units.** A record is usable only while every record it rests on
+is imported with the identity it had when the dependent proof was made, so a
+change anywhere in a chain invalidates what rests on it; two interfaces that
+record different contracts for one function make it unavailable. The trust
+report lists every imported contract, and every claim resting on one with the
+interface and record, and every trusted law and unsafe block the other unit's
+proof rested on. An imported trusted law is not re-affirmed in the consuming
+unit: it is carried and reported, which is the resolution of the open question
+below, and a claim resting on it is never assumption-free.
+
+**Totality and recursion.** A record is total or partial as recorded; totality
+follows it through callers, and a function asking to terminate cannot rest on a
+partial one. A record describing a function whose declaration states `decreases`
+as partial is refused. Recursion across units is refused: honest builds cannot
+produce it, since neither unit could verify first, but a record claiming it is
+refused as well (`tests/unit/cross_unit_contracts_test.cpp`).
+
+**Templates.** An explicit specialization declared with its own contract is a
+function like any other, keyed by its USR, and crosses; `f<4>`'s record never
+serves `f<5>`. A specialization of a template a unit only declares is not
+instantiated there, so no statement can be compared, and it is refused.
+
+**Trust.** Unchanged logical TCB: no kernel rule, axiom or former. The artifact
+and reuse TCB grows by the emitter, reader, validator and statement identity,
+and the reporting TCB by the imported closure; `TRUST.md` 31.1 states each. A
+hand-edited interface with a recomputed checksum is not detected; everything
+resting on it is reported as resting on that record, never as proven outright.
+
+**Not done here.** Evidence transport; authentication of interfaces; binding the
+object that is linked to the interface that was imported (`SPEC.md` L.5); import
+in `cppl-lsp`; modules.
+
 ## Unresolved questions
 
 - Whether evidence itself should eventually be transported, and in what form.
-- Interface placement: beside the object, in a sidecar directory, or a build
-  system's responsibility entirely.
 - Modules: whether a BMI should carry this directly instead of a sidecar.
-- Whether an imported trusted Law needs re-affirmation in the consuming unit,
-  or whether recording it in the closure is enough.
-- How strictly ABI/target fields should participate before the manifest becomes
-  impractically brittle.
+- Whether interfaces should be authenticated, and how the object a build links
+  is bound to the interface a consumer imported.
+
+Resolved by the implementation: placement is the build system's, through
+explicit options; an imported trusted law is carried and reported rather than
+re-affirmed; the target triple and language mode participate, the remaining
+command-line options are recorded and not compared.

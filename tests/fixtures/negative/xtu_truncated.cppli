@@ -1,0 +1,12 @@
+cppl-verification-interface 1
+compiler 0.0.1
+build 2045b830beb9090694d5730c1cdb8ff6d29e8d60594f5b993185148f2544bd4c
+kernel cppl-kernel-0.7.0
+core cppl-core-0.7.0
+clang clang%20version%2022.1.8
+language c++20
+target x86_64-unknown-linux-gnu
+flag -fwrapv
+unit /work/src/clamp.cpp
+source 1e0584a25d9f43bf5cbd0aec01eb1af2220ed085b4e7f1837b0d89958cae353a /work/include/clamp.hpp
+source 41cf6794ba4200b839c

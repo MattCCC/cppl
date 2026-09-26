@@ -60,6 +60,22 @@ Options parse(int argc, const char* const* argv) {
                 options.clang = argument.substr(std::string_view("--cppl-clang=").size());
             } else if (argument.starts_with("--cppl-emit-projection=")) {
                 options.emit_projection = argument.substr(std::string_view("--cppl-emit-projection=").size());
+            } else if (argument.starts_with("--cppl-emit-interface=")) {
+                const std::string path = argument.substr(std::string_view("--cppl-emit-interface=").size());
+                if (path.empty()) {
+                    options.errors.emplace_back("'--cppl-emit-interface=' names no file");
+                } else if (!options.emit_interface.empty()) {
+                    options.errors.emplace_back("'--cppl-emit-interface' is given more than once");
+                } else {
+                    options.emit_interface = path;
+                }
+            } else if (argument.starts_with("--cppl-import-interface=")) {
+                const std::string path = argument.substr(std::string_view("--cppl-import-interface=").size());
+                if (path.empty()) {
+                    options.errors.emplace_back("'--cppl-import-interface=' names no file");
+                } else {
+                    options.import_interfaces.push_back(path);
+                }
             } else {
                 options.errors.push_back("unknown C++L option '" + argument + "'");
             }

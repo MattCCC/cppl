@@ -15,6 +15,7 @@
 #include "cppl/kernel/proposition.hpp"
 #include "cppl/obligations/contracts.hpp"
 #include "cppl/obligations/generate.hpp"
+#include "cppl/obligations/interface.hpp"
 #include "cppl/obligations/obligation.hpp"
 #include "cppl/obligations/status.hpp"
 #include "cppl/obligations/trust.hpp"
@@ -91,6 +92,7 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
         return written_text(file);
     });
     frontend::Syntax syntax = frontend::recognize(stream, engine);
+    outcome.files = stream.files();
 
     if (engine.has_errors()) {
         // recognize() still returns whatever it built before the error, so a
@@ -278,7 +280,9 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
         return outcome;
     }
 
-    const obligations::Program program = obligations::generate(elaborated.module, elaborated, engine);
+    static const obligations::Imports none;
+    const obligations::Program program = obligations::generate(elaborated.module, elaborated, engine,
+                                                               request.imports != nullptr ? *request.imports : none);
     if (!engine.has_errors() && program.proofs.size() != syntax.proofs.size()) {
         report(engine, diagnostics::Category::Internal, "not every written proof produced explicit evidence");
     }
@@ -383,6 +387,13 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
             continue;
         }
         ++declaration_obligations;
+        // Another unit's contract was established by its interface, not proven
+        // here, so it accounts for its declaration and is counted apart
+        // (SPEC.md TUBOUND-006).
+        if (contract.imported.has_value()) {
+            ++outcome.counters.contracts_imported;
+            continue;
+        }
         if (conditions_proven(contract) && std::ranges::all_of(contract.recursion, [&](std::size_t member) {
                 return conditions_proven(program.contracts[member]);
             })) {
@@ -450,10 +461,16 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
     for (const std::string& fault : outcome.counters.closure.faults) {
         report(engine, diagnostics::Category::Internal, "what a claim rests on cannot be reported: " + fault);
     }
+    // What an interface of this unit would record. The driver writes it only
+    // once the whole unit, and its object, were produced without error.
+    outcome.exported = obligations::exported_contracts(program, outcome.counters.closure);
 
     // A trusted law admitting a memory proposition is accounted for by its
     // recorded assumption rather than by an obligation (SPEC.md TRUSTED-003).
     declaration_obligations += program.memory_assumptions.size();
+    // A verified declaration restating a function's contract is accounted for
+    // by that function's one contract (SPEC.md TU-003).
+    declaration_obligations += elaborated.redeclarations;
     const std::size_t required = syntax.laws.size() + syntax.verified_functions.size();
     if (declaration_obligations < required) {
         outcome.counters.unresolved += required - declaration_obligations;

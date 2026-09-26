@@ -683,6 +683,16 @@ verification metadata compatibility.
 **[COMPAT-TU-002]** Missing verification metadata MUST fail closed for the stronger
 proof claim rather than change the native ABI.
 
+In this implementation the metadata is a verification interface, a text file the
+build names with `--cppl-emit-interface` and `--cppl-import-interface` (`SPEC.md`
+Annex L.2.1). It is never compiled, adds nothing to an object file, a symbol or a
+calling convention, and units that use one another's interfaces compile to the
+code of their hand-written erasures (`tests/e2e/cross_tu.sh`). An interface is
+bound to the compiler build, kernel, formal core, Clang, language mode and target
+that produced it, and to the content of the unit's files: native link
+compatibility across any of those says nothing about whether an interface may be
+used, and one produced under another is refused.
+
 ---
 
 # 19. Modules

@@ -1508,7 +1508,20 @@ void elaborate_contract(const Request& request, const frontend::VerifiedFunction
                         const frontend::ContractFunctions& projected, const clangbridge::Function& function,
                         const std::string& body_rejection, bool rejection_reported, std::uint32_t& next_expression_id,
                         vir::Function& converted, diagnostics::Engine& engine) {
-    if (!body_rejection.empty() || !converted.returned_value.has_value()) {
+    // A specialization of a template this unit declares without defining is
+    // instantiated as a declaration only, so nothing instantiates the contract
+    // at its arguments here, and no contract can be stated to compare with an
+    // interface. An explicit specialization states its own (SPEC.md TUBOUND-004).
+    if (converted.defined_elsewhere && !function.primary_usr.empty() && !declaration.explicit_specialization) {
+        report(engine, diagnostics::Category::UnsupportedSemantics, declaration.function_location,
+               "the contract of '" + function.qualified_name +
+                   "' cannot be stated for this specialization: the template is declared but not defined in this "
+                   "translation unit, so its contract is not instantiated here",
+               "declare the specialization explicitly with its own contract, 'template <> verified ...;', so another "
+               "unit's proof of it can be used here, or define the template where it is declared");
+        return;
+    }
+    if (!converted.defined_elsewhere && (!body_rejection.empty() || !converted.returned_value.has_value())) {
         if (!rejection_reported) {
             report(engine, diagnostics::Category::UnsupportedSemantics, declaration.function_location,
                    "verified function '" + function.qualified_name +
@@ -1984,6 +1997,10 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
         bool pure = false;
         const frontend::ContractFunctions* contract = nullptr;
         const frontend::VerifiedFunction* declaration = nullptr;
+        // Every later `verified` declaration of the same function, each
+        // restating the contract (SPEC.md TU-003).
+        std::vector<std::pair<const frontend::ContractFunctions*, const frontend::VerifiedFunction*>> redeclarations =
+            {};
     };
 
     std::set<std::string> pure_symbols;
@@ -2038,11 +2055,27 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
                        "used states nothing this unit can discharge");
                 continue;
             }
+            bool restated = false;
             for (const clangbridge::Function* specialization : specializations) {
                 Candidate& candidate = candidate_for(specialization);
+                // A template's contract is instantiated from the one
+                // declaration whose body names its probes, so a second
+                // `verified` declaration of it has no instantiated contract to
+                // compare, and is refused rather than one of them dropped.
+                if (candidate.contract != nullptr && candidate.contract != &projected) {
+                    restated = true;
+                    continue;
+                }
                 candidate.contract = &projected;
                 candidate.declaration = &declaration;
                 verified_symbols.insert(specialization->usr);
+            }
+            if (restated) {
+                report(engine, diagnostics::Category::UnsupportedSemantics, declaration.function_location,
+                       "verified function template '" + declaration.function_name +
+                           "' is declared verified more than once",
+                       "a template's contract is read from the one declaration that defines it; state it there "
+                       "only (SPEC.md TU-003)");
             }
             continue;
         }
@@ -2053,8 +2086,16 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
             continue;
         }
         Candidate& candidate = candidate_for(function);
-        candidate.contract = &projected;
-        candidate.declaration = &declaration;
+        // A header declaration and the definition may both state the contract
+        // of one function, which then has the first as its contract and must
+        // state the same in every other (SPEC.md TU-003).
+        if (candidate.contract != nullptr) {
+            candidate.redeclarations.emplace_back(&projected, &declaration);
+            ++result.redeclarations;
+        } else {
+            candidate.contract = &projected;
+            candidate.declaration = &declaration;
+        }
         verified_symbols.insert(function->usr);
     }
 
@@ -2124,6 +2165,7 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
         converted.symbol = vir::SymbolId{function->usr};
         converted.qualified_name = function->qualified_name;
         converted.range.begin = function->location;
+        converted.external_linkage = function->external_linkage;
 
         const std::optional<vir::Type> result_type = convert_type(function->result);
         const std::optional<std::vector<vir::Parameter>> parameters =
@@ -2146,6 +2188,13 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
         bool rejection_reported = false;
         if (!function->has_body) {
             rejection = "it is declared but not defined in this translation unit";
+            // A verified declaration whose body another unit defines still
+            // states a contract. A caller may rely on it only once a validated
+            // verification interface establishes it, which the obligation layer
+            // decides; the declaration alone establishes nothing (SPEC.md
+            // TUBOUND-003, TU-004).
+            // One with internal linkage has no definition anywhere else.
+            converted.defined_elsewhere = candidate.contract != nullptr && function->external_linkage;
         } else if (function->body_rejection.has_value()) {
             rejection = *function->body_rejection;
         } else if (!function->returned_value.has_value()) {
@@ -2245,6 +2294,23 @@ Result elaborate(const Request& request, diagnostics::Engine& engine) {
         if (candidate.contract != nullptr) {
             elaborate_contract(request, *candidate.declaration, *candidate.contract, *function, rejection,
                                rejection_reported, next_expression_id, converted, engine);
+            // Each restatement is read the same way, from its own clauses, and
+            // compared with the first by meaning where the contract is stated.
+            // One that cannot be read leaves the function without a contract,
+            // so nothing relies on a statement that was not checked.
+            for (const auto& [projected, declaration] : candidate.redeclarations) {
+                vir::Function restated;
+                restated.qualified_name = converted.qualified_name;
+                restated.defined_elsewhere = converted.defined_elsewhere;
+                restated.returned_value = converted.returned_value;
+                elaborate_contract(request, *declaration, *projected, *function, rejection, true, next_expression_id,
+                                   restated, engine);
+                if (!restated.contract.has_value()) {
+                    converted.contract.reset();
+                    break;
+                }
+                converted.redeclared_contracts.push_back(std::move(*restated.contract));
+            }
         }
 
         result.module.functions.push_back(std::move(converted));

@@ -21,6 +21,8 @@ std::string describe(Category category) {
             return "proof-failure";
         case Category::KernelRejection:
             return "kernel-rejection";
+        case Category::VerificationInterface:
+            return "verification-interface";
         case Category::Policy:
             return "policy";
         case Category::Style:

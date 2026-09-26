@@ -15,7 +15,12 @@
 # `refutation` is the arithmetic refutation search, below both obligations and
 # automation and above nothing but the kernel's types. It is untrusted: what it
 # proposes reaches the kernel inside a proof term (ARCHITECTURE.md 95).
+#
+# `artifact` is the verification-interface format and its reader, a leaf above
+# `source`. Obligations use its records; the driver reads and writes the files
+# (ARCHITECTURE.md 63, 64).
 add_subdirectory(diagnostics)
+add_subdirectory(artifact)
 add_subdirectory(decomposition)
 add_subdirectory(frontend)
 add_subdirectory(elaboration)

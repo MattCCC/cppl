@@ -13,6 +13,7 @@
 #include "cppl/kernel/term.hpp"
 #include "cppl/kernel/types.hpp"
 #include "cppl/kernel/version.hpp"
+#include "cppl/obligations/interface.hpp"
 #include "cppl/obligations/obligation.hpp"
 #include "cppl/source/digest.hpp"
 #include "cppl/source/location.hpp"
@@ -2435,7 +2436,8 @@ ObligationId identify_impossibility(Origin origin, const kernel::Context& contex
     return ObligationId{hasher.finish()};
 }
 
-Program generate(const vir::Module& module, const elaboration::Result& elaborated, diagnostics::Engine& engine) {
+Program generate(const vir::Module& module, const elaboration::Result& elaborated, diagnostics::Engine& engine,
+                 const Imports& imports) {
     Program program;
     DefinitionMap definitions;
     std::map<std::string, Failure> deferred;
@@ -2672,7 +2674,7 @@ Program generate(const vir::Module& module, const elaboration::Result& elaborate
         program.refinements.push_back(std::move(stated));
     }
 
-    detail::generate_contracts(module, definitions, program, engine, explain);
+    detail::generate_contracts(module, definitions, program, engine, explain, imports);
 
     // Direct proves (P) declarations have their own obligations. They never
     // become synthetic Laws or enter the automatic-proof fallback path.

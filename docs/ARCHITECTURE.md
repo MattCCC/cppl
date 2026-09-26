@@ -2436,6 +2436,52 @@ A consumer validates:
 **[ARCH-XTU-002]** Missing or incompatible metadata fails closed for the stronger
 verification claim; it must not be replaced with guessed contracts.
 
+The realized flow of a contract across translation units (`SPEC.md` Annex
+L.2.1, RFC 0017, `TRUST.md` 31.1):
+
+```text
+producing unit, --cppl-emit-interface=<file>
+  obligations   state_contract gives every contract of a function with
+                external linkage a canonical statement identity: parameter and
+                result types and passing, preconditions, postcondition,
+                capabilities and measure, with every pure definition they reach
+                encoded by content rather than by this unit's numbering
+                (obligations/src/interface.cpp)
+  trust         close_trust gives each proven contract its closure: trusted
+                laws, unsafe blocks, and the imported contracts it rests on
+  obligations   exported_contracts turns each proven contract's closure into an
+                interface entry, carrying on what imported contracts rest on
+  driver        after the object is produced, binds the entries to the compiler
+                build, kernel, core, Clang, language mode, target and the digest
+                of every file the unit was preprocessed from, and writes the
+                canonical text (compiler/artifact) atomically; a unit that fails
+                removes an interface it left before
+consuming unit, --cppl-import-interface=<file>...
+  driver        reads each file strictly (compiler/artifact: canonical text,
+                bounded, checksummed), refuses one of another configuration or a
+                stale one, refuses conflicting records of one function and
+                records whose dependencies are not imported as proven against
+                (driver/src/interface_io.cpp)
+  elaboration   a verified function declared and not defined, with external
+                linkage, is vir::Function::defined_elsewhere; its contract is
+                elaborated from this unit's own declaration
+  obligations   import_contract states that contract and uses a record only
+                when its statement identity is the one stated here; the result
+                is a ContractVerification marked imported, with no condition
+  automation    Composition::established treats an imported contract as
+                established; every condition that supposes it is still checked
+                by the kernel
+  trust         the imported contract is no claim of this unit; each claim
+                through it carries it and what its record rests on
+  driver        the trust report lists imported contracts and every claim that
+                is interface-dependent, never as assumption-free
+```
+
+The artifact component depends on the source system alone, so its reader is
+fuzzed without the rest of the compiler (`tests/fuzz/interface.cpp`); the kernel
+never depends on it. Repeated verified declarations of one function are
+compared through the same statement identity (`SPEC.md` TU-003).
+
 ---
 
 # 65. Headers and modules
@@ -3322,6 +3368,7 @@ flowchart TD
     REFUTE["Refutation search"]
     CORE["Formal core"]
     KERNEL["Kernel/checkers"]
+    ARTIFACT["Verification-interface format"]
 
     EDIT --> LSP
     LSP --> SERVICES
@@ -3342,6 +3389,9 @@ flowchart TD
     AUTO --> REFUTE
     REFUTE --> CORE
     KERNEL --> CORE
+    CLI --> ARTIFACT
+    OBL --> ARTIFACT
+    ARTIFACT --> SOURCE
 ```
 
 Forbidden reverse dependencies include:

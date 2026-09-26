@@ -24,7 +24,7 @@ run=$(mktemp -d "$WORK/format_check.XXXXXX")
 # they are held byte-for-byte as written.
 uncanonical=""
 for fixture in "$FIXTURES"/*.cpp "$FIXTURES"/include/*.hpp "$FIXTURES"/equivalence/*.cpp \
-    "$FIXTURES"/equivalence/tampered/*.cpp; do
+    "$FIXTURES"/equivalence/tampered/*.cpp "$FIXTURES"/cross_tu/*.cpp "$FIXTURES"/cross_tu/*.hpp; do
     [ -e "$fixture" ] || continue
     if ! "$CPPL_FORMAT" --check "$fixture" > /dev/null 2>&1; then
         uncanonical="$uncanonical $fixture"

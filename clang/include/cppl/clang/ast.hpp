@@ -420,6 +420,12 @@ struct Function {
     bool has_body = false;
     std::size_t analysis_offset = 0;
 
+    // Whether Clang gives the function external linkage: one entity across
+    // every translation unit that declares it. A function with internal
+    // linkage is a different entity in each unit even where its USR is spelled
+    // the same, so no other unit's proof can describe it (SPEC.md TUBOUND-004).
+    bool external_linkage = false;
+
     // The primary template this is a specialization of, empty when this is an
     // ordinary function. Clang's USR for a specialization already embeds its
     // template arguments, so `usr` distinguishes `f<4>` from `f<5>` and the

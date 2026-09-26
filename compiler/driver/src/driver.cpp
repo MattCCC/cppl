@@ -1,5 +1,6 @@
 #include "cppl/driver/driver.hpp"
 
+#include "cppl/artifact/interface.hpp"
 #include "cppl/clang/bridge.hpp"
 #include "cppl/diagnostics/diagnostic.hpp"
 #include "cppl/driver/crash.hpp"
@@ -8,13 +9,16 @@
 #include "cppl/driver/scratch.hpp"
 #include "cppl/frontend/syntax.hpp"
 #include "cppl/kernel/version.hpp"
+#include "cppl/obligations/interface.hpp"
 #include "cppl/obligations/obligation.hpp"
 #include "cppl/obligations/trust.hpp"
 #include "cppl/source/location.hpp"
+#include "interface_io.hpp"
 #include "pipeline.hpp"
 
 #include <algorithm>
 #include <cstdlib>
+#include <expected>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -22,6 +26,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -54,6 +59,8 @@ struct Summary {
     std::vector<obligations::TrustedMemoryAssumption> memory_trusted;
     // Every unsafe boundary written, whether or not a proven claim rests on it.
     std::vector<detail::PipelineOutcome::Counters::UnsafeBoundary> unsafe;
+    // Every contract of another unit established from an interface.
+    std::vector<obligations::ImportedDependency> imports;
 };
 
 struct UnitOutcome {
@@ -61,6 +68,9 @@ struct UnitOutcome {
     bool has_cppl = false;
     int exit_code = 0;
     std::string runtime_path;
+    // What the unit's verification interface records (SPEC.md TUBOUND-002).
+    std::vector<std::string> files;
+    std::vector<artifact::Entry> exported;
 };
 
 void report(diagnostics::Engine& engine, diagnostics::Category category, std::string message,
@@ -118,7 +128,7 @@ std::vector<std::string> base_arguments(const Options& options) {
 }
 
 UnitOutcome compile_unit(const Options& options, const Input& input, const std::filesystem::path& scratch_root,
-                         diagnostics::Engine& engine, Summary& summary) {
+                         const obligations::Imports& imports, diagnostics::Engine& engine, Summary& summary) {
     UnitOutcome outcome;
     const Stage compiling{"compiling", input.path.c_str()};
 
@@ -179,6 +189,7 @@ UnitOutcome compile_unit(const Options& options, const Input& input, const std::
     request.clang = options.clang;
     request.clang_arguments = base_arguments(options);
     request.emit_projection_path = options.emit_projection;
+    request.imports = &imports;
     // A header or an explicit -x cannot be told apart from ordinary C++
     // containing no C++L until recognition has run, which the shared
     // pipeline already does; this hook rejects those two cases from its
@@ -205,6 +216,10 @@ UnitOutcome compile_unit(const Options& options, const Input& input, const std::
     outcome.has_cppl = result.has_cppl;
     outcome.runtime_path = result.runtime_path;
     outcome.failed = result.failed;
+    outcome.files = result.files;
+    outcome.exported = result.exported;
+    summary.imports.insert(summary.imports.end(), result.counters.closure.imports.begin(),
+                           result.counters.closure.imports.end());
 
     summary.laws += result.counters.laws;
     summary.proven += result.counters.proven;
@@ -292,13 +307,32 @@ std::string reached_through(obligations::ClaimKind kind) {
     return "through what it uses";
 }
 
-// A claim proven outright: it rests on no trusted law and on no unsafe code.
+// A claim proven outright: it rests on no trusted law, on no unsafe code, and
+// on no contract of another unit, which only an interface vouches for (SPEC.md
+// TUBOUND-006, TRUST.md 31).
 bool assumption_free(const obligations::ClaimClosure& claim) {
-    return claim.premises.empty() && claim.unsafe.empty();
+    return claim.premises.empty() && claim.unsafe.empty() && claim.imported.empty();
 }
 
 std::string written_at(const source::SourceLocation& location) {
     return location.file + ":" + std::to_string(location.line) + ":" + std::to_string(location.column);
+}
+
+// An imported contract as the report names it: the function, the interface that
+// recorded it, and that record's identity.
+std::string imported_from(const obligations::ImportedDependency& imported) {
+    return "contract of " + imported.name + " [" + imported.symbol + "], imported from " + imported.origin +
+           ", entry " + imported.entry.to_short_hex(16);
+}
+
+// What another unit's proof of an imported contract was itself proven
+// through, so a claim's closure is complete however many units it crosses
+// (TRUST.md TCB-PROV-004).
+void print_depends(const obligations::ImportedDependency& imported) {
+    for (const artifact::Dependency& dependency : imported.depends) {
+        std::cout << "      which rests on the contract of [" << dependency.symbol << "], entry "
+                  << dependency.entry.to_short_hex(16) << "\n";
+    }
 }
 
 // The proven claims of one kind that rest on nothing, those that rest on at
@@ -312,12 +346,12 @@ void print_closure_counts(const Summary& summary, obligations::ClaimKind kind) {
         });
     };
     std::cout << "  assumption-free:           " << of_kind(assumption_free) << "\n";
-    std::cout << "  relative to trusted laws:  "
-              << of_kind([](const obligations::ClaimClosure& claim) { return !claim.premises.empty(); }) << "\n";
+    std::cout << "  relative to trusted laws:  " << of_kind(obligations::rests_on_trusted_laws) << "\n";
     if (kind == obligations::ClaimKind::Contract || kind == obligations::ClaimKind::OmittedCase ||
         kind == obligations::ClaimKind::ImpossiblePath) {
-        std::cout << "  relying on unsafe code:    "
-                  << of_kind([](const obligations::ClaimClosure& claim) { return !claim.unsafe.empty(); }) << "\n";
+        std::cout << "  relying on unsafe code:    " << of_kind(obligations::rests_on_unsafe_code) << "\n";
+        std::cout << "  relying on imported contracts: "
+                  << of_kind([](const obligations::ClaimClosure& claim) { return !claim.imported.empty(); }) << "\n";
     }
 }
 
@@ -343,6 +377,14 @@ void print_trust_report(const Options& options, const Summary& summary) {
     std::cout << "Function contracts proven:   " << summary.contracts_proven << "\n";
     std::cout << "  partial correctness only:  " << summary.partial_contracts_proven << "\n";
     print_closure_counts(summary, obligations::ClaimKind::Contract);
+    // Contracts another unit proved, established here only by the interface
+    // that recorded them. None is counted as proven above (SPEC.md TUBOUND-006).
+    std::cout << "Function contracts imported: " << summary.imports.size() << "\n";
+    for (const obligations::ImportedDependency& imported : summary.imports) {
+        std::cout << "  imported:                  " << imported_from(imported) << ", "
+                  << (imported.total ? "total" : "partial correctness only") << "\n";
+        print_depends(imported);
+    }
     std::cout << "Call preconditions proven:   " << summary.call_preconditions_proven << "\n";
     std::cout << "Loop invariants proven:      " << summary.loop_invariants_proven << "\n";
     std::cout << "Loop measures proven:        " << summary.loop_measures_proven << "\n";
@@ -356,11 +398,10 @@ void print_trust_report(const Options& options, const Summary& summary) {
     // Each claim that is proven only relative to trusted laws, with every one
     // of them (TRUST.md TCB-REPORT-002, 36.2), and each trusted law nothing
     // rests on, which an audit can remove without changing any result.
-    const auto relative = std::ranges::count_if(
-        summary.claims, [](const obligations::ClaimClosure& claim) { return !claim.premises.empty(); });
+    const auto relative = std::ranges::count_if(summary.claims, obligations::rests_on_trusted_laws);
     std::cout << "Trust-dependent claims:      " << relative << "\n";
     for (const obligations::ClaimClosure& claim : summary.claims) {
-        if (claim.premises.empty()) {
+        if (!obligations::rests_on_trusted_laws(claim)) {
             continue;
         }
         std::cout << "  " << claim_name(claim) << ", identity " << claim.identity.text() << "\n";
@@ -368,21 +409,35 @@ void print_trust_report(const Options& options, const Summary& summary) {
             std::cout << "    rests on " << declared_at(premise) << ", "
                       << (premise.direct ? "named directly" : reached_through(claim.kind)) << "\n";
         }
+        // Another unit's trusted laws, which its proof of a contract this claim
+        // was proven through rests on (SPEC.md TUBOUND-006, TRUST.md TCB-PROV-004).
+        for (const obligations::ImportedDependency& imported : claim.imported) {
+            for (const artifact::Premise& premise : imported.premises) {
+                std::cout << "    rests on " << premise.name << " (" << premise.file << ":" << premise.line
+                          << "), identity " << premise.identity.to_short_hex(16) << ", through the imported "
+                          << imported_from(imported) << "\n";
+            }
+        }
     }
     // Each contract proven with an unsafe block's effects left unknown holds
     // only if that block is sound, which nothing checked, so it stays listed
     // however much else about the function is proven (TRUST.md TCB-REPORT-005).
-    const auto reliant = std::ranges::count_if(
-        summary.claims, [](const obligations::ClaimClosure& claim) { return !claim.unsafe.empty(); });
+    const auto reliant = std::ranges::count_if(summary.claims, obligations::rests_on_unsafe_code);
     std::cout << "Unsafe-dependent claims:     " << reliant << "\n";
     for (const obligations::ClaimClosure& claim : summary.claims) {
-        if (claim.unsafe.empty()) {
+        if (!obligations::rests_on_unsafe_code(claim)) {
             continue;
         }
         std::cout << "  " << claim_name(claim) << ", identity " << claim.identity.text() << "\n";
         for (const obligations::UnsafeDependency& dependency : claim.unsafe) {
             std::cout << "    rests on unsafe block (" << written_at(dependency.location) << "), "
                       << (dependency.direct ? "in its own body" : "through a verified call it makes") << "\n";
+        }
+        for (const obligations::ImportedDependency& imported : claim.imported) {
+            for (const artifact::UnsafeBlock& block : imported.unsafe) {
+                std::cout << "    rests on unsafe block (" << block.file << ":" << block.line << ":" << block.column
+                          << "), through the imported " << imported_from(imported) << "\n";
+            }
         }
     }
     // Every proven claim is enumerable, not only counted: the ones above rest
@@ -414,6 +469,23 @@ void print_trust_report(const Options& options, const Summary& summary) {
     for (const obligations::ClaimClosure& claim : summary.claims) {
         if (claim.kind == obligations::ClaimKind::Contract && !claim.total) {
             std::cout << "  " << claim_name(claim) << ", identity " << claim.identity.text() << "\n";
+        }
+    }
+    // Each claim proven through a contract another unit proved holds only if
+    // the interface that recorded that proof is faithful to it, which nothing
+    // in this unit checked (SPEC.md TUBOUND-006, TRUST.md 31, TCB-XTU-005).
+    const auto interfaced = std::ranges::count_if(
+        summary.claims, [](const obligations::ClaimClosure& claim) { return !claim.imported.empty(); });
+    std::cout << "Interface-dependent claims:  " << interfaced << "\n";
+    for (const obligations::ClaimClosure& claim : summary.claims) {
+        if (claim.imported.empty()) {
+            continue;
+        }
+        std::cout << "  " << claim_name(claim) << ", identity " << claim.identity.text() << "\n";
+        for (const obligations::ImportedDependency& imported : claim.imported) {
+            std::cout << "    rests on the " << imported_from(imported) << ", "
+                      << (imported.direct ? "called in its own body" : "through a verified call it makes") << "\n";
+            print_depends(imported);
         }
     }
     // Where the program's guarantees stop, whether or not a proven claim
@@ -454,6 +526,15 @@ int run_driver(int argc, const char* const* argv) {
         return 1;
     }
 
+    // An interface records what one unit proved, so it is written for a command
+    // that compiles exactly one (SPEC.md TUBOUND-002).
+    if (!options.emit_interface.empty() && (options.passthrough || options.inputs.size() != 1)) {
+        std::cerr << "cppl: error: '--cppl-emit-interface' records the verification interface of one translation "
+                     "unit, and this command compiles "
+                  << (options.passthrough ? std::string("none") : std::to_string(options.inputs.size())) << "\n";
+        return 1;
+    }
+
     if (options.passthrough || options.inputs.empty()) {
         const ProcessResult result = run(options.clang, options.arguments);
         if (!result.started || result.signaled) {
@@ -469,14 +550,42 @@ int run_driver(int argc, const char* const* argv) {
         return 1;
     }
 
+    // A unit that is not verified this time leaves no interface of an earlier
+    // compile behind claiming that it was (SPEC.md TUBOUND-005).
+    const auto fail_with = [&options](int status) {
+        if (!options.emit_interface.empty()) {
+            detail::withdraw_interface(options.emit_interface);
+        }
+        return status;
+    };
+
+    // The configuration an interface is bound to, needed only when one is
+    // written or read (SPEC.md TUBOUND-005).
+    std::optional<artifact::Configuration> configuration;
+    if (!options.emit_interface.empty() || !options.import_interfaces.empty()) {
+        std::expected<artifact::Configuration, std::string> current =
+            detail::current_configuration(options.clang, base_arguments(options), options.standard);
+        if (!current) {
+            std::cerr << "cppl: error: " << current.error() << "\n";
+            return fail_with(1);
+        }
+        configuration = std::move(*current);
+    }
+
     diagnostics::Engine engine;
     Summary summary;
     std::map<std::size_t, std::string> replacements;
     int failure_exit_code = 1;
     bool failed = false;
 
+    const obligations::Imports imports = configuration.has_value()
+                                             ? detail::read_imports(options.import_interfaces, *configuration, engine)
+                                             : obligations::Imports{};
+
+    std::vector<std::string> files;
+    std::vector<artifact::Entry> exported;
     for (const Input& input : options.inputs) {
-        const UnitOutcome outcome = compile_unit(options, input, scratch.path(), engine, summary);
+        UnitOutcome outcome = compile_unit(options, input, scratch.path(), imports, engine, summary);
         if (outcome.failed) {
             failed = true;
             if (outcome.exit_code != 0) {
@@ -487,12 +596,14 @@ int run_driver(int argc, const char* const* argv) {
         if (outcome.has_cppl && !outcome.runtime_path.empty()) {
             replacements.emplace(input.argument_index, outcome.runtime_path);
         }
+        files = std::move(outcome.files);
+        exported = std::move(outcome.exported);
     }
 
     print_diagnostics(engine);
 
     if (failed || engine.has_errors()) {
-        return failure_exit_code;
+        return fail_with(failure_exit_code);
     }
 
     if (options.trust_report) {
@@ -531,9 +642,35 @@ int run_driver(int argc, const char* const* argv) {
     // system sees a silent fault with no reason attached (`AGENTS.md` 23).
     if (!result.started || result.signaled) {
         std::cerr << "cppl: error: " << result.error << "\n";
-        return 1;
+        return fail_with(1);
     }
-    return result.exit_code;
+    if (result.exit_code != 0) {
+        return fail_with(result.exit_code);
+    }
+
+    // Written only now, once the unit is verified and its object produced, so
+    // an interface never describes a build that did not complete (SPEC.md
+    // TUBOUND-002).
+    if (!options.emit_interface.empty() && configuration.has_value()) {
+        artifact::Interface recorded;
+        recorded.configuration = *configuration;
+        std::error_code error;
+        recorded.unit = std::filesystem::absolute(options.inputs.front().path, error).lexically_normal().string();
+        std::expected<std::vector<artifact::SourceFile>, std::string> sources = detail::source_files(files);
+        if (error || !sources) {
+            std::cerr << "cppl: error: cannot record what '" << options.inputs.front().path
+                      << "' was verified from: " << (sources ? error.message() : sources.error()) << "\n";
+            return fail_with(1);
+        }
+        recorded.sources = std::move(*sources);
+        recorded.entries = std::move(exported);
+        if (const auto written = detail::write_interface(options.emit_interface, recorded); !written) {
+            std::cerr << "cppl: error: cannot write verification interface '" << options.emit_interface
+                      << "': " << written.error() << "\n";
+            return fail_with(1);
+        }
+    }
+    return 0;
 }
 
 } // namespace cppl::driver

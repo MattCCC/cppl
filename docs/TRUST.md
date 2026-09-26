@@ -1013,6 +1013,59 @@ Native ABI does not carry all proof metadata. Sound modular verification therefo
 
 **[TCB-XTU-006]** Interface identity MUST resist accidental collision across overloads, templates, namespaces, modules, generated names and source remapping.
 
+## 31.1 Verification interfaces as implemented
+
+This implementation carries contracts across translation units through a verification interface each unit may write (`--cppl-emit-interface`) and others may import (`--cppl-import-interface`), as `SPEC.md` Annex L.2.1 (TUBOUND-002 to TUBOUND-009) and RFC 0017 define. No evidence crosses: an interface records *that* a unit proved a contract, not a proof term to re-check. The trust this adds is therefore artifact and reuse TCB (2.5), stated here in full.
+
+What the consuming unit does not have to believe, because it checks it itself:
+
+```text
+what the contract means     rebuilt from the consumer's own declaration and
+                            compared, by a canonical statement identity, with
+                            the one recorded (TUBOUND-004); nothing recorded is
+                            read as a proposition
+which function it is        Clang's USR of the consumer's own declaration, with
+                            external linkage, compared with the one recorded
+what callers must prove     the consumer's own preconditions, discharged by the
+                            kernel at every call like any other obligation
+what follows the call       every condition supposing the recorded
+                            postcondition is checked by the kernel
+```
+
+What it does believe, and so what joins the artifact and reuse TCB:
+
+```text
+the producing compile       that the unit which wrote the interface really
+                            proved each recorded contract; the consumer never
+                            re-checks it (Composition::established)
+the emitter                 that an entry is written only for a contract every
+                            obligation of which the kernel accepted, with the
+                            closure close_trust computed for it
+the reader and validator    that a refused interface is refused: format,
+                            version, checksum, configuration, staleness,
+                            conflicts and dependency closure
+                            (compiler/artifact, compiler/driver/src/interface_io)
+the statement identity      that two statements with one identity are one
+                            contract (obligations/src/interface.cpp); this is
+                            correspondence TCB as well, since it decides which
+                            proposition the kernel is asked to suppose
+the file's integrity        between the write and the read; the checksum
+                            detects accidental damage, not a deliberate edit
+the object's correspondence that the object linked is the one compiled with
+                            the unit that wrote the interface (SPEC.md L.5);
+                            nothing binds the two
+```
+
+**[TCB-XTU-007]** A claim proven through an imported contract MUST be reported with that contract, the interface that recorded it and the identity of the record, and with every trusted assumption and unsafe dependency the producing unit's proof rested on, transitively across units. It MUST NOT be reported as assumption-free, and the imported contract MUST NOT be counted as proven by the consuming unit.
+
+**[TCB-XTU-008]** An interface MUST be bound to the configuration that gives its records meaning, compared exactly: the compiler version and the digest of the compiler's own executable, the kernel and formal-core versions, the Clang that resolved C++ semantics, the language mode and the target. It MUST also be bound to the content of every file its unit was preprocessed from, so an edit after it was written makes it stale. Content is compared, never a timestamp.
+
+**[TCB-XTU-009]** A record MUST be usable only while every record it rests on is imported with the identity it had when the dependent proof was made, and two records of one function that differ MUST make both unusable. Staleness therefore propagates along the dependency chain rather than stopping at the unit that changed.
+
+**[TCB-XTU-010]** A hand-edited interface whose checksum is recomputed is not detected: the checksum establishes integrity, not authenticity (TCB-ARTIFACT-003). The honest statement is that such an edit can make a caller assume a contract that was never proven; it can never make one kernel-checked, and every claim resting on it is reported as resting on that record (TCB-XTU-007). Authenticating interfaces, or transporting evidence to re-check, is left to a later design (RFC 0017).
+
+TCB delta of this feature: no kernel rule, no axiom, no term or proposition former, no change to what the kernel accepts. The artifact and reuse TCB grows by the components listed above; the reporting TCB grows by the imported-closure propagation in `close_trust` and its report.
+
 ---
 
 # 32. Proof artifacts, caches and incremental verification

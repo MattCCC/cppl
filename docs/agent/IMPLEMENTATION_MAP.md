@@ -499,6 +499,75 @@ and measures on function templates, each refused.
 
 ---
 
+## cross-tu-contracts
+
+Manifest: `features/cross-tu-contracts.yaml`
+
+Normative sources: `TUBOUND-001`–`TUBOUND-009` (SPEC Annex L.1, L.2.1),
+`TU-002`–`TU-004` (SPEC §44), `TEMPLATE-003`; `TRUST.md` §31, §31.1; RFC 0017.
+
+### Components
+
+| Component | Responsibility | Paths |
+| --- | --- | --- |
+| artifact | The interface format: canonical writer, strict bounded reader, entry identity. | `compiler/artifact/` |
+| bridge | Whether a function has external linkage. | `clang/src/bridge.cpp` (`Function::external_linkage`) |
+| elaboration | A verified declaration without a definition and with external linkage is `defined_elsewhere` and states its contract; a declaration-only template specialization is refused; each repeated `verified` declaration's contract is read (`redeclared_contracts`). | `compiler/elaboration/src/elaborate.cpp` |
+| obligations | The canonical statement identity; restatements compared (TU-003); an external contract established only from a record with the same statement (`import_contract`); a partial record of a measured function refused; recursion through another unit refused; totality as recorded; entries exported with their closure. | `compiler/obligations/src/interface.cpp`, `compiler/obligations/src/contracts.cpp` |
+| automation | An imported contract is established without an obligation of this unit. | `compiler/automation/src/composition.cpp` (`Composition::established`) |
+| trust closure | Imported contracts are no claim; every claim carries the imported contracts it rests on, transitively, with their premises and unsafe blocks. | `compiler/obligations/src/trust.cpp` |
+| driver | The options; the configuration an interface is bound to; reading, validating, dependency closure and conflicts; writing after the object, withdrawing on failure; the report. | `compiler/driver/src/interface_io.cpp`, `compiler/driver/src/driver.cpp`, `compiler/driver/src/pipeline.cpp` |
+
+### Required behavior
+
+```text
+a unit that verified         may record each contract it proved, of functions
+                             with external linkage, with its closure
+a declaration without a      is established only from a record of the same
+definition                   function stating the same contract, or refused
+an interface                 is refused whole when malformed, of another
+                             version or configuration, or stale
+a record                     is used only with every record it rests on,
+                             as proven against; conflicting records refuse
+a claim through a record     carries it and what it rests on; never
+                             assumption-free; never counted as proven there
+totality                     crosses as recorded
+recursion across units       is refused
+repeated verified            must state one contract, compared by meaning
+declarations
+an interface                 reaches no object and changes no ABI
+```
+
+### Interactions
+
+```text
+refinements        a refined parameter or result is part of the statement
+references         a reference parameter's post-state is part of it
+capabilities       owed at every call, part of the statement
+termination        measures part of the statement; totality recorded
+trusted laws       carried and reported, not re-affirmed
+unsafe code        carried and reported
+templates          explicit specializations only; implicit ones refused
+methods, modules   not built here
+```
+
+### Existing surface
+
+```text
+tests/fixtures/cross_tu/                  a three-unit program, a rival producer, hand erasures
+tests/e2e/cross_tu.sh                     recording, use, closure, totality, determinism, erasure, ABI
+tests/negative/cross_tu.sh                every refusal, with its accepted twin
+tests/fixtures/negative/xtu_*             each refused consumer and interface, written out
+tests/unit/interface_test.cpp             the reader and writer
+tests/unit/cross_unit_contracts_test.cpp  statement identity, import, totality, recursion, TU-003
+tests/fuzz/interface.cpp                  the reader, with a round-trip oracle
+```
+
+Not built: evidence transport, interface authentication, binding the linked
+object to the imported interface, import in `cppl-lsp`, modules.
+
+---
+
 ## Adding a feature to this map
 
 1. Add the feature to `FEATURE_INDEX.md`.

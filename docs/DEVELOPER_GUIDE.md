@@ -2987,8 +2987,8 @@ A visible contract lets a caller state obligations; checked implementation
 evidence or an explicit trust boundary is still needed before the summary can be
 used as proof.
 
-A compiler lacking separate-evidence transport must reject that verification
-step.
+This compiler supplies it through a verification interface the defining unit
+writes and the calling unit imports (15.4). Without one, the call is refused.
 
 Ordinary C++ modules retain their C++ meaning.
 
@@ -3030,6 +3030,58 @@ That is a conflicting redeclaration of the same C++ function entity.
 
 The contract belongs to the function, not to whichever source file happened to
 spell it.
+
+A definition whose body states loop clauses must itself be marked `verified`,
+so it restates the contract. That is legal when the two state the same contract;
+they are compared by meaning, so renamed parameters agree:
+
+```cpp
+// counter.hpp
+verified unsigned count_to(unsigned n)
+    ensures (result == n);
+```
+
+```cpp
+// counter.cpp
+#include "counter.hpp"
+
+verified unsigned count_to(unsigned limit)
+    ensures (result == limit)
+{
+    unsigned i = 0u;
+    while (i < limit)
+        invariant (i <= limit)
+        decreases (limit - i)
+    {
+        ++i;
+    }
+    return i;
+}
+```
+
+Restating it as `ensures (result <= limit)` is refused, naming both statements
+(`SPEC.md` TU-003). As `counter.cpp` reaches the compiler, with its header
+included:
+
+<!-- cppl-example: verify -->
+
+```cpp
+verified unsigned count_to(unsigned n)
+    ensures (result == n);
+
+verified unsigned count_to(unsigned limit)
+    ensures (result == limit)
+{
+    unsigned i = 0u;
+    while (i < limit)
+        invariant (i <= limit)
+        decreases (limit - i)
+    {
+        ++i;
+    }
+    return i;
+}
+```
 
 ### 15.2. Refinements do not create runtime overload identities
 
@@ -3115,6 +3167,97 @@ availability of verification metadata
 A binary may remain ABI-compatible while another translation unit lacks enough
 proof metadata to verify a call. In that case verification must fail closed
 rather than inventing the missing contract evidence.
+
+### 15.4. Using a contract proven in another translation unit
+
+The unit that defines a verified function proves its contract and can record
+what it proved in a **verification interface**. A unit that only declares the
+function imports that interface to rely on the contract (`SPEC.md` Annex L.2.1,
+RFC 0017):
+
+```sh
+# account.cpp defines withdraw and proves it; the interface records that.
+cppl -std=c++20 -c account.cpp -o account.o --cppl-emit-interface=account.cppli
+
+# main.cpp includes account.hpp and calls withdraw.
+cppl -std=c++20 -c main.cpp -o main.o --cppl-import-interface=account.cppli
+
+# The objects link as any C++ objects do.
+cppl account.o main.o -o app
+```
+
+`--cppl-emit-interface=<file>` names where one unit's interface goes; the build
+system decides the name, and the file is written only once the unit verified
+and its object was produced. `--cppl-import-interface=<file>` may be repeated,
+once per unit whose contracts this one uses.
+
+What the caller gets is exactly what it states. The contract the calling unit
+relies on is the one it builds from its own declaration of the function; the
+interface only says whether the defining unit proved that same contract, for
+that same function, as Clang resolves it. A call is therefore refused, with the
+reason, when:
+
+```text
+no imported interface records the function
+    a declaration is not evidence
+
+the declaration here states another contract than the one recorded
+    a stronger postcondition, a weaker precondition, another refinement
+
+the call resolves to another overload or another specialization
+    f<5> is never proven by f<4>'s record
+
+the interface is not usable here
+    malformed, truncated, altered, of another format version, produced by
+    another cppl build, kernel, Clang, -std or target, or stale: a file its
+    unit was compiled from changed after it was written
+
+what the record rests on is not imported
+    a unit proven through a third unit's contract needs that interface too,
+    as it was when the proof was made
+```
+
+A unit whose proof used another unit's contract records that it did, so a
+build imports every interface along the chain. Rebuilding a unit rewrites its
+interface; one left from an earlier build of a changed file is refused as stale,
+and a unit that no longer verifies removes its interface.
+
+What a caller proves through another unit's contract is `PROVEN` relative to
+that record. `--cppl-trust-report` lists every imported contract, and under
+`Interface-dependent claims` every claim resting on one, together with any
+trusted law and unsafe block the other unit's proof rested on:
+
+```text
+Function contracts imported: 1
+  imported:                  contract of withdraw [c:@F@withdraw#i#i#], imported from account.cppli, entry 3f0c..., total
+...
+Interface-dependent claims:  1
+  contract of pay (main.cpp:4), identity 91d2...
+    rests on the contract of withdraw [c:@F@withdraw#i#i#], imported from account.cppli, entry 3f0c..., called in its own body
+```
+
+Such a claim is never counted as assumption-free: the calling unit did not
+check the other unit's proof, it trusts the interface that recorded it
+(`TRUST.md` 31.1). Totality crosses too: a contract recorded as partial
+correctness makes its callers partial, and a function stating `decreases`
+cannot call one.
+
+Keep in mind:
+
+- the contract must be on the header declaration; a function whose body needs
+  loop clauses restates it on its definition (15.1);
+- only functions with external linkage cross; a `static` or anonymous-namespace
+  function is its own unit's;
+- a specialization crosses when declared explicitly with its contract,
+  `template <> verified unsigned f<4u>(unsigned x) ensures (...);`; one of a
+  template a unit only declares is refused, since nothing instantiates its
+  contract there;
+- recursion across units is not verified;
+- the editor (`cppl-lsp`) does not import interfaces yet, so it reports such a
+  call as unavailable.
+
+`tests/fixtures/cross_tu/` is a complete three-unit example, built by
+`tests/e2e/cross_tu.sh`.
 
 ## 16. Member contracts
 
@@ -3432,6 +3575,7 @@ Distinguish these common causes:
 | Unsupported semantics                 | Keep verification fail-closed; no implicit assumption |
 | Callee precondition failed            | Establish the callee's `expects` before the call      |
 | Conflicting redeclaration             | Make all declarations describe one logical contract   |
+| `verification-interface`              | Import the defining unit's current interface (15.4)   |
 
 Use `cppl` with ordinary Clang compile options.
 
@@ -4520,7 +4664,15 @@ unsigned withdraw(unsigned balance, unsigned amount)
 }
 ```
 
-Do not duplicate the contract on the out-of-line definition.
+Do not duplicate the contract on the out-of-line definition, unless its body
+states loop clauses; then it restates the same contract (15.1).
+
+Another unit calling it:
+
+```text
+cppl -c account.cpp --cppl-emit-interface=account.cppli     proves, records
+cppl -c main.cpp --cppl-import-interface=account.cppli      uses, reports
+```
 
 ### Templates, virtual functions and other C++ syntax
 

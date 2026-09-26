@@ -25,9 +25,14 @@ enum class Category : std::uint8_t {
     UnsupportedSemantics, // well-formed, but outside the modeled fragment
     ProofFailure,         // an obligation was not discharged
     KernelRejection,      // the kernel refused the evidence offered
-    Policy,               // the build policy refuses the result
-    Style,                // canonical formatting is violated; never blocks a build
-    Internal,             // the compiler failed; never a verification result
+    // A contract of another translation unit is not available: no verification
+    // interface records it, or the one that does is not usable here. Distinct
+    // from ProofFailure, because the fix is to the build rather than to a
+    // proof (SPEC.md TUBOUND-003, TUBOUND-005).
+    VerificationInterface,
+    Policy,   // the build policy refuses the result
+    Style,    // canonical formatting is violated; never blocks a build
+    Internal, // the compiler failed; never a verification result
 };
 
 std::string describe(Category category);

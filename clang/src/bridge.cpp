@@ -5336,6 +5336,7 @@ std::expected<TranslationUnit, std::string> parse(const ParseRequest& request) {
     for (const CXCursor& cursor : collector.selected) {
         Function function;
         function.usr = take(clang_getCursorUSR(cursor));
+        function.external_linkage = clang_getCursorLinkage(cursor) == CXLinkage_External;
         function.name = take(clang_getCursorSpelling(cursor));
         function.qualified_name = qualified_name_of(cursor);
         // A projected proof expression returns `decltype(auto)` over a

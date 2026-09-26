@@ -1,0 +1,162 @@
+# Machine-readable manifest for contracts across translation units.
+#
+# Rule IDs are anchors in docs/SPEC.md, the canonical specification. Extract the
+# normative text with:
+#
+#     cppl-spec-rules extract --feature cross-tu-contracts
+
+feature: cross-tu-contracts
+
+summary: >
+  A unit that verifies may record, in a verification interface, each contract it
+  proved for a function with external linkage: its USR, a canonical identity of
+  what the contract states, whether it is total, and the trusted laws, unsafe
+  blocks and contracts of other units its proof rests on. A unit that declares
+  the function without defining it relies on the contract only when it imports
+  an interface recording that same function and that same statement, rebuilt
+  from its own declaration; an interface that is malformed, of another version
+  or configuration, or stale is refused whole, conflicting records and records
+  whose dependencies are not imported as proven are refused, and recursion
+  across units is refused. A claim resting on an imported contract carries it
+  and what it rests on, and is never assumption-free. No evidence crosses: the
+  interface is artifact and reuse TCB. The interface reaches no object.
+
+normative_sources:
+  spec:
+    - "Annex L.1 Public contracts"
+    - "Annex L.2 Verification metadata across translation units"
+    - "Annex L.2.1 Verification interfaces"
+    - "§44 Declarations, headers and translation units"
+  foundations:
+    - "§114 Cross-translation-unit proof composition"
+  trust:
+    - "§31 Translation units, modules and verification metadata"
+    - "§31.1 Verification interfaces as implemented"
+  rfc:
+    - "docs/rfcs/0017-cross-translation-unit-verification.md"
+
+rule_families:
+  - TUBOUND
+
+rules:
+  - TUBOUND-001
+  - TUBOUND-002
+  - TUBOUND-003
+  - TUBOUND-004
+  - TUBOUND-005
+  - TUBOUND-006
+  - TUBOUND-007
+  - TUBOUND-008
+  - TUBOUND-009
+  - TU-002
+  - TU-003
+  - TU-004
+  - TEMPLATE-003
+
+depends_on:
+  - verified-functions
+  - verified-call-composition
+  - refinement-types
+  - trust-propagation
+  - unsafe-boundary
+  - termination
+  - erasure
+
+implementation:
+  artifact:
+    - compiler/artifact/include/cppl/artifact/interface.hpp
+    - compiler/artifact/src/interface.cpp
+  clang:
+    - clang/include/cppl/clang/ast.hpp
+    - clang/src/bridge.cpp
+  elaboration:
+    - compiler/elaboration/src/elaborate.cpp
+  vir:
+    - vir/include/cppl/vir/module.hpp
+  obligations:
+    - compiler/obligations/include/cppl/obligations/interface.hpp
+    - compiler/obligations/src/interface.cpp
+    - compiler/obligations/include/cppl/obligations/contracts.hpp
+    - compiler/obligations/src/contracts.cpp
+    - compiler/obligations/include/cppl/obligations/trust.hpp
+    - compiler/obligations/src/trust.cpp
+  automation:
+    - compiler/automation/src/composition.cpp
+  driver:
+    - compiler/driver/include/cppl/driver/options.hpp
+    - compiler/driver/src/options.cpp
+    - compiler/driver/src/interface_io.hpp
+    - compiler/driver/src/interface_io.cpp
+    - compiler/driver/src/pipeline.hpp
+    - compiler/driver/src/pipeline.cpp
+    - compiler/driver/src/driver.cpp
+
+interactions:
+  - refined parameters and results
+  - reference parameters and their post-state
+  - memory capabilities owed at calls
+  - measures and totality
+  - trusted laws and unsafe blocks of the other unit
+  - overloads and explicit template specializations
+  - chains of units
+  - repeated verified declarations in one unit
+  - erasure and native ABI
+
+tests:
+  positive:
+    - tests/fixtures/cross_tu/library.hpp
+    - tests/fixtures/cross_tu/library.cpp
+    - tests/fixtures/cross_tu/middle.hpp
+    - tests/fixtures/cross_tu/middle.cpp
+    - tests/fixtures/cross_tu/client.cpp
+    - tests/fixtures/cross_tu/rival.cpp
+  negative:
+    - tests/negative/cross_tu.sh
+    - tests/fixtures/negative/xtu_false_postcondition.cpp
+    - tests/fixtures/negative/xtu_missing_precondition.cpp
+    - tests/fixtures/negative/xtu_refined_result_stronger.cpp
+    - tests/fixtures/negative/xtu_partial_callee.cpp
+    - tests/fixtures/negative/xtu_wrong_overload.cpp
+    - tests/fixtures/negative/xtu_unrecorded_overload.cpp
+    - tests/fixtures/negative/xtu_other_specialization.cpp
+    - tests/fixtures/negative/xtu_stronger_declaration.cpp
+    - tests/fixtures/negative/xtu_weaker_precondition.cpp
+    - tests/fixtures/negative/xtu_unproven_declaration.cpp
+    - tests/fixtures/negative/xtu_template_declaration.cpp
+    - tests/fixtures/negative/xtu_internal_linkage.cpp
+    - tests/fixtures/negative/xtu_conflicting_redeclaration.cpp
+    - tests/fixtures/negative/xtu_middle_only.cpp
+    - tests/fixtures/negative/xtu_library_changed.cpp
+    - tests/fixtures/negative/xtu_truncated.cppli
+    - tests/fixtures/negative/xtu_checksum_mismatch.cppli
+    - tests/fixtures/negative/xtu_status_refused.cppli
+    - tests/fixtures/negative/xtu_other_version.cppli
+    - tests/fixtures/negative/xtu_other_build.cppli
+  unit:
+    - tests/unit/interface_test.cpp
+    - tests/unit/cross_unit_contracts_test.cpp
+  fuzz:
+    - tests/fuzz/interface.cpp
+  end_to_end:
+    - tests/e2e/cross_tu.sh
+
+required_test_categories:
+  - recording, determinism, internal linkage not recorded
+  - precondition, postcondition, refined result, reference post-state
+  - overload and specialization identity
+  - declaration without a record refused
+  - stronger and weaker declared contracts refused
+  - malformed, truncated, altered, other version, other build, other mode, stale
+  - trust closure through the imported contract, a local call and a third unit
+  - totality as recorded; a partial record of a measured function refused
+  - recursion across units refused
+  - chains need every interface; conflicting records refused
+  - repeated verified declarations compared by meaning
+  - erasure and ABI against hand erasures, mixed links
+
+completion_requires:
+  - no declaration alone establishes a contract
+  - a record is used only for the same function and the same statement
+  - any doubt about an interface refuses it
+  - every claim through a record reports it and what it rests on
+  - interfaces change no object and no ABI

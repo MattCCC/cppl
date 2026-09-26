@@ -97,6 +97,12 @@ target_link_libraries(kernel_adversarial_test PRIVATE cppl_kernel)
 cppl_add_unit_test(unit_digest_test unit/digest_test.cpp)
 target_link_libraries(unit_digest_test PRIVATE cppl_source)
 
+cppl_add_unit_test(unit_interface_test unit/interface_test.cpp)
+target_link_libraries(unit_interface_test PRIVATE cppl_artifact)
+
+cppl_add_unit_test(unit_cross_unit_contracts_test unit/cross_unit_contracts_test.cpp)
+target_link_libraries(unit_cross_unit_contracts_test PRIVATE cppl_automation cppl_artifact)
+
 # The crash report has to survive the fault it reports, a stack overflow
 # included, so it is exercised in a child process that really overflows.
 cppl_add_unit_test(unit_crash_report_test unit/crash_report_test.cpp)
@@ -397,6 +403,11 @@ cppl_add_script_test(e2e_verified_paths e2e/verified_paths.sh)
 cppl_add_script_test(e2e_verified_locals e2e/verified_locals.sh)
 cppl_add_script_test(e2e_verified_arithmetic e2e/verified_arithmetic.sh)
 cppl_add_script_test(e2e_verified_loops e2e/verified_loops.sh)
+
+# Contracts across translation units, through verification interfaces
+# (SPEC.md XTU-*, RFC 0017).
+cppl_add_script_test(e2e_cross_tu e2e/cross_tu.sh)
+cppl_add_script_test(negative_cross_tu negative/cross_tu.sh)
 
 # Erasure against programs written without C++L: runtime behaviour and code,
 # native ABI across a translation-unit boundary, and source positions.

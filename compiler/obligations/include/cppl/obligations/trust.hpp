@@ -1,7 +1,9 @@
 #pragma once
 
+#include "cppl/artifact/interface.hpp"
 #include "cppl/obligations/obligation.hpp"
 #include "cppl/obligations/status.hpp"
+#include "cppl/source/digest.hpp"
 #include "cppl/source/location.hpp"
 
 #include <cstdint>
@@ -35,6 +37,25 @@ struct UnsafeDependency {
     bool direct = false;
 };
 
+// A contract another translation unit proved that a claim rests on, and what
+// that unit's proof of it rests on in turn (SPEC.md TUBOUND-006). The claim holds
+// only if the verification interface that recorded the contract is faithful to
+// a proof that was really made, which nothing in this unit checked, so a claim
+// that rests on one is never reported as assumption-free (TRUST.md 31).
+struct ImportedDependency {
+    std::string name;   // the callee's qualified name
+    std::string symbol; // its USR
+    std::string origin; // the interface that recorded it
+    source::Digest entry;
+    bool total = false;
+    std::vector<artifact::Premise> premises;
+    std::vector<artifact::UnsafeBlock> unsafe;
+    std::vector<artifact::Dependency> depends;
+    // Whether the claim's own body calls it, rather than a verified function
+    // of this unit that the body calls.
+    bool direct = false;
+};
+
 // A proven claim and the trusted laws it rests on: its trust closure (TRUST.md
 // 2.8, 35).
 struct ClaimClosure {
@@ -61,7 +82,24 @@ struct ClaimClosure {
     // For a contract, whether it is a total-correctness claim rather than one
     // that holds only if the function returns (SPEC.md CORRECT-006).
     bool total = true;
+
+    // For a contract, the contracts of other units it was proven through, its
+    // own calls' and those of every verified function of this unit it calls,
+    // ordered by symbol. A claim that a path or a case of a verified body
+    // cannot occur rests on those of that body's contract (SPEC.md TUBOUND-006).
+    std::vector<ImportedDependency> imported = {};
+
+    // For a contract, the function's USR, so an interface can record it.
+    std::string symbol = {};
 };
+
+// Whether a claim rests on a trusted law, of this unit or of another unit whose
+// contract it was proven through (TRUST.md 3.2, TCB-REPORT-002).
+[[nodiscard]] bool rests_on_trusted_laws(const ClaimClosure& claim);
+
+// Whether a claim rests on unsafe code, of this unit or of another unit whose
+// contract it was proven through (TRUST.md TCB-REPORT-005).
+[[nodiscard]] bool rests_on_unsafe_code(const ClaimClosure& claim);
 
 // The trust closure of every proven claim of one translation unit.
 //
@@ -82,6 +120,11 @@ struct TrustClosure {
     // No claim can rest on one (SPEC.md TRUSTED-003, TRUSTED-008), so each is
     // also unused; it is listed so that the assumption stays visible.
     std::vector<TrustedMemoryAssumption> memory_assumptions;
+
+    // Every contract of another unit this unit established from an interface,
+    // in contract order, whether or not a proven claim rests on it, so the
+    // report says what was assumed from elsewhere (SPEC.md TUBOUND-006).
+    std::vector<ImportedDependency> imports;
 
     // Dependencies that could not be attributed to a claim. Any one means the
     // report cannot vouch for the closures above, so it is an internal error

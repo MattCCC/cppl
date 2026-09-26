@@ -81,6 +81,7 @@ section numbers move and rule IDs do not.
 | Calls from verified code | `CALL-*`, `BOUNDARY-*` | §40, §41 | — | — | §17 |
 | Templates | `TEMPLATE-*` | §42, Annex G | — | — | — |
 | Translation units and modules | `TU-*`, `MODULE-*`, `TUBOUND-*` | §44, §45, Annex L | — | — | §18 |
+| Contracts across translation units (verification interfaces) | `TUBOUND-*`, `TU-002`–`TU-004` | Annex L.1, L.2.1, §44 | — | §114 | §31, §31.1 |
 
 ## Normative catalogues
 

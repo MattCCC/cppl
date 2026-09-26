@@ -1682,7 +1682,12 @@ milestone and are not implemented:
 ```text
 semantic tokens for a range or as a delta (whole documents only)
 proof search / interactive proof state
+verification interfaces (--cppl-import-interface)
 ```
+
+A call to a verified function another unit defines is therefore shown refused,
+with the `cppl.verification.interface` code, exactly as the CLI refuses it when
+no interface is imported (`docs/DEVELOPER_GUIDE.md` 15.4).
 
 Completion and hover cover every name, from Clang for C++ and from C++L's own
 syntax and declarations (see "Completion" and "Hover").

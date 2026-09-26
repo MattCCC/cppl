@@ -3203,6 +3203,15 @@ Mathematically, using a summary is theorem application.
 It is sound only if the imported summary denotes the same formal entity and
 evidence that was checked in its defining environment.
 
+As implemented (`SPEC.md` Annex L.2.1), no evidence crosses. The caller states
+the callee's contract itself and supposes its postcondition as a premise of each
+of its own obligations, exactly as for a callee of its own unit, after proving
+the callee's preconditions; the kernel checks every step relative to that
+premise. The premise is discharged by the defining unit's check, which the
+consumer does not repeat, so the caller's theorem is established relative to the
+imported summary and its trust is the interface's (`TRUST.md` 31.1). No rule of
+the calculus changes.
+
 ---
 
 # 115. Erasure

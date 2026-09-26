@@ -5,7 +5,10 @@
 #include "cppl/kernel/proposition.hpp"
 #include "cppl/kernel/term.hpp"
 #include "cppl/kernel/types.hpp"
+#include "cppl/obligations/contracts.hpp"
+#include "cppl/obligations/interface.hpp"
 #include "cppl/obligations/obligation.hpp"
+#include "cppl/source/digest.hpp"
 #include "cppl/source/location.hpp"
 #include "cppl/vir/expr.hpp"
 #include "cppl/vir/module.hpp"
@@ -46,6 +49,19 @@ std::expected<kernel::Proposition, Failure> lower_predicate(const vir::Expr& exp
                                                             const DefinitionMap& definitions, std::size_t binders);
 ObligationId identify_goal(const kernel::Context& context, const std::string& subject, const kernel::Proposition& goal);
 void generate_contracts(const vir::Module& module, const DefinitionMap& pure_definitions, Program& program,
-                        diagnostics::Engine& engine, const std::function<std::string(const Failure&)>& explain);
+                        diagnostics::Engine& engine, const std::function<std::string(const Failure&)>& explain,
+                        const Imports& imports);
+
+// A contract statement's canonical identity and its description (SPEC.md
+// TUBOUND-004). `plan` must already state the contract: its parameter and result
+// types, preconditions and postcondition.
+struct Statement {
+    source::Digest identity;
+    std::string description;
+};
+[[nodiscard]] std::expected<Statement, Failure> state_statement(const vir::Function& function,
+                                                                const ContractVerification& plan,
+                                                                const kernel::Context& context,
+                                                                const DefinitionMap& pure_definitions);
 
 } // namespace cppl::obligations::detail

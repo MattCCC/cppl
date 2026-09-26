@@ -106,6 +106,11 @@ struct Result {
     // it, in source order.
     std::vector<std::size_t> unsafe_functions;
 
+    // How many `verified` declarations restated the contract of a function an
+    // earlier declaration already marked verified (SPEC.md TU-003). Each is
+    // accounted for by that function's one contract, never by one of its own.
+    std::size_t redeclarations = 0;
+
     [[nodiscard]] const FunctionRejection* rejection(const vir::SymbolId& symbol) const;
 };
 

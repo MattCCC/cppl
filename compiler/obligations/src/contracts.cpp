@@ -1,13 +1,16 @@
 #include "cppl/obligations/contracts.hpp"
 
+#include "cppl/artifact/interface.hpp"
 #include "cppl/diagnostics/diagnostic.hpp"
 #include "cppl/kernel/context.hpp"
 #include "cppl/kernel/proposition.hpp"
 #include "cppl/kernel/substitution.hpp"
 #include "cppl/kernel/term.hpp"
 #include "cppl/kernel/types.hpp"
+#include "cppl/obligations/interface.hpp"
 #include "cppl/obligations/obligation.hpp"
 #include "cppl/source/digest.hpp"
+#include "cppl/source/location.hpp"
 #include "cppl/source/storage.hpp"
 #include "cppl/vir/capability.hpp"
 #include "cppl/vir/expr.hpp"
@@ -26,6 +29,7 @@
 #include <map>
 #include <optional>
 #include <ranges>
+#include <set>
 #include <string>
 #include <utility>
 #include <variant>
@@ -496,6 +500,7 @@ std::expected<void, Failure> state_contract(const vir::Function& function, const
                                             const Program& program, ContractVerification& plan) {
     plan.function = function.id;
     plan.name = function.qualified_name;
+    plan.symbol = function.symbol.usr;
     if (!function.contract.has_value()) {
         return std::unexpected(Failure{"the function states no contract", function.range.begin, {}});
     }
@@ -571,6 +576,18 @@ std::expected<void, Failure> state_contract(const vir::Function& function, const
         }
         if (auto lowered = lower_value(measure, pure_definitions, plan.parameters.size()); !lowered) {
             return std::unexpected(lowered.error());
+        }
+    }
+    // What the contract states, identified the same way in every unit, so an
+    // interface can record it and another unit's declaration be compared with
+    // it (SPEC.md TUBOUND-004). Only a function with external linkage is one entity
+    // across units; any other is a different function in each, however alike
+    // its identity is spelled. A statement that cannot be identified is not an
+    // error here: the contract is still verified, and simply cannot cross.
+    if (function.external_linkage) {
+        if (auto statement = state_statement(function, plan, program.context, pure_definitions)) {
+            plan.statement = statement->identity;
+            plan.description = std::move(statement->description);
         }
     }
     return {};
@@ -1990,6 +2007,12 @@ void settle_totality(Program& program, const Contracts& contracts, diagnostics::
     std::vector<bool> total(count, false);
     for (std::size_t index = 0; index < count; ++index) {
         const ContractVerification& contract = program.contracts[index];
+        // Another unit decided whether its contract is total, and its interface
+        // says which; nothing here can make it more so (SPEC.md TUBOUND-007).
+        if (contract.imported.has_value()) {
+            total[index] = contract.total;
+            continue;
+        }
         if (!contract.partial) {
             total[index] = true;
             for (const ReturnPath& path : contract.paths) {
@@ -2027,7 +2050,7 @@ void settle_totality(Program& program, const Contracts& contracts, diagnostics::
     for (const auto& [usr, function] : contracts) {
         const auto found = index_of.find(function->id.value);
         if (found == index_of.end() || !function->contract.has_value() || function->contract->measures.empty() ||
-            total[found->second]) {
+            total[found->second] || program.contracts[found->second].imported.has_value()) {
             continue;
         }
         const ContractVerification& contract = program.contracts[found->second];
@@ -2053,10 +2076,163 @@ void settle_totality(Program& program, const Contracts& contracts, diagnostics::
     }
 }
 
+// Why a contract of another unit, or a call relying on one, is not used here.
+struct Refusal {
+    std::string message;
+    std::vector<std::string> notes;
+    source::SourceLocation location;
+};
+
+void report(diagnostics::Engine& engine, const Refusal& refusal) {
+    diagnostics::Diagnostic diagnostic;
+    diagnostic.severity = diagnostics::Severity::Error;
+    diagnostic.category = diagnostics::Category::VerificationInterface;
+    diagnostic.location = refusal.location;
+    diagnostic.message = refusal.message;
+    for (const std::string& note : refusal.notes) {
+        diagnostic.notes.push_back({note, refusal.location});
+    }
+    engine.report(std::move(diagnostic));
+}
+
+// Whether every later `verified` declaration of a function states the contract
+// its first one does (SPEC.md TU-003). They are compared by meaning, as a
+// contract of another unit is, so renamed parameters and respelled clauses
+// agree, and a conflict is refused rather than one of them silently used.
+bool restatements_agree(const vir::Function& function, const DefinitionMap& pure_definitions, const Program& program,
+                        diagnostics::Engine& engine) {
+    if (function.redeclared_contracts.empty() || !function.contract.has_value()) {
+        return true;
+    }
+    const auto stated = [&](const vir::Contract& contract) -> std::optional<Statement> {
+        vir::Function declared;
+        declared.id = function.id;
+        declared.symbol = function.symbol;
+        declared.qualified_name = function.qualified_name;
+        declared.parameters = function.parameters;
+        declared.result = function.result;
+        declared.contract = contract;
+        declared.range = function.range;
+        // Compared whatever the linkage: this is one entity within one unit.
+        declared.external_linkage = true;
+        ContractVerification plan;
+        if (!state_contract(declared, pure_definitions, program, plan) || !plan.statement.has_value()) {
+            return std::nullopt;
+        }
+        return Statement{*plan.statement, plan.description};
+    };
+    const std::optional<Statement> first = stated(*function.contract);
+    for (const vir::Contract& other : function.redeclared_contracts) {
+        const std::optional<Statement> restated = stated(other);
+        if (first.has_value() && restated.has_value() && first->identity == restated->identity) {
+            continue;
+        }
+        diagnostics::Diagnostic diagnostic;
+        diagnostic.severity = diagnostics::Severity::Error;
+        diagnostic.category = diagnostics::Category::Elaboration;
+        diagnostic.location = other.range.begin.is_valid() ? other.range.begin : function.range.begin;
+        diagnostic.message = "this verified declaration of '" + function.qualified_name +
+                             "' states a different contract from its earlier one";
+        diagnostic.notes.push_back(
+            {"earlier: " + (first.has_value() ? first->description : std::string("a contract that cannot be stated")),
+             function.contract->range.begin});
+        diagnostic.notes.push_back({"here: " + (restated.has_value() ? restated->description
+                                                                     : std::string("a contract that cannot be stated")),
+                                    diagnostic.location});
+        diagnostic.notes.push_back({"the declarations of one function state one contract, and a conflicting one is "
+                                    "ill-formed (SPEC.md TU-003)",
+                                    diagnostic.location});
+        engine.report(std::move(diagnostic));
+        return false;
+    }
+    return true;
+}
+
+// The contract of a verified function this unit declares and does not define
+// (SPEC.md TUBOUND-003, TUBOUND-004).
+//
+// The contract is stated here, from this unit's own declaration, exactly as it
+// would be for a function defined here. An interface entry is consulted only to
+// learn that another unit proved that same statement for that same callable:
+// its statement identity must equal the one built here. The proposition the
+// caller supposes is therefore always the one this unit stated; nothing is read
+// out of the entry as a proposition. The entry supplies only what a proof
+// elsewhere rests on, and whether it is total.
+std::expected<ContractVerification, Refusal> import_contract(const vir::Function& function,
+                                                             const DefinitionMap& pure_definitions,
+                                                             const Program& program, const Imports& imports) {
+    const std::string declared =
+        "verified function '" + function.qualified_name + "' is declared but not defined in this translation unit";
+    const source::SourceLocation& location = function.range.begin;
+    ContractVerification plan;
+    if (auto stated = state_contract(function, pure_definitions, program, plan); !stated) {
+        return std::unexpected(
+            Refusal{declared + ", and its contract cannot be stated to the formal core here: " + stated.error().reason,
+                    {"a contract of another unit is used only as this unit states it (SPEC.md "
+                     "TUBOUND-004)"},
+                    location});
+    }
+    const ImportedEntry* recorded = imports.find(function.symbol.usr);
+    if (recorded == nullptr) {
+        if (const RefusedEntry* refused = imports.refusal(function.symbol.usr)) {
+            return std::unexpected(Refusal{declared + ", and the contract '" + refused->origin +
+                                               "' records for it cannot be used: " + refused->reason,
+                                           {"a contract of another unit is used only from a verification interface "
+                                            "that is intact, current and produced under this unit's configuration "
+                                            "(SPEC.md TUBOUND-005)"},
+                                           location});
+        }
+        return std::unexpected(Refusal{
+            declared + ", and no imported verification interface records its contract",
+            {"a declaration is not evidence: compile the unit that defines it with '--cppl-emit-interface=<file>' "
+             "and name that file here with '--cppl-import-interface=<file>' (SPEC.md TUBOUND-003, TUBOUND-001)"},
+            location});
+    }
+    if (!plan.statement.has_value()) {
+        return std::unexpected(Refusal{"the contract of '" + function.qualified_name +
+                                           "' cannot be identified here, so it cannot be compared with the one '" +
+                                           recorded->origin + "' records",
+                                       {"a contract of another unit is used only where this unit states the same "
+                                        "one (SPEC.md TUBOUND-004)"},
+                                       location});
+    }
+    if (!(*plan.statement == recorded->entry.statement)) {
+        return std::unexpected(
+            Refusal{"the contract this translation unit declares for '" + function.qualified_name +
+                        "' is not the one '" + recorded->origin + "' records as verified",
+                    {"declared here: " + plan.description, "recorded there: " + recorded->entry.contract,
+                     "each unit states a contract from its own declaration, and another unit's "
+                     "proof is used only where the two agree (SPEC.md TUBOUND-004)"},
+                    location});
+    }
+    const bool total = recorded->entry.correctness == artifact::Correctness::Total;
+    // Asking that a function terminate is part of its statement, so a unit that
+    // proved it could not have recorded it partial; a record that does is not
+    // one this compiler wrote, and is not believed.
+    if (!total && function.contract.has_value() && !function.contract->measures.empty()) {
+        return std::unexpected(Refusal{"'" + recorded->origin + "' records the contract of '" +
+                                           function.qualified_name +
+                                           "' as partial correctness, but its declaration asks that it terminate",
+                                       {"a function stating 'decreases' is verified total or not at all (SPEC.md "
+                                        "TERMINATION-006, TUBOUND-007)"},
+                                       location});
+    }
+    plan.partial = true;
+    plan.total = total;
+    source::Hasher identity;
+    identity.update_field("imported-contract-v1");
+    identity.update_field(recorded->identity.to_hex());
+    plan.identity = identity.finish();
+    plan.imported = ImportedContract{recorded->origin, recorded->identity, recorded->entry.premises,
+                                     recorded->entry.unsafe, recorded->entry.depends};
+    return plan;
+}
+
 } // namespace
 
 void generate_contracts(const vir::Module& module, const DefinitionMap& pure_definitions, Program& program,
-                        diagnostics::Engine& engine, const std::function<std::string(const Failure&)>& explain) {
+                        diagnostics::Engine& engine, const std::function<std::string(const Failure&)>& explain,
+                        const Imports& imports) {
     Contracts contracts;
     // Only a function that states a contract and has a return tree is a
     // candidate. Pairing the tree with the function carries that guarantee
@@ -2064,14 +2240,25 @@ void generate_contracts(const vir::Module& module, const DefinitionMap& pure_def
     struct Candidate {
         const vir::Function* function;
         const vir::Expr* returned_value;
-        std::vector<const vir::Expr*> calls; // every verified call the body makes
-        std::vector<std::size_t> callees;    // the candidates those calls reach, each once
+        std::vector<const vir::Expr*> calls;    // every verified call the body makes
+        std::vector<std::size_t> callees;       // the candidates those calls reach, each once
+        std::vector<std::string> external = {}; // the functions defined elsewhere they reach, each once
     };
     std::vector<Candidate> candidates;
+    // A verified function declared here and defined in another unit states a
+    // contract too, which a caller may use once an interface establishes it
+    // (SPEC.md TUBOUND-003). It has no body, so it is never a candidate.
+    std::vector<const vir::Function*> externals;
     for (const auto& function : module.functions) {
+        if (!restatements_agree(function, pure_definitions, program, engine)) {
+            continue; // refused, so no caller relies on either statement
+        }
         if (function.contract.has_value() && function.returned_value.has_value()) {
             contracts.emplace(function.symbol.usr, &function);
             candidates.push_back({&function, &function.returned_value.value(), {}, {}});
+        } else if (function.contract.has_value() && function.defined_elsewhere) {
+            contracts.emplace(function.symbol.usr, &function);
+            externals.push_back(&function);
         }
     }
     std::map<std::string, std::size_t> position_of;
@@ -2081,9 +2268,13 @@ void generate_contracts(const vir::Module& module, const DefinitionMap& pure_def
     for (Candidate& candidate : candidates) {
         collect_calls(*candidate.returned_value, contracts, candidate.calls);
         for (const vir::Expr* site : candidate.calls) {
-            const std::size_t callee = position_of.at(std::get<vir::Call>(site->node).callee.usr);
-            if (std::ranges::find(candidate.callees, callee) == candidate.callees.end()) {
-                candidate.callees.push_back(callee);
+            const std::string& usr = std::get<vir::Call>(site->node).callee.usr;
+            if (const auto callee = position_of.find(usr); callee != position_of.end()) {
+                if (std::ranges::find(candidate.callees, callee->second) == candidate.callees.end()) {
+                    candidate.callees.push_back(callee->second);
+                }
+            } else if (std::ranges::find(candidate.external, usr) == candidate.external.end()) {
+                candidate.external.push_back(usr);
             }
         }
     }
@@ -2120,7 +2311,11 @@ void generate_contracts(const vir::Module& module, const DefinitionMap& pure_def
             source::SourceLocation at = function.range.begin;
             std::string partner;
             for (const vir::Expr* site : candidates[member].calls) {
-                const std::size_t callee = position_of.at(std::get<vir::Call>(site->node).callee.usr);
+                const auto found = position_of.find(std::get<vir::Call>(site->node).callee.usr);
+                if (found == position_of.end()) {
+                    continue; // defined in another unit, so not in this group
+                }
+                const std::size_t callee = found->second;
                 if (std::ranges::find(group, callee) != group.end()) {
                     at = site->provenance.range.begin;
                     partner = std::get<vir::Call>(site->node).callee_name;
@@ -2159,12 +2354,113 @@ void generate_contracts(const vir::Module& module, const DefinitionMap& pure_def
 
     DefinitionMap definitions = pure_definitions;
     std::map<std::string, std::size_t> established;
+
+    // Contracts of other units, each established here only from an interface
+    // that records the statement this unit builds from its own declaration
+    // (SPEC.md TUBOUND-003, TUBOUND-004). Every one is checked, called or not: a
+    // declaration this unit cannot establish is refused, as a declaration with
+    // nothing to discharge it always was.
+    for (const vir::Function* function : externals) {
+        auto imported = import_contract(*function, pure_definitions, program, imports);
+        if (!imported) {
+            report(engine, imported.error());
+            continue;
+        }
+        established.emplace(function->symbol.usr, program.contracts.size());
+        program.contracts.push_back(std::move(*imported));
+    }
+
+    // A call to a contract of another unit that rests on a function of this
+    // unit which reaches the caller again recurses through another unit. The
+    // measures that make recursion sound are compared only within one unit, so
+    // such a call is refused (SPEC.md TUBOUND-008). What the imported contract
+    // rests on counts as an edge of this unit's own call graph for the search.
+    const auto depends_on = [&](const std::string& usr) -> const std::vector<artifact::Dependency>* {
+        const auto found = established.find(usr);
+        if (found == established.end() || !program.contracts[found->second].imported.has_value()) {
+            return nullptr;
+        }
+        return &program.contracts[found->second].imported->depends;
+    };
+    std::vector<std::vector<std::size_t>> edges(candidates.size());
+    for (std::size_t position = 0; position < candidates.size(); ++position) {
+        edges[position] = candidates[position].callees;
+        for (const std::string& usr : candidates[position].external) {
+            if (const std::vector<artifact::Dependency>* depends = depends_on(usr)) {
+                for (const artifact::Dependency& dependency : *depends) {
+                    if (const auto local = position_of.find(dependency.symbol); local != position_of.end()) {
+                        edges[position].push_back(local->second);
+                    }
+                }
+            }
+        }
+    }
+    const auto reaches = [&edges](std::size_t from, std::size_t to) {
+        std::vector<bool> seen(edges.size(), false);
+        std::vector<std::size_t> pending{from};
+        seen[from] = true;
+        while (!pending.empty()) {
+            const std::size_t at = pending.back();
+            pending.pop_back();
+            if (at == to) {
+                return true;
+            }
+            for (const std::size_t next : edges[at]) {
+                if (!seen[next]) {
+                    seen[next] = true;
+                    pending.push_back(next);
+                }
+            }
+        }
+        return false;
+    };
+    std::set<std::size_t> recursing;
+    for (std::size_t position = 0; position < candidates.size(); ++position) {
+        for (const std::string& usr : candidates[position].external) {
+            const std::vector<artifact::Dependency>* depends = depends_on(usr);
+            if (depends == nullptr) {
+                continue;
+            }
+            const auto back = std::ranges::find_if(*depends, [&](const artifact::Dependency& dependency) {
+                const auto local = position_of.find(dependency.symbol);
+                return local != position_of.end() && reaches(local->second, position);
+            });
+            if (back == depends->end()) {
+                continue;
+            }
+            const vir::Function& function = *candidates[position].function;
+            const vir::Function& callee = *contracts.at(usr);
+            const std::string& returns = candidates[position_of.at(back->symbol)].function->qualified_name;
+            source::SourceLocation at = function.range.begin;
+            for (const vir::Expr* site : candidates[position].calls) {
+                if (std::get<vir::Call>(site->node).callee.usr == usr) {
+                    at = site->provenance.range.begin;
+                    break;
+                }
+            }
+            report(engine,
+                   Refusal{"verified function '" + function.qualified_name + "' calls '" + callee.qualified_name +
+                               "', whose contract another unit proved through '" + returns +
+                               "' of this unit, which reaches '" + function.qualified_name + "' again",
+                           {"recursion across translation units is not verified: the measures that make "
+                            "recursion sound are compared within one unit (SPEC.md TUBOUND-008, "
+                            "TERMINATION-007)"},
+                           at});
+            recursing.insert(position);
+            break;
+        }
+    }
+
     const auto ready = [&](const Unit& unit) {
         return std::ranges::all_of(unit.members, [&](std::size_t member) {
-            return std::ranges::all_of(candidates[member].callees, [&](std::size_t callee) {
-                return std::ranges::find(unit.members, callee) != unit.members.end() ||
-                       established.contains(candidates[callee].function->symbol.usr);
-            });
+            return !recursing.contains(member) &&
+                   std::ranges::all_of(candidates[member].callees,
+                                       [&](std::size_t callee) {
+                                           return std::ranges::find(unit.members, callee) != unit.members.end() ||
+                                                  established.contains(candidates[callee].function->symbol.usr);
+                                       }) &&
+                   std::ranges::all_of(candidates[member].external,
+                                       [&](const std::string& usr) { return established.contains(usr); });
         });
     };
     bool progress = true;
@@ -2215,6 +2511,9 @@ void generate_contracts(const vir::Module& module, const DefinitionMap& pure_def
     }
     for (const Unit& unit : pending) {
         for (const std::size_t member : unit.members) {
+            if (recursing.contains(member)) {
+                continue; // refused above, where the recursion was found
+            }
             const Candidate& candidate = candidates[member];
             std::string reason = "a verified callee is not available";
             source::SourceLocation location = candidate.function->range.begin;

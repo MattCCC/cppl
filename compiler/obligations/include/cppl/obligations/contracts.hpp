@@ -1,5 +1,6 @@
 #pragma once
 
+#include "cppl/artifact/interface.hpp"
 #include "cppl/kernel/proposition.hpp"
 #include "cppl/kernel/term.hpp"
 #include "cppl/kernel/types.hpp"
@@ -8,10 +9,24 @@
 #include "cppl/vir/ids.hpp"
 
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <vector>
 
 namespace cppl::obligations {
+
+// A contract another translation unit proved, as this unit knows it: which
+// verification interface recorded it, the identity of that record, and what
+// the other unit's proof rests on (SPEC.md TUBOUND-003, TUBOUND-006). The proposition
+// is never taken from here: it is the one this unit stated from its own
+// declaration, which is used only because the record states the same one.
+struct ImportedContract {
+    std::string origin; // the interface file
+    source::Digest entry;
+    std::vector<artifact::Premise> premises;
+    std::vector<artifact::UnsafeBlock> unsafe;
+    std::vector<artifact::Dependency> depends;
+};
 
 // One precondition of the callee, instantiated at a call: the obligation that
 // proves it where the call is made, and the same goal stated over earlier
@@ -57,6 +72,24 @@ struct VerificationCondition {
 struct ContractVerification {
     vir::FunctionId function;
     std::string name;
+    // The function's resolved identity, Clang's USR, which separates overloads,
+    // qualifiers and template specializations (SPEC.md TUBOUND-004).
+    std::string symbol;
+    // The canonical identity of what the contract states, the same in every
+    // unit that states it: parameter and result types, passing modes,
+    // preconditions, postcondition, memory capabilities, measures and every
+    // pure definition they reach, by content rather than by name or by the
+    // number this unit gave a definition (SPEC.md TUBOUND-004). Absent when it could
+    // not be computed; such a contract is neither recorded in an interface nor
+    // matched against one.
+    std::optional<source::Digest> statement;
+    // The statement as the kernel describes it, for diagnostics only.
+    std::string description;
+    // Set when the contract is another unit's, established here by a validated
+    // verification interface rather than by any obligation of this unit. Such a
+    // contract is partial in construction, has no conditions, and is never a
+    // claim of this unit (SPEC.md TUBOUND-003, TUBOUND-006).
+    std::optional<ImportedContract> imported;
     std::vector<kernel::Type> parameters;
     // Each is supposed in turn, P1 -> ... -> Pn -> Q, which is their
     // conjunction without a conjunction connective.

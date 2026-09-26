@@ -211,6 +211,24 @@ Manifest: `features/termination.yaml`
 | Erasure | erasure | covered — identical output and assembly against a hand-erased twin in three standards, recursion and every loop form as written, no counter (`e2e/erasure_equivalence.sh`, `e2e/termination.sh` citing `TERMINATION-004`) |
 | Recognition | unit | covered — components split at top-level commas only, function measures read, an empty component refused (`unit/recognizer_test.cpp`) |
 
+### cross-tu-contracts
+
+Manifest: `features/cross-tu-contracts.yaml`
+
+| Required case | Category | Status |
+| --- | --- | --- |
+| Recording | positive, determinism | covered — every contract of a unit with external linkage is recorded with its statement, totality, trusted law and unsafe block, one with internal linkage is not, and the same unit writes the same bytes, in three standards; not exporting internal linkage is mutation-checked (`e2e/cross_tu.sh`, `unit/cross_unit_contracts_test.cpp` citing `TUBOUND-002`; `xtu-internal-linkage-not-exported`) |
+| Use of a recorded contract | positive, negative | covered — a precondition owed, a postcondition, a refined result, a reference post-state, two overloads and an explicit specialization used; a false postcondition, a missed precondition and a stronger refined claim refused (`e2e/cross_tu.sh`, `negative/cross_tu.sh` citing `TUBOUND-003`; `xtu-imported-established`) |
+| A declaration is not evidence | negative | covered — no interface, an unproven declaration, a missing file (`negative/cross_tu.sh` citing `TUBOUND-003`, `TUBOUND-001`, `TU-004`) |
+| Identity by meaning | negative, unit, adversarial | covered — a stronger postcondition and a weaker precondition declared here, another overload, another specialization stating the same contract, a template only declared, internal linkage; renaming agrees and every other change differs; comparing statements and refusing internal linkage are mutation-checked (`negative/cross_tu.sh`, `unit/cross_unit_contracts_test.cpp` citing `TUBOUND-004`, `TEMPLATE-003`; `xtu-statement-compared`, `xtu-internal-linkage-not-imported`) |
+| Untrusted artifact | negative, unit, fuzz | covered — truncated, altered, a refused status, another format version, another build, another language mode, stale after its unit changed; a unit that no longer verifies removes its interface; the reader accepts only canonical text under bounds, fuzzed with a round-trip oracle; each check is mutation-checked (`negative/cross_tu.sh`, `unit/interface_test.cpp`, `fuzz/interface.cpp` citing `TUBOUND-005`; `xtu-status-proven-only`, `xtu-checksum-verified`, `xtu-canonical-order`, `xtu-configuration-compared`, `xtu-stale-sources`, `xtu-withdrawn-on-failure`) |
+| Trust closure | positive, adversarial | covered — a trusted law and an unsafe block of the other unit named through the imported contract, directly and through a local call and through a third unit; no claim resting on an interface is assumption-free, a forged record with a recomputed checksum included; each propagation is mutation-checked (`e2e/cross_tu.sh`, `negative/cross_tu.sh` citing `TUBOUND-006`; `xtu-trusted-through-import`, `xtu-unsafe-through-import`, `xtu-import-not-assumption-free`, `xtu-imported-closure-through-calls`) |
+| Totality | positive, negative, unit | covered — total and partial callers as recorded, a `decreases` function refused on a partial record, a partial record of a function stating `decreases` refused (`e2e/cross_tu.sh`, `negative/cross_tu.sh`, `unit/cross_unit_contracts_test.cpp` citing `TUBOUND-007`; `xtu-imported-totality`, `xtu-partial-record-refused-with-measure`) |
+| Recursion | unit, adversarial | covered — a record claiming it rested on a local function reaching the caller is refused, one resting on a local function that does not is used (`unit/cross_unit_contracts_test.cpp` citing `TUBOUND-008`; `xtu-recursion-refused`) |
+| Chains and conflicts | negative | covered — a record proven through a third unit's contract refused without it and used with it; two interfaces recording different contracts for one function (`negative/cross_tu.sh` citing `TUBOUND-009`; `xtu-dependencies-imported`, `xtu-conflicting-records`) |
+| Repeated declarations | negative, unit | covered — a header contract restated identically on a definition with loop clauses is used, one restated differently is refused (`e2e/cross_tu.sh`, `negative/cross_tu.sh`, `unit/cross_unit_contracts_test.cpp` citing `TU-003`; `xtu-restatements-agree`) |
+| Erasure and ABI | erasure, ABI | covered — see "Verification metadata across units" below |
+
 ### erasure and ABI
 
 Rules: `ERASE-*`, `ERASEMATRIX-*`, `ABI-*` (see `FEATURE_INDEX.md`, Lowering).
@@ -232,7 +250,7 @@ agrees with it.
 | Source positions survive erasure | erasure | covered — `__builtin_LINE()` after every multi-line construct kind, a Clang warning's column on a line that lost `verified`, the line count of the program, debug information naming the user's file, and byte-identical `-g` objects across builds (`e2e/erasure_source_mapping.sh` citing `ERASEMATRIX-003`, `ARCH-ERASE-003`) |
 | Refusal leaves no runtime program | negative | covered — a ghost given runtime storage, a contract resting on what an unsafe block did, `old`, `induction` and misplaced loop clauses refused for their reason, then every refused fixture swept: no executable and no runtime projection (`negative/erasure.sh` citing `ERASE-006`, `ERASE-011`) |
 | Ghost erasure | erasure | covered — whole declarations at the top of a body and in a loop, two ghosts in one declaration, a pure call in an initializer: identical output and assembly against the reference in three standards (`e2e/erasure_equivalence.sh` citing `ERASE-011`) |
-| Verification metadata across units | ABI | not built — no metadata is exported, so a use in another unit is not verified (`ABI-004`, `ABI-005`) |
+| Verification metadata across units | ABI | covered — units using one another's contracts through verification interfaces match their hand erasures in assembly at `-O0` and `-O2` in three standards, and each links and runs with the other's plain C++; the interface reaches no object (`e2e/cross_tu.sh` citing `ABI-001`, `ERASE-010`, `TUBOUND-003`) |
 
 Status here describes test coverage, not implementation maturity.
 `docs/STATUS.md` is authoritative for the latter, and neither weakens what
