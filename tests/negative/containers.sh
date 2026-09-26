@@ -142,6 +142,8 @@ refuse container_refined_writable_view "nothing obliges it to write values satis
 refuse container_refined_copy "the elements of 'plain' are not known to satisfy 'Positive'"
 refuse container_refined_mutable_reference "'r' is passed to 'g' by mutable reference, and its elements must satisfy 'Positive'"
 refuse container_refined_result "its result is a container whose element type is written as the refinement 'Positive'"
+refuse container_refined_std_array "its element type is written as the refinement 'Positive', which std::array does not state"
+refuse container_refined_span_local "span 's' is declared with the refined element type 'Positive'"
 
 # --- Moves and what is not modeled (STDMODEL-010, STDMODEL-019, STDMODEL-021)
 

@@ -40,20 +40,6 @@ verified std::size_t array_parameter(std::array<unsigned, 4> a)
     return a.size();
 }
 
-// SPEC: STDMODEL-020
-// A refined element's predicate is owed where a value enters and supplied
-// where one is read.
-verified Positive array_refined(std::size_t i)
-    ensures (result > 0u)
-{
-    std::array<Positive, 2> a{3u, 4u};
-    if (i < 2ul) {
-        a[i] = 7u;
-        return a[i];
-    }
-    return a[0];
-}
-
 // --- std::vector: a length, and elements at a generation (STDMODEL-012) -----
 
 // SPEC: STDMODEL-013
@@ -428,13 +414,12 @@ int main() {
     std::vector<unsigned> buffer{7u, 8u};
     span_fill(buffer, 2u);
     const std::vector<unsigned> input{5u, 6u};
-    std::printf("%u %zu %u %zu %u %u %zu %zu %zu %zu %u %zu %u %zu %c %u %u %zu %u %zu %zu %u %zu\n",
-                array_guarded(1ul), array_parameter({1u, 2u, 3u, 4u}), array_refined(1ul), vector_lengths(),
-                vector_listed(), vector_write_read(3ul, 2ul), vector_count(4ul), reset, vector_moved(), popped,
-                vector_reference(), string_lengths(), vector_refined(0ul), span_calls(input),
-                string_character("xyz", 1ul), span_at(input, 1ul), buffer[1], vector_after_pop(1ul) == 2u ? 1ul : 0ul,
-                span_local(0ul) + data_argument(), via_call(), vector_copy_call(), signed_guarded(input, 1),
-                per_element(input, 10ul));
+    std::printf("%u %zu %zu %u %u %zu %zu %zu %zu %u %zu %u %zu %c %u %u %zu %u %zu %zu %u %zu\n", array_guarded(1ul),
+                array_parameter({1u, 2u, 3u, 4u}), vector_lengths(), vector_listed(), vector_write_read(3ul, 2ul),
+                vector_count(4ul), reset, vector_moved(), popped, vector_reference(), string_lengths(),
+                vector_refined(0ul), span_calls(input), string_character("xyz", 1ul), span_at(input, 1ul), buffer[1],
+                vector_after_pop(1ul) == 2u ? 1ul : 0ul, span_local(0ul) + data_argument(), via_call(),
+                vector_copy_call(), signed_guarded(input, 1), per_element(input, 10ul));
     const std::string date = "2024-09";
     std::vector<char> digits;
     const std::size_t year = collect_digits(date, digits);

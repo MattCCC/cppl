@@ -321,6 +321,7 @@ enum class ReferenceModel : std::uint8_t {
 
 std::expected<std::vector<Refinement>, std::string> refinements_of(CXCursor declared, CXType written,
                                                                    const std::vector<Selection::Refinement>& known);
+CXType written_element_type(CXType written);
 
 // The same 64-bit pattern an integer literal of the underlying type carries.
 // libclang's signed accessor sign-extends from the enumeration's own width, so an
@@ -455,6 +456,26 @@ Type convert_type(CXType type, unsigned depth = 0, ReferenceModel references = R
                 if (count < 0 || count > 256) {
                     model.rejection = "array extent is unavailable or exceeds the proof resource limit";
                     break;
+                }
+                // A refinement written as `std::array`'s element type is the
+                // base type in the specialization, and no content invariant is
+                // modeled for an array: reading one as the base type would
+                // accept writes the declaration says it refuses, so it is
+                // refused instead (SPEC.md STDMODEL-020).
+                if (!array && known != nullptr) {
+                    const CXType written = written_element_type(type);
+                    auto stated = written.kind == CXType_Invalid
+                                      ? std::expected<std::vector<Refinement>, std::string>{std::unexpected(
+                                            "an element type that could not be read from how the type is written")}
+                                      : refinements_of(clang_getNullCursor(), written, *known);
+                    if (!stated || !stated->empty()) {
+                        model.rejection = stated ? "its element type is written as the refinement '" +
+                                                       stated->front().name +
+                                                       "', which std::array does not state; a built-in array of "
+                                                       "that refinement has refined elements (SPEC.md STDMODEL-020)"
+                                                 : "it has " + stated.error();
+                        break;
+                    }
                 }
                 for (long long i = 0; i < count; ++i)
                     component(element, std::to_string(i), declaration);
@@ -696,30 +717,17 @@ bool same_term(const Expr& lhs, const Expr& rhs);
 // followed through its aliases to the specialization as written, whose first
 // argument keeps the alias a refinement is named by. A spelling this cannot
 // follow is refused rather than read as an unrefined element.
-std::expected<Type, std::string> sequence_element(CXCursor declared, CXType written,
-                                                  const std::vector<Selection::Refinement>* known) {
+// The first template argument of a specialization as `written` spells it, past
+// references, elaboration and aliases, or an invalid type when the spelling
+// cannot be followed.
+CXType written_element_type(CXType written) {
     for (unsigned step = 0; step < kMaxExpressionDepth; ++step) {
         if (written.kind == CXType_LValueReference || written.kind == CXType_RValueReference) {
             written = clang_getPointeeType(written);
             continue;
         }
         if (clang_Type_getNumTemplateArguments(written) >= 1) {
-            const CXType element = clang_Type_getTemplateArgumentAsType(written, 0);
-            if (element.kind == CXType_Invalid) {
-                break;
-            }
-            Type converted = convert_type(element);
-            if (converted.kind != TypeKind::Int && converted.kind != TypeKind::Bool) {
-                return std::unexpected("its element type '" + converted.spelling + "' is not modeled");
-            }
-            if (known != nullptr) {
-                auto refinements = refinements_of(declared, element, *known);
-                if (!refinements) {
-                    return std::unexpected("its element type has " + refinements.error());
-                }
-                converted.refinements = std::move(*refinements);
-            }
-            return converted;
+            return clang_Type_getTemplateArgumentAsType(written, 0);
         }
         if (written.kind == CXType_Elaborated) {
             written = clang_Type_getNamedType(written);
@@ -731,7 +739,27 @@ std::expected<Type, std::string> sequence_element(CXCursor declared, CXType writ
         }
         written = underlying;
     }
-    return std::unexpected("its element type could not be read from how its type is written");
+    return CXType{CXType_Invalid, {nullptr, nullptr}};
+}
+
+std::expected<Type, std::string> sequence_element(CXCursor declared, CXType written,
+                                                  const std::vector<Selection::Refinement>* known) {
+    const CXType element = written_element_type(written);
+    if (element.kind == CXType_Invalid) {
+        return std::unexpected("its element type could not be read from how its type is written");
+    }
+    Type converted = convert_type(element);
+    if (converted.kind != TypeKind::Int && converted.kind != TypeKind::Bool) {
+        return std::unexpected("its element type '" + converted.spelling + "' is not modeled");
+    }
+    if (known != nullptr) {
+        auto refinements = refinements_of(declared, element, *known);
+        if (!refinements) {
+            return std::unexpected("its element type has " + refinements.error());
+        }
+        converted.refinements = std::move(*refinements);
+    }
+    return converted;
 }
 
 // A call of a member function or constructor of a modeled sequence or of
@@ -6672,12 +6700,12 @@ struct BodyLowering {
         if (type.representation.kind == source::RepresentationKind::StdArray) {
             library_models.insert(source::RepresentationKind::StdArray);
         }
+        if (const std::string& unmodeled = type.representation.rejection; !unmodeled.empty()) {
+            return "'" + written + "' has type '" + type.spelling + "', which is not modeled: " + unmodeled;
+        }
         if ((type.representation.kind != source::RepresentationKind::Record && !array) || components.empty() ||
             type.projections.size() != components.size()) {
             return "'" + written + "' has type '" + type.spelling + "', which is not modeled";
-        }
-        if (const std::string& unmodeled = type.representation.rejection; !unmodeled.empty()) {
-            return "'" + written + "' has type '" + type.spelling + "', which is not modeled: " + unmodeled;
         }
         if (prefix.size() >= kMaxPlaceDepth) {
             return "'" + written + "' nests deeper than this implementation tracks";
@@ -7000,6 +7028,19 @@ struct BodyLowering {
                 return reject("span '" + name +
                               "' is modeled only as a view of a whole vector or string this body tracks "
                               "(SPEC.md STDMODEL-014)");
+            }
+            // Its elements are the viewed storage's, under that storage's
+            // content invariant if it has one; a refinement written as its own
+            // element type would state nothing (SPEC.md STDMODEL-020).
+            if (auto written = sequence_element(declaration, clang_getCursorType(declaration), refinements);
+                !written || !written->refinements.empty()) {
+                return reject("span '" + name + "' " +
+                              (written
+                                   ? "is declared with the refined element type '" + written->refinements.front().name +
+                                         "'; a span's elements are the storage it views, and a refined element "
+                                         "type states a content invariant only of a vector local (SPEC.md "
+                                         "STDMODEL-020)"
+                                   : written.error()));
             }
             operation = source::LibraryOperation::ViewOf;
             held.element = (*viewed_sequence)->element;
