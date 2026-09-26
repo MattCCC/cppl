@@ -96,14 +96,6 @@ struct ContractVerification {
     // The function's resolved identity, Clang's USR, which separates overloads,
     // qualifiers and template specializations (SPEC.md TUBOUND-004).
     std::string symbol;
-    // The canonical identity of what the contract states, the same in every
-    // unit that states it: parameter and result types, passing modes,
-    // preconditions, postcondition, memory capabilities, measures and every
-    // pure definition they reach, by content rather than by name or by the
-    // number this unit gave a definition (SPEC.md TUBOUND-004). Absent when it could
-    // not be computed; such a contract is neither recorded in an interface nor
-    // matched against one.
-    std::optional<source::Digest> statement;
     // The statement as the kernel describes it, for diagnostics only.
     std::string description;
     // Set when the contract is another unit's, established here by a validated
@@ -124,15 +116,8 @@ struct ContractVerification {
     std::vector<ReturnPath> paths;
     std::size_t obligation = 0;
 
-    // A body that is not one total core term: it contains a loop, or calls a
-    // function whose contract is itself partial. Its contract states partial
-    // correctness and holds when every condition below is proven and every
-    // contract they suppose is established (SPEC.md 23, 24). Such a function is
-    // never admitted as a core definition, so no theorem about its value
-    // exists, and the fields above that describe one are unused.
-    bool partial = false;
+    // The conditions a partial body (see `partial`) is proven by.
     std::vector<VerificationCondition> conditions;
-    source::Digest identity; // content identity of the conditions, for callers
 
     // Where the body passes through an unsafe block, in source order. The
     // contract is proven with each block's effects modeled as unknown writes,
@@ -154,6 +139,23 @@ struct ContractVerification {
     // TERMINATION-007).
     std::vector<std::size_t> recursion;
 
+    // The standard-library models the function's contract and body rest on,
+    // each once (RFC 0020 §10). What they state is trusted, so the claim is
+    // reported as resting on them, and so is every claim calling this one.
+    std::vector<source::RepresentationKind> library_models;
+
+    // The fields below are byte-aligned, and stand together so the record
+    // carries little padding.
+
+    // A body that is not one total core term: it contains a loop, or calls a
+    // function whose contract is itself partial. Its contract states partial
+    // correctness and holds when every condition in `conditions` is proven and
+    // every contract they suppose is established (SPEC.md 23, 24). Such a
+    // function is never admitted as a core definition, so no theorem about its
+    // value exists, and the fields that describe one (`returned_value`,
+    // `theorem`) are unused.
+    bool partial = false;
+
     // Whether the contract is a total-correctness claim (SPEC.md CORRECT-003):
     // every loop its paths enter has a measure whose descent is an obligation,
     // it passes through no unsafe block, and every contract it calls is total,
@@ -161,10 +163,16 @@ struct ContractVerification {
     // false, it states partial correctness: what holds if the function returns.
     bool total = false;
 
-    // The standard-library models the function's contract and body rest on,
-    // each once (RFC 0020 §10). What they state is trusted, so the claim is
-    // reported as resting on them, and so is every claim calling this one.
-    std::vector<source::RepresentationKind> library_models;
+    source::Digest identity; // content identity of the conditions, for callers
+
+    // The canonical identity of what the contract states, the same in every
+    // unit that states it: parameter and result types, passing modes,
+    // preconditions, postcondition, memory capabilities, measures and every
+    // pure definition they reach, by content rather than by name or by the
+    // number this unit gave a definition (SPEC.md TUBOUND-004). Absent when it could
+    // not be computed; such a contract is neither recorded in an interface nor
+    // matched against one.
+    std::optional<source::Digest> statement;
 };
 
 } // namespace cppl::obligations
