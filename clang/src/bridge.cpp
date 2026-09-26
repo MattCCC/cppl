@@ -5216,7 +5216,8 @@ struct BodyLowering {
         std::vector<CallEffect> effects;
         effects.push_back(new_generation(state[*root], where));
         std::vector<std::size_t> invalidated = invalidate_aliases(*root, state);
-        if (*operation == Op::MoveAssign) {
+        // A move assignment has its source: one without was refused above.
+        if (*operation == Op::MoveAssign && source.has_value()) {
             CallEffect moved = new_generation(state[*source], "being moved from by " + where);
             moved.argument = 2;
             effects.push_back(std::move(moved));
