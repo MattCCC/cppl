@@ -25,6 +25,30 @@ target_compile_definitions(cppl_driver PRIVATE
     CPPL_DEFAULT_CLANG="${CPPL_DEFAULT_CLANG}"
     CPPL_VERSION="${PROJECT_VERSION}")
 
+# The digest of the verifier's semantics-bearing sources, which a verification
+# interface is bound to (cmake/VerifierSemantics.cmake). Recomputed whenever one
+# of them changes; the header is rewritten only when the digest does.
+include(VerifierSemantics)
+cppl_verifier_semantics_sources("${PROJECT_SOURCE_DIR}" cppl_semantics_sources)
+list(TRANSFORM cppl_semantics_sources PREPEND "${PROJECT_SOURCE_DIR}/")
+set(cppl_semantics_generated "${CMAKE_CURRENT_BINARY_DIR}/generated")
+set(cppl_semantics_header "${cppl_semantics_generated}/cppl/driver/verifier_semantics.hpp")
+set(cppl_semantics_stamp "${CMAKE_CURRENT_BINARY_DIR}/verifier_semantics.stamp")
+add_custom_command(
+    OUTPUT "${cppl_semantics_stamp}"
+    BYPRODUCTS "${cppl_semantics_header}"
+    COMMAND "${CMAKE_COMMAND}"
+            "-DCPPL_SOURCE_ROOT=${PROJECT_SOURCE_DIR}"
+            "-DCPPL_OUTPUT=${cppl_semantics_header}"
+            "-DCPPL_STAMP=${cppl_semantics_stamp}"
+            -P "${PROJECT_SOURCE_DIR}/cmake/VerifierSemantics.cmake"
+    DEPENDS ${cppl_semantics_sources} "${PROJECT_SOURCE_DIR}/cmake/VerifierSemantics.cmake"
+    COMMENT "Digesting the verifier's semantics-bearing sources"
+    VERBATIM)
+add_custom_target(cppl_verifier_semantics DEPENDS "${cppl_semantics_stamp}")
+add_dependencies(cppl_driver cppl_verifier_semantics)
+target_include_directories(cppl_driver PRIVATE "${cppl_semantics_generated}")
+
 add_library(cppl::driver ALIAS cppl_driver)
 
 add_executable(cppl src/main.cpp)

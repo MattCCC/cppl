@@ -314,8 +314,8 @@ TrustClosure close_trust(const Program& program, const std::vector<ObligationRes
     const auto imported_dependency = [&program](std::size_t index, bool direct) {
         const ContractVerification& contract = program.contracts[index];
         const ImportedContract& recorded = *contract.imported;
-        return ImportedDependency{contract.name,     contract.symbol, recorded.origin,  recorded.entry, contract.total,
-                                  recorded.premises, recorded.unsafe, recorded.depends, direct};
+        return ImportedDependency{contract.name,     contract.symbol, recorded.origin, recorded.entry,   contract.total,
+                                  recorded.premises, recorded.unsafe, recorded.models, recorded.depends, direct};
     };
     const auto imported_list = [&](const std::map<std::size_t, bool>& found) {
         std::vector<ImportedDependency> imported;
@@ -423,6 +423,12 @@ bool rests_on_trusted_laws(const ClaimClosure& claim) {
 bool rests_on_unsafe_code(const ClaimClosure& claim) {
     return !claim.unsafe.empty() || std::ranges::any_of(claim.imported, [](const ImportedDependency& imported) {
         return !imported.unsafe.empty();
+    });
+}
+
+bool rests_on_library_models(const ClaimClosure& claim) {
+    return !claim.library.empty() || std::ranges::any_of(claim.imported, [](const ImportedDependency& imported) {
+        return !imported.models.empty();
     });
 }
 

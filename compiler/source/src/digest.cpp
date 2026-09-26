@@ -4,6 +4,7 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -169,6 +170,23 @@ std::string Digest::to_short_hex(std::size_t characters) const {
         text.resize(characters);
     }
     return text;
+}
+
+std::optional<Digest> Digest::from_hex(std::string_view hex) {
+    constexpr std::string_view kDigits = "0123456789abcdef";
+    Digest digest;
+    if (hex.size() != digest.bytes.size() * 2) {
+        return std::nullopt;
+    }
+    for (std::size_t index = 0; index < digest.bytes.size(); ++index) {
+        const std::size_t high = kDigits.find(hex[index * 2]);
+        const std::size_t low = kDigits.find(hex[(index * 2) + 1]);
+        if (high == std::string_view::npos || low == std::string_view::npos) {
+            return std::nullopt;
+        }
+        digest.bytes[index] = static_cast<std::uint8_t>((high << 4U) | low);
+    }
+    return digest;
 }
 
 Digest hash_bytes(std::string_view text) {

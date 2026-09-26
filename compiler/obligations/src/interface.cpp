@@ -10,6 +10,7 @@
 #include "cppl/obligations/obligation.hpp"
 #include "cppl/obligations/trust.hpp"
 #include "cppl/source/digest.hpp"
+#include "cppl/source/representation.hpp"
 #include "cppl/vir/capability.hpp"
 #include "cppl/vir/expr.hpp"
 #include "cppl/vir/module.hpp"
@@ -227,58 +228,87 @@ std::expected<Statement, Failure> state_statement(const vir::Function& function,
     if (!function.contract.has_value() || function.parameters.size() != plan.parameters.size()) {
         return std::unexpected(Failure{"the contract is not stated", function.range.begin, {}});
     }
-    source::Hasher hasher;
-    CanonicalEncoder encoder(context, hasher);
-    hasher.update_field("cppl-contract-statement-v1");
-    hasher.update_field(kernel::kFormalCoreVersion);
-    hasher.update_field(kernel::kKernelVersion);
-
-    // Parameters and result, with how each parameter is passed: a reference
-    // parameter's post-state is part of what the contract says.
-    hasher.update_u64(plan.parameters.size());
-    for (std::size_t index = 0; index < plan.parameters.size(); ++index) {
-        encoder.type(plan.parameters[index]);
-        hasher.update_u8(static_cast<std::uint8_t>(function.parameters[index].passing));
-    }
-    encoder.type(plan.result);
-
-    // The preconditions, refined parameters' predicates included, and the
-    // postcondition, a refined result's and reference parameters' included.
-    hasher.update_u64(plan.preconditions.size());
-    for (const kernel::Proposition& precondition : plan.preconditions) {
-        encoder.proposition(precondition);
-    }
-    encoder.proposition(plan.postcondition);
-
-    // Memory capabilities are owed at every call, so they are part of what a
-    // caller must meet; a sized one's count is a term over the parameters.
     const vir::Contract& contract = *function.contract;
-    hasher.update_u64(contract.capabilities.size());
+    // A sized capability's count and each measure component are terms over
+    // the parameters, lowered once for both identities.
+    std::vector<std::vector<kernel::Term>> counts;
     for (const vir::Capability& capability : contract.capabilities) {
-        hasher.update_u8(static_cast<std::uint8_t>(capability.kind));
-        place(hasher, capability.place);
-        hasher.update_u64(capability.extent.size());
+        std::vector<kernel::Term>& lowered_counts = counts.emplace_back();
         for (const vir::Expr& count : capability.extent) {
             auto lowered = lower_value(count, pure_definitions, plan.parameters.size());
             if (!lowered) {
                 return std::unexpected(lowered.error());
             }
-            encoder.term(*lowered);
+            lowered_counts.push_back(std::move(*lowered));
         }
     }
-
-    // A measure is what a recursive caller compares against, so it too is
-    // part of the statement.
-    hasher.update_u64(contract.measures.size());
+    std::vector<kernel::Term> measures;
     for (const vir::Expr& measure : contract.measures) {
         auto lowered = lower_value(measure, pure_definitions, plan.parameters.size());
         if (!lowered) {
             return std::unexpected(lowered.error());
         }
-        encoder.term(*lowered);
+        measures.push_back(std::move(*lowered));
     }
 
-    if (!encoder.definitions()) {
+    const auto identify = [&](bool across_units) -> std::optional<source::Digest> {
+        source::Hasher hasher;
+        CanonicalEncoder encoder(context, hasher);
+        hasher.update_field(across_units ? "cppl-contract-statement-v2" : "cppl-contract-restatement-v1");
+        hasher.update_field(kernel::kFormalCoreVersion);
+        hasher.update_field(kernel::kKernelVersion);
+
+        // Parameters and result, with how each parameter is passed: a
+        // reference parameter's post-state is part of what the contract says.
+        hasher.update_u64(plan.parameters.size());
+        for (std::size_t index = 0; index < plan.parameters.size(); ++index) {
+            encoder.type(plan.parameters[index]);
+            hasher.update_u8(static_cast<std::uint8_t>(function.parameters[index].passing));
+        }
+        encoder.type(plan.result);
+
+        // The preconditions, refined parameters' predicates included, and the
+        // postcondition, a refined result's and reference parameters' included.
+        hasher.update_u64(plan.preconditions.size());
+        for (const kernel::Proposition& precondition : plan.preconditions) {
+            encoder.proposition(precondition);
+        }
+        encoder.proposition(plan.postcondition);
+
+        // Memory capabilities are owed at every call, so they are part of what
+        // a caller must meet.
+        hasher.update_u64(contract.capabilities.size());
+        for (std::size_t index = 0; index < contract.capabilities.size(); ++index) {
+            const vir::Capability& capability = contract.capabilities[index];
+            hasher.update_u8(static_cast<std::uint8_t>(capability.kind));
+            place(hasher, capability.place);
+            hasher.update_u64(counts[index].size());
+            for (const kernel::Term& count : counts[index]) {
+                encoder.term(count);
+            }
+        }
+
+        // Asking that the function terminate is part of what a caller in
+        // another unit relies on; the measure the proof used is not, since
+        // measures are compared only within one unit (SPEC.md TUBOUND-004,
+        // TUBOUND-008). Declarations within one unit agree on it too (TU-003).
+        if (across_units) {
+            hasher.update_u8(measures.empty() ? 0 : 1);
+        } else {
+            hasher.update_u64(measures.size());
+            for (const kernel::Term& measure : measures) {
+                encoder.term(measure);
+            }
+        }
+
+        if (!encoder.definitions()) {
+            return std::nullopt;
+        }
+        return hasher.finish();
+    };
+    const std::optional<source::Digest> identity = identify(true);
+    const std::optional<source::Digest> restatement = identify(false);
+    if (!identity.has_value() || !restatement.has_value()) {
         return std::unexpected(
             Failure{"the contract calls a definition the formal core does not have", function.range.begin, {}});
     }
@@ -292,7 +322,7 @@ std::expected<Statement, Failure> state_statement(const vir::Function& function,
     for (const kernel::Type& parameter : std::views::reverse(plan.parameters)) {
         described = kernel::Proposition::for_all(parameter, std::move(described));
     }
-    return Statement{hasher.finish(), kernel::describe(described)};
+    return Statement{*identity, *restatement, kernel::describe(described)};
 }
 
 } // namespace detail
@@ -339,11 +369,16 @@ std::vector<artifact::Entry> exported_contracts(const Program& program, const Tr
             entry.unsafe.push_back(
                 artifact::UnsafeBlock{dependency.location.file, dependency.location.line, dependency.location.column});
         }
-        // What a contract of another unit rests on is carried on, so a unit
-        // that imports this one's sees all of it (SPEC.md TUBOUND-006, TUBOUND-009).
+        for (const LibraryDependency& dependency : claim.library) {
+            entry.models.emplace_back(source::describe_model(dependency.model));
+        }
+        // What a contract of another unit rests on is carried on, each kind
+        // apart, so a unit that imports this one's sees all of it (SPEC.md
+        // TUBOUND-002, TUBOUND-006, TUBOUND-009).
         for (const ImportedDependency& imported : claim.imported) {
             entry.premises.insert(entry.premises.end(), imported.premises.begin(), imported.premises.end());
             entry.unsafe.insert(entry.unsafe.end(), imported.unsafe.begin(), imported.unsafe.end());
+            entry.models.insert(entry.models.end(), imported.models.begin(), imported.models.end());
             entry.depends.push_back(artifact::Dependency{imported.symbol, imported.entry});
             entry.depends.insert(entry.depends.end(), imported.depends.begin(), imported.depends.end());
         }

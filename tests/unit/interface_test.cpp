@@ -13,8 +13,10 @@
 
 #include <cstddef>
 #include <expected>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace {
 
@@ -25,7 +27,8 @@ using cppl::source::hash_bytes;
 artifact::Interface sample() {
     artifact::Interface recorded;
     recorded.configuration.compiler = "0.0.1";
-    recorded.configuration.build = hash_bytes("the compiler");
+    recorded.configuration.semantics = "cppl-verification-semantics-0.1.0";
+    recorded.configuration.verifier = hash_bytes("the verifier's sources");
     recorded.configuration.kernel = "cppl-kernel-0.7.0";
     recorded.configuration.core = "cppl-core-0.7.0";
     recorded.configuration.clang = "clang version 22.1.8 (with spaces)";
@@ -44,6 +47,7 @@ artifact::Interface sample() {
     clamp.correctness = artifact::Correctness::Total;
     clamp.premises = {{hash_bytes("law"), "bounded", "/work/src/clamp library.cpp", 3}};
     clamp.unsafe = {{"/work/src/clamp library.cpp", 12, 5}};
+    clamp.models = {"std::vector", "std::span"};
     clamp.depends = {{"c:@F@helper#i#", hash_bytes("helper entry")}};
 
     artifact::Entry other;
@@ -110,6 +114,7 @@ CPPL_TEST(an_interface_reads_back_as_written) {
     artifact::Interface expected = recorded;
     std::swap(expected.sources[0], expected.sources[1]);
     std::swap(expected.entries[0], expected.entries[1]);
+    std::swap(expected.entries[1].models[0], expected.entries[1].models[1]);
     CPPL_CHECK(*read == expected);
     CPPL_CHECK_EQ(text_of(*read), text);
 }
@@ -124,8 +129,8 @@ CPPL_TEST(the_text_of_an_interface_does_not_depend_on_the_order_it_was_assembled
     CPPL_CHECK_EQ(text_of(first), text_of(second));
 }
 
-// SPEC: TUBOUND-004
-CPPL_TEST(an_entry_identity_covers_every_field) {
+// SPEC: TUBOUND-002, TUBOUND-009
+CPPL_TEST(a_result_identity_covers_the_contract_and_every_dependency_of_every_kind) {
     const artifact::Entry base = sample().entries.front();
     const Digest identity = artifact::identify(base);
     CPPL_CHECK(artifact::identify(base) == identity);
@@ -146,14 +151,85 @@ CPPL_TEST(an_entry_identity_covers_every_field) {
     changed.premises.clear();
     CPPL_CHECK(differs(changed));
     changed = base;
+    changed.premises.front().identity = hash_bytes("another law");
+    CPPL_CHECK(differs(changed));
+    changed = base;
     changed.unsafe.clear();
+    CPPL_CHECK(differs(changed));
+    changed = base;
+    changed.models.pop_back();
+    CPPL_CHECK(differs(changed));
+    changed = base;
+    changed.models = {"std::vector", "std::basic_string<char>"};
     CPPL_CHECK(differs(changed));
     changed = base;
     changed.depends.front().entry = hash_bytes("a different helper entry");
     CPPL_CHECK(differs(changed));
     changed = base;
-    changed.contract = "forall (x: u32). x < 100 -> result < 5";
+    changed.depends.front().symbol = "c:@F@other_helper#i#";
     CPPL_CHECK(differs(changed));
+
+    // One dependency of each kind never stands for one of another kind.
+    artifact::Entry only_premise = base;
+    only_premise.unsafe.clear();
+    only_premise.models.clear();
+    only_premise.depends.clear();
+    artifact::Entry only_model = only_premise;
+    only_model.premises.clear();
+    only_model.models = {"std::vector"};
+    CPPL_CHECK(!(artifact::identify(only_premise) == artifact::identify(only_model)));
+}
+
+// SPEC: TUBOUND-009
+CPPL_TEST(a_result_identity_is_not_the_identity_of_the_entrys_bytes) {
+    const artifact::Entry base = sample().entries.front();
+    const Digest identity = artifact::identify(base);
+    // What is recorded only to be shown does not change what a caller may
+    // conclude, and so does not change the identity.
+    artifact::Entry shown = base;
+    shown.name = "clamp_to_four";
+    shown.contract = "the same contract, described differently";
+    shown.premises.front().name = "renamed_law";
+    shown.premises.front().file = "/elsewhere/clamp.cpp";
+    shown.premises.front().line = 30;
+    CPPL_CHECK(artifact::identify(shown) == identity);
+    // Order and repetition are not content either.
+    artifact::Entry reordered = base;
+    std::swap(reordered.models[0], reordered.models[1]);
+    reordered.models.push_back(reordered.models.front());
+    CPPL_CHECK(artifact::identify(reordered) == identity);
+}
+
+// SPEC: TUBOUND-002, TUBOUND-006
+CPPL_TEST(a_library_model_this_compiler_does_not_have_is_refused) {
+    const std::string body = body_of(text_of(sample()));
+    CPPL_CHECK(body.find("model std::span\nmodel std::vector\n") != std::string::npos);
+    expect_refused(resealed(replaced(body, "model std::span", "model std::deque")), "not a library model");
+    expect_refused(resealed(replaced(body, "model std::span\nmodel std::vector", "model std::vector\nmodel std::span")),
+                   "library models are not in");
+    artifact::Interface recorded = sample();
+    recorded.entries.front().models.emplace_back("std::map");
+    CPPL_CHECK(!artifact::serialize(recorded).has_value());
+}
+
+// SPEC: TUBOUND-005
+CPPL_TEST(a_digest_reads_back_only_from_its_own_spelling) {
+    const Digest digest = hash_bytes("any content");
+    CPPL_CHECK(Digest::from_hex(digest.to_hex()) == std::optional<Digest>{digest});
+    std::string upper = digest.to_hex();
+    for (char& character : upper) {
+        if (character >= 'a' && character <= 'f') {
+            character = static_cast<char>(character - 'a' + 'A');
+        }
+    }
+    // Only the lower-case spelling is read, so a digest with a letter in it is
+    // refused in upper case.
+    if (upper != digest.to_hex()) {
+        CPPL_CHECK(!Digest::from_hex(upper).has_value());
+    }
+    CPPL_CHECK(!Digest::from_hex(digest.to_hex().substr(1)).has_value());
+    CPPL_CHECK(!Digest::from_hex(digest.to_hex() + "0").has_value());
+    CPPL_CHECK(!Digest::from_hex(std::string(64, 'g')).has_value());
 }
 
 // SPEC: TUBOUND-005
@@ -177,9 +253,11 @@ CPPL_TEST(a_truncated_interface_is_refused) {
 // SPEC: TUBOUND-005
 CPPL_TEST(another_format_or_version_is_named_as_such) {
     const std::string body = body_of(text_of(sample()));
-    expect_refused(resealed(replaced(body, "cppl-verification-interface 1", "cppl-verification-interface 2")),
-                   "format version '2'");
-    expect_refused(resealed(replaced(body, "cppl-verification-interface 1", "some-other-format 1")),
+    expect_refused(resealed(replaced(body, "cppl-verification-interface 2", "cppl-verification-interface 1")),
+                   "format version '1'");
+    expect_refused(resealed(replaced(body, "cppl-verification-interface 2", "cppl-verification-interface 3")),
+                   "format version '3'");
+    expect_refused(resealed(replaced(body, "cppl-verification-interface 2", "some-other-format 2")),
                    "not a C++L verification interface");
     expect_refused("\x7f"
                    "ELF",

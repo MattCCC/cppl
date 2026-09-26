@@ -1,6 +1,7 @@
 #include "cppl/artifact/interface.hpp"
 
 #include "cppl/source/digest.hpp"
+#include "cppl/source/representation.hpp"
 
 #include <algorithm>
 #include <array>
@@ -137,6 +138,10 @@ std::string unsafe_line(const UnsafeBlock& block) {
     return "unsafe " + std::to_string(block.line) + " " + std::to_string(block.column) + " " + encode(block.file);
 }
 
+std::string model_line(const std::string& model) {
+    return "model " + encode(model);
+}
+
 std::string dependency_line(const Dependency& dependency) {
     return "depends " + dependency.entry.to_hex() + " " + encode(dependency.symbol);
 }
@@ -174,6 +179,9 @@ std::string entry_text(const Entry& entry) {
     for (const std::string& block : canonical_lines(entry.unsafe, unsafe_line)) {
         line(block);
     }
+    for (const std::string& model : canonical_lines(entry.models, model_line)) {
+        line(model);
+    }
     for (const std::string& dependency : canonical_lines(entry.depends, dependency_line)) {
         line(dependency);
     }
@@ -201,8 +209,13 @@ std::optional<std::string> entry_problem(const Entry& entry) {
             return "a dependency of '" + entry.name + "' lacks its symbol";
         }
     }
+    for (const std::string& model : entry.models) {
+        if (!is_library_model(model)) {
+            return "'" + entry.name + "' rests on '" + model + "', which is not a library model";
+        }
+    }
     if (entry.premises.size() > kMaxEntryItems || entry.unsafe.size() > kMaxEntryItems ||
-        entry.depends.size() > kMaxEntryItems) {
+        entry.models.size() > kMaxEntryItems || entry.depends.size() > kMaxEntryItems) {
         return "'" + entry.name + "' rests on more than " + std::to_string(kMaxEntryItems) + " items of one kind";
     }
     return std::nullopt;
@@ -496,6 +509,38 @@ std::expected<Entry, ParseError> parse_entry(Parser& parser, const Line& opening
 
     previous = {};
     while (true) {
+        auto line = parser.take_if("model", 1);
+        if (!line) {
+            return std::unexpected(line.error());
+        }
+        if (!line->has_value()) {
+            break;
+        }
+        const Line& model_line = **line;
+        if (entry.models.size() == kMaxEntryItems) {
+            return malformed("an entry rests on more than " + std::to_string(kMaxEntryItems) + " library models",
+                             model_line);
+        }
+        if (auto ordered = in_order(previous, model_line, "library models"); !ordered) {
+            return std::unexpected(ordered.error());
+        }
+        previous = model_line.text;
+        auto model = text_field(model_line, 1);
+        if (!model) {
+            return std::unexpected(model.error());
+        }
+        // A model this compiler does not have could not be reported, and a
+        // claim resting on it would lose a premise (SPEC.md TUBOUND-006).
+        if (!is_library_model(*model)) {
+            return malformed("the entry for " + quoted(entry.name) + " rests on " + quoted(*model) +
+                                 ", which is not a library model this compiler has",
+                             model_line);
+        }
+        entry.models.push_back(std::move(*model));
+    }
+
+    previous = {};
+    while (true) {
         auto line = parser.take_if("depends", 2);
         if (!line) {
             return std::unexpected(line.error());
@@ -538,16 +583,55 @@ std::expected<std::string, ParseError> single_text(Parser& parser, std::string_v
 
 source::Digest identify(const Entry& entry) {
     source::Hasher hasher;
-    hasher.update_field("cppl-verification-interface-entry-v1");
-    hasher.update(entry_text(entry));
+    hasher.update_field("cppl-verification-result-v1");
+    hasher.update_field(entry.symbol);
+    hasher.update_field(entry.statement.to_hex());
+    hasher.update_field(describe(entry.correctness));
+    // Each kind of dependency as a set of identities, counted, so no item of
+    // one kind can be read as one of another.
+    const auto set = [&hasher](std::vector<std::string> items) {
+        std::ranges::sort(items);
+        const auto repeated = std::ranges::unique(items);
+        items.erase(repeated.begin(), repeated.end());
+        hasher.update_u64(items.size());
+        for (const std::string& item : items) {
+            hasher.update_field(item);
+        }
+    };
+    std::vector<std::string> premises;
+    premises.reserve(entry.premises.size());
+    for (const Premise& premise : entry.premises) {
+        premises.push_back(premise.identity.to_hex());
+    }
+    set(std::move(premises));
+    // An unsafe block has no identity but where it is.
+    std::vector<std::string> unsafe;
+    unsafe.reserve(entry.unsafe.size());
+    for (const UnsafeBlock& block : entry.unsafe) {
+        unsafe.push_back(unsafe_line(block));
+    }
+    set(std::move(unsafe));
+    set(entry.models);
+    std::vector<std::string> depends;
+    depends.reserve(entry.depends.size());
+    for (const Dependency& dependency : entry.depends) {
+        depends.push_back(dependency_line(dependency));
+    }
+    set(std::move(depends));
     return hasher.finish();
+}
+
+bool is_library_model(std::string_view name) {
+    using K = source::RepresentationKind;
+    return std::ranges::any_of(std::array{K::StdArray, K::Vector, K::String, K::Span},
+                               [name](K kind) { return source::describe_model(kind) == name; });
 }
 
 std::expected<std::string, std::string> serialize(const Interface& recorded) {
     const Configuration& configuration = recorded.configuration;
-    if (configuration.compiler.empty() || configuration.kernel.empty() || configuration.core.empty() ||
-        configuration.clang.empty() || configuration.language.empty() || configuration.target.empty() ||
-        recorded.unit.empty()) {
+    if (configuration.compiler.empty() || configuration.semantics.empty() || configuration.kernel.empty() ||
+        configuration.core.empty() || configuration.clang.empty() || configuration.language.empty() ||
+        configuration.target.empty() || recorded.unit.empty()) {
         return std::unexpected("a configuration field or the unit is empty");
     }
     if (configuration.flags.size() > kMaxFlags) {
@@ -592,7 +676,8 @@ std::expected<std::string, std::string> serialize(const Interface& recorded) {
     };
     line(std::string(kMagic) + " " + std::to_string(kFormatVersion));
     line("compiler " + encode(configuration.compiler));
-    line("build " + configuration.build.to_hex());
+    line("semantics " + encode(configuration.semantics));
+    line("verifier " + configuration.verifier.to_hex());
     line("kernel " + encode(configuration.kernel));
     line("core " + encode(configuration.core));
     line("clang " + encode(configuration.clang));
@@ -683,15 +768,20 @@ std::expected<Interface, ParseError> parse(std::string_view text) {
         return std::unexpected(compiler.error());
     }
     configuration.compiler = std::move(*compiler);
-    auto build_line = parser.take("build", 1);
-    if (!build_line) {
-        return std::unexpected(build_line.error());
+    auto semantics = single_text(parser, "semantics");
+    if (!semantics) {
+        return std::unexpected(semantics.error());
     }
-    auto build = digest_field(*build_line, 1);
-    if (!build) {
-        return std::unexpected(build.error());
+    configuration.semantics = std::move(*semantics);
+    auto verifier_line = parser.take("verifier", 1);
+    if (!verifier_line) {
+        return std::unexpected(verifier_line.error());
     }
-    configuration.build = *build;
+    auto verifier = digest_field(*verifier_line, 1);
+    if (!verifier) {
+        return std::unexpected(verifier.error());
+    }
+    configuration.verifier = *verifier;
     for (auto [key, field] :
          std::array<std::pair<std::string_view, std::string*>, 5>{{{"kernel", &configuration.kernel},
                                                                    {"core", &configuration.core},

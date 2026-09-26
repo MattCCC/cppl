@@ -52,11 +52,19 @@ void generate_contracts(const vir::Module& module, const DefinitionMap& pure_def
                         diagnostics::Engine& engine, const std::function<std::string(const Failure&)>& explain,
                         const Imports& imports);
 
-// A contract statement's canonical identity and its description (SPEC.md
-// TUBOUND-004). `plan` must already state the contract: its parameter and result
-// types, preconditions and postcondition.
+// A contract statement's canonical identities and its description. `plan` must
+// already state the contract: its parameter and result types, preconditions
+// and postcondition.
+//
+// `identity` is the contract as another unit may rely on it (SPEC.md
+// TUBOUND-004): it states whether termination is asked for, and not the
+// measure, which is how the proving unit ranked a recursion and is compared
+// with another function's only within one unit. `restatement` is the contract
+// as one unit's declarations of one function must agree on it (TU-003), the
+// measure included.
 struct Statement {
     source::Digest identity;
+    source::Digest restatement;
     std::string description;
 };
 [[nodiscard]] std::expected<Statement, Failure> state_statement(const vir::Function& function,

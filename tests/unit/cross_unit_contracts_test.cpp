@@ -75,7 +75,8 @@ struct Stated {
     std::int64_t requires_below = 100;
     bool second_precondition = false;
     cppl::source::ParameterPassing passing = cppl::source::ParameterPassing::Value;
-    bool measured = false; // states `decreases (x)`, asking that it terminate
+    bool measured = false;      // states `decreases (x)`, asking that it terminate
+    bool other_measure = false; // states `decreases (9u)` instead
 };
 
 // `expects (x < 100u) ensures (result < 4u)`, as elaboration would read it.
@@ -87,7 +88,7 @@ v::Contract stated_contract(const Stated& stated) {
     }
     contract.postcondition = less(parameter(1, "result"), literal(stated.bound));
     if (stated.measured) {
-        contract.measures.push_back(parameter(0, stated.parameter));
+        contract.measures.push_back(stated.other_measure ? literal(9) : parameter(0, stated.parameter));
     }
     return contract;
 }
@@ -143,8 +144,8 @@ bool mentions(const cppl::diagnostics::Engine& engine, std::string_view text) {
     });
 }
 
-o::Imports recording(const std::string& symbol, cppl::source::Digest statement, artifact::Correctness correctness,
-                     std::vector<artifact::Dependency> depends = {}) {
+o::ImportedEntry record(const std::string& symbol, cppl::source::Digest statement, artifact::Correctness correctness,
+                        std::vector<artifact::Dependency> depends = {}) {
     artifact::Entry entry;
     entry.symbol = symbol;
     entry.name = symbol;
@@ -152,9 +153,27 @@ o::Imports recording(const std::string& symbol, cppl::source::Digest statement, 
     entry.contract = "recorded";
     entry.correctness = correctness;
     entry.depends = std::move(depends);
+    return o::ImportedEntry{"other.cppli", entry, artifact::identify(entry)};
+}
+
+o::Imports recording(const std::string& symbol, cppl::source::Digest statement, artifact::Correctness correctness,
+                     std::vector<artifact::Dependency> depends = {}) {
     o::Imports imports;
-    imports.entries.push_back(o::ImportedEntry{"other.cppli", entry, artifact::identify(entry)});
+    imports.entries.push_back(record(symbol, statement, correctness, std::move(depends)));
     return imports;
+}
+
+// A dependency on another record, by that record's result identity.
+artifact::Dependency on(const std::string& symbol) {
+    return artifact::Dependency{symbol, cppl::source::hash_bytes(symbol)};
+}
+
+bool refused_for_recursion(const cppl::diagnostics::Engine& engine) {
+    return std::ranges::any_of(engine.diagnostics(), [](const cppl::diagnostics::Diagnostic& diagnostic) {
+        return std::ranges::any_of(diagnostic.notes, [](const auto& note) {
+            return note.message.find("recursion across translation units is not verified") != std::string::npos;
+        });
+    });
 }
 
 } // namespace
@@ -167,7 +186,34 @@ CPPL_TEST(a_statement_is_identified_by_meaning_not_by_name) {
     CPPL_CHECK(!(statement_of({.requires_below = 101}) == base));
     CPPL_CHECK(!(statement_of({.second_precondition = true}) == base));
     CPPL_CHECK(!(statement_of({.passing = cppl::source::ParameterPassing::ConstReference}) == base));
+    // Asking to terminate is part of the contract; which measure the proving
+    // unit used is not.
     CPPL_CHECK(!(statement_of({.measured = true}) == base));
+    CPPL_CHECK(statement_of({.measured = true, .other_measure = true}) == statement_of({.measured = true}));
+}
+
+// SPEC: TUBOUND-004, TUBOUND-007
+CPPL_TEST(a_total_contract_is_matched_whatever_measure_its_prover_used) {
+    const std::string callee = "c:@F@callee#i#";
+    const auto build = [&](const Stated& declared, const Stated& proven) {
+        return generate({function(0, callee, std::nullopt, declared),
+                         function(1, "c:@F@caller#i#", call(callee, parameter(0, "x"), 7))},
+                        recording(callee, statement_of(proven), artifact::Correctness::Total));
+    };
+    Generated other_measure = build({.measured = true, .other_measure = true}, {.measured = true});
+    CPPL_CHECK(!other_measure.engine.has_errors());
+    CPPL_CHECK(contract_of(other_measure.program, callee) != nullptr);
+    const o::ContractVerification* caller = contract_of(other_measure.program, "c:@F@caller#i#");
+    CPPL_CHECK(caller != nullptr);
+    CPPL_CHECK(caller->total);
+
+    // Total against partial, in either direction, is two contracts.
+    Generated asks_less = build({}, {.measured = true});
+    CPPL_CHECK(mentions(asks_less.engine, "is not the one 'other.cppli' records as verified"));
+    CPPL_CHECK(contract_of(asks_less.program, "c:@F@caller#i#") == nullptr);
+    Generated asks_more = build({.measured = true}, {});
+    CPPL_CHECK(mentions(asks_more.engine, "is not the one 'other.cppli' records as verified"));
+    CPPL_CHECK(contract_of(asks_more.program, "c:@F@caller#i#") == nullptr);
 }
 
 // SPEC: TUBOUND-007, TERMINATION-006
@@ -262,20 +308,80 @@ CPPL_TEST(recursion_through_another_unit_is_refused) {
     };
 
     Generated cycle = build("c:@F@h#i#");
-    CPPL_CHECK(mentions(cycle.engine, "recursion across translation units is not verified") ||
-               std::ranges::any_of(cycle.engine.diagnostics(), [](const auto& diagnostic) {
-                   return std::ranges::any_of(diagnostic.notes, [](const auto& note) {
-                       return note.message.find("recursion across translation units is not verified") !=
-                              std::string::npos;
-                   });
-               }));
+    CPPL_CHECK(refused_for_recursion(cycle.engine));
+    CPPL_CHECK(mentions(cycle.engine, "'c:@F@f#i#' -> 'c:@F@elsewhere#i#' -> 'c:@F@h#i#' -> 'c:@F@f#i#'"));
     CPPL_CHECK(contract_of(cycle.program, "c:@F@f#i#") == nullptr);
+    CPPL_CHECK(contract_of(cycle.program, "c:@F@h#i#") == nullptr);
+    CPPL_CHECK(contract_of(cycle.program, callee) == nullptr);
 
     // The same record resting on a function of this unit that does not reach f.
     Generated acyclic = build("c:@F@leaf#i#");
     CPPL_CHECK(!acyclic.engine.has_errors());
     CPPL_CHECK(contract_of(acyclic.program, "c:@F@f#i#") != nullptr);
     CPPL_CHECK(contract_of(acyclic.program, "c:@F@h#i#") != nullptr);
+}
+
+// SPEC: TUBOUND-008
+// A -> B -> C -> A: a function of this unit, and two contracts of two other
+// units, one resting on the next, the last on the first. Refused whether B's
+// record names only C, as a forged one might, or the whole chain, as an honest
+// transitive one would.
+CPPL_TEST(a_cycle_through_two_other_units_is_refused) {
+    const std::string b = "c:@F@b#i#";
+    const std::string c = "c:@F@c#i#";
+    const auto build = [&](std::vector<artifact::Dependency> through_b) {
+        o::Imports imports;
+        imports.entries.push_back(record(b, statement_of({}), artifact::Correctness::Total, std::move(through_b)));
+        imports.entries.push_back(record(c, statement_of({}), artifact::Correctness::Total, {on("c:@F@a#i#")}));
+        return generate({function(0, b, std::nullopt), function(1, "c:@F@a#i#", call(b, parameter(0, "x"), 7))},
+                        imports);
+    };
+    for (auto through_b : {std::vector{on(c)}, std::vector{on(c), on("c:@F@a#i#")}}) {
+        Generated cycle = build(std::move(through_b));
+        CPPL_CHECK(refused_for_recursion(cycle.engine));
+        CPPL_CHECK(contract_of(cycle.program, "c:@F@a#i#") == nullptr);
+        CPPL_CHECK(contract_of(cycle.program, b) == nullptr);
+    }
+}
+
+// SPEC: TUBOUND-008
+// B -> C -> B, two contracts of other units resting on each other, reached from
+// this unit without this unit being on the cycle: B rests on a proof no unit
+// could have made, and so does everything resting on B.
+CPPL_TEST(a_cycle_among_other_units_alone_is_refused) {
+    const std::string b = "c:@F@b#i#";
+    const std::string c = "c:@F@c#i#";
+    o::Imports imports;
+    imports.entries.push_back(record(b, statement_of({}), artifact::Correctness::Total, {on(c)}));
+    imports.entries.push_back(record(c, statement_of({}), artifact::Correctness::Total, {on(b)}));
+    Generated cycle =
+        generate({function(0, b, std::nullopt), function(1, "c:@F@a#i#", call(b, parameter(0, "x"), 7))}, imports);
+    CPPL_CHECK(refused_for_recursion(cycle.engine));
+    CPPL_CHECK(mentions(cycle.engine, "rests on a cycle of verified contracts across units"));
+    CPPL_CHECK(contract_of(cycle.program, b) == nullptr);
+    CPPL_CHECK(contract_of(cycle.program, "c:@F@a#i#") == nullptr);
+}
+
+// SPEC: TUBOUND-008
+// A -> B -> D and A -> C -> D: two paths to one contract are not a cycle.
+CPPL_TEST(a_diamond_of_contracts_across_units_is_accepted) {
+    const std::string b = "c:@F@b#i#";
+    const std::string c = "c:@F@c#i#";
+    const std::string d = "c:@F@d#i#";
+    o::Imports imports;
+    imports.entries.push_back(record(b, statement_of({}), artifact::Correctness::Total, {on(d)}));
+    imports.entries.push_back(record(c, statement_of({}), artifact::Correctness::Total, {on(d)}));
+    imports.entries.push_back(record(d, statement_of({}), artifact::Correctness::Total));
+    v::Function caller = function(3, "c:@F@a#i#", call(b, call(c, parameter(0, "x"), 8), 7));
+    caller.contract = stated_contract({.requires_below = 4});
+    Generated diamond = generate(
+        {function(0, b, std::nullopt), function(1, c, std::nullopt), function(2, d, std::nullopt), std::move(caller)},
+        imports);
+    CPPL_CHECK(!diamond.engine.has_errors());
+    CPPL_CHECK(!refused_for_recursion(diamond.engine));
+    for (const std::string& symbol : {b, c, d, std::string("c:@F@a#i#")}) {
+        CPPL_CHECK(contract_of(diamond.program, symbol) != nullptr);
+    }
 }
 
 // SPEC: TU-003
@@ -291,4 +397,12 @@ CPPL_TEST(a_restated_contract_must_mean_the_same) {
     Generated refused = generate({std::move(conflicting)});
     CPPL_CHECK(mentions(refused.engine, "states a different contract from its earlier one"));
     CPPL_CHECK(contract_of(refused.program, "c:@F@same#i#") == nullptr);
+
+    // Within one unit the measure is compared too: it is what a recursive call
+    // in this unit descends (TERMINATION-007).
+    v::Function remeasured = function(0, "c:@F@same#i#", literal(0), {.measured = true});
+    remeasured.redeclared_contracts.push_back(stated_contract({.measured = true, .other_measure = true}));
+    Generated measure_refused = generate({std::move(remeasured)});
+    CPPL_CHECK(mentions(measure_refused.engine, "states a different contract from its earlier one"));
+    CPPL_CHECK(contract_of(measure_refused.program, "c:@F@same#i#") == nullptr);
 }

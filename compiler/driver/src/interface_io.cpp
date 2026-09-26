@@ -5,6 +5,8 @@
 #include "cppl/diagnostics/diagnostic.hpp"
 #include "cppl/driver/process.hpp"
 #include "cppl/driver/scratch.hpp"
+#include "cppl/driver/semantics.hpp"
+#include "cppl/driver/verifier_semantics.hpp"
 #include "cppl/kernel/version.hpp"
 #include "cppl/obligations/interface.hpp"
 #include "cppl/source/digest.hpp"
@@ -26,18 +28,6 @@
 #include <utility>
 #include <vector>
 
-#ifdef _WIN32
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-#elif defined(__APPLE__)
-#include <mach-o/dyld.h>
-#endif
-
 namespace cppl::driver::detail {
 namespace {
 
@@ -50,31 +40,6 @@ void report(diagnostics::Engine& engine, std::string message, std::string note =
         diagnostic.notes.push_back(diagnostics::Note{std::move(note), {}});
     }
     engine.report(std::move(diagnostic));
-}
-
-// The file this process was started from. The compiler's own build is part of
-// what a verification interface is bound to, and a version string alone does
-// not change when the compiler does (TRUST.md TCB-VERSION-004).
-std::optional<std::filesystem::path> executable_path() {
-#ifdef _WIN32
-    std::array<wchar_t, 32768> buffer{};
-    const DWORD length = GetModuleFileNameW(nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
-    if (length == 0 || length >= buffer.size()) {
-        return std::nullopt;
-    }
-    return std::filesystem::path(std::wstring(buffer.data(), length));
-#elif defined(__APPLE__)
-    std::uint32_t size = 0;
-    _NSGetExecutablePath(nullptr, &size);
-    std::string buffer(size, '\0');
-    if (size == 0 || _NSGetExecutablePath(buffer.data(), &size) != 0) {
-        return std::nullopt;
-    }
-    buffer.resize(buffer.find('\0'));
-    return std::filesystem::path(buffer);
-#else
-    return std::filesystem::path("/proc/self/exe");
-#endif
 }
 
 // The largest file a unit may be recorded as preprocessed from. A path an
@@ -182,9 +147,15 @@ std::optional<std::string> configuration_difference(const artifact::Configuratio
     if (recorded.compiler != current.compiler) {
         return differs("it was produced by another C++L compiler version", recorded.compiler, current.compiler);
     }
-    if (!(recorded.build == current.build)) {
-        return "it was produced by another build of the C++L compiler, whose verification semantics this build "
-               "cannot vouch for";
+    if (recorded.semantics != current.semantics) {
+        return differs("it was produced under other verification semantics", recorded.semantics, current.semantics);
+    }
+    // The declared version can be left unchanged when the code is not, so the
+    // sources that implement the semantics are compared too.
+    if (!(recorded.verifier == current.verifier)) {
+        return "it was produced by a verifier whose semantics-bearing sources differ from this compiler's: it "
+               "records verifier-semantics digest " +
+               recorded.verifier.to_short_hex(16) + ", and this compiler has " + current.verifier.to_short_hex(16);
     }
     if (recorded.kernel != current.kernel) {
         return differs("it was checked by another proof kernel", recorded.kernel, current.kernel);
@@ -225,13 +196,12 @@ std::expected<artifact::Configuration, std::string> current_configuration(const 
                                                                           const std::string& standard) {
     artifact::Configuration configuration;
     configuration.compiler = CPPL_VERSION;
-    const std::optional<std::filesystem::path> self = executable_path();
-    const std::optional<source::Digest> build = self.has_value() ? digest_of_file(*self) : std::nullopt;
-    if (!build.has_value()) {
-        return std::unexpected("this compiler cannot identify its own build, which a verification interface is "
-                               "bound to");
+    configuration.semantics = kVerificationSemanticsVersion;
+    const std::optional<source::Digest> verifier = source::Digest::from_hex(kVerifierSemanticsDigest);
+    if (!verifier.has_value()) {
+        return std::unexpected("this compiler's verifier-semantics digest is malformed");
     }
-    configuration.build = *build;
+    configuration.verifier = *verifier;
     configuration.kernel = kernel::kKernelVersion;
     configuration.core = kernel::kFormalCoreVersion;
     configuration.clang = clangbridge::clang_version();

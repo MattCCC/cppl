@@ -32,7 +32,7 @@ namespace cppl::artifact {
 // last line is the SHA-256 of every byte before it.
 
 inline constexpr std::string_view kMagic = "cppl-verification-interface";
-inline constexpr std::uint32_t kFormatVersion = 1;
+inline constexpr std::uint32_t kFormatVersion = 2;
 
 // Bounds on what a reader accepts and a writer produces. A reader never scans or
 // allocates past them, whatever the input claims.
@@ -47,13 +47,14 @@ inline constexpr std::size_t kMaxEntryItems = std::size_t{1} << 14U;
 // a recorded contract to mean the same thing in both places (SPEC.md TUBOUND-005).
 // Each field is compared exactly; a consumer names the first that differs.
 struct Configuration {
-    std::string compiler; // the C++L compiler version
-    source::Digest build; // the SHA-256 of the compiler executable itself
-    std::string kernel;   // kernel::kKernelVersion
-    std::string core;     // kernel::kFormalCoreVersion
-    std::string clang;    // the Clang that resolved C++ semantics
-    std::string language; // the selected -std, or `default`
-    std::string target;   // the effective target triple
+    std::string compiler;    // the C++L compiler version
+    std::string semantics;   // the declared verification-semantics version
+    source::Digest verifier; // the digest of the verifier's semantics-bearing sources
+    std::string kernel;      // kernel::kKernelVersion
+    std::string core;        // kernel::kFormalCoreVersion
+    std::string clang;       // the Clang that resolved C++ semantics
+    std::string language;    // the selected -std, or `default`
+    std::string target;      // the effective target triple
     // The options that can change C++ meaning, in command-line order.
     std::vector<std::string> flags;
 
@@ -105,7 +106,10 @@ enum class Correctness : std::uint8_t {
     Partial, // holds if the function returns (SPEC.md CORRECT-006)
 };
 
-// One contract the producing unit proved.
+// One contract the producing unit proved, and what its proof rests on, each
+// kind of dependency apart: trusted laws, library models, unsafe code and
+// contracts of further units are different premises and are reported as such
+// wherever the contract is used (SPEC.md TUBOUND-002, TUBOUND-006).
 struct Entry {
     // Clang's USR for the function: its qualified declaration, overload,
     // parameter types, qualifiers and template arguments (SPEC.md TUBOUND-004).
@@ -120,6 +124,9 @@ struct Entry {
     Correctness correctness = Correctness::Partial;
     std::vector<Premise> premises;
     std::vector<UnsafeBlock> unsafe;
+    // The standard-library models the proof rests on, by the name the trust
+    // report gives each (SPEC.md STDMODEL-018).
+    std::vector<std::string> models;
     std::vector<Dependency> depends;
 
     friend bool operator==(const Entry&, const Entry&) = default;
@@ -134,9 +141,17 @@ struct Interface {
     friend bool operator==(const Interface&, const Interface&) = default;
 };
 
-// The content identity of one entry: every field of it, in canonical form. Two
-// entries have one identity exactly when they record the same thing.
+// The verification-result identity of one entry (SPEC.md TUBOUND-009): the
+// function, the statement, whether it is total, and the identity of every
+// dependency of every kind, each dependency on another unit's contract by that
+// contract's own result identity. Two entries share it exactly when a caller
+// may conclude the same from either. What is recorded only to be shown -- the
+// function's name, the statement as text, where a trusted law is written --
+// takes no part, so the identity is not that of the entry's bytes.
 [[nodiscard]] source::Digest identify(const Entry& entry);
+
+// Whether a name is one a library model is reported under.
+[[nodiscard]] bool is_library_model(std::string_view name);
 
 // The canonical text. Repeated items are put in canonical order and exact
 // duplicates dropped; an empty field, two sources at one path with different

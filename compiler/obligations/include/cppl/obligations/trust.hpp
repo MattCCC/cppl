@@ -39,18 +39,22 @@ struct UnsafeDependency {
 };
 
 // A contract another translation unit proved that a claim rests on, and what
-// that unit's proof of it rests on in turn (SPEC.md TUBOUND-006). The claim holds
-// only if the verification interface that recorded the contract is faithful to
-// a proof that was really made, which nothing in this unit checked, so a claim
-// that rests on one is never reported as assumption-free (TRUST.md 31).
+// that unit's proof of it rests on in turn, each kind apart (SPEC.md
+// TUBOUND-006). It is an external verified dependency: neither a trusted law
+// nor a library model, and never counted as proven here. The claim holds only
+// if the verification interface that recorded the contract is faithful to a
+// proof that was really made, which nothing in this unit checked and nothing
+// authenticates, so a claim that rests on one is never reported as
+// assumption-free (TRUST.md 31).
 struct ImportedDependency {
-    std::string name;   // the callee's qualified name
-    std::string symbol; // its USR
-    std::string origin; // the interface that recorded it
-    source::Digest entry;
+    std::string name;     // the callee's qualified name
+    std::string symbol;   // its USR
+    std::string origin;   // the interface that recorded it
+    source::Digest entry; // the record's verification-result identity
     bool total = false;
     std::vector<artifact::Premise> premises;
     std::vector<artifact::UnsafeBlock> unsafe;
+    std::vector<std::string> models;
     std::vector<artifact::Dependency> depends;
     // Whether the claim's own body calls it, rather than a verified function
     // of this unit that the body calls.
@@ -117,6 +121,10 @@ struct ClaimClosure {
 // Whether a claim rests on unsafe code, of this unit or of another unit whose
 // contract it was proven through (TRUST.md TCB-REPORT-005).
 [[nodiscard]] bool rests_on_unsafe_code(const ClaimClosure& claim);
+
+// Whether a claim rests on a library model, used here or by the proof of
+// another unit's contract it was proven through (SPEC.md STDMODEL-018).
+[[nodiscard]] bool rests_on_library_models(const ClaimClosure& claim);
 
 // The trust closure of every proven claim of one translation unit.
 //

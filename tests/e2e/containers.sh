@@ -112,12 +112,13 @@ for standard in c++20 c++23; do
     done
 done
 
-# SPEC: STDMODEL-018, TUBOUND-006
+# SPEC: STDMODEL-018, TUBOUND-002, TUBOUND-006
 # Container contracts cross translation units through a verification interface.
 # A claim proven through one rests on the imported contract and is never
-# assumption-free; the models it names are those its own body uses and those
-# the imported declaration uses, since an interface records no models of the
-# other unit's body (TRUST.md TCB-LIB-010).
+# assumption-free, and it rests on every model the other unit's proof used:
+# the interface records them, apart from trusted laws and unsafe code, and a
+# claim whose own body uses no container still names them (TRUST.md
+# TCB-LIB-010).
 units="$run/units"
 mkdir -p "$units"
 cp "$FIXTURES/cross_tu/sequences.hpp" "$FIXTURES/cross_tu/sequences.cpp" "$FIXTURES/cross_tu/sequences_client.cpp" \
@@ -134,7 +135,10 @@ for line in 'Function contracts proven: +2' 'Library-model-dependent claims: 2';
     grep -Eq "^$line\$" "$units/sequences.report" || { echo "sequences.cpp does not report '$line'" >&2; exit 1; }
 done
 for line in 'Function contracts proven: +2' 'Function contracts imported: +2' 'Assumption-free claims: +0' \
-    'Library-model-dependent claims: 1'; do
+    'Library-model-dependent claims: 2' \
+    '    rests on the std::vector model, through the imported contract of three_listed \[c:@F@three_listed#\].*' \
+    '      whose proof rests on the std::vector model' \
+    'Interface provenance: +unauthenticated; 2 imported contracts are believed on the build.s word.*'; do
     grep -Eq "^$line\$" "$units/client.report" || {
         echo "the client does not report '$line'" >&2
         cat "$units/client.report" >&2

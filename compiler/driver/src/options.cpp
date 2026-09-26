@@ -56,6 +56,8 @@ Options parse(int argc, const char* const* argv) {
         if (argument.starts_with("--cppl-")) {
             if (argument == "--cppl-trust-report") {
                 options.trust_report = true;
+            } else if (argument == "--cppl-version") {
+                options.version = true;
             } else if (argument.starts_with("--cppl-clang=")) {
                 options.clang = argument.substr(std::string_view("--cppl-clang=").size());
             } else if (argument.starts_with("--cppl-emit-projection=")) {

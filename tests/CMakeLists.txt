@@ -471,6 +471,15 @@ set_tests_properties(architecture_draft_boundaries PROPERTIES
     LABELS "architecture;script"
     TIMEOUT ${CPPL_TEST_TIMEOUT})
 
+# A verification interface is bound to the digest of the verifier's
+# semantics-bearing sources; this pins what does and does not change it.
+add_test(NAME architecture_verifier_semantics
+         COMMAND bash "${CPPL_BOUNDED}" bash "${CMAKE_CURRENT_SOURCE_DIR}/architecture/verifier_semantics.sh"
+                 "${CMAKE_COMMAND}" "${CMAKE_SOURCE_DIR}" $<TARGET_FILE:cppl> "${CPPL_TEST_WORK}")
+set_tests_properties(architecture_verifier_semantics PROPERTIES
+    LABELS "architecture;script"
+    TIMEOUT ${CPPL_TEST_TIMEOUT})
+
 # The executables C++L ships carry the mitigations cmake/Hardening.cmake asks
 # for. A target that stops linking cppl_project_options would lose them
 # without a build error, so the linked files are read. Windows reports its

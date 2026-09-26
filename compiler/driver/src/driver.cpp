@@ -7,6 +7,8 @@
 #include "cppl/driver/options.hpp"
 #include "cppl/driver/process.hpp"
 #include "cppl/driver/scratch.hpp"
+#include "cppl/driver/semantics.hpp"
+#include "cppl/driver/verifier_semantics.hpp"
 #include "cppl/frontend/syntax.hpp"
 #include "cppl/kernel/version.hpp"
 #include "cppl/obligations/interface.hpp"
@@ -329,10 +331,23 @@ std::string imported_from(const obligations::ImportedDependency& imported) {
            ", entry " + imported.entry.to_short_hex(16);
 }
 
-// What another unit's proof of an imported contract was itself proven
-// through, so a claim's closure is complete however many units it crosses
-// (TRUST.md TCB-PROV-004).
+// What another unit's proof of an imported contract rests on, each kind apart:
+// its trusted laws, its unsafe code, the library models it used, and the
+// contracts of further units it was proven through, so a claim's closure is
+// complete however many units it crosses (SPEC.md TUBOUND-006, TRUST.md
+// TCB-PROV-004).
 void print_depends(const obligations::ImportedDependency& imported) {
+    for (const artifact::Premise& premise : imported.premises) {
+        std::cout << "      whose proof rests on trusted law " << premise.name << " (" << premise.file << ":"
+                  << premise.line << "), identity " << premise.identity.to_short_hex(16) << "\n";
+    }
+    for (const artifact::UnsafeBlock& block : imported.unsafe) {
+        std::cout << "      whose proof rests on unsafe block (" << block.file << ":" << block.line << ":"
+                  << block.column << ")\n";
+    }
+    for (const std::string& model : imported.models) {
+        std::cout << "      whose proof rests on the " << model << " model\n";
+    }
     for (const artifact::Dependency& dependency : imported.depends) {
         std::cout << "      which rests on the contract of [" << dependency.symbol << "], entry "
                   << dependency.entry.to_short_hex(16) << "\n";
@@ -468,11 +483,10 @@ void print_trust_report(const Options& options, const Summary& summary) {
     // model holds only if the library the program runs with behaves as the
     // model states, which nothing checked (SPEC.md STDMODEL-018, TRUST.md
     // 28.1). It is PROVEN relative to that, never assumption-free.
-    const auto library_reliant = std::ranges::count_if(
-        summary.claims, [](const obligations::ClaimClosure& claim) { return !claim.library.empty(); });
+    const auto library_reliant = std::ranges::count_if(summary.claims, obligations::rests_on_library_models);
     std::cout << "Library-model-dependent claims: " << library_reliant << "\n";
     for (const obligations::ClaimClosure& claim : summary.claims) {
-        if (claim.library.empty()) {
+        if (!obligations::rests_on_library_models(claim)) {
             continue;
         }
         std::cout << "  " << claim_name(claim) << ", identity " << claim.identity.text() << "\n";
@@ -480,6 +494,14 @@ void print_trust_report(const Options& options, const Summary& summary) {
             std::cout << "    rests on the " << source::describe_model(dependency.model) << " model, "
                       << (dependency.direct ? "in its own contract or body" : "through a verified call it makes")
                       << "\n";
+        }
+        // The models another unit's proof used: a model is a model wherever the
+        // proof that rests on it was made (SPEC.md TUBOUND-006).
+        for (const obligations::ImportedDependency& imported : claim.imported) {
+            for (const std::string& model : imported.models) {
+                std::cout << "    rests on the " << model << " model, through the imported " << imported_from(imported)
+                          << "\n";
+            }
         }
     }
     std::cout << "\n";
@@ -511,6 +533,16 @@ void print_trust_report(const Options& options, const Summary& summary) {
             print_depends(imported);
         }
     }
+    // A verification interface's integrity is checked; where it came from is
+    // not. Every imported record is believed on the build's word alone, so no
+    // claim resting on one is assumption-free, and nothing in this report says
+    // an interface is authentic (SPEC.md TUBOUND-005, TRUST.md TCB-XTU-010).
+    if (summary.imports.empty()) {
+        std::cout << "Interface provenance:        no verification interface was imported\n";
+    } else {
+        std::cout << "Interface provenance:        unauthenticated; " << summary.imports.size()
+                  << " imported contracts are believed on the build's word (TRUST.md TCB-XTU-010)\n";
+    }
     // Where the program's guarantees stop, whether or not a proven claim
     // reaches it: an unsafe block outside every verified body still runs.
     std::cout << "Unsafe regions:              " << summary.unsafe.size() << "\n";
@@ -532,6 +564,8 @@ void print_trust_report(const Options& options, const Summary& summary) {
     std::cout << "Kernel version:              " << kernel::kKernelVersion << "\n";
     std::cout << "Formal core version:         " << kernel::kFormalCoreVersion << "\n";
     std::cout << "Compiler version:            " << CPPL_VERSION << "\n";
+    std::cout << "Verification semantics:      " << kVerificationSemanticsVersion << "\n";
+    std::cout << "Verifier-semantics digest:   " << kVerifierSemanticsDigest << "\n";
     std::cout << "Clang:                       " << clangbridge::clang_version() << "\n";
     std::cout << "C++ mode:                    " << (options.standard.empty() ? "compiler default" : options.standard)
               << "\n";
@@ -547,6 +581,19 @@ int run_driver(int argc, const char* const* argv) {
             std::cerr << "cppl: error: " << error << "\n";
         }
         return 1;
+    }
+
+    // What this compiler's verification results are bound to (SPEC.md
+    // TUBOUND-005). `--version` stays Clang's.
+    if (options.version) {
+        std::cout << "C++L compiler:               " << CPPL_VERSION << "\n";
+        std::cout << "Verification semantics:      " << kVerificationSemanticsVersion << "\n";
+        std::cout << "Verifier-semantics digest:   " << kVerifierSemanticsDigest << "\n";
+        std::cout << "Kernel version:              " << kernel::kKernelVersion << "\n";
+        std::cout << "Formal core version:         " << kernel::kFormalCoreVersion << "\n";
+        std::cout << "Interface format version:    " << artifact::kFormatVersion << "\n";
+        std::cout << "Clang:                       " << clangbridge::clang_version() << "\n";
+        return 0;
     }
 
     // An interface records what one unit proved, so it is written for a command

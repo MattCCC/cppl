@@ -3,6 +3,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -19,6 +20,9 @@ struct Digest {
 
     // The leading hex characters, for identifiers that appear in diagnostics.
     [[nodiscard]] std::string to_short_hex(std::size_t characters = 16) const;
+
+    // The digest `to_hex` spells as `hex`, or nothing for any other text.
+    [[nodiscard]] static std::optional<Digest> from_hex(std::string_view hex);
 
     friend bool operator==(const Digest&, const Digest&) = default;
 };

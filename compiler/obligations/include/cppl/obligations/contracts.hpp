@@ -22,10 +22,11 @@ namespace cppl::obligations {
 // is never taken from here: it is the one this unit stated from its own
 // declaration, which is used only because the record states the same one.
 struct ImportedContract {
-    std::string origin; // the interface file
-    source::Digest entry;
+    std::string origin;   // the interface file
+    source::Digest entry; // the record's verification-result identity
     std::vector<artifact::Premise> premises;
     std::vector<artifact::UnsafeBlock> unsafe;
+    std::vector<std::string> models;
     std::vector<artifact::Dependency> depends;
 };
 
@@ -177,12 +178,17 @@ struct ContractVerification {
 
     // The canonical identity of what the contract states, the same in every
     // unit that states it: parameter and result types, passing modes,
-    // preconditions, postcondition, memory capabilities, measures and every
-    // pure definition they reach, by content rather than by name or by the
-    // number this unit gave a definition (SPEC.md TUBOUND-004). Absent when it could
-    // not be computed; such a contract is neither recorded in an interface nor
-    // matched against one.
+    // preconditions, postcondition, memory capabilities, whether termination
+    // is asked for, and every pure definition they reach, by content rather
+    // than by name or by the number this unit gave a definition (SPEC.md
+    // TUBOUND-004). Absent when it could not be computed; such a contract is
+    // neither recorded in an interface nor matched against one.
     std::optional<source::Digest> statement;
+
+    // The same, with the measure itself in place of whether one is stated:
+    // what one unit's declarations of the function must agree on (SPEC.md
+    // TU-003). Present exactly when `statement` is.
+    std::optional<source::Digest> restatement;
 };
 
 } // namespace cppl::obligations

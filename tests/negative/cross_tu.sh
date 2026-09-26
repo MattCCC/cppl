@@ -112,6 +112,23 @@ refuse weaker_precondition "the contract this translation unit declares for 'cla
 refuse conflicting_redeclaration "this verified declaration of 'count_to' states a different contract" \
     "$NEGATIVE/xtu_conflicting_redeclaration.cpp"
 
+# SPEC: TUBOUND-004, TUBOUND-007 -- asking to terminate is part of the contract
+# across units; the measure that proved it is the proving unit's own.
+accept ranked ranked.cpp --cppl-emit-interface=ranked.cppli
+"$CPPL" -std=c++17 -I "$run" -c "$NEGATIVE/xtu_other_measure.cpp" -o other_measure.o \
+    --cppl-import-interface=ranked.cppli --cppl-trust-report > other_measure.out 2> other_measure.err ||
+    { cat other_measure.err >&2; fail "a total contract proven with another measure was refused"; }
+grep -Eq '^  partial correctness only: +0$' other_measure.out || fail "a caller of a total contract became partial"
+grep -Eq '^Function contracts imported: +1$' other_measure.out
+refuse partial_request "the contract this translation unit declares for 'count_down' is not the one 'ranked.cppli' records as verified" \
+    "$NEGATIVE/xtu_partial_request.cpp" --cppl-import-interface=ranked.cppli
+refuse total_request "the contract this translation unit declares for 'count_up' is not the one 'library.cppli' records as verified" \
+    "$NEGATIVE/xtu_total_request.cpp" "${both[@]}"
+# SPEC: TUBOUND-004 -- a pure definition a contract reaches, however indirectly,
+# is part of what it means.
+refuse changed_pure_definition "the contract this translation unit declares for 'bounded' is not the one 'ranked.cppli' records as verified" \
+    "$NEGATIVE/xtu_changed_pure_definition.cpp" --cppl-import-interface=ranked.cppli
+
 # SPEC: TUBOUND-006, TUBOUND-009 -- a record is used only with every record it was
 # proven through, as it was when it was proven.
 accept middle_with_library "$NEGATIVE/xtu_middle_only.cpp" "${both[@]}"
@@ -128,17 +145,35 @@ refuse conflicting_interfaces "verification interfaces 'library.cppli' and 'conf
 refuse other_language_mode "it was produced in another C\\+\\+ language mode: it records 'c\\+\\+20', and this compile uses 'c\\+\\+17'" \
     client.cpp --cppl-import-interface=library20.cppli --cppl-import-interface=middle.cppli
 
-# SPEC: TUBOUND-005 -- malformed, of another version, from another build: each
-# written out, and each refused before anything in it is read as a contract.
+# SPEC: TUBOUND-005 -- malformed, of another version, from another verifier:
+# each written out, and each refused before anything in it is read as a
+# contract. The previous format's interface is refused as that, never read as
+# this one.
 refuse truncated_fixture "it is truncated" client.cpp "--cppl-import-interface=$NEGATIVE/xtu_truncated.cppli"
 refuse checksum_fixture "it is corrupt: its checksum does not match its content" \
     client.cpp "--cppl-import-interface=$NEGATIVE/xtu_checksum_mismatch.cppli"
 refuse status_fixture "records status 'refused'; only a proven contract is recorded" \
     client.cpp "--cppl-import-interface=$NEGATIVE/xtu_status_refused.cppli"
-refuse version_fixture "it is format version '2', and this compiler reads only version 1" \
+refuse version_fixture "it is format version '1', and this compiler reads only version 2" \
     client.cpp "--cppl-import-interface=$NEGATIVE/xtu_other_version.cppli"
-refuse build_fixture "it was produced by another" \
-    client.cpp "--cppl-import-interface=$NEGATIVE/xtu_other_build.cppli"
+refuse verifier_fixture "it was produced by a verifier whose semantics-bearing sources differ from this compiler's" \
+    client.cpp "--cppl-import-interface=$NEGATIVE/xtu_other_verifier.cppli"
+
+# SPEC: TUBOUND-005 -- the declared verification-semantics version and the
+# digest of the sources that implement it are compared separately: a verifier
+# whose code changed is refused even when its declared version did not.
+grep -q '^semantics cppl-verification-semantics-' library.cppli || fail "the interface records no semantics version"
+awk '{ if ($1 == "verifier") print "verifier 0000000000000000000000000000000000000000000000000000000000000000"; else print }' \
+    library.cppli | sed '$d' > reverified.body
+{ cat reverified.body; printf 'checksum %s\n' "$(sha256 < reverified.body)"; } > reverified.cppli
+grep -q "^$(grep '^semantics ' library.cppli)\$" reverified.cppli || fail "the semantics version was changed"
+refuse other_verifier_artifact "cannot use verification interface 'reverified.cppli': it was produced by a verifier whose semantics-bearing sources differ" \
+    client.cpp --cppl-import-interface=reverified.cppli --cppl-import-interface=middle.cppli
+awk '{ if ($1 == "semantics") print "semantics cppl-verification-semantics-9.9.9"; else print }' \
+    library.cppli | sed '$d' > resemantic.body
+{ cat resemantic.body; printf 'checksum %s\n' "$(sha256 < resemantic.body)"; } > resemantic.cppli
+refuse other_semantics_artifact "it was produced under other verification semantics: it records 'cppl-verification-semantics-9.9.9'" \
+    client.cpp --cppl-import-interface=resemantic.cppli --cppl-import-interface=middle.cppli
 
 # SPEC: TUBOUND-005 -- the real artifact, damaged after it was written.
 head -c 300 library.cppli > cut.cppli

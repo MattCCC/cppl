@@ -610,6 +610,7 @@ std::expected<void, Failure> state_contract(const vir::Function& function, const
     if (function.external_linkage) {
         if (auto statement = state_statement(function, plan, program.context, pure_definitions)) {
             plan.statement = statement->identity;
+            plan.restatement = statement->restatement;
             plan.description = std::move(statement->description);
         }
     }
@@ -2377,10 +2378,13 @@ bool restatements_agree(const vir::Function& function, const DefinitionMap& pure
         // Compared whatever the linkage: this is one entity within one unit.
         declared.external_linkage = true;
         ContractVerification plan;
-        if (!state_contract(declared, pure_definitions, program, plan) || !plan.statement.has_value()) {
+        if (!state_contract(declared, pure_definitions, program, plan) || !plan.statement.has_value() ||
+            !plan.restatement.has_value()) {
             return std::nullopt;
         }
-        return Statement{*plan.statement, plan.description};
+        // The measure included: within one unit it is what a recursive caller
+        // is ranked against (TERMINATION-007).
+        return Statement{*plan.restatement, *plan.restatement, plan.description};
     };
     const std::optional<Statement> first = stated(*function.contract);
     for (const vir::Contract& other : function.redeclared_contracts) {
@@ -2484,8 +2488,8 @@ std::expected<ContractVerification, Refusal> import_contract(const vir::Function
     identity.update_field("imported-contract-v1");
     identity.update_field(recorded->identity.to_hex());
     plan.identity = identity.finish();
-    plan.imported = ImportedContract{recorded->origin, recorded->identity, recorded->entry.premises,
-                                     recorded->entry.unsafe, recorded->entry.depends};
+    plan.imported = ImportedContract{recorded->origin,       recorded->identity,     recorded->entry.premises,
+                                     recorded->entry.unsafe, recorded->entry.models, recorded->entry.depends};
     return plan;
 }
 
@@ -2637,12 +2641,150 @@ void generate_contracts(const vir::Module& module, const DefinitionMap& pure_def
     DefinitionMap definitions = pure_definitions;
     std::map<std::string, std::size_t> established;
 
+    // The verified-contract dependency graph (SPEC.md TUBOUND-008): this
+    // unit's functions, each edge a call, and every contract an imported
+    // interface records, each edge a contract its proof rests on. A contract
+    // of another unit rests only on contracts of units other than its own, so
+    // a cycle through one crosses a unit boundary. No such cycle is verified:
+    // the measures that make recursion sound are compared only within one
+    // unit. Its members, and every contract resting on it, are refused.
+    const std::size_t local_count = candidates.size();
+    std::map<std::string, std::size_t> recorded_node;
+    std::vector<const ImportedEntry*> recorded;
+    for (const ImportedEntry& entry : imports.entries) {
+        if (recorded_node.emplace(entry.entry.symbol, local_count + recorded.size()).second) {
+            recorded.push_back(&entry);
+        }
+    }
+    const std::size_t node_count = local_count + recorded.size();
+    std::vector<std::vector<std::size_t>> edges(node_count);
+    for (std::size_t position = 0; position < local_count; ++position) {
+        edges[position] = candidates[position].callees;
+        for (const std::string& usr : candidates[position].external) {
+            if (const auto node = recorded_node.find(usr); node != recorded_node.end()) {
+                edges[position].push_back(node->second);
+            }
+        }
+    }
+    for (std::size_t index = 0; index < recorded.size(); ++index) {
+        for (const artifact::Dependency& dependency : recorded[index]->entry.depends) {
+            if (const auto local = position_of.find(dependency.symbol); local != position_of.end()) {
+                edges[local_count + index].push_back(local->second);
+            } else if (const auto node = recorded_node.find(dependency.symbol); node != recorded_node.end()) {
+                edges[local_count + index].push_back(node->second);
+            }
+        }
+    }
+    const auto name_of = [&](std::size_t node) -> const std::string& {
+        return node < local_count ? candidates[node].function->qualified_name
+                                  : recorded[node - local_count]->entry.name;
+    };
+    std::vector<std::size_t> group_of(node_count, 0);
+    std::vector<bool> crossing(node_count, false);
+    const std::vector<std::vector<std::size_t>> components = recursion_groups(
+        node_count, [&edges](std::size_t node) -> const std::vector<std::size_t>& { return edges[node]; });
+    for (std::size_t component = 0; component < components.size(); ++component) {
+        const std::vector<std::size_t>& members = components[component];
+        const bool cyclic = members.size() > 1 || std::ranges::contains(edges[members.front()], members.front());
+        const bool across = std::ranges::any_of(members, [&](std::size_t node) { return node >= local_count; });
+        for (const std::size_t member : members) {
+            group_of[member] = component;
+            crossing[member] = cyclic && across;
+        }
+    }
+    // A cycle through `from`, within its component, as the names it passes.
+    const auto cycle_through = [&](std::size_t from) {
+        std::vector<std::size_t> previous(node_count, node_count);
+        std::vector<std::size_t> pending{from};
+        bool closed = false;
+        std::size_t last = from;
+        for (std::size_t at = 0; at < pending.size() && !closed; ++at) {
+            for (const std::size_t next : edges[pending[at]]) {
+                if (group_of[next] != group_of[from]) {
+                    continue;
+                }
+                if (next == from) {
+                    last = pending[at];
+                    closed = true;
+                    break;
+                }
+                if (previous[next] == node_count) {
+                    previous[next] = pending[at];
+                    pending.push_back(next);
+                }
+            }
+        }
+        std::vector<std::string> path{name_of(from)};
+        for (std::size_t at = last; closed && at != from; at = previous[at]) {
+            path.insert(path.begin() + 1, name_of(at));
+        }
+        path.push_back(name_of(from));
+        std::string text;
+        for (const std::string& name : path) {
+            text += (text.empty() ? "'" : " -> '") + name + "'";
+        }
+        return text;
+    };
+    // Whatever reaches such a cycle rests on a contract no unit can prove.
+    std::vector<std::vector<std::size_t>> reversed(node_count);
+    for (std::size_t node = 0; node < node_count; ++node) {
+        for (const std::size_t next : edges[node]) {
+            reversed[next].push_back(node);
+        }
+    }
+    std::vector<bool> rests_on_cycle = crossing;
+    std::vector<std::size_t> spreading;
+    for (std::size_t node = 0; node < node_count; ++node) {
+        if (crossing[node]) {
+            spreading.push_back(node);
+        }
+    }
+    while (!spreading.empty()) {
+        const std::size_t at = spreading.back();
+        spreading.pop_back();
+        for (const std::size_t before : reversed[at]) {
+            if (!rests_on_cycle[before]) {
+                rests_on_cycle[before] = true;
+                spreading.push_back(before);
+            }
+        }
+    }
+    const std::string cycle_note =
+        "recursion across translation units is not verified: the verified-contract dependency graph may contain "
+        "no cycle that crosses a translation unit, since the measures that make recursion sound are compared only "
+        "within one unit (SPEC.md TUBOUND-008, TERMINATION-007)";
+
     // Contracts of other units, each established here only from an interface
     // that records the statement this unit builds from its own declaration
     // (SPEC.md TUBOUND-003, TUBOUND-004). Every one is checked, called or not: a
     // declaration this unit cannot establish is refused, as a declaration with
     // nothing to discharge it always was.
     for (const vir::Function* function : externals) {
+        if (const auto node = recorded_node.find(function->symbol.usr);
+            node != recorded_node.end() && rests_on_cycle[node->second]) {
+            // The first node on a cycle that this record reaches.
+            std::size_t on_cycle = node->second;
+            std::vector<bool> seen(node_count, false);
+            std::vector<std::size_t> reached{node->second};
+            seen[node->second] = true;
+            for (std::size_t at = 0; at < reached.size() && !crossing[on_cycle]; ++at) {
+                on_cycle = reached[at];
+                for (const std::size_t next : edges[reached[at]]) {
+                    if (!seen[next] && rests_on_cycle[next]) {
+                        seen[next] = true;
+                        reached.push_back(next);
+                    }
+                }
+            }
+            report(engine, Refusal{"verified function '" + function->qualified_name +
+                                       "' is declared but not defined in this translation unit, and the contract '" +
+                                       recorded[node->second - local_count]->origin +
+                                       "' records for it rests on a cycle of verified contracts across units: " +
+                                       cycle_through(on_cycle),
+                                   {cycle_note},
+                                   function->range.begin});
+            continue;
+        }
         auto imported = import_contract(*function, pure_definitions, program, imports);
         if (!imported) {
             report(engine, imported.error());
@@ -2652,85 +2794,18 @@ void generate_contracts(const vir::Module& module, const DefinitionMap& pure_def
         program.contracts.push_back(std::move(*imported));
     }
 
-    // A call to a contract of another unit that rests on a function of this
-    // unit which reaches the caller again recurses through another unit. The
-    // measures that make recursion sound are compared only within one unit, so
-    // such a call is refused (SPEC.md TUBOUND-008). What the imported contract
-    // rests on counts as an edge of this unit's own call graph for the search.
-    const auto depends_on = [&](const std::string& usr) -> const std::vector<artifact::Dependency>* {
-        const auto found = established.find(usr);
-        if (found == established.end() || !program.contracts[found->second].imported.has_value()) {
-            return nullptr;
-        }
-        return &program.contracts[found->second].imported->depends;
-    };
-    std::vector<std::vector<std::size_t>> edges(candidates.size());
-    for (std::size_t position = 0; position < candidates.size(); ++position) {
-        edges[position] = candidates[position].callees;
-        for (const std::string& usr : candidates[position].external) {
-            if (const std::vector<artifact::Dependency>* depends = depends_on(usr)) {
-                for (const artifact::Dependency& dependency : *depends) {
-                    if (const auto local = position_of.find(dependency.symbol); local != position_of.end()) {
-                        edges[position].push_back(local->second);
-                    }
-                }
-            }
-        }
-    }
-    const auto reaches = [&edges](std::size_t from, std::size_t to) {
-        std::vector<bool> seen(edges.size(), false);
-        std::vector<std::size_t> pending{from};
-        seen[from] = true;
-        while (!pending.empty()) {
-            const std::size_t at = pending.back();
-            pending.pop_back();
-            if (at == to) {
-                return true;
-            }
-            for (const std::size_t next : edges[at]) {
-                if (!seen[next]) {
-                    seen[next] = true;
-                    pending.push_back(next);
-                }
-            }
-        }
-        return false;
-    };
     std::set<std::size_t> recursing;
-    for (std::size_t position = 0; position < candidates.size(); ++position) {
-        for (const std::string& usr : candidates[position].external) {
-            const std::vector<artifact::Dependency>* depends = depends_on(usr);
-            if (depends == nullptr) {
-                continue;
-            }
-            const auto back = std::ranges::find_if(*depends, [&](const artifact::Dependency& dependency) {
-                const auto local = position_of.find(dependency.symbol);
-                return local != position_of.end() && reaches(local->second, position);
-            });
-            if (back == depends->end()) {
-                continue;
-            }
-            const vir::Function& function = *candidates[position].function;
-            const vir::Function& callee = *contracts.at(usr);
-            const std::string& returns = candidates[position_of.at(back->symbol)].function->qualified_name;
-            source::SourceLocation at = function.range.begin;
-            for (const vir::Expr* site : candidates[position].calls) {
-                if (std::get<vir::Call>(site->node).callee.usr == usr) {
-                    at = site->provenance.range.begin;
-                    break;
-                }
-            }
-            report(engine,
-                   Refusal{"verified function '" + function.qualified_name + "' calls '" + callee.qualified_name +
-                               "', whose contract another unit proved through '" + returns +
-                               "' of this unit, which reaches '" + function.qualified_name + "' again",
-                           {"recursion across translation units is not verified: the measures that make "
-                            "recursion sound are compared within one unit (SPEC.md TUBOUND-008, "
-                            "TERMINATION-007)"},
-                           at});
-            recursing.insert(position);
-            break;
+    for (std::size_t position = 0; position < local_count; ++position) {
+        if (!crossing[position]) {
+            continue;
         }
+        const vir::Function& function = *candidates[position].function;
+        report(engine, Refusal{"verified function '" + function.qualified_name +
+                                   "' rests on its own contract through a contract of another translation unit: " +
+                                   cycle_through(position),
+                               {cycle_note},
+                               function.range.begin});
+        recursing.insert(position);
     }
 
     const auto ready = [&](const Unit& unit) {

@@ -32,6 +32,7 @@ struct Options {
     // Verification interfaces of other units whose contracts this compile may
     // use, each validated before any of it is believed (SPEC.md TUBOUND-003).
     std::vector<std::string> import_interfaces;
+    bool version = false;           // print what verification results are bound to, and stop
     bool passthrough = false;       // the command does not compile anything
     bool explicit_language = false; // -x was given
     std::string standard;           // -std=..., for reporting

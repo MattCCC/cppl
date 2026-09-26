@@ -1,8 +1,9 @@
-cppl-verification-interface 1
+cppl-verification-interface 2
 compiler 0.0.1
-build 2045b830beb9090694d5730c1cdb8ff6d29e8d60594f5b993185148f2544bd4c
-kernel cppl-kernel-0.7.0
-core cppl-core-0.7.0
+semantics cppl-verification-semantics-0.1.0
+verifier 20f6a49c65e6719a8d147553c7a2fe09310850cc6c6170a35c62aaabf363c4b2
+kernel cppl-kernel-0.8.0
+core cppl-core-0.8.0
 clang clang%20version%2022.1.8
 language c++20
 target x86_64-unknown-linux-gnu
@@ -18,6 +19,7 @@ status refused
 correctness total
 premise 8f1f74adf65864c86d3d471ea8ca9e329d4282489edc156c99604264090774bf 3 /work/src/clamp.cpp bounded
 unsafe 12 5 /work/src/clamp.cpp
+model std::vector
 depends e81d3b0e9d82feaaf5f6e55bdff24731d7eee08632ffa63801e6397290c5d20a c:@F@helper#i#
 end
-checksum cd1f3f43004354875932c60785bce65b68b20169e7ed008a190b6e3b1ac8ec0b
+checksum 961914568312e60c62a913be1d9b06bf5c8d9527e8096427ad11e3bd666a4f7b
