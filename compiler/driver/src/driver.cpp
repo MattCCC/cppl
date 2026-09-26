@@ -318,11 +318,13 @@ std::string reached_through(obligations::ClaimKind kind) {
 }
 
 // A claim proven outright: it rests on no trusted law, on no unsafe code, on
-// no contract of another unit, which only an interface vouches for (SPEC.md
-// TUBOUND-006, TRUST.md 31), and on no standard-library model, whose
-// statements are assumed of the library the program runs with (TRUST.md 28.1).
+// no standard-library model, whose statements are assumed of the library the
+// program runs with (TRUST.md 28.1), and on no contract of another unit, which
+// only an interface nothing authenticates vouches for, however little that
+// contract's own closure holds (SPEC.md TUBOUND-014, TRUST.md TCB-XTU-007).
 bool assumption_free(const obligations::ClaimClosure& claim) {
-    return claim.premises.empty() && claim.unsafe.empty() && claim.imported.empty() && claim.library.empty();
+    return claim.imported.empty() && !obligations::rests_on_trusted_laws(claim) &&
+           !obligations::rests_on_unsafe_code(claim) && !obligations::rests_on_library_models(claim);
 }
 
 std::string written_at(const source::SourceLocation& location) {
@@ -336,12 +338,10 @@ std::string imported_from(const obligations::ImportedDependency& imported) {
            ", entry " + imported.entry.to_short_hex(16);
 }
 
-// What another unit's proof of an imported contract rests on, each kind apart:
-// its trusted laws, its unsafe code, the library models it used, and the
-// contracts of further units it was proven through, so a claim's closure is
-// complete however many units it crosses (SPEC.md TUBOUND-006, TRUST.md
-// TCB-PROV-004). Every text is the interface's, so it is shown escaped (TRUST.md
-// TCB-XTU-010).
+// What another unit's proof of an imported contract rests on, each kind apart,
+// and what it was itself proven through, so a claim's closure is complete
+// however many units it crosses (SPEC.md TUBOUND-006, TRUST.md TCB-PROV-004).
+// Every text is the interface's, so it is shown escaped (TRUST.md TCB-XTU-010).
 void print_depends(const obligations::ImportedDependency& imported) {
     for (const artifact::Premise& premise : imported.premises) {
         std::cout << "      whose proof rests on trusted law " << artifact::displayed(premise.name) << " ("
@@ -474,8 +474,9 @@ void print_trust_report(const Options& options, const Summary& summary) {
         }
     }
     // Every proven claim is enumerable, not only counted: the ones above rest
-    // on trusted laws or unsafe code, and these rest on neither (TRUST.md
-    // 36.1, 36.2).
+    // on trusted laws or unsafe code, and these rest on nothing at all (TRUST.md
+    // 36.1, 36.2). One proven through a contract of another unit is never among
+    // them; it is listed under Interface-dependent claims (SPEC.md TUBOUND-014).
     std::cout << "Assumption-free claims:      " << std::ranges::count_if(summary.claims, assumption_free) << "\n";
     for (const obligations::ClaimClosure& claim : summary.claims) {
         if (assumption_free(claim)) {
@@ -552,7 +553,8 @@ void print_trust_report(const Options& options, const Summary& summary) {
     // A verification interface's integrity is checked; where it came from is
     // not. Every imported record is believed on the build's word alone, so no
     // claim resting on one is assumption-free, and nothing in this report says
-    // an interface is authentic (SPEC.md TUBOUND-005, TRUST.md TCB-XTU-010).
+    // an interface is authentic (SPEC.md TUBOUND-012, TUBOUND-014, TRUST.md
+    // TCB-XTU-010).
     if (summary.imports.empty()) {
         std::cout << "Interface provenance:        no verification interface was imported\n";
     } else {

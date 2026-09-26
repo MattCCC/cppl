@@ -2531,19 +2531,20 @@ producing unit, --cppl-emit-interface=<file>
                 unit's numbering, and a restatement identity with the measure
                 itself for TU-003 (obligations/src/interface.cpp)
   trust         close_trust gives each proven contract its closure: trusted
-                laws, library models, unsafe blocks, and the imported contracts
-                it rests on, each category apart
+                laws, library models, unsafe blocks, runtime validation sites,
+                and the imported contracts it rests on
   obligations   exported_contracts turns each proven contract's closure into an
-                interface entry, carrying on what imported contracts rest on; a
-                library model becomes a `model` item, an identity and a name
-                (library_model), so the format names no model itself
+                interface entry, each category apart, carrying on what imported
+                contracts rest on; a library model becomes a `model` item, an
+                identity and a name (library_model), so the format names no model
+                itself, and a runtime validation site a `runtime` item
   driver        after the object is produced, binds the entries to the
                 compiler version, the verification semantics version, the
                 verifier semantics digest, kernel, core, Clang, language mode,
                 target and the digest of every file the unit was preprocessed
                 from, records the executable digest for audit, and writes the
-                canonical text (compiler/artifact) atomically; a unit that fails
-                removes an interface it left before
+                canonical text (compiler/artifact, format version 3) atomically;
+                a unit that fails removes an interface it left before
 build           cmake/ComputeVerifierSemantics.cmake digests every source of the
                 semantic components cmake/VerifierSemanticsSources.cmake lists
                 into a generated header the driver reads, when the project is
@@ -2552,15 +2553,11 @@ build           cmake/ComputeVerifierSemantics.cmake digests every source of the
                 not (tests/architecture/verifier_semantics.sh)
 consuming unit, --cppl-import-interface=<file>...
   driver        reads each file strictly (compiler/artifact: canonical text,
-                bounded, integrity-checked), refuses one of another
-                configuration or verification semantics or a stale one, refuses
-                records of one function with different verification-result
-                identities and records whose dependencies are not imported with
-                the identities they were proven against
-                (driver/src/interface_io.cpp)
-  obligations   generate_contracts refuses every function and record on, or
-                reaching, a cycle of the verified-contract dependency graph that
-                includes an imported record (TUBOUND-008)
+                bounded, checksummed, of format version 3), refuses one of
+                another configuration or a stale one, one naming a library model
+                this compiler does not have (is_library_model), conflicting
+                records of one function and records whose dependencies are not
+                imported as proven against (driver/src/interface_io.cpp)
   elaboration   a verified function declared and not defined, with external
                 linkage, is vir::Function::defined_elsewhere; its contract is
                 elaborated from this unit's own declaration
@@ -2571,12 +2568,13 @@ consuming unit, --cppl-import-interface=<file>...
                 established; every condition that supposes it is still checked
                 by the kernel
   trust         the imported contract is no claim of this unit; each claim
-                through it carries it and what its record rests on, its models
-                included
-  driver        the trust report lists imported contracts with their closures
-                and every claim that is interface-dependent, never as
-                assumption-free, and states that interface provenance is
-                unauthenticated
+                through it carries it and what its record rests on, each
+                category apart, its models and runtime validation sites included
+  driver        the trust report lists imported contracts with what each one's
+                proof rested on, and every claim that is interface-dependent with
+                the records it rests on and their interfaces; no such claim is
+                assumption-free, and the report states that interface provenance
+                is unauthenticated (SPEC.md TUBOUND-014)
 ```
 
 The artifact component depends on the source system alone, so its reader is

@@ -112,15 +112,15 @@ for standard in c++20 c++23; do
     done
 done
 
-# SPEC: STDMODEL-018, TUBOUND-002, TUBOUND-006
+# SPEC: STDMODEL-018, TUBOUND-002, TUBOUND-006, TUBOUND-012, TUBOUND-014
 # Container contracts cross translation units through a verification interface.
-# A claim proven through one rests on the imported contract and is never
-# assumption-free, and it names every model the other unit's proof used: in
-# the imported declaration, and in the other unit's body, which the interface
-# records with the contract and every unit after it carries on, apart from
-# trusted laws and unsafe code (TRUST.md TCB-LIB-010). `three_listed` and
-# `three_counted` differ only in whether the body uses a container, and so do
-# the claims proven through them.
+# A claim proven through one rests on the imported contract, so it is never free
+# of assumptions, and it names every model the other unit's proof used: in the
+# imported declaration, and in the other unit's body, which the interface
+# records with the contract and every unit after it carries on (TRUST.md
+# TCB-LIB-010). `three_listed` and `three_counted` differ only in whether the
+# body uses a container, and so do the claims proven through them. The report
+# states that the interfaces' provenance is unauthenticated.
 units="$run/units"
 mkdir -p "$units"
 cp "$FIXTURES/cross_tu/sequences.hpp" "$FIXTURES/cross_tu/sequences.cpp" "$FIXTURES/cross_tu/sequences_client.cpp" \
@@ -151,7 +151,7 @@ recorded_models() {
     { echo "the middle unit did not carry on the model its import rested on" >&2; exit 1; }
 for line in 'Function contracts proven: +4' 'Function contracts imported: +4' 'Assumption-free claims: +0' \
     'Library-model-dependent claims: 3' '      whose proof rests on the std::vector model' \
-    'Interface provenance: +unauthenticated; 4 imported contracts are believed on the build.s word.*'; do
+    "Interface provenance: +unauthenticated; 4 imported contracts are believed on the build's word.*"; do
     grep -Eq "^$line\$" "$units/client.report" || {
         echo "the client does not report '$line'" >&2
         cat "$units/client.report" >&2
@@ -172,6 +172,17 @@ if grep -q 'through_counted' "$units/models.listed"; then
     echo "a claim whose callee's proof used no model was listed as resting on one" >&2
     exit 1
 fi
+# SPEC: TUBOUND-006, TUBOUND-014 -- that claim rests on the record alone, which
+# it names, and like every claim through a record is not free of assumptions.
+sed -n '/^Interface-dependent claims:/,/^Interface provenance:/p' "$units/client.report" > "$units/interfaced.listed"
+for listed in '^  contract of through_counted ' \
+    '^    rests on the contract of three_counted \[c:@F@three_counted#\], imported from sequences\.cppli, entry [0-9a-f]{16}, called in its own body$'; do
+    grep -Eq "$listed" "$units/interfaced.listed" || {
+        echo "the client does not list '$listed' resting on its record" >&2
+        cat "$units/interfaced.listed" >&2
+        exit 1
+    }
+done
 if [ "$("$units/program")" != "3 3 3 3" ]; then
     echo "the program built from three units printed '$("$units/program")'" >&2
     exit 1

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# SPEC: TUBOUND-002, TUBOUND-003, TUBOUND-004, TUBOUND-006, TUBOUND-007, TUBOUND-009, TU-002, TU-003, TUBOUND-001, ABI-001, ERASE-010
-# TRUST.md TCB-XTU-001, TCB-XTU-002, TCB-PROV-004, TCB-REPORT-005
+# SPEC: TUBOUND-002, TUBOUND-003, TUBOUND-004, TUBOUND-006, TUBOUND-007, TUBOUND-009, TUBOUND-012, TUBOUND-014, TU-002, TU-003, TUBOUND-001, ABI-001, ERASE-010
+# TRUST.md TCB-XTU-001, TCB-XTU-002, TCB-XTU-007, TCB-XTU-010, TCB-PROV-004, TCB-REPORT-005
 #
 # Contracts proven in one translation unit, used in others through the
 # verification interface the proving unit writes (RFC 0017).
@@ -15,9 +15,13 @@
 #     function with internal linkage is not recorded;
 #   - the same unit compiled twice writes the same bytes;
 #   - the client's contracts are proven from the recorded ones, and each is
-#     reported resting on what the recorded proof rests on, so none that uses
-#     another unit is listed as assumption-free, a trusted law and an unsafe
-#     block of library are named, and totality crosses as recorded;
+#     reported resting on the records it was proven through, each listed with
+#     its interface, and on what the recorded proofs rest on: a trusted law and
+#     an unsafe block of library are named, no claim through a record is free
+#     of assumptions, the report states that interface provenance is
+#     unauthenticated, and totality crosses as recorded;
+#   - the closure units: a claim inherits exactly the trusted laws, models and
+#     unsafe blocks of every record it rests on, however many units away;
 #   - the three objects link and run;
 #   - library and client compile to exactly the code of their erasures written
 #     by hand, and each links with the other's plain C++, so an interface
@@ -97,12 +101,32 @@ for standard in c++17 c++20 c++23; do
     grep -Eq '^Unresolved obligations: +0$' "$report"
     grep -Eq '^Call preconditions proven: +6$' "$report"
 
-    # SPEC: TUBOUND-006 -- only `own` rests on nothing of another unit, directly
-    # or through a verified call it makes.
+    # SPEC: TUBOUND-006, TUBOUND-014 -- only `own`, which rests on nothing of
+    # another unit, is free of assumptions. Every other claim rests on the
+    # records it was proven through, and is listed with each of them and the
+    # interface it came from, directly or through a verified call it makes, and
+    # with a record the middle unit's rests on; however little a record itself
+    # rests on, a claim through it is never assumption-free.
     sed -n '/^Assumption-free claims:/,/^Unused trusted laws:/p' "$report" > free.listed
-    grep -Eq '^Assumption-free claims: +1$' free.listed
-    grep -q 'contract of own ' free.listed
+    grep -Eq '^Assumption-free claims: +1$' free.listed ||
+        fail "a claim resting on another unit's record was listed free of assumptions ($standard)"
+    grep -q '^  contract of own ' free.listed || fail "own was not listed free of assumptions"
     grep -Eq '^Interface-dependent claims: +11$' "$report"
+    sed -n '/^Interface-dependent claims:/,/^Interface provenance:/p' "$report" > interfaced.listed
+    if grep -q '^  contract of own ' interfaced.listed; then
+        fail "own was listed resting on another unit"
+    fi
+    grep -Eq '^    rests on the contract of clamp4 \[c:@F@clamp4#i#\], imported from library-c\+\+[0-9]+\.cppli, entry [0-9a-f]{16}, called in its own body$' \
+        interfaced.listed
+    grep -Eq '^    rests on the contract of clamp4 \[c:@F@clamp4#i#\], imported from library-c\+\+[0-9]+\.cppli, entry [0-9a-f]{16}, through a verified call it makes$' \
+        interfaced.listed
+    grep -Eq '^    rests on the contract of doubled \[c:@F@doubled#i#\], imported from middle-c\+\+[0-9]+\.cppli, entry [0-9a-f]{16}, called in its own body$' \
+        interfaced.listed
+    grep -Eq '^      which rests on the contract of \[c:@F@clamp4#i#\], entry [0-9a-f]{16}$' interfaced.listed
+    # SPEC: TUBOUND-012 -- nothing authenticates an interface, and the report
+    # says so whenever one was imported.
+    grep -Eq "^Interface provenance: +unauthenticated; 11 imported contracts are believed on the build's word" "$report" ||
+        fail "the report does not state that interface provenance is unauthenticated"
     sed -n '/contract of via_local /,/^  contract of /p' "$report" > via_local.listed
     grep -Eq 'rests on the contract of clamp4 \[c:@F@clamp4#i#\], imported from library-c\+\+[0-9]+\.cppli, entry [0-9a-f]{16}, through a verified call it makes' \
         via_local.listed
@@ -171,6 +195,64 @@ for standard in c++17 c++20 c++23; do
     [ "$("./mixed-client-$standard")" = "$expected" ] || fail "the C++L client ran differently on plain C++"
     [ "$("./mixed-library-$standard")" = "$expected" ] || fail "the plain client ran differently on C++L"
 done
+
+# SPEC: TUBOUND-006, TUBOUND-014 -- a claim through a contract of another unit
+# inherits exactly that contract's recorded closure, and is never free of
+# assumptions: the claims through `plain`, directly and through the middle unit,
+# rest on the records alone, listed with the interfaces they came from, and on
+# no trusted law, model or unsafe block; the claims through a callee resting on
+# a trusted law, a library model or an unsafe block rest on it too, carried
+# however many units away. Each pair differs only in the callee.
+closure="$run/closure"
+mkdir -p "$closure"
+cp closure.hpp closure.cpp closure_middle.hpp closure_middle.cpp closure_client.cpp "$closure/"
+(
+    cd "$closure"
+    "$CPPL" -std=c++20 -c closure.cpp -o closure.o --cppl-emit-interface=closure.cppli
+    "$CPPL" -std=c++20 -c closure_middle.cpp -o middle.o --cppl-import-interface=closure.cppli \
+        --cppl-emit-interface=middle.cppli
+    "$CPPL" -std=c++20 -c closure_client.cpp -o client.o --cppl-import-interface=closure.cppli \
+        --cppl-import-interface=middle.cppli --cppl-trust-report > client.report
+    "$CLANG" closure.o middle.o client.o -o program
+)
+closure_report="$closure/client.report"
+listed() {
+    grep -Eq "$1" "$2" || { cat "$2" >&2; fail "$2 does not state: $1"; }
+}
+sed -n '/^Assumption-free claims:/,/^Unused trusted laws:/p' "$closure_report" > "$closure/free.listed"
+listed '^Assumption-free claims: +0$' "$closure/free.listed"
+sed -n '/^Interface-dependent claims:/,/^Interface provenance:/p' "$closure_report" > "$closure/interfaced.listed"
+listed '^  contract of through_plain ' "$closure/interfaced.listed"
+listed '^    rests on the contract of plain \[c:@F@plain#i#\], imported from closure\.cppli, entry [0-9a-f]{16}, called in its own body$' \
+    "$closure/interfaced.listed"
+listed '^  contract of through_relayed_plain ' "$closure/interfaced.listed"
+listed '^    rests on the contract of relayed_plain \[c:@F@relayed_plain#i#\], imported from middle\.cppli, entry [0-9a-f]{16}, called in its own body$' \
+    "$closure/interfaced.listed"
+listed '^      which rests on the contract of \[c:@F@plain#i#\], entry [0-9a-f]{16}$' "$closure/interfaced.listed"
+# The records of `plain` rest on nothing trusted, so neither claim through one
+# is in any list of what a record carries.
+for section in 'Trust-dependent claims:/,/^Unsafe-dependent claims:' 'Unsafe-dependent claims:/,/^Assumption-free claims:' \
+    'Library-model-dependent claims:/,/^$'; do
+    if sed -n "/^$section/p" "$closure_report" | grep -Eq '^  contract of through_(relayed_)?plain '; then
+        fail "a claim through a record resting on nothing trusted was listed resting on an assumption"
+    fi
+done
+sed -n '/^Trust-dependent claims:/,/^Unsafe-dependent claims:/p' "$closure_report" > "$closure/trusted.listed"
+listed '^Trust-dependent claims: +2$' "$closure/trusted.listed"
+listed 'rests on counter_broken \(.*closure\.cpp:[0-9]+\), identity [0-9a-f]{16}, through the imported contract of trusting ' \
+    "$closure/trusted.listed"
+listed 'rests on counter_broken \(.*closure\.cpp:[0-9]+\), identity [0-9a-f]{16}, through the imported contract of relayed_trusting ' \
+    "$closure/trusted.listed"
+sed -n '/^Unsafe-dependent claims:/,/^Assumption-free claims:/p' "$closure_report" > "$closure/unsafe.listed"
+listed '^Unsafe-dependent claims: +2$' "$closure/unsafe.listed"
+listed 'through the imported contract of unsafe_read ' "$closure/unsafe.listed"
+listed 'through the imported contract of relayed_unsafe ' "$closure/unsafe.listed"
+sed -n '/^Library-model-dependent claims:/,/^$/p' "$closure_report" > "$closure/models.listed"
+listed '^Library-model-dependent claims: 1$' "$closure/models.listed"
+listed '^    rests on the std::vector model, identity [0-9a-f]{16}, through the imported contract of modeled ' \
+    "$closure/models.listed"
+listed '^Interface-dependent claims: +7$' "$closure_report"
+[ "$("$closure/program")" = '2 2 2 42 4 4 42' ] || fail "the closure units ran differently"
 
 echo "contracts cross translation units through verification interfaces in c++17, c++20 and c++23," \
      "with their trust closure, and change nothing that runs"

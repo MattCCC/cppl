@@ -836,8 +836,9 @@ recording different verification-result identities for one function, and a
 record whose own dependencies are not imported with the identities they were
 proven with. A claim resting on an
 imported contract is PROVEN relative to that record and reported with it and
-with everything its proof rested on, transitively; it is never listed as
-assumption-free. Totality crosses as recorded, and a cycle of verified contracts
+with everything its proof rested on, transitively, every category complete and
+mutation-checked at each step (`TRUST.md` TCB-XTU-011); it is never listed as
+assumption-free, however little its records rest on. Totality crosses as recorded, and a cycle of verified contracts
 that crosses a unit is refused wherever it lies. Nothing here re-checks another
 unit's proof: the interface and its provenance are artifact and reuse TCB
 (`TRUST.md` 31.1), the integrity digest is unauthenticated, and a deliberately

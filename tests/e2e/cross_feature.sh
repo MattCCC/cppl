@@ -52,7 +52,20 @@ for standard in c++20 c++23; do
         --cppl-trust-report > "client-$standard.report"
     report="client-$standard.report"
     reports "$report" '^Function contracts proven: +7$' '^Function contracts imported: +7$' \
-        '^Unresolved obligations: +0$' '^Assumption-free claims: +0$' '^Interface-dependent claims: +6$'
+        '^Unresolved obligations: +0$' '^Interface-dependent claims: +6$'
+    # SPEC: TUBOUND-006, TUBOUND-014 -- signed arithmetic through another unit's
+    # member function rests on its record alone, listed with it, and on no
+    # trusted law, model or unsafe block; resting on a record, it is never free
+    # of assumptions.
+    sed -n '/^Assumption-free claims:/,/^Unused trusted laws:/p' "$report" > "free-$standard.listed"
+    reports "free-$standard.listed" '^Assumption-free claims: +0$'
+    sed -n '/^Interface-dependent claims:/,/^Interface provenance:/p' "$report" > "interfaced-$standard.listed"
+    reports "interfaced-$standard.listed" '^  contract of moved_twice ' \
+        '^    rests on the contract of Cursor::moved \[.*\], imported from buffers-c\+\+[0-9]+\.cppli, entry [0-9a-f]{16}, called in its own body$'
+    sed -n '/^Trust-dependent claims:/,/^Assumption-free claims:/p' "$report" > "trusted-$standard.listed"
+    if grep -q '^  contract of moved_twice ' "trusted-$standard.listed"; then
+        fail "moved_twice rests on no trusted law or unsafe block, and was listed resting on one"
+    fi
 
     # SPEC: TUBOUND-006 -- the unsafe block of another unit's member function.
     sed -n '/^Unsafe-dependent claims:/,/^Assumption-free claims:/p' "$report" > "unsafe-$standard.listed"

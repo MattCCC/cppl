@@ -11,17 +11,20 @@ summary: >
   A unit that verifies may record, in a verification interface, each contract it
   proved for a function with external linkage: its USR, a canonical identity of
   what the contract states, whether it is total, and, each category apart, the
-  trusted laws, library models, unsafe blocks and contracts of other units its
-  proof rests on, under a verification-result identity covering all of it. A unit that declares
-  the function without defining it relies on the contract only when it imports
-  an interface recording that same function and that same statement, rebuilt
-  from its own declaration; an interface that is malformed, of another version
-  or verification semantics, or stale is refused whole, conflicting records and
-  records whose dependencies are not imported with the identities they were
-  proven with are refused, and a cycle of verified contracts that crosses a unit
-  is refused with everything that reaches it. A claim resting on an imported contract carries it
-  and what it rests on, and is never assumption-free. No evidence crosses: the
-  interface is artifact and reuse TCB. The interface reaches no object.
+  trusted laws, library models, unsafe blocks, runtime validation sites and
+  contracts of other units its proof rests on. A unit that declares the function
+  without defining it relies on the contract only when it imports an interface
+  recording that same function and that same statement, rebuilt from its own
+  declaration; an interface that is malformed, of another format version,
+  compiler release, semantics or configuration, naming a model this compiler
+  does not have, or stale is refused whole, conflicting records and records
+  whose dependencies are not imported as proven are refused, and a cycle of
+  verified contracts crossing a unit is refused. A claim resting on an imported
+  contract carries it as an external verified dependency, with everything its
+  record rests on, and is never assumption-free: the record is believed on the
+  provenance of an interface nothing authenticates, which the report states.
+  The closure crosses complete. No evidence crosses: the interface is artifact
+  and reuse TCB. The interface reaches no object.
 
 normative_sources:
   spec:
@@ -103,7 +106,8 @@ interactions:
   - reference parameters and their post-state
   - memory capabilities owed at calls
   - measures and totality
-  - trusted laws and unsafe blocks of the other unit
+  - trusted laws, library models, unsafe blocks and runtime validation sites of the other unit
+  - no claim through a record assumption-free, and interface provenance stated as unauthenticated
   - overloads and explicit template specializations
   - chains of units
   - repeated verified declarations in one unit
@@ -120,9 +124,20 @@ tests:
     - tests/fixtures/cross_tu/identity.hpp
     - tests/fixtures/cross_tu/identity.cpp
     - tests/fixtures/cross_tu/identity_client.cpp
+    - tests/fixtures/cross_tu/closure.hpp
+    - tests/fixtures/cross_tu/closure.cpp
+    - tests/fixtures/cross_tu/closure_middle.hpp
+    - tests/fixtures/cross_tu/closure_middle.cpp
+    - tests/fixtures/cross_tu/closure_client.cpp
+    - tests/fixtures/cross_tu/ranked.hpp
+    - tests/fixtures/cross_tu/ranked.cpp
+    - tests/fixtures/negative/xtu_other_measure.cpp
   negative:
     - tests/fixtures/negative/xtu_transitive_differs.cpp
     - tests/fixtures/negative/xtu_measure_unrequested.cpp
+    - tests/fixtures/negative/xtu_partial_request.cpp
+    - tests/fixtures/negative/xtu_total_request.cpp
+    - tests/fixtures/negative/xtu_changed_pure_definition.cpp
     - tests/negative/cross_tu.sh
     - tests/fixtures/negative/xtu_false_postcondition.cpp
     - tests/fixtures/negative/xtu_missing_precondition.cpp
@@ -144,6 +159,7 @@ tests:
     - tests/fixtures/negative/xtu_status_refused.cppli
     - tests/fixtures/negative/xtu_other_version.cppli
     - tests/fixtures/negative/xtu_format_v1.cppli
+    - tests/fixtures/negative/xtu_format_v2.cppli
     - tests/fixtures/negative/xtu_other_semantics.cppli
   unit:
     - tests/unit/interface_test.cpp
@@ -163,10 +179,13 @@ required_test_categories:
   - a record identified by meaning: rewording keeps dependents, another result breaks them
   - declaration without a record refused
   - stronger and weaker declared contracts refused
-  - malformed, truncated, altered, other version, other semantics version, other verifier semantics digest, other mode, stale
-  - another build or release, touched sources and a moved interface still used
+  - malformed, truncated, altered, an earlier or later format version, another compiler release, other semantics version, other verifier semantics digest, other mode, stale
+  - a library model this compiler does not have refused
+  - another build of the same release, touched sources and a moved interface still used
   - the verifier semantics digest follows every semantic source and nothing else, and every source is classified
   - trust closure through the imported contract, a local call and a third unit
+  - no claim through a record assumption-free, a forged record included, with the records listed and interface provenance stated as unauthenticated; matched twins through a trusted law, a model and an unsafe block, direct and relayed
+  - closure completeness, each category withheld from the export, the carrying and the import
   - totality as recorded; a partial record of a measured function refused
   - recursion across units refused
   - chains need every interface; conflicting records refused
@@ -178,4 +197,5 @@ completion_requires:
   - a record is used only for the same function and the same statement
   - any doubt about an interface refuses it
   - every claim through a record reports it and what it rests on
+  - a claim through a record is never assumption-free, and its complete inherited closure is reported, each category apart
   - interfaces change no object and no ABI

@@ -1107,6 +1107,25 @@ Native ABI does not carry all proof metadata. Sound modular verification therefo
 
 This implementation carries contracts across translation units through a verification interface each unit may write (`--cppl-emit-interface`) and others may import (`--cppl-import-interface`), as `SPEC.md` Annex L.2.1 (TUBOUND-002 to TUBOUND-009) and RFC 0017 define. No evidence crosses: an interface records *that* a unit proved a contract, not a proof term to re-check. The trust this adds is therefore artifact and reuse TCB (2.5), stated here in full.
 
+Three questions of trust arise, and each has its own answer:
+
+```text
+the interface's bytes        untrusted parser input: read only as the compiler
+                             writes it, and refused whole otherwise
+                             (TUBOUND-005)
+the interface's provenance   a trusted build input of the reuse TCB: that the
+                             unit it names wrote it, having proven what it
+                             records, is believed and not authenticated
+                             (TCB-XTU-010)
+an imported PROVEN contract  an external verified dependency, not a logical
+                             trusted assumption: a claim resting on it inherits
+                             what its recorded closure rests on, and lists it
+                             with the interface it came from (TUBOUND-006,
+                             TCB-XTU-007)
+```
+
+A claim proven through imported contracts whose recorded closures rest on no trusted law, library model or unsafe block is therefore listed under `Assumption-free claims`, each such contract under it as an `external verified dependency` with its interface and record identity; it is never shown as a proof of its own unit alone. That is sound only while every closure is carried complete (TCB-XTU-011), and honest only with the provenance stated: a deliberately edited interface whose checksum is recomputed can make such a claim appear free of assumptions, which is why the interface is named under it.
+
 What the consuming unit does not have to believe, because it checks it itself:
 
 ```text
@@ -1181,6 +1200,8 @@ runtime validation site     a runtime check a proof took a refinement from
 **[TCB-XTU-009]** A record MUST be usable only while every record it rests on is imported with the identity it had when the dependent proof was made, and two records of one function that differ MUST make both unusable, as an error naming both interfaces. Staleness therefore propagates along the dependency chain rather than stopping at the unit that changed. The identity is by meaning (`artifact::identify`): the callable, the semantic statement identity, the totality, and by identity each trusted law, model, unsafe block, runtime validation site and further record the result rests on. A record's name, its contract's description, the names and locations its assumptions are reported with and the predicate a runtime check established are provenance, excluded, so rewording them changes no dependent's standing and cannot be used to make two different results look alike either.
 
 **[TCB-XTU-010]** Interface provenance is in the trusted computing base of every claim resting on an imported contract. The integrity digest an interface carries is unauthenticated: it detects a change after which it was not recomputed, and nothing else. A party able to replace an interface and recompute its digest is outside what it detects, and can make a caller assume a contract that was never proven. Such an edit can never make that contract kernel-checked, and every claim resting on it is reported as resting on that record, in the `Interface-dependent claims` it is listed under, never among the assumption-free (TCB-XTU-007, TCB-ARTIFACT-003). What such a record says of itself cannot rewrite that report either: every text read from an interface, a law's or a model's name, a file, a symbol, a contract's description, is shown in the trust report and in diagnostics with each byte outside printable ASCII escaped (`artifact::displayed`), so a name holding a newline cannot add a line of its own. Authenticating interfaces, or transporting evidence to re-check, is left to a later design (RFC 0017); until one exists no C++L report claims an interface is authentic.
+
+**[TCB-XTU-011]** The closure a record carries MUST be complete. Every category of trust-reportable dependency a claim of the producing unit rests on, its trusted laws, library models, unsafe blocks and runtime validation sites and the further records it was proven through, with everything those records carry, is written into its record (`exported_contracts` in `compiler/obligations/src/interface.cpp`), read back into the consuming unit's closure (`import_contract` and `close_trust`) and written again into that unit's own records. What a report says a claim through an imported contract rests on is only as complete as this, which is part of the reporting TCB: a category dropped anywhere on that path would make a claim resting on an assumption look free of it. Each category is checked on its own, withheld from the export, from what is carried on and from the import, by the mutation tests `xtu-laws-exported`, `xtu-unsafe-exported`, `xtu-models-exported`, `xtu-dependency-exported`, `xtu-laws-carried`, `xtu-unsafe-carried`, `xtu-models-carried`, `xtu-dependencies-carried`, `xtu-laws-imported`, `xtu-unsafe-imported`, `xtu-models-imported`, `runtime-check-exported`, `runtime-check-carried-on` and `runtime-check-imported-closure`, against callees alike but for a trusted law, a library model, an unsafe block or a runtime check, each used directly and through a third unit (`tests/fixtures/cross_tu/closure*.cpp`, `tests/fixtures/runtime_validation_cross_tu/`, `tests/e2e/cross_tu.sh`, `tests/e2e/runtime_validation.sh`), and a record resting on one of each (`tests/unit/cross_unit_contracts_test.cpp`). This implementation has no other dependency a claim can rest on and a report can name: a memory trusted law is never a premise of a contract, since no statement can use a memory proposition, and is reported unused, a call to a function no contract describes is refused rather than assumed, and whether a contract is total crosses as recorded (TUBOUND-007).
 
 TCB delta of this feature: no kernel rule, no axiom, no term or proposition former, no change to what the kernel accepts. The artifact and reuse TCB grows by the components listed above, interface provenance among them; the reporting TCB grows by the imported-closure propagation in `close_trust` and its report.
 

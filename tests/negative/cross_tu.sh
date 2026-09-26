@@ -233,10 +233,15 @@ cmp -s library.cppli edited.cppli && fail "the edit changed nothing"
 refuse edited_artifact "cannot use verification interface 'edited.cppli': it is corrupt" \
     client.cpp --cppl-import-interface=edited.cppli --cppl-import-interface=middle.cppli
 
-# SPEC: TUBOUND-006 -- the honest limit of an interface: an edit whose checksum
-# is recomputed is not detected, since nothing here re-checks another unit's
-# proof. What rests on it is still reported resting on that record, never as
-# proven outright (TRUST.md TCB-XTU-005, RFC 0017 "Safety").
+# SPEC: TUBOUND-006, TUBOUND-012, TUBOUND-014 -- the honest limit of an
+# interface: an edit whose checksum is recomputed is not detected, since nothing
+# here re-checks another unit's proof, and interface provenance is a trusted
+# build input (TRUST.md 31.1). The claim resting on the forged record is never
+# free of assumptions, though the record rests on nothing trusted: the record,
+# the interface it came from and its identity are listed under it among the
+# interface-dependent claims, and the report states that the interfaces'
+# provenance is unauthenticated (TRUST.md TCB-XTU-007, TCB-XTU-010, RFC 0017
+# "Safety").
 sed '$d' edited.cppli > forged.body
 { cat forged.body; printf 'checksum %s\n' "$(sha256 < forged.body)"; } > forged.cppli
 if ! "$CPPL" -std=c++17 -I "$run" -c "$NEGATIVE/xtu_partial_callee.cpp" -o forged.o \
@@ -245,9 +250,15 @@ if ! "$CPPL" -std=c++17 -I "$run" -c "$NEGATIVE/xtu_partial_callee.cpp" -o forge
     cat forged.err >&2
     fail "a forged record with a recomputed checksum was not accepted, so this check tests nothing"
 fi
-grep -Eq '^Assumption-free claims: +0$' forged.report || fail "a claim resting on a forged record was assumption-free"
+grep -Eq '^Assumption-free claims: +0$' forged.report ||
+    { cat forged.report >&2; fail "a claim resting on a forged record was assumption-free"; }
 grep -Eq '^Interface-dependent claims: +1$' forged.report
-grep -q 'rests on the contract of count_up \[c:@F@count_up#i#\], imported from forged.cppli' forged.report
+sed -n '/^Interface-dependent claims:/,/^Interface provenance:/p' forged.report > forged.interfaced
+grep -A1 '^  contract of counted ' forged.interfaced > forged.counted
+grep -Eq '^    rests on the contract of count_up \[c:@F@count_up#i#\], imported from forged\.cppli, entry [0-9a-f]{16}, called in its own body$' \
+    forged.counted || { cat forged.report >&2; fail "a claim resting on a forged record was shown as a proof of its own unit"; }
+grep -Eq "^Interface provenance: +unauthenticated; [0-9]+ imported contracts are believed on the build's word" forged.report ||
+    { cat forged.report >&2; fail "the report does not state that interface provenance is unauthenticated"; }
 
 # SPEC: TUBOUND-005, TUBOUND-006 -- a name a forged record carries is shown with
 # its newline escaped, so it cannot add a line to the report that names it. The

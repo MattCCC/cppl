@@ -31,6 +31,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -443,6 +444,67 @@ CPPL_TEST(a_model_a_body_uses_is_recorded_with_its_contract) {
     CPPL_CHECK(uses_entry->models ==
                std::vector<artifact::Model>{o::library_model(cppl::source::RepresentationKind::String)});
     CPPL_CHECK(plain_entry->models.empty());
+}
+
+// The exported closure is complete: everything a record says its proof rests
+// on, each category on its own, is carried into the record of a contract
+// proven through it, so a unit further on sees it however many units away,
+// and a claim through that contract is free of assumptions only when none is
+// there. The pair differs only in what the callee's record rests on.
+//
+// SPEC: TUBOUND-006, TUBOUND-009
+CPPL_TEST(a_record_carries_every_category_of_what_the_record_it_rests_on_rests_on) {
+    const std::string callee = "c:@F@callee#i#";
+    const std::string caller = "c:@F@caller#i#";
+    const auto through = [&](artifact::Entry recorded) {
+        recorded.symbol = callee;
+        recorded.name = callee;
+        recorded.statement = statement_of({});
+        recorded.contract = "recorded";
+        recorded.correctness = artifact::Correctness::Total;
+        const cppl::source::Digest identity = artifact::identify(recorded);
+        o::Imports imports;
+        imports.entries.push_back(o::ImportedEntry{"other.cppli", recorded, identity});
+        Generated generated = generate(
+            {function(0, callee, std::nullopt), function(1, caller, call(callee, parameter(0, "x"), 7))}, imports);
+        CPPL_CHECK(!generated.engine.has_errors());
+        cppl::diagnostics::Engine verified;
+        const std::vector<o::ObligationResult> results = cppl::automation::verify(generated.program, verified);
+        const o::TrustClosure closure =
+            o::close_trust(generated.program, results, cppl::automation::classify_crossings(generated.program));
+        CPPL_CHECK(closure.faults.empty());
+        const auto claim = std::ranges::find(closure.claims, caller, &o::ClaimClosure::symbol);
+        CPPL_CHECK(claim != closure.claims.end());
+        const bool assumed =
+            o::rests_on_trusted_laws(*claim) || o::rests_on_library_models(*claim) || o::rests_on_unsafe_code(*claim);
+        const std::vector<artifact::Entry> exported = o::exported_contracts(generated.program, closure);
+        const auto entry = std::ranges::find(exported, caller, &artifact::Entry::symbol);
+        CPPL_CHECK(entry != exported.end());
+        return std::tuple{assumed, *entry, identity};
+    };
+
+    const artifact::Premise law{cppl::source::hash_bytes("law"), "law", "other.cpp", 3};
+    const artifact::Model model = o::library_model(cppl::source::RepresentationKind::Vector);
+    const artifact::UnsafeBlock block{"other.cpp", 9, 5};
+    const artifact::Dependency further{"c:@F@further#i#", cppl::source::hash_bytes("further")};
+    artifact::Entry resting;
+    resting.premises = {law};
+    resting.models = {model};
+    resting.unsafe = {block};
+    resting.depends = {further};
+    const auto [assumed, carried, identity] = through(resting);
+    CPPL_CHECK(assumed);
+    CPPL_CHECK(carried.premises == std::vector<artifact::Premise>{law});
+    CPPL_CHECK(carried.models == std::vector<artifact::Model>{model});
+    CPPL_CHECK(carried.unsafe == std::vector<artifact::UnsafeBlock>{block});
+    CPPL_CHECK(std::ranges::find(carried.depends, artifact::Dependency{callee, identity}) != carried.depends.end());
+    CPPL_CHECK(std::ranges::find(carried.depends, further) != carried.depends.end());
+
+    const auto [assumed_plain, plain, plain_identity] = through({});
+    CPPL_CHECK(!assumed_plain);
+    CPPL_CHECK(plain.premises.empty() && plain.models.empty() && plain.unsafe.empty());
+    const std::vector<artifact::Dependency> only_callee{artifact::Dependency{callee, plain_identity}};
+    CPPL_CHECK(plain.depends == only_callee);
 }
 
 namespace {

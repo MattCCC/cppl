@@ -516,8 +516,8 @@ Normative sources: `TUBOUND-001`–`TUBOUND-014` (SPEC Annex L.1, L.2.1),
 | elaboration | A verified declaration without a definition and with external linkage is `defined_elsewhere` and states its contract; a declaration-only template specialization is refused; each repeated `verified` declaration's contract is read (`redeclared_contracts`). | `compiler/elaboration/src/elaborate.cpp` |
 | obligations | The canonical statement identity; restatements compared (TU-003); an external contract established only from a record with the same statement (`import_contract`); a partial record of a measured function refused; recursion through another unit refused; totality as recorded; entries exported with their closure. | `compiler/obligations/src/interface.cpp`, `compiler/obligations/src/contracts.cpp` |
 | automation | An imported contract is established without an obligation of this unit. | `compiler/automation/src/composition.cpp` (`Composition::established`) |
-| trust closure | Imported contracts are no claim; every claim carries the imported contracts it rests on, transitively, with their premises and unsafe blocks. | `compiler/obligations/src/trust.cpp` |
-| driver | The options; the configuration an interface is bound to; reading, validating, dependency closure and conflicts; writing after the object, withdrawing on failure; the report. | `compiler/driver/src/interface_io.cpp`, `compiler/driver/src/driver.cpp`, `compiler/driver/src/pipeline.cpp` |
+| trust closure | Imported contracts are no claim; every claim carries the imported contracts it rests on, transitively, with their premises, models, unsafe blocks and runtime validation sites; `rests_on_trusted_laws`, `rests_on_library_models`, `rests_on_unsafe_code` and `rests_on_runtime_checks` decide each dimension over the claim's own closure and the imported ones. | `compiler/obligations/src/trust.cpp` |
+| driver | The options; the configuration an interface is bound to, the compiler version included; reading, validating, the library models a record names (`artifact::is_library_model`), dependency closure and conflicts; writing after the object, withdrawing on failure; the report, where a claim resting on an imported record is never assumption-free, is listed with each record and its interface and what each rests on, and the provenance of every imported interface is stated as unauthenticated. | `compiler/driver/src/interface_io.cpp`, `compiler/driver/src/driver.cpp`, `compiler/driver/src/pipeline.cpp`, `compiler/obligations/src/interface.cpp` |
 
 ### Required behavior
 
@@ -527,11 +527,16 @@ a unit that verified         may record each contract it proved, of functions
 a declaration without a      is established only from a record of the same
 definition                   function stating the same contract, or refused
 an interface                 is refused whole when malformed, of another
-                             version or configuration, or stale
+                             format version, compiler release, semantics or
+                             configuration, naming a model this compiler does
+                             not have, or stale
 a record                     is used only with every record it rests on,
                              as proven against; conflicting records refuse
-a claim through a record     carries it and what it rests on; never
-                             assumption-free; never counted as proven there
+a claim through a record     carries it and what it rests on, complete, each
+                             category apart; never assumption-free, the
+                             record listed with its interface and the
+                             provenance stated unauthenticated; never
+                             counted as proven there
 totality                     crosses as recorded
 recursion across units       is refused
 repeated verified            must state one contract, compared by meaning
@@ -545,9 +550,14 @@ an interface                 reaches no object and changes no ABI
 refinements        a refined parameter or result is part of the statement
 references         a reference parameter's post-state is part of it
 capabilities       owed at every call, part of the statement
-termination        measures part of the statement; totality recorded
+termination        the request to terminate part of the statement, the
+                   measure not; totality recorded
 trusted laws       carried and reported, not re-affirmed
+library models     carried and reported, not re-affirmed; a model this
+                   compiler does not have refuses the interface
 unsafe code        carried and reported
+runtime checks     carried and reported as RUNTIME-CHECKED sites, in their
+                   own category
 templates          explicit specializations only; implicit ones refused
 methods            as functions, the implicit object's places among the
                    parameters (verified-methods below)
@@ -558,6 +568,7 @@ modules            not built here
 
 ```text
 tests/fixtures/cross_tu/                  a three-unit program, a rival producer, hand erasures
+tests/fixtures/cross_tu/closure*          callees alike but for a trusted law, a model or an unsafe block, direct and relayed
 tests/e2e/cross_tu.sh                     recording, use, closure, totality, determinism, erasure, ABI
 tests/negative/cross_tu.sh                every refusal, with its accepted twin
 tests/fixtures/negative/xtu_*             each refused consumer and interface, written out

@@ -3404,12 +3404,13 @@ the call resolves to another overload or another specialization
     f<5> is never proven by f<4>'s record
 
 the interface is not usable here
-    malformed, truncated, altered, of another format version, verified by a
-    cppl implementing other verification semantics, or under another kernel,
-    Clang, -std or target, or stale: a file its unit was compiled from changed
-    in content after it was written (touching it changes nothing, and neither
-    does another cppl build of the same sources or a copy of the interface at
-    another path)
+    malformed, truncated, altered, of another format version, written by
+    another cppl release or by a cppl implementing other verification
+    semantics, under another kernel, Clang, -std or target, naming a library
+    model this cppl does not have, or stale: a file its unit was compiled from
+    changed in content after it was written (touching it changes nothing, and
+    neither does another build of the same cppl release from the same sources
+    or a copy of the interface at another path)
 
 what the record rests on is not imported
     a unit proven through a third unit's contract needs that interface too,
@@ -3438,16 +3439,34 @@ under `Library-model-dependent claims` with the record it arrived through
 Function contracts imported: 1
   imported:                  contract of withdraw [c:@F@withdraw#i#i#], imported from account.cppli, entry 3f0c..., total
 ...
+Assumption-free claims:      0
+...
 Interface-dependent claims:  1
   contract of pay (main.cpp:4), identity 91d2...
     rests on the contract of withdraw [c:@F@withdraw#i#i#], imported from account.cppli, entry 3f0c..., called in its own body
+Interface provenance:        unauthenticated; 1 imported contracts are believed on the build's word (TRUST.md TCB-XTU-010)
 ```
 
-Such a claim is never counted as assumption-free: the calling unit did not
-check the other unit's proof, it trusts the interface that recorded it
-(`TRUST.md` 31.1). Totality crosses too: a contract recorded as partial
-correctness makes its callers partial, and a function stating `decreases`
-cannot call one.
+An imported contract is an external verified dependency, not a trusted law or
+a model (`SPEC.md` TUBOUND-006), and a claim resting on one is never
+assumption-free (TUBOUND-014): nothing authenticates the interface it came
+from. Here `withdraw`'s proof rested on no trusted law, container model or
+unsafe block, so `pay` is listed under `Interface-dependent claims` with the
+record and its interface, and nowhere else. Had that proof rested on a trusted
+law, `pay` would also be listed under `Trust-dependent claims`, `rests on` that
+law `through the imported contract of withdraw`; an unsafe block, a model or a
+runtime validation site likewise, however many units away. The calling unit does not re-check the other
+unit's proof: the interface's bytes are checked, but that the unit it names
+wrote it is trusted, as any build input is (`TRUST.md` 31.1). Totality crosses
+too: a contract recorded as partial correctness makes its callers partial, and a
+function stating `decreases` cannot call one.
+
+In short, the calling unit derives what the contract means from its own
+declaration, and the interface supplies which function was proven, the identity
+of what was proven and of the result, whether it is total, and what it rests
+on. A call uses the record only when the identities match, every record it rests
+on is imported as it was, and no cycle of the dependency graph passes through a
+record; anything else is refused.
 
 Keep in mind:
 

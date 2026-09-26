@@ -190,8 +190,9 @@ was not checkable before.
 `TRUST.md` gains rules in a new section for interface emission and validation,
 and the trust report gains a line naming how many contracts were assumed from
 imported interfaces rather than proved in this unit. A result that leans on an
-imported interface is not unconditionally verified, and must not be reported as
-if it were.
+imported interface is not a proof of its own unit alone, and must never be
+reported indistinguishably from one: each contract it leans on is listed with
+it, with the interface that recorded it (see "Trust" under "Implementation").
 
 ## Erasure
 
@@ -277,14 +278,17 @@ oracle.
 
 **Entry.** Clang's USR for the function; a statement identity; the contract as
 the kernel prints it, for diagnostics only; `status proven`, the only status
-written or read; `total` or `partial`; and what the proof rests on, each
-category apart (`SPEC.md` TUBOUND-002): trusted laws by identity, name and
-location, models of code outside the program (the standard-library models of
-RFC 0020) by identity and name, unsafe blocks by location, and imported
-contracts by symbol and verification-result identity, transitively.
-Models were added in format version 2, and a version 1 interface is refused,
-since it could not say whether a contract rested on one; the format knows no
-model by name, so adding one changes no format. A function with internal
+written or read; `total` or `partial`; and what the proof rests on: trusted laws
+by identity, name and location, models of code outside the program (the
+standard-library models of RFC 0020) by identity and name, unsafe blocks by
+location, runtime validation sites (RFC 0021) by location, the refinement they
+enter and, shown only, their predicate, and imported contracts by symbol and
+entry identity, transitively. Models were added in format version 2 and runtime
+validation sites in version 3, and an interface of an earlier version is
+refused, since it could not say whether a contract rested on one; the format
+knows no model by name, so adding one changes no format, and a consumer refuses
+a record naming a model it does not have, which no compiler of the same
+semantics writes. A function with internal
 linkage is never recorded or matched: its USR can be spelled the same in two
 units that mean two functions.
 
@@ -342,17 +346,68 @@ a timestamp is never consulted, and neither is the path the interface is read
 from.
 
 **Closure across units.** A record is usable only while every record it rests on
-is imported with the result identity it had when the dependent proof was made,
-so a change anywhere in a chain invalidates what rests on it; two interfaces
-that record different result identities for one function make it unavailable.
-The trust report lists every imported contract with its interface, result
-identity, the chain of contracts it was proven through and its trusted-law,
-library-model and unsafe closures, and every claim resting on one with the same.
-An imported trusted law is not re-affirmed in the consuming unit: it is carried
-and reported, which is the resolution of the open question below, and a claim
-resting on it is never assumption-free. Nor is an imported contract counted as
-a trusted law or a library model: it is an external verified dependency, and the
-report says that interface provenance is unauthenticated.
+is imported with the identity it had when the dependent proof was made, so a
+change anywhere in a chain invalidates what rests on it; two interfaces that
+record different contracts for one function are an error naming both, and the
+function's contract is unavailable. The trust report lists every imported
+contract, and every claim resting on one with the interface and record, and
+every trusted law, library model, unsafe block and runtime validation site the
+other unit's proof rested on, each in its own category. An imported trusted law is not re-affirmed in the consuming unit: it is
+carried and reported, which is the resolution of the open question below, and a
+claim resting on it is never assumption-free.
+
+**Distinct dimensions, not one.** An imported proven contract is an external
+verified dependency, not a trusted law or a library model (`SPEC.md`
+TUBOUND-006). A claim inherits the trusted laws, models, unsafe blocks and
+runtime validation sites in the recorded closure of every contract it was proven
+through, each in its own category, and is listed under those it inherits. It
+also rests on the record itself, which is believed on the provenance of an
+interface nothing authenticates, so it is never listed under `Assumption-free
+claims`, however little the record rests on (TUBOUND-014). It is listed under
+`Interface-dependent claims` with each contract it rests on, the interface and
+the record's identity named, and the report states that interface provenance is
+unauthenticated:
+
+```text
+Assumption-free claims:      0
+...
+Interface-dependent claims:  1
+  contract of g (client.cpp:12), identity 7ea5fd84b9bd9ea0
+    rests on the contract of f [c:@F@f#i#], imported from lib.cppli, entry ad6a6890cacbc39c, called in its own body
+Interface provenance:        unauthenticated; 1 imported contracts are believed on the build's word (TRUST.md TCB-XTU-010)
+```
+
+A revision of this implementation listed a claim whose records rested on
+nothing trusted as assumption-free, with its records beneath it. That read an
+unauthenticated artifact as no assumption at all: a deliberately edited
+interface whose checksum is recomputed could make a claim resting on an unproven
+contract appear free of assumptions. The reconciliation with the
+verification-semantics design reverted it to the rule the first implementation
+kept, now stated as TUBOUND-014, and kept what the revision added: the closure
+each record carries is complete, every category a claim can rest on, trusted
+laws, models, unsafe blocks, runtime validation sites and further records,
+written into the record, read back and written again by the next unit, and each
+category mutation-checked on its own at each step (`TRUST.md` TCB-XTU-011), with
+callees alike but for a trusted law, a model or an unsafe block used directly
+and through a third unit (`tests/fixtures/cross_tu/closure*.cpp`). The listing
+keeps the reliance on the artifact visible, which the trust split requires: the
+interface's bytes are untrusted parser input, its provenance a trusted build
+input of the reuse TCB, and the contract it records an external verified
+dependency (`TRUST.md` 31.1).
+
+**The production model.** What the consumer derives and what the producer
+supplies are separate, and every step refuses rather than guesses:
+
+```text
+consumer: its own declaration -> its own contract meaning -> semantic contract identity
+producer: entity identity, contract identity, verification-result identity,
+          dependency closure, TOTAL or PARTIAL, trusted closure, unsafe closure
+
+identities match?                                           no -> REFUSE
+every recorded dependency imported with its identity?       no -> REFUSE
+no cycle through a record in the dependency graph?          no -> REFUSE
+the caller may use the contract, as an external verified dependency
+```
 
 **Totality and recursion.** A record is total or partial as recorded; totality
 follows it through callers, and a function asking to terminate cannot rest on a
@@ -376,12 +431,12 @@ serves `f<5>`. A specialization of a template a unit only declares is not
 instantiated there, so no statement can be compared, and it is refused.
 
 **Trust.** Unchanged logical TCB: no kernel rule, axiom or former. The artifact
-and reuse TCB grows by the emitter, reader, validator, statement and result
-identities, the semantics digest's source set and the interface's provenance,
-and the reporting TCB by the imported closure; `TRUST.md` 31.1 states each. The
-checksum is an unauthenticated integrity digest: a hand-edited interface whose
-digest is recomputed is not detected, and everything resting on it is reported
-as resting on that record, never as proven outright or assumption-free.
+and reuse TCB grows by the emitter, reader, validator and statement identity,
+and the reporting TCB by the imported closure and its completeness; `TRUST.md`
+31.1 states each. A hand-edited interface with a recomputed checksum is not
+detected; everything resting on it is reported as resting on that record, with
+the interface it came from, and never as assumption-free
+(`tests/negative/cross_tu.sh`).
 
 **Not done here.** Evidence transport; authentication of interfaces; binding the
 object that is linked to the interface that was imported (`SPEC.md` L.5); import

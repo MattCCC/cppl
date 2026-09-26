@@ -16,9 +16,9 @@
 #   - each unit proves what it defines, and its interface records every trusted
 #     law, library model and unsafe block each contract rests on;
 #   - `statement.cpp` is proven from the imported contracts alone, and its
-#     report names, for each claim, the trusted law, the unsafe block and the
-#     library models the other units' proofs rested on, so none is
-#     assumption-free;
+#     report names, for each claim, the records it rests on and the trusted
+#     law, the unsafe block and the library models the other units' proofs
+#     rested on; none resting on a record is assumption-free;
 #   - the three objects link and run to the output the contracts describe;
 #   - the runtime program each unit's erasure emits builds with plain Clang and
 #     runs the same, each unit is the same code as its erasure written by hand,
@@ -111,7 +111,21 @@ for standard in c++20 c++23; do
     # imported contracts, rests on everything those proofs rested on.
     report="$statement.report"
     reports "$report" '^Function contracts proven: +5$' '^Function contracts imported: +10$' \
-        '^Unresolved obligations: +0$' '^Assumption-free claims: +0$' '^Interface-dependent claims: +4$'
+        '^Unresolved obligations: +0$' '^Interface-dependent claims: +4$'
+    # SPEC: TUBOUND-006, TUBOUND-014 -- `balance_after` rests only on verified
+    # contracts of the ledger unit, whose records rest on nothing trusted: it is
+    # listed with each record and in no list of a trusted law, model or unsafe
+    # block, and, resting on records, is never free of assumptions.
+    sed -n '/^Assumption-free claims:/,/^Unused trusted laws:/p' "$report" > "$statement.free"
+    reports "$statement.free" '^Assumption-free claims: +0$'
+    sed -n '/^Interface-dependent claims:/,/^Interface provenance:/p' "$report" > "$statement.interfaced"
+    reports "$statement.interfaced" '^  contract of balance_after ' \
+        '^    rests on the contract of Ledger::after \[.*\], imported from ledger-c\+\+[0-9]+\.cppli, entry [0-9a-f]{16}, called in its own body$' \
+        '^    rests on the contract of Ledger::set \[.*\], imported from ledger-c\+\+[0-9]+\.cppli, entry [0-9a-f]{16}, called in its own body$'
+    sed -n '/^Trust-dependent claims:/,/^Assumption-free claims:/p' "$report" > "$statement.assuming"
+    if grep -q '^  contract of balance_after ' "$statement.assuming"; then
+        fail "balance_after rests on no trusted law or unsafe block, and was listed resting on one"
+    fi
     sed -n '/^Trust-dependent claims:/,/^Unsafe-dependent claims:/p' "$report" > "$statement.trusted"
     reports "$statement.trusted" '^Trust-dependent claims: +1$' '^  contract of room_after ' \
         'rests on page_holds \(ledger\.cpp:[0-9]+\), identity [0-9a-f]{16}, through the imported contract of Ledger::free_on_page '
