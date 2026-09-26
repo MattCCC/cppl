@@ -8,6 +8,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdio>
+#include <memory>
 #include <span>
 #include <string>
 #include <utility>
@@ -65,6 +66,16 @@ verified std::size_t vector_lengths()
     v.push_back(4u);
     v.pop_back();
     v.reserve(16ul);
+    return v.size();
+}
+
+// SPEC: STDMODEL-010
+// `std::allocator` states nothing the model speaks of: written in place, as
+// libstdc++ supplies it by default, it is no operand of the construction.
+verified std::size_t vector_with_allocator()
+    ensures (result == 2ul)
+{
+    std::vector<unsigned> v({1u, 2u}, std::allocator<unsigned>{});
     return v.size();
 }
 
@@ -427,6 +438,6 @@ int main() {
     const std::string date = "2024-09";
     std::vector<char> digits;
     const std::size_t year = collect_digits(date, digits);
-    std::printf("%zu %zu\n", year, digits.size());
+    std::printf("%zu %zu %zu\n", year, digits.size(), vector_with_allocator());
     return 0;
 }

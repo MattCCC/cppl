@@ -1354,8 +1354,11 @@ within it, the length each modeled operation leaves, and the operations that
 may reallocate. They name no member, capacity policy or small-string layout of
 any library, so one model serves libc++ and libstdc++ alike; the test suite
 verifies the same claims against both (`tests/e2e/containers.sh`, run on macOS
-with libc++ and in the Linux GCC job with libstdc++). MSVC STL is not yet
-exercised.
+with libc++ and in the Linux GCC job with libstdc++). Where libstdc++ gives a
+constructor a trailing allocator parameter with a default argument and libc++
+declares a separate overload, the defaulted `std::allocator`, or one
+value-initialized in place, is not an operand of the modeled construction, so
+both declare the same operations. MSVC STL is not yet exercised.
 
 A specialization receives the model by its primary template's declaration in
 namespace `std`, with the library's inline namespaces transparent, and only

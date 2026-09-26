@@ -757,6 +757,26 @@ std::string library_name(source::RepresentationKind family, const std::string& m
     return std::string(source::describe_model(family)) + "::" + member;
 }
 
+// Whether an allocator argument can have no effect: a default argument, or a
+// `std::allocator` value-initialized in place, possibly behind the implicit
+// nodes that bind it to a reference.
+bool inert_allocator(CXCursor argument, unsigned depth) {
+    if (depth > kMaxExpressionDepth) {
+        return false;
+    }
+    const CXCursorKind kind = clang_getCursorKind(argument);
+    if (kind == CXCursor_CallExpr) {
+        return clang_getCursorKind(clang_getCursorReferenced(argument)) == CXCursor_Constructor &&
+               clang_Cursor_getNumArguments(argument) == 0 &&
+               is_standard_template(clang_getCursorType(argument), "allocator");
+    }
+    if (kind == CXCursor_UnexposedExpr || kind == CXCursor_ParenExpr || kind == CXCursor_InitListExpr) {
+        return std::ranges::all_of(children_of(argument),
+                                   [depth](CXCursor child) { return inert_allocator(child, depth + 1); });
+    }
+    return false;
+}
+
 std::optional<SequenceCall> sequence_call(CXCursor cursor) {
     if (clang_getCursorKind(cursor) != CXCursor_CallExpr) {
         return std::nullopt;
@@ -803,6 +823,29 @@ std::optional<SequenceCall> sequence_call(CXCursor cursor) {
     }
     for (auto index = static_cast<unsigned>(first); index < static_cast<unsigned>(count); ++index) {
         call.arguments.push_back(clang_Cursor_getArgument(cursor, index));
+    }
+    // A library may give a constructor a trailing allocator parameter with a
+    // default argument, as libstdc++ does where libc++ declares a separate
+    // overload. That allocator is `std::allocator`, the only one a modeled
+    // sequence has (STDMODEL-010), whose instances are interchangeable: it
+    // states nothing the model speaks of, so it is not an operand of the
+    // operation. Only an argument that cannot have an effect is set aside --
+    // the default, or `std::allocator<T>{}` written in place; any other keeps
+    // its place and the constructor is refused as unmodeled.
+    if (call.constructor) {
+        while (!call.arguments.empty()) {
+            const int position = static_cast<int>(first + call.arguments.size()) - 1;
+            if (position >= clang_Cursor_getNumArguments(method)) {
+                break;
+            }
+            const CXType formal = clang_getCanonicalType(
+                clang_getCursorType(clang_Cursor_getArgument(method, static_cast<unsigned>(position))));
+            const CXType held = formal.kind == CXType_LValueReference ? clang_getPointeeType(formal) : formal;
+            if (!is_standard_template(held, "allocator") || !inert_allocator(call.arguments.back(), 0)) {
+                break;
+            }
+            call.arguments.pop_back();
+        }
     }
     return call;
 }

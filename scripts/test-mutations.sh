@@ -72,6 +72,7 @@ container-refined-writable-view	clang/src/bridge.cpp	if (!state[root].sequence->
 container-mutable-call-aliases	clang/src/bridge.cpp	!may_alias(state[target], state[other])) {	true) {	^negative_containers$
 container-copy-refinement	clang/src/bridge.cpp	if (auto gap = refinement_gap(root, declaring[*origin])) {	if (auto gap = refinement_gap(root, declaring[*origin]); false) {	^negative_containers$
 container-pop-precondition	compiler/obligations/src/library.cpp	summary.preconditions.push_back(	(void)(	^negative_containers$
+container-default-allocator	clang/src/bridge.cpp	if (!is_standard_template(held, "allocator") || !inert_allocator(call.arguments.back(), 0)) {	if (held.kind != CXType_Invalid || true) {	^e2e_containers$
 conjoined-capability-detected	compiler/elaboration/src/elaborate.cpp	return !function.capabilities.empty() && function.returned_value.has_value();	return function.capabilities.empty() && false;	^negative_containers$
 conjoined-capability-postcondition	compiler/elaboration/src/elaborate.cpp	if (function != nullptr && !capabilities_read_apart && conjoins_capabilities(*function)) {	if (false && !capabilities_read_apart) {	^negative_containers$
 conjoined-capability-trusted-law	compiler/elaboration/src/elaborate.cpp	report_conjoined_capabilities(engine, declaration.keyword_location, "law '" + declaration.name + "'");	elaborate_memory_assumption(request, specification, declaration, *function, next_expression_id, result, engine);	^negative_containers$
