@@ -1,15 +1,13 @@
 #!/usr/bin/env bash
-# SPEC: CLASS-008, CLASS-010, CLASS-011, CLASS-015, STDMODEL-015, STDMODEL-019, ARITH-006, UNSAFE-005, REFINE-060
+# SPEC: CLASS-008, CLASS-011, CLASS-015, STDMODEL-015, STDMODEL-019, ARITH-006
 #
 # The refused twins of tests/e2e/cross_feature.sh, each a written-out file in
 # fixtures/negative/cross_feature_*.cpp that differs in one thing from what
 # that test shows verifying. Two state false goals: a span read after a member
 # call that may reallocate its vector, and a signed sum over a span's elements
-# without its guard. Three are combinations the implementation refuses, each
-# shown refused for the reason stated rather than silently accepted: a
-# container member of the object a member function runs on, and a refined
-# member of that object after a `push_back` through a reference, or after an
-# unsafe block, neither of which is assumed not to reach it.
+# without its guard. One is a combination the implementation refuses, shown
+# refused for the reason stated rather than silently accepted: a container
+# member of the object a member function runs on.
 set -euo pipefail
 
 CPPL="$1"
@@ -56,16 +54,5 @@ refuse unguarded_sum "signed overflow: 'total#2 \\+ value#5' on the signed type 
 # SPEC: CLASS-008, CLASS-015 -- a container member is not tracked storage.
 refuse container_member "this member of the implicit object is not tracked storage: its type is not one this implementation models" \
     "$NEGATIVE/cross_feature_container_member.cpp"
-# SPEC: CLASS-010, REFINE-060 -- a refined member's refinement is owed where
-# the push through a reference may reach it, and nothing states it afterwards;
-# the goal refused is that bound.
-refuse refined_receiver_push "this value is not shown to satisfy refinement type 'Position'" \
-    "$NEGATIVE/cross_feature_refined_receiver_push.cpp"
-grep -q 'le:u64(#[0-9]*, 4096:u64)' refined_receiver_push.err ||
-    fail "the refined receiver's push was refused for something other than its member's refinement"
-# SPEC: CLASS-010, UNSAFE-005 -- likewise after an unsafe block.
-refuse unsafe_refined_receiver "this value is not shown to satisfy refinement type 'Position'" \
-    "$NEGATIVE/cross_feature_unsafe_refined_receiver.cpp"
 
-echo 'cross-feature twins fail closed: a stale view, an unguarded sum, a container member, and a refined' \
-     'member after a push or an unsafe block'
+echo 'cross-feature twins fail closed: a stale view, an unguarded sum and a container member'

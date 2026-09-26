@@ -3,13 +3,6 @@
 // `buffers.cpp` writes (RFC 0017, RFC 0018, RFC 0020). The contracts stand on
 // the declarations in the class; the out-of-line definitions inherit them
 // (SPEC.md CONTRACT-005). `tests/e2e/cross_feature.sh` drives them.
-//
-// The cursor's member is not refined. A refined member is caller storage a
-// member function owes its refinement for at return, and a call that may write
-// a container the function holds by reference, or an unsafe block, may reach
-// it, so its refinement would not be known there
-// (`negative/cross_feature_refined_receiver_push.cpp`,
-// `negative/cross_feature_unsafe_refined_receiver.cpp`).
 #pragma once
 
 #include <cstddef>

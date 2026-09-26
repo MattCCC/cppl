@@ -1116,11 +1116,7 @@ member; the container is passed as a parameter instead
 (`negative/cross_feature_container_member.cpp`). No disjointness of an object and
 a reference argument is assumed, from their types or otherwise, so after a call
 that may write through a reference argument only the callee's `ensures` is known
-of the object, and a refined member, like any refined storage a function holds
-by reference, is owed its refinement at return and not known after a
-`push_back` through another reference or an unsafe block; such a function is
-refused, conservatively (`negative/cross_feature_refined_receiver_push.cpp`,
-`negative/cross_feature_unsafe_refined_receiver.cpp`). A member function defined in another translation
+of the object. A member function defined in another translation
 unit crosses through a verification interface as a function does: the unit
 defining it records the contract its class declares, with the implicit object's
 places among the parameters, and a caller uses it only when its own declaration

@@ -282,11 +282,7 @@ C++ that remains after erasure.
 - **Containers and other slices.** A member function takes spans, vectors and
   strings as parameters and does signed arithmetic like any verified function
   (RFC 0019, RFC 0020; `tests/e2e/cross_feature.sh`). A member of container type
-  is not modeled storage and is refused. Since no disjointness of the object and
-  a reference argument is assumed, a `push_back` through a reference argument,
-  like an unsafe block, may reach the object, so a refined member is owed its
-  refinement at return with nothing known of it, and such a function is refused
-  (`tests/negative/cross_feature.sh`).
+  is not modeled storage and is refused (`tests/negative/cross_feature.sh`).
 
 ## Safety
 

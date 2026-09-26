@@ -3675,14 +3675,10 @@ struct Cursor {
 };
 ```
 
-Three combinations are refused. A member of container type is not storage the
+Two combinations are refused. A member of container type is not storage the
 receiver model tracks, so a member function of a class holding one is refused
-naming it; pass the container as a parameter. No disjointness of the object and a
-reference argument is assumed, so `push_back` on a vector the function holds by
-reference, like an unsafe block, may reach the object: a refined member is then
-owed its predicate at return with nothing known of it, and the function is
-refused. Keep such a member function on an object with no refined member. And a
-claim that a path cannot occur is
+naming it; pass the container as a parameter. And a claim that a path cannot
+occur is
 written in a function marked `verified`, which an out-of-line definition is not:
 put the claim in a verified function the definition calls
 (`tests/fixtures/integration/ledger.cpp`, `page_room`).
