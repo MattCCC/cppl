@@ -548,7 +548,9 @@ termination        measures part of the statement; totality recorded
 trusted laws       carried and reported, not re-affirmed
 unsafe code        carried and reported
 templates          explicit specializations only; implicit ones refused
-methods, modules   not built here
+methods            as functions, the implicit object's places among the
+                   parameters (verified-methods below)
+modules            not built here
 ```
 
 ### Existing surface
@@ -613,13 +615,14 @@ tests/fixtures/verified_methods.cpp           every accepted form, one half of e
 tests/e2e/verified_methods.sh                 verification counts, runtime output, erasure
 tests/negative/verified_methods.sh            every rejection, written out in tests/fixtures/negative/methods_*.cpp
 tests/fixtures/equivalence/methods.cpp        erasure and layout against a hand-erased twin
+tests/fixtures/methods_cross_tu/              a class defined in one unit, called from another through its interface
 ```
 
 Not built: `old(...)`, member function calls in contracts, virtual functions,
 constructors and destructors, member templates, members of class templates,
 member functions of unions and of classes with bases, calls on objects reached
-through pointers or elements at a term, and use of a member function's contract
-from another translation unit; each is refused.
+through pointers or elements at a term, and loop clauses in an out-of-line
+member definition; each is refused.
 
 ---
 

@@ -959,8 +959,14 @@ contract is stated on the declaration in the class, and an out-of-line
 definition inherits it. A clause cannot call a member function, which is not a
 definition the formal core unfolds, and without `old(...)` a postcondition
 states the post-state only, so a mutating member function states in `ensures`
-every member its callers rely on afterwards. Member functions consumed across
-translation units carry no exported verification metadata yet.
+every member its callers rely on afterwards. An out-of-line definition cannot
+restate the contract, so one whose body needs loop clauses is refused; such a
+body is defined in the class. A member function defined in another translation
+unit crosses through a verification interface as a function does: the unit
+defining it records the contract its class declares, with the implicit object's
+places among the parameters, and a caller uses it only when its own declaration
+states the same contract, qualifiers and `mutable` members included
+(`fixtures/methods_cross_tu/`, `e2e_verified_methods`, `negative_verified_methods`).
 
 An object a parameter designates by reference is tracked as one place whose
 version any write that may alias it replaces, so a member read after such a

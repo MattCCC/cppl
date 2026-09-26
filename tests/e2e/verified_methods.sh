@@ -59,4 +59,40 @@ for standard in c++17 c++20 c++23; do
         exit 1
     fi
 done
+
+# SPEC: CLASS-011, TUBOUND-002, TUBOUND-003, TUBOUND-006
+# Across translation units a member function's contract crosses as a
+# function's does (RFC 0017): `methods_cross_tu/counter.cpp` proves and
+# records the contracts its header states on the class, `client.cpp` sees only
+# the header and the interface, uses each recorded contract with the object's
+# places as its arguments and its precondition owed at them, rests each claim
+# on the contracts it used, and the two objects link and run. The refused
+# halves are in `negative/verified_methods.sh`.
+cross="$run/cross_tu"
+mkdir -p "$cross"
+cp "$FIXTURES"/methods_cross_tu/* "$cross/"
+"$CPPL" -std=c++20 -c "$cross/counter.cpp" -o "$cross/counter.o" "--cppl-emit-interface=$cross/counter.cppli" \
+    --cppl-trust-report > "$cross/counter.report"
+grep -Eq '^Function contracts proven: +3$' "$cross/counter.report"
+if [ "$(grep -c '^entry ' "$cross/counter.cppli")" != 3 ]; then
+    echo "counter.cpp did not record its three member functions" >&2
+    cat "$cross/counter.cppli" >&2
+    exit 1
+fi
+"$CPPL" -std=c++20 -I "$cross" -c "$cross/client.cpp" -o "$cross/client.o" \
+    "--cppl-import-interface=$cross/counter.cppli" --cppl-trust-report > "$cross/client.report"
+for line in 'Function contracts proven: +2' 'Call preconditions proven: +1' 'Unresolved obligations: +0'; do
+    if ! grep -Eq "^$line\$" "$cross/client.report"; then
+        echo "the client does not report '$line'" >&2
+        cat "$cross/client.report" >&2
+        exit 1
+    fi
+done
+grep -q 'rests on the contract of Counter::reset \[c:@S@Counter@F@reset#\], imported from' "$cross/client.report"
+grep -q 'rests on the contract of Counter::headroom \[c:@S@Counter@F@headroom#1\], imported from' "$cross/client.report"
+"$CLANG" "$cross/counter.o" "$cross/client.o" -o "$cross/program"
+if [ "$("$cross/program")" != '0 7' ]; then
+    echo "the program linked from both units printed '$("$cross/program")'" >&2
+    exit 1
+fi
 echo 'verified member functions prove their contracts over their objects and erase to the classes as written'

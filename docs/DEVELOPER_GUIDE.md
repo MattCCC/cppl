@@ -3248,6 +3248,9 @@ Keep in mind:
   loop clauses restates it on its definition (15.1);
 - only functions with external linkage cross; a `static` or anonymous-namespace
   function is its own unit's;
+- a member function crosses as a function does, with its contract on its
+  declaration in the class; its out-of-line definition does not restate it, so
+  a member function whose body needs loop clauses is defined in the class (16);
 - a specialization crosses when declared explicitly with its contract,
   `template <> verified unsigned f<4u>(unsigned x) ensures (...);`; one of a
   template a unit only declares is refused, since nothing instantiates its
@@ -3308,7 +3311,10 @@ unsigned Account::withdraw(unsigned amount)
 Put the contract on the declaration in the class. An out-of-line definition
 inherits it and does not restate it: `verified` on a qualified definition such
 as `Account::withdraw` is refused, since the class's members are not in scope
-where it stands (CONTRACT-005).
+where it stands (CONTRACT-005). A body that needs loop clauses is therefore
+defined in the class. When the definition is in another translation unit, the
+caller relies on the contract through that unit's verification interface, as
+for any function (15.4).
 
 What a member function may write follows its qualifiers. A `const` one leaves
 its object as it was, so a caller keeps what it knew about the object across

@@ -124,4 +124,51 @@ refuse methods_unmodeled_uses \
     "methods_unmodeled_uses.cpp:31:23: error [unsupported-semantics]: verified function 'Cursor::origin_value' has a body this implementation cannot state as a value: this member of the implicit object is not tracked storage" \
     "methods_unmodeled_uses.cpp:37:23: error [unsupported-semantics]: verified function 'Cursor::through' has a body this implementation cannot state as a value: a call through a pointer to member function is not modeled"
 
+# SPEC: CLASS-011, TUBOUND-003, TUBOUND-001
+# Across translation units a member function's contract is only what the unit
+# defining it recorded: nothing more after a mutating call, its precondition
+# owed at the object's places, and without the interface nothing at all. Each
+# refused unit is a written-out twin of a function in
+# `fixtures/methods_cross_tu/client.cpp`, which `e2e/verified_methods.sh` shows
+# verifying.
+cross="$run/cross_tu"
+mkdir -p "$cross"
+cp "$2"/methods_cross_tu/* "$cross/"
+"$CPPL" -std=c++20 -c "$cross/counter.cpp" -o "$cross/counter.o" "--cppl-emit-interface=$cross/counter.cppli" \
+    > "$cross/counter.log" 2>&1
+
+# refuse_unit <name> <diagnostic> <cppl arguments...>
+refuse_unit() {
+    local name="$1" diagnostic="$2"
+    shift 2
+    local status=0
+    "$CPPL" -std=c++20 -I "$cross" -c "$@" -o "$cross/$name.o" --cppl-trust-report > "$cross/$name.log" 2>&1 ||
+        status=$?
+    if [ "$status" -eq 0 ] || [ -e "$cross/$name.o" ]; then
+        echo "$name was accepted" >&2
+        cat "$cross/$name.log" >&2
+        exit 1
+    fi
+    if grep -qE 'Function contracts proven: *[1-9]' "$cross/$name.log"; then
+        echo "$name reported a contract proven" >&2
+        exit 1
+    fi
+    if ! grep -qF "$diagnostic" "$cross/$name.log"; then
+        echo "$name did not fail for the stated reason: $diagnostic" >&2
+        cat "$cross/$name.log" >&2
+        exit 1
+    fi
+}
+
+imported="--cppl-import-interface=$cross/counter.cppli"
+refuse_unit methods_cross_tu_stale \
+    "methods_cross_tu_stale.cpp:14:12: error [kernel-rejection]: return path 'stale path 1' does not satisfy its contract" \
+    "$FIXTURES/methods_cross_tu_stale.cpp" "$imported"
+refuse_unit methods_cross_tu_precondition \
+    "methods_cross_tu_precondition.cpp:12:12: error [kernel-rejection]: call-site precondition for 'room -> Counter::headroom' is not proven" \
+    "$FIXTURES/methods_cross_tu_precondition.cpp" "$imported"
+refuse_unit methods_cross_tu_no_interface \
+    "verified function 'Counter::reset' is declared but not defined in this translation unit, and no imported verification interface records its contract" \
+    "$cross/client.cpp"
+
 echo 'member functions fail closed: false claims about objects, aliased and stale members, virtual dispatch and unmodeled objects'

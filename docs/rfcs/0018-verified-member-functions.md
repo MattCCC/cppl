@@ -76,7 +76,8 @@ could disagree with them.
 - Calling a member function inside a contract. A contract names members, not
   member function results.
 - Member function templates and members of class templates (TEMPLATE-001).
-- Cross-translation-unit use of a member function's contract (RFC 0017).
+- Any mechanism of its own across translation units. A member function crosses
+  through the verification interface of RFC 0017 as a function does.
 
 ## Proposed syntax
 
@@ -183,6 +184,14 @@ C++ that remains after erasure.
   virtual" (declared or implicit override) is the authority.
 - **Constructors and destructors.** Refused with `verified` (CLASS-015). An
   implicit or unverified constructor is ordinary C++ and runs as written.
+- **Translation units.** A member function defined in another unit is used
+  through that unit's verification interface (RFC 0017). The record is keyed
+  by Clang's USR, which distinguishes `const` and ref-qualified overloads, and
+  the statement it records includes the implicit object's places and how the
+  function binds them, so a caller whose class declares another member,
+  another `mutable` member or another contract is refused. An out-of-line
+  definition cannot restate the contract, so a body that needs loop clauses is
+  defined in the class.
 
 ## Safety
 
@@ -257,7 +266,8 @@ named `Class::function path N`.
 ## Testing strategy
 
 `tests/e2e/verified_methods.sh` verifies `tests/fixtures/verified_methods.cpp`
-and runs it; `tests/negative/verified_methods.sh` refuses each
+and runs it, and verifies a caller of `tests/fixtures/methods_cross_tu/` through
+the defining unit's interface; `tests/negative/verified_methods.sh` refuses each
 `tests/fixtures/negative/methods_*.cpp`, each the other half of a matched pair
 with a function in the positive fixture; `tests/e2e/erasure_equivalence.sh`
 compares the erased `tests/fixtures/equivalence/methods.cpp` with its

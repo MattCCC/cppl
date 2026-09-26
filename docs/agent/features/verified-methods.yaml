@@ -59,6 +59,7 @@ rules:
   - CONTRACT-014
   - TERMINATION-007
   - REFINEOBL-007
+  - TUBOUND-003
 
 depends_on:
   - verified-functions
@@ -66,6 +67,7 @@ depends_on:
   - refinement-types
   - termination
   - unsafe-boundary
+  - cross-tu-contracts
   - erasure
 
 implementation:
@@ -89,6 +91,7 @@ interactions:
   - unsafe blocks writing the object
   - by-reference aggregate parameters read after a write that may reach them
   - virtual dispatch, which is refused
+  - member functions defined in another translation unit, through its verification interface
   - erasure and layout
 
 tests:
@@ -96,6 +99,9 @@ tests:
     - tests/fixtures/verified_methods.cpp
     - tests/fixtures/equivalence/methods.cpp
     - tests/fixtures/untracked_members.cpp
+    - tests/fixtures/methods_cross_tu/counter.hpp
+    - tests/fixtures/methods_cross_tu/counter.cpp
+    - tests/fixtures/methods_cross_tu/client.cpp
   negative:
     - tests/negative/verified_methods.sh
     - tests/fixtures/negative/methods_false_postcondition.cpp
@@ -118,6 +124,8 @@ tests:
     - tests/fixtures/negative/methods_local_class.cpp
     - tests/fixtures/negative/methods_unmodeled_receivers.cpp
     - tests/fixtures/negative/methods_unmodeled_uses.cpp
+    - tests/fixtures/negative/methods_cross_tu_stale.cpp
+    - tests/fixtures/negative/methods_cross_tu_precondition.cpp
     - tests/negative/verified_storage.sh
     - tests/fixtures/negative/reference_aggregate_stale.cpp
     - tests/fixtures/negative/member_numbering_gap.cpp
@@ -143,6 +151,7 @@ required_test_categories:
   - refined return
   - a stale member fact refused
   - virtual function and virtual call refused
+  - a member function defined in another translation unit, used and refused through its interface
   - erasure to ordinary C++ with unchanged layout
 
 completion_requires:
