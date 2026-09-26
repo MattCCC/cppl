@@ -216,15 +216,17 @@ std::optional<std::string> configuration_difference(const artifact::Configuratio
     return std::nullopt;
 }
 
-// Whether a file an interface was produced from is still what it was.
+// Whether a file an interface was produced from is still what it was. The
+// path is the interface's text, so it is shown escaped (TRUST.md TCB-XTU-010).
 std::optional<std::string> stale_source(const artifact::Interface& recorded, SourceDigests& digests) {
     for (const artifact::SourceFile& file : recorded.sources) {
         const std::optional<source::Digest> now = digests.of(file.path);
+        const std::string shown = artifact::displayed(file.path);
         if (!now.has_value()) {
-            return "'" + file.path + "', which it was produced from, can no longer be read as a source file";
+            return "'" + shown + "', which it was produced from, can no longer be read as a source file";
         }
         if (!(*now == file.digest)) {
-            return "'" + file.path + "' has changed since it was produced";
+            return "'" + shown + "' has changed since it was produced";
         }
     }
     return std::nullopt;
@@ -318,7 +320,7 @@ obligations::Imports read_imports(const std::vector<std::string>& paths, const a
         }
         if (unusable.has_value()) {
             report(engine, named + ": " + *unusable,
-                   "rebuild '" + recorded->unit +
+                   "rebuild '" + artifact::displayed(recorded->unit) +
                        "' with this compiler to produce a current interface (SPEC.md "
                        "TUBOUND-005)");
             for (const artifact::Entry& entry : recorded->entries) {
@@ -341,7 +343,7 @@ obligations::Imports read_imports(const std::vector<std::string>& paths, const a
                 "'" + existing->second.origin + "' and '" + path + "' record different contracts for it";
             report(engine,
                    "verification interfaces '" + existing->second.origin + "' and '" + path +
-                       "' record different contracts for '" + entry.name + "'",
+                       "' record different contracts for '" + artifact::displayed(entry.name) + "'",
                    "a function has one contract; rebuild the interfaces so that one unit records it (SPEC.md "
                    "TUBOUND-009)");
             refuse(entry.symbol, path, reason);
@@ -379,7 +381,7 @@ obligations::Imports read_imports(const std::vector<std::string>& paths, const a
             continue;
         }
         refuse(symbol, entry->second.origin,
-               "it was proven through the contract of '" + broken->symbol +
+               "it was proven through the contract of '" + artifact::displayed(broken->symbol) +
                    "', and no imported interface records that contract as it was when this one was proven");
         accepted.erase(entry);
         if (const auto affected = dependents.find(symbol); affected != dependents.end()) {

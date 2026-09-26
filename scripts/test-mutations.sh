@@ -147,6 +147,10 @@ semantics-digest-covers-kernel	cmake/VerifierSemanticsSources.cmake	    kernel	 
 semantics-sources-classified	cmake/CheckVerifierSemantics.cmake	if(problems)	if(FALSE)	^architecture_verifier_semantics$
 xtu-report-escapes-recorded-text	compiler/artifact/src/interface.cpp	if (byte >= 0x20U && byte <= 0x7EU && byte != '%') {	if (true) {	^unit_interface_test$|^negative_cross_tu$
 xtu-format-version	compiler/artifact/include/cppl/artifact/interface.hpp	inline constexpr std::uint32_t kFormatVersion = 3;	inline constexpr std::uint32_t kFormatVersion = 2;	^unit_interface_test$|^negative_cross_tu$
+xtu-refusal-escapes-source	compiler/driver/src/interface_io.cpp	const std::string shown = artifact::displayed(file.path);	const std::string shown = file.path;	^negative_cross_tu$
+xtu-refusal-escapes-unit	compiler/driver/src/interface_io.cpp	"rebuild '" + artifact::displayed(recorded->unit) +	"rebuild '" + recorded->unit +	^negative_cross_tu$
+xtu-refusal-escapes-conflict	compiler/driver/src/interface_io.cpp	artifact::displayed(entry.name)	entry.name	^negative_cross_tu$
+xtu-refusal-escapes-dependency	compiler/driver/src/interface_io.cpp	artifact::displayed(broken->symbol)	broken->symbol	^negative_cross_tu$
 xtu-models-written	compiler/artifact/src/interface.cpp	canonical_lines(entry.models, model_line)	canonical_lines(std::vector<Model>{}, model_line)	^unit_interface_test$|^e2e_containers$
 xtu-models-exported	compiler/obligations/src/interface.cpp	entry.models.push_back(library_model(dependency.model));	(void)dependency;	^e2e_containers$|^unit_cross_unit_contracts_test$
 xtu-models-carried	compiler/obligations/src/interface.cpp	entry.models.insert(entry.models.end(), imported.models.begin(), imported.models.end());	(void)imported.models;	^e2e_containers$|^unit_cross_unit_contracts_test$

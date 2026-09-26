@@ -279,6 +279,40 @@ if grep -Eq '^Assumption-free claims: +7' named.report; then
     fail "a name in a forged record added a line to the trust report"
 fi
 
+# SPEC: TUBOUND-005, TUBOUND-009 -- what a refusal names from an interface is
+# shown escaped as well: the unit and a file a stale interface names, a
+# function two interfaces record differently, and the record a dependent was
+# proven through. None can add a line of its own to a diagnostic
+# (TRUST.md TCB-XTU-010).
+hostile='x%0Aerror:%20injected'
+unescaped() {
+    if grep -q '^error: injected' "$1.err"; then
+        cat "$1.err" >&2
+        fail "text read from an interface added a line to the diagnostics of $1"
+    fi
+}
+reseal library.cppli hostile_stale.cppli \
+    "s|^unit .*|unit /$hostile|; s|^\\(source [0-9a-f]*\\) .*/library\\.hpp\$|\\1 /$hostile.hpp|"
+refuse hostile_stale "it is stale: '/x%0Aerror: injected\\.hpp', which it was produced from, can no longer be read" \
+    client.cpp --cppl-import-interface=hostile_stale.cppli --cppl-import-interface=middle.cppli
+grep -q "rebuild '/x%0Aerror: injected' with this compiler" hostile_stale.err ||
+    { cat hostile_stale.err >&2; fail "the unit a stale interface names is not shown escaped"; }
+unescaped hostile_stale
+awk -v name="$hostile" '
+    $1 == "entry" { inside = ($2 == "c:@F@count_up#i#") }
+    inside && $1 == "name" { $0 = "name " name }
+    { print }' forged.cppli | sed '$d' > hostile_rival.body
+grep -q "^name $hostile\$" hostile_rival.body || fail "the rival record's name was not replaced"
+{ cat hostile_rival.body; printf 'checksum %s\n' "$(sha256 < hostile_rival.body)"; } > hostile_rival.cppli
+refuse hostile_conflict "'library\\.cppli' and 'hostile_rival\\.cppli' record different contracts for 'x%0Aerror: injected'" \
+    client.cpp --cppl-import-interface=library.cppli --cppl-import-interface=hostile_rival.cppli \
+    --cppl-import-interface=middle.cppli
+unescaped hostile_conflict
+reseal middle.cppli hostile_depends.cppli "s|^\\(depends [0-9a-f]*\\) c:@F@clamp4#i#\$|\\1 c:@F@clamp4#i#$hostile|"
+refuse hostile_depends "it was proven through the contract of 'c:@F@clamp4#i#x%0Aerror: injected'" \
+    client.cpp --cppl-import-interface=library.cppli --cppl-import-interface=hostile_depends.cppli
+unescaped hostile_depends
+
 # SPEC: TUBOUND-005 -- a path an interface names is hostile: one that is not a
 # regular file is never read, so a device cannot make an import run forever.
 ln -s /dev/zero "$run/zz-device"
