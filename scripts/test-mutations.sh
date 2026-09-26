@@ -178,6 +178,14 @@ bit-field-read-refused	clang/src/bridge.cpp	if (clang_getFieldDeclBitWidth(field
 pointer-call-havocs-aliases	clang/src/bridge.cpp	for (const std::size_t reached : invalidate_pointee_aliases(state, handed, invalidated)) {	for (const std::size_t reached : (false ? invalidate_pointee_aliases(state, handed, invalidated) : std::vector<std::size_t>{})) {	^negative_verified_storage$
 pointer-call-havoc-without-reference-writes	clang/src/bridge.cpp	            havoc_pointees({});	            (void)0;	^negative_verified_storage$
 pointer-call-havoc-beside-reference-writes	clang/src/bridge.cpp	        havoc_pointees(targets);	        (void)targets;	^negative_verified_storage$
+representability-outside-below	kernel/src/linear.cpp	finish(expression, Wide{1} - lowest(type))	finish(expression, Wide{2} - lowest(type))	^kernel_definedness_test$
+representability-outside-above	kernel/src/linear.cpp	finish(negated(expression), highest(type) + 1)	finish(negated(expression), highest(type) + 2)	^kernel_definedness_test$
+conversion-wrap-modulus	kernel/src/linear.cpp	reduced.terms.emplace(wrap, -modulus(target));	reduced.terms.emplace(wrap, -2 * modulus(target));	^kernel_definedness_test$
+division-identity-divisor	kernel/src/linear.cpp	identity.terms.emplace(*quotient, divisor);	identity.terms.emplace(*quotient, divisor + 1);	^kernel_definedness_test$
+unknown-divisor-remainder-below	kernel/src/linear.cpp	either(*divisor, 0, *excess, 1)	either(*divisor, 0, *excess, 2)	^kernel_definedness_test$
+unknown-divisor-remainder-above	kernel/src/linear.cpp	either(*divisor, 0, *shortfall, 1)	either(*divisor, 0, *shortfall, 2)	^kernel_definedness_test$
+unsigned-remainder-within-dividend	kernel/src/linear.cpp	return constrain(*within, 0);	return constrain(*within, 1);	^kernel_definedness_test$
+remainder-sign-of-nonnegative-dividend	kernel/src/linear.cpp	either(*dividend, 1, negated(remainder), 0)	either(*dividend, 1, negated(remainder), 1)	^kernel_definedness_test$
 MUTATIONS
 )
 
