@@ -997,6 +997,14 @@ read as the value it arrived with even after a write through another reference,
 and a contract false at run time was proven (`negative/methods_reference_object_stale.cpp`,
 `negative_verified_storage`).
 
+A return whose value is a call states the post-state of each reference
+parameter in the scope the call's result is in (`SPEC.md` VERIFIED-031). The
+post-state was once stated before the call's result was in scope, so it named
+the binder standing at its position then: `ensures (r == 5u)` was proven of a
+function that never wrote `r` and returned a call whose result was 5, a
+contract false at run time (`negative/post_state_after_returned_call.cpp`,
+`fixtures/post_state_calls.cpp`, `negative_verified_storage`).
+
 A refinement does not cross a translation unit on a declaration's word
 either. An ordinary function's refined return is refused as evidence at the
 boundary, including through a header, so the only way a refined value enters is

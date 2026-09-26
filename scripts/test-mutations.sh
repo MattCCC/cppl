@@ -146,12 +146,13 @@ multiline_names=(forall-recursive-evidence implication-recursive-evidence
                  arithmetic-fact-evidence callee-body-linkage
                  call-precondition-gate conjunction-introduction-right
                  disjunction-right-case conjunction-elimination-evidence
-                 receiver-caller-storage)
+                 receiver-caller-storage post-state-after-returned-call)
 
 multiline_file() {
     case "$1" in
         callee-body-linkage|call-precondition-gate) echo "compiler/automation/src/composition.cpp" ;;
         receiver-caller-storage) echo "clang/src/bridge.cpp" ;;
+        post-state-after-returned-call) echo "compiler/obligations/src/contracts.cpp" ;;
         *) echo "kernel/src/check.cpp" ;;
     esac
 }
@@ -160,6 +161,7 @@ multiline_tests() {
     case "$1" in
         callee-body-linkage) echo '^unit_contracts_test$' ;;
         receiver-caller-storage) echo '^negative_verified_methods$' ;;
+        post-state-after-returned-call) echo '^negative_verified_storage$' ;;
         call-precondition-gate) echo '^unit_contracts_test$|^negative_verified_calls$|^negative_verified_paths$' ;;
         *) echo '^kernel_' ;;
     esac
@@ -235,6 +237,18 @@ multiline_before() {
         receiver-caller-storage)
             printf '%s' '.type = leaf.type,
                                        .external = true,' ;;
+        post-state-after-returned-call)
+            printf '%s' '            if (auto evaluated = evaluate(result, scope); !evaluated)
+                return evaluated;
+            std::vector<kernel::Term> arguments;
+            for (std::size_t index = 1; index < completed->operands.size(); ++index) {
+                if (core_type(completed->operands[index].type) != std::optional{plan_.parameters[index - 1]})
+                    return fail("post-state parameter type mismatch", location);
+                auto value = lower(completed->operands[index], scope);
+                if (!value)
+                    return std::unexpected(value.error());
+                arguments.push_back(*value);
+            }' ;;
     esac
 }
 
@@ -278,6 +292,18 @@ multiline_after() {
         receiver-caller-storage)
             printf '%s' '.type = leaf.type,
                                        .external = false,' ;;
+        post-state-after-returned-call)
+            printf '%s' '            std::vector<kernel::Term> arguments;
+            for (std::size_t index = 1; index < completed->operands.size(); ++index) {
+                if (core_type(completed->operands[index].type) != std::optional{plan_.parameters[index - 1]})
+                    return fail("post-state parameter type mismatch", location);
+                auto value = lower(completed->operands[index], scope);
+                if (!value)
+                    return std::unexpected(value.error());
+                arguments.push_back(*value);
+            }
+            if (auto evaluated = evaluate(result, scope); !evaluated)
+                return evaluated;' ;;
     esac
 }
 

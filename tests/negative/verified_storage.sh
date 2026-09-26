@@ -404,5 +404,15 @@ refuse_fixture member_numbering_gap 'does not satisfy its contract'
 # SPEC: VERIFIED-030, VERIFIED-031
 refuse_fixture reference_aggregate_stale 'does not satisfy its contract'
 
+# A return whose value is a call once had the post-state of a reference
+# parameter stated before the call's result was in scope, so the post-state
+# was read as that result, and a claim false at run time was proven.
+# SPEC: VERIFIED-031
+refuse_fixture post_state_after_returned_call "return path 'claims path 1' does not satisfy its contract"
+"$CPPL" -std=c++20 --cppl-trust-report "$FIXTURES/post_state_calls.cpp" -o "$run/post_state_calls" \
+    > "$run/post_state_calls.out"
+grep -Eq '^Function contracts proven: +3$' "$run/post_state_calls.out"
+test "$("$run/post_state_calls")" = '5 5 5 2'
+
 "$CPPL" -std=c++20 "$FIXTURES/untracked_members.cpp" -o "$run/untracked_members" > "$run/untracked_members.out"
 test "$("$run/untracked_members")" = '2 3 1 5'

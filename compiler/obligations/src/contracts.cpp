@@ -1326,6 +1326,19 @@ class Conditions {
         if (const auto* completed = std::get_if<vir::ReturnState>(&expression.node)) {
             if (completed->operands.size() != plan_.parameters.size() + 1)
                 return fail("malformed post-state", location);
+            const auto& result = completed->operands.front();
+            if (core_type(result.type) != std::optional{plan_.result})
+                return fail("return type mismatch", location);
+            // The calls the returned value makes are evaluated first. Each adds
+            // the binders of its result and post-state to the scope, so every
+            // term the obligation states must be lowered after them: a
+            // post-state lowered before would name the binder that stood at its
+            // position then, which is a call's result once the call is in scope.
+            // A call left in the returned value writes nothing -- the lowering
+            // binds one with effects before the return -- so evaluating it
+            // first changes no post-state (SPEC.md VERIFIED-031).
+            if (auto evaluated = evaluate(result, scope); !evaluated)
+                return evaluated;
             std::vector<kernel::Term> arguments;
             for (std::size_t index = 1; index < completed->operands.size(); ++index) {
                 if (core_type(completed->operands[index].type) != std::optional{plan_.parameters[index - 1]})
@@ -1335,11 +1348,6 @@ class Conditions {
                     return std::unexpected(value.error());
                 arguments.push_back(*value);
             }
-            const auto& result = completed->operands.front();
-            if (core_type(result.type) != std::optional{plan_.result})
-                return fail("return type mismatch", location);
-            if (auto evaluated = evaluate(result, scope); !evaluated)
-                return evaluated;
             auto value = lower(result, scope);
             if (!value)
                 return std::unexpected(value.error());
