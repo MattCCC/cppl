@@ -2498,24 +2498,34 @@ producing unit, --cppl-emit-interface=<file>
   obligations   state_contract gives every contract of a function with
                 external linkage a canonical statement identity: parameter and
                 result types and passing, preconditions, postcondition,
-                capabilities and measure, with every pure definition they reach
-                encoded by content rather than by this unit's numbering
-                (obligations/src/interface.cpp)
+                capabilities and whether it asks to terminate, with every pure
+                definition they reach encoded by content rather than by this
+                unit's numbering, and a restatement identity with the measure
+                itself for TU-003 (obligations/src/interface.cpp)
   trust         close_trust gives each proven contract its closure: trusted
-                laws, unsafe blocks, and the imported contracts it rests on
+                laws, library models, unsafe blocks, and the imported contracts
+                it rests on, each category apart
   obligations   exported_contracts turns each proven contract's closure into an
                 interface entry, carrying on what imported contracts rest on
   driver        after the object is produced, binds the entries to the compiler
-                build, kernel, core, Clang, language mode, target and the digest
-                of every file the unit was preprocessed from, and writes the
-                canonical text (compiler/artifact) atomically; a unit that fails
-                removes an interface it left before
+                version, the declared verification-semantics version, the
+                verifier-semantics digest (generated at build time by
+                cmake/VerifierSemantics.cmake from the semantics-bearing
+                sources), kernel, core, Clang, language mode, target and the
+                digest of every file the unit was preprocessed from, and writes
+                the canonical text (compiler/artifact) atomically; a unit that
+                fails removes an interface it left before
 consuming unit, --cppl-import-interface=<file>...
   driver        reads each file strictly (compiler/artifact: canonical text,
-                bounded, checksummed), refuses one of another configuration or a
-                stale one, refuses conflicting records of one function and
-                records whose dependencies are not imported as proven against
+                bounded, integrity-checked), refuses one of another
+                configuration or verification semantics or a stale one, refuses
+                records of one function with different verification-result
+                identities and records whose dependencies are not imported with
+                the identities they were proven against
                 (driver/src/interface_io.cpp)
+  obligations   generate_contracts refuses every function and record on, or
+                reaching, a cycle of the verified-contract dependency graph that
+                includes an imported record (TUBOUND-008)
   elaboration   a verified function declared and not defined, with external
                 linkage, is vir::Function::defined_elsewhere; its contract is
                 elaborated from this unit's own declaration
@@ -2527,8 +2537,10 @@ consuming unit, --cppl-import-interface=<file>...
                 by the kernel
   trust         the imported contract is no claim of this unit; each claim
                 through it carries it and what its record rests on
-  driver        the trust report lists imported contracts and every claim that
-                is interface-dependent, never as assumption-free
+  driver        the trust report lists imported contracts with their closures
+                and every claim that is interface-dependent, never as
+                assumption-free, and states that interface provenance is
+                unauthenticated
 ```
 
 The artifact component depends on the source system alone, so its reader is

@@ -1531,6 +1531,12 @@ operation with valid lifetime, provenance, bounds, alignment and access rights.
 It does not by itself assert the previous stored values. `writable(p)` abbreviates
 one object.
 
+Access rights belong to the access path. `writable` of a pointer to `const T`, or of a
+span of `const T`, is ill-formed and refused where it is stated: no write is permitted
+through that path, whatever the storage it reaches permits. A capability over `n == 0`
+objects designates no object: it neither requires nor establishes that `p` is non-null,
+and nothing about `p` follows from it.
+
 [VERIFIED-037] A successful ordinary C++ operation may establish or consume these capabilities
 according to C++ semantics. Examples include address-of a live object, array
 construction, successful allocation, reference binding, object construction and
@@ -6487,6 +6493,12 @@ storage: `v[i]` denotes an element place of the storage the object owns or views
 such subscript owes `i < v.size()`, against the length of the object subscripted, where the
 place is formed.
 
+[STDMODEL-024] The length is the one logical scalar observation of a sequence. Which object owns or which
+view designates a storage, that storage's generation (STDMODEL-015) and whether it is alive
+are verifier bookkeeping for alias and lifetime reasoning: they are never values a
+proposition can state or compare, and two sequences of equal length are not thereby one
+storage, nor two spans of equal length one view.
+
 [STDMODEL-013] What a modeled operation does to a sequence's abstract value is a trusted library
 summary. The admitted operations and their summaries are:
 
@@ -6518,14 +6530,32 @@ by the initializer of its declaration, and is never assigned, formed from anothe
 mutable reference or returned. A span passed to a call by value is the same view. A verified
 function whose result is a span is refused.
 
-[STDMODEL-015] Every operation that may reallocate, shrink, replace, move from or end the
-storage a sequence owns establishes a new **storage generation** of that sequence: each
-mutator of STDMODEL-013, a move from it, passing it by mutable reference to a call, an unsafe
-block that may reach it, a write through storage that may be it, and the head of a loop that
-does any of these. An element write does not. An element place is formed at a generation, and
-after the generation changes a subscript forms a new one and owes its bound again. A span local
-and a reference bound to a sequence element each designate storage at the generation they were
-formed at; using either at any other generation is refused.
+[STDMODEL-015] Three events are distinguished, and none stands in for another:
+
+```text
+element or content write        a new version of that element place, within the
+                                same storage generation
+possible reallocation,          a new storage generation: every alias into the
+replacement or move             previous one is invalid
+end of the owner's lifetime     the storage is dead: every view and reference
+                                that depends on it is invalid
+```
+
+[STDMODEL-025] Every operation that may reallocate, shrink, replace or move from the storage a sequence
+owns establishes a new **storage generation** of that sequence: each mutator of
+STDMODEL-013, a move from it, passing it by mutable reference to a call, an unsafe block that
+may reach it, a write through storage that may be it, and the head of a loop that does any
+of these. Where preservation of the storage is not proved, a new generation is established
+conservatively. An element write does not establish one. An element place is formed at a
+generation, and after the generation changes a subscript forms a new one and owes its bound
+again. A span local and a reference bound to a sequence element each designate storage at
+the generation they were formed at; using either at any other generation is refused.
+
+[STDMODEL-026] The end of the owner's lifetime is not a generation of that storage: after it, no
+generation exists. A view or element reference is modeled only while its owner is in
+scope, which STDMODEL-014 enforces by forming a span only from a whole sequence the body
+tracks, never returning, assigning or storing one, and refusing a verified function whose
+result is a span.
 
 [STDMODEL-016] A span parameter states a region of caller storage and nothing about its
 validity. Reading one of its elements requires `readable(s)`, and writing one `writable(s)`,
@@ -6540,10 +6570,23 @@ parameter it holds the same capability for, a live span local, a container of it
 converted to a span, or a container's data pointer, and a span or data pointer over a container
 passed in the same call by mutable reference is refused.
 
+Write access is a property of the access path, never of the storage behind it: `writable(s)`
+of a span of `const` elements, like `writable(p, n)` of a pointer to `const`, is refused where
+it is stated, and a `std::span<const T>` never obtains a writable capability because the storage
+it views is writable. Element constness is preserved through every conversion to a span and
+through `data()`.
+
 [STDMODEL-017] `v.data()` is modeled only as an argument of a verified call whose parameter is a
 pointer carrying a capability, over the container's length: `readable(p, n)` owes
-`n <= v.size()`. A call that may write through a span or data pointer it is handed leaves every
-element of the container unknown afterwards, and its length unchanged.
+`n <= v.size()`, and `writable(p, n)` owes the same of a container whose elements the caller may
+write. A capability over zero elements designates no object: it neither requires nor
+establishes that its pointer is non-null, so the data pointer of an empty container is a valid
+argument for `n == 0`, and a callee learns nothing about its pointer from such a capability. A
+call that may write through a span or data pointer it is handed leaves every element of the
+container unknown afterwards, and its length unchanged. A call handed, besides such a span or
+data pointer, an element of the same container by mutable reference is refused where it is
+made: the callee could write that element through either argument, and one storage written
+through two arguments of one call has no single post-state.
 
 [STDMODEL-018] Every claim resting on a verified function that uses a modeled sequence, in its
 contract, its body or the body of a function it calls, is proven relative to what that model
@@ -6554,14 +6597,28 @@ assumption-free.
 member of a modeled sequence not named in STDMODEL-011 to STDMODEL-017 are refused in a verified
 body by name. An operation that is refused is never approximated.
 
-[STDMODEL-020] A value entering an element place is a refinement crossing into the element type
-(17.2): a listed element, a fill value, the value-initialized element of a sized construction,
-a pushed element, and a subscript write, including one through a span. An element read supplies
-the element type's refinement exactly where REFINE-060 and REFINE-061 allow: a container local
-whose every element write was modeled here, whose storage was not handed to a call that may
-write it, and that no unsafe block names. A refined element type is admitted only for a local.
-A copy or move MUST NOT introduce a refinement the source's element type does not state, and a
-span or data pointer that lets a callee write a refined container's elements is refused.
+[STDMODEL-020] A refinement written as a template argument is its base type in the C++ type:
+`std::vector<Positive>` is the specialization `std::vector<unsigned>`, with that type's
+layout, members and ABI (REFINE-019, ERASE-010), and no predicate travels with the argument
+through templates, aliases, parameters or results. Written as the element type in the
+declared type of a local `vector`, it is instead read as a verification-only **content
+invariant** of that local's storage: every element of it satisfies the predicate. The
+invariant belongs to that declaration and its storage, never to the specialization, and has
+no runtime representation. It is admitted only there: a parameter, a result, a `span` or a
+`std::array` whose element type is written as a refinement states no invariant and is
+refused, rather than read as the base type while the refinement is still written.
+
+[STDMODEL-027] Every value entering an element place of such a local is a refinement crossing into the
+predicate (17.2): a listed element, a fill value, the value-initialized element of a sized
+construction, a pushed element, and a subscript write, including one through a span. A copy or
+move into it owes the predicate of every element of its source, which is shown only by a source
+whose own content invariant states it; a copy or move MUST NOT introduce an invariant its source
+does not state. An element read supplies the predicate exactly where REFINE-060 and REFINE-061
+allow: from a local whose every element write was modeled here, whose storage was not handed to
+a call that may write it, and that no unsafe block names. Handing the storage to a call that may
+write it, through a writable span or data pointer or by passing the container by mutable
+reference, is refused where the call is made, since nothing obliges the callee to preserve the
+invariant.
 
 [STDMODEL-021] A moved-from sequence holds a valid but unspecified value: nothing about its
 length or elements survives the move. Only a sequence this body owns is moved from, and a
@@ -6661,11 +6718,29 @@ carries a proposition another unit reads as the meaning of a contract.
 - [TUBOUND-002] A translation unit that verifies without error may record, in a
   verification interface, each function contract it proved for a function with external
   linkage: the function's resolved identity, the identity of the contract's statement,
-  whether the contract is total or partial correctness, and the trusted assumptions,
-  unsafe code and contracts of other translation units its proof rests on, directly or
-  transitively. It records no contract it did not prove, no contract of a function with
-  internal linkage, and no contract of another unit as its own. A unit that does not
-  verify leaves no interface describing it.
+  whether the contract is total or partial correctness, and every dependency its proof
+  rests on, directly or transitively. Dependencies are recorded by category, and the
+  categories are distinct: a trusted-law dependency (a logical assumption, §27), a
+  library-model dependency (a trusted semantic model of a library, STDMODEL-018), an
+  unsafe dependency (runtime code nothing verified, §26) and an external verified-contract
+  dependency (a contract of a further unit, recorded by that record's verification-result
+  identity). One mechanism may carry them all; none is recorded, transported or reported
+  as another, and a record preserves each category across every unit it crosses. The
+  interface itself, and where it came from, is an artifact dependency of every contract
+  it records (TUBOUND-005, TUBOUND-006). A unit records no contract it did not prove, no
+  contract of a function with internal linkage, and no contract of another unit as its
+  own. A unit that does not verify leaves no interface describing it.
+
+  [TUBOUND-010] A record's **verification-result identity** covers everything that can change what an
+  importing unit is allowed to conclude from it: the function's identity, the contract
+  statement (TUBOUND-004), totality, and the identity of every dependency of every
+  category. What a caller derives at a call from the contract, such as the post-states
+  of reference parameters and of the implicit object, the capabilities it owes and
+  whether the call may terminate, is fixed by the statement and totality and so is
+  covered by them; an implementation that lets a caller rely on any further exported
+  summary MUST cover that summary by the identity too. What a record carries only to be
+  shown, such as a function's name, the statement as text or where a trusted law is
+  written, is not part of it.
 
 - [TUBOUND-003] A verified function declared, and not defined, in a translation unit
   states a contract that a caller in that unit may rely on only when an imported
@@ -6674,43 +6749,94 @@ carries a proposition another unit reads as the meaning of a contract.
   caller that relies on it. Its spelling, `verified` included, establishes nothing.
 
 - [TUBOUND-004] The contract a caller relies on is the one its own translation unit
-  states from its own declaration. A recorded contract is used only when the function it
-  describes is the same entity, as the implementation resolves it: the same qualified
-  declaration, overload, parameter and result types, qualifiers and template arguments,
-  with external linkage, and when its statement is the same contract: the same parameter
-  and result types and passing, the same preconditions and postcondition, including the
-  predicates of refined parameters and a refined result, the same memory capabilities
-  and measure, and the same content of every pure definition these mention, compared by
-  meaning after parameter renaming. A specialization is a different function from every
-  other specialization of its template.
+  states from its own declaration; the producing unit's record proves that same semantic
+  contract and supplies nothing of its meaning. A recorded contract is used only when the
+  function it describes is the same entity, as the implementation resolves it: the same
+  qualified declaration, overload, parameter and result types, cv- and ref-qualifiers and
+  template arguments, with external linkage, and when its statement is the same contract:
+  the same parameter and result types and passing, the same preconditions and
+  postcondition, including the predicates of refined parameters and a refined result, the
+  same memory capabilities, the same request, or absence of a request, that the function
+  terminate (TERMINATION-006), and the same content of every pure definition these reach,
+  directly or through other pure definitions, compared by meaning after parameter
+  renaming. A specialization is a different function from every other specialization of
+  its template.
+
+  [TUBOUND-011] The measure a `decreases` clause states is how the producing unit's proof ranked the
+  function's recursion. It is proof metadata of that unit, and is not part of the
+  contract across units: two declarations that both ask for termination state the same
+  contract across units whatever measures they write, since recursion is never verified
+  across units (TUBOUND-008) and a measure is compared only with the measures of one
+  unit's own recursion. Within one unit, every declaration of one function states one
+  contract, its measure included (TU-003), and recursion is ranked by that measure
+  (TERMINATION-007).
 
 - [TUBOUND-005] A verification interface is untrusted input. It is refused whole when it
-  is malformed, truncated or altered since it was written, of a format version the
-  implementation does not read, produced by another build of the implementation or under
-  another proof kernel, formal core, C++ semantic authority, language mode or target, or
-  stale: when any file its unit was produced from no longer has the content it had then.
-  A refused interface establishes nothing, and its refusal is a diagnostic.
+  is malformed or truncated; when its recorded integrity check does not match its
+  content; when its format version is unsupported; when its verification semantics,
+  proof kernel, formal core, C++ semantic authority, language mode or target are
+  incompatible with the importing unit's; or when a semantic input on which its result
+  depends no longer has the content recorded for it. A refused interface establishes
+  nothing, and its refusal is a diagnostic naming which of these failed.
+
+  [TUBOUND-012] These are distinct checks and establish distinct things. Format validity establishes
+  that the bytes are an interface this implementation reads. The content-integrity check
+  establishes that the content matches the digest recorded in it, and so detects a change
+  after which the digest was not recomputed. Semantic compatibility establishes that the
+  records were made under the semantics the importing unit uses. Semantic-input staleness
+  establishes that no input the results depend on has changed. None of them establishes
+  artifact authenticity or provenance: the integrity digest does not authenticate the
+  producer, and a party able to replace an interface and recompute its digest is outside
+  what that digest detects. Provenance is part of the artifact and reuse trust boundary
+  (TRUST.md 2.5, TCB-XTU-010), and is reported as such (TUBOUND-006).
+
+  [TUBOUND-013] Verification semantics are compared by two identities, each exactly: a declared
+  verification-semantics version, and a verifier-semantics digest derived mechanically
+  from the content of the implementation's semantics-bearing sources, never from
+  timestamps, paths, documentation or the bytes of a built executable. A change to a
+  semantics-bearing source therefore makes earlier interfaces incompatible even when the
+  declared version was not changed.
 
 - [TUBOUND-006] A claim proven through a contract of another translation unit rests on
-  that contract's record and on everything the other unit's proof rests on: its trusted
-  assumptions, its unsafe code, and the contracts of further units it was proven through.
-  Trust reporting names each of them for the claim; such a claim is never reported as
-  free of assumptions, and the imported contract is never counted as proven by the unit
+  that contract's record, as an external verified dependency, and on everything the
+  other unit's proof rests on: its trusted-law, library-model and unsafe dependencies,
+  and the contracts of further units it was proven through, transitively. An imported
+  contract is not a trusted law and not a library model, and none of these is reported
+  as another. Trust reporting names, for every imported contract, its record identity,
+  the interface that recorded it, the chain of external contracts it was proven through,
+  and its trusted-law, library-model and unsafe closures, and names each of them for
+  every claim resting on it. The imported contract is never counted as proven by the unit
   that uses it.
+
+  [TUBOUND-014] A claim is reported in the assumption-free category only when its transitive closure
+  contains no trusted law, no library model, no unsafe dependency and no imported record.
+  A claim resting on an imported record is never assumption-free: its record is believed
+  on the provenance of the interface, which nothing authenticates (TUBOUND-005). An
+  implementation that reports a narrower property, such as resting on no logical axiom,
+  MUST give it a distinct label. Assumption-free does not mean that any artifact was
+  authenticated.
 
 - [TUBOUND-007] A recorded contract is total or partial correctness as recorded, and a
   contract proven through a partial one is partial (CORRECT-006). A function that asks
   to terminate cannot rest on a partial one (TERMINATION-006), and a record stating a
   contract whose declaration asks that its function terminate as partial is refused.
 
-- [TUBOUND-008] Recursion is not verified across translation units. A call that relies
-  on a recorded contract whose proof rests on a function of the calling unit from which
-  the caller is reachable again is refused.
+- [TUBOUND-008] Recursion is not verified across translation units. The transitive
+  verified-contract dependency graph, whose nodes are the verified functions of the unit
+  and the contracts its imported interfaces record, and whose edges are a unit's calls
+  and each record's external verified-contract dependencies, MUST NOT contain a strongly
+  connected component with more than one node, or a node with an edge to itself, that
+  includes an imported record: such a component is a cycle that crosses a translation
+  unit. Every function and record of such a component, and every function or record that
+  reaches one, is refused, whether or not the calling unit's own functions lie on the
+  cycle.
 
 - [TUBOUND-009] A recorded contract is used only while every contract of another unit
-  its proof rests on is imported too, recorded exactly as it was when that proof was
-  made. Two imported interfaces recording different contracts for one function make that
-  function's contract unavailable.
+  its proof rests on is imported too, with the verification-result identity (TUBOUND-002)
+  the producing proof depended on. Identities are compared, never the bytes of a record:
+  two records of one function with one verification-result identity are the same result.
+  Two imported interfaces recording different verification-result identities for one
+  function are a diagnostic, and make that function's contract unavailable.
 
 ## L.3 Headers
 

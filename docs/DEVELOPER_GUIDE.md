@@ -2910,10 +2910,13 @@ verified std::size_t copy_into(std::span<const unsigned> in, std::vector<unsigne
 }
 ```
 
-A refined element type (`std::vector<Positive>`) owes its predicate wherever a
-value enters an element and supplies it wherever one is read, for a local
-container; a container parameter with a refined element type is refused, since
-no call could establish every element's validity. Everything else a container
+A refined element type on a `vector` local (`std::vector<Positive> v`) is a
+content invariant of that local's storage, not part of its type, which is
+`std::vector<unsigned>`: it owes its predicate wherever a value enters an
+element and supplies it wherever one is read. Anywhere else -- a parameter, a
+result, a span, a `std::array` -- a refined element type is refused, and so is
+passing a refined vector to a call that may write it; use a built-in array
+`Positive a[N]` for refined fixed-size storage. Everything else a container
 offers -- iterators, `at`, `insert`, `resize`, `front`, a span assigned or
 returned -- is refused until a model states it. Read an element into a local
 before testing it: `const char c = in[i]; if (c < '0') ...`, since a condition

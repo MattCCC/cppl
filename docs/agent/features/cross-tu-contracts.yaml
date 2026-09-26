@@ -10,14 +10,16 @@ feature: cross-tu-contracts
 summary: >
   A unit that verifies may record, in a verification interface, each contract it
   proved for a function with external linkage: its USR, a canonical identity of
-  what the contract states, whether it is total, and the trusted laws, unsafe
-  blocks and contracts of other units its proof rests on. A unit that declares
+  what the contract states, whether it is total, and, each category apart, the
+  trusted laws, library models, unsafe blocks and contracts of other units its
+  proof rests on, under a verification-result identity covering all of it. A unit that declares
   the function without defining it relies on the contract only when it imports
   an interface recording that same function and that same statement, rebuilt
   from its own declaration; an interface that is malformed, of another version
-  or configuration, or stale is refused whole, conflicting records and records
-  whose dependencies are not imported as proven are refused, and recursion
-  across units is refused. A claim resting on an imported contract carries it
+  or verification semantics, or stale is refused whole, conflicting records and
+  records whose dependencies are not imported with the identities they were
+  proven with are refused, and a cycle of verified contracts that crosses a unit
+  is refused with everything that reaches it. A claim resting on an imported contract carries it
   and what it rests on, and is never assumption-free. No evidence crosses: the
   interface is artifact and reuse TCB. The interface reaches no object.
 
@@ -48,6 +50,11 @@ rules:
   - TUBOUND-007
   - TUBOUND-008
   - TUBOUND-009
+  - TUBOUND-010
+  - TUBOUND-011
+  - TUBOUND-012
+  - TUBOUND-013
+  - TUBOUND-014
   - TU-002
   - TU-003
   - TU-004

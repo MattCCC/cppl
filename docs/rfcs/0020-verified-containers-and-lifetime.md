@@ -140,8 +140,9 @@ generation (§4).
 ## 4. Storage generations
 
 The version of a container's root is its **storage generation**. Every
-operation that may reallocate, shrink, replace, move from or end the storage
-establishes a new root version: `push_back`, `pop_back`, `clear`, `reserve`,
+operation that may reallocate, shrink, replace or move from the storage
+establishes a new root version, conservatively wherever preservation is not
+proved: `push_back`, `pop_back`, `clear`, `reserve`,
 assignment, move construction from it, a verified call that takes it by
 mutable reference, an unsafe block that may reach it, and a loop head for a
 loop that does any of these. An element write does not.
@@ -170,6 +171,13 @@ and a loop head gives every place the loop may reallocate a fresh one.
 This is the generic lifetime dependency the storage model lacked. It is not a
 container fact system: the generation is the root place's version, established
 and invalidated by the one write path and the one alias analysis.
+
+The end of the owner's lifetime is a third event, not a generation: after it
+the storage is dead and no generation exists. A view or element reference is
+modeled only while its owner is in scope, which §5 guarantees by refusing a span
+that is returned, assigned, stored or formed from anything but a whole tracked
+container. An element write, a new generation and the end of the lifetime are
+distinct (`SPEC.md` STDMODEL-015); none stands in for another.
 
 ## 5. Scope, destruction and escape
 
@@ -232,10 +240,19 @@ element type and owes its predicate through the one write path (`SPEC.md`
 17.2). An element read supplies the element type's predicate exactly where the
 accounting is closed (`SPEC.md` REFINE-060, REFINE-061): a container local whose
 every element write was modeled, whose address never escaped, and that no
-unsafe block names. A refined element type is therefore admitted only for
-container locals, never for container parameters, whose element validity no
-caller proof could establish; a writable view of a refined container is never
-passed to a callee, which could write an unrefined value.
+unsafe block names.
+
+A refinement written as a template argument is its base type in the C++ type:
+`std::vector<Positive>` is `std::vector<unsigned>`, and no predicate travels
+with the specialization. Written as the element type of a `vector` local, it is
+read as a verification-only content invariant of that local's storage
+(`SPEC.md` STDMODEL-020): it belongs to the declaration, never to the type.
+It is therefore admitted only for `vector` locals. A container parameter or
+result, a span and a `std::array` whose element type is written as a refinement
+are refused rather than read as the base type, and the storage of a refined
+local is never handed to a callee that could write it -- not through a writable
+view or data pointer and not by mutable reference -- since nothing obliges the
+callee to keep the invariant.
 
 ## 7. Spans are borrowed and hold no validity by existing
 
@@ -321,8 +338,11 @@ modeled container (by name), a member call whose object is not a tracked
 container, a mutator nested inside another expression, iterators and
 range-`for`, a span built from anything but a tracked container (another span
 included), a span assigned, a span parameter by reference, a refined element
-type on a parameter, a copy that would introduce a refinement, a writable view
-of a refined container passed to a call, a moved-from container read, a
+type on a parameter, a result, a span or a `std::array`, a copy that would
+introduce a refinement, a writable view of a refined container passed to a
+call, a refined container passed by mutable reference, an element passed by
+mutable reference beside a writable view or data pointer of its own container,
+`writable` stated of `const` elements, a moved-from container read, a
 container moved from while it is caller storage, self-assignment, an element of
 a `std::array` a reference designates, `data()` of a `std::array` or anywhere
 but a capability argument, and a returned span.
@@ -358,12 +378,11 @@ contract or body or through a verified call it makes. The closure is per model,
 not per operation: every operation of a model is one trusted statement of
 `TRUST.md` 28.1, listed there word for word.
 
-A verification interface (RFC 0017) records no library models. A claim proven
-through an imported contract names the models that contract's own declaration
-uses, and not those the other unit's body uses; it rests on the imported
-contract, so it is never assumption-free either way. Recording the models in
-the interface, as its premises and unsafe blocks are, is left to a later change
-of the interface format.
+A verification interface (RFC 0017) records, for each contract, the models its
+proof rested on, as library-model dependencies apart from its trusted laws and
+unsafe blocks (interface format version 2, `SPEC.md` TUBOUND-002). A claim proven
+through an imported contract names each of them, through that contract, and it
+rests on the imported contract as well, so it is never assumption-free.
 
 ## 11. Erasure and ABI
 

@@ -596,6 +596,8 @@ The implementation MAY check these through a dedicated capability calculus rathe
 
 **[TCB-CAP-009]** A verified call MUST consume every capability its callee's contract states, exactly as it owes the callee's precondition (`SPEC.md` VERIFIED-013, VERIFIED-043): the caller holds a capability of the same kind on the pointer it passes, and where either side states an element count the callee's is proved no larger than the caller's. A caller that passes a pointer it holds nothing for, or a larger region than it holds, hands the callee storage the proof never established it may access. This implementation checks the kind and the pointer in the obligation layer's path walk (`compiler/obligations/src/contracts.cpp`, correspondence TCB) and states the count comparison as an ordinary obligation the kernel decides.
 
+**[TCB-CAP-010]** A capability MUST grant no more access than its access path permits: `writable` of a pointer to `const T` or of a span of `const T` is refused where it is stated (`SPEC.md` VERIFIED-036, STDMODEL-016), so a const view never carries write access because the storage behind it could be written. A capability over zero elements designates nothing and MUST NOT be used to conclude anything of its pointer, non-nullness included; the data pointer of an empty container is a valid argument for it (`SPEC.md` STDMODEL-017). The first is checked in `build_capability` in `clang/src/bridge.cpp` (correspondence TCB); the second holds because a capability is supposed on its own channel and never reaches the kernel as a proposition about its pointer's value (RFC 0014 §10). Both are pinned by `negative/containers.sh` and `e2e/containers.sh`.
+
 ---
 
 # 16. Refinement correspondence
@@ -1001,9 +1003,11 @@ A summary is supposed at the call exactly as a verified callee's postcondition i
 
 **[TCB-LIB-009]** The capability a contract states over a span or pointer parameter includes, as a precondition the caller owes, that the storage it designates is not element storage of a sequence the function reaches by value or by mutable reference (`SPEC.md` STDMODEL-016). A verified caller discharges it structurally at the call; an unverified caller is trusted to meet it, as it is trusted to meet every other precondition. Reading an `expects` clause that conjoins capabilities with predicates apart, the capabilities on their channel and the predicates as preconditions, is correspondence TCB (`split_conjunction` in `clang/src/bridge.cpp`, `elaborate_contract` in `compiler/elaboration/src/elaborate.cpp`); every other clause that conjoins them is refused whole.
 
-**[TCB-LIB-010]** Every claim resting on a verified function whose contract, body or callees use a modeled sequence is reported under `Library-model-dependent claims` with each model it rests on, and is never counted assumption-free (`SPEC.md` STDMODEL-018). The closure is computed with the trusted-law and unsafe closures, over the same call edges, in `compiler/obligations/src/trust.cpp`. Across translation units it is incomplete: a verification interface (§31) records no library models, so a claim proven through an imported contract names the models that contract's own declaration uses, and not those the other unit's body uses. Such a claim still rests on the imported contract and is never counted assumption-free (§31); only the list of models is short.
+**[TCB-LIB-010]** Every claim resting on a verified function whose contract, body or callees use a modeled sequence is reported under `Library-model-dependent claims` with each model it rests on, and is never counted assumption-free (`SPEC.md` STDMODEL-018). The closure is computed with the trusted-law and unsafe closures, over the same call edges, in `compiler/obligations/src/trust.cpp`. Across translation units it is carried whole: a verification interface (§31) records, for each contract, the models its proof rested on, transitively, as library-model dependencies distinct from trusted laws and unsafe code, and a claim proven through an imported contract names each of them as resting on it through that contract (`SPEC.md` TUBOUND-002, TUBOUND-006). A model a record names that this compiler does not have makes the interface unreadable, so no model can be lost on the way.
 
-TCB delta of the subset: kernel rules 0, axioms 0, term formers 0; trusted assumptions: the summaries and observations above; correspondence: recognition, the place and generation model, span liveness, the call-site disjointness check, and the split of a conjoined `expects` clause.
+**[TCB-LIB-011]** A refined element type is a content invariant of one `vector` local's storage (`SPEC.md` STDMODEL-020), not a property of the specialization. That every element of such a local satisfies the predicate is established, never assumed: each crossing into an element place owes it, a copy or move owes it of every source element, and whatever could put an unchecked value there -- a callee holding the container by mutable reference, a writable span or data pointer, an unsafe block -- is refused or makes a later read supply nothing. A refinement written as the element type of a parameter, a result, a span or a `std::array` states no invariant and is refused rather than read as the base type.
+
+TCB delta of the subset: kernel rules 0, axioms 0, term formers 0; trusted assumptions: the summaries and observations above; correspondence: recognition, the place and generation model, span liveness, the call-site disjointness check, the content invariant's crossings and refusals, and the split of a conjoined `expects` clause.
 
 ---
 
@@ -1122,29 +1126,52 @@ the emitter                 that an entry is written only for a contract every
                             obligation of which the kernel accepted, with the
                             closure close_trust computed for it
 the reader and validator    that a refused interface is refused: format,
-                            version, checksum, configuration, staleness,
-                            conflicts and dependency closure
-                            (compiler/artifact, compiler/driver/src/interface_io)
+                            version, integrity digest, verification semantics,
+                            configuration, staleness, conflicts, dependency
+                            closure and cross-unit cycles
+                            (compiler/artifact, compiler/driver/src/interface_io,
+                            generate_contracts in obligations/src/contracts.cpp)
 the statement identity      that two statements with one identity are one
                             contract (obligations/src/interface.cpp); this is
                             correspondence TCB as well, since it decides which
                             proposition the kernel is asked to suppose
-the file's integrity        between the write and the read; the checksum
-                            detects accidental damage, not a deliberate edit
+the result identity         that two records with one verification-result
+                            identity let a caller conclude the same thing
+                            (artifact::identify)
+the semantics digest        that cmake/VerifierSemantics.cmake names every
+                            source that can change what the verifier concludes
+the interface's provenance  that the interface imported is the one the
+                            producing compile wrote: nothing authenticates it,
+                            and its integrity digest detects only a change
+                            after which the digest was not recomputed
 the object's correspondence that the object linked is the one compiled with
                             the unit that wrote the interface (SPEC.md L.5);
                             nothing binds the two
 ```
 
-**[TCB-XTU-007]** A claim proven through an imported contract MUST be reported with that contract, the interface that recorded it and the identity of the record, and with every trusted assumption and unsafe dependency the producing unit's proof rested on, transitively across units. It MUST NOT be reported as assumption-free, and the imported contract MUST NOT be counted as proven by the consuming unit.
+The categories a claim's closure is made of are kept apart everywhere, across units included, although one traversal carries them:
 
-**[TCB-XTU-008]** An interface MUST be bound to the configuration that gives its records meaning, compared exactly: the compiler version and the digest of the compiler's own executable, the kernel and formal-core versions, the Clang that resolved C++ semantics, the language mode and the target. It MUST also be bound to the content of every file its unit was preprocessed from, so an edit after it was written makes it stale. Content is compared, never a timestamp.
+```text
+interface bytes             untrusted parser input: refused unless well-formed,
+                            intact, compatible and current (TUBOUND-005)
+interface provenance        trusted build and reuse input: this TCB, since no
+                            interface is authenticated
+imported verified contract  an external verified dependency: proven by another
+                            unit, believed here on the interface's provenance
+trusted law                 a logical trusted assumption (§25)
+library model               a trusted semantic model of a library (§28)
+unsafe boundary             an unsafe runtime dependency (§26)
+```
 
-**[TCB-XTU-009]** A record MUST be usable only while every record it rests on is imported with the identity it had when the dependent proof was made, and two records of one function that differ MUST make both unusable. Staleness therefore propagates along the dependency chain rather than stopping at the unit that changed.
+**[TCB-XTU-007]** A claim proven through an imported contract MUST be reported with that contract, the interface that recorded it and the verification-result identity of the record, and, each in its own category, with every trusted law, library model and unsafe dependency the producing unit's proof rested on and every further imported contract it was proven through, transitively across units. An imported contract MUST NOT be reported as a trusted law or as a library model. The claim MUST NOT be reported as assumption-free, and the imported contract MUST NOT be counted as proven by the consuming unit. The report states that interface provenance is unauthenticated whenever an interface was imported, so `Assumption-free` cannot be read as saying that any artifact was authenticated.
 
-**[TCB-XTU-010]** A hand-edited interface whose checksum is recomputed is not detected: the checksum establishes integrity, not authenticity (TCB-ARTIFACT-003). The honest statement is that such an edit can make a caller assume a contract that was never proven; it can never make one kernel-checked, and every claim resting on it is reported as resting on that record (TCB-XTU-007). Authenticating interfaces, or transporting evidence to re-check, is left to a later design (RFC 0017).
+**[TCB-XTU-008]** An interface MUST be bound to the configuration that gives its records meaning, compared exactly: the compiler version, the declared verification-semantics version, the verifier-semantics digest, the kernel and formal-core versions, the Clang that resolved C++ semantics, the language mode and the target. The verifier-semantics digest is computed at build time from the relative path and content of every source in the semantics-bearing set that `cmake/VerifierSemantics.cmake` defines, and from nothing else: no timestamp, absolute path, document or byte of the built executable, so two builds of one source agree and a change to that code changes it whether or not the declared version was raised (`tests/architecture/verifier_semantics.sh`). An interface MUST also be bound to the content of every file its unit was preprocessed from, so an edit after it was written makes it stale. Content is compared, never a timestamp.
 
-TCB delta of this feature: no kernel rule, no axiom, no term or proposition former, no change to what the kernel accepts. The artifact and reuse TCB grows by the components listed above; the reporting TCB grows by the imported-closure propagation in `close_trust` and its report.
+**[TCB-XTU-009]** A record MUST be usable only while every record it rests on is imported with the verification-result identity it had when the dependent proof was made, and two records of one function with different verification-result identities MUST make both unusable. Identities are compared, never bytes: a record's name, the text of its statement and the locations of its trusted laws are shown, not compared. Staleness therefore propagates along the dependency chain rather than stopping at the unit that changed.
+
+**[TCB-XTU-010]** Interface provenance is in the trusted computing base of every claim resting on an imported contract. The integrity digest an interface carries is unauthenticated: it detects a change after which it was not recomputed, and nothing else. A party able to replace an interface and recompute its digest is outside what it detects, and can make a caller assume a contract that was never proven. Such an edit can never make that contract kernel-checked, and every claim resting on it is reported as resting on that record, in the `Interface-dependent claims` it is listed under, never among the assumption-free (TCB-XTU-007, TCB-ARTIFACT-003). Authenticating interfaces, or transporting evidence to re-check, is left to a later design (RFC 0017); until one exists no C++L report claims an interface is authentic.
+
+TCB delta of this feature: no kernel rule, no axiom, no term or proposition former, no change to what the kernel accepts. The artifact and reuse TCB grows by the components listed above, interface provenance among them; the reporting TCB grows by the imported-closure propagation in `close_trust` and its report.
 
 ---
 

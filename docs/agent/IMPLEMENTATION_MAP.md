@@ -503,7 +503,7 @@ and measures on function templates, each refused.
 
 Manifest: `features/cross-tu-contracts.yaml`
 
-Normative sources: `TUBOUND-001`–`TUBOUND-009` (SPEC Annex L.1, L.2.1),
+Normative sources: `TUBOUND-001`–`TUBOUND-014` (SPEC Annex L.1, L.2.1),
 `TU-002`–`TU-004` (SPEC §44), `TEMPLATE-003`; `TRUST.md` §31, §31.1; RFC 0017.
 
 ### Components
@@ -696,7 +696,7 @@ promoted narrow values, each refused.
 
 Manifest: `features/verified-sequences.yaml`
 
-Normative sources: `STDMODEL-010`–`STDMODEL-023` (SPEC Annex J.17),
+Normative sources: `STDMODEL-010`–`STDMODEL-027` (SPEC Annex J.17),
 `STDMODEL-002`, `STDMODEL-006`, `STDMODEL-007` (Annex J.2, J.7, J.8),
 `STORAGE-008`; `TRUST.md` §28.1; `ARCHITECTURE.md` §66.1; `COMPATIBILITY.md`
 §50.1; RFC 0020.

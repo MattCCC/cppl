@@ -277,51 +277,76 @@ oracle.
 
 **Entry.** Clang's USR for the function; a statement identity; the contract as
 the kernel prints it, for diagnostics only; `status proven`, the only status
-written or read; `total` or `partial`; and what the proof rests on: trusted laws
-by identity, name and location, unsafe blocks by location, and imported
-contracts by symbol and entry identity, transitively. A function with internal
-linkage is never recorded or matched: its USR can be spelled the same in two
-units that mean two functions.
+written or read; `total` or `partial`; and what the proof rests on, each
+category apart (`SPEC.md` TUBOUND-002): trusted laws by identity, name and
+location, unsafe blocks by location, library models by name, and imported
+contracts by symbol and verification-result identity, transitively. A
+function with internal linkage is never recorded or matched: its USR can be
+spelled the same in two units that mean two functions. Format version 2 added
+the library models; an interface of version 1 is refused as that.
 
 **Identity (step 4 and 5).** Rather than a manifest compared field by field,
 the consumer rebuilds the contract statement from its own declaration and
 compares a canonical statement identity with the recorded one. That identity
 hashes parameter and result types and passing modes, every precondition
 (refined parameters' predicates included), the postcondition (a refined result
-and reference post-states included), memory capabilities and the measure, as
-kernel terms, with every pure definition they reach encoded by content in the
-order first reached, so it does not depend on how either unit numbered its
-definitions. Parameter names do not enter it. The same identity decides `TU-003`
-for two `verified` declarations of one function in one unit, which a header
-contract with a definition stating loop clauses needs.
+and reference post-states included), memory capabilities and whether the
+function asks to terminate, as kernel terms, with every pure definition they
+reach encoded by content in the order first reached, so it does not depend on
+how either unit numbered its definitions. Parameter names do not enter it, and
+neither does the measure: it is how the proving unit ranked its recursion, and
+recursion is never verified across units (`SPEC.md` TUBOUND-004). A second
+identity, the same with the measure itself, decides `TU-003` for two
+`verified` declarations of one function in one unit, which a header contract
+with a definition stating loop clauses needs.
+
+A record's **verification-result identity** (`artifact::identify`) is what one
+record is compared with another by: the function, the statement identity,
+totality, and the identity of every dependency of every category, each
+imported contract by its own result identity. The function's name, the
+statement's text and where a trusted law is written are shown, not compared, so
+the identity is not that of the record's bytes (`SPEC.md` TUBOUND-009).
 
 **Configuration and staleness (the manifest).** Compared exactly, and refused
-naming the first difference: compiler version, the SHA-256 of the compiler
-executable itself (a version string does not change as the compiler does,
-`TRUST.md` TCB-VERSION-004), kernel, formal core, the Clang that resolves C++
-semantics, language mode and target triple. The meaning-changing command-line
-options are recorded for audit and not compared: what a contract means to the
-consumer is rebuilt from the consumer's own preprocessing, and what the body
-means is fixed by the producer's own compile, which those options drove.
-Staleness is by content: every file the producing unit was preprocessed from is
-recorded with its digest and rehashed on import; a timestamp is never consulted.
+naming the first difference: compiler version; the declared
+verification-semantics version (`compiler/driver/include/cppl/driver/semantics.hpp`);
+the verifier-semantics digest, computed at build time from the relative path
+and content of every source of the semantics-bearing set that
+`cmake/VerifierSemantics.cmake` defines (a declared version can be left
+unchanged when the code is not, `TRUST.md` TCB-VERSION-004, and the digest
+cannot); kernel, formal core, the Clang that resolves C++ semantics, language
+mode and target triple. Earlier builds bound an interface to the digest of the
+compiler executable instead, which changed with every rebuild and said nothing
+about which change mattered. The meaning-changing command-line options are
+recorded for audit and not compared: what a contract means to the consumer is
+rebuilt from the consumer's own preprocessing, and what the body means is fixed
+by the producer's own compile, which those options drove. Staleness is by
+content: every file the producing unit was preprocessed from is recorded with
+its digest and rehashed on import; a timestamp is never consulted.
 
 **Closure across units.** A record is usable only while every record it rests on
-is imported with the identity it had when the dependent proof was made, so a
-change anywhere in a chain invalidates what rests on it; two interfaces that
-record different contracts for one function make it unavailable. The trust
-report lists every imported contract, and every claim resting on one with the
-interface and record, and every trusted law and unsafe block the other unit's
-proof rested on. An imported trusted law is not re-affirmed in the consuming
-unit: it is carried and reported, which is the resolution of the open question
-below, and a claim resting on it is never assumption-free.
+is imported with the result identity it had when the dependent proof was made,
+so a change anywhere in a chain invalidates what rests on it; two interfaces
+that record different result identities for one function make it unavailable.
+The trust report lists every imported contract with its interface, result
+identity, the chain of contracts it was proven through and its trusted-law,
+library-model and unsafe closures, and every claim resting on one with the same.
+An imported trusted law is not re-affirmed in the consuming unit: it is carried
+and reported, which is the resolution of the open question below, and a claim
+resting on it is never assumption-free. Nor is an imported contract counted as
+a trusted law or a library model: it is an external verified dependency, and the
+report says that interface provenance is unauthenticated.
 
 **Totality and recursion.** A record is total or partial as recorded; totality
 follows it through callers, and a function asking to terminate cannot rest on a
 partial one. A record describing a function whose declaration states `decreases`
-as partial is refused. Recursion across units is refused: honest builds cannot
-produce it, since neither unit could verify first, but a record claiming it is
-refused as well (`tests/unit/cross_unit_contracts_test.cpp`).
+as partial is refused. Recursion across units is refused as a property of the
+whole verified-contract dependency graph: a strongly connected component of it
+that includes an imported record, whether or not the importing unit's own
+functions lie on it, is refused with everything that reaches it (`SPEC.md`
+TUBOUND-008). Honest builds cannot produce one, since no unit on it could verify
+first, but a record claiming one is refused all the same
+(`tests/unit/cross_unit_contracts_test.cpp`).
 
 **Templates.** An explicit specialization declared with its own contract is a
 function like any other, keyed by its USR, and crosses; `f<4>`'s record never
@@ -329,10 +354,12 @@ serves `f<5>`. A specialization of a template a unit only declares is not
 instantiated there, so no statement can be compared, and it is refused.
 
 **Trust.** Unchanged logical TCB: no kernel rule, axiom or former. The artifact
-and reuse TCB grows by the emitter, reader, validator and statement identity,
-and the reporting TCB by the imported closure; `TRUST.md` 31.1 states each. A
-hand-edited interface with a recomputed checksum is not detected; everything
-resting on it is reported as resting on that record, never as proven outright.
+and reuse TCB grows by the emitter, reader, validator, statement and result
+identities, the semantics digest's source set and the interface's provenance,
+and the reporting TCB by the imported closure; `TRUST.md` 31.1 states each. The
+checksum is an unauthenticated integrity digest: a hand-edited interface whose
+digest is recomputed is not detected, and everything resting on it is reported
+as resting on that record, never as proven outright or assumption-free.
 
 **Not done here.** Evidence transport; authentication of interfaces; binding the
 object that is linked to the interface that was imported (`SPEC.md` L.5); import
