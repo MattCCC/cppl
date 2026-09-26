@@ -512,7 +512,7 @@ The project should not claim broad language implementation before the proof sema
 | Proof-term binary/serialized format  | `NOT STARTED` |
 | Equality checking                    | `PROTOTYPE`   |
 | Substitution                         | `PROTOTYPE`   |
-| Dependent application                | `NOT STARTED` |
+| Dependent application of type families | `NOT STARTED` |
 | Universal introduction               | `PROTOTYPE`   |
 | Universal elimination                | `PROTOTYPE`   |
 | Implication introduction             | `PROTOTYPE`   |
@@ -527,11 +527,12 @@ The project should not claim broad language implementation before the proof sema
 | Falsity elimination                  | `PROTOTYPE`   |
 | Existential introduction/elimination | `NOT STARTED` |
 | Induction checking                   | `NOT STARTED` |
-| Refinement introduction/elimination  | `NOT STARTED` |
+| Dedicated refinement kernel rules    | `NOT PLANNED` |
 | Normalization engine                 | `PROTOTYPE`   |
-| Termination checker                  | `NOT STARTED` |
-| Proof certificate format             | `NOT STARTED` |
-| Kernel fuzzing                       | `NOT STARTED` |
+| Kernel termination checker (recursive kernel definitions) | `NOT STARTED` |
+| Serialized proof certificate format  | `NOT STARTED` |
+| Kernel fuzzing (in-suite, structural) | `PROTOTYPE`  |
+| Kernel fuzzing (persistent fuzz target) | `NOT STARTED` |
 | Kernel property testing              | `PARTIAL`     |
 | Kernel rejection tests               | `PROTOTYPE`   |
 | Mechanized core calculus             | `NOT STARTED` |
@@ -608,6 +609,39 @@ Written proof declarations added no rule of their own: `refl`, `exact`,
 `apply`, `assume`, `rewrite` and `contradiction`, and the arms and omissions of
 `cases` and `decompose`, elaborate into terms built from these rules.
 
+Several rows of this table name the kernel layer only, and a capability of the
+same name elsewhere in this file is a different layer:
+
+```text
+row here                               layer        where the capability itself is
+Dependent application of type families kernel       indexed refinements are applied by
+                                                    Clang's template substitution before
+                                                    the kernel sees them (Refinement
+                                                    status); applying a proof of a
+                                                    universal to a term is universal
+                                                    elimination above
+Dedicated refinement kernel rules      kernel       refinement introduction and
+                                                    elimination are ordinary propositions
+                                                    the kernel checks, with no rule of
+                                                    their own (RFC 0012: zero kernel
+                                                    rules); see Refinement status
+Kernel termination checker             kernel       the kernel admits no recursive
+                                                    definition, so it has none to check;
+                                                    verified functions' termination is
+                                                    checked by descent obligations the
+                                                    kernel decides (Termination status,
+                                                    IMPLEMENTED)
+Serialized proof certificate format    artifact     linear-arithmetic certificates exist
+                                                    in memory and are checked by the
+                                                    kernel (Automation status); none is
+                                                    written to or read from a file
+Kernel fuzzing                         test         tests/kernel/proof_fuzz_test.cpp
+                                                    fuzzes every proof constructor from
+                                                    a fixed seed inside the suite; there
+                                                    is no persistent libFuzzer target
+                                                    for kernel input yet
+```
+
 ---
 
 # Mathematical foundation status
@@ -628,6 +662,11 @@ Written proof declarations added no rule of their own: `refl`, `exact`,
 | Formal substitution rules       | `NOT STARTED` |
 | Formal erasure theorem          | `NOT STARTED` |
 | Mechanized soundness model      | `NOT STARTED` |
+
+This table records the mathematical theory as written down in `FOUNDATIONS.md`
+and `SPEC.md`, not the implementation: `Refinement typing` and `Inductive
+reasoning` here are the formal accounts, and the implemented capabilities of the
+same names are under Refinement status and Case analysis and induction status.
 
 ---
 
@@ -750,23 +789,29 @@ verification interface (`SPEC.md` Annex L.2.1, TUBOUND-002 to TUBOUND-009, RFC
 0017). `cppl --cppl-emit-interface=<file>` writes one for a unit that verified
 and produced its object: every contract it proved for a function with external
 linkage, by Clang's USR, with a canonical identity of what the contract states,
-whether it is total, and the trusted laws, unsafe blocks and contracts of other
-units its proof rests on. `--cppl-import-interface=<file>`, repeatable, makes a
+whether it is total, and, each category apart, the trusted laws, library models,
+unsafe blocks and contracts of other units its proof rests on, with a
+verification-result identity covering all of it. `--cppl-import-interface=<file>`, repeatable, makes a
 unit's contracts available to another. The consumer never reads a proposition
 from the file: it states the contract from its own declaration and uses a record
 only when the statement identities agree, so a stronger postcondition, a weaker
-precondition, another overload or another specialization is refused. An
-interface of another compiler build, kernel, core, Clang, language mode or
-target, or one whose unit's files changed since it was written, is refused
-whole; so is a malformed, truncated or checksum-failing one, two interfaces
-recording different contracts for one function, and a record whose own
-dependencies are not imported as they were proven. A claim resting on an
+precondition, a changed pure definition the contract reaches, another
+overload, another specialization or another request to terminate is refused; the
+measure that proved a total contract is the proving unit's and is not compared.
+An interface of another compiler version, verification semantics (a declared
+version and a digest of the verifier's semantics-bearing sources), kernel, core,
+Clang, language mode or target, or one whose unit's files changed since it was
+written, is refused whole; so is a malformed, truncated or integrity-failing one,
+two interfaces recording different verification-result identities for one
+function, and a record whose own dependencies are not imported with the
+identities they were proven with. A claim resting on an
 imported contract is PROVEN relative to that record and reported with it and
 with everything its proof rested on, transitively; it is never listed as
-assumption-free. Totality crosses as recorded, and recursion across units is
-refused. Nothing here re-checks another unit's proof: the interface is artifact
-and reuse TCB (`TRUST.md` 31.1), and a deliberately edited interface whose
-checksum is recomputed is not detected. What binds the object linked to the
+assumption-free. Totality crosses as recorded, and a cycle of verified contracts
+that crosses a unit is refused wherever it lies. Nothing here re-checks another
+unit's proof: the interface and its provenance are artifact and reuse TCB
+(`TRUST.md` 31.1), the integrity digest is unauthenticated, and a deliberately
+edited interface whose digest is recomputed is not detected. What binds the object linked to the
 interface imported is left to the build. `cppl-lsp` does not import interfaces
 yet, so an editor refuses such a call as the CLI without imports does.
 
@@ -849,7 +894,11 @@ A refinement erases to its base type, so it is that type as a template argument:
 `Box<Positive>` and `Box<int>` are one specialization with one member type, and
 no predicate travels with the argument. Formal identity is semantic rather than
 spelling-only (`SPEC.md` 43), so such a program fails to prove rather than
-quietly reading a predicate that is not there.
+quietly reading a predicate that is not there. The one place such a spelling is
+read is the element type of a `vector` local, where it states a content
+invariant of that local's storage and nothing of the type (`SPEC.md`
+STDMODEL-020); a parameter, a result, a span or a `std::array` whose element type
+is written as a refinement is refused rather than read as the base type.
 
 A member that is itself an aggregate is the places its own members are, not one
 value: an aggregate local is tracked as one version per scalar leaf, reached by
@@ -1335,8 +1384,8 @@ A theorem about C++ execution is not meaningful if undefined behavior or incorre
 | Signed-overflow reasoning             | `PARTIAL`     |
 | Division-by-zero reasoning            | `PARTIAL`     |
 | Shift validity                        | `SPECIFIED`   |
-| Bounds checking                       | `SPECIFIED`   |
-| Nullability reasoning                 | `SPECIFIED`   |
+| Bounds checking                       | `PROTOTYPE`   |
+| Nullability reasoning                 | `PROTOTYPE`   |
 | Object lifetime model                 | `PARTIAL`     |
 | Reference validity                    | `SPECIFIED`   |
 | Pointer arithmetic                    | `SPECIFIED`   |
@@ -1347,7 +1396,18 @@ A theorem about C++ execution is not meaningful if undefined behavior or incorre
 | Uninitialized reads                   | `SPECIFIED`   |
 | Cast validity                         | `SPECIFIED`   |
 | Data race reasoning                   | `SPECIFIED`   |
-| Implementation of C++ safety analysis | `NOT STARTED` |
+| Implementation of C++ safety analysis | `PROTOTYPE`   |
+
+Executable safety analysis exists for the verified subset and nothing wider:
+the defined-behavior obligations of arithmetic, division and conversion (Machine
+arithmetic status), index bounds proved against a built-in array's extent, a
+`std::array`'s `N` and a `vector`, `string` or `span`'s length, dereference and
+subscript only under a proven `readable` or `writable` capability, a pointer's
+null and non-null states as a case split that establishes no capability, and the
+storage generations that end views and element references (Memory model
+status). Everything else a verified body could do with pointers, lifetimes,
+casts or uninitialized storage is refused there, which is what the rows still
+`SPECIFIED` above mean for verified code; ordinary C++ is not analysed at all.
 
 Unsupported behavior must eventually be:
 
@@ -1436,8 +1496,8 @@ same as C++ unsigned arithmetic.
 | Unsafe dependency reporting         | `IMPLEMENTED` |
 | Trust propagation                   | `IMPLEMENTED` |
 | Assumption closure                  | `IMPLEMENTED` |
-| Trust reporting                     | `PARTIAL`     |
-| Trust report implementation         | `PARTIAL`     |
+| Trust reporting (closures, categories) | `PARTIAL`  |
+| Trust report output (text only)     | `PARTIAL`     |
 
 The intended verification statuses are:
 
@@ -1479,12 +1539,21 @@ a contract rests on a trusted law only through one, in its own body or in a
 function it calls. A recursion group is closed the same way, to a fixed point
 over its cycle, which `tests/unit/trust_closure_test.cpp` exercises with trusted
 laws and unsafe blocks. Across translation units, a verification interface
-carries each recorded contract's closure: a claim proven through an imported
-contract rests on that record and on the trusted laws, unsafe blocks and further
+carries each recorded contract's closure, each category apart: a claim proven
+through an imported contract rests on that record, as an external verified
+dependency, and on the trusted laws, library models, unsafe blocks and further
 imported contracts its proof rested on, each named in the report with the
-interface and record it came from (`SPEC.md` TUBOUND-006). A verified call to a
-function defined in another unit whose interface is not imported is refused, so
-no claim rests on an assumption this unit cannot list.
+interface and record it came from (`SPEC.md` TUBOUND-002, TUBOUND-006). Such a
+claim is never assumption-free, and whenever an interface was imported the
+report says that interface provenance is unauthenticated (`TRUST.md`
+TCB-XTU-010). A verified call to a function defined in another unit whose
+interface is not imported is refused, so no claim rests on an assumption this
+unit cannot list.
+
+Both trust-report rows are `PARTIAL` for the same reasons: runtime-checked
+boundaries do not exist yet and are reported as zero, unverified foreign
+boundaries are not analysed and are reported as such, and the report is text
+only, with no machine-readable form.
 
 A trusted law may admit a memory proposition, `readable(p)` or `writable(p, n)`,
 under an ordinary premise (`SPEC.md` TRUSTED-003, VERIFIED-044). It is recorded
@@ -1936,29 +2005,40 @@ element place is formed. `std::array` is its `N` element places, as `T[N]` is.
 Construction (default, a list, a count, a fill, a string literal, a copy, a
 move), `push_back`, `pop_back`, `clear`, `reserve`, `append`, `+=` and
 assignment are trusted library summaries over the length, supposed at the call
-as a callee's postcondition is; `pop_back` owes a non-empty vector. A value
-entering an element owes the element type's refinement, and a read supplies it
-for a local container whose writes were all modeled.
+as a callee's postcondition is; `pop_back` owes a non-empty vector. A
+refinement written as a template argument is its base type in the C++ type, so
+`std::vector<Positive>` is `std::vector<unsigned>`; written as the element type
+of a `vector` local it is a content invariant of that local's storage
+(`SPEC.md` STDMODEL-020). A value entering an element of such a local owes the
+predicate, a copy or move into it owes it of every source element, and a read
+supplies it only for a local whose writes were all modeled. A refined container
+is never handed to a call that may write it: not by mutable reference, not
+through a writable span or data pointer.
 
-Every operation that may reallocate, shrink, replace, move from or end a
-container's storage gives it a new storage generation: an element place formed
+Every operation that may reallocate, shrink, replace or move from a
+container's storage gives it a new storage generation (an element write does
+not, and the end of the owner's lifetime is not a generation but the end of
+every view, which the scope rules for spans enforce): an element place formed
 before is not matched again, and a span local or element reference formed
 before is refused where it is used after, naming the operation. A loop that may
 do this gives the container a fresh generation at its head. A span parameter
 needs `readable(s)` or `writable(s)`; a verified call owes it, and refuses a
-span or `data()` of a container it also passes by mutable reference.
-`data()` is modeled only as such a capability argument, over the length.
+span or `data()` of a container it also passes by mutable reference, and an
+element it also passes by mutable reference beside a writable span or `data()`
+of the same container. `data()` is modeled only as such a capability argument,
+over the length; a capability over zero elements says nothing of its pointer,
+and `writable` of `const` elements is refused where it is stated.
 
 Every claim resting on a function that uses a container, directly or through a
 call, is listed under `Library-model-dependent claims` and never counted
-assumption-free. Across translation units the list is short: a verification
-interface records no library models, so a claim proven through an imported
-contract names only the models that contract's own declaration uses. It is
-still never assumption-free, since it rests on the imported contract. Iterators, range-`for`, `at`, `front`, `insert`, `resize`,
+assumption-free. Across translation units the list is whole: a verification
+interface records the models each contract's proof rested on, and a claim
+proven through an imported contract names each of them through it. Iterators, range-`for`, `at`, `front`, `insert`, `resize`,
 `emplace_back`, `subspan`, `std::string_view`, static-extent spans, custom
 allocators, `std::vector<bool>`, element types other than integers and `bool`,
-refined element types on parameters, and an element of a `std::array` a
-reference designates are refused. An element read directly in an `if` or loop
+refined element types anywhere but a `vector` local (parameters, results, spans
+and `std::array`), and an element of a `std::array` a reference designates are
+refused. An element read directly in an `if` or loop
 condition is refused, as a dereference there is; it is read into a local
 first. A container handed to a verified call by value is copied into the
 parameter, and the caller's is unchanged. A signed index is bounded as the
