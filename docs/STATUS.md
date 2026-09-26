@@ -182,9 +182,12 @@ a signed `int`; explicit integral casts are the conversions they name.
 defined, and a `pure` function, a total definition, refuses them. Quotient and
 remainder by a constant are exact in linear arithmetic; by an unknown divisor
 the remainder is bounded and the quotient is not. A product of two unknowns is
-decided only where the operands' types bound it (two values promoted from 8- or
-16-bit types, except two `unsigned short` values). Shifts, bitwise operators
-and conversions to or from `bool` are rejected.
+decided only where the types the operands were widened from bound it: two values
+promoted from 8- or 16-bit types, except two `unsigned short` values, or two
+`int` values each converted to `long long` before they are multiplied
+(`fixtures/integration/ledger.cpp`, `Ledger::line_amount`); refinements and
+preconditions do not bound it. Shifts, bitwise operators and conversions to or
+from `bool` are rejected.
 
 A body may also declare locals and assign to them. Each write is a logical
 version of the declaration Clang resolved, a read denotes the version current
@@ -362,8 +365,10 @@ declaration C++L generates, is refused, since the body lowering reads a
 declaration so named as generated.
 
 This slice does **not** implement induction, structural recursion without a
-measure, proof `let`, solvers, proof caching, or any verification of the C++
-memory model. Those remain `SPECIFIED` below. `trusted law` and `unsafe` are
+measure, proof `let`, solvers, proof caching, or a general model of C++ memory:
+what exists is the storage model of places, versions and capabilities
+(`SPEC.md` 12.10) and the storage generations of the standard container subset
+(RFC 0020), described below. The rest remains `SPECIFIED`. `trusted law` and `unsafe` are
 implemented and described under
 [Unsafe and trusted boundary status](#unsafe-and-trusted-boundary-status).
 
@@ -404,20 +409,37 @@ IMPLEMENTED
 
 # Current milestone
 
-Verified functions now verify every return path through `if`/`else`, including
+The current milestone brings the verified fragment to the shape of parser and
+accounting code built from several translation units, as four `PROTOTYPE` or
+`PARTIAL` slices that compose: contracts cross translation units through
+verification interfaces (RFC 0017), non-virtual member functions are verified
+over their implicit object's storage (RFC 0018), signed arithmetic, division
+and integral conversions carry their defined-behavior obligations (RFC 0019),
+and `std::array`, `std::vector`, `std::string` and dynamic-extent `std::span`
+are used through trusted library summaries with proved bounds and storage
+generations (RFC 0020). `e2e_integration_ledger` verifies one program of three
+units that uses all four, with every trusted law, unsafe block and library model
+named across the units, compiles it to the same code as its hand erasure, and
+its refused twins fail closed (`negative_integration_ledger`,
+`e2e_cross_feature`, `negative_cross_feature`). The kernel gained the six
+primitives of RFC 0019 and no rule or axiom (core/kernel 0.8.0). What each
+slice leaves out is stated in its own section below. Memory reasoning beyond the
+storage model and the container subset, and SMT automation, come later.
+
+An earlier milestone completed the imperative foundation: verified functions
+verify every return path through `if`/`else`, including
 compositional calls in guards and returns, locals, assignments and their
 updates, and `while`/`for` loops against explicit invariants (partial
 correctness). All six integer comparisons are
 represented structurally. The original function/call slices use seven rules;
 path composition adds one conditional-elimination rule, and machine arithmetic
 adds one linear-arithmetic rule; conjunction adds introduction and elimination,
-bringing the core to eleven, with zero logical
+bringing the core to eleven at that point, with zero logical
 assumptions and zero runtime checks. Locals and loops add none. Unsigned arithmetic is
-normalized as a ring modulo `2^width`, and order consequences are kernel-checked.
-This completes the imperative foundation (ROADMAP large slice 1). Next is the
-formal language and proof core: propositions, proofs, dependent and refinement
-types, induction and termination. Memory and reference reasoning, and SMT
-automation come later.
+normalized as a ring modulo `2^width`, and order consequences are kernel-checked
+(ROADMAP large slice 1). Propositions, written proofs, refinement and indexed
+refinement types, termination and, over unsigned machine integers, induction
+followed, as stated below.
 
 Original target, for reference:
 
@@ -789,9 +811,11 @@ verification interface (`SPEC.md` Annex L.2.1, TUBOUND-002 to TUBOUND-009, RFC
 0017). `cppl --cppl-emit-interface=<file>` writes one for a unit that verified
 and produced its object: every contract it proved for a function with external
 linkage, by Clang's USR, with a canonical identity of what the contract states,
-whether it is total, and, each category apart, the trusted laws, library models,
-unsafe blocks and contracts of other units its proof rests on, with a
-verification-result identity covering all of it. `--cppl-import-interface=<file>`, repeatable, makes a
+whether it is total, and, each category apart, the trusted laws,
+standard-library models, unsafe blocks, runtime validation sites and contracts
+of other units its proof rests on, with a verification-result identity covering
+all of it (interface format version 3; an interface of version 1 or 2 is
+refused). `--cppl-import-interface=<file>`, repeatable, makes a
 unit's contracts available to another. The consumer never reads a proposition
 from the file: it states the contract from its own declaration and uses a record
 only when the statement identities agree, so a stronger postcondition, a weaker
@@ -1082,7 +1106,21 @@ definition the formal core unfolds, and without `old(...)` a postcondition
 states the post-state only, so a mutating member function states in `ensures`
 every member its callers rely on afterwards. An out-of-line definition cannot
 restate the contract, so one whose body needs loop clauses is refused; such a
-body is defined in the class. A member function defined in another translation
+body is defined in the class. For the same reason a claim that a path cannot
+occur (`contradiction e;`) is refused in an out-of-line definition, which is not
+marked `verified`; the body calls a verified function that makes the claim
+instead (`negative/integration_out_of_line_claim.cpp`,
+`fixtures/integration/ledger.cpp`). A member of container type is not tracked
+storage, so a member function of a class holding one is refused naming the
+member; the container is passed as a parameter instead
+(`negative/cross_feature_container_member.cpp`). No disjointness of an object and
+a reference argument is assumed, from their types or otherwise, so after a call
+that may write through a reference argument only the callee's `ensures` is known
+of the object, and a refined member, like any refined storage a function holds
+by reference, is owed its refinement at return and not known after a
+`push_back` through another reference or an unsafe block; such a function is
+refused, conservatively (`negative/cross_feature_refined_receiver_push.cpp`,
+`negative/cross_feature_unsafe_refined_receiver.cpp`). A member function defined in another translation
 unit crosses through a verification interface as a function does: the unit
 defining it records the contract its class declares, with the implicit object's
 places among the parameters, and a caller uses it only when its own declaration
@@ -1269,8 +1307,11 @@ the region, and the arithmetic decides which element was named.
 
 The one-object form states no extent at all, so it bounds no element and a
 subscript under it fails closed. An unstated extent is not an unbounded one.
-An index and an extent of different integer types are refused rather than
-converted, because the conversion between them is not modeled.
+An index and a capability's extent of different integer types are refused
+rather than converted. The conversion is modeled (RFC 0019), and a container
+subscript states its bound on the index converted to the size type
+(`SPEC.md` STDMODEL-012), but a pointer subscript does not state it yet, and its
+diagnostic still says the conversion is not modeled.
 
 The obligation is generated wherever the index is a term, and the extent comes
 from the array's resolved type rather than from whichever of its elements an
@@ -1415,9 +1456,9 @@ A theorem about C++ execution is not meaningful if undefined behavior or incorre
 | Division-by-zero reasoning            | `PARTIAL`     |
 | Shift validity                        | `SPECIFIED`   |
 | Bounds checking                       | `PROTOTYPE`   |
-| Nullability reasoning                 | `PROTOTYPE`   |
+| Nullability reasoning                 | `SPECIFIED`   |
 | Object lifetime model                 | `PARTIAL`     |
-| Reference validity                    | `SPECIFIED`   |
+| Reference validity                    | `PARTIAL`     |
 | Pointer arithmetic                    | `SPECIFIED`   |
 | Pointer provenance                    | `SPECIFIED`   |
 | Aliasing                              | `SPECIFIED`   |
@@ -1428,16 +1469,18 @@ A theorem about C++ execution is not meaningful if undefined behavior or incorre
 | Data race reasoning                   | `SPECIFIED`   |
 | Implementation of C++ safety analysis | `PROTOTYPE`   |
 
-Executable safety analysis exists for the verified subset and nothing wider:
-the defined-behavior obligations of arithmetic, division and conversion (Machine
-arithmetic status), index bounds proved against a built-in array's extent, a
-`std::array`'s `N` and a `vector`, `string` or `span`'s length, dereference and
-subscript only under a proven `readable` or `writable` capability, a pointer's
-null and non-null states as a case split that establishes no capability, and the
-storage generations that end views and element references (Memory model
-status). Everything else a verified body could do with pointers, lifetimes,
-casts or uninitialized storage is refused there, which is what the rows still
-`SPECIFIED` above mean for verified code; ordinary C++ is not analysed at all.
+What is implemented is a set of obligations inside verified bodies, each owed
+where the operation stands and proved by the kernel, and nothing outside them:
+signed overflow, division by zero, the least value over `-1` and conversions a
+signed target cannot hold (RFC 0019, [Machine arithmetic
+status](#machine-arithmetic-status)); `index < extent` at every modeled
+subscript of an array, a capability region and a standard container (RFC 0014,
+RFC 0016, RFC 0020); and, for the container subset, that a span or element
+reference is used only at the storage generation it was formed at and a span is
+formed only over a container that outlives it. That last is the whole of
+reference validity checked today. Unverified code is not analysed, shifts and
+the casts the lowering does not model are refused in verified bodies, and every
+other row stays `SPECIFIED`.
 
 Unsupported behavior must eventually be:
 
@@ -1462,11 +1505,20 @@ never silently verified.
 | Borrowing/equivalent reasoning | `SPECIFIED`   |
 | Aliasing rules                 | `SPECIFIED`   |
 | Pointer provenance             | `SPECIFIED`   |
-| Mutation model                 | `SPECIFIED`   |
+| Mutation model                 | `PROTOTYPE`   |
 | Move semantics                 | `SPECIFIED`   |
 | Destructor semantics           | `SPECIFIED`   |
 | Standard container models      | `PARTIAL`     |
-| Memory verifier                | `NOT STARTED` |
+| Memory verifier                | `PARTIAL`     |
+
+The mutation model is the storage model of `SPEC.md` 12.10 (RFC 0014): places,
+versions and one write path that invalidates whatever may alias the storage
+written, described under [Refinement status](#refinement-status); member
+functions and the container subset use it and add no mutation rule of their
+own. The memory verifier is `PARTIAL`: memory capabilities over pointer and span
+parameters, bounds at every modeled subscript and the container generations are
+checked; ownership, provenance, destruction and moves beyond a container's are
+not.
 
 The lifetime model is `PARTIAL`: the storage generations of the standard
 container subset (see [Standard library verification
@@ -2231,8 +2283,11 @@ Until implementation reaches the appropriate status, C++L does **not** claim:
 - completed refinement solving
 - sound C++ pointer verification
 - sound concurrency verification
-- verified signed arithmetic
-- verified standard-library implementations
+- complete verified machine arithmetic (the subset of RFC 0019 is
+  implemented; shifts, bitwise operators and several conversions are not, see
+  [Machine arithmetic status](#machine-arithmetic-status))
+- verified standard-library implementations (the container models are trusted
+  summaries, `TRUST.md` 28.1)
 - completed proof erasure
 - completed Clang integration
 - completed SMT integration

@@ -2821,10 +2821,14 @@ A few things to know:
 - A `pure` function is unfolded wherever it is called with nothing owed there,
   so one that adds two signed values is refused as a definition. Write it as a
   `verified` function with a contract instead.
-- Today, a product of two unknowns is decided only where their types bound it
-  (two values promoted from 8- or 16-bit types, except two `unsigned short`
-  values), and a quotient by an unknown divisor is left unknown; shifts,
-  bitwise operators and `bool` conversions are refused.
+- Today, a product of two unknowns is decided only where the types they were
+  widened from bound it: two values promoted from 8- or 16-bit types, except two
+  `unsigned short` values, or two `int` values each converted to `long long`
+  before the product, as in
+  `static_cast<long long>(quantity) * static_cast<long long>(price)`. A
+  precondition or refinement bounding them does not decide it. A quotient by an
+  unknown divisor is left unknown; shifts, bitwise operators and `bool`
+  conversions are refused.
 
 ### 13.4. Standard containers and views
 
@@ -3633,6 +3637,55 @@ verified unsigned set_through(Cell* p)
     return p->v;
 }
 ```
+
+A member function takes containers, spans and strings as parameters as any
+function does, with the same models, bounds and capabilities (13.4), and its
+signed arithmetic owes the same obligations (13.2):
+
+<!-- cppl-example: verify -->
+
+```cpp
+#include <cstddef>
+#include <string>
+#include <vector>
+
+struct Cursor {
+    std::size_t at;
+
+    verified char character(const std::string& text) const
+        expects (at < text.size())
+        ensures (true)
+    {
+        return text[at];
+    }
+
+    verified std::size_t emit(std::vector<unsigned>& out, unsigned value) const
+        ensures (result == out.size() && 1ul <= result)
+    {
+        out.push_back(value);
+        return out.size();
+    }
+
+    verified long long moved(long long delta) const
+        expects (at <= 4096ul && delta >= -4096ll && delta <= 4096ll)
+        ensures (result == static_cast<long long>(at) + delta)
+    {
+        return static_cast<long long>(at) + delta;
+    }
+};
+```
+
+Three combinations are refused. A member of container type is not storage the
+receiver model tracks, so a member function of a class holding one is refused
+naming it; pass the container as a parameter. No disjointness of the object and a
+reference argument is assumed, so `push_back` on a vector the function holds by
+reference, like an unsafe block, may reach the object: a refined member is then
+owed its predicate at return with nothing known of it, and the function is
+refused. Keep such a member function on an object with no refined member. And a
+claim that a path cannot occur is
+written in a function marked `verified`, which an out-of-line definition is not:
+put the claim in a verified function the definition calls
+(`tests/fixtures/integration/ledger.cpp`, `page_room`).
 
 A static member function has no implicit object and is verified as a function
 is; one marked `pure` is a definition a contract may use, as a pure function

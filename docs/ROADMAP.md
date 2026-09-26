@@ -339,8 +339,11 @@ Member functions: a statically bound member function is prototyped as a verified
 callable over its implicit object's storage, with member writes, aliasing and
 member calls on the common storage model (`docs/rfcs/0018-verified-member-functions.md`).
 Next are `old(...)` over the implicit object, override substitutability for
-virtual functions, constructors and destructors, and member functions of class
-templates.
+virtual functions, constructors and destructors, member functions of class
+templates, members of container type, and the disjointness of an object from a
+reference argument where Clang resolves it, as between a local object and a
+reference parameter's referent (`tests/fixtures/cross_feature/client.cpp`,
+`first_copied`).
 
 Exit criterion:
 
@@ -433,8 +436,11 @@ At minimum:
 
 Signed overflow, division by zero, the least value divided by -1 and
 unrepresentable conversions are obligations today, owed on the path that
-evaluates the operation (RFC 0019); the rest of the list is not started or
-belongs to the memory model.
+evaluates the operation (RFC 0019). So are bounds at every modeled subscript of
+an array, a capability region and a standard container (RFC 0014, RFC 0016,
+RFC 0020), and, for the container subset, the storage generation a view or an
+element reference was formed at (RFC 0020). The rest of the list is not started
+or belongs to the memory model.
 
 Exit criterion:
 

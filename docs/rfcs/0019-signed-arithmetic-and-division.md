@@ -2,7 +2,10 @@
 
 ## Status
 
-Accepted and implemented. Extends [RFC 0006](0006-machine-arithmetic.md), whose
+Accepted; implemented as `PARTIAL` (`STATUS.md`, Machine arithmetic status: a
+product of two unknowns and a quotient by an unknown divisor are decided only as
+§"Unresolved questions" states, and the conversions it lists are refused).
+Extends [RFC 0006](0006-machine-arithmetic.md), whose
 refusal of signed arithmetic, division and remainder it replaces. The normative
 rules are `SPEC.md` 29 (`ARITH-003`, `ARITH-006` to `ARITH-013`), with Annex T
 (`DEFINEDBEHAVIOR-001` to `DEFINEDBEHAVIOR-003`) and Annex U.5
@@ -108,8 +111,10 @@ exactly or not at all:
   `mul_fits` holds whatever the values, so holding states nothing and failing
   is refuted. Otherwise it is a boolean like any other, which bounds nothing.
   This decides the product of two values promoted from 8- or 16-bit types,
-  except two `unsigned short` values, whose product can exceed `int`; it
-  decides nothing that needs a bound the facts establish.
+  except two `unsigned short` values, whose product can exceed `int`, and of
+  two `int` values each converted to `long long` first
+  (`tests/fixtures/integration/ledger.cpp`); it decides nothing that needs a
+  bound the facts establish.
 - `convert_T(a : S)` equals `a` where every value of `S` is one of `T`, and is
   otherwise `a` minus a fresh multiple of `2^width(T)`, which bounding the
   conversion by `T` pins. The operand's type is read from the binders the

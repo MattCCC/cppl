@@ -276,7 +276,17 @@ C++ that remains after erasure.
   function binds them, so a caller whose class declares another member,
   another `mutable` member or another contract is refused. An out-of-line
   definition cannot restate the contract, so a body that needs loop clauses is
-  defined in the class.
+  defined in the class, and a claim that a path cannot occur, which only a
+  function marked `verified` holds, is made in a verified function the
+  definition calls (`tests/fixtures/integration/ledger.cpp`).
+- **Containers and other slices.** A member function takes spans, vectors and
+  strings as parameters and does signed arithmetic like any verified function
+  (RFC 0019, RFC 0020; `tests/e2e/cross_feature.sh`). A member of container type
+  is not modeled storage and is refused. Since no disjointness of the object and
+  a reference argument is assumed, a `push_back` through a reference argument,
+  like an unsafe block, may reach the object, so a refined member is owed its
+  refinement at return with nothing known of it, and such a function is refused
+  (`tests/negative/cross_feature.sh`).
 
 ## Safety
 
