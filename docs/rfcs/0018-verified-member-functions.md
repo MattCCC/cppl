@@ -283,6 +283,12 @@ C++ that remains after erasure.
   strings as parameters and does signed arithmetic like any verified function
   (RFC 0019, RFC 0020; `tests/e2e/cross_feature.sh`). A member of container type
   is not modeled storage and is refused (`tests/negative/cross_feature.sh`).
+  The accounting of refined places is exercised across the slices: another
+  unit's contract's effect on a refined member is charged at the call, and a
+  refined member or reference parameter is charged at the return after a loop,
+  after an unsafe write a `break` or `return` inside a loop leaves with, and
+  after a `push_back` through a reference argument that may reach the object
+  (`TRUST.md` TCB-OBJ-009).
 
 ## Safety
 
