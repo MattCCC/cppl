@@ -73,7 +73,7 @@ container-element-generation	clang/src/bridge.cpp	return !entry.formed_at.has_va
 container-span-capability	clang/src/bridge.cpp	if (region->parameter.has_value() && !granted(*region->parameter, required)) {	if (false && region->parameter.has_value() && !granted(*region->parameter, required)) {	^negative_containers$
 container-call-disjointness	clang/src/bridge.cpp	if (other == root || may_alias(state[other], state[root])) {	if (false && (other == root || may_alias(state[other], state[root]))) {	^negative_containers$
 container-refined-writable-view	clang/src/bridge.cpp	if (!state[root].sequence->element.refinements.empty()) {	if (false && !state[root].sequence->element.refinements.empty()) {	^negative_containers$
-container-mutable-call-aliases	clang/src/bridge.cpp	!may_alias(state[target], state[other])) {	true) {	^negative_containers$
+container-mutable-call-aliases	clang/src/bridge.cpp	!may_alias(state[target], state[other])) {	true) {	^negative_containers$|^negative_cross_feature$
 container-copy-refinement	clang/src/bridge.cpp	if (auto gap = refinement_gap(root, declaring[*origin])) {	if (auto gap = refinement_gap(root, declaring[*origin]); false) {	^negative_containers$
 container-refined-mutable-reference	clang/src/bridge.cpp	if (handed.sequence.has_value() && !handed.sequence->element.refinements.empty()) {	if (false) {	^negative_containers$
 container-element-beside-view	clang/src/bridge.cpp	if (root == owner || may_alias(state[root], state[owner])) {	if (false) {	^negative_containers$

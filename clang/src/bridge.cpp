@@ -5580,23 +5580,26 @@ struct BodyLowering {
         }
         // A callee holding a container by mutable reference may write any of
         // its elements, and may reallocate it: whatever may be that container or
-        // one of its elements is unknown after the call (RFC 0020 §3, §4).
+        // one of its elements is unknown after the call (RFC 0020 §3, §4). A
+        // container that may be it has a new storage generation for the same
+        // reason, which a stale view of it names, whether or not the loop above
+        // already gave it its post-call version (STDMODEL-015).
         for (const std::size_t target : targets) {
             if (!state[target].sequence.has_value()) {
                 continue;
             }
             for (std::size_t other = 0; other < state.size(); ++other) {
                 if (other == target || state[other].referent.has_value() ||
-                    std::ranges::find(targets, other) != targets.end() ||
-                    std::ranges::find(invalidated, other) != invalidated.end() ||
-                    !may_alias(state[target], state[other])) {
+                    std::ranges::find(targets, other) != targets.end() || !may_alias(state[target], state[other])) {
                     continue;
                 }
-                state[other].version = next_version++;
                 if (state[other].sequence.has_value()) {
                     state[other].sequence->invalidated = state[target].sequence->invalidated;
                 }
-                invalidated.push_back(other);
+                if (std::ranges::find(invalidated, other) == invalidated.end()) {
+                    state[other].version = next_version++;
+                    invalidated.push_back(other);
+                }
             }
         }
         havoc_pointees(targets);

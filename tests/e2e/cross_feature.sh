@@ -107,5 +107,11 @@ reports effects_client.report '^Function contracts proven: +4$' '^Function contr
 "$CLANG" effects.o effects_client.o -o effects_program
 [ "$(./effects_program)" = 5 ] || fail "the effects program printed '$(./effects_program)'"
 
+# SPEC: STDMODEL-015, CLASS-011, VERIFIED-030 -- a view over storage the common
+# alias model keeps apart from what a call grows survives the call.
+"$CPPL" -std=c++20 views.cpp -o views_program --cppl-trust-report > views.report
+reports views.report '^Function contracts proven: +2$' '^Unresolved obligations: +0$'
+[ "$(./views_program)" = 7 ] || fail "the views program printed '$(./views_program)'"
+
 echo 'member functions over spans, vectors and strings, signed arithmetic over their values, and an unsafe' \
      'dependency cross units with every trust dependency named; a refined place is charged on every route'

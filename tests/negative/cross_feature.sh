@@ -64,6 +64,10 @@ refuse unguarded_sum "signed overflow: 'total#2 \\+ value#5' on the signed type 
 # SPEC: CLASS-008, CLASS-015 -- a container member is not tracked storage.
 refuse container_member "this member of the implicit object is not tracked storage: its type is not one this implementation models" \
     "$NEGATIVE/cross_feature_container_member.cpp"
+# SPEC: STDMODEL-015, CLASS-011 -- a view over a vector that may be the one a
+# call grows is stale after it, and the refusal names that call.
+refuse alias_view_after_call "'view' views the storage of 'b', which may have been reallocated or ended by passing it by mutable reference to 'grow'" \
+    "$NEGATIVE/cross_feature_alias_view_after_call.cpp"
 
 # SPEC: CLASS-011, REFINE-060, TUBOUND-003 -- another unit's contract writing a
 # refined member through a plain reference: the caller is charged at the call.
