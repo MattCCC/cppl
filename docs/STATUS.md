@@ -926,6 +926,14 @@ and missing it once let a contract promising a positive result verify while
 returning zero. A pointee reached only through a pointer to const survives,
 because writing through one is not something the callee may do.
 
+An object a parameter designates by reference is tracked as one place whose
+version any write that may alias it replaces, so a member read after such a
+write is of a value nothing states, and the object's post-state is what it holds
+at return (`SPEC.md` VERIFIED-030, VERIFIED-031). Before this, the member was
+read as the value it arrived with even after a write through another reference,
+and a contract false at run time was proven
+(`negative/reference_aggregate_stale.cpp`, `negative_verified_storage`).
+
 Methods are refused at the declaration, which is what closes virtual dispatch
 rather than leaving it open: the dynamic type decides which body runs, so a
 contract proved from a base's body would not cover an override that replaces

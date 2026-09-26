@@ -584,6 +584,14 @@ struct Local {
     // written, and a read of it is that value (SPEC.md CASE-017).
     std::optional<CaseBinder> binder = std::nullopt;
 
+    // Storage this body reads and never writes: a whole object a parameter
+    // designates by reference. Its version follows what may have been written
+    // to it -- through another reference, a call or an unsafe block -- so a
+    // read after such a write is of a value nothing states rather than of the
+    // one it arrived with (SPEC.md 12.9). A write to it is refused, since its
+    // post-state would then be a value this body cannot state member by member.
+    bool read_only = false;
+
     [[nodiscard]] bool is_deref() const {
         return pointer.has_value();
     }
@@ -1860,7 +1868,8 @@ void mark_writes(CXCursor root, const Locals& locals, std::vector<bool>& written
             continue;
         for (std::size_t other = 0; other < locals.size(); ++other)
             if (locals[other].external && !locals[other].referent &&
-                same_modeled_value(locals[target].type, locals[other].type))
+                (same_modeled_value(locals[target].type, locals[other].type) ||
+                 locals[other].type.kind == TypeKind::Value))
                 written[other] = true;
     }
 }
@@ -3002,8 +3011,12 @@ struct BodyLowering {
         for (std::size_t other = 0; other < state.size(); ++other) {
             if (!state[other].external || state[other].referent || std::ranges::find(targets, other) != targets.end())
                 continue;
+            // A written external place may be another external place of its
+            // modeled type, and it may be a member of any object a parameter
+            // designates.
             if (std::ranges::any_of(targets, [&](std::size_t target) {
-                    return state[target].external && same_modeled_value(state[target].type, state[other].type);
+                    return state[target].external && (same_modeled_value(state[target].type, state[other].type) ||
+                                                      state[other].type.kind == TypeKind::Value);
                 })) {
                 state[other].version = next_version++;
                 invalidated.push_back(other);
@@ -4308,6 +4321,11 @@ struct BodyLowering {
         const CXCursor declaration = clang_getCursorReferenced(access->object);
         const std::string name = take(clang_getCursorSpelling(declaration));
         const std::optional<std::size_t> local = find_binding(locals, declaration, access->path);
+        if (local && locals[locals[*local].referent.value_or(*local)].read_only) {
+            return reject("parameter '" + name +
+                          "' has no modeled writable storage: the object it designates is "
+                          "read here, and its post-state is not stated member by member");
+        }
         if (!local) {
             if (!access->path.empty()) {
                 return reject("this member's object is not tracked storage of this body, so writing it has no modeled "
@@ -4552,6 +4570,21 @@ void extract_body(Function& function, CXCursor cursor, const std::vector<CXCurso
                                                .spelling = std::move(leaf.spelling)});
                 }
             }
+            continue;
+        }
+        // An object a parameter designates by reference is caller storage
+        // another reference may reach, so it is tracked as one whole place
+        // whose version any write that may alias it replaces: a member read
+        // after such a write projects a value nothing states, never the one
+        // the parameter arrived with (SPEC.md 12.9). A pointer is left as it
+        // was: what it designates is a dereference place of its own.
+        if (parameter.type.kind == TypeKind::Value && source::aliases_storage(parameter.passing) &&
+            parameter.type.representation.kind != source::RepresentationKind::Pointer) {
+            candidates.push_back(Local{.declaration = parameters[index],
+                                       .type = parameter.type,
+                                       .external = true,
+                                       .spelling = take(clang_getCursorSpelling(parameters[index])),
+                                       .read_only = true});
         }
     }
     // A parameter this body does not track has one value throughout it, which

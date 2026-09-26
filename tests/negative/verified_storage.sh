@@ -389,5 +389,13 @@ refuse_fixture() {
 # proven. Such an object is not tracked as places; its members are read by name.
 # SPEC: STORAGE-002
 refuse_fixture member_numbering_gap 'does not satisfy its contract'
+
+# An object passed by reference may hold what another reference parameter
+# designates, so a write through that parameter replaces what was known of the
+# object: a member read after it was once the value it arrived with, and a
+# claim false at run time was proven.
+# SPEC: VERIFIED-030, VERIFIED-031
+refuse_fixture reference_aggregate_stale 'does not satisfy its contract'
+
 "$CPPL" -std=c++20 "$FIXTURES/untracked_members.cpp" -o "$run/untracked_members" > "$run/untracked_members.out"
-test "$("$run/untracked_members")" = '2 3'
+test "$("$run/untracked_members")" = '2 3 1 5'
