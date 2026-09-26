@@ -33,15 +33,19 @@ expect() {
     fi
 }
 
-expect '^Function contracts proven: +26$'
+expect '^Function contracts proven: +30$'
+# SPEC: ARITH-009
+# `total / v.size()`, divided only where the vector is not empty.
+expect '^Defined operations proven: +1$'
 expect '^Unresolved obligations: +0$'
-# `sum_first`-style bounds passed on, the data pointer's count, and the
-# preconditions of the capability callees.
-expect '^Call preconditions proven: +4$'
+# Bounds passed on, the data pointer's count, the preconditions of the
+# capability callees, and `at <= in.size()` where the parser calls
+# `skip_digits`.
+expect '^Call preconditions proven: +5$'
 # SPEC: STDMODEL-018
 # Every contract but the pointer-only `zero_prefix` rests on a library model,
 # and none of those is assumption-free.
-expect '^Library-model-dependent claims: 25$'
+expect '^Library-model-dependent claims: 29$'
 expect '^Assumption-free claims: +1$'
 expect '^  contract of zero_prefix \(.*containers\.cpp:[0-9]+\), identity [0-9a-f]+$'
 expect '^    rests on the std::vector model, in its own contract or body$'
@@ -51,7 +55,8 @@ expect '^    rests on the std::array model, in its own contract or body$'
 expect '^    rests on the std::vector model, through a verified call it makes$'
 
 output=$("$run/program")
-if [ "$output" != "5 4 7 3 7 5 4 1 2 0 3 6 9 16 y 6 2 1 6 3 5" ]; then
+expected=$(printf '%s\n%s' '5 4 7 3 7 5 4 1 2 0 3 6 9 16 y 6 2 1 6 3 5 6 5' '4 4')
+if [ "$output" != "$expected" ]; then
     echo "the verified program printed '$output'" >&2
     exit 1
 fi

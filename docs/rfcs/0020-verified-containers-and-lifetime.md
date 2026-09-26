@@ -34,7 +34,8 @@ verified std::size_t skip_digits(std::span<const char> in, std::size_t at)
         invariant (at <= i && i <= in.size())
         decreases (in.size() - i)
     {
-        if (in[i] < '0' || in[i] > '9') { return i; }
+        const char c = in[i];
+        if (c < '0' || c > '9') { return i; }
         ++i;
     }
     return i;
@@ -42,8 +43,9 @@ verified std::size_t skip_digits(std::span<const char> in, std::size_t at)
 ```
 
 and a body that collects results into a `std::vector` it owns. (The character
-comparisons there are integer promotions, which verified arithmetic does not
-yet model; everything else in the example is this RFC's.) Today every one
+comparisons are integer promotions, which RFC 0019 models; both functions
+verify as `skip_digits` and `collect_digits` in `tests/fixtures/containers.cpp`.)
+Before this RFC every one
 of those operations is refused: a member call is not an ordinary function, a
 container local has no modeled value, and there is no lifetime model that could
 make a view sound. The storage model (RFC 0014) already has everything except a
@@ -325,8 +327,15 @@ container moved from while it is caller storage, self-assignment, an element of
 a `std::array` a reference designates, `data()` of a `std::array` or anywhere
 but a capability argument, and a returned span.
 
-The motivating example's character comparisons wait on integer promotions in
-verified arithmetic, which this RFC does not add.
+An element read directly in an `if` or loop condition is refused, as a pointer
+dereference there already is: a condition is lowered without forming places,
+so the element is read into a local first, as the motivating example does.
+Forming element places in conditions is left to the storage model's own
+condition lowering.
+
+A signed index is converted to the size type as C++ converts it, and the bound
+is owed on the converted value; a division by a length owes it non-zero. Both
+come from verified machine arithmetic (RFC 0019), not from a container rule.
 
 ## 10. Trust
 

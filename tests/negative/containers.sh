@@ -58,6 +58,16 @@ refuse container_span_out_of_bounds "law 'span_unbounded element index' is not p
 refuse container_element_after_pop "law 'read_after_pop element index' is not proven"
 # An element place formed before `pop_back` is not matched after it.
 refuse container_element_reused_after_pop "law 'reread_after_pop element index' is not proven"
+# SPEC: ARITH-008
+# A signed index is bounded as the size-type value C++ converts it to.
+refuse container_signed_index "law 'unguarded_sign element index' is not proven"
+# SPEC: ARITH-009
+# A length may be zero.
+refuse container_divide_by_length "division by zero: the divisor"
+# The parser shape: a false bound, and an element read where no statement
+# formed it.
+refuse container_parser_false_bound "does not satisfy its contract"
+refuse container_element_in_condition "this element access is not one the statement holding it formed"
 # SPEC: STDMODEL-011
 refuse container_array_reference_parameter "an element of the std::array a reference designates is not modeled"
 

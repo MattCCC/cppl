@@ -1924,8 +1924,12 @@ still never assumption-free, since it rests on the imported contract. Iterators,
 `emplace_back`, `subspan`, `std::string_view`, static-extent spans, custom
 allocators, `std::vector<bool>`, element types other than integers and `bool`,
 refined element types on parameters, and an element of a `std::array` a
-reference designates are refused. A container handed to a verified call by
-value is copied into the parameter, and the caller's is unchanged. The same
+reference designates are refused. An element read directly in an `if` or loop
+condition is refused, as a dereference there is; it is read into a local
+first. A container handed to a verified call by value is copied into the
+parameter, and the caller's is unchanged. A signed index is bounded as the
+size-type value C++ converts it to, and dividing by a length owes it non-zero,
+through the machine-arithmetic rules (`SPEC.md` ARITH-008, ARITH-009). The same
 claims verify against libc++ and libstdc++, and the erased program is the same
 code as its hand-erased twin (`tests/e2e/containers.sh`).
 

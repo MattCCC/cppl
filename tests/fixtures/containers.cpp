@@ -207,6 +207,31 @@ verified unsigned vector_reference()
     return seen;
 }
 
+// SPEC: STDMODEL-012, ARITH-008
+// A signed index is converted to the size type as C++ converts it, modularly,
+// and the bound is owed on the converted value. Twin of
+// `container_signed_index`.
+verified unsigned signed_guarded(const std::vector<unsigned>& v, int i)
+    ensures (result == result)
+{
+    if (0 <= i && static_cast<std::size_t>(i) < v.size()) {
+        return v[i];
+    }
+    return 0u;
+}
+
+// SPEC: STDMODEL-012, ARITH-004, ARITH-009
+// Dividing by a length owes a non-empty container. Twin of
+// `container_divide_by_length`.
+verified std::size_t per_element(const std::vector<unsigned>& v, std::size_t total)
+    ensures (result == result)
+{
+    if (!v.empty()) {
+        return total / v.size();
+    }
+    return 0ul;
+}
+
 // --- std::string: characters of a string (STDMODEL-013) --------------------
 
 // SPEC: STDMODEL-013
@@ -334,6 +359,48 @@ verified unsigned data_argument()
     return zero_prefix(v.data(), v.size());
 }
 
+// --- The parser shape RFC 0020 is for ---------------------------------------
+
+// SPEC: STDMODEL-016, ARITH-008
+// Characters of a span, compared after the promotions C++ applies. An element
+// is read into a local, since a condition reads no storage (STATUS.md).
+verified std::size_t skip_digits(std::span<const char> in, std::size_t at)
+    expects (readable(in) && at <= in.size())
+    ensures (result <= in.size())
+{
+    std::size_t i = at;
+    while (i < in.size())
+        invariant (at <= i && i <= in.size())
+        decreases (in.size() - i)
+    {
+        const char c = in[i];
+        if (c < '0' || c > '9') {
+            return i;
+        }
+        ++i;
+    }
+    return i;
+}
+
+// SPEC: STDMODEL-016
+// The prefix a callee found is read and appended to a vector the caller holds;
+// the callee's postcondition bounds every index.
+verified std::size_t collect_digits(std::span<const char> in, std::vector<char>& out)
+    expects (readable(in))
+    ensures (result <= in.size())
+{
+    const std::size_t end = skip_digits(in, 0ul);
+    std::size_t i = 0ul;
+    while (i < end)
+        invariant (i <= end && end <= in.size())
+        decreases (end - i)
+    {
+        out.push_back(in[i]);
+        ++i;
+    }
+    return end;
+}
+
 // SPEC: STDMODEL-018
 // A contract that names no container rests on the model of one it calls.
 verified std::size_t via_call()
@@ -350,11 +417,16 @@ int main() {
     std::vector<unsigned> buffer{7u, 8u};
     span_fill(buffer, 2u);
     const std::vector<unsigned> input{5u, 6u};
-    std::printf("%u %zu %u %zu %u %u %zu %zu %zu %zu %u %zu %u %zu %c %u %u %zu %u %zu %zu\n", array_guarded(1ul),
-                array_parameter({1u, 2u, 3u, 4u}), array_refined(1ul), vector_lengths(), vector_listed(),
-                vector_write_read(3ul, 2ul), vector_count(4ul), reset, vector_moved(), popped, vector_reference(),
-                string_lengths(), vector_refined(0ul), span_calls(input), string_character("xyz", 1ul),
-                span_at(input, 1ul), buffer[1], vector_after_pop(1ul) == 2u ? 1ul : 0ul,
-                span_local(0ul) + data_argument(), via_call(), vector_copy_call());
+    std::printf("%u %zu %u %zu %u %u %zu %zu %zu %zu %u %zu %u %zu %c %u %u %zu %u %zu %zu %u %zu\n",
+                array_guarded(1ul), array_parameter({1u, 2u, 3u, 4u}), array_refined(1ul), vector_lengths(),
+                vector_listed(), vector_write_read(3ul, 2ul), vector_count(4ul), reset, vector_moved(), popped,
+                vector_reference(), string_lengths(), vector_refined(0ul), span_calls(input),
+                string_character("xyz", 1ul), span_at(input, 1ul), buffer[1], vector_after_pop(1ul) == 2u ? 1ul : 0ul,
+                span_local(0ul) + data_argument(), via_call(), vector_copy_call(), signed_guarded(input, 1),
+                per_element(input, 10ul));
+    const std::string date = "2024-09";
+    std::vector<char> digits;
+    const std::size_t year = collect_digits(date, digits);
+    std::printf("%zu %zu\n", year, digits.size());
     return 0;
 }

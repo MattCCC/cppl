@@ -2903,7 +2903,9 @@ value enters an element and supplies it wherever one is read, for a local
 container; a container parameter with a refined element type is refused, since
 no call could establish every element's validity. Everything else a container
 offers -- iterators, `at`, `insert`, `resize`, `front`, a span assigned or
-returned -- is refused until a model states it. A container passed to a
+returned -- is refused until a model states it. Read an element into a local
+before testing it: `const char c = in[i]; if (c < '0') ...`, since a condition
+reads no storage directly. A container passed to a
 verified call by value is the callee's own copy; the caller's is unchanged.
 Only `expects` conjoins a capability with a predicate: the same conjunction in
 `ensures` or a law is refused.

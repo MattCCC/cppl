@@ -122,9 +122,13 @@ tests:
     - tests/fixtures/negative/container_array_reference_parameter.cpp
     - tests/fixtures/negative/container_by_value_call.cpp
     - tests/fixtures/negative/container_custom_allocator.cpp
+    - tests/fixtures/negative/container_divide_by_length.cpp
+    - tests/fixtures/negative/container_signed_index.cpp
     - tests/fixtures/negative/container_data_overrun.cpp
     - tests/fixtures/negative/container_element_after_pop.cpp
     - tests/fixtures/negative/container_element_reused_after_pop.cpp
+    - tests/fixtures/negative/container_element_in_condition.cpp
+    - tests/fixtures/negative/container_parser_false_bound.cpp
     - tests/fixtures/negative/container_external_alias.cpp
     - tests/fixtures/negative/container_forward_without_capability.cpp
     - tests/fixtures/negative/container_moved_from_size.cpp
