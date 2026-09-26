@@ -206,6 +206,25 @@ grep -Eq '^Assumption-free claims: +0$' forged.report || fail "a claim resting o
 grep -Eq '^Interface-dependent claims: +1$' forged.report
 grep -q 'rests on the contract of count_up \[c:@F@count_up#i#\], imported from forged.cppli' forged.report
 
+# SPEC: TUBOUND-005, TUBOUND-006 -- a name a forged record carries is shown with
+# its newline escaped, so it cannot add a line to the report that names it. The
+# name of a trusted law is provenance, so renaming it leaves the record usable;
+# a model name this compiler does not have makes the interface unreadable.
+awk '
+    $1 == "entry" { inside = ($2 == "c:@F@never_seven#i#") }
+    inside && $1 == "premise" { $NF = "x%0AAssumption-free%20claims:%20%20%20%20%20%207" }
+    { print }' library.cppli | sed '$d' > named.body
+grep -q '^premise .* x%0AAssumption-free' named.body || fail "the forged law name was not written"
+{ cat named.body; printf 'checksum %s\n' "$(sha256 < named.body)"; } > named.cppli
+"$CPPL" -std=c++17 -I "$run" -c client.cpp -o named.o --cppl-import-interface=named.cppli \
+    --cppl-import-interface=middle.cppli --cppl-trust-report > named.report 2> named.err ||
+    { cat named.err >&2; fail "the record with a forged law name was not accepted, so this check tests nothing"; }
+grep -Eq 'rests on x%0AAssumption-free claims: +7 \(library\.cpp:[0-9]+\), identity [0-9a-f]{16}, through the imported contract of never_seven' \
+    named.report || { cat named.report >&2; fail "the forged law name is not shown escaped"; }
+if grep -Eq '^Assumption-free claims: +7' named.report; then
+    fail "a name in a forged record added a line to the trust report"
+fi
+
 # SPEC: TUBOUND-005 -- a path an interface names is hostile: one that is not a
 # regular file is never read, so a device cannot make an import run forever.
 ln -s /dev/zero "$run/zz-device"

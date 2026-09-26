@@ -479,6 +479,19 @@ CPPL_TEST(an_interface_that_could_not_be_read_back_is_not_written) {
     CPPL_CHECK(!artifact::serialize(recorded).has_value());
 }
 
+// A name read from an interface is shown with every byte a report could be
+// forged with escaped, and a printable one as itself.
+//
+// SPEC: TUBOUND-005, TUBOUND-006
+CPPL_TEST(a_recorded_text_is_shown_without_the_bytes_that_could_forge_a_line) {
+    CPPL_CHECK_EQ(artifact::displayed("std::vector model"), std::string("std::vector model"));
+    CPPL_CHECK_EQ(artifact::displayed("forall (x: u32). x < 100 -> result < 4"),
+                  std::string("forall (x: u32). x < 100 -> result < 4"));
+    CPPL_CHECK_EQ(artifact::displayed("x\nAssumption-free claims: 7"), std::string("x%0AAssumption-free claims: 7"));
+    CPPL_CHECK_EQ(artifact::displayed(std::string("a\0b\r\x7f%", 6)), std::string("a%00b%0D%7F%25"));
+    CPPL_CHECK_EQ(artifact::displayed("\xc3\xa9"), std::string("%C3%A9"));
+}
+
 // SPEC: TUBOUND-002
 CPPL_TEST(every_byte_of_a_field_survives_the_round_trip) {
     artifact::Interface recorded = sample();

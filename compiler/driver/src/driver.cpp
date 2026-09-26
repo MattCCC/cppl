@@ -341,25 +341,27 @@ std::string imported_from(const obligations::ImportedDependency& imported) {
 // its trusted laws, its unsafe code, the library models it used, and the
 // contracts of further units it was proven through, so a claim's closure is
 // complete however many units it crosses (SPEC.md TUBOUND-006, TRUST.md
-// TCB-PROV-004).
+// TCB-PROV-004). Every text is the interface's, so it is shown escaped (TRUST.md
+// TCB-XTU-010).
 void print_depends(const obligations::ImportedDependency& imported) {
     for (const artifact::Premise& premise : imported.premises) {
-        std::cout << "      whose proof rests on trusted law " << premise.name << " (" << premise.file << ":"
-                  << premise.line << "), identity " << premise.identity.to_short_hex(16) << "\n";
+        std::cout << "      whose proof rests on trusted law " << artifact::displayed(premise.name) << " ("
+                  << artifact::displayed(premise.file) << ":" << premise.line << "), identity "
+                  << premise.identity.to_short_hex(16) << "\n";
     }
     for (const artifact::UnsafeBlock& block : imported.unsafe) {
-        std::cout << "      whose proof rests on unsafe block (" << block.file << ":" << block.line << ":"
-                  << block.column << ")\n";
+        std::cout << "      whose proof rests on unsafe block (" << artifact::displayed(block.file) << ":" << block.line
+                  << ":" << block.column << ")\n";
     }
     for (const artifact::Model& model : imported.models) {
-        std::cout << "      whose proof rests on the " << model.name << "\n";
+        std::cout << "      whose proof rests on the " << artifact::displayed(model.name) << "\n";
     }
     for (const artifact::RuntimeCheck& check : imported.runtime) {
-        std::cout << "      whose proof rests on the runtime check of " << check.refinement << " (" << check.file << ":"
-                  << check.line << ":" << check.column << ")\n";
+        std::cout << "      whose proof rests on the runtime check of " << artifact::displayed(check.refinement) << " ("
+                  << artifact::displayed(check.file) << ":" << check.line << ":" << check.column << ")\n";
     }
     for (const artifact::Dependency& dependency : imported.depends) {
-        std::cout << "      which rests on the contract of [" << dependency.symbol << "], entry "
+        std::cout << "      which rests on the contract of [" << artifact::displayed(dependency.symbol) << "], entry "
                   << dependency.entry.to_short_hex(16) << "\n";
     }
 }
@@ -444,9 +446,10 @@ void print_trust_report(const Options& options, const Summary& summary) {
         // was proven through rests on (SPEC.md TUBOUND-006, TRUST.md TCB-PROV-004).
         for (const obligations::ImportedDependency& imported : claim.imported) {
             for (const artifact::Premise& premise : imported.premises) {
-                std::cout << "    rests on " << premise.name << " (" << premise.file << ":" << premise.line
-                          << "), identity " << premise.identity.to_short_hex(16) << ", through the imported "
-                          << imported_from(imported) << "\n";
+                std::cout << "    rests on " << artifact::displayed(premise.name) << " ("
+                          << artifact::displayed(premise.file) << ":" << premise.line << "), identity "
+                          << premise.identity.to_short_hex(16) << ", through the imported " << imported_from(imported)
+                          << "\n";
             }
         }
     }
@@ -466,8 +469,8 @@ void print_trust_report(const Options& options, const Summary& summary) {
         }
         for (const obligations::ImportedDependency& imported : claim.imported) {
             for (const artifact::UnsafeBlock& block : imported.unsafe) {
-                std::cout << "    rests on unsafe block (" << block.file << ":" << block.line << ":" << block.column
-                          << "), through the imported " << imported_from(imported) << "\n";
+                std::cout << "    rests on unsafe block (" << artifact::displayed(block.file) << ":" << block.line
+                          << ":" << block.column << "), through the imported " << imported_from(imported) << "\n";
             }
         }
     }
@@ -512,8 +515,9 @@ void print_trust_report(const Options& options, const Summary& summary) {
         // proof that rests on it was made (SPEC.md TUBOUND-006).
         for (const obligations::ImportedDependency& imported : claim.imported) {
             for (const artifact::Model& model : imported.models) {
-                std::cout << "    rests on the " << model.name << ", identity " << model.identity.to_short_hex(16)
-                          << ", through the imported " << imported_from(imported) << "\n";
+                std::cout << "    rests on the " << artifact::displayed(model.name) << ", identity "
+                          << model.identity.to_short_hex(16) << ", through the imported " << imported_from(imported)
+                          << "\n";
             }
         }
     }
@@ -579,9 +583,9 @@ void print_trust_report(const Options& options, const Summary& summary) {
         }
         for (const obligations::ImportedDependency& imported : claim.imported) {
             for (const artifact::RuntimeCheck& check : imported.runtime) {
-                std::cout << "    rests on the runtime check of " << check.refinement << " (" << check.file << ":"
-                          << check.line << ":" << check.column << "), through the imported " << imported_from(imported)
-                          << "\n";
+                std::cout << "    rests on the runtime check of " << artifact::displayed(check.refinement) << " ("
+                          << artifact::displayed(check.file) << ":" << check.line << ":" << check.column
+                          << "), through the imported " << imported_from(imported) << "\n";
             }
         }
     }

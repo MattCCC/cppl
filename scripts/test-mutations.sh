@@ -135,6 +135,7 @@ xtu-withdraw-only-interfaces	compiler/driver/src/interface_io.cpp	if (first != s
 xtu-status-proven-only	compiler/artifact/src/interface.cpp	if (status->fields[1] != "proven") {	if (false) {	^unit_interface_test$|^negative_cross_tu$
 xtu-checksum-verified	compiler/artifact/src/interface.cpp	if (!(source::hash_bytes(text.substr(0, last_start)) == *recorded_checksum)) {	if (false) {	^unit_interface_test$|^negative_cross_tu$|^fuzz_interface_replay$
 xtu-canonical-order	compiler/artifact/src/interface.cpp	if (!previous.empty() && !(previous < line.text)) {	if (false && !previous.empty() && !(previous < line.text)) {	^unit_interface_test$
+xtu-report-escapes-recorded-text	compiler/artifact/src/interface.cpp	if (byte >= 0x20U && byte <= 0x7EU && byte != '%') {	if (true) {	^unit_interface_test$|^negative_cross_tu$
 xtu-format-version	compiler/artifact/include/cppl/artifact/interface.hpp	inline constexpr std::uint32_t kFormatVersion = 3;	inline constexpr std::uint32_t kFormatVersion = 2;	^unit_interface_test$|^negative_cross_tu$
 xtu-models-written	compiler/artifact/src/interface.cpp	canonical_lines(entry.models, model_line)	canonical_lines(std::vector<Model>{}, model_line)	^unit_interface_test$|^e2e_containers$
 xtu-models-exported	compiler/obligations/src/interface.cpp	entry.models.push_back(library_model(dependency.model));	(void)dependency;	^e2e_containers$|^unit_cross_unit_contracts_test$

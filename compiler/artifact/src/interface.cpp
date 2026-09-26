@@ -643,6 +643,22 @@ std::expected<std::string, ParseError> single_text(Parser& parser, std::string_v
 
 } // namespace
 
+std::string displayed(std::string_view text) {
+    std::string shown;
+    shown.reserve(text.size());
+    for (const char character : text) {
+        const auto byte = static_cast<unsigned char>(character);
+        if (byte >= 0x20U && byte <= 0x7EU && byte != '%') {
+            shown.push_back(character);
+            continue;
+        }
+        shown.push_back('%');
+        shown.push_back(kUpperHex[static_cast<std::size_t>(byte >> 4U)]);
+        shown.push_back(kUpperHex[static_cast<std::size_t>(byte & 0x0FU)]);
+    }
+    return shown;
+}
+
 source::Digest identify(const Entry& entry) {
     source::Hasher hasher;
     hasher.update_field("cppl-verification-result-v2");

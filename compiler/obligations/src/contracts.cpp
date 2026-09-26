@@ -2606,13 +2606,13 @@ std::expected<ContractVerification, Refusal> import_contract(const vir::Function
                                        location});
     }
     if (!(*plan.statement == recorded->entry.statement)) {
-        return std::unexpected(
-            Refusal{"the contract this translation unit declares for '" + function.qualified_name +
-                        "' is not the one '" + recorded->origin + "' records as verified",
-                    {"declared here: " + plan.description, "recorded there: " + recorded->entry.contract,
-                     "each unit states a contract from its own declaration, and another unit's "
-                     "proof is used only where the two agree (SPEC.md TUBOUND-004)"},
-                    location});
+        return std::unexpected(Refusal{"the contract this translation unit declares for '" + function.qualified_name +
+                                           "' is not the one '" + recorded->origin + "' records as verified",
+                                       {"declared here: " + plan.description,
+                                        "recorded there: " + artifact::displayed(recorded->entry.contract),
+                                        "each unit states a contract from its own declaration, and another unit's "
+                                        "proof is used only where the two agree (SPEC.md TUBOUND-004)"},
+                                       location});
     }
     const bool total = recorded->entry.correctness == artifact::Correctness::Total;
     // Asking that a function terminate is part of its statement, so a unit that

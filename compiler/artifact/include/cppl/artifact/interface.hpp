@@ -199,6 +199,13 @@ struct ParseError {
     std::size_t line = 0; // 1-based, 0 when the failure is not one line's
 };
 
+// A text read from an interface, as a report or a diagnostic shows it:
+// printable ASCII as itself, and every other byte and `%` as `%XX`. A name
+// decoded from a hostile interface may hold any byte, and shown raw, a newline
+// in it could forge a line of the report that shows it (SPEC.md TUBOUND-005,
+// TRUST.md TCB-XTU-007).
+[[nodiscard]] std::string displayed(std::string_view text);
+
 // Reads an interface. Anything that is not exactly the canonical text of some
 // interface of this format version is refused with the reason: a different
 // magic or version, a size or line past the bounds, a checksum that does not
