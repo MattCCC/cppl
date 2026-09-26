@@ -5302,7 +5302,8 @@ struct BodyLowering {
         // a data pointer it is handed.
         std::vector<std::size_t> written_roots;
         if (!call->library.has_value()) {
-            if (std::optional<std::string> refused = view_arguments(cursor, params, state, invalidated, written_roots)) {
+            if (std::optional<std::string> refused =
+                    view_arguments(cursor, params, state, invalidated, written_roots)) {
                 return reject(std::move(*refused));
             }
         }
