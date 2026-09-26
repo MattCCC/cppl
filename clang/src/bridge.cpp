@@ -5187,7 +5187,8 @@ struct BodyLowering {
     // leaves the elements unknown afterwards, and could store an unrefined value
     // in a refined container, so that is refused.
     std::optional<std::string> view_arguments(CXCursor call, const std::vector<CXCursor>& formals, Locals& state,
-                                              std::vector<std::size_t>& invalidated) {
+                                              std::vector<std::size_t>& invalidated,
+                                              std::vector<std::size_t>& written_roots) {
         // The containers the callee receives by mutable reference, and so may
         // reallocate.
         std::vector<std::size_t> reallocatable;
@@ -5238,6 +5239,7 @@ struct BodyLowering {
                            "satisfying '" +
                            state[root].sequence->element.refinements.front().name + "'";
                 }
+                written_roots.push_back(root);
                 // Every element place of the container is unknown after the
                 // call; the container's length is not, since no element write
                 // changes it.
@@ -5296,8 +5298,11 @@ struct BodyLowering {
             return value;
         const auto callee = clang_getCursorReferenced(cursor);
         const auto params = parameters_of(callee);
+        // The containers whose elements the callee may write through a view or
+        // a data pointer it is handed.
+        std::vector<std::size_t> written_roots;
         if (!call->library.has_value()) {
-            if (std::optional<std::string> refused = view_arguments(cursor, params, state, invalidated)) {
+            if (std::optional<std::string> refused = view_arguments(cursor, params, state, invalidated, written_roots)) {
                 return reject(std::move(*refused));
             }
         }
@@ -5416,6 +5421,40 @@ struct BodyLowering {
             }
             positions.push_back(
                 Position{offset + static_cast<std::uint32_t>(index), storage, source::may_write(passing)});
+        }
+        for (const Position& position : positions) {
+            if (!position.writable) {
+                continue;
+            }
+            const Local& handed = state[position.storage];
+            // A refined element type is a content invariant of the local's
+            // storage, and a callee holding the container by mutable reference
+            // may leave any value in any element (SPEC.md STDMODEL-020).
+            if (handed.sequence.has_value() && !handed.sequence->element.refinements.empty()) {
+                return reject("'" + handed.spelling + "' is passed to '" + qualified_name_of(callee) +
+                              "' by mutable reference, and its elements must satisfy '" +
+                              handed.sequence->element.refinements.front().name +
+                              "'; nothing obliges the callee to leave only such values in it, so a container "
+                              "whose element type is refined is not handed to a call that may write it (SPEC.md "
+                              "STDMODEL-020)");
+            }
+            // The same element reached through a reference and through a view
+            // or data pointer of its container would have two post-states.
+            if (handed.formed_at.has_value()) {
+                const std::size_t owner = handed.formed_at->root;
+                for (const std::size_t root : written_roots) {
+                    if (root == owner || may_alias(state[root], state[owner])) {
+                        return reject("'" + handed.spelling + "', an element of '" + state[owner].spelling +
+                                      "', is passed to '" + qualified_name_of(callee) +
+                                      "' by mutable reference, and the same call hands it a view or data pointer "
+                                      "through which it may write the elements of '" +
+                                      state[root].spelling +
+                                      "'; the callee could write that element through either argument, and one "
+                                      "storage written through two arguments of a call has no single post-state "
+                                      "(SPEC.md STDMODEL-017)");
+                    }
+                }
+            }
         }
         // A pointer to non-const lets the callee write storage this call does
         // not name, so nothing it reads by reference is known to be preserved.
@@ -7635,6 +7674,22 @@ void extract_body(Function& function, CXCursor cursor, const Signature& signatur
         return;
     }
     if (executable_state && source::is_sequence(function.result.representation.kind)) {
+        // A refinement written as the element type states a content invariant
+        // of a local's storage and nothing of the C++ type, which is the base
+        // type's specialization, so a result spelling one promises what no
+        // caller receives (SPEC.md STDMODEL-020).
+        auto element = sequence_element(cursor, clang_getCursorResultType(cursor), &refinements);
+        if (!element) {
+            function.body_rejection = "its result: " + element.error();
+            return;
+        }
+        if (!element->refinements.empty()) {
+            function.body_rejection = "its result is a container whose element type is written as the refinement '" +
+                                      element->refinements.front().name +
+                                      "'; a refined element type states a content invariant of a local and is "
+                                      "modeled only there (SPEC.md STDMODEL-020)";
+            return;
+        }
         lowering.library_models.insert(function.result.representation.kind);
     }
     Locals candidates;
@@ -8270,8 +8325,17 @@ std::expected<Capability, std::string> build_capability(CXCursor cursor, source:
         return std::unexpected("'" + named.spelling + "' is not modeled: " + named.representation.rejection);
     if (span && arguments != 2)
         return std::unexpected("a span states its own extent, so a capability of a span takes no element count");
-    if (!span && clang_getCanonicalType(clang_getCursorType(declaration)).kind != CXType_Pointer)
+    const CXType canonical = clang_getCanonicalType(clang_getCursorType(declaration));
+    if (!span && canonical.kind != CXType_Pointer)
         return std::unexpected("a memory capability names a pointer or a span");
+    // Write access is a property of the access path, never of the storage it
+    // reaches: a span or pointer of const elements grants none, whatever the
+    // storage behind it permits (SPEC.md VERIFIED-036, STDMODEL-016).
+    const CXType element = span ? clang_Type_getTemplateArgumentAsType(canonical, 0) : clang_getPointeeType(canonical);
+    if (capability.kind == Capability::Kind::Writable && clang_isConstQualifiedType(element) != 0)
+        return std::unexpected("'writable(" + take(clang_getCursorSpelling(declaration)) +
+                               ")' names elements declared const; no write is permitted through '" + named.spelling +
+                               "', so it can only be 'readable'");
     capability.pointer.root.kind = PlaceRoot::Kind::Parameter;
     // The callable position, past a member function's implicit object.
     capability.pointer.root.id = signature.position(static_cast<std::size_t>(at - parameters.begin()));

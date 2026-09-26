@@ -1121,6 +1121,11 @@ std::optional<vir::Expr> convert_projected(const Request& request, std::string_v
         report_conjoined_capabilities(engine, written, subject);
         return std::nullopt;
     }
+    if (function != nullptr && !function->returned_value.has_value() && function->body_rejection.has_value()) {
+        report(engine, diagnostics::Category::UnsupportedSemantics, written,
+               subject + " is not modeled by this implementation: " + *function->body_rejection);
+        return std::nullopt;
+    }
     if (function == nullptr || !function->returned_value.has_value()) {
         report(engine, diagnostics::Category::Elaboration, written, subject + " was not resolved",
                "Clang did not resolve the projected expression");

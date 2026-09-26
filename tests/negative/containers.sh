@@ -93,6 +93,24 @@ refuse capability_conjoined_law_premise "the precondition of law 'positive_when_
 refuse container_self_view_call "by a reference through which the callee may reallocate it"
 # SPEC: STDMODEL-017
 refuse container_data_overrun "call-site precondition for 'data_overrun -> clear_prefix' is not proven"
+# One element written through a reference and through a view of its container
+# in one call is refused at the source, naming both, never as an internal
+# inconsistency of the formal statement.
+refuse container_element_and_data_call "'v[0]', an element of 'v', is passed to 'touch' by mutable reference, and the same call hands it a view or data pointer"
+refuse container_element_and_span_call "'v[0]', an element of 'v', is passed to 'touch' by mutable reference, and the same call hands it a view or data pointer"
+for name in container_element_and_data_call container_element_and_span_call; do
+    if grep -q "malformed" "$run/$name.log"; then
+        echo "$name was refused as a malformed statement rather than at its source" >&2
+        exit 1
+    fi
+    grep -q "error \[unsupported-semantics\]: verified function 'same_call'" "$run/$name.log"
+done
+# SPEC: VERIFIED-036
+# Write access comes from the access path, never from the storage behind it,
+# and a capability over zero elements says nothing of its pointer.
+refuse container_const_span_writable "'writable(s)' names elements declared const"
+refuse container_const_pointer_writable "'writable(p)' names elements declared const"
+refuse capability_non_null "verified function 'non_null' does not satisfy its contract"
 
 # --- Storage generations: no view or reference outlives its storage (STDMODEL-015)
 
@@ -122,6 +140,8 @@ refuse container_refined_value_initialized "this value is not shown to satisfy r
 refuse container_refined_parameter "parameter 'v' is a container of refined elements"
 refuse container_refined_writable_view "nothing obliges it to write values satisfying 'Positive'"
 refuse container_refined_copy "the elements of 'plain' are not known to satisfy 'Positive'"
+refuse container_refined_mutable_reference "'r' is passed to 'g' by mutable reference, and its elements must satisfy 'Positive'"
+refuse container_refined_result "its result is a container whose element type is written as the refinement 'Positive'"
 
 # --- Moves and what is not modeled (STDMODEL-010, STDMODEL-019, STDMODEL-021)
 

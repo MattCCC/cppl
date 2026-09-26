@@ -61,6 +61,25 @@ if [ "$output" != "$expected" ]; then
     exit 1
 fi
 
+# SPEC: STDMODEL-016, STDMODEL-017, STDMODEL-020, VERIFIED-036
+# The accepted twins of the crossings `negative/containers.sh` refuses: an
+# element read beside a writable view, written beside a read-only one, a
+# refined container handed to a call that only reads it, and an empty vector's
+# data pointer over zero elements.
+"$CPPL" -std=c++20 "$FIXTURES/container_crossings.cpp" -o "$run/crossings" --cppl-trust-report \
+    > "$run/crossings.report"
+for line in 'Function contracts proven: +10' 'Unresolved obligations: +0' 'Call preconditions proven: +3'; do
+    if ! grep -Eq "^$line\$" "$run/crossings.report"; then
+        echo "container_crossings.cpp does not report '$line'" >&2
+        cat "$run/crossings.report" >&2
+        exit 1
+    fi
+done
+if [ "$("$run/crossings")" != '0 1 0 1 0' ]; then
+    echo "container_crossings.cpp printed '$("$run/crossings")'" >&2
+    exit 1
+fi
+
 # SPEC: STDMODEL-022, ERASE-002
 # Erased, the subset is the same code as the program without C++L, at -O0 and
 # -O2, in every standard `std::span` exists in.
