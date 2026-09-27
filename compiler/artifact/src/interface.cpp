@@ -1,7 +1,6 @@
 #include "cppl/artifact/interface.hpp"
 
 #include "cppl/source/digest.hpp"
-#include "cppl/source/representation.hpp"
 
 #include <algorithm>
 #include <array>
@@ -233,11 +232,6 @@ std::optional<std::string> entry_problem(const Entry& entry) {
     for (const Dependency& dependency : entry.depends) {
         if (dependency.symbol.empty()) {
             return "a dependency of '" + entry.name + "' lacks its symbol";
-        }
-    }
-    for (const Model& model : entry.models) {
-        if (!is_library_model(model.name)) {
-            return "'" + entry.name + "' rests on '" + model.name + "', which is not a library model";
         }
     }
     if (entry.premises.size() > kMaxEntryItems || entry.models.size() > kMaxEntryItems ||
@@ -529,13 +523,6 @@ std::expected<Entry, ParseError> parse_entry(Parser& parser, const Line& opening
         if (!identity || !modeled) {
             return std::unexpected(!identity ? identity.error() : modeled.error());
         }
-        // A model this compiler does not have could not be reported, and a
-        // claim resting on it would lose a premise (SPEC.md TUBOUND-006).
-        if (!is_library_model(*modeled)) {
-            return malformed("the entry for " + quoted(entry.name) + " rests on " + quoted(*modeled) +
-                                 ", which is not a library model this compiler has",
-                             model_line);
-        }
         entry.models.push_back(Model{*identity, std::move(*modeled)});
     }
 
@@ -696,12 +683,6 @@ source::Digest identify(const Entry& entry) {
         }
     }
     return hasher.finish();
-}
-
-bool is_library_model(std::string_view name) {
-    using K = source::RepresentationKind;
-    return std::ranges::any_of(std::array{K::StdArray, K::Vector, K::String, K::Span},
-                               [name](K kind) { return std::string(source::describe_model(kind)) + " model" == name; });
 }
 
 std::expected<std::string, std::string> serialize(const Interface& recorded) {

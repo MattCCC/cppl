@@ -6651,9 +6651,9 @@ through two arguments of one call has no single post-state.
 [STDMODEL-018] Every claim resting on a verified function that uses a modeled sequence, in its
 contract, its body or the body of a function it calls, is proven relative to what that model
 states. Such a claim MUST be reported with each model it rests on and MUST NOT be reported as
-assumption-free. A model is one of the trusted assumptions a proof rests on in the sense of
-TUBOUND-002 and TUBOUND-006, so a function defined in another translation unit carries the
-models of its body to every claim proven through its recorded contract.
+assumption-free. A model is a library-model dependency in the sense of TUBOUND-002 and
+TUBOUND-006, so a function defined in another translation unit carries the models of its body
+to every claim proven through its recorded contract.
 
 [STDMODEL-019] Iterators, range-based `for`, element access other than `operator[]`, and every
 member of a modeled sequence not named in STDMODEL-011 to STDMODEL-017 are refused in a verified
@@ -6835,11 +6835,15 @@ carries a proposition another unit reads as the meaning of a contract.
 
 - [TUBOUND-005] A verification interface is untrusted input. It is refused whole when it
   is malformed or truncated; when its recorded integrity check does not match its
-  content; when its format version is unsupported; when its verification semantics,
-  proof kernel, formal core, C++ semantic authority, language mode or target are
-  incompatible with the importing unit's; or when a semantic input on which its result
-  depends no longer has the content recorded for it. A refused interface establishes
-  nothing, and its refusal is a diagnostic naming which of these failed.
+  content; when its format version is unsupported, which an interface of an earlier
+  version is; when the release of the implementation that wrote it, its verification
+  semantics, proof kernel, formal core, C++ semantic authority, language mode or target
+  are incompatible with the importing unit's; when it records a library model the
+  importing implementation does not have, or one under another model's name, which no
+  implementation of the same semantics writes; or when a semantic input on which its
+  result depends no longer has the content recorded for it. A refused interface
+  establishes nothing, and its refusal is a diagnostic naming which of these failed, with
+  every text it shows from the interface escaped so that it cannot add a line of its own.
 
   [TUBOUND-012] These are distinct checks and establish distinct things. Format validity establishes
   that the bytes are an interface this implementation reads. The content-integrity check

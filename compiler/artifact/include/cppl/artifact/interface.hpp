@@ -191,9 +191,6 @@ struct Interface {
 // enter, so rewording one changes no dependent record.
 [[nodiscard]] source::Digest identify(const Entry& entry);
 
-// Whether a name is one a library model is reported under.
-[[nodiscard]] bool is_library_model(std::string_view name);
-
 // The canonical text. Repeated items are put in canonical order and exact
 // duplicates dropped; an empty field, two sources at one path with different
 // content, two entries for one symbol, or a result past the bounds above is an

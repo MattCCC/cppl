@@ -261,16 +261,6 @@ CPPL_TEST(a_result_identity_is_not_the_identity_of_the_entrys_bytes) {
     CPPL_CHECK(artifact::identify(reordered) == identity);
 }
 
-// SPEC: TUBOUND-002, TUBOUND-006
-CPPL_TEST(a_library_model_this_compiler_does_not_have_is_refused) {
-    const std::string body = body_of(text_of(sample()));
-    CPPL_CHECK(body.find(" std::span%20model\n") != std::string::npos);
-    expect_refused(resealed(replaced(body, " std::span%20model\n", " std::deque%20model\n")), "not a library model");
-    artifact::Interface recorded = sample();
-    recorded.entries.front().models.push_back({hash_bytes("a map model"), "std::map model"});
-    CPPL_CHECK(!artifact::serialize(recorded).has_value());
-}
-
 // SPEC: RUNTIMECHECK-015, TUBOUND-005
 CPPL_TEST(a_runtime_validation_site_is_read_only_as_written) {
     const std::string body = body_of(text_of(sample()));

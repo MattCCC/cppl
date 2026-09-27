@@ -180,7 +180,7 @@ required_test_categories:
   - declaration without a record refused
   - stronger and weaker declared contracts refused
   - malformed, truncated, altered, an earlier or later format version, another compiler release, other semantics version, other verifier semantics digest, other mode, stale
-  - a library model this compiler does not have refused
+  - a library model this compiler does not have, or a model under another name, refused
   - another build of the same release, touched sources and a moved interface still used
   - the verifier semantics digest follows every semantic source and nothing else, and every source is classified
   - trust closure through the imported contract, a local call and a third unit

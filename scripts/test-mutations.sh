@@ -121,6 +121,8 @@ xtu-recursion-through-records	compiler/obligations/src/contracts.cpp	const bool 
 xtu-recursion-self-dependency	compiler/obligations/src/contracts.cpp	std::ranges::find(graph[component.front()], component.front()) !=	std::ranges::find(graph[component.front()], graph.size()) !=	^unit_cross_unit_contracts_test$
 xtu-recursion-record-edges	compiler/obligations/src/contracts.cpp	graph[node].push_back(target);	graph[node].reserve(target);	^unit_cross_unit_contracts_test$
 xtu-compiler-version-compared	compiler/driver/src/interface_io.cpp	if (recorded.compiler != current.compiler) {	if (false) {	^negative_cross_tu$
+xtu-models-known	compiler/driver/src/interface_io.cpp	unusable = unknown_model(*recorded);	unusable = std::nullopt; (void)&unknown_model;	^negative_cross_tu$
+xtu-models-known-by-name	compiler/obligations/src/interface.cpp	known.identity == model.identity && known.name == model.name	known.identity == model.identity	^negative_cross_tu$
 xtu-result-identity-dependencies	compiler/artifact/src/interface.cpp	{"depends", unique(entry.depends, dependency_line)}	{"depends", std::vector<std::string>{}}	^unit_interface_test$
 xtu-internal-linkage-not-imported	compiler/elaboration/src/elaborate.cpp	converted.defined_elsewhere = candidate.contract != nullptr && function->external_linkage;	converted.defined_elsewhere = candidate.contract != nullptr;	^negative_cross_tu$
 xtu-internal-linkage-not-exported	compiler/obligations/src/contracts.cpp	    if (function.external_linkage) {	    if (true) {	^e2e_cross_tu$|^unit_cross_unit_contracts_test$

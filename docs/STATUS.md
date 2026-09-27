@@ -830,7 +830,8 @@ its result by meaning, which rewording its name or description does not change.
 An interface written by another compiler release, under another verification
 semantics, identified by a declared version and by a digest the build computes
 from the verifier's semantic sources, or under another kernel, core, Clang,
-language mode or target, or one whose unit's files changed in content since it
+language mode or target, one naming a library model this compiler does not have
+or a model under another name, or one whose unit's files changed in content since it
 was written, is refused whole, while one from another build of the same release
 and sources, one whose sources were only touched, and a copy at another path
 are used; so is a malformed, truncated or integrity-failing one, two interfaces
@@ -2165,7 +2166,7 @@ used, in its declaration, its body and its callees, and every unit that
 imports it carries them on, so a claim proven through an imported contract
 names each of them with the record it arrived through (`TRUST.md`
 TCB-LIB-010). An interface of the earlier format, which could not say, is
-refused. Iterators, range-`for`, `at`, `front`, `insert`, `resize`,
+refused, and so is one naming a model this compiler does not have. Iterators, range-`for`, `at`, `front`, `insert`, `resize`,
 `emplace_back`, `subspan`, `std::string_view`, static-extent spans, custom
 allocators, `std::vector<bool>`, element types other than integers and `bool`,
 refined element types anywhere but a `vector` local (parameters, results, spans

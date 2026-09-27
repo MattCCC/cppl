@@ -62,6 +62,12 @@ struct Imports {
 // §10, TRUST.md TCB-LIB-010). The interface format itself names no model.
 [[nodiscard]] artifact::Model library_model(source::RepresentationKind model);
 
+// Whether `model` is one this compiler has, with the identity and the name this
+// compiler gives it. A compiler of the same verification semantics gives every
+// model both, so a record naming any other was not written by one (SPEC.md
+// TUBOUND-005), and a model a report names is never a name an interface chose.
+[[nodiscard]] bool known_library_model(const artifact::Model& model);
+
 // The contracts this unit proved, as its own verification interface records
 // them (SPEC.md TUBOUND-002): each with its statement identity, whether it is total,
 // and what it rests on, its own trusted laws, standard-library models and unsafe

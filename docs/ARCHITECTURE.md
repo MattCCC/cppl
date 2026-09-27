@@ -2555,7 +2555,7 @@ consuming unit, --cppl-import-interface=<file>...
   driver        reads each file strictly (compiler/artifact: canonical text,
                 bounded, checksummed, of format version 3), refuses one of
                 another configuration or a stale one, one naming a library model
-                this compiler does not have (is_library_model), conflicting
+                this compiler does not have (known_library_model), conflicting
                 records of one function and records whose dependencies are not
                 imported as proven against (driver/src/interface_io.cpp)
   elaboration   a verified function declared and not defined, with external

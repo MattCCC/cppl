@@ -56,7 +56,8 @@ void report(diagnostics::Engine& engine, std::string message, std::string note =
 // The file this process was started from. The digest of the compiler's own
 // build is recorded in every interface it writes, so a record can be traced to
 // the build that wrote it (TRUST.md TCB-VERSION-004); what decides whether an
-// interface may be used is the verification semantics version, not the build.
+// interface may be used is the compiler version and the verification
+// semantics, not the build.
 std::optional<std::filesystem::path> executable_path() {
 #ifdef _WIN32
     std::array<wchar_t, 32768> buffer{};
@@ -232,6 +233,23 @@ std::optional<std::string> stale_source(const artifact::Interface& recorded, Sou
     return std::nullopt;
 }
 
+// A library model a record names that this compiler does not have. Under the
+// same verification semantics every model has the same identity in both
+// compilers, so such a record was not written by one (SPEC.md TUBOUND-005).
+// The name is the interface's text, so it is shown escaped (TRUST.md TCB-XTU-010).
+std::optional<std::string> unknown_model(const artifact::Interface& recorded) {
+    for (const artifact::Entry& entry : recorded.entries) {
+        for (const artifact::Model& model : entry.models) {
+            if (!obligations::known_library_model(model)) {
+                return "the record of '" + artifact::displayed(entry.symbol) +
+                       "' rests on a library model this compiler does not have: '" + artifact::displayed(model.name) +
+                       "', identity " + model.identity.to_short_hex(16);
+            }
+        }
+    }
+    return std::nullopt;
+}
+
 } // namespace
 
 std::expected<artifact::Configuration, std::string> current_configuration(const std::string& clang,
@@ -317,6 +335,9 @@ obligations::Imports read_imports(const std::vector<std::string>& paths, const a
             if (std::optional<std::string> stale = stale_source(*recorded, digests)) {
                 unusable = "it is stale: " + *stale;
             }
+        }
+        if (!unusable.has_value()) {
+            unusable = unknown_model(*recorded);
         }
         if (unusable.has_value()) {
             report(engine, named + ": " + *unusable,

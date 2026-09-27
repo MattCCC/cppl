@@ -287,8 +287,8 @@ entry identity, transitively. Models were added in format version 2 and runtime
 validation sites in version 3, and an interface of an earlier version is
 refused, since it could not say whether a contract rested on one; the format
 knows no model by name, so adding one changes no format, and a consumer refuses
-a record naming a model it does not have, which no compiler of the same
-semantics writes. A function with internal
+a record naming a model it does not have, or a model under another name, which
+no compiler of the same semantics writes. A function with internal
 linkage is never recorded or matched: its USR can be spelled the same in two
 units that mean two functions.
 

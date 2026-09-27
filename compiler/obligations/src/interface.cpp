@@ -18,6 +18,7 @@
 #include "lowering.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
@@ -323,6 +324,15 @@ artifact::Model library_model(source::RepresentationKind model) {
     hasher.update_field("cppl-library-model-v1");
     hasher.update_field(name);
     return artifact::Model{hasher.finish(), name + " model"};
+}
+
+bool known_library_model(const artifact::Model& model) {
+    return std::ranges::any_of(std::array{source::RepresentationKind::StdArray, source::RepresentationKind::Vector,
+                                          source::RepresentationKind::String, source::RepresentationKind::Span},
+                               [&model](source::RepresentationKind kind) {
+                                   const artifact::Model known = library_model(kind);
+                                   return known.identity == model.identity && known.name == model.name;
+                               });
 }
 
 std::vector<artifact::Entry> exported_contracts(const Program& program, const TrustClosure& closure) {

@@ -313,6 +313,29 @@ refuse hostile_depends "it was proven through the contract of 'c:@F@clamp4#i#x%0
     client.cpp --cppl-import-interface=library.cppli --cppl-import-interface=hostile_depends.cppli
 unescaped hostile_depends
 
+# SPEC: TUBOUND-005 -- a record resting on a library model this compiler does
+# not have was not written by a compiler of these semantics, which give every
+# model one identity: the interface is refused whole, naming the model escaped.
+awk -v name="$hostile" '
+    { print }
+    $1 == "entry" { inside = ($2 == "c:@F@never_seven#i#") }
+    inside && $1 == "premise" { print "model 0000000000000000000000000000000000000000000000000000000000000000 " name }
+    ' library.cppli | sed '$d' > unknown_model.body
+grep -q '^model 0\{64\} ' unknown_model.body || fail "the unknown model line was not added"
+{ cat unknown_model.body; printf 'checksum %s\n' "$(sha256 < unknown_model.body)"; } > unknown_model.cppli
+refuse unknown_model "cannot use verification interface 'unknown_model\\.cppli': the record of 'c:@F@never_seven#i#' rests on a library model this compiler does not have: 'x%0Aerror: injected', identity 0{16}" \
+    client.cpp --cppl-import-interface=unknown_model.cppli --cppl-import-interface=middle.cppli
+unescaped unknown_model
+# A model this compiler has, recorded under another model's name, is refused as
+# well, so a report never shows a model name an interface chose; the same
+# record under its own name is used.
+accept sequences -std=c++20 sequences.cpp --cppl-emit-interface=sequences.cppli
+grep -q '^model [0-9a-f]\{64\} std::vector%20model$' sequences.cppli || fail "sequences.cppli records no vector model"
+accept sequences_middle -std=c++20 sequences_middle.cpp --cppl-import-interface=sequences.cppli
+reseal sequences.cppli renamed_model.cppli 's/^\(model [0-9a-f]*\) std::vector%20model$/\1 std::array%20model/'
+refuse renamed_model "cannot use verification interface 'renamed_model\\.cppli': the record of '[^']+' rests on a library model this compiler does not have: 'std::array model'" \
+    -std=c++20 sequences_middle.cpp --cppl-import-interface=renamed_model.cppli
+
 # SPEC: TUBOUND-005 -- a path an interface names is hostile: one that is not a
 # regular file is never read, so a device cannot make an import run forever.
 ln -s /dev/zero "$run/zz-device"
