@@ -1,22 +1,16 @@
-// Runtime-checked refinement construction (SPEC.md 28, RUNTIMECHECK-001 to
-// RUNTIMECHECK-015; RFC 0021).
-//
-// An unknown runtime value enters a refined type through ordinary C++: a
-// condition the program evaluates, and a crossing on the path where it held.
-// The crossing is proven like any other, under that path; what makes it a
-// runtime validation site is that nothing proven of every execution would
-// establish it without the condition. Driven by `e2e/runtime_validation.sh`,
-// which pins which crossings are sites, what rests on each, that each check
-// survives erasure, and what the program does with valid and invalid input.
-// The refused twin of each accepted form is in `negative/runtime_validation.sh`.
+// Ordinary C++: `runtime_validation.cpp` erased by hand as SPEC.md 36.3, 36.5
+// and Annex M say it erases. Each refinement is the alias of its base type and
+// every contract and loop clause is gone; every runtime check stays exactly as
+// written, since validation written as ordinary C++ is runtime behavior
+// (SPEC.md ERASE-012, RUNTIMECHECK-009).
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
 
-type Percentage = int where (self >= 0 && self <= 100);
-type Positive = int where (self > 0);
-type Small = unsigned where (self < 10u);
-type Index(unsigned n) = unsigned where (self < n);
+using Percentage = int;
+using Positive = int;
+using Small = unsigned;
+template <unsigned n> using Index = unsigned;
 
 struct Reading {
     Positive level;
@@ -26,9 +20,7 @@ struct Reading {
 // SPEC: RUNTIMECHECK-002, RUNTIMECHECK-005, RUNTIMECHECK-007
 // The `if` is the validation. The local enters Percentage only on the branch
 // where it held, and the failure path returns a value of its own.
-verified int percentage_or_zero(int raw)
-    ensures (result >= 0 && result <= 100)
-{
+int percentage_or_zero(int raw) {
     if (raw >= 0 && raw <= 100) {
         Percentage p = raw;
         return p;
@@ -38,9 +30,7 @@ verified int percentage_or_zero(int raw)
 
 // SPEC: RUNTIMECHECK-004, RUNTIMECHECK-007
 // The failure path leaves before the crossing.
-verified int positive_or_one(int raw)
-    ensures (result > 0)
-{
+int positive_or_one(int raw) {
     if (raw <= 0) {
         return 1;
     }
@@ -50,24 +40,20 @@ verified int positive_or_one(int raw)
 
 // SPEC: RUNTIMECHECK-010
 // A value entering a refined result on a checked path.
-verified Positive checked_result(int raw) {
+Positive checked_result(int raw) {
     if (raw > 0) {
         return raw;
     }
     return 1;
 }
 
-verified int positive_identity(Positive p)
-    ensures (result == p)
-{
+int positive_identity(Positive p) {
     return p;
 }
 
 // SPEC: RUNTIMECHECK-010
-// A value entering a verified callee's refined parameter on a checked path.
-verified int checked_argument(int raw)
-    ensures (result > 0)
-{
+// A value entering a callee's refined parameter on a checked path.
+int checked_argument(int raw) {
     if (raw > 0) {
         return positive_identity(raw);
     }
@@ -78,24 +64,17 @@ verified int checked_argument(int raw)
 // A conditional initializer: the arm the condition selects is checked, the
 // other enters statically, and the crossing is a site because one route
 // needed the check.
-verified int checked_conditional(int raw)
-    ensures (result > 0)
-{
+int checked_conditional(int raw) {
     Positive p = raw > 0 ? raw : 1;
     return p;
 }
 
 // SPEC: RUNTIMECHECK-010
 // A loop's condition is a runtime check like an `if`'s.
-verified unsigned last_small(unsigned n)
-    ensures (result < 10u)
-{
+unsigned last_small(unsigned n) {
     unsigned i = 0u;
     unsigned last = 0u;
-    while (i < 10u)
-        invariant (last < 10u)
-        decreases (10u - i)
-    {
+    while (i < 10u) {
         if (i >= n) {
             return last;
         }
@@ -108,9 +87,7 @@ verified unsigned last_small(unsigned n)
 
 // SPEC: RUNTIMECHECK-010
 // An indexed refinement, entered at its index on a checked path.
-verified unsigned checked_index(unsigned raw)
-    ensures (result < 4u)
-{
+unsigned checked_index(unsigned raw) {
     if (raw < 4u) {
         Index<4> k = raw;
         return k;
@@ -120,9 +97,7 @@ verified unsigned checked_index(unsigned raw)
 
 // SPEC: RUNTIMECHECK-010
 // A refined member written on a checked path.
-verified int checked_member(int raw)
-    ensures (result > 0)
-{
+int checked_member(int raw) {
     Reading reading{1, raw};
     if (raw > 0) {
         reading.level = raw;
@@ -132,9 +107,7 @@ verified int checked_member(int raw)
 
 // SPEC: RUNTIMECHECK-010, STDMODEL-020
 // An element entering a vector local's content invariant on a checked path.
-verified unsigned checked_elements(int raw)
-    ensures (result > 0u)
-{
+unsigned checked_elements(int raw) {
     std::vector<Positive> values;
     if (raw > 0) {
         values.push_back(raw);
@@ -146,9 +119,7 @@ verified unsigned checked_elements(int raw)
 // SPEC: RUNTIMECHECK-011
 // The check selects the path, but the crossing does not need it: a literal
 // is positive on every execution, so this is not a runtime validation site.
-verified int static_under_check(int raw)
-    ensures (result == 5)
-{
+int static_under_check(int raw) {
     if (raw > 0) {
         Positive p = 5;
         return p;
@@ -159,10 +130,7 @@ verified int static_under_check(int raw)
 // SPEC: RUNTIMECHECK-011
 // What the precondition states of every call is not a runtime check, though a
 // check selects the path the crossing is on.
-verified int from_precondition(int raw)
-    expects (raw > 0)
-    ensures (result > 0)
-{
+int from_precondition(int raw) {
     if (raw > 100) {
         return 100;
     }
@@ -170,24 +138,20 @@ verified int from_precondition(int raw)
     return p;
 }
 
-verified void cap(int& value)
-    ensures (value <= 100)
-{
+void cap(int& value) {
     if (value > 100) {
         value = 100;
     }
 }
 
-unsafe void clobber(int* target);
+void clobber(int* target);
 
 // SPEC: RUNTIMECHECK-004
-// A write, a verified call's effect and an unsafe block each give the local a
+// A write, a call's effect and an unsafe block each give the local a
 // version the first check says nothing of, so the value is checked again
 // before it enters. Twin of `runtime_check_stale_after_write`,
 // `runtime_check_stale_after_call` and `runtime_check_stale_after_unsafe`.
-verified int rechecked(int raw)
-    ensures (result > 0)
-{
+int rechecked(int raw) {
     int value = raw;
     if (value <= 0) {
         return 1;
@@ -200,7 +164,7 @@ verified int rechecked(int raw)
     if (value <= 0) {
         return 3;
     }
-    unsafe {
+    {
         clobber(&value);
     }
     if (value <= 0) {
@@ -213,13 +177,11 @@ verified int rechecked(int raw)
 // SPEC: RUNTIMECHECK-014
 // No site of its own: it rests on the one in the body of the function it
 // calls.
-verified int through_call(int raw)
-    ensures (result > 0)
-{
+int through_call(int raw) {
     return positive_or_one(raw);
 }
 
-unsafe void clobber(int* target) {
+void clobber(int* target) {
     *target = *target - 1;
 }
 

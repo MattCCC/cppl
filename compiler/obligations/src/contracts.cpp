@@ -725,8 +725,7 @@ std::expected<ContractVerification, Failure> build(const vir::Function& function
         VersionBindings versions;
         for (const auto& step : leaf.steps) {
             auto calls = append_calls(*step.value, function, contracts, plan, path, bindings, versions,
-                                      pure_definitions, definitions, established, program, obligations,
-                                      plan.crossings);
+                                      pure_definitions, definitions, established, program, obligations, plan.crossings);
             if (!calls)
                 return std::unexpected(calls.error());
             if (step.binding != nullptr) {

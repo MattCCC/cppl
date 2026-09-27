@@ -568,16 +568,17 @@ void print_trust_report(const Options& options, const Summary& summary) {
         }
         std::cout << "  " << claim_name(claim) << ", identity " << claim.identity.text() << "\n";
         for (const obligations::RuntimeCheck& check : claim.runtime) {
-            std::cout << "    rests on the runtime check of " << check.refinement << " ("
-                      << written_at(check.location) << "), "
-                      << (check.direct ? "in its own body" : "in " + check.function + ", through a verified call it makes")
+            std::cout << "    rests on the runtime check of " << check.refinement << " (" << written_at(check.location)
+                      << "), "
+                      << (check.direct ? "in its own body"
+                                       : "in " + check.function + ", through a verified call it makes")
                       << "\n";
         }
         for (const obligations::ImportedDependency& imported : claim.imported) {
             for (const artifact::RuntimeCheck& check : imported.runtime) {
                 std::cout << "    rests on the runtime check of " << check.refinement << " (" << check.file << ":"
-                          << check.line << ":" << check.column << "), through the imported "
-                          << imported_from(imported) << "\n";
+                          << check.line << ":" << check.column << "), through the imported " << imported_from(imported)
+                          << "\n";
             }
         }
     }

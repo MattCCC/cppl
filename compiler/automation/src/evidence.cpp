@@ -260,8 +260,9 @@ std::vector<obligations::CrossingVerdict> classify_crossings(const obligations::
             const std::optional<Evidence> evidence = propose(program.context, goal);
             // Accepted again here rather than taken from the strategy, which
             // returns a candidate even when none holds.
-            const bool statically = evidence.has_value() &&
-                                    kernel::check(program.context, goal, evidence->proof, kernel::CoreLimits{}).has_value();
+            const bool statically =
+                evidence.has_value() &&
+                kernel::check(program.context, goal, evidence->proof, kernel::CoreLimits{}).has_value();
             verdicts.push_back(obligations::CrossingVerdict{contract, crossing, statically});
         }
     }

@@ -359,6 +359,105 @@ CPPL_TEST(an_unsafe_block_reaches_every_caller_and_the_claims_of_its_body) {
     CPPL_CHECK(claim(closure, o::ClaimKind::Contract, "f33")->unsafe.empty());
 }
 
+// A refinement crossing of contract `contract`'s body at `line`, on a path
+// runtime conditions select.
+void cross(Builder& unit, std::size_t contract, std::uint32_t line, const std::string& refinement = "Positive") {
+    o::RefinementCrossing crossing;
+    crossing.refinement = refinement;
+    crossing.predicate = "(self > 0)";
+    crossing.location = cppl::source::SourceLocation{"unit.cpp", line, 9};
+    crossing.unguarded = fact(line);
+    unit.program.contracts[contract].crossings.push_back(crossing);
+}
+
+// SPEC: RUNTIMECHECK-011, RUNTIMECHECK-012, RUNTIMECHECK-014
+// A crossing a runtime check establishes travels the same edges as an unsafe
+// block: every caller, through a recursive call graph too, and a claim that a
+// path of the body holding it cannot occur rests on it. It is never a trusted
+// law, and it is listed once, as its own function's, however many claims rest
+// on it.
+CPPL_TEST(a_runtime_check_reaches_every_caller_and_the_claims_of_its_body) {
+    Builder unit;
+    const auto a = unit.proven(o::Origin::ReturnPath, "f70 path");
+    const auto claimed = unit.proven(o::Origin::ImpossiblePath, "f70 path 2");
+    const auto b = unit.proven(o::Origin::ReturnPath, "f71 path");
+    const auto c = unit.proven(o::Origin::ReturnPath, "f72 path");
+    const auto d = unit.proven(o::Origin::ReturnPath, "f73 path");
+    unit.partial_contract(70, {a, claimed}, {1}); // f70 calls f71
+    unit.partial_contract(71, {b}, {0});          // f71 calls f70
+    unit.partial_contract(72, {c}, {1});          // f72 calls f71
+    unit.partial_contract(73, {d});               // f73 calls nothing
+    cross(unit, 1, 40);
+
+    const auto closure = unit.close();
+
+    CPPL_CHECK(closure.faults.empty());
+    CPPL_CHECK(closure.assumptions.empty());
+    const auto rests_on_check = [&](o::ClaimKind kind, const std::string& subject, bool direct) {
+        const auto* found = claim(closure, kind, subject);
+        return found != nullptr && found->premises.empty() && found->unsafe.empty() && found->runtime.size() == 1 &&
+               found->runtime.front().location.line == 40 && found->runtime.front().direct == direct &&
+               found->runtime.front().function == "f71" && found->runtime.front().refinement == "Positive" &&
+               o::rests_on_runtime_checks(*found) && !o::rests_on_trusted_laws(*found) &&
+               !o::rests_on_unsafe_code(*found);
+    };
+    CPPL_CHECK(rests_on_check(o::ClaimKind::Contract, "f71", true));
+    CPPL_CHECK(rests_on_check(o::ClaimKind::Contract, "f70", false));
+    CPPL_CHECK(rests_on_check(o::ClaimKind::Contract, "f72", false));
+    CPPL_CHECK(rests_on_check(o::ClaimKind::ImpossiblePath, "f70 path 2", false));
+    CPPL_CHECK(claim(closure, o::ClaimKind::Contract, "f73")->runtime.empty());
+    CPPL_CHECK(!o::rests_on_runtime_checks(*claim(closure, o::ClaimKind::Contract, "f73")));
+    CPPL_CHECK_EQ(closure.runtime_sites.size(), std::size_t{1});
+    CPPL_CHECK(closure.runtime_sites.front().direct && closure.runtime_sites.front().function == "f71");
+}
+
+// SPEC: RUNTIMECHECK-012
+// Only the kernel's acceptance of a crossing's unguarded membership keeps it
+// off the list; a crossing no verdict names is a site, since that errs toward
+// the weaker report. A crossing written once and walked on two paths is one
+// site if either path needed the check.
+CPPL_TEST(only_a_crossing_established_statically_is_not_a_site) {
+    Builder unit;
+    const auto a = unit.proven(o::Origin::ReturnPath, "f80 path");
+    unit.partial_contract(80, {a});
+    cross(unit, 0, 10); // established statically
+    cross(unit, 0, 20); // on two paths: statically on one, by its check on the other
+    cross(unit, 0, 20);
+    cross(unit, 0, 30); // no verdict
+    unit.verdicts = {{0, 0, true}, {0, 1, true}, {0, 2, false}};
+
+    const auto closure = unit.close();
+
+    CPPL_CHECK(closure.faults.empty());
+    const auto* found = claim(closure, o::ClaimKind::Contract, "f80");
+    CPPL_CHECK(found != nullptr);
+    std::vector<std::uint32_t> lines;
+    for (const o::RuntimeCheck& check : found->runtime) {
+        lines.push_back(check.location.line);
+    }
+    CPPL_CHECK(lines == (std::vector<std::uint32_t>{20, 30}));
+    CPPL_CHECK_EQ(closure.runtime_sites.size(), std::size_t{2});
+
+    // Two refinements entered at one place are two sites.
+    Builder twice;
+    const auto b = twice.proven(o::Origin::ReturnPath, "f81 path");
+    twice.partial_contract(81, {b});
+    cross(twice, 0, 10, "Positive");
+    cross(twice, 0, 10, "Small");
+    CPPL_CHECK_EQ(twice.close().runtime_sites.size(), std::size_t{2});
+}
+
+CPPL_TEST(a_verdict_naming_a_crossing_that_does_not_exist_is_a_fault) {
+    Builder unit;
+    const auto a = unit.proven(o::Origin::ReturnPath, "f90 path");
+    unit.partial_contract(90, {a});
+    cross(unit, 0, 10);
+    unit.verdicts = {{0, 1, true}};
+    CPPL_CHECK(faulted(unit.close(), "names a crossing that does not exist"));
+    unit.verdicts = {{1, 0, true}};
+    CPPL_CHECK(faulted(unit.close(), "names a crossing that does not exist"));
+}
+
 CPPL_TEST(an_unproven_contract_is_not_a_claim) {
     Builder unit;
     const auto base = unit.trusted(0);

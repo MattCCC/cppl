@@ -256,13 +256,11 @@ CPPL_TEST(a_runtime_validation_site_is_read_only_as_written) {
     // Between the library models and the dependencies, in canonical order.
     CPPL_CHECK(body.find("model std::vector\n" + positive) != std::string::npos);
     CPPL_CHECK(body.find(small + "depends ") != std::string::npos);
-    expect_refused(resealed(replaced(body, positive + small, small + positive)),
-                   "runtime validation sites are not in");
+    expect_refused(resealed(replaced(body, positive + small, small + positive)), "runtime validation sites are not in");
     expect_refused(resealed(replaced(body, positive, positive + positive)), "runtime validation sites are not in");
     expect_refused(resealed(replaced(body, "runtime 18 13", "runtime 0 13")), "malformed number");
     expect_refused(resealed(replaced(body, " Small (self%20<%204)", " Small")), "has 4 fields, not 5");
-    expect_refused(resealed(replaced(body, " Small (self%20<%204)", " Small (self%20<%204) extra")),
-                   "too many fields");
+    expect_refused(resealed(replaced(body, " Small (self%20<%204)", " Small (self%20<%204) extra")), "too many fields");
     // Out of its place, it is a field the reader did not expect there.
     expect_refused(resealed(replaced(body, "model std::vector\n" + positive, positive + "model std::vector\n")),
                    "was expected");
