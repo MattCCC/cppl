@@ -1619,6 +1619,33 @@ same as C++ unsigned arithmetic.
 
 ---
 
+# Verified C++ subset status
+
+| Capability                                   | Status        |
+| -------------------------------------------- | ------------- |
+| Explicit V1 verified subset (RFC 0022)       | `IMPLEMENTED` |
+| Annex X constructs verified in a body        | `PARTIAL`     |
+
+The constructs a verified body may use are listed, one row for each construct
+of `SPEC.md` Annex X, in `tests/fixtures/subset/manifest.tsv`, and
+`e2e_safety_subset` checks every row on every run (RFC 0022). Of the 151
+constructs, 84 are verified: each has a fixture that is proven with nothing
+unresolved and runs, and a refused twin, the same program with one thing
+changed, that shows the construct is modeled rather than passed over. The other
+67 are refused wherever a verified body uses them, each with the diagnostic its
+row pins, and never written to an object: among them floating point, pointers
+other than parameters read under `readable`, shifts and bitwise operators,
+`switch`, range-based `for`, `goto`, exceptions, dynamic allocation, lambdas,
+virtual dispatch and virtual functions, casts between class types, unions,
+bit-fields, static and thread-local storage, globals, verified constructors and
+destructors, coroutines, variadic verified templates and modules. The manifest
+must name each construct of Annex X exactly once, so a construct the
+specification adds is refused until it is classified. `PARTIAL` above is the
+share of Annex X verified, not a weakness of the matrix: widening it is a later
+RFC.
+
+---
+
 # Unsafe and trusted boundary status
 
 | Capability                          | Status        |
@@ -2536,7 +2563,7 @@ ordinary native C++ output
 
 The implementation may initially support only a defined subset of difficult C++ constructs inside verified regions.
 
-That subset must be explicit.
+That subset must be explicit. It is: see [Verified C++ subset status](#verified-c-subset-status) and RFC 0022.
 
 Unsupported C++ may remain executable as ordinary/unverified C++.
 
