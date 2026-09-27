@@ -97,6 +97,9 @@ target_link_libraries(kernel_definedness_test PRIVATE cppl_kernel)
 cppl_add_unit_test(kernel_adversarial_test kernel/adversarial_kernel_test.cpp)
 target_link_libraries(kernel_adversarial_test PRIVATE cppl_kernel)
 
+cppl_add_unit_test(kernel_induction_test kernel/induction_test.cpp)
+target_link_libraries(kernel_induction_test PRIVATE cppl_kernel)
+
 cppl_add_unit_test(unit_digest_test unit/digest_test.cpp)
 target_link_libraries(unit_digest_test PRIVATE cppl_source)
 

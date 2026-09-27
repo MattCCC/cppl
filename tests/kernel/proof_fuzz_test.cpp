@@ -1,4 +1,4 @@
-// Reproducible structural fuzzing of all thirteen proof constructors, with false
+// Reproducible structural fuzzing of the proof constructors, with false
 // closed goals as the rejection oracle. No frontend or automation is involved.
 #include "cppl/kernel/box.hpp"
 #include "cppl/kernel/check.hpp"
@@ -57,7 +57,7 @@ k::Proposition claim(Random& random) {
     return goal;
 }
 k::ProofTerm proof(Random& random, unsigned depth) {
-    const auto choice = random.below(depth == 0 ? 2 : 13);
+    const auto choice = random.below(depth == 0 ? 2 : 14);
     if (choice == 0)
         return k::ProofTerm::reflexivity();
     if (choice == 1)
@@ -87,6 +87,9 @@ k::ProofTerm proof(Random& random, unsigned depth) {
     if (choice == 11)
         return k::ProofTerm::disjunction_elimination(claim(random), proof(random, depth - 1), proof(random, depth - 1),
                                                      proof(random, depth - 1));
+    if (choice == 12)
+        return k::ProofTerm::unsigned_induction(random.below(2) != 0 ? type : boolean, proof(random, depth - 1),
+                                                proof(random, depth - 1));
     std::vector<k::ArithmeticFact> facts;
     facts.push_back(k::ArithmeticFact{claim(random), k::Box<k::ProofTerm>{proof(random, depth - 1)}});
     return k::ProofTerm::linear_arithmetic(

@@ -179,6 +179,35 @@ struct FalsityElimination {
     friend bool operator==(const FalsityElimination&, const FalsityElimination&) = default;
 };
 
+// Induction over an unsigned machine integer type (FOUNDATIONS.md 74, SPEC.md
+// INDUCT-002, INDUCT-003).
+//
+//     base : P(0)      step : forall n : T. n < max(T) -> P(n) -> P(n + 1)
+//     ---------------------------------------------------------------------
+//                           forall n : T. P(n)
+//
+// `T` is an unsigned machine integer type, so its values are exactly
+// 0, 1, ..., max(T) and each is reached from 0 by at most max(T) successor
+// steps; that finite chain is the whole justification, and it is why no
+// termination argument is needed for the rule itself.
+//
+// The goal states the motive P, so nothing about it is restated here but the
+// binder, which is checked against the goal exactly as a universal
+// introduction's is. Both premises are derived by the kernel, never supplied:
+// the base case by its own substitution of zero, and the step with its range
+// premise, under which `n + 1` wraps nothing (INDUCT-003, INTERACT-026). The
+// hypothesis `P(n)` exists only inside the step's evidence, where the
+// implication introduction that states it puts it. A signed type, an abstract
+// value and an indexed domain have no principle here (INDUCT-004), so the rule
+// refuses them.
+struct UnsignedInduction {
+    Type binder;
+    Box<ProofTerm> base;
+    Box<ProofTerm> step;
+
+    friend bool operator==(const UnsignedInduction&, const UnsignedInduction&) = default;
+};
+
 // Elimination of an equality: evidence transported through a proposition
 // context (SPEC.md 7.2).
 //
@@ -298,7 +327,7 @@ struct ProofTerm {
     std::variant<Reflexivity, ForallIntroduction, ForallElimination, Hypothesis, ImplicationIntroduction,
                  ImplicationElimination, EqualityElimination, ConditionalElimination, LinearArithmetic,
                  ConjunctionIntroduction, ConjunctionElimination, DisjunctionIntroduction, DisjunctionElimination,
-                 FalsityElimination>
+                 FalsityElimination, UnsignedInduction>
         node;
 
     static ProofTerm reflexivity() {
@@ -372,8 +401,34 @@ struct ProofTerm {
                                            std::move(argument)}};
     }
 
+    static ProofTerm unsigned_induction(Type binder, ProofTerm base, ProofTerm step) {
+        return ProofTerm{
+            UnsignedInduction{std::move(binder), Box<ProofTerm>{std::move(base)}, Box<ProofTerm>{std::move(step)}}};
+    }
+
     friend bool operator==(const ProofTerm&, const ProofTerm&) = default;
 };
+
+// A proof constructor is part of the logical TCB: the checker, the describer
+// and every test that enumerates the rules must account for each alternative
+// (TRUST.md TCB-CORE-003). Adding one must fail here first; update the count
+// only together with check_under in check.cpp, describe in proof.cpp, the rule
+// lists in STATUS.md and TRUST.md, and tests/kernel/proof_fuzz_test.cpp.
+static_assert(std::variant_size_v<decltype(ProofTerm::node)> == 15,
+              "a kernel proof constructor was added or removed: review check_under in check.cpp, describe in "
+              "proof.cpp, the rule lists in STATUS.md and TRUST.md, and tests/kernel/proof_fuzz_test.cpp");
+
+// The two premises unsigned induction owes for the motive `body`, which is
+// stated under one binder of the unsigned type `binder` (the goal's). The
+// checker derives them with these functions, and a producer building evidence
+// for either states it with the same ones, so the two cannot drift apart.
+//
+//     induction_base:  P(0)
+//     induction_step:  forall n : binder. n < max(binder) -> P(n) -> P(n + 1)
+//
+// Both require `binder` to be an unsigned integer type of a supported width.
+[[nodiscard]] Proposition induction_base(const IntType& binder, const Proposition& body);
+[[nodiscard]] Proposition induction_step(const IntType& binder, const Proposition& body);
 
 std::string describe(const ProofTerm& proof);
 

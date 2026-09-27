@@ -391,6 +391,41 @@ struct Assumption {
         return {};
     }
 
+    // Unsigned induction establishes a universally quantified goal over an
+    // unsigned machine integer type from two premises the kernel states itself
+    // (FOUNDATIONS.md 74, SPEC.md INDUCT-002, INDUCT-003): the goal's body at
+    // zero, and the step from a value below the type's maximum to its
+    // successor. Neither premise is taken from the evidence, so evidence cannot
+    // weaken the step, drop its range premise or widen the hypothesis; each is
+    // checked here like any other goal, in the context standing here.
+    if (const auto* induction = std::get_if<UnsignedInduction>(&proof.node)) {
+        const auto* quantified = std::get_if<Forall>(&proposition.node);
+        if (quantified == nullptr) {
+            return reject(RejectionKind::ProofShapeMismatch,
+                          "induction establishes a universally quantified goal, and the goal is " +
+                              describe(proposition));
+        }
+        if (!(induction->binder == quantified->binder)) {
+            return reject(RejectionKind::ProofShapeMismatch, "induction is stated over " + describe(induction->binder) +
+                                                                 " but the goal quantifies over " +
+                                                                 describe(quantified->binder));
+        }
+        if (!quantified->binder.is_integer() || quantified->binder.integer_type().signedness != Signedness::Unsigned) {
+            return reject(RejectionKind::ProofShapeMismatch,
+                          "induction has a principle only for an unsigned machine integer type, and the goal "
+                          "quantifies over " +
+                              describe(quantified->binder));
+        }
+        const IntType& type = quantified->binder.integer_type();
+        if (auto base = check_under(context, locals, assumptions, induction_base(type, *quantified->body),
+                                    *induction->base, limits, depth + 1);
+            !base) {
+            return base;
+        }
+        return check_under(context, locals, assumptions, induction_step(type, *quantified->body), *induction->step,
+                           limits, depth + 1);
+    }
+
     if (const auto* quantified = std::get_if<Forall>(&proposition.node)) {
         const auto* introduction = std::get_if<ForallIntroduction>(&proof.node);
         if (introduction == nullptr) {

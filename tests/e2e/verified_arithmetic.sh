@@ -15,12 +15,13 @@ for standard in c++17 c++20 c++23; do
     grep -Eq '^Unresolved obligations: +0$' "$run/report"
     grep -Eq '^Trusted solvers: +0$' "$run/report"
     grep -Eq '^Trusted external axioms: +0$' "$run/report"
-    grep -Eq '^Formal core version: +cppl-core-0\.8\.0$' "$run/report"
+    grep -Eq '^Formal core version: +cppl-core-0\.9\.0$' "$run/report"
     "$run/program"
     grep -Fq 'return x * (y + z);' "$run/runtime.cpp"
     grep -Fq 'm = m - 1u;' "$run/runtime.cpp"
     grep -Fq 'return predecessor(predecessor(x));' "$run/runtime.cpp"
-    if grep -Eq '\b(verified|ensures|expects|law|proof|assert)\b' "$run/runtime.cpp"; then
+    # Line markers name source files, whose paths may contain any word.
+    if grep -v '^# [0-9]' "$run/runtime.cpp" | grep -Eq '\b(verified|ensures|expects|law|proof|assert)\b'; then
         echo 'formal syntax or runtime checks survived erasure' >&2
         exit 1
     fi

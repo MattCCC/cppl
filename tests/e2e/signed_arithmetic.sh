@@ -37,7 +37,7 @@ for standard in c++17 c++20 c++23; do
     expect '^Unresolved obligations: +0$'
     expect '^Trusted solvers: +0$'
     expect '^Trusted external axioms: +0$'
-    expect '^Formal core version: +cppl-core-0\.8\.0$'
+    expect '^Formal core version: +cppl-core-0\.9\.0$'
     "$run/program"
 
     # SPEC: RUNTIMECHECK-009, ERASE-003
