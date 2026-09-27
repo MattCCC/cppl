@@ -2274,7 +2274,9 @@ automation    evidence is checked against the goal relative to those premises,
 obligations   close_trust gives each proven claim its closure and joins
               contracts across verified calls to a fixed point (TrustClosure)
 driver        --cppl-trust-report prints every claim's closure and the
-              trusted Laws nothing rests on
+              trusted Laws nothing rests on; --cppl-emit-trust-report writes
+              the same summary as a JSON document (trust_report.cpp), each
+              claim classified by the one assumption_free predicate both use
 ```
 
 A trusted Law whose conclusion is a memory proposition takes a separate path,

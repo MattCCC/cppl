@@ -2384,6 +2384,89 @@ included into several translation units is recognizable as one.
 If the report cannot account for a dependency, the build fails with an internal
 error rather than printing a shorter list (`TRUST.md` 2.10).
 
+For tools, `--cppl-emit-trust-report=<file>` writes the same report as a JSON
+document. It states what the text states, with every count under `counts`, and
+each claim once, with whether its trusted closure is empty and everything it
+rests on, each kind apart:
+
+```json
+{
+  "format": "cppl-trust-report",
+  "version": 1,
+  "string_encoding": "percent",
+  "build": {
+    "compiler": "0.0.1",
+    "verification_semantics": "cppl-verification-2",
+    "kernel": "cppl-kernel-0.9.0",
+    "formal_core": "cppl-core-0.9.0",
+    "target": "x86_64-unknown-linux-gnu",
+    ...
+  },
+  "counts": {
+    "laws_proven": 1,
+    ...
+  },
+  "claims": [
+    {
+      "kind": "law",
+      "subject": "bound_after_identity",
+      "symbol": null,
+      "location": {
+        "file": "guide.cpp",
+        "line": 24,
+        "column": 1
+      },
+      "identity": "79145ac641c8226e...",
+      "status": "PROVEN",
+      "correctness": null,
+      "assumption_free": false,
+      "trusted_closure_empty": false,
+      "trusted_laws": [
+        {
+          "name": "sensor_identity",
+          ...
+          "direct": true
+        },
+        ...
+      ],
+      "unsafe_blocks": [],
+      "library_models": [],
+      "runtime_checks": [],
+      "imported_contracts": []
+    },
+    ...
+  ],
+  "trusted_laws": [...],
+  "imported_contracts": [],
+  "unsafe_regions": [],
+  "runtime_validation_sites": [],
+  "unverified_ffi_boundaries": "not_analysed",
+  "trusted_solvers": [],
+  "directly_trusted_automation": [],
+  "interface_provenance": "none_imported"
+}
+```
+
+`trusted_closure_empty` answers whether a `PROVEN` claim rests on any trusted
+law, its own or one an imported record's proof rested on, and
+`assumption_free` whether it rests on nothing at all, exactly as the text
+report's `Assumption-free claims` lists it (`TRUST.md` Annex C.5). Each trusted
+law is listed `TRUSTED` with the proposition the kernel is given as a premise
+and whether a claim of its unit rests on it; each unsafe region `UNSAFE` and
+each runtime validation site `RUNTIME-CHECKED`. Identities are full SHA-256
+digests, whose first sixteen characters are the ones the text report prints.
+Every string is written as a report shows text read from outside: printable
+ASCII other than `%` as itself and every other byte as `%XX`, so any byte of a
+path or a name survives and none can forge the document's structure. A tool
+refuses a `version` it does not know.
+
+The document is written only once the compile has verified and produced its
+output, from a file beside the destination renamed over it, so no reader sees
+part of one. A compile that does not verify leaves none, and removes one an
+earlier compile left at the path; a file there that is not a report is left
+alone. The option is refused without a file, twice, and on a command that
+compiles nothing.
+
 ### 12.3. Trusted memory propositions
 
 A trusted law may admit a memory proposition, such as a guarantee an operating

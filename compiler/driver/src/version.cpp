@@ -5,12 +5,14 @@
 #include "cppl/driver/process.hpp"
 #include "cppl/driver/scratch.hpp"
 #include "cppl/driver/source_identity.hpp"
+#include "cppl/driver/trust_report.hpp"
 #include "cppl/kernel/version.hpp"
 #include "cppl/obligations/interface.hpp"
 #include "cppl/source/digest.hpp"
 #include "cppl/verifier_semantics.hpp"
 
 #include <cstddef>
+#include <expected>
 #include <filesystem>
 #include <fstream>
 #include <ios>
@@ -165,6 +167,36 @@ void line(std::string_view label, std::string_view value) {
 }
 
 } // namespace
+
+std::expected<BuildRecord, std::string> build_record(const artifact::Configuration& configuration,
+                                                     const std::string& clang) {
+    const ScratchDirectory scratch;
+    if (scratch.path().empty()) {
+        return std::unexpected("could not create a directory to ask the Clang driver its version");
+    }
+    const std::optional<std::string> version = ask(clang, {"--version"}, scratch.path() / "version");
+    const std::string driver = version.has_value() ? first_line(*version) : std::string{};
+    if (driver.empty()) {
+        return std::unexpected("the Clang driver '" + clang + "' did not report its version");
+    }
+    BuildRecord build;
+    build.compiler = configuration.compiler;
+    build.source_revision = kSourceRevision;
+    build.source_tag = kSourceTag;
+    build.source_tree = kSourceTree;
+    build.compiler_build = configuration.build.to_hex();
+    build.verification_semantics = configuration.semantics;
+    build.verifier_semantics_digest = configuration.verifier.to_hex();
+    build.kernel = configuration.kernel;
+    build.formal_core = configuration.core;
+    build.interface_format = artifact::kFormatVersion;
+    build.clang = configuration.clang;
+    build.runtime_compiler = driver;
+    build.language = configuration.language;
+    build.target = configuration.target;
+    build.semantic_flags = configuration.flags;
+    return build;
+}
 
 int print_version(const std::string& clang, const std::vector<std::string>& arguments, const std::string& standard) {
     line("C++L compiler:", CPPL_VERSION);

@@ -61,11 +61,18 @@ unsafe-call-outside-block	compiler/elaboration/src/elaborate.cpp	if (unsafe_call
 unsafe-pure-refused	compiler/elaboration/src/elaborate.cpp	candidate.pure && contains_unsafe_region(	false && contains_unsafe_region(	^negative_unsafe_boundary$
 unsafe-contract-refused	compiler/frontend/src/recognizer.cpp	if (std::size_t clause_index = 0; has_specification_clause(tokens, *name, clause_index)) {	if (std::size_t clause_index = 0; false && has_specification_clause(tokens, *name, clause_index)) {	^negative_unsafe_boundary$|^unit_recognizer_test$
 unsafe-closure-through-calls	compiler/obligations/src/trust.cpp	regions[index].emplace(where, UnsafeDependency{region.location, false}).second	(false && regions[index].emplace(where, UnsafeDependency{region.location, false}).second)	^e2e_unsafe_boundary$
-unsafe-not-assumption-free	compiler/driver/src/driver.cpp	!obligations::rests_on_unsafe_code(claim) && !obligations::rests_on_library_models(claim);	!obligations::rests_on_library_models(claim);	^e2e_unsafe_boundary$
-library-model-not-assumption-free	compiler/driver/src/driver.cpp	!obligations::rests_on_library_models(claim);	true;	^e2e_containers$
+unsafe-not-assumption-free	compiler/driver/src/trust_report.cpp	!obligations::rests_on_unsafe_code(claim) && !obligations::rests_on_library_models(claim);	!obligations::rests_on_library_models(claim);	^e2e_unsafe_boundary$
+library-model-not-assumption-free	compiler/driver/src/trust_report.cpp	!obligations::rests_on_library_models(claim);	true;	^e2e_containers$
 xtu-external-dependency-listed	compiler/driver/src/driver.cpp	std::cout << "    rests on the " << imported_from(imported) << ", "	std::cout << ""	^e2e_cross_tu$|^negative_cross_tu$
-xtu-import-not-assumption-free	compiler/driver/src/driver.cpp	return claim.imported.empty() && !obligations::rests_on_trusted_laws(claim) &&	return !obligations::rests_on_trusted_laws(claim) &&	^e2e_cross_tu$|^negative_cross_tu$|^e2e_cross_feature$|^e2e_integration_ledger$|^e2e_containers$
+xtu-import-not-assumption-free	compiler/driver/src/trust_report.cpp	return claim.imported.empty() && !obligations::rests_on_trusted_laws(claim) &&	return !obligations::rests_on_trusted_laws(claim) &&	^e2e_cross_tu$|^negative_cross_tu$|^e2e_cross_feature$|^e2e_integration_ledger$|^e2e_containers$
 xtu-provenance-stated	compiler/driver/src/driver.cpp	if (summary.imports.empty()) {	if (true) {	^e2e_cross_tu$|^negative_cross_tu$|^e2e_containers$
+trust-json-closure-flag	compiler/driver/src/trust_report.cpp	json.boolean(!obligations::rests_on_trusted_laws(claim));	json.boolean(true);	^unit_trust_report_test$|^e2e_trust_report_json$
+trust-json-assumption-free-flag	compiler/driver/src/trust_report.cpp	json.boolean(assumption_free(claim));	json.boolean(true);	^unit_trust_report_test$|^e2e_trust_report_json$
+trust-json-escaped	compiler/driver/src/trust_report.cpp	if (character == '"' || character == '\\') {	if (false) {	^unit_trust_report_test$
+trust-json-displayed	compiler/driver/src/trust_report.cpp	for (const char character : artifact::displayed(value)) {	for (const char character : std::string(value)) {	^unit_trust_report_test$
+trust-json-withdrawn-on-failure	compiler/driver/src/driver.cpp	            withdraw_trust_report(options.emit_trust_report);	            (void)options.emit_trust_report;	^e2e_trust_report_json$
+trust-json-withdraws-only-reports	compiler/driver/src/trust_report.cpp	if (first != kTrustReportPrefix) {	if (false) {	^unit_trust_report_test$|^e2e_trust_report_json$
+trust-json-needs-a-compile	compiler/driver/src/driver.cpp	if (!options.emit_trust_report.empty() && (options.passthrough || options.inputs.empty())) {	if (false) {	^e2e_trust_report_json$
 xtu-unsafe-imported	compiler/obligations/src/contracts.cpp	recorded->entry.unsafe, recorded->entry.depends,	std::vector<artifact::UnsafeBlock>{}, recorded->entry.depends,	^e2e_cross_tu$|^unit_cross_unit_contracts_test$
 library-model-closure-through-calls	compiler/obligations/src/trust.cpp	changed = models[index].emplace(model, LibraryDependency{model, false}).second || changed;	changed = (models[index].contains(model) && false) || changed;	^e2e_containers$
 container-stale-view	clang/src/bridge.cpp	if (root.version == entry.borrows->version) {	if (true) {	^negative_containers$|^negative_integration_ledger$|^negative_cross_feature$

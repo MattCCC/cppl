@@ -7,6 +7,7 @@
 #include "cppl/driver/options.hpp"
 #include "cppl/driver/process.hpp"
 #include "cppl/driver/scratch.hpp"
+#include "cppl/driver/trust_report.hpp"
 #include "cppl/frontend/syntax.hpp"
 #include "cppl/kernel/version.hpp"
 #include "cppl/obligations/interface.hpp"
@@ -36,39 +37,6 @@
 namespace cppl::driver {
 
 namespace {
-
-struct Summary {
-    std::size_t laws = 0;
-    std::size_t proven = 0;
-    std::size_t contracts_proven = 0;
-    std::size_t partial_contracts_proven = 0;
-    std::size_t loop_invariants_proven = 0;
-    std::size_t loop_measures_proven = 0;
-    std::size_t call_measures_proven = 0;
-    std::size_t omitted_cases_proven = 0;
-    std::size_t impossible_paths_proven = 0;
-    std::size_t call_preconditions_proven = 0;
-    std::size_t defined_operations_proven = 0;
-    std::size_t proven_by_written_proof = 0;
-    std::size_t proofs_proven = 0;
-    std::size_t unresolved = 0;
-
-    // Every explicit assumption, and every proven claim with the trusted laws
-    // it rests on, unit by unit in the order the units were given.
-    std::vector<obligations::TrustedPremise> trusted;
-    std::vector<obligations::ClaimClosure> claims;
-    // Trusted laws no proven claim of their own unit rests on.
-    std::vector<obligations::TrustedPremise> unused;
-    // Trusted laws admitting a memory proposition, which nothing can rest on.
-    std::vector<obligations::TrustedMemoryAssumption> memory_trusted;
-    // Every unsafe boundary written, whether or not a proven claim rests on it.
-    std::vector<detail::PipelineOutcome::Counters::UnsafeBoundary> unsafe;
-    // Every contract of another unit established from an interface.
-    std::vector<obligations::ImportedDependency> imports;
-    // Every runtime validation site of a proven contract (SPEC.md
-    // RUNTIMECHECK-013).
-    std::vector<obligations::RuntimeCheck> runtime_sites;
-};
 
 struct UnitOutcome {
     bool failed = false;
@@ -135,7 +103,7 @@ std::vector<std::string> base_arguments(const Options& options) {
 }
 
 UnitOutcome compile_unit(const Options& options, const Input& input, const std::filesystem::path& scratch_root,
-                         const obligations::Imports& imports, diagnostics::Engine& engine, Summary& summary) {
+                         const obligations::Imports& imports, diagnostics::Engine& engine, TrustSummary& summary) {
     UnitOutcome outcome;
     const Stage compiling{"compiling", input.path.c_str()};
 
@@ -250,11 +218,8 @@ UnitOutcome compile_unit(const Options& options, const Input& input, const std::
         const bool used = std::ranges::any_of(closure.claims, [&assumption](const obligations::ClaimClosure& claim) {
             return std::ranges::contains(claim.premises, assumption.law, &obligations::TrustedPremise::law);
         });
-        if (!used) {
-            summary.unused.push_back(assumption);
-        }
+        summary.trusted.push_back(ReportedAssumption{assumption, used});
     }
-    summary.trusted.insert(summary.trusted.end(), closure.assumptions.begin(), closure.assumptions.end());
     summary.claims.insert(summary.claims.end(), closure.claims.begin(), closure.claims.end());
     summary.runtime_sites.insert(summary.runtime_sites.end(), closure.runtime_sites.begin(),
                                  closure.runtime_sites.end());
@@ -317,16 +282,6 @@ std::string reached_through(obligations::ClaimKind kind) {
     return "through what it uses";
 }
 
-// A claim proven outright: it rests on no trusted law, on no unsafe code, on
-// no standard-library model, whose statements are assumed of the library the
-// program runs with (TRUST.md 28.1), and on no contract of another unit, which
-// only an interface nothing authenticates vouches for, however little that
-// contract's own closure holds (SPEC.md TUBOUND-014, TRUST.md TCB-XTU-007).
-bool assumption_free(const obligations::ClaimClosure& claim) {
-    return claim.imported.empty() && !obligations::rests_on_trusted_laws(claim) &&
-           !obligations::rests_on_unsafe_code(claim) && !obligations::rests_on_library_models(claim);
-}
-
 std::string written_at(const source::SourceLocation& location) {
     return location.file + ":" + std::to_string(location.line) + ":" + std::to_string(location.column);
 }
@@ -369,7 +324,7 @@ void print_depends(const obligations::ImportedDependency& imported) {
 // least one trusted law, and for claims about runtime code those that rest on
 // unsafe code. All are PROVEN; only the first are proven outright (TRUST.md
 // 3.2, TCB-REPORT-005).
-void print_closure_counts(const Summary& summary, obligations::ClaimKind kind) {
+void print_closure_counts(const TrustSummary& summary, obligations::ClaimKind kind) {
     const auto of_kind = [&summary, kind](auto predicate) {
         return std::ranges::count_if(summary.claims, [kind, &predicate](const obligations::ClaimClosure& claim) {
             return claim.kind == kind && predicate(claim);
@@ -386,7 +341,7 @@ void print_closure_counts(const Summary& summary, obligations::ClaimKind kind) {
     }
 }
 
-void print_trust_report(const Options& options, const Summary& summary) {
+void print_trust_report(const Options& options, const TrustSummary& summary) {
     std::cout << "C++L Trust Report\n\n";
     std::cout << "Laws proven:                 " << summary.proven << "\n";
     std::cout << "  by a written proof:        " << summary.proven_by_written_proof << "\n";
@@ -395,9 +350,9 @@ void print_trust_report(const Options& options, const Summary& summary) {
     print_closure_counts(summary, obligations::ClaimKind::Proof);
     const std::size_t trusted_laws = summary.trusted.size() + summary.memory_trusted.size();
     std::cout << "Laws trusted:                " << trusted_laws << "\n";
-    for (const obligations::TrustedPremise& assumption : summary.trusted) {
-        std::cout << "  assumed:                 " << declared_at(assumption) << ", identity "
-                  << assumption.identity.text() << "\n";
+    for (const ReportedAssumption& assumption : summary.trusted) {
+        std::cout << "  assumed:                 " << declared_at(assumption.premise) << ", identity "
+                  << assumption.premise.identity.text() << "\n";
     }
     // A memory proposition is assumed like any trusted law, and says what it
     // admits, since that is a capability rather than a proposition.
@@ -483,9 +438,13 @@ void print_trust_report(const Options& options, const Summary& summary) {
             std::cout << "  " << claim_name(claim) << ", identity " << claim.identity.text() << "\n";
         }
     }
-    std::cout << "Unused trusted laws:         " << summary.unused.size() + summary.memory_trusted.size() << "\n";
-    for (const obligations::TrustedPremise& assumption : summary.unused) {
-        std::cout << "  unused:                  " << declared_at(assumption) << "\n";
+    const auto unused = std::ranges::count_if(summary.trusted, [](const ReportedAssumption& law) { return !law.used; });
+    std::cout << "Unused trusted laws:         " << static_cast<std::size_t>(unused) + summary.memory_trusted.size()
+              << "\n";
+    for (const ReportedAssumption& assumption : summary.trusted) {
+        if (!assumption.used) {
+            std::cout << "  unused:                  " << declared_at(assumption.premise) << "\n";
+        }
     }
     // No statement can use a memory proposition, so each is unused, and the
     // report says why rather than leave an audit to wonder.
@@ -593,7 +552,7 @@ void print_trust_report(const Options& options, const Summary& summary) {
     // Where the program's guarantees stop, whether or not a proven claim
     // reaches it: an unsafe block outside every verified body still runs.
     std::cout << "Unsafe regions:              " << summary.unsafe.size() << "\n";
-    for (const detail::PipelineOutcome::Counters::UnsafeBoundary& boundary : summary.unsafe) {
+    for (const UnsafeBoundary& boundary : summary.unsafe) {
         if (!boundary.function.empty()) {
             std::cout << "  unsafe function:         " << boundary.function << " (" << written_at(boundary.location)
                       << ")\n";
@@ -657,6 +616,14 @@ int run_driver(int argc, const char* const* argv) {
         return 1;
     }
 
+    // A trust report says what a compile established, so it is written for a
+    // command that compiles something (TRUST.md 36.2).
+    if (!options.emit_trust_report.empty() && (options.passthrough || options.inputs.empty())) {
+        std::cerr << "cppl: error: '--cppl-emit-trust-report' records what a compile verified, and this command "
+                     "compiles nothing\n";
+        return 1;
+    }
+
     if (options.passthrough || options.inputs.empty()) {
         const ProcessResult result = run(options.clang, options.arguments);
         if (!result.started || result.signaled) {
@@ -672,19 +639,24 @@ int run_driver(int argc, const char* const* argv) {
         return 1;
     }
 
-    // A unit that is not verified this time leaves no interface of an earlier
-    // compile behind claiming that it was (SPEC.md TUBOUND-005).
+    // A unit that is not verified this time leaves no interface or trust
+    // report of an earlier compile behind claiming that it was (SPEC.md
+    // TUBOUND-005, TRUST.md 36.2).
     const auto fail_with = [&options](int status) {
         if (!options.emit_interface.empty()) {
             detail::withdraw_interface(options.emit_interface);
+        }
+        if (!options.emit_trust_report.empty()) {
+            withdraw_trust_report(options.emit_trust_report);
         }
         return status;
     };
 
     // The configuration an interface is bound to, needed only when one is
-    // written or read (SPEC.md TUBOUND-005).
+    // written or read (SPEC.md TUBOUND-005), and recorded by a trust report as
+    // the build its claims were established by (TRUST.md Annex C.1).
     std::optional<artifact::Configuration> configuration;
-    if (!options.emit_interface.empty() || !options.import_interfaces.empty()) {
+    if (!options.emit_interface.empty() || !options.import_interfaces.empty() || !options.emit_trust_report.empty()) {
         std::expected<artifact::Configuration, std::string> current =
             detail::current_configuration(options.clang, base_arguments(options), options.standard);
         if (!current) {
@@ -695,7 +667,7 @@ int run_driver(int argc, const char* const* argv) {
     }
 
     diagnostics::Engine engine;
-    Summary summary;
+    TrustSummary summary;
     std::map<std::size_t, std::string> replacements;
     int failure_exit_code = 1;
     bool failed = false;
@@ -788,6 +760,23 @@ int run_driver(int argc, const char* const* argv) {
         recorded.entries = std::move(exported);
         if (const auto written = detail::write_interface(options.emit_interface, recorded); !written) {
             std::cerr << "cppl: error: cannot write verification interface '" << options.emit_interface
+                      << "': " << written.error() << "\n";
+            return fail_with(1);
+        }
+    }
+
+    // Written last, once everything it describes exists, so a report is never
+    // left describing a compile that did not complete (TRUST.md 36.2).
+    if (!options.emit_trust_report.empty() && configuration.has_value()) {
+        const std::expected<BuildRecord, std::string> build = detail::build_record(*configuration, options.clang);
+        if (!build) {
+            std::cerr << "cppl: error: cannot record the build in trust report '" << options.emit_trust_report
+                      << "': " << build.error() << "\n";
+            return fail_with(1);
+        }
+        if (const auto written = write_trust_report(options.emit_trust_report, render_trust_report(summary, *build));
+            !written) {
+            std::cerr << "cppl: error: cannot write trust report '" << options.emit_trust_report
                       << "': " << written.error() << "\n";
             return fail_with(1);
         }

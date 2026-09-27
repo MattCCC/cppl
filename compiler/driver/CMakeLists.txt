@@ -12,6 +12,7 @@ add_library(cppl_driver STATIC
     src/pipeline.cpp
     src/process.cpp
     src/scratch.cpp
+    src/trust_report.cpp
     src/version.cpp)
 
 target_include_directories(cppl_driver PUBLIC

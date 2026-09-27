@@ -17,12 +17,12 @@
 #include "cppl/artifact/interface.hpp"
 #include "cppl/diagnostics/diagnostic.hpp"
 #include "cppl/driver/buffer_compile.hpp"
+#include "cppl/driver/trust_report.hpp"
 #include "cppl/elaboration/elaborate.hpp"
 #include "cppl/frontend/syntax.hpp"
 #include "cppl/frontend/token.hpp"
 #include "cppl/obligations/interface.hpp"
 #include "cppl/obligations/trust.hpp"
-#include "cppl/source/location.hpp"
 
 #include <cstddef>
 #include <filesystem>
@@ -179,11 +179,7 @@ struct PipelineOutcome {
         // unsafe block, with the verified function it stands in if any, and
         // each function declared unsafe. Listed whether or not a proven claim
         // rests on it, so the report can say where guarantees stop.
-        struct UnsafeBoundary {
-            source::SourceLocation location;
-            std::string owner;    // the verified function holding a block, if any
-            std::string function; // the function an unsafe declaration marks
-        };
+        using UnsafeBoundary = driver::UnsafeBoundary;
         std::vector<UnsafeBoundary> unsafe_boundaries;
     } counters;
 };
