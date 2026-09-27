@@ -24,9 +24,12 @@ bool encloses(const frontend::ProofStatement& statement, std::size_t offset) {
     return span.length != 0 && offset >= span.offset && offset <= span.end();
 }
 
+// `induction` is included: its arms are the principle's cases, which the
+// compiler records the same way, so the same completion and hover serve it.
 bool is_decomposition(const frontend::ProofStatement& statement) {
     return statement.kind == frontend::ProofStatementKind::Cases ||
-           statement.kind == frontend::ProofStatementKind::Decompose;
+           statement.kind == frontend::ProofStatementKind::Decompose ||
+           statement.kind == frontend::ProofStatementKind::Induction;
 }
 
 // The innermost decomposition statement containing `offset`, searching the
@@ -137,10 +140,11 @@ std::vector<CompletionItem> missing_case_completions(const CaseSite& site) {
             state.label.find("::") == std::string::npos ? CompletionItemKind::Keyword : CompletionItemKind::EnumMember;
         item.detail = site.states->representation;
         item.documentation =
-            state.residual ? "The state completing " + site.states->representation +
-                                 "'s partition, derived by negating the others. It is a real semantic state, "
-                                 "not a catch-all."
-                           : "A state of " + site.states->representation + ", from " + site.states->provider + ".";
+            site.states->induction ? "A case of " + site.states->provider + " over " + site.states->representation + "."
+            : state.residual       ? "The state completing " + site.states->representation +
+                                         "'s partition, derived by negating the others. It is a real semantic state, "
+                                         "not a catch-all."
+                             : "A state of " + site.states->representation + ", from " + site.states->provider + ".";
         item.insertText = arm_skeleton(state);
         // Two digits keep the provider's own order stable; no representation
         // here lists more than the 64 arms the recognizer admits.
@@ -157,8 +161,15 @@ std::optional<Hover> case_site_hover(const CaseSite& site) {
 
     const elaboration::SubjectStates& states = *site.states;
     std::string text = "`" + states.subject + "` : `" + states.representation + "`\n\n";
-    text += states.product ? "Product decomposition, from " : "Sum decomposition, from ";
-    text += states.provider + ".\n\n";
+    if (states.induction) {
+        // The principle's premises, as SPEC.md INDUCT-003 states them; which
+        // of them a proof names is the proof's business.
+        text += "Induction, by " + states.provider +
+                ": `successor(pred)` supposes `pred` below the type's maximum and the claim at `pred`.\n\n";
+    } else {
+        text += states.product ? "Product decomposition, from " : "Sum decomposition, from ";
+        text += states.provider + ".\n\n";
+    }
 
     for (const elaboration::SubjectStates::State& state : states.states) {
         const auto arm = std::ranges::find_if(

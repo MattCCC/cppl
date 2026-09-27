@@ -28,7 +28,8 @@ struct FunctionRejection {
     source::SourceLocation location;
 };
 
-// The states one `cases`/`decompose` subject was found to have.
+// The states one `cases`/`decompose` subject was found to have, or the cases
+// an `induction` subject's principle has.
 //
 // This is a *record* of what the generic engine already decided while
 // elaborating the statement, kept so that a non-compiling consumer -- the
@@ -47,6 +48,9 @@ struct SubjectStates {
     std::string provider;
     // True for a product (one `components(...)` arm), false for a sum.
     bool product = false;
+    // True for `induction` (SPEC.md 21): the states are the principle's cases,
+    // `zero` and `successor`, rather than a provider's partition of the value.
+    bool induction = false;
 
     struct State {
         std::string label;

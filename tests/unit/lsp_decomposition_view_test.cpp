@@ -278,3 +278,41 @@ CPPL_TEST(product_hover_names_components_not_alternatives) {
     CPPL_CHECK(hover->contents.find("components(first, second)") != std::string::npos);
     CPPL_CHECK(hover->contents.find("residual") == std::string::npos);
 }
+
+// SPEC: INDUCT-003
+CPPL_TEST(induction_site_offers_the_principles_cases) {
+    // `induction n { zero => { ... } }`: the principle's other case is still
+    // owed, and both come from the compiler's record, never from the editor.
+    SubjectStates record;
+    record.location = location_at(7);
+    record.subject = "n";
+    record.representation = "unsigned int";
+    record.provider = "the unsigned induction principle";
+    record.induction = true;
+    record.states.push_back({"zero", {}, false});
+    record.states.push_back({"successor", {"pred"}, false});
+
+    ProofStatement statement = cases_statement(100, 50, 7, {"zero"});
+    statement.kind = ProofStatementKind::Induction;
+    const Syntax syntax = syntax_with({std::move(statement)});
+    const std::vector<SubjectStates> recorded{record};
+    const auto site = enclosing_case_site(syntax, recorded, 120);
+    CPPL_CHECK(site.has_value());
+
+    const std::vector<CompletionItem> items = missing_case_completions(*site);
+    CPPL_CHECK(items.size() == 1);
+    CPPL_CHECK(items[0].label == "successor");
+    CPPL_CHECK(items[0].insertText.starts_with("successor(pred) => {"));
+
+    const std::optional<Hover> hover = case_site_hover(*site);
+    CPPL_CHECK(hover.has_value());
+    CPPL_CHECK(hover->contents.find("Induction, by the unsigned induction principle") != std::string::npos);
+    CPPL_CHECK(hover->contents.find("- [x] `zero`") != std::string::npos);
+    CPPL_CHECK(hover->contents.find("- [ ] `successor(pred)`") != std::string::npos);
+    CPPL_CHECK(hover->contents.find("decomposition") == std::string::npos);
+
+    // Without the compiler's record there is nothing to offer.
+    const std::vector<SubjectStates> none;
+    const auto unrecorded = enclosing_case_site(syntax, none, 120);
+    CPPL_CHECK(unrecorded.has_value() && missing_case_completions(*unrecorded).empty());
+}

@@ -1582,6 +1582,23 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
                     return std::nullopt;
                 }
 
+                // What the principle's cases are, for editors, recorded as the
+                // case engine records a partition: the language server offers
+                // these labels and never derives them itself.
+                if (subject_states != nullptr && std::ranges::none_of(*subject_states, [&](const SubjectStates& entry) {
+                        return entry.location == statement.location;
+                    })) {
+                    SubjectStates record;
+                    record.location = statement.location;
+                    record.subject = statement.reference;
+                    record.representation = vir::spelled(type);
+                    record.provider = "the unsigned induction principle";
+                    record.induction = true;
+                    record.states.push_back({"zero", {}, false});
+                    record.states.push_back({"successor", {"pred"}, false});
+                    subject_states->push_back(std::move(record));
+                }
+
                 vir::InductionStep induction;
                 induction.subject = statement.reference;
                 induction.type = type;
