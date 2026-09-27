@@ -13,6 +13,7 @@ Each document has one authority domain.
 docs/SPEC.md           language semantics
 docs/TRUST.md          trust boundaries
 docs/FOUNDATIONS.md    mathematical basis
+docs/KERNEL.md         exact calculus of the implemented kernel
 docs/DESIGN.md         rationale
 docs/ARCHITECTURE.md   implementation structure
 docs/COMPATIBILITY.md  C++/ABI compatibility

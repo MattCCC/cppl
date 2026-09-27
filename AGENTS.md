@@ -982,6 +982,9 @@ docs/GRAMMAR.md
 FOUNDATIONS.md
     mathematical foundations
 
+docs/KERNEL.md
+    the exact core calculus the kernel implements, per core version
+
 docs/DESIGN.md
     design rationale
 

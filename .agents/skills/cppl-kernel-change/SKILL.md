@@ -65,3 +65,6 @@ Every semantic kernel change needs:
 Run `cppl-soundness-review` mentally or as a composed skill.
 
 Update `docs/TRUST.md` if the TCB or trusted rule set changes.
+
+Update `docs/KERNEL.md` in the same change for anything it states, and raise the
+kernel and formal-core versions (`docs/KERNEL.md` 18).

@@ -584,6 +584,9 @@ The kernel implements fifteen rules:
     from P(0) and the step below the type's maximum, both stated by the kernel)
 ```
 
+`KERNEL.md` states each rule with its side conditions exactly, and the plan for
+mechanizing them.
+
 They act over propositions built from equality, universal quantification,
 implication, conjunction, disjunction and `False`. `False` has no introduction
 rule (`TRUST.md` TCB-CORE-017): evidence for it comes from a hypothesis, from an
@@ -693,17 +696,24 @@ Kernel fuzzing                         test         tests/kernel/proof_fuzz_test
 | Weakest-precondition reasoning  | `PROTOTYPE`   |
 | Refinement typing               | `SPECIFIED`   |
 | SMT-assisted reasoning          | `SPECIFIED`   |
-| Exact core calculus             | `NOT STARTED` |
-| Formal typing rules             | `NOT STARTED` |
-| Formal reduction rules          | `NOT STARTED` |
-| Formal substitution rules       | `NOT STARTED` |
+| Exact core calculus             | `SPECIFIED`   |
+| Formal typing rules             | `SPECIFIED`   |
+| Formal reduction rules          | `SPECIFIED`   |
+| Formal substitution rules       | `SPECIFIED`   |
 | Formal erasure theorem          | `NOT STARTED` |
 | Mechanized soundness model      | `NOT STARTED` |
 
-This table records the mathematical theory as written down in `FOUNDATIONS.md`
-and `SPEC.md`, not the implementation: `Refinement typing` and `Inductive
-reasoning` here are the formal accounts, and the implemented capabilities of the
-same names are under Refinement status and Case analysis and induction status.
+This table records the mathematical theory as written down in `FOUNDATIONS.md`,
+`SPEC.md` and `KERNEL.md`, not the implementation: `Refinement typing` and
+`Inductive reasoning` here are the formal accounts, and the implemented
+capabilities of the same names are under Refinement status and Case analysis
+and induction status. The four exact-calculus rows are `SPECIFIED` for the core
+the kernel implements, `cppl-core-0.9.0`: `KERNEL.md` states its types, terms,
+typing, substitution and shifting, normalization, rules, arithmetic translation
+and certificate checking exactly. The parts of `FOUNDATIONS.md` that core does
+not implement, such as existential quantification and the `@` domains, are
+stated mathematically but not as exact rules, and nothing is mechanized
+(`KERNEL.md` 17).
 
 ---
 
@@ -2320,7 +2330,7 @@ which has not been run here.
 | RFC process                | `SPECIFIED`   |
 | Formal semantics reference | `NOT STARTED` |
 | C++ memory-model reference | `NOT STARTED` |
-| Kernel reference           | `NOT STARTED` |
+| Kernel reference           | `SPECIFIED`   |
 | Erasure reference          | `NOT STARTED` |
 
 ---

@@ -225,6 +225,8 @@ The proof checker is the final authority for the validity of core proof evidence
 
 **[TCB-CORE-007]** The checker MUST fail closed on malformed or resource-exhausting evidence; resource failure MUST NOT be interpreted as success.
 
+The rules this checker implements, with every side condition, and the normalization, substitution, arithmetic translation and certificate checking they rest on, are stated for the current core version in `KERNEL.md`.
+
 Falsity elimination (`FOUNDATIONS.md` §26) is one of the checker's primitive rules and so part of this TCB under TCB-CORE-003. It is ex falso quodlibet, not an axiom: it concludes any well-formed goal from checked evidence for `False`, and it is sound only as long as `False` cannot be established without a contradiction.
 
 **[TCB-CORE-017]** `False` MUST have no introduction rule. Evidence for it MUST come only from a hypothesis the proof itself introduced, from an elimination rule applied to checked evidence, or from a linear-arithmetic certificate that refutes the stated facts with no goal taking part.
@@ -1515,6 +1517,8 @@ memory capability calculus soundness
 **[TCB-META-002]** A mechanized theorem about an abstract compiler pass does not remove trust from the production implementation unless a verified correspondence connects the implementation to that model.
 
 **[TCB-META-003]** External proof assistants/toolchains used to certify meta-theory have their own trust bases; those dependencies SHOULD be documented when claims rely on them.
+
+Nothing is mechanized yet. The plan, milestone by milestone and bound to these three rules, is `KERNEL.md` 17.
 
 ---
 
