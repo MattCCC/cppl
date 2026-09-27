@@ -144,9 +144,8 @@ for standard in c++17 c++20 c++23; do
     "$CPPL" "-std=$standard" -c client.cpp -o "text-client-$standard.o" "--cppl-import-interface=$interface" \
         "--cppl-import-interface=middle-$standard.cppli" "--cppl-emit-projection=client-$standard.runtime.ii"
     for unit in library client; do
-        tokens "$unit-$standard.runtime.tokens" "$CLANG" "-std=$standard" -x c++-cpp-output \
-            "$unit-$standard.runtime.ii"
-        tokens "$unit-$standard.reference.tokens" "$CLANG" "-std=$standard" "$unit.reference.cpp"
+        tokens "$unit-$standard.runtime.tokens" "$CLANG" "$standard" "$unit-$standard.runtime.ii"
+        tokens "$unit-$standard.reference.tokens" "$CLANG" "$standard" "$unit.reference.cpp"
         same_text "$unit ($standard)" "$unit-$standard.runtime.tokens" "$unit-$standard.reference.tokens"
     done
 

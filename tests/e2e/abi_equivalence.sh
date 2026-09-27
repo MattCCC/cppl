@@ -39,9 +39,8 @@ for standard in c++17 c++20 c++23; do
     "$CPPL" "-std=$standard" -c "$FIXTURES/abi_library.cpp" -o "$run/verified-$standard.o" --cppl-trust-report \
         "--cppl-emit-projection=$run/verified-$standard.runtime.ii" > "$run/verified-$standard.report"
     # The program compiled is the erasure by hand, token for token.
-    tokens "$run/verified-$standard.tokens" "$CLANG" "-std=$standard" -x c++-cpp-output \
-        "$run/verified-$standard.runtime.ii"
-    tokens "$run/reference-$standard.tokens" "$CLANG" "-std=$standard" "$FIXTURES/abi_library.reference.cpp"
+    tokens "$run/verified-$standard.tokens" "$CLANG" "$standard" "$run/verified-$standard.runtime.ii"
+    tokens "$run/reference-$standard.tokens" "$CLANG" "$standard" "$FIXTURES/abi_library.reference.cpp"
     same_text "abi_library ($standard)" "$run/verified-$standard.tokens" "$run/reference-$standard.tokens"
     grep -Eq '^Laws proven: +1$' "$run/verified-$standard.report"
     grep -Eq '^Function contracts proven: +7$' "$run/verified-$standard.report"

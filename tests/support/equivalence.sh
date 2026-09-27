@@ -39,22 +39,30 @@ same_code() {
     fi
 }
 
-# tokens <output> <clang> [args...] <source>
+# tokens <output> <clang> <standard> <source>
 #
 # Writes <output> as the program text Clang reads from <source> once it is
 # preprocessed: one token a line, its kind and its spelling, with no position,
-# spacing, comment or line marker. Two programs with the same tokens are the
-# same text as far as any C++ compiler is concerned; that is the runtime-text
-# comparison, and it sees what code comparison cannot, such as a declaration
-# nothing calls. Fails when Clang fails or reads nothing.
+# spacing, comment, line splice or line marker. Two programs with the same
+# tokens are the same text as far as any C++ compiler is concerned; that is the
+# runtime-text comparison, and it sees what code comparison cannot, such as a
+# declaration nothing uses. A source that is not already preprocessed (`.ii`,
+# as a runtime program is) is preprocessed first, so both sides of a comparison
+# are read the same way. Fails when Clang fails or reads nothing.
 tokens() {
-    local output="$1"
-    shift
-    "$@" -fsyntax-only -Xclang -dump-tokens 2> "$output.dump"
+    local output="$1" clang="$2" standard="$3" source="$4" read="$4"
+    case "$source" in
+        *.ii) ;;
+        *)
+            "$clang" "-std=$standard" -E "$source" -o "$output.ii"
+            read="$output.ii"
+            ;;
+    esac
+    "$clang" "-std=$standard" -fsyntax-only -Xclang -dump-tokens "$read" 2> "$output.dump"
     # Each line is the kind and the spelling, a tab, then flags and location.
     cut -f 1 "$output.dump" > "$output"
     if [ ! -s "$output" ]; then
-        echo "no tokens were read by: $*" >&2
+        echo "no tokens were read from $source" >&2
         return 1
     fi
 }

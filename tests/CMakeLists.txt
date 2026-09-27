@@ -465,6 +465,15 @@ cppl_add_script_test(negative_cross_tu negative/cross_tu.sh)
 # Erasure against programs written without C++L: runtime behaviour and code,
 # native ABI across a translation-unit boundary, and source positions.
 cppl_add_script_test(e2e_erasure_equivalence e2e/erasure_equivalence.sh)
+foreach(group IN ITEMS providers programs)
+    add_test(NAME e2e_erasure_equivalence_${group}
+             COMMAND bash "${CPPL_BOUNDED}" bash "${CMAKE_CURRENT_SOURCE_DIR}/e2e/erasure_equivalence.sh"
+                     $<TARGET_FILE:cppl> "${CPPL_TEST_FIXTURES}" "${CPPL_TEST_WORK}" "${CPPL_DEFAULT_CLANG}"
+                     ${group})
+    set_tests_properties(e2e_erasure_equivalence_${group} PROPERTIES
+        LABELS "e2e;script"
+        TIMEOUT ${CPPL_TEST_TIMEOUT})
+endforeach()
 cppl_add_script_test(e2e_abi_equivalence e2e/abi_equivalence.sh)
 cppl_add_script_test(e2e_erasure_source_mapping e2e/erasure_source_mapping.sh)
 cppl_add_script_test(negative_erasure negative/erasure.sh)

@@ -28,6 +28,19 @@ CPPL="$1"
 FIXTURES="$2/equivalence"
 WORK="$3"
 CLANG="$4"
+# The fixtures are compared in groups, each registered as a CTest test of its
+# own (tests/CMakeLists.txt) so that the heavy ones run beside the rest rather
+# than after them. A fixture belongs to the group in force where it is named.
+SELECTED="${5:-core}"
+case "$SELECTED" in
+    core | providers | programs) ;;
+    *)
+        echo "unknown group of equivalence fixtures: $SELECTED" >&2
+        exit 2
+        ;;
+esac
+group=core
+compared=0
 # shellcheck source=../support/equivalence.sh
 source "$(dirname "$0")/../support/equivalence.sh"
 
@@ -49,7 +62,7 @@ for level in -O0 -O2; do
     done
 done
 for variant in erased checked tagged declared; do
-    tokens "$run/tampered-$variant.tokens" "$CLANG" -std=c++17 "$FIXTURES/tampered/$variant.cpp"
+    tokens "$run/tampered-$variant.tokens" "$CLANG" c++17 "$FIXTURES/tampered/$variant.cpp"
 done
 for variant in checked tagged declared; do
     if cmp -s "$run/tampered-erased.tokens" "$run/tampered-$variant.tokens"; then
@@ -62,11 +75,16 @@ done
 #
 # The report lines pin what the fixture exercises, so a construct that stopped
 # being recognized, and so stopped being erased at all, cannot pass unnoticed.
+# Each supported standard is compared, or those `standards` names for a fixture
+# that needs a later one.
+standards='c++17 c++20 c++23'
 equivalent() {
     local fixture="$1" expected="$2"
     shift 2
     local standard level line output
-    for standard in c++17 c++20 c++23; do
+    [ "$group" = "$SELECTED" ] || return 0
+    compared=$((compared + 1))
+    for standard in $standards; do
         local base="$run/$fixture-$standard"
         "$CPPL" "-std=$standard" "$FIXTURES/$fixture.cpp" -o "$base.cppl" --cppl-trust-report \
             "--cppl-emit-projection=$base.runtime.ii" > "$base.report"
@@ -83,8 +101,8 @@ equivalent() {
             exit 1
         fi
         # The runtime program is the twin's text.
-        tokens "$base.runtime.tokens" "$CLANG" "-std=$standard" -x c++-cpp-output "$base.runtime.ii"
-        tokens "$base.reference.tokens" "$CLANG" "-std=$standard" "$FIXTURES/$fixture.reference.cpp"
+        tokens "$base.runtime.tokens" "$CLANG" "$standard" "$base.runtime.ii"
+        tokens "$base.reference.tokens" "$CLANG" "$standard" "$FIXTURES/$fixture.reference.cpp"
         same_text "$fixture ($standard)" "$base.runtime.tokens" "$base.reference.tokens"
 
         "$CLANG" "-std=$standard" "$FIXTURES/$fixture.reference.cpp" -o "$base.reference"
@@ -162,6 +180,7 @@ equivalent methods $'6 6 7 8 5 2 9\n6 0' \
 # function defined in its class is inline, which ELF marks `.weak` and Mach-O
 # marks `.globl`.
 for level in -O0; do
+    [ "$SELECTED" = core ] || break
     base="$run/methods-c++20$level"
     for symbol in ZN5Meter13declared_hereEj ZN5Meter6nestedEj ZNK5Meter3getEv; do
         grep -Eq "^[[:space:]]*\\.(globl|weak)[[:space:]]+_+$symbol([[:space:]]|\$)" "$base.cppl" || {
@@ -176,4 +195,22 @@ for level in -O0; do
     fi
 done
 
-echo 'erased C++L behaves as, and is the same code as, its ordinary C++ erasure in c++17, c++20 and c++23'
+# SPEC: CASE-017, CASE-018, CASE-019, CASE-020, ERASE-016, TEMPLATE-001
+# A case split or `decompose` in a verified body leaves an empty statement where
+# it stood, a claim in an arm goes with its split, and an explicit instantiation
+# of a verified template stays as the ordinary C++ it is.
+equivalent path_splits $'1 1 1 1 0 5 1 3 1 1 1 1\n1' \
+    'Function contracts proven: +15' 'Omitted cases proven: +27' 'Impossible paths proven: +1'
+
+# SPEC: ERASE-001, ERASEMATRIX-002
+# Proofs over every representation provider erase whole, however their arms
+# nest, and no record they decompose changes layout.
+group=providers
+equivalent providers '8 12 8 16 24 8 1' 'Laws proven: +1' 'Proof declarations proven: +44'
+
+if [ "$compared" -eq 0 ]; then
+    echo "the group $SELECTED compares no fixture" >&2
+    exit 1
+fi
+
+echo "erased C++L ($SELECTED) behaves as, and is the same code and text as, its ordinary C++ erasure"
