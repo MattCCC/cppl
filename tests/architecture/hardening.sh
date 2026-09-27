@@ -44,22 +44,32 @@ check_elf() {
         missing "$binary" "stack is executable (GNU_STACK flags '${stack_flags}')"
     fi
 
-    "$nm" --dynamic --undefined-only "$binary" | grep -Eq '(^|[[:space:]])__stack_chk_fail(@|$)' ||
+    # Read whole before it is searched: `grep -q` stops at its first match, and
+    # under pipefail the SIGPIPE that leaves `nm` still writing would read as a
+    # missing mitigation.
+    local symbols
+    symbols=$("$nm" --dynamic --undefined-only "$binary")
+    grep -Eq '(^|[[:space:]])__stack_chk_fail(@|$)' <<<"$symbols" ||
         missing "$binary" "no stack protector (__stack_chk_fail is never called)"
 }
 
 check_macho() {
     local binary="$1"
 
-    "$readobj" --file-headers "$binary" | grep -q 'MH_PIE' ||
+    local headers
+    headers=$("$readobj" --file-headers "$binary")
+    grep -q 'MH_PIE' <<<"$headers" ||
         missing "$binary" "not a position-independent executable (no MH_PIE)"
 
-    "$nm" --undefined-only "$binary" | grep -Eq '(^|[[:space:]])___stack_chk_fail$' ||
+    local symbols
+    symbols=$("$nm" --undefined-only "$binary")
+    grep -Eq '(^|[[:space:]])___stack_chk_fail$' <<<"$symbols" ||
         missing "$binary" "no stack protector (___stack_chk_fail is never called)"
 }
 
 for binary in "$@"; do
-    format=$("$readobj" --file-headers "$binary" | awk -F': ' '/^Format:/ { print $2; exit }')
+    headers=$("$readobj" --file-headers "$binary")
+    format=$(awk -F': ' '/^Format:/ { print $2; exit }' <<<"$headers")
     case "$format" in
         elf*) check_elf "$binary" ;;
         Mach-O*) check_macho "$binary" ;;
