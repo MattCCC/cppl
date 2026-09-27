@@ -148,6 +148,8 @@ xtu-semantics-compared	compiler/driver/src/interface_io.cpp	if (recorded.semanti
 xtu-verifier-digest-compared	compiler/driver/src/interface_io.cpp	if (!(recorded.verifier == current.verifier)) {	if (false) {	^negative_cross_tu$
 semantics-digest-covers-kernel	cmake/VerifierSemanticsSources.cmake	    kernel	    kernel_left_out	^architecture_verifier_semantics$
 semantics-sources-classified	cmake/CheckVerifierSemantics.cmake	if(problems)	if(FALSE)	^architecture_verifier_semantics$
+version-reports-verifier-digest	compiler/driver/src/version.cpp	verifier.bytes = kVerifierSemanticsDigest;	verifier.bytes = {};	^integration_release_metadata$
+version-reports-semantics	compiler/driver/src/version.cpp	line("Verification semantics:", obligations::kVerificationSemanticsVersion);	line("Verification semantics:", "cppl-verification-0");	^integration_release_metadata$
 xtu-report-escapes-recorded-text	compiler/artifact/src/interface.cpp	if (byte >= 0x20U && byte <= 0x7EU && byte != '%') {	if (true) {	^unit_interface_test$|^negative_cross_tu$
 xtu-format-version	compiler/artifact/include/cppl/artifact/interface.hpp	inline constexpr std::uint32_t kFormatVersion = 3;	inline constexpr std::uint32_t kFormatVersion = 2;	^unit_interface_test$|^negative_cross_tu$
 xtu-refusal-escapes-source	compiler/driver/src/interface_io.cpp	const std::string shown = artifact::displayed(file.path);	const std::string shown = file.path;	^negative_cross_tu$

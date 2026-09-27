@@ -541,7 +541,8 @@ set_tests_properties(integration_installed_package PROPERTIES
 # reproducible, and refused rather than guessed when the driver cannot answer.
 add_test(NAME integration_release_metadata
          COMMAND bash "${CPPL_BOUNDED}" bash "${CMAKE_CURRENT_SOURCE_DIR}/integration/release_metadata.sh"
-                 $<TARGET_FILE:cppl> "${CMAKE_SOURCE_DIR}" "${CPPL_TEST_WORK}" "${CPPL_DEFAULT_CLANG}")
+                 $<TARGET_FILE:cppl> "${CMAKE_SOURCE_DIR}" "${CPPL_TEST_WORK}" "${CPPL_DEFAULT_CLANG}"
+                 "${CMAKE_COMMAND}")
 set_tests_properties(integration_release_metadata PROPERTIES
     LABELS "integration;script"
     TIMEOUT ${CPPL_TEST_TIMEOUT})

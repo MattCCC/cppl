@@ -22,6 +22,7 @@ CPPL="$1"
 SOURCE="$2"
 WORK="$3"
 CLANG="$4"
+CMAKE="$5"
 
 fail() {
     echo "$1" >&2
@@ -87,6 +88,18 @@ case "$revision" in
     unknown | [0-9a-f]*) ;;
     *) fail "the source revision '$revision' is neither a commit nor unknown" ;;
 esac
+
+# SPEC: TUBOUND-013 -- the compiler carries the verification semantics of the
+# sources it was built from: the version they declare and the digest their
+# semantic sources give (TRUST.md TCB-XTU-008).
+"$CMAKE" "-DROOT=$SOURCE" "-DDIGEST_FILE=$run/digest" -P "$SOURCE/cmake/ComputeVerifierSemantics.cmake" > /dev/null
+[ "$(value 'Verifier-semantics digest')" = "$(tr -d '[:space:]' < "$run/digest")" ] ||
+    fail "the compiler reports verifier-semantics digest $(value 'Verifier-semantics digest'), and its sources give $(cat "$run/digest"); rebuild"
+declared=$(sed -n 's/^inline constexpr std::string_view kVerificationSemanticsVersion = "\(.*\)";$/\1/p' \
+    "$SOURCE/compiler/obligations/include/cppl/obligations/interface.hpp")
+[ -n "$declared" ] || fail "the sources declare no verification semantics version"
+[ "$(value 'Verification semantics')" = "$declared" ] ||
+    fail "the compiler reports verification semantics '$(value 'Verification semantics')', and its sources declare '$declared'"
 
 # The Clang that analyses and the driver that compiles are one release.
 [ "$(value 'Clang')" = "$(value 'Clang driver')" ] ||
