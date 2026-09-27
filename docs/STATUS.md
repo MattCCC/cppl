@@ -809,7 +809,7 @@ obligation generation and the trust closure, never by the kernel.
 
 A verified function declared in one translation unit and defined in another is
 verified where it is defined, and used where it is only declared through a
-verification interface (`SPEC.md` Annex L.2.1, TUBOUND-002 to TUBOUND-009, RFC
+verification interface (`SPEC.md` Annex L.2.1, TUBOUND-002 to TUBOUND-014, RFC
 0017). `cppl --cppl-emit-interface=<file>` writes one for a unit that verified
 and produced its object: every contract it proved for a function with external
 linkage, by Clang's USR, with a canonical identity of what the contract states,
