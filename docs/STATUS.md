@@ -501,7 +501,7 @@ The project should not claim broad language implementation before the proof sema
 | definitional equality         | `PROTOTYPE`   |
 | propositional equality        | `PROTOTYPE`   |
 | normalization                 | `PROTOTYPE`   |
-| `induction`                   | `SPECIFIED`   |
+| `induction`                   | `PROTOTYPE`   |
 | well-founded recursion        | `IMPLEMENTED` |
 | termination checking          | `IMPLEMENTED` |
 | `expects` on functions        | `PROTOTYPE`   |
@@ -548,7 +548,7 @@ The project should not claim broad language implementation before the proof sema
 | Disjunction introduction/elimination | `PROTOTYPE`   |
 | Falsity elimination                  | `PROTOTYPE`   |
 | Existential introduction/elimination | `NOT STARTED` |
-| Induction checking                   | `NOT STARTED` |
+| Induction checking                   | `PARTIAL`     |
 | Dedicated refinement kernel rules    | `NOT PLANNED` |
 | Normalization engine                 | `PROTOTYPE`   |
 | Kernel termination checker (recursive kernel definitions) | `NOT STARTED` |
@@ -560,7 +560,7 @@ The project should not claim broad language implementation before the proof sema
 | Mechanized core calculus             | `NOT STARTED` |
 | Meta-theory / soundness proofs       | `NOT STARTED` |
 
-The kernel implements fourteen rules:
+The kernel implements fifteen rules:
 
 ```text
 1. Reflexivity
@@ -577,6 +577,8 @@ The kernel implements fourteen rules:
 12. Disjunction introduction (left or right)
 13. Disjunction elimination (a case for each side)
 14. Falsity elimination (any goal, from evidence for False)
+15. Unsigned induction (a universal over an unsigned machine integer type,
+    from P(0) and the step below the type's maximum, both stated by the kernel)
 ```
 
 They act over propositions built from equality, universal quantification,
@@ -1419,14 +1421,26 @@ RFC 0005).
 | Case splits on a runtime path               | `IMPLEMENTED` |
 | Case facts invalidated with their version   | `IMPLEMENTED` |
 | Impossible cases (`omit ... by ...`)        | `PROTOTYPE`   |
-| `induction` with explicit arms / short form | `SPECIFIED`   |
-| Machine-integer induction principles        | `SPECIFIED`   |
+| `induction` with explicit arms / short form | `PARTIAL`     |
+| Machine-integer induction principles        | `PARTIAL`     |
 | Pointer-structure induction (premised)      | `SPECIFIED`   |
 | `@N` `@Z` `@Seq` `@Set` `@Map` domains      | `SPECIFIED`   |
 | Machine-to-domain conversions               | `NOT STARTED` |
 | Wildcard arms                               | `NOT PLANNED` |
 | General-purpose algebraic data types        | `NOT PLANNED` |
 | Runtime pattern matching (`match`)          | `NOT PLANNED` |
+
+`induction` is implemented over an unsigned machine integer parameter of a
+proof (`SPEC.md` INDUCT-001 to INDUCT-005): the short form, whose cases
+automation must prove, and explicit `zero` and `successor(pred)` arms, where the
+successor arm supposes `pred < max` and the claim at `pred`. The kernel states
+both cases and checks them with its unsigned induction rule (core/kernel 0.9.0,
+`TRUST.md` 5.1), so no assumption is added, and each accepted proof has a
+refused twin (`e2e_induction`, `negative_induction`); it erases whole
+(`fixtures/equivalence/induction.cpp`). A signed integer, an enumeration, a
+refinement, a pointer and a class have no principle and are refused (INDUCT-004),
+and induction over pointer structures and the `@` domains is not started, so
+both rows stay `PARTIAL`.
 
 ---
 

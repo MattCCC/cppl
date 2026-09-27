@@ -229,6 +229,8 @@ Falsity elimination (`FOUNDATIONS.md` §26) is one of the checker's primitive ru
 
 **[TCB-CORE-017]** `False` MUST have no introduction rule. Evidence for it MUST come only from a hypothesis the proof itself introduced, from an elimination rule applied to checked evidence, or from a linear-arithmetic certificate that refutes the stated facts with no goal taking part.
 
+Unsigned machine-integer induction (`FOUNDATIONS.md` 74, `SPEC.md` INDUCT-002, INDUCT-003) is the checker's fifteenth primitive rule and so part of this TCB under TCB-CORE-003. It concludes `forall n : T. P(n)` for an unsigned machine integer type `T` from `P(0)` and `forall n : T. n < max(T) -> P(n) -> P(n + 1)`, both of which the checker states itself (`induction_base`, `induction_step` in `kernel/src/proof.cpp`) rather than taking from the evidence, so evidence cannot weaken the step, drop its range premise or widen the hypothesis. It is sound because `T` has exactly the values `0` to `max(T)`, each reached from `0` by finitely many successor steps below the maximum, where `n + 1` wraps nothing; a signed type, an abstract value and an indexed domain have no principle and are refused (INDUCT-004). It is checked against an independent finite model like every other rule (`tests/kernel/model_oracle_test.cpp`) and on its own (`tests/kernel/induction_test.cpp`).
+
 ## 5.2 Primitive formal semantics
 
 Primitive formal operations used by the checker must correspond exactly to their definitions in `FOUNDATIONS.md` and, where they model C++ operations, to the C++ semantics admitted by `SPEC.md`.
