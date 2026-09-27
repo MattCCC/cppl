@@ -2847,6 +2847,11 @@ void generate_contracts(const vir::Module& module, const DefinitionMap& pure_def
             graph[position].push_back(node);
         }
     }
+    // Every record this unit established is a node, called or not, so one
+    // resting on a cycle is withdrawn whether or not anything here uses it.
+    for (const auto& [usr, index] : established) {
+        node_of(usr);
+    }
     while (!unfilled.empty()) {
         const std::string symbol = std::move(unfilled.back());
         unfilled.pop_back();
@@ -2896,6 +2901,42 @@ void generate_contracts(const vir::Module& module, const DefinitionMap& pure_def
                                         : "the contract of another unit recorded for [" +
                                               artifact::displayed(recorded[node - candidates.size()]) + "]";
     };
+    // A cycle through `start`, a node on one, as the callables it passes:
+    // 'a' -> 'b' -> ... -> 'a'. A record's symbol is the interface's text.
+    const auto cycle_through = [&](std::size_t start) {
+        const auto symbol = [&](std::size_t node) {
+            return "'" +
+                   (node < candidates.size() ? candidates[node].function->symbol.usr
+                                             : artifact::displayed(recorded[node - candidates.size()])) +
+                   "'";
+        };
+        std::vector<std::size_t> previous(graph.size(), graph.size());
+        std::vector<std::size_t> pending{start};
+        std::optional<std::size_t> last;
+        std::size_t next = 0;
+        while (next < pending.size() && !last.has_value()) {
+            const std::size_t at = pending[next++];
+            for (const std::size_t target : graph[at]) {
+                if (target == start) {
+                    last = at;
+                    break;
+                }
+                if (crossing[target] && previous[target] == graph.size()) {
+                    previous[target] = at;
+                    pending.push_back(target);
+                }
+            }
+        }
+        std::vector<std::size_t> path;
+        for (std::size_t at = last.value_or(start); at != start; at = previous[at]) {
+            path.push_back(at);
+        }
+        std::string text = symbol(start);
+        for (const std::size_t node : std::ranges::reverse_view(path)) {
+            text += " -> " + symbol(node);
+        }
+        return text + " -> " + symbol(start);
+    };
     std::set<std::size_t> recursing;
     for (std::size_t position = 0; position < candidates.size(); ++position) {
         for (const std::string& usr : candidates[position].external) {
@@ -2916,7 +2957,7 @@ void generate_contracts(const vir::Module& module, const DefinitionMap& pure_def
                    Refusal{"verified function '" + function.qualified_name + "' calls '" + callee.qualified_name +
                                "', whose contract another unit proved through a cycle of contracts that crosses "
                                "translation units, through " +
-                               named(*cycle),
+                               named(*cycle) + ": " + cycle_through(crossing[position] ? position : *cycle),
                            {"recursion across translation units is not verified: the measures that make "
                             "recursion sound are compared within one unit, and a contract whose proof relies on "
                             "a cycle through another unit's record is refused (SPEC.md TUBOUND-008, "
@@ -2924,6 +2965,38 @@ void generate_contracts(const vir::Module& module, const DefinitionMap& pure_def
                            at});
             recursing.insert(position);
             break;
+        }
+    }
+    // A record on such a cycle, or resting on one, rests on a proof no unit
+    // could have made first, so it is withdrawn with everything this unit would
+    // rest on it (SPEC.md TUBOUND-008).
+    std::set<std::string> withdrawn;
+    for (const auto& [usr, index] : established) {
+        const std::size_t node = record_node.at(usr);
+        const std::optional<std::size_t> cycle = reaches_crossing(node);
+        if (!cycle.has_value()) {
+            continue;
+        }
+        report(engine, Refusal{"the contract of '" + contracts.at(usr)->qualified_name + "' that '" +
+                                   artifact::displayed(program.contracts[index].imported->origin) +
+                                   "' records rests on a cycle of verified contracts across units: " +
+                                   cycle_through(crossing[node] ? node : *cycle),
+                               {"recursion across translation units is not verified: a record resting on a "
+                                "cycle through another unit's record is withdrawn, with every contract that "
+                                "relies on it (SPEC.md TUBOUND-008)"},
+                               contracts.at(usr)->range.begin});
+        withdrawn.insert(usr);
+    }
+    if (!withdrawn.empty()) {
+        std::erase_if(program.contracts, [&withdrawn](const ContractVerification& contract) {
+            return contract.imported.has_value() && withdrawn.contains(contract.symbol);
+        });
+        std::erase_if(established, [&withdrawn](const auto& entry) { return withdrawn.contains(entry.first); });
+        for (auto& [usr, index] : established) {
+            const auto found = std::ranges::find_if(program.contracts, [&usr](const ContractVerification& contract) {
+                return contract.imported.has_value() && contract.symbol == usr;
+            });
+            index = static_cast<std::size_t>(found - program.contracts.begin());
         }
     }
 

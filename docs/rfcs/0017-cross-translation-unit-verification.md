@@ -421,9 +421,13 @@ unit or a record of a third. A strongly connected component of that graph with a
 record in it and a cycle (more than one member, or a record resting on itself)
 crosses units, and a contract whose proof reaches one is refused, whether the
 caller is in the cycle or only relies on it; a diamond, with no cycle, is used
-(`tests/unit/cross_unit_contracts_test.cpp`). The first implementation followed
-only the edges from a record back into this unit, which missed a cycle through a
-third unit's record whose own record was not transitive.
+(`tests/unit/cross_unit_contracts_test.cpp`). Every record on such a component,
+or reaching one, is withdrawn as well, with everything this unit would rest on
+it, and the refusal names the cycle callable by callable, as `SPEC.md`
+TUBOUND-008 states. The first implementation followed only the edges from a
+record back into this unit, which missed a cycle through a third unit's record
+whose own record was not transitive; the next refused the functions of this
+unit that reached a cycle and left the records on it available.
 
 **Templates.** An explicit specialization declared with its own contract is a
 function like any other, keyed by its USR, and crosses; `f<4>`'s record never

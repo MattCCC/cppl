@@ -352,14 +352,69 @@ CPPL_TEST(recursion_through_another_unit_is_refused) {
 
     Generated cycle = build("c:@F@h#i#");
     CPPL_CHECK(refused_for_recursion(cycle.engine));
+    CPPL_CHECK(mentions(cycle.engine, "'c:@F@f#i#' -> 'c:@F@elsewhere#i#' -> 'c:@F@h#i#' -> 'c:@F@f#i#'"));
     CPPL_CHECK(contract_of(cycle.program, "c:@F@f#i#") == nullptr);
     CPPL_CHECK(contract_of(cycle.program, "c:@F@h#i#") == nullptr);
+    CPPL_CHECK(contract_of(cycle.program, callee) == nullptr);
 
     // The same record resting on a function of this unit that does not reach f.
     Generated acyclic = build("c:@F@leaf#i#");
     CPPL_CHECK(!acyclic.engine.has_errors());
     CPPL_CHECK(contract_of(acyclic.program, "c:@F@f#i#") != nullptr);
     CPPL_CHECK(contract_of(acyclic.program, "c:@F@h#i#") != nullptr);
+}
+
+// SPEC: TUBOUND-008
+// A -> B -> C -> A: a function of this unit, and two contracts of two other
+// units, one resting on the next, the last on the first. Refused whether B's
+// record names only C, as a forged one might, or the whole chain, as an honest
+// transitive one would.
+CPPL_TEST(a_cycle_through_two_other_units_is_refused) {
+    const std::string b = "c:@F@b#i#";
+    const std::string c = "c:@F@c#i#";
+    const auto build = [&](std::vector<artifact::Dependency> through_b) {
+        o::Imports imports;
+        imports.entries.push_back(record(b, statement_of({}), artifact::Correctness::Total, std::move(through_b)));
+        imports.entries.push_back(record(c, statement_of({}), artifact::Correctness::Total, {on("c:@F@a#i#")}));
+        return generate({function(0, b, std::nullopt), function(1, "c:@F@a#i#", call(b, parameter(0, "x"), 7))},
+                        imports);
+    };
+    for (auto through_b : {std::vector{on(c)}, std::vector{on(c), on("c:@F@a#i#")}}) {
+        Generated cycle = build(std::move(through_b));
+        CPPL_CHECK(refused_for_recursion(cycle.engine));
+        CPPL_CHECK(contract_of(cycle.program, "c:@F@a#i#") == nullptr);
+        CPPL_CHECK(contract_of(cycle.program, b) == nullptr);
+    }
+}
+
+// SPEC: TUBOUND-008
+// B -> C -> B, two contracts of other units resting on each other, reached from
+// this unit without this unit being on the cycle: B rests on a proof no unit
+// could have made, and so does everything resting on B.
+CPPL_TEST(a_cycle_among_other_units_alone_is_refused) {
+    const std::string b = "c:@F@b#i#";
+    const std::string c = "c:@F@c#i#";
+    o::Imports imports;
+    imports.entries.push_back(record(b, statement_of({}), artifact::Correctness::Total, {on(c)}));
+    imports.entries.push_back(record(c, statement_of({}), artifact::Correctness::Total, {on(b)}));
+    Generated cycle =
+        generate({function(0, b, std::nullopt), function(1, "c:@F@a#i#", call(b, parameter(0, "x"), 7))}, imports);
+    CPPL_CHECK(refused_for_recursion(cycle.engine));
+    CPPL_CHECK(mentions(cycle.engine, "rests on a cycle of verified contracts across units"));
+    CPPL_CHECK(contract_of(cycle.program, b) == nullptr);
+    CPPL_CHECK(contract_of(cycle.program, "c:@F@a#i#") == nullptr);
+
+    // B -> C, and C -> D -> C: B is on no cycle, and rests on one all the same.
+    const std::string d = "c:@F@d#i#";
+    o::Imports reaching;
+    reaching.entries.push_back(record(b, statement_of({}), artifact::Correctness::Total, {on(c)}));
+    reaching.entries.push_back(record(c, statement_of({}), artifact::Correctness::Total, {on(d)}));
+    reaching.entries.push_back(record(d, statement_of({}), artifact::Correctness::Total, {on(c)}));
+    Generated reached =
+        generate({function(0, b, std::nullopt), function(1, "c:@F@a#i#", call(b, parameter(0, "x"), 7))}, reaching);
+    CPPL_CHECK(mentions(reached.engine, "'c:@F@c#i#' -> 'c:@F@d#i#' -> 'c:@F@c#i#'"));
+    CPPL_CHECK(contract_of(reached.program, b) == nullptr);
+    CPPL_CHECK(contract_of(reached.program, "c:@F@a#i#") == nullptr);
 }
 
 // SPEC: TUBOUND-008
