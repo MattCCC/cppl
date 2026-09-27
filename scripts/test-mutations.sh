@@ -518,9 +518,10 @@ mkdir -p "$source_copy"
     (cd "$source_copy" && tar -xf -)
 
 # A green control run establishes that a later test failure was introduced by
-# the mutation rather than being there all along.
+# the mutation rather than being there all along. An LLVM_ROOT the caller
+# names is the LLVM it builds against, as the ci-* presets read it.
 cmake -S "$source_copy" -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-      -DCPPL_WARNINGS_AS_ERRORS=ON > "$run/configure.log" 2>&1 ||
+      -DCPPL_WARNINGS_AS_ERRORS=ON ${LLVM_ROOT:+"-DLibClang_ROOT=$LLVM_ROOT"} > "$run/configure.log" 2>&1 ||
     { echo "Control configure failed; see $run/configure.log" >&2; exit 1; }
 cmake --build "$build" -j "$jobs" > "$run/build.log" 2>&1 ||
     { echo "Control build failed; see $run/build.log" >&2; exit 1; }
