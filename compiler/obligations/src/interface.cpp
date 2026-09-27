@@ -372,6 +372,10 @@ std::vector<artifact::Entry> exported_contracts(const Program& program, const Tr
         for (const LibraryDependency& dependency : claim.library) {
             entry.models.emplace_back(source::describe_model(dependency.model));
         }
+        for (const RuntimeCheck& check : claim.runtime) {
+            entry.runtime.push_back(artifact::RuntimeCheck{check.location.file, check.location.line,
+                                                           check.location.column, check.refinement, check.predicate});
+        }
         // What a contract of another unit rests on is carried on, each kind
         // apart, so a unit that imports this one's sees all of it (SPEC.md
         // TUBOUND-002, TUBOUND-006, TUBOUND-009).
@@ -379,6 +383,7 @@ std::vector<artifact::Entry> exported_contracts(const Program& program, const Tr
             entry.premises.insert(entry.premises.end(), imported.premises.begin(), imported.premises.end());
             entry.unsafe.insert(entry.unsafe.end(), imported.unsafe.begin(), imported.unsafe.end());
             entry.models.insert(entry.models.end(), imported.models.begin(), imported.models.end());
+            entry.runtime.insert(entry.runtime.end(), imported.runtime.begin(), imported.runtime.end());
             entry.depends.push_back(artifact::Dependency{imported.symbol, imported.entry});
             entry.depends.insert(entry.depends.end(), imported.depends.begin(), imported.depends.end());
         }

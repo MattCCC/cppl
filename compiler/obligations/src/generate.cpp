@@ -2918,6 +2918,7 @@ Program generate(const vir::Module& module, const elaboration::Result& elaborate
         RefinementPredicate stated;
         stated.name = refinement.name;
         stated.identity = refinement.identity;
+        stated.statement = vir::describe(refinement.predicate);
         bool modeled = true;
         for (const auto& index : refinement.indices) {
             const std::optional<kernel::Type> type = detail::core_type(index.type);

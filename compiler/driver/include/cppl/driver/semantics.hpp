@@ -10,6 +10,6 @@ namespace cppl::driver {
 // verification interface is bound to it and, since a declared version can be
 // left unchanged by mistake, also to the digest of the sources that implement
 // it (kVerifierSemanticsDigest, SPEC.md TUBOUND-005).
-inline constexpr std::string_view kVerificationSemanticsVersion = "cppl-verification-semantics-0.1.0";
+inline constexpr std::string_view kVerificationSemanticsVersion = "cppl-verification-semantics-0.2.0";
 
 } // namespace cppl::driver

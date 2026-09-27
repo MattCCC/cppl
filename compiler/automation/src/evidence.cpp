@@ -7,6 +7,7 @@
 #include "cppl/kernel/context.hpp"
 #include "cppl/kernel/proof.hpp"
 #include "cppl/kernel/proposition.hpp"
+#include "cppl/obligations/contracts.hpp"
 #include "cppl/obligations/obligation.hpp"
 #include "cppl/obligations/status.hpp"
 
@@ -248,6 +249,23 @@ std::vector<obligations::ObligationResult> verify(const obligations::Program& pr
         *transitions = composition.transitions();
     }
     return results;
+}
+
+std::vector<obligations::CrossingVerdict> classify_crossings(const obligations::Program& program) {
+    std::vector<obligations::CrossingVerdict> verdicts;
+    for (std::size_t contract = 0; contract < program.contracts.size(); ++contract) {
+        const std::vector<obligations::RefinementCrossing>& crossings = program.contracts[contract].crossings;
+        for (std::size_t crossing = 0; crossing < crossings.size(); ++crossing) {
+            const kernel::Proposition& goal = crossings[crossing].unguarded;
+            const std::optional<Evidence> evidence = propose(program.context, goal);
+            // Accepted again here rather than taken from the strategy, which
+            // returns a candidate even when none holds.
+            const bool statically = evidence.has_value() &&
+                                    kernel::check(program.context, goal, evidence->proof, kernel::CoreLimits{}).has_value();
+            verdicts.push_back(obligations::CrossingVerdict{contract, crossing, statically});
+        }
+    }
+    return verdicts;
 }
 
 } // namespace cppl::automation

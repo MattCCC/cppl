@@ -4,6 +4,7 @@
 #include "cppl/kernel/check.hpp"
 #include "cppl/kernel/proof.hpp"
 #include "cppl/kernel/proposition.hpp"
+#include "cppl/obligations/contracts.hpp"
 #include "cppl/obligations/obligation.hpp"
 #include "cppl/obligations/status.hpp"
 
@@ -35,5 +36,15 @@ struct Evidence {
 [[nodiscard]] std::vector<obligations::ObligationResult> verify(const obligations::Program& program,
                                                                 diagnostics::Engine& engine,
                                                                 std::size_t* transitions = nullptr);
+
+// Which refinement crossings of the program's verified bodies the kernel
+// establishes without the runtime conditions of their paths (SPEC.md
+// RUNTIMECHECK-012). Each crossing's membership, closed over its path without
+// them, is offered the same strategies an obligation is, and only the
+// kernel's acceptance makes it established statically. Where none is
+// accepted it is a runtime validation site: failing to find evidence only
+// ever reports a crossing weaker than it may be. Nothing here is owed,
+// supposed or reported as a failure, and no obligation depends on it.
+[[nodiscard]] std::vector<obligations::CrossingVerdict> classify_crossings(const obligations::Program& program);
 
 } // namespace cppl::automation

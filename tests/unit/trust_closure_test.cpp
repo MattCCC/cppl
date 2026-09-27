@@ -49,6 +49,9 @@ k::Proposition fact(std::int64_t value) {
 struct Builder {
     o::Program program;
     std::vector<o::ObligationResult> results;
+    // Which refinement crossings the kernel established without the runtime
+    // conditions of their paths; any other is a runtime validation site.
+    std::vector<o::CrossingVerdict> verdicts;
 
     // Declares trusted law `law`, which is assumed and never proven.
     o::TrustedPremise trusted(std::uint32_t law) {
@@ -131,7 +134,7 @@ struct Builder {
     }
 
     [[nodiscard]] o::TrustClosure close() const {
-        return o::close_trust(program, results);
+        return o::close_trust(program, results, verdicts);
     }
 };
 

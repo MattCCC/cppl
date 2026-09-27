@@ -154,7 +154,7 @@ refuse checksum_fixture "it is corrupt: its checksum does not match its content"
     client.cpp "--cppl-import-interface=$NEGATIVE/xtu_checksum_mismatch.cppli"
 refuse status_fixture "records status 'refused'; only a proven contract is recorded" \
     client.cpp "--cppl-import-interface=$NEGATIVE/xtu_status_refused.cppli"
-refuse version_fixture "it is format version '1', and this compiler reads only version 2" \
+refuse version_fixture "it is format version '2', and this compiler reads only version 3" \
     client.cpp "--cppl-import-interface=$NEGATIVE/xtu_other_version.cppli"
 refuse verifier_fixture "it was produced by a verifier whose semantics-bearing sources differ from this compiler's" \
     client.cpp "--cppl-import-interface=$NEGATIVE/xtu_other_verifier.cppli"

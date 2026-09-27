@@ -27,7 +27,7 @@ using cppl::source::hash_bytes;
 artifact::Interface sample() {
     artifact::Interface recorded;
     recorded.configuration.compiler = "0.0.1";
-    recorded.configuration.semantics = "cppl-verification-semantics-0.1.0";
+    recorded.configuration.semantics = "cppl-verification-semantics-0.2.0";
     recorded.configuration.verifier = hash_bytes("the verifier's sources");
     recorded.configuration.kernel = "cppl-kernel-0.7.0";
     recorded.configuration.core = "cppl-core-0.7.0";
@@ -48,6 +48,8 @@ artifact::Interface sample() {
     clamp.premises = {{hash_bytes("law"), "bounded", "/work/src/clamp library.cpp", 3}};
     clamp.unsafe = {{"/work/src/clamp library.cpp", 12, 5}};
     clamp.models = {"std::vector", "std::span"};
+    clamp.runtime = {{"/work/src/clamp library.cpp", 20, 9, "Small", "(self < 4)"},
+                     {"/work/src/clamp library.cpp", 18, 13, "Positive", "(self > 0)"}};
     clamp.depends = {{"c:@F@helper#i#", hash_bytes("helper entry")}};
 
     artifact::Entry other;
@@ -115,6 +117,7 @@ CPPL_TEST(an_interface_reads_back_as_written) {
     std::swap(expected.sources[0], expected.sources[1]);
     std::swap(expected.entries[0], expected.entries[1]);
     std::swap(expected.entries[1].models[0], expected.entries[1].models[1]);
+    std::swap(expected.entries[1].runtime[0], expected.entries[1].runtime[1]);
     CPPL_CHECK(*read == expected);
     CPPL_CHECK_EQ(text_of(*read), text);
 }
@@ -162,6 +165,26 @@ CPPL_TEST(a_result_identity_covers_the_contract_and_every_dependency_of_every_ki
     changed = base;
     changed.models = {"std::vector", "std::basic_string<char>"};
     CPPL_CHECK(differs(changed));
+    // SPEC: RUNTIMECHECK-015
+    // A runtime validation site is where it is and what it enters.
+    changed = base;
+    changed.runtime.clear();
+    CPPL_CHECK(differs(changed));
+    changed = base;
+    changed.runtime.pop_back();
+    CPPL_CHECK(differs(changed));
+    changed = base;
+    changed.runtime.front().line = 21;
+    CPPL_CHECK(differs(changed));
+    changed = base;
+    changed.runtime.front().column = 10;
+    CPPL_CHECK(differs(changed));
+    changed = base;
+    changed.runtime.front().file = "/work/src/other.cpp";
+    CPPL_CHECK(differs(changed));
+    changed = base;
+    changed.runtime.front().refinement = "Positive";
+    CPPL_CHECK(differs(changed));
     changed = base;
     changed.depends.front().entry = hash_bytes("a different helper entry");
     CPPL_CHECK(differs(changed));
@@ -174,10 +197,20 @@ CPPL_TEST(a_result_identity_covers_the_contract_and_every_dependency_of_every_ki
     only_premise.unsafe.clear();
     only_premise.models.clear();
     only_premise.depends.clear();
+    only_premise.runtime.clear();
     artifact::Entry only_model = only_premise;
     only_model.premises.clear();
     only_model.models = {"std::vector"};
     CPPL_CHECK(!(artifact::identify(only_premise) == artifact::identify(only_model)));
+    // An unsafe block and a runtime check at one place are different
+    // dependencies (SPEC.md RUNTIMECHECK-015).
+    artifact::Entry only_unsafe = only_model;
+    only_unsafe.models.clear();
+    only_unsafe.unsafe = {{"/work/src/clamp library.cpp", 20, 9}};
+    artifact::Entry only_check = only_unsafe;
+    only_check.unsafe.clear();
+    only_check.runtime = {{"/work/src/clamp library.cpp", 20, 9, "Small", "(self < 4)"}};
+    CPPL_CHECK(!(artifact::identify(only_unsafe) == artifact::identify(only_check)));
 }
 
 // SPEC: TUBOUND-009
@@ -192,6 +225,8 @@ CPPL_TEST(a_result_identity_is_not_the_identity_of_the_entrys_bytes) {
     shown.premises.front().name = "renamed_law";
     shown.premises.front().file = "/elsewhere/clamp.cpp";
     shown.premises.front().line = 30;
+    // SPEC: RUNTIMECHECK-015
+    shown.runtime.front().predicate = "(self <= 3)";
     CPPL_CHECK(artifact::identify(shown) == identity);
     // Order and repetition are not content either.
     artifact::Entry reordered = base;
@@ -209,6 +244,33 @@ CPPL_TEST(a_library_model_this_compiler_does_not_have_is_refused) {
                    "library models are not in");
     artifact::Interface recorded = sample();
     recorded.entries.front().models.emplace_back("std::map");
+    CPPL_CHECK(!artifact::serialize(recorded).has_value());
+}
+
+// SPEC: RUNTIMECHECK-015, TUBOUND-005
+CPPL_TEST(a_runtime_validation_site_is_read_only_as_written) {
+    const std::string body = body_of(text_of(sample()));
+    const std::string small = "runtime 20 9 /work/src/clamp%20library.cpp Small (self%20<%204)\n";
+    const std::string positive = "runtime 18 13 /work/src/clamp%20library.cpp Positive (self%20>%200)\n";
+    CPPL_CHECK(body.find(positive + small) != std::string::npos);
+    // Between the library models and the dependencies, in canonical order.
+    CPPL_CHECK(body.find("model std::vector\n" + positive) != std::string::npos);
+    CPPL_CHECK(body.find(small + "depends ") != std::string::npos);
+    expect_refused(resealed(replaced(body, positive + small, small + positive)),
+                   "runtime validation sites are not in");
+    expect_refused(resealed(replaced(body, positive, positive + positive)), "runtime validation sites are not in");
+    expect_refused(resealed(replaced(body, "runtime 18 13", "runtime 0 13")), "malformed number");
+    expect_refused(resealed(replaced(body, " Small (self%20<%204)", " Small")), "has 4 fields, not 5");
+    expect_refused(resealed(replaced(body, " Small (self%20<%204)", " Small (self%20<%204) extra")),
+                   "too many fields");
+    // Out of its place, it is a field the reader did not expect there.
+    expect_refused(resealed(replaced(body, "model std::vector\n" + positive, positive + "model std::vector\n")),
+                   "was expected");
+    artifact::Interface recorded = sample();
+    recorded.entries.front().runtime.front().refinement.clear();
+    CPPL_CHECK(!artifact::serialize(recorded).has_value());
+    recorded = sample();
+    recorded.entries.front().runtime.front().line = 0;
     CPPL_CHECK(!artifact::serialize(recorded).has_value());
 }
 
@@ -253,11 +315,16 @@ CPPL_TEST(a_truncated_interface_is_refused) {
 // SPEC: TUBOUND-005
 CPPL_TEST(another_format_or_version_is_named_as_such) {
     const std::string body = body_of(text_of(sample()));
-    expect_refused(resealed(replaced(body, "cppl-verification-interface 2", "cppl-verification-interface 1")),
+    expect_refused(resealed(replaced(body, "cppl-verification-interface 3", "cppl-verification-interface 1")),
                    "format version '1'");
-    expect_refused(resealed(replaced(body, "cppl-verification-interface 2", "cppl-verification-interface 3")),
-                   "format version '3'");
-    expect_refused(resealed(replaced(body, "cppl-verification-interface 2", "some-other-format 2")),
+    // A version 2 interface records no runtime validation sites, so a contract
+    // it records could rest on one no report would name (SPEC.md
+    // RUNTIMECHECK-015).
+    expect_refused(resealed(replaced(body, "cppl-verification-interface 3", "cppl-verification-interface 2")),
+                   "format version '2'");
+    expect_refused(resealed(replaced(body, "cppl-verification-interface 3", "cppl-verification-interface 4")),
+                   "format version '4'");
+    expect_refused(resealed(replaced(body, "cppl-verification-interface 3", "some-other-format 3")),
                    "not a C++L verification interface");
     expect_refused("\x7f"
                    "ELF",

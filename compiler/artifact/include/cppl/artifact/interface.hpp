@@ -32,7 +32,7 @@ namespace cppl::artifact {
 // last line is the SHA-256 of every byte before it.
 
 inline constexpr std::string_view kMagic = "cppl-verification-interface";
-inline constexpr std::uint32_t kFormatVersion = 2;
+inline constexpr std::uint32_t kFormatVersion = 3;
 
 // Bounds on what a reader accepts and a writer produces. A reader never scans or
 // allocates past them, whatever the input claims.
@@ -91,6 +91,21 @@ struct UnsafeBlock {
     friend bool operator==(const UnsafeBlock&, const UnsafeBlock&) = default;
 };
 
+// A runtime validation site a recorded contract rests on: a place in a
+// verified body where a value entered a refinement type because the runtime
+// conditions of its path held, rather than by anything proven of every
+// execution (SPEC.md RUNTIMECHECK-011, RUNTIMECHECK-015). Its identity is where
+// it is and what it enters; the predicate is recorded only to be shown.
+struct RuntimeCheck {
+    std::string file;
+    std::uint32_t line = 0;
+    std::uint32_t column = 0;
+    std::string refinement;
+    std::string predicate;
+
+    friend bool operator==(const RuntimeCheck&, const RuntimeCheck&) = default;
+};
+
 // A contract another interface recorded that a recorded contract rests on,
 // directly or through what it calls: the callable, and the identity of the
 // entry that recorded it (SPEC.md TUBOUND-006, TUBOUND-008).
@@ -107,9 +122,10 @@ enum class Correctness : std::uint8_t {
 };
 
 // One contract the producing unit proved, and what its proof rests on, each
-// kind of dependency apart: trusted laws, library models, unsafe code and
-// contracts of further units are different premises and are reported as such
-// wherever the contract is used (SPEC.md TUBOUND-002, TUBOUND-006).
+// kind of dependency apart: trusted laws, library models, unsafe code, runtime
+// validation and contracts of further units are different premises and are
+// reported as such wherever the contract is used (SPEC.md TUBOUND-002,
+// TUBOUND-006, RUNTIMECHECK-015).
 struct Entry {
     // Clang's USR for the function: its qualified declaration, overload,
     // parameter types, qualifiers and template arguments (SPEC.md TUBOUND-004).
@@ -127,6 +143,7 @@ struct Entry {
     // The standard-library models the proof rests on, by the name the trust
     // report gives each (SPEC.md STDMODEL-018).
     std::vector<std::string> models;
+    std::vector<RuntimeCheck> runtime;
     std::vector<Dependency> depends;
 
     friend bool operator==(const Entry&, const Entry&) = default;
@@ -143,11 +160,13 @@ struct Interface {
 
 // The verification-result identity of one entry (SPEC.md TUBOUND-009): the
 // function, the statement, whether it is total, and the identity of every
-// dependency of every kind, each dependency on another unit's contract by that
-// contract's own result identity. Two entries share it exactly when a caller
-// may conclude the same from either. What is recorded only to be shown -- the
-// function's name, the statement as text, where a trusted law is written --
-// takes no part, so the identity is not that of the entry's bytes.
+// dependency of every kind, runtime validation sites included, each dependency
+// on another unit's contract by that contract's own result identity. Two
+// entries share it exactly when a caller may conclude the same from either.
+// What is recorded only to be shown -- the function's name, the statement as
+// text, where a trusted law is written, the predicate a runtime check
+// established -- takes no part, so the identity is not that of the entry's
+// bytes.
 [[nodiscard]] source::Digest identify(const Entry& entry);
 
 // Whether a name is one a library model is reported under.

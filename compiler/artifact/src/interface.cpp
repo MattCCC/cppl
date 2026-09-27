@@ -21,8 +21,9 @@ namespace {
 constexpr std::string_view kUpperHex = "0123456789ABCDEF";
 constexpr std::string_view kLowerHex = "0123456789abcdef";
 
-// The most fields any line has: `premise <identity> <line> <file> <name>`.
-constexpr std::size_t kMaxFields = 5;
+// The most fields any line has:
+// `runtime <line> <column> <file> <refinement> <predicate>`.
+constexpr std::size_t kMaxFields = 6;
 
 // A byte a token may hold as itself. Everything else, the separator and the
 // escape character included, is written as `%XX`.
@@ -142,6 +143,18 @@ std::string model_line(const std::string& model) {
     return "model " + encode(model);
 }
 
+std::string runtime_line(const RuntimeCheck& check) {
+    return "runtime " + std::to_string(check.line) + " " + std::to_string(check.column) + " " + encode(check.file) +
+           " " + encode(check.refinement) + " " + encode(check.predicate);
+}
+
+// What identifies a runtime validation site: where it is and what it enters,
+// never how the predicate was shown.
+std::string runtime_identity(const RuntimeCheck& check) {
+    return "runtime " + std::to_string(check.line) + " " + std::to_string(check.column) + " " + encode(check.file) +
+           " " + encode(check.refinement);
+}
+
 std::string dependency_line(const Dependency& dependency) {
     return "depends " + dependency.entry.to_hex() + " " + encode(dependency.symbol);
 }
@@ -182,6 +195,9 @@ std::string entry_text(const Entry& entry) {
     for (const std::string& model : canonical_lines(entry.models, model_line)) {
         line(model);
     }
+    for (const std::string& check : canonical_lines(entry.runtime, runtime_line)) {
+        line(check);
+    }
     for (const std::string& dependency : canonical_lines(entry.depends, dependency_line)) {
         line(dependency);
     }
@@ -204,6 +220,11 @@ std::optional<std::string> entry_problem(const Entry& entry) {
             return "an unsafe block of '" + entry.name + "' lacks its location";
         }
     }
+    for (const RuntimeCheck& check : entry.runtime) {
+        if (check.file.empty() || check.line == 0 || check.refinement.empty() || check.predicate.empty()) {
+            return "a runtime validation site of '" + entry.name + "' lacks its location, refinement or predicate";
+        }
+    }
     for (const Dependency& dependency : entry.depends) {
         if (dependency.symbol.empty()) {
             return "a dependency of '" + entry.name + "' lacks its symbol";
@@ -215,7 +236,8 @@ std::optional<std::string> entry_problem(const Entry& entry) {
         }
     }
     if (entry.premises.size() > kMaxEntryItems || entry.unsafe.size() > kMaxEntryItems ||
-        entry.models.size() > kMaxEntryItems || entry.depends.size() > kMaxEntryItems) {
+        entry.models.size() > kMaxEntryItems || entry.runtime.size() > kMaxEntryItems ||
+        entry.depends.size() > kMaxEntryItems) {
         return "'" + entry.name + "' rests on more than " + std::to_string(kMaxEntryItems) + " items of one kind";
     }
     return std::nullopt;
@@ -541,6 +563,41 @@ std::expected<Entry, ParseError> parse_entry(Parser& parser, const Line& opening
 
     previous = {};
     while (true) {
+        auto line = parser.take_if("runtime", 5);
+        if (!line) {
+            return std::unexpected(line.error());
+        }
+        if (!line->has_value()) {
+            break;
+        }
+        const Line& check_line = **line;
+        if (entry.runtime.size() == kMaxEntryItems) {
+            return malformed("an entry rests on more than " + std::to_string(kMaxEntryItems) +
+                                 " runtime validation sites",
+                             check_line);
+        }
+        if (auto ordered = in_order(previous, check_line, "runtime validation sites"); !ordered) {
+            return std::unexpected(ordered.error());
+        }
+        previous = check_line.text;
+        auto at = number_field(check_line, 1, 1);
+        auto column = number_field(check_line, 2, 0);
+        auto file = text_field(check_line, 3);
+        auto refinement = text_field(check_line, 4);
+        auto predicate = text_field(check_line, 5);
+        if (!at || !column || !file || !refinement || !predicate) {
+            return std::unexpected(!at           ? at.error()
+                                   : !column     ? column.error()
+                                   : !file       ? file.error()
+                                   : !refinement ? refinement.error()
+                                                 : predicate.error());
+        }
+        entry.runtime.push_back(
+            RuntimeCheck{std::move(*file), *at, *column, std::move(*refinement), std::move(*predicate)});
+    }
+
+    previous = {};
+    while (true) {
         auto line = parser.take_if("depends", 2);
         if (!line) {
             return std::unexpected(line.error());
@@ -583,7 +640,7 @@ std::expected<std::string, ParseError> single_text(Parser& parser, std::string_v
 
 source::Digest identify(const Entry& entry) {
     source::Hasher hasher;
-    hasher.update_field("cppl-verification-result-v1");
+    hasher.update_field("cppl-verification-result-v2");
     hasher.update_field(entry.symbol);
     hasher.update_field(entry.statement.to_hex());
     hasher.update_field(describe(entry.correctness));
@@ -612,6 +669,14 @@ source::Digest identify(const Entry& entry) {
     }
     set(std::move(unsafe));
     set(entry.models);
+    // A runtime validation site is where it is and what it enters; the
+    // predicate is shown, not identified (SPEC.md RUNTIMECHECK-015).
+    std::vector<std::string> runtime;
+    runtime.reserve(entry.runtime.size());
+    for (const RuntimeCheck& check : entry.runtime) {
+        runtime.push_back(runtime_identity(check));
+    }
+    set(std::move(runtime));
     std::vector<std::string> depends;
     depends.reserve(entry.depends.size());
     for (const Dependency& dependency : entry.depends) {

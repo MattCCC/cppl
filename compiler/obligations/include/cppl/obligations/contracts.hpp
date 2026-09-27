@@ -28,6 +28,33 @@ struct ImportedContract {
     std::vector<artifact::UnsafeBlock> unsafe;
     std::vector<std::string> models;
     std::vector<artifact::Dependency> depends;
+    std::vector<artifact::RuntimeCheck> runtime = {};
+};
+
+// A value entering a refinement type on a path that runtime conditions select
+// (SPEC.md RUNTIMECHECK-010). Its membership is owed under the whole path like
+// that of any crossing, by an ordinary obligation; what this records is the
+// same membership closed over the path without the outcomes of the `if`,
+// `?:`, `&&`, `||` and loop conditions that led to it. Where the kernel accepts
+// evidence for that, the crossing is established statically; where it does
+// not, the value's membership was established by executing those conditions,
+// and the site is RUNTIME-CHECKED (RUNTIMECHECK-011, RUNTIMECHECK-012).
+//
+// Deciding which only ever reports a crossing as weaker than it is: nothing
+// here is supposed, owed or discharged, and no obligation depends on it.
+struct RefinementCrossing {
+    std::string refinement; // the refinement the value enters, as written
+    std::string predicate;  // what membership states, for the report
+    source::SourceLocation location;
+    kernel::Proposition unguarded;
+};
+
+// Whether one crossing of one verified body was established without the
+// runtime conditions of its path (SPEC.md RUNTIMECHECK-012).
+struct CrossingVerdict {
+    std::size_t contract = 0; // into Program::contracts
+    std::size_t crossing = 0; // into that contract's crossings
+    bool statically = false;
 };
 
 // One precondition of the callee, instantiated at a call: the obligation that
@@ -154,6 +181,12 @@ struct ContractVerification {
     // each once (RFC 0020 §10). What they state is trusted, so the claim is
     // reported as resting on them, and so is every claim calling this one.
     std::vector<source::RepresentationKind> library_models;
+
+    // Every value this body moves into a refinement type on a path that runtime
+    // conditions select, once per path it does so on, in the order the paths
+    // were walked (SPEC.md RUNTIMECHECK-010). A crossing no condition selects
+    // is established by its own obligation and is not listed.
+    std::vector<RefinementCrossing> crossings;
 
     // The fields below are byte-aligned, and stand together so the record
     // carries little padding.

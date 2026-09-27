@@ -65,6 +65,9 @@ struct Summary {
     std::vector<detail::PipelineOutcome::Counters::UnsafeBoundary> unsafe;
     // Every contract of another unit established from an interface.
     std::vector<obligations::ImportedDependency> imports;
+    // Every runtime validation site of a proven contract (SPEC.md
+    // RUNTIMECHECK-013).
+    std::vector<obligations::RuntimeCheck> runtime_sites;
 };
 
 struct UnitOutcome {
@@ -253,6 +256,8 @@ UnitOutcome compile_unit(const Options& options, const Input& input, const std::
     }
     summary.trusted.insert(summary.trusted.end(), closure.assumptions.begin(), closure.assumptions.end());
     summary.claims.insert(summary.claims.end(), closure.claims.begin(), closure.claims.end());
+    summary.runtime_sites.insert(summary.runtime_sites.end(), closure.runtime_sites.begin(),
+                                 closure.runtime_sites.end());
     summary.memory_trusted.insert(summary.memory_trusted.end(), closure.memory_assumptions.begin(),
                                   closure.memory_assumptions.end());
     summary.unsafe.insert(summary.unsafe.end(), result.counters.unsafe_boundaries.begin(),
@@ -348,6 +353,10 @@ void print_depends(const obligations::ImportedDependency& imported) {
     for (const std::string& model : imported.models) {
         std::cout << "      whose proof rests on the " << model << " model\n";
     }
+    for (const artifact::RuntimeCheck& check : imported.runtime) {
+        std::cout << "      whose proof rests on the runtime check of " << check.refinement << " (" << check.file << ":"
+                  << check.line << ":" << check.column << ")\n";
+    }
     for (const artifact::Dependency& dependency : imported.depends) {
         std::cout << "      which rests on the contract of [" << dependency.symbol << "], entry "
                   << dependency.entry.to_short_hex(16) << "\n";
@@ -371,6 +380,7 @@ void print_closure_counts(const Summary& summary, obligations::ClaimKind kind) {
         std::cout << "  relying on unsafe code:    " << of_kind(obligations::rests_on_unsafe_code) << "\n";
         std::cout << "  relying on imported contracts: "
                   << of_kind([](const obligations::ClaimClosure& claim) { return !claim.imported.empty(); }) << "\n";
+        std::cout << "  relying on runtime checks: " << of_kind(obligations::rests_on_runtime_checks) << "\n";
     }
 }
 
@@ -543,6 +553,34 @@ void print_trust_report(const Options& options, const Summary& summary) {
         std::cout << "Interface provenance:        unauthenticated; " << summary.imports.size()
                   << " imported contracts are believed on the build's word (TRUST.md TCB-XTU-010)\n";
     }
+    // Each claim proven with a value's refinement established by a runtime
+    // check on its path, with every such site, its own or a verified callee's.
+    // The claim is PROVEN of every execution; what it rests on is that the
+    // check runs as written, and the value's membership at the site is
+    // RUNTIME-CHECKED, never a universal proof (SPEC.md RUNTIMECHECK-014,
+    // TRUST.md TCB-REPORT-004). A runtime check is not an assumption, so such a
+    // claim may also be assumption-free (SPEC.md INTERACT-023).
+    const auto checked = std::ranges::count_if(summary.claims, obligations::rests_on_runtime_checks);
+    std::cout << "Runtime-check-dependent claims: " << checked << "\n";
+    for (const obligations::ClaimClosure& claim : summary.claims) {
+        if (!obligations::rests_on_runtime_checks(claim)) {
+            continue;
+        }
+        std::cout << "  " << claim_name(claim) << ", identity " << claim.identity.text() << "\n";
+        for (const obligations::RuntimeCheck& check : claim.runtime) {
+            std::cout << "    rests on the runtime check of " << check.refinement << " ("
+                      << written_at(check.location) << "), "
+                      << (check.direct ? "in its own body" : "in " + check.function + ", through a verified call it makes")
+                      << "\n";
+        }
+        for (const obligations::ImportedDependency& imported : claim.imported) {
+            for (const artifact::RuntimeCheck& check : imported.runtime) {
+                std::cout << "    rests on the runtime check of " << check.refinement << " (" << check.file << ":"
+                          << check.line << ":" << check.column << "), through the imported "
+                          << imported_from(imported) << "\n";
+            }
+        }
+    }
     // Where the program's guarantees stop, whether or not a proven claim
     // reaches it: an unsafe block outside every verified body still runs.
     std::cout << "Unsafe regions:              " << summary.unsafe.size() << "\n";
@@ -557,7 +595,17 @@ void print_trust_report(const Options& options, const Summary& summary) {
             std::cout << "  unsafe block:            " << written_at(boundary.location) << "\n";
         }
     }
-    std::cout << "Runtime validation sites:    0\n";
+    // Every place a verified body of this unit moves a value into a
+    // refinement type because the runtime conditions of its path held: each
+    // value's membership there is RUNTIME-CHECKED, established for that value
+    // by executing the check, never proven of every value (SPEC.md
+    // RUNTIMECHECK-008, RUNTIMECHECK-013, TRUST.md TCB-REPORT-004).
+    std::cout << "Runtime validation sites:    " << summary.runtime_sites.size() << "\n";
+    for (const obligations::RuntimeCheck& check : summary.runtime_sites) {
+        std::cout << "  RUNTIME-CHECKED:           " << written_at(check.location) << ", a value enters "
+                  << check.refinement << ", where " << check.predicate << ", in verified function " << check.function
+                  << "\n";
+    }
     std::cout << "Unverified FFI boundaries:   not analysed\n\n";
     std::cout << "Trusted solvers:             0\n";
     std::cout << "Trusted external axioms:     " << trusted_laws << "\n\n";

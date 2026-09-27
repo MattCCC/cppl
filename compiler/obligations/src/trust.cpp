@@ -90,7 +90,8 @@ std::string describe(ClaimKind kind) {
     return "claim";
 }
 
-TrustClosure close_trust(const Program& program, const std::vector<ObligationResult>& results) {
+TrustClosure close_trust(const Program& program, const std::vector<ObligationResult>& results,
+                         const std::vector<CrossingVerdict>& crossings) {
     TrustClosure closure;
     closure.memory_assumptions = program.memory_assumptions;
 
@@ -314,8 +315,9 @@ TrustClosure close_trust(const Program& program, const std::vector<ObligationRes
     const auto imported_dependency = [&program](std::size_t index, bool direct) {
         const ContractVerification& contract = program.contracts[index];
         const ImportedContract& recorded = *contract.imported;
-        return ImportedDependency{contract.name,     contract.symbol, recorded.origin, recorded.entry,   contract.total,
-                                  recorded.premises, recorded.unsafe, recorded.models, recorded.depends, direct};
+        return ImportedDependency{contract.name,     contract.symbol, recorded.origin, recorded.entry,
+                                  contract.total,    recorded.premises, recorded.unsafe, recorded.models,
+                                  recorded.depends,  direct,            recorded.runtime};
     };
     const auto imported_list = [&](const std::map<std::size_t, bool>& found) {
         std::vector<ImportedDependency> imported;
@@ -360,10 +362,70 @@ TrustClosure close_trust(const Program& program, const std::vector<ObligationRes
         return library;
     };
 
+    // The runtime validation sites each contract rests on travel the same
+    // edges: a caller proven from a callee's contract rests on the checks that
+    // callee's proof took facts from as surely as the callee does (SPEC.md
+    // RUNTIMECHECK-014). A crossing is a site unless the kernel established it
+    // without its path's runtime conditions; one the verdicts do not name is a
+    // site, since that errs toward the weaker report (RUNTIMECHECK-012). A
+    // crossing written once may stand on several paths, and it is a site if
+    // any of them needed a check.
+    std::set<std::pair<std::size_t, std::size_t>> established_statically;
+    for (const CrossingVerdict& verdict : crossings) {
+        if (verdict.contract >= program.contracts.size() ||
+            verdict.crossing >= program.contracts[verdict.contract].crossings.size()) {
+            closure.faults.emplace_back("a refinement crossing verdict names a crossing that does not exist");
+            continue;
+        }
+        if (verdict.statically) {
+            established_statically.emplace(verdict.contract, verdict.crossing);
+        }
+    }
+    using Sites = std::map<std::tuple<std::string, std::uint32_t, std::uint32_t, std::string>, RuntimeCheck>;
+    const auto site_key = [](const RuntimeCheck& check) {
+        return std::tuple{check.location.file, check.location.line, check.location.column, check.refinement};
+    };
+    std::vector<Sites> sites(program.contracts.size());
+    for (std::size_t index = 0; index < program.contracts.size(); ++index) {
+        const ContractVerification& contract = program.contracts[index];
+        for (std::size_t crossing = 0; crossing < contract.crossings.size(); ++crossing) {
+            if (established_statically.contains({index, crossing})) {
+                continue;
+            }
+            const RefinementCrossing& found = contract.crossings[crossing];
+            RuntimeCheck check{found.location, found.refinement, found.predicate, contract.name, true};
+            sites[index].emplace(site_key(check), std::move(check));
+        }
+    }
+    for (bool changed = true; changed;) {
+        changed = false;
+        for (std::size_t index = 0; index < sites.size(); ++index) {
+            for (const std::size_t callee : callees[index]) {
+                if (callee == index) {
+                    continue;
+                }
+                for (const auto& [where, check] : sites[callee]) {
+                    RuntimeCheck reached = check;
+                    reached.direct = false;
+                    changed = sites[index].emplace(where, std::move(reached)).second || changed;
+                }
+            }
+        }
+    }
+    const auto listed_sites = [](const Sites& found) {
+        std::vector<RuntimeCheck> runtime;
+        runtime.reserve(found.size());
+        for (const auto& [where, check] : found) {
+            runtime.push_back(check);
+        }
+        return runtime;
+    };
+
     for (const auto& [claim, contract] : path_claims) {
         closure.claims[claim].unsafe = listed(regions[contract]);
         closure.claims[claim].imported = imported_list(through[contract]);
         closure.claims[claim].library = listed_models(models[contract]);
+        closure.claims[claim].runtime = listed_sites(sites[contract]);
     }
 
     // A contract of a recursion group holds only with the whole group, each
@@ -408,8 +470,16 @@ TrustClosure close_trust(const Program& program, const std::vector<ObligationRes
             anchor < results.size() ? program.obligations[anchor].range.begin : source::SourceLocation{},
             contract.partial ? ObligationId{contract.identity} : program.obligations[contract.obligation].id,
             ordered(std::move(contracts[index])), listed(regions[index]), contract.total, imported_list(through[index]),
-            contract.symbol, listed_models(models[index])});
+            contract.symbol, listed_models(models[index]), listed_sites(sites[index])});
+        // Its own sites are the unit's, listed once whatever else rests on
+        // them (SPEC.md RUNTIMECHECK-013).
+        for (const auto& [where, check] : sites[index]) {
+            if (check.direct) {
+                closure.runtime_sites.push_back(check);
+            }
+        }
     }
+    std::ranges::sort(closure.runtime_sites, {}, site_key);
 
     return closure;
 }
@@ -423,6 +493,12 @@ bool rests_on_trusted_laws(const ClaimClosure& claim) {
 bool rests_on_unsafe_code(const ClaimClosure& claim) {
     return !claim.unsafe.empty() || std::ranges::any_of(claim.imported, [](const ImportedDependency& imported) {
         return !imported.unsafe.empty();
+    });
+}
+
+bool rests_on_runtime_checks(const ClaimClosure& claim) {
+    return !claim.runtime.empty() || std::ranges::any_of(claim.imported, [](const ImportedDependency& imported) {
+        return !imported.runtime.empty();
     });
 }
 

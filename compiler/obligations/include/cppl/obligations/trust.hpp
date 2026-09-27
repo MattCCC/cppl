@@ -1,6 +1,7 @@
 #pragma once
 
 #include "cppl/artifact/interface.hpp"
+#include "cppl/obligations/contracts.hpp"
 #include "cppl/obligations/obligation.hpp"
 #include "cppl/obligations/status.hpp"
 #include "cppl/source/digest.hpp"
@@ -38,6 +39,26 @@ struct UnsafeDependency {
     bool direct = false;
 };
 
+// A runtime validation site a proven claim rests on (SPEC.md RUNTIMECHECK-011,
+// RUNTIMECHECK-014): where a value entered a refinement type because the
+// runtime conditions of its path held, and not by anything proven of every
+// execution. That the value satisfies the predicate there is RUNTIME-CHECKED,
+// a fact about each concrete value that passed the check, and is never shown
+// as a universal proof (TRUST.md TCB-REPORT-004). The claim itself is proven of
+// every execution, each of which reaches the site only past the check; what it
+// rests on is that the executable performs the check as written, which is
+// ordinary runtime code erasure keeps (SPEC.md ERASE-012, TCB-RUNTIMECHK-003).
+// It is not a trusted assumption and adds none (SPEC.md INTERACT-023).
+struct RuntimeCheck {
+    source::SourceLocation location;
+    std::string refinement; // the refinement the value enters
+    std::string predicate;  // what the check established, for the report
+    std::string function;   // the verified function whose body holds it
+    // Whether the site is in the claim's own body, rather than in the body of
+    // a verified function it calls.
+    bool direct = false;
+};
+
 // A contract another translation unit proved that a claim rests on, and what
 // that unit's proof of it rests on in turn, each kind apart (SPEC.md
 // TUBOUND-006). It is an external verified dependency: neither a trusted law
@@ -59,6 +80,9 @@ struct ImportedDependency {
     // Whether the claim's own body calls it, rather than a verified function
     // of this unit that the body calls.
     bool direct = false;
+    // The runtime validation sites that unit's proof rests on (SPEC.md
+    // RUNTIMECHECK-015).
+    std::vector<artifact::RuntimeCheck> runtime = {};
 };
 
 // A standard-library model a proven contract rests on (RFC 0020 §10, TRUST.md
@@ -112,6 +136,12 @@ struct ClaimClosure {
     // a path or a case of a verified body cannot occur rests on those of that
     // body's contract (SPEC.md STDMODEL-018).
     std::vector<LibraryDependency> library = {};
+
+    // For a contract, the runtime validation sites it rests on, its own and
+    // those of every verified function it calls, ordered by location; a claim
+    // that a path or a case of a verified body cannot occur rests on those of
+    // that body's contract (SPEC.md RUNTIMECHECK-014).
+    std::vector<RuntimeCheck> runtime = {};
 };
 
 // Whether a claim rests on a trusted law, of this unit or of another unit whose
@@ -125,6 +155,10 @@ struct ClaimClosure {
 // Whether a claim rests on a library model, used here or by the proof of
 // another unit's contract it was proven through (SPEC.md STDMODEL-018).
 [[nodiscard]] bool rests_on_library_models(const ClaimClosure& claim);
+
+// Whether a claim rests on a runtime validation site, of this unit or of
+// another unit whose contract it was proven through (SPEC.md RUNTIMECHECK-014).
+[[nodiscard]] bool rests_on_runtime_checks(const ClaimClosure& claim);
 
 // The trust closure of every proven claim of one translation unit.
 //
@@ -151,12 +185,23 @@ struct TrustClosure {
     // report says what was assumed from elsewhere (SPEC.md TUBOUND-006).
     std::vector<ImportedDependency> imports;
 
+    // Every runtime validation site of a proven contract of this unit, ordered
+    // by location, each once and in its own function's body, whether or not
+    // another claim rests on it (SPEC.md RUNTIMECHECK-013).
+    std::vector<RuntimeCheck> runtime_sites;
+
     // Dependencies that could not be attributed to a claim. Any one means the
     // report cannot vouch for the closures above, so it is an internal error
     // rather than an omission (TRUST.md 2.10, TCB-REPORT-006).
     std::vector<std::string> faults;
 };
 
-[[nodiscard]] TrustClosure close_trust(const Program& program, const std::vector<ObligationResult>& results);
+// `crossings` says which refinement crossings of the unit's verified bodies
+// the kernel established without the runtime conditions of their paths. A
+// crossing it does not name as established so is a runtime validation site:
+// the classification errs toward the weaker report, never the stronger
+// (SPEC.md RUNTIMECHECK-012, TRUST.md TCB-REPORT-006).
+[[nodiscard]] TrustClosure close_trust(const Program& program, const std::vector<ObligationResult>& results,
+                                       const std::vector<CrossingVerdict>& crossings);
 
 } // namespace cppl::obligations

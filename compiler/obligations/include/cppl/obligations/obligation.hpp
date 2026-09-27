@@ -200,6 +200,9 @@ struct RefinementPredicate {
     std::vector<kernel::Type> parameters;
     kernel::Proposition predicate;
     std::string identity = {};
+    // The predicate as the declaration states it, for a report naming what a
+    // runtime check established (SPEC.md RUNTIMECHECK-013). Never read back.
+    std::string statement = {};
 };
 
 // A trusted law whose conclusion is a memory proposition (SPEC.md TRUSTED-003).
