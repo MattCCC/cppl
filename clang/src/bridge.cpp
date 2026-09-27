@@ -5151,6 +5151,32 @@ struct BodyLowering {
         return changed;
     }
 
+    // Every place that may alias the pointee of a pointer nothing identifies,
+    // other than those in `handed` or `invalidated`. Such a pointee may be any
+    // place `may_alias` does not keep apart from a dereference, so the stand-in
+    // names no pointer entry a real place carries, and is kept apart from none.
+    std::vector<std::size_t> invalidate_pointee_aliases(Locals& state, const std::vector<std::size_t>& handed,
+                                                        const std::vector<std::size_t>& invalidated) {
+        Local pointee;
+        pointee.pointer = std::numeric_limits<std::size_t>::max();
+        pointee.spelling = "a pointee a callee may write";
+        std::vector<std::size_t> changed;
+        for (std::size_t index = 0; index < state.size(); ++index) {
+            if (state[index].referent.has_value() || std::ranges::find(handed, index) != handed.end() ||
+                std::ranges::find(invalidated, index) != invalidated.end()) {
+                continue;
+            }
+            if (Local& reached = state[index]; may_alias(pointee, reached)) {
+                reached.version = next_version++;
+                if (reached.sequence.has_value()) {
+                    reached.sequence->invalidated = "a call that may write through a pointer designating it";
+                }
+                changed.push_back(index);
+            }
+        }
+        return changed;
+    }
+
     // The storage an argument hands a callee without passing the container:
     // the root of the tracked container a span or a data pointer is over, or
     // the span parameter it passes on (RFC 0020 §7).
@@ -5340,44 +5366,26 @@ struct BodyLowering {
         // separate from the reference case below: a pointer is passed by value,
         // so the parameter keeps its own version and it is the storage it
         // designates that goes stale (SPEC.md 12.10 VERIFIED-040).
-        for (std::size_t index = 0; index < params.size(); ++index) {
-            const CXType declared = clang_getCursorType(params[index]);
-            if (source::aliases_storage(passing_of(declared)) || !may_write_through(declared))
-                continue;
-            const CXCursor argument = clang_Cursor_getArgument(cursor, static_cast<unsigned>(index));
-            // The pointer is only read here, so it is looked up rather than
-            // resolved as a write target: passing a pointer owes no capability
-            // of its own, and demanding one would refuse the call outright.
-            const auto access = resolve_access(strip_parens(argument));
-            if (!access || access->dereferenced || !access->symbolic_indices.empty())
-                continue;
-            // A deref place records the entry holding its pointer, and a
-            // pointer parameter is identified by its own index rather than by a
-            // tracked local, exactly as `resolve_storage` roots one.
-            const CXCursor declaration = access->declaration;
-            auto pointer = find_binding(state, declaration, access->path);
-            if (!pointer) {
-                const auto at = std::ranges::find_if(
-                    parameters, [&](CXCursor candidate) { return clang_equalCursors(candidate, declaration) != 0; });
-                if (at == parameters.end())
-                    continue;
-                pointer = static_cast<std::size_t>(at - parameters.begin());
+        //
+        // Which storage that is does not depend on which places this body has
+        // formed through the pointer: every place that may alias an arbitrary
+        // pointee -- this pointer's or another's pointee, storage a reference
+        // parameter designates, an escaped local, a container reached through
+        // one -- is unknown after the call, exactly as after a write through
+        // `*p` in this body (VERIFIED-039). Places this call hands the callee by
+        // reference take its effects instead, so they are left to that.
+        const bool writes_through_pointer = std::ranges::any_of(params, [](CXCursor parameter) {
+            const CXType declared = clang_getCursorType(parameter);
+            return !source::aliases_storage(passing_of(declared)) && may_write_through(declared);
+        });
+        const auto havoc_pointees = [&](const std::vector<std::size_t>& handed) {
+            if (!writes_through_pointer) {
+                return;
             }
-            // Every place reached through this pointer, and everything that may
-            // alias one, is unknown from here on. Which of them the callee
-            // actually wrote is not stated by its contract, so none is kept.
-            for (std::size_t other = 0; other < state.size(); ++other) {
-                if (state[other].referent.has_value() || !state[other].is_deref())
-                    continue;
-                if (state[other].pointer != pointer)
-                    continue;
-                state[other].version = next_version++;
-                invalidated.push_back(other);
-                for (const auto aliased : invalidate_aliases(other, state)) {
-                    invalidated.push_back(aliased);
-                }
+            for (const std::size_t reached : invalidate_pointee_aliases(state, handed, invalidated)) {
+                invalidated.push_back(reached);
             }
-        }
+        };
         // A member function called on an object takes the object's leaves as
         // the arguments of its implicit object (SPEC.md CLASS-011). The build
         // above resolved both already, or the value would not be a call.
@@ -5398,8 +5406,10 @@ struct BodyLowering {
                             std::ranges::any_of(params, [](CXCursor parameter) {
                                 return source::may_write(passing_of(clang_getCursorType(parameter)));
                             });
-        if (!writes)
+        if (!writes) {
+            havoc_pointees({});
             return value;
+        }
         // The caller's storage at each position the callee reads or writes by
         // reference: its implicit object's places first, then its reference
         // parameters (SPEC.md CLASS-011). A position is writable where the
@@ -5487,10 +5497,7 @@ struct BodyLowering {
         }
         // A pointer to non-const lets the callee write storage this call does
         // not name, so nothing it reads by reference is known to be preserved.
-        const bool through_pointer = std::ranges::any_of(params, [](CXCursor parameter) {
-            const CXType declared = clang_getCursorType(parameter);
-            return !source::aliases_storage(passing_of(declared)) && may_write_through(declared);
-        });
+        const bool through_pointer = writes_through_pointer;
         std::vector<std::size_t> targets;
         std::vector<std::size_t> written_storage;
         for (const Position& position : positions) {
@@ -5592,6 +5599,7 @@ struct BodyLowering {
                 invalidated.push_back(other);
             }
         }
+        havoc_pointees(targets);
         return value;
     }
 

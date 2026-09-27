@@ -186,6 +186,62 @@ verified int f(int* p) expects (readable(p) && writable(p)) ensures (result > 0)
 }
 CPP
 
+# What a callee may write through a pointer is whatever may alias its pointee,
+# not only the places this body happened to form through that pointer. Each of
+# these once verified, with the caller handing both arguments one object, and
+# returned a value its contract excluded: the storage a reference designates,
+# another pointer's pointee, a reference passed beside the pointer, storage a
+# reference designates beside a call that also writes a local, and an element of
+# a container a reference designates each kept its fact across a call that
+# wrote it (a soundness fix, SECURITY.md).
+# SPEC: VERIFIED-039, VERIFIED-040
+reject a_pointer_call_invalidates_a_reference_it_may_alias 'does not satisfy its contract' <<'CPP'
+verified void poke(unsigned* p) expects (writable(p)) ensures (true) { *p = 0u; }
+verified unsigned f(const unsigned& x, unsigned* p) expects (writable(p)) ensures (result == 0u) {
+    const unsigned before = x;
+    poke(p);
+    return x - before;
+}
+CPP
+reject a_pointer_call_invalidates_another_pointee 'does not satisfy its contract' <<'CPP'
+verified void poke(unsigned* p) expects (writable(p)) ensures (true) { *p = 0u; }
+verified unsigned f(unsigned* p, unsigned* q) expects (writable(p) && readable(q)) ensures (result == 0u) {
+    const unsigned before = *q;
+    poke(p);
+    return *q - before;
+}
+CPP
+reject a_pointer_call_invalidates_a_reference_beside_it 'does not satisfy its contract' <<'CPP'
+verified void poke(const unsigned& r, unsigned* p) expects (writable(p)) ensures (true) { *p = r; }
+verified unsigned f(const unsigned& x, unsigned* p) expects (writable(p)) ensures (result == 0u) {
+    const unsigned before = x;
+    poke(x, p);
+    return x - before;
+}
+CPP
+reject a_pointer_call_beside_a_reference_write_invalidates_what_it_may_reach 'does not satisfy its contract' <<'CPP'
+verified void poke(unsigned& w, unsigned* p) expects (writable(p)) ensures (true) { w = 1u; *p = 0u; }
+verified unsigned f(const unsigned& x, unsigned* p) expects (writable(p)) ensures (result == 0u) {
+    const unsigned before = x;
+    unsigned w = 0u;
+    poke(w, p);
+    return x - before;
+}
+CPP
+reject a_pointer_call_invalidates_elements_it_may_reach 'does not satisfy its contract' <<'CPP'
+#include <vector>
+verified void poke(unsigned* p) expects (writable(p)) ensures (true) { *p = 0u; }
+verified unsigned f(const std::vector<unsigned>& c, unsigned* p) expects (writable(p) && 0ul < c.size())
+    ensures (result == 0u) {
+    const unsigned before = c[0];
+    poke(p);
+    if (0ul < c.size()) {
+        return c[0] - before;
+    }
+    return 0u;
+}
+CPP
+
 # What a caller may rely on is exactly the callee's `ensures`, never more. The
 # callee here promises only that its result is non-negative, so the crossing
 # into a type requiring a positive value is not discharged by the call.

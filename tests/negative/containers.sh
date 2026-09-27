@@ -121,6 +121,10 @@ refuse container_stale_span_in_loop "'s' views the storage of 'v', which may hav
 refuse container_reference_after_clear "'r' refers to an element of 'v', which may have been reallocated or ended by 'std::vector::clear'"
 refuse container_span_after_move "'s' views the storage of 'v', which may have been reallocated or ended by being moved from"
 refuse container_stale_after_mutable_call "which may have been reallocated or ended by passing it by mutable reference to 'grow'"
+# SPEC: VERIFIED-039, VERIFIED-040
+# A vector that may be the one a call may write is stale with it, for the reason
+# that one is.
+refuse container_view_of_alias_after_pointer_call "'s' views the storage of 'c', which may have been reallocated or ended by passing it by mutable reference to 'peek' at"
 refuse container_string_stale_view "'view' views the storage of 's', which may have been reallocated or ended by 'std::basic_string<char>::operator+='"
 # SPEC: STDMODEL-014
 refuse container_span_outlives_vector "span 's' is modeled only as a view of a whole vector or string this body tracks"

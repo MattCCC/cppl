@@ -356,6 +356,30 @@ verified unsigned data_argument()
     return zero_prefix(v.data(), v.size());
 }
 
+// SPEC: STDMODEL-015, VERIFIED-039, VERIFIED-040
+// A local vector whose storage never escaped is no pointee and no vector a
+// reference designates: a call that may write through a pointer and through a
+// reference to another vector leaves a span over it valid. Twin of
+// `container_view_of_alias_after_pointer_call`.
+verified void peek(const std::vector<unsigned>& x, unsigned& w, unsigned* p)
+    expects (writable(p))
+    ensures (true)
+{
+    w = 1u;
+    *p = 0u;
+}
+
+verified std::size_t view_of_local_kept(const std::vector<unsigned>& a, unsigned* p)
+    expects (writable(p))
+    ensures (result == 2ul)
+{
+    std::vector<unsigned> local{1u, 2u};
+    std::span<const unsigned> s(local);
+    unsigned w = 0u;
+    peek(a, w, p);
+    return s.size();
+}
+
 // --- The parser shape RFC 0020 is for ---------------------------------------
 
 // SPEC: STDMODEL-016, ARITH-008

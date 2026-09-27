@@ -66,11 +66,27 @@ struct Cell {
     }
 };
 
+// SPEC: VERIFIED-039, VERIFIED-040
+// A local whose address was never taken is no pointee: a call that may write
+// through a pointer keeps what is known of it. Twin of the
+// `a_pointer_call_invalidates_*` cases in `negative/verified_storage.sh`.
+verified unsigned keeps_local(unsigned* q)
+    expects (writable(q))
+    ensures (result == 3u)
+{
+    unsigned kept = 3u;
+    touch(q);
+    return kept;
+}
+
 int main() {
     unsigned cells[4] = {0u, 0u, 0u, 0u};
     Cell cell{0u};
     unsigned spare = 1u;
     if (cell.swap_in(&spare) != 6u) {
+        return 1;
+    }
+    if (keeps_local(&spare) != 3u) {
         return 1;
     }
     holds(&cells[0]);
