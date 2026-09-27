@@ -44,6 +44,7 @@ section numbers move and rule IDs do not.
 | Feature | Rule families | SPEC | Grammar | Foundations | Trust |
 | --- | --- | --- | --- | --- | --- |
 | Refinement types | `REFINE-*`, `REFINEOBL-*` | §17, Annex I | §14–16 | Refinement typing | §10 |
+| Runtime-checked refinement construction | `RUNTIMECHECK-*`, `ERASE-012`, `ORTHOCHECK-*`, `INTERACT-022`, `INTERACT-023`, `EDGECASE-079` | §28, §36.5, §57, Annex V.15, V.16 | — | Refinement typing | §26.3, §31.1, §36 |
 | Dependent/indexed types | `DEP-*` | §18 | §16 | Dependent type theory | — |
 | Reasoning over C++ types | `CXXTYPE-*` | §19 | §17, §20 | — | — |
 

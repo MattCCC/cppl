@@ -3542,6 +3542,66 @@ through ordinary executable C++.
 
 ---
 
+## 28.5 Runtime validation sites
+
+[RUNTIMECHECK-016] A *refinement crossing* is a point in a verified body where a value enters a
+refinement type: an initialization, assignment, update or other write of refined
+storage, a refined member or element included; an element entering the content
+invariant of a sequence local (STDMODEL-020); an argument entering a refined
+parameter of a verified callee; a value returned into a refined result; and a
+verified call's post-state entering refined storage.
+
+[RUNTIMECHECK-017] A *runtime condition* of a path is the outcome, on that path, of a condition C++
+evaluates at run time to select it: the condition of an `if` or of a conditional
+operator, each operand of `&&`, `||` and `!` in such a condition, and the
+condition of a loop. A case split on a runtime path (CASE-017) is not one: it
+evaluates nothing, and its arms together cover every state.
+
+[RUNTIMECHECK-010] A refinement crossing whose path at least one runtime condition selects is a
+*checked crossing*. Its membership obligation is the one every crossing owes,
+closed over everything its path supposes, its runtime conditions included
+(REFINE-005, RUNTIMECHECK-004). Nothing in this section adds, removes or weakens
+an obligation.
+
+[RUNTIMECHECK-011] A checked crossing is *established statically* when its membership is proven from
+what its path supposes without its runtime conditions: the function's
+preconditions and refined parameters, the postconditions of the calls the path
+makes, loop invariants, the defined behavior the path has established, case
+facts and the values the path computes. Otherwise it is a *runtime validation
+site*: the value's membership there is established by executing the runtime
+conditions, and has status `RUNTIME-CHECKED` (RUNTIMECHECK-008), never `PROVEN`.
+
+[RUNTIMECHECK-012] A checked crossing is established statically only where the trusted kernel accepts
+evidence for its membership without its runtime conditions. A checked crossing
+for which no such evidence is accepted MUST be reported as a runtime validation
+site: the classification errs only toward the weaker report. A crossing written
+once and reached on several paths is a runtime validation site when it is one on
+any of them.
+
+[RUNTIMECHECK-013] The trust report MUST list every runtime validation site of the unit's proven
+contracts with its source location, the refinement the value enters, the
+predicate that refinement states and the verified function whose body holds it,
+with status `RUNTIME-CHECKED`.
+
+[RUNTIMECHECK-014] A proven claim about runtime code rests on every runtime validation site of its own
+body and, transitively, of every verified function whose contract it was proven
+through; a claim that a path or a case of a verified body cannot occur rests on
+those of that body's contract. The report MUST name each site with each claim
+resting on it. Such a claim remains `PROVEN`, because every execution that
+reaches a site has passed its check; what the claim rests on is that the
+executable performs the check as written (ERASE-012, RUNTIMECHECK-009). That is
+runtime behavior, not an assumption (INTERACT-023): a runtime validation site
+MUST NOT be reported as a trusted assumption, and a claim resting on one MUST
+NOT be reported as resting on none.
+
+[RUNTIMECHECK-015] A verification interface MUST record the runtime validation sites a recorded
+contract rests on as a dependency category of its own, apart from trusted laws,
+library models, unsafe code and the contracts of other units, and each site MUST
+be part of the entry's verification-result identity (TUBOUND-006, TUBOUND-009).
+A claim proven through an imported contract rests on the sites its record names.
+
+---
+
 # 29. Machine arithmetic
 
 C++ runtime numeric types retain their selected C++ machine semantics.

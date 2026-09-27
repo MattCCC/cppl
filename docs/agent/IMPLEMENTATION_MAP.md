@@ -765,6 +765,63 @@ is refused.
 
 ---
 
+## runtime-validation
+
+Manifest: `features/runtime-validation.yaml`
+
+Normative sources: `RUNTIMECHECK-001`–`RUNTIMECHECK-017` (SPEC §28, §28.5),
+`ERASE-012`, `ORTHOCHECK-*`, `INTERACT-022`, `INTERACT-023`, `EDGECASE-079`;
+`TRUST.md` §26.3, §31.1, §36; RFC 0021.
+
+### Components
+
+| Component | Responsibility | Paths |
+| --- | --- | --- |
+| obligations | Record every refinement crossing a runtime condition selects, in both body walkers, with its membership closed over the path without the runtime conditions; keep `if`, `?:`, `&&`, `||` and loop-condition outcomes as guard events and case facts as ordinary facts. | `compiler/obligations/src/contracts.cpp`, `compiler/obligations/include/cppl/obligations/contracts.hpp` |
+| automation | Offer each unguarded membership the strategies and let the kernel decide; only acceptance makes a crossing static. | `compiler/automation/src/evidence.cpp` |
+| trust closure | Attribute sites to their contract, to every caller to a fixed point, and to path and case claims of those bodies; a crossing without a static verdict is a site. | `compiler/obligations/src/trust.cpp`, `compiler/obligations/include/cppl/obligations/trust.hpp` |
+| interface | Record sites as their own category, in the result identity; carry imported sites on. | `compiler/artifact/src/interface.cpp`, `compiler/obligations/src/interface.cpp` |
+| driver | List every site `RUNTIME-CHECKED` and every claim resting on one; never count a site as an assumption. | `compiler/driver/src/driver.cpp`, `compiler/driver/src/pipeline.cpp` |
+
+### Required behavior
+
+```text
+a crossing on a path a runtime  owes its predicate under the whole path, as
+condition selects               every crossing does
+the same crossing without its   kernel-accepted -> established statically;
+runtime conditions              otherwise a runtime validation site
+a site                          RUNTIME-CHECKED, never PROVEN, never an assumption
+a claim resting on a site       PROVEN, and names every site it rests on,
+                                through calls and units
+the check                       ordinary runtime code erasure keeps
+```
+
+### Interactions
+
+```text
+runtime validation x refinement types     INTERACT-022, REFINE-005
+runtime validation x trusted              INTERACT-023
+runtime validation x storage versions     RUNTIMECHECK-004, REFINE-010
+runtime validation x unsafe               UNSAFE-003, RUNTIMECHECK-004
+runtime validation x sequences            STDMODEL-020
+runtime validation x cross-unit           TUBOUND-006, TUBOUND-009, RUNTIMECHECK-015
+runtime validation x erasure              ERASE-012, RUNTIMECHECK-009
+```
+
+### Existing surface
+
+```text
+tests/fixtures/runtime_validation.cpp        every accepted crossing form
+tests/e2e/runtime_validation.sh              sites, claims, runtime behavior, erasure, three units
+tests/negative/runtime_validation.sh         every refused twin, in tests/fixtures/negative/runtime_check_*.cpp
+```
+
+Not built: a checked helper returning `bool` (RUNTIMECHECK-006) is refused,
+because no strategy proves its contract; naming which condition a site rested
+on; a machine-readable report.
+
+---
+
 ## Adding a feature to this map
 
 1. Add the feature to `FEATURE_INDEX.md`.

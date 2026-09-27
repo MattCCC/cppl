@@ -1,0 +1,156 @@
+# Machine-readable manifest for the runtime-validation feature.
+#
+# Rule IDs are anchors in docs/SPEC.md, the canonical specification. Extract the
+# normative text with:
+#
+#     cppl-spec-rules extract --feature runtime-validation
+
+feature: runtime-validation
+
+summary: >
+  An unknown runtime value enters a refined type through ordinary C++: a
+  condition the program evaluates and a crossing on the path where it held.
+  The crossing owes its predicate under its whole path like any other, so a
+  crossing on the failure path, before the check, of another value, or after
+  a write, call or unsafe block that replaced the checked version is refused.
+  Each crossing a runtime condition selects is also stated without its path's
+  runtime conditions; only where the kernel accepts evidence for that is it
+  established statically, and every other is a runtime validation site,
+  reported RUNTIME-CHECKED with its location, refinement, predicate and
+  function. Every claim resting on a site, in its own body, through verified
+  calls or through an imported contract, names it and stays PROVEN; a site is
+  not a trusted assumption. A verification interface records sites as a
+  category of their own, part of the record's result identity. The check is
+  ordinary code and erasure keeps it.
+
+normative_sources:
+  spec:
+    - "§28 Runtime validation"
+    - "§28.5 Runtime validation sites"
+    - "§36.5 Runtime validation is not erased"
+    - "§57 Verification and runtime checking are orthogonal"
+    - "Annex V.15 runtime validation + refinement"
+    - "Annex V.16 runtime validation + trusted"
+    - "Annex Z.78 runtime validation failure"
+  trust:
+    - "§26.3 Runtime validation"
+    - "§31.1 Verification interfaces as implemented"
+    - "§36 Assurance statuses and reporting integrity"
+  rfc:
+    - "docs/rfcs/0021-runtime-checked-refinement-construction.md"
+
+rule_families:
+  - RUNTIMECHECK
+
+rules:
+  - RUNTIMECHECK-001
+  - RUNTIMECHECK-002
+  - RUNTIMECHECK-003
+  - RUNTIMECHECK-004
+  - RUNTIMECHECK-005
+  - RUNTIMECHECK-006
+  - RUNTIMECHECK-007
+  - RUNTIMECHECK-008
+  - RUNTIMECHECK-009
+  - RUNTIMECHECK-010
+  - RUNTIMECHECK-011
+  - RUNTIMECHECK-012
+  - RUNTIMECHECK-013
+  - RUNTIMECHECK-014
+  - RUNTIMECHECK-015
+  - RUNTIMECHECK-016
+  - RUNTIMECHECK-017
+  - ERASE-012
+  - ORTHOCHECK-001
+  - ORTHOCHECK-002
+  - INTERACT-022
+  - INTERACT-023
+  - EDGECASE-079
+  - REFINE-005
+  - REFINE-018
+
+depends_on:
+  - refinement-types
+  - verified-sequences
+  - trust-propagation
+  - cross-tu-contracts
+  - erasure
+
+implementation:
+  obligations:
+    - compiler/obligations/include/cppl/obligations/contracts.hpp
+    - compiler/obligations/src/contracts.cpp
+    - compiler/obligations/include/cppl/obligations/trust.hpp
+    - compiler/obligations/src/trust.cpp
+    - compiler/obligations/src/interface.cpp
+    - compiler/obligations/src/generate.cpp
+  automation:
+    - compiler/automation/include/cppl/automation/evidence.hpp
+    - compiler/automation/src/evidence.cpp
+  artifact:
+    - compiler/artifact/include/cppl/artifact/interface.hpp
+    - compiler/artifact/src/interface.cpp
+  driver:
+    - compiler/driver/src/pipeline.cpp
+    - compiler/driver/src/driver.cpp
+    - compiler/driver/include/cppl/driver/semantics.hpp
+
+interactions:
+  - refined locals, members, array elements and vector content invariants
+  - refined results and refined parameters of verified callees
+  - call post-states entering refined storage
+  - conditional initializers and short-circuit conditions
+  - loop conditions and loop invariants
+  - preconditions, which establish a crossing statically
+  - writes, verified calls and unsafe blocks between check and crossing
+  - verified-call composition and recursion groups
+  - verification interfaces across units
+  - erasure
+
+tests:
+  positive:
+    - tests/fixtures/runtime_validation.cpp
+    - tests/fixtures/runtime_validation.reference.cpp
+    - tests/fixtures/runtime_validation_cross_tu/validate.cpp
+    - tests/fixtures/runtime_validation_cross_tu/consume.cpp
+    - tests/fixtures/runtime_validation_cross_tu/relay.cpp
+  negative:
+    - tests/negative/runtime_validation.sh
+    - tests/fixtures/negative/runtime_check_failure_path.cpp
+    - tests/fixtures/negative/runtime_check_result_unchecked.cpp
+    - tests/fixtures/negative/runtime_check_argument_unchecked.cpp
+    - tests/fixtures/negative/runtime_check_member_unchecked.cpp
+    - tests/fixtures/negative/runtime_check_element_unchecked.cpp
+    - tests/fixtures/negative/runtime_check_after_crossing.cpp
+    - tests/fixtures/negative/runtime_check_too_weak.cpp
+    - tests/fixtures/negative/runtime_check_other_value.cpp
+    - tests/fixtures/negative/runtime_check_stale_after_write.cpp
+    - tests/fixtures/negative/runtime_check_stale_after_call.cpp
+    - tests/fixtures/negative/runtime_check_stale_after_unsafe.cpp
+    - tests/fixtures/negative/runtime_check_or_route.cpp
+    - tests/fixtures/negative/runtime_check_and_false_route.cpp
+    - tests/fixtures/negative/runtime_check_loop_exit.cpp
+  unit:
+    - tests/unit/trust_closure_test.cpp
+    - tests/unit/interface_test.cpp
+  end_to_end:
+    - tests/e2e/runtime_validation.sh
+
+required_test_categories:
+  - every crossing form established by a check, and the program run on valid and invalid input
+  - the failure path constructs nothing, in every crossing form
+  - a check made too late, too weak, of another value, or made stale
+  - short-circuit routes and loop exits
+  - a crossing a check selects but does not need is not a site
+  - a crossing a precondition establishes is not a site
+  - sites listed whole; claims resting on them, directly and through calls
+  - a site is never shown PROVEN and never counted as an assumption
+  - erasure keeps every check; identical code against the hand erasure
+  - sites cross units in their own interface category and result identity
+
+completion_requires:
+  - no crossing is reported established statically without kernel-accepted evidence
+  - no obligation is added, removed or weakened by the classification
+  - every claim resting on a site names it, across units too
+  - a site adds no trusted assumption
+  - the check survives erasure unchanged

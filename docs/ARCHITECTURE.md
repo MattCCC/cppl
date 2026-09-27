@@ -2402,6 +2402,34 @@ refinement machinery.
 projection; erasure must not remove it merely because a later proof uses the
 resulting fact.
 
+Which crossings a runtime check establishes is decided after verification and
+used only for reporting (`SPEC.md` RUNTIMECHECK-010 to RUNTIMECHECK-015, RFC
+0021):
+
+```text
+obligations (contracts.cpp)
+    both body walkers: each refinement crossing on a path a runtime condition
+    selects -> RefinementCrossing{refinement, predicate, location,
+    membership closed over the path without its runtime conditions}
+    kept on the ContractVerification whose body holds it
+        ↓
+automation (evidence.cpp) classify_crossings
+    the strategies propose evidence for each unguarded membership;
+    kernel::check accepts it -> established statically
+    otherwise -> runtime validation site (CrossingVerdict)
+        ↓
+obligations (trust.cpp) close_trust(program, results, verdicts)
+    sites attributed to their contract, then to every caller to a fixed
+    point, and to path/case claims of those bodies; TrustClosure::runtime_sites
+        ↓
+obligations (interface.cpp) exported_contracts -> artifact `runtime` lines
+driver (driver.cpp) trust report: per-kind counts, Runtime-check-dependent
+    claims, Runtime validation sites
+```
+
+The classification never feeds an obligation: the crossing's own obligation,
+closed over its whole path, has already decided whether the program verifies.
+
 ---
 
 # 61. Native code generation

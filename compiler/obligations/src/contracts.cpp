@@ -546,14 +546,14 @@ std::expected<void, Failure> append_calls(const vir::Expr& expression, const vir
             declared->second->parameters.size() == call.arguments.size()) {
             for (std::size_t index = 0; index < call.arguments.size(); ++index) {
                 const vir::Type& parameter = declared->second->parameters[index].type;
-                const auto required = membership(program, parameter, call.arguments[index]);
-                if (!required) {
-                    return std::unexpected(required.error());
+                const auto admitted = membership(program, parameter, call.arguments[index]);
+                if (!admitted) {
+                    return std::unexpected(admitted.error());
                 }
-                if (required->has_value()) {
+                if (admitted->has_value()) {
                     crossings.push_back(crossing(program, parameter,
                                                  call_expression.arguments[index].provenance.range.begin,
-                                                 close(plan, path, 0, 0, false, **required)));
+                                                 close(plan, path, 0, 0, false, **admitted)));
                 }
             }
         }
