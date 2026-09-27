@@ -108,6 +108,11 @@ k::ProofTerm lift(const k::ProofTerm& proof, std::uint32_t amount, std::uint32_t
                 copy.evidence = again(node.evidence, cutoff);
                 copy.left_case = again(node.left_case, cutoff);
                 copy.right_case = again(node.right_case, cutoff);
+            } else if constexpr (std::is_same_v<Node, k::UnsignedInduction>) {
+                // Both premises are checked under the assumptions standing at
+                // the induction; neither introduces one.
+                copy.base = again(node.base, cutoff);
+                copy.step = again(node.step, cutoff);
             } else {
                 static_assert(std::is_same_v<Node, k::Reflexivity>);
             }
@@ -170,8 +175,9 @@ enum class Rule : std::uint8_t {
     EqualityElimination,
     ConditionalElimination,
     LinearArithmetic,
+    UnsignedInduction,
 };
-constexpr std::uint32_t kRuleCount = 16;
+constexpr std::uint32_t kRuleCount = 17;
 
 class Generator {
   public:
@@ -801,8 +807,68 @@ class Generator {
                 return conditional_elimination(scope, depth);
             case Rule::LinearArithmetic:
                 return linear_arithmetic(scope);
+            case Rule::UnsignedInduction:
+                return unsigned_induction(scope);
         }
         return reflexivity(scope, 0);
+    }
+
+    // Induction over an unsigned type, whose two premises the kernel states
+    // itself (kernel::induction_base, kernel::induction_step). A reflexive
+    // motive has premises derivable anywhere, so the rule is accepted; any other
+    // is a comparison whose premises automation proposes where the goal is
+    // closed, so a motive false at some value is refused or, if the kernel ever
+    // accepted it, false in the model. Perturbed, the rule names another binder,
+    // the goal quantifies over a signed type, or the premises trade places.
+    Derivation unsigned_induction(Scope& scope) {
+        static constexpr std::uint16_t widths[] = {1, 2, 3, 4};
+        const k::IntType type{widths[below(4)], k::Signedness::Unsigned};
+        const k::Type bound = as_type(type);
+        const bool closed = scope.locals.empty() && scope.hypotheses.empty();
+        const bool reflexive = !closed || one_in(3);
+        scope.locals.push_back(bound);
+        k::Proposition body = reflexive ? k::Proposition::equality(bound, k::Term::variable(k::VarIndex{0}),
+                                                                   k::Term::variable(k::VarIndex{0}))
+                                        : comparison_proposition(scope.locals, 2);
+        scope.locals.pop_back();
+        const k::Proposition base_goal = k::induction_base(type, body);
+        const k::Proposition step_goal = k::induction_step(type, body);
+        k::ProofTerm base = k::ProofTerm::reflexivity();
+        k::ProofTerm step = k::ProofTerm::reflexivity();
+        if (reflexive) {
+            // forall n. n < max -> P(n) -> P(n + 1), each P an instance of x = x.
+            const auto& quantified = std::get<k::Forall>(step_goal.node);
+            const auto& range = std::get<k::Implies>(quantified.body->node);
+            const auto& hypothesis = std::get<k::Implies>(range.conclusion->node);
+            step = k::ProofTerm::forall_introduction(
+                bound, k::ProofTerm::implication_introduction(
+                           *range.premise,
+                           k::ProofTerm::implication_introduction(*hypothesis.premise, k::ProofTerm::reflexivity())));
+        } else {
+            if (auto proposed = automation::propose(context_, base_goal)) {
+                base = std::move(proposed->proof);
+            }
+            if (auto proposed = automation::propose(context_, step_goal)) {
+                step = std::move(proposed->proof);
+            }
+        }
+        k::Type stated = bound;
+        k::Proposition goal = k::Proposition::for_all(bound, body);
+        if (perturb()) {
+            switch (below(3)) {
+                case 0:
+                    stated = as_type(k::IntType{widths[below(4)], k::Signedness::Unsigned});
+                    break;
+                case 1:
+                    stated = as_type(k::IntType{type.width, k::Signedness::Signed});
+                    goal = k::Proposition::for_all(stated, body);
+                    break;
+                default:
+                    std::swap(base, step);
+                    break;
+            }
+        }
+        return Derivation{std::move(goal), k::ProofTerm::unsigned_induction(stated, std::move(base), std::move(step))};
     }
 
     // A claimed conclusion replaced by another, the evidence kept.

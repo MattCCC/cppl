@@ -78,6 +78,9 @@ void count_rules(const k::ProofTerm& proof, std::array<bool, kRuleCount>& seen) 
                 into(node.evidence);
                 into(node.left_case);
                 into(node.right_case);
+            } else if constexpr (std::is_same_v<Node, k::UnsignedInduction>) {
+                into(node.base);
+                into(node.step);
             }
         },
         proof.node);
@@ -142,8 +145,9 @@ std::string rule_name(std::size_t index) {
         "disjunction-introduction",
         "disjunction-elimination",
         "falsity-elimination",
+        "unsigned-induction",
     };
-    static_assert(kRuleCount == 14, "a proof former was added: name it here and give the oracle a case for it");
+    static_assert(kRuleCount == 15, "a proof former was added: name it here and give the oracle a case for it");
     return index < names.size() ? names[index] : "invalid";
 }
 
