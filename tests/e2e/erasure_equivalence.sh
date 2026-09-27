@@ -208,6 +208,25 @@ equivalent path_splits $'1 1 1 1 0 5 1 3 1 1 1 1\n1' \
 group=providers
 equivalent providers '8 12 8 16 24 8 1' 'Laws proven: +1' 'Proof declarations proven: +44'
 
+# SPEC: ERASE-001
+# Proofs of every logical form over ordinary programs -- conditional proofs,
+# contradiction, disjunction, formal equality, instantiated and rewritten
+# proofs, their composition, omitted cases and quantified propositions -- erase
+# to the programs written by hand.
+group=programs
+equivalent conditional_proof '41' 'Laws proven: +8'
+equivalent contradiction '1' 'Laws proven: +5'
+equivalent disjunction '2 1' 'Laws proven: +9' 'Proof declarations proven: +1' 'Function contracts proven: +2' \
+    'Call preconditions proven: +1'
+equivalent formal_equality '2 7' 'Laws proven: +2' 'Proof declarations proven: +6' 'Function contracts proven: +1'
+equivalent instantiated_proof '41' 'Laws proven: +7'
+equivalent logical_composition '7 1' 'Laws proven: +5' 'Proof declarations proven: +8' \
+    'Function contracts proven: +1'
+equivalent omitted_case '0' 'Laws proven: +5' 'Omitted cases proven: +8'
+equivalent quantified_propositions '40 1 3 2' 'Laws proven: +18' 'Proof declarations proven: +5' \
+    'Function contracts proven: +4' 'Call preconditions proven: +1'
+equivalent rewritten_proof '41' 'Laws proven: +5'
+
 if [ "$compared" -eq 0 ]; then
     echo "the group $SELECTED compares no fixture" >&2
     exit 1
