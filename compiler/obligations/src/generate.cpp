@@ -370,7 +370,10 @@ class TermLowering {
                 }
                 const auto left = lower_type(binary->operands[0].type);
                 const auto right = lower_type(binary->operands[1].type);
-                if (!left || !right || !(*left == *right)) {
+                // Two abstract values, pointers among them, have no order and
+                // no machine equality the core states: `==` on them is refused,
+                // never lowered as an integer comparison of something else.
+                if (!left || !right || !(*left == *right) || !left->is_integer()) {
                     return fail("comparison requires equal-typed modeled integers", location);
                 }
                 auto lhs = lower(binary->operands[0]);
@@ -453,9 +456,10 @@ class TermLowering {
             return kernel::Term::primitive(kernel::PrimOp::Convert, type->integer_type(), {std::move(*operand)});
         }
         if (const auto* branch = std::get_if<vir::Conditional>(&expr.node)) {
-            if (branch->operands.size() != 3 || !type || !branch->operands[0].type.is_boolean() ||
-                !(branch->operands[1].type == expr.type) || !(branch->operands[2].type == expr.type)) {
-                return fail("conditional requires a comparison and equal-typed returns", location);
+            if (branch->operands.size() != 3 || !type || !type->is_integer() ||
+                !branch->operands[0].type.is_boolean() || !(branch->operands[1].type == expr.type) ||
+                !(branch->operands[2].type == expr.type)) {
+                return fail("conditional requires a comparison and equal-typed integer returns", location);
             }
             std::vector<kernel::Term> operands;
             for (const auto& operand : branch->operands) {

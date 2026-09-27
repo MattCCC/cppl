@@ -54,6 +54,21 @@ grep -q "recursive call 'countdown -> countdown' is not shown to be made at a sm
 grep -q "loop measure 'nested loop at line 27 measure' is not shown to decrease on every iteration" \
     "$run/unverified_termination.log"
 
+# A comparison of two abstract values and a conditional between two of them have
+# no integer meaning. Each is refused by name, where each once aborted the
+# compiler instead.
+refuse law_pointer_comparison
+grep -q "law 'same_pointer' cannot be stated to the formal core: comparison requires equal-typed modeled integers" \
+    "$run/law_pointer_comparison.log"
+refuse law_record_conditional
+grep -q "conditional requires a comparison and equal-typed integer returns" "$run/law_record_conditional.log"
+for aborted in law_pointer_comparison law_record_conditional; do
+    if grep -q "internal error" "$run/$aborted.log"; then
+        echo "$aborted aborted the compiler" >&2
+        exit 1
+    fi
+done
+
 # A specification that would never become an obligation is refused, not ignored:
 # a contract outside 'verified', and a loop invariant outside a verified body.
 refuse unchecked_specifications
