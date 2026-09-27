@@ -426,6 +426,19 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
         return static_cast<std::size_t>(
             std::ranges::count(outcome.counters.closure.claims, kind, &obligations::ClaimClosure::kind));
     };
+    // What each claim rests on in other units, for an editor to name beside
+    // its verdict as the trust report names it. A claim's location is its
+    // anchoring obligation's, which may be one of its paths.
+    for (const obligations::ClaimClosure& claim : outcome.counters.closure.claims) {
+        for (ObligationRecord& record : outcome.obligations) {
+            if (!(record.location == claim.location)) {
+                continue;
+            }
+            for (const obligations::ImportedDependency& imported : claim.imported) {
+                record.imported.push_back(ImportedRecord{imported.name, imported.origin});
+            }
+        }
+    }
     if (outcome.counters.closure.assumptions.size() != outcome.counters.trusted) {
         outcome.counters.closure.faults.emplace_back("a trusted law is not reported as TRUSTED");
     }

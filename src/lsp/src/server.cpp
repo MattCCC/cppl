@@ -818,6 +818,7 @@ void Server::publish_diagnostics(const Document& doc, bool opened) {
     job.request.text = doc.text();
     job.request.clang = clang_;
     job.request.clang_arguments = arguments_for(doc.path());
+    job.request.import_interfaces = compile_commands_.interfaces_for(doc.path());
     if (compile_scheduler_) {
         compile_scheduler_(std::move(job), opened);
         return;

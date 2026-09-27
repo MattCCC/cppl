@@ -637,13 +637,15 @@ The LSP determines how that information is presented.
 
 Implemented today: the compile of the buffer copies out, after the kernel has
 decided, what became of every obligation it verified -- its origin, where it
-is stated, its status, the trusted Laws a proven claim rests on, the goal the
-kernel was given, what produced the evidence, why it is not proven when it is
-not, and the proof written for a Law (`driver::ObligationRecord`). The server
-shows these and decides nothing:
+is stated, its status, the trusted Laws and the contracts of other units a
+proven claim rests on, the goal the kernel was given, what produced the
+evidence, why it is not proven when it is not, and the proof written for a Law
+(`driver::ObligationRecord`). The server shows these and decides nothing:
 
 - a code lens over each Law, proof and verified function the document writes
-  states its verdict: `PROVEN`, `PROVEN relative to trusted a, b`, `TRUSTED`,
+  states its verdict: `PROVEN`, `PROVEN relative to trusted a, b`, `PROVEN
+  relative to the imported contract of f` (see [Verification
+  interfaces](#verification-interfaces)), `TRUSTED`,
   `UNRESOLVED` and why, or for a verified function how many of its obligations
   are proven. A proof of a Law has no obligation of its own, so its lens states
   the Law's verdict on the evidence it supplied, or the verdict of the Law it
@@ -1596,6 +1598,35 @@ The document's editor unit and its compile read it with the same flags
 programs. An edited database is read again on the next request. A document with
 no database is read with `--clang-arg` alone.
 
+### Verification interfaces
+
+A call to a verified function another unit defines is verified against that
+unit's contract only when the build imports the unit's verification interface
+(`docs/DEVELOPER_GUIDE.md` 15.4). The editor imports the ones the build does:
+every `--cppl-import-interface=` of the entry that gives the document its flags,
+made absolute against the entry's directory, so a header imports what the file
+it takes its flags from imports.
+
+Each interface is read and checked by the compiler's own code, exactly as the
+CLI checks it (`SPEC.md` TUBOUND-005): one that cannot be read, is malformed, was
+produced by another compiler or under other verification semantics, kernel,
+formal core, Clang, language mode or target, names a library model this compiler
+does not have, or is stale because a file its unit was produced from has changed
+since, is reported at the top of the document with the
+`cppl.verification.interface` code, and none of its contracts is used; neither
+is one another interface contradicts or one proven through a record that is not
+imported as it was. The language mode compared is the last `-std=` the document
+is read with, the one Clang obeys. A call that no usable interface records is
+shown refused, as the CLI refuses it.
+
+A claim proven through another unit's contract is `PROVEN` relative to that
+record, never outright: its lens names the imported contract, and hover names
+the interface that recorded it (`SPEC.md` TUBOUND-014). Interfaces are read on
+every compile of the document, so one the build rewrites is used from the next
+compile on. The editor never writes an interface, and never re-checks another
+unit's proof: an interface is believed on the build's word, as the CLI believes
+it (`TRUST.md` 31.1).
+
 A quoted `#include` is looked for beside the document, as a compiler looks for
 it beside the file that writes it. This holds even though the compile reads a
 copy of the buffer from a scratch directory.
@@ -1682,12 +1713,7 @@ milestone and are not implemented:
 ```text
 semantic tokens for a range or as a delta (whole documents only)
 proof search / interactive proof state
-verification interfaces (--cppl-import-interface)
 ```
-
-A call to a verified function another unit defines is therefore shown refused,
-with the `cppl.verification.interface` code, exactly as the CLI refuses it when
-no interface is imported (`docs/DEVELOPER_GUIDE.md` 15.4).
 
 Completion and hover cover every name, from Clang for C++ and from C++L's own
 syntax and declarations (see "Completion" and "Hover").

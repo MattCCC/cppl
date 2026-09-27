@@ -17,11 +17,17 @@
 
 namespace cppl::driver::detail {
 
-// What this compile would record as its configuration, and what an imported
-// interface must have been produced under (SPEC.md TUBOUND-005): this compiler's
-// version and the digest of its own executable, the kernel and formal-core
-// versions, the Clang that resolves C++ semantics, the selected language mode,
-// and the target triple the given Clang selects for `arguments`.
+// What an imported interface must have been produced under (SPEC.md
+// TUBOUND-005): this compiler's version and verification semantics, the kernel
+// and formal-core versions, the Clang that resolves C++ semantics, the selected
+// language mode, and the target triple the given Clang selects for `arguments`.
+// The digest of this compiler's own build is left unset: an interface records
+// it, and no reader compares it.
+[[nodiscard]] std::expected<artifact::Configuration, std::string> compared_configuration(
+    const std::string& clang, const std::vector<std::string>& arguments, const std::string& standard);
+
+// What this compile would record as its configuration: the compared
+// configuration and the digest of this compiler's own executable.
 [[nodiscard]] std::expected<artifact::Configuration, std::string> current_configuration(
     const std::string& clang, const std::vector<std::string>& arguments, const std::string& standard);
 

@@ -147,6 +147,43 @@ CPPL_TEST(the_nearest_database_gives_a_file_its_own_entry_or_the_most_alike) {
     CPPL_CHECK(commands.flags_for((root / "src" / "a.cpp").string()).empty());
 }
 
+CPPL_TEST(the_interfaces_a_command_imports_are_named_in_order_and_made_absolute) {
+    expect(imported_interfaces({"cppl", "-c", "b.cpp", "--cppl-import-interface=a.cppli", "-o", "b.o",
+                                "--cppl-import-interface=/abs/c.cppli",
+                                "--cppl-import-interface=", "--cppl-import-interface", "d.cppli",
+                                "--cppl-emit-interface=b.cppli", "-DX", "--cppl-import-interface=../lib/e.cppli"},
+                               "/work/build"),
+           {"/work/build/a.cppli", "/abs/c.cppli", "/work/lib/e.cppli"}, __LINE__);
+    // The compiler is not one of its arguments.
+    expect(imported_interfaces({"--cppl-import-interface=x.cppli"}, "/"), {}, __LINE__);
+    expect(imported_interfaces({"clang++", "-c", "a.cpp"}, "/"), {}, __LINE__);
+    // An interface is never a flag Clang reads the text with.
+    expect(reading_flags({"cppl", "--cppl-import-interface=a.cppli", "-DKEPT"}, "/"), {"-DKEPT"}, __LINE__);
+}
+
+CPPL_TEST(a_file_imports_the_interfaces_of_the_entry_that_gives_its_flags) {
+    const cppl::driver::ScratchDirectory scratch;
+    const std::filesystem::path root = scratch.path() / "project";
+    const std::filesystem::path build = root / "build";
+    write(build / "compile_commands.json",
+          R"([{"directory":")" + build.string() +
+              R"(","file":"../src/a.cpp","command":"cppl -DFROM_A -c ../src/a.cpp --cppl-import-interface=lib.cppli"},)"
+              R"({"directory":")" +
+              build.string() + R"(","file":")" + (root / "src" / "b.cpp").string() +
+              R"(","arguments":["cppl","-DFROM_B","-c","b.cpp"]}])");
+    CompileCommands commands;
+    const std::string library = (build / "lib.cppli").lexically_normal().string();
+    expect(commands.interfaces_for((root / "src" / "a.cpp").string()), {library}, __LINE__);
+    // A header imports what the file it takes its flags from imports.
+    CPPL_CHECK(has(commands.flags_for((root / "include" / "a.hpp").string()), "-DFROM_A"));
+    expect(commands.interfaces_for((root / "include" / "a.hpp").string()), {library}, __LINE__);
+    CPPL_CHECK(commands.interfaces_for((root / "src" / "b.cpp").string()).empty());
+    CPPL_CHECK(commands.interfaces_for((scratch.path() / "elsewhere.cpp").string()).empty());
+    CPPL_CHECK(commands.interfaces_for("not/absolute.cpp").empty());
+    CPPL_CHECK(std::ranges::none_of(commands.flags_for((root / "src" / "a.cpp").string()),
+                                    [](const std::string& flag) { return flag.starts_with("--cppl-"); }));
+}
+
 CPPL_TEST(a_document_is_compiled_and_navigated_with_its_builds_flags) {
     const cppl::driver::ScratchDirectory scratch;
     const std::filesystem::path root = scratch.path() / "project";

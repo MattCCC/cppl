@@ -252,18 +252,11 @@ std::optional<std::string> unknown_model(const artifact::Interface& recorded) {
 
 } // namespace
 
-std::expected<artifact::Configuration, std::string> current_configuration(const std::string& clang,
-                                                                          const std::vector<std::string>& arguments,
-                                                                          const std::string& standard) {
+std::expected<artifact::Configuration, std::string> compared_configuration(const std::string& clang,
+                                                                           const std::vector<std::string>& arguments,
+                                                                           const std::string& standard) {
     artifact::Configuration configuration;
     configuration.compiler = CPPL_VERSION;
-    const std::optional<std::filesystem::path> self = executable_path();
-    const std::optional<source::Digest> build = self.has_value() ? digest_of_file(*self) : std::nullopt;
-    if (!build.has_value()) {
-        return std::unexpected("this compiler cannot identify its own build, which a verification interface "
-                               "records");
-    }
-    configuration.build = *build;
     configuration.semantics = obligations::kVerificationSemanticsVersion;
     configuration.verifier.bytes = kVerifierSemanticsDigest;
     configuration.kernel = kernel::kKernelVersion;
@@ -300,6 +293,23 @@ std::expected<artifact::Configuration, std::string> current_configuration(const 
     // rebuilt from its own declaration, and what a body means is fixed by the
     // producer's own compile, which these options drove (RFC 0017).
     configuration.flags = arguments;
+    return configuration;
+}
+
+std::expected<artifact::Configuration, std::string> current_configuration(const std::string& clang,
+                                                                          const std::vector<std::string>& arguments,
+                                                                          const std::string& standard) {
+    const std::optional<std::filesystem::path> self = executable_path();
+    const std::optional<source::Digest> build = self.has_value() ? digest_of_file(*self) : std::nullopt;
+    if (!build.has_value()) {
+        return std::unexpected("this compiler cannot identify its own build, which a verification interface "
+                               "records");
+    }
+    std::expected<artifact::Configuration, std::string> configuration =
+        compared_configuration(clang, arguments, standard);
+    if (configuration) {
+        configuration->build = *build;
+    }
     return configuration;
 }
 

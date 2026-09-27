@@ -323,6 +323,14 @@ target_link_libraries(lsp_compile_commands_test PRIVATE cppl_lsp)
 target_compile_definitions(lsp_compile_commands_test PRIVATE
     CPPL_TEST_DEFAULT_CLANG="${CPPL_DEFAULT_CLANG}")
 
+# Writes each unit's interface with the compiler itself, as a build does.
+cppl_add_unit_test(lsp_interfaces_test unit/lsp_interfaces_test.cpp)
+target_link_libraries(lsp_interfaces_test PRIVATE cppl_lsp)
+target_compile_definitions(lsp_interfaces_test PRIVATE
+    CPPL_TEST_DEFAULT_CLANG="${CPPL_DEFAULT_CLANG}"
+    CPPL_TEST_COMPILER="$<TARGET_FILE:cppl>")
+add_dependencies(lsp_interfaces_test cppl)
+
 cppl_add_unit_test(lsp_background_test unit/lsp_background_test.cpp)
 target_link_libraries(lsp_background_test PRIVATE cppl_lsp)
 target_compile_definitions(lsp_background_test PRIVATE
