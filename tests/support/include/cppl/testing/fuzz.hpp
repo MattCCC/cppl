@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <iostream>
+#include <optional>
 #include <source_location>
 #include <span>
 #include <string>
@@ -18,6 +19,15 @@ inline void require(bool holds, const char* property,
                     const std::source_location where = std::source_location::current()) {
     if (!holds) {
         std::cerr << where.file_name() << ':' << where.line() << ": property does not hold: " << property << '\n';
+        std::abort();
+    }
+}
+
+// The same, for an oracle that describes what failed only when it fails.
+inline void require_none(const std::optional<std::string>& violation,
+                         const std::source_location where = std::source_location::current()) {
+    if (violation) {
+        std::cerr << where.file_name() << ':' << where.line() << ": property does not hold: " << *violation << '\n';
         std::abort();
     }
 }

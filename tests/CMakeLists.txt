@@ -13,7 +13,23 @@ target_include_directories(cppl_testing PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/support/include>)
 target_link_libraries(cppl_testing PRIVATE cppl_project_options)
 # Only the harness's own headers: the fixtures are programs under test.
-cppl_check_headers(cppl_testing support)
+cppl_check_headers(cppl_testing support/include)
+
+# An independent finite model of the kernel's core, a generator of mostly valid
+# derivations with deliberate defects, and the oracle relating the two
+# (docs/KERNEL.md, "Testing"). Shared by the kernel property tests and the
+# kernel fuzz targets. It reaches the untrusted producers, refutation and
+# automation, only to have candidate evidence to put to the kernel.
+add_library(cppl_kernel_testing STATIC
+    support/kernel/src/kernel_generator.cpp
+    support/kernel/src/kernel_model.cpp
+    support/kernel/src/kernel_oracle.cpp)
+target_include_directories(cppl_kernel_testing PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/support/kernel/include>)
+target_link_libraries(cppl_kernel_testing
+    PUBLIC cppl_kernel
+    PRIVATE cppl_refutation cppl_automation cppl_project_options)
+cppl_check_headers(cppl_kernel_testing support/kernel)
 
 # Labels are what CTest selects a tier with (`ctest -L unit`). They are applied
 # at registration so no list of tests is maintained anywhere else -- not in the
@@ -99,6 +115,10 @@ target_link_libraries(kernel_adversarial_test PRIVATE cppl_kernel)
 
 cppl_add_unit_test(kernel_induction_test kernel/induction_test.cpp)
 target_link_libraries(kernel_induction_test PRIVATE cppl_kernel)
+
+# Whatever the kernel accepts is true in an independent finite model.
+cppl_add_unit_test(kernel_model_oracle_test kernel/model_oracle_test.cpp)
+target_link_libraries(kernel_model_oracle_test PRIVATE cppl_kernel cppl_kernel_testing)
 
 cppl_add_unit_test(unit_digest_test unit/digest_test.cpp)
 target_link_libraries(unit_digest_test PRIVATE cppl_source)

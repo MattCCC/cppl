@@ -87,3 +87,13 @@ cppl_add_fuzz_target(lsp_message LIBRARIES cppl_lsp MAX_LEN 65536 MALLOC_LIMIT_M
 cppl_add_fuzz_target(lsp_uri LIBRARIES cppl_lsp)
 cppl_add_fuzz_target(frontend LIBRARIES cppl_frontend cppl_erasure cppl_diagnostics MAX_LEN 16384)
 cppl_add_fuzz_target(interface LIBRARIES cppl_artifact MAX_LEN 16384 MALLOC_LIMIT_MB 64)
+
+# The trusted kernel (docs/KERNEL.md, "Testing"): derivations, arithmetic
+# certificates, the term operations its rules rest on, and the certificate
+# checker alone. Each input is a stream of choices, so any byte string decodes
+# to a finite, well-formed sample; the oracle is the independent model in
+# tests/support/kernel.
+cppl_add_fuzz_target(kernel_proof LIBRARIES cppl_kernel_testing MAX_LEN 1024)
+cppl_add_fuzz_target(kernel_arithmetic LIBRARIES cppl_kernel_testing MAX_LEN 1024)
+cppl_add_fuzz_target(kernel_terms LIBRARIES cppl_kernel_testing MAX_LEN 512)
+cppl_add_fuzz_target(kernel_certificate LIBRARIES cppl_kernel_testing cppl_refutation MAX_LEN 512)
