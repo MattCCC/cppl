@@ -38,3 +38,35 @@ same_code() {
         return 1
     fi
 }
+
+# tokens <output> <clang> [args...] <source>
+#
+# Writes <output> as the program text Clang reads from <source> once it is
+# preprocessed: one token a line, its kind and its spelling, with no position,
+# spacing, comment or line marker. Two programs with the same tokens are the
+# same text as far as any C++ compiler is concerned; that is the runtime-text
+# comparison, and it sees what code comparison cannot, such as a declaration
+# nothing calls. Fails when Clang fails or reads nothing.
+tokens() {
+    local output="$1"
+    shift
+    "$@" -fsyntax-only -Xclang -dump-tokens 2> "$output.dump"
+    # Each line is the kind and the spelling, a tab, then flags and location.
+    cut -f 1 "$output.dump" > "$output"
+    if [ ! -s "$output" ]; then
+        echo "no tokens were read by: $*" >&2
+        return 1
+    fi
+}
+
+# same_text <what> <left> <right>
+#
+# Fails, showing where they part, when two token lists differ.
+same_text() {
+    local what="$1" left="$2" right="$3"
+    if ! cmp -s "$left" "$right"; then
+        echo "$what: the two programs are different text" >&2
+        diff "$left" "$right" | head -n 40 >&2 || true
+        return 1
+    fi
+}

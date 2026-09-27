@@ -17,6 +17,11 @@
 # where what is left is what runs. Identical code is what rules out a hidden
 # check that happens to pass on the test input, a proof-only branch, a tag or a
 # field, and a changed signature, on paths no input takes as well.
+#
+# The runtime program the compiler hands Clang must also be the twin's text:
+# token for token once both are preprocessed, whatever the spacing, comments
+# and line markers. That rules out what no code is emitted for, such as a
+# declaration nothing uses, and it is checked before anything is compiled.
 set -euo pipefail
 
 CPPL="$1"
@@ -43,6 +48,15 @@ for level in -O0 -O2; do
         fi
     done
 done
+for variant in erased checked tagged declared; do
+    tokens "$run/tampered-$variant.tokens" "$CLANG" -std=c++17 "$FIXTURES/tampered/$variant.cpp"
+done
+for variant in checked tagged declared; do
+    if cmp -s "$run/tampered-erased.tokens" "$run/tampered-$variant.tokens"; then
+        echo "the text comparison cannot see a $variant program" >&2
+        exit 1
+    fi
+done
 
 # equivalent <fixture> <expected output> <trust-report line>...
 #
@@ -68,6 +82,10 @@ equivalent() {
             echo "analysis scaffolding reached the runtime program of $fixture ($standard)" >&2
             exit 1
         fi
+        # The runtime program is the twin's text.
+        tokens "$base.runtime.tokens" "$CLANG" "-std=$standard" -x c++-cpp-output "$base.runtime.ii"
+        tokens "$base.reference.tokens" "$CLANG" "-std=$standard" "$FIXTURES/$fixture.reference.cpp"
+        same_text "$fixture ($standard)" "$base.runtime.tokens" "$base.reference.tokens"
 
         "$CLANG" "-std=$standard" "$FIXTURES/$fixture.reference.cpp" -o "$base.reference"
         output=$("$base.cppl")

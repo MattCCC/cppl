@@ -10,9 +10,10 @@
 # refinements lower to. In every supported standard and at both optimization
 # levels:
 #
-#   - the library compiles to exactly the code of its erasure written by hand,
-#     `abi_library.reference.cpp`: the same symbols under the same mangled
-#     names, the same layouts and the same calling conventions;
+#   - the library is the text of its erasure written by hand,
+#     `abi_library.reference.cpp`, and compiles to exactly its code: the same
+#     symbols under the same mangled names, the same layouts and the same
+#     calling conventions;
 #   - the client links against the C++L-compiled library, which it could not do
 #     if a refinement had reached a mangled name, and calls it: records passed
 #     in registers and through memory, by value and by reference, returned by
@@ -36,7 +37,12 @@ expected=$'42 42 42 0 100 64 5 9 9 3 6\n1'
 
 for standard in c++17 c++20 c++23; do
     "$CPPL" "-std=$standard" -c "$FIXTURES/abi_library.cpp" -o "$run/verified-$standard.o" --cppl-trust-report \
-        > "$run/verified-$standard.report"
+        "--cppl-emit-projection=$run/verified-$standard.runtime.ii" > "$run/verified-$standard.report"
+    # The program compiled is the erasure by hand, token for token.
+    tokens "$run/verified-$standard.tokens" "$CLANG" "-std=$standard" -x c++-cpp-output \
+        "$run/verified-$standard.runtime.ii"
+    tokens "$run/reference-$standard.tokens" "$CLANG" "-std=$standard" "$FIXTURES/abi_library.reference.cpp"
+    same_text "abi_library ($standard)" "$run/verified-$standard.tokens" "$run/reference-$standard.tokens"
     grep -Eq '^Laws proven: +1$' "$run/verified-$standard.report"
     grep -Eq '^Function contracts proven: +7$' "$run/verified-$standard.report"
     grep -Eq '^Unresolved obligations: +0$' "$run/verified-$standard.report"

@@ -1,7 +1,7 @@
-// Ordinary C++: what `type Small = unsigned where (self < 10u);` and a function
-// taking a `Money` must erase to. `checked.cpp`, `tagged.cpp` and `declared.cpp`
-// each add one artifact erasure must never introduce, and the equivalence suites
-// require the comparisons they rely on to tell each of them apart from this file.
+// `erased.cpp` with a proof-status declaration added that nothing uses: a
+// runtime artifact SPEC.md ERASEMATRIX-002 forbids, which no code is emitted for.
+// Identical code cannot show it is there; only the program's text can, which is
+// why the equivalence suites compare that as well.
 #include <cstdio>
 
 using Small = unsigned;
@@ -9,6 +9,10 @@ using Small = unsigned;
 struct Money {
     unsigned cents;
 };
+
+inline bool digit_is_proven() {
+    return true;
+}
 
 Small digit(unsigned x) {
     return x;

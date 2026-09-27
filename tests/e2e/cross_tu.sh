@@ -137,6 +137,19 @@ for standard in c++17 c++20 c++23; do
     "$CLANG" "library-$standard.o" "middle-$standard.o" "client-$standard.o" -o "program-$standard"
     [ "$("./program-$standard")" = "$expected" ] || fail "the three units ran differently ($standard)"
 
+    # SPEC: ERASE-010 -- the program each unit hands Clang is the text of its
+    # erasure written by hand, token for token.
+    "$CPPL" "-std=$standard" -c library.cpp -o "text-library-$standard.o" \
+        "--cppl-emit-projection=library-$standard.runtime.ii"
+    "$CPPL" "-std=$standard" -c client.cpp -o "text-client-$standard.o" "--cppl-import-interface=$interface" \
+        "--cppl-import-interface=middle-$standard.cppli" "--cppl-emit-projection=client-$standard.runtime.ii"
+    for unit in library client; do
+        tokens "$unit-$standard.runtime.tokens" "$CLANG" "-std=$standard" -x c++-cpp-output \
+            "$unit-$standard.runtime.ii"
+        tokens "$unit-$standard.reference.tokens" "$CLANG" "-std=$standard" "$unit.reference.cpp"
+        same_text "$unit ($standard)" "$unit-$standard.runtime.tokens" "$unit-$standard.reference.tokens"
+    done
+
     # SPEC: ERASE-010, ABI-001 -- the same code as the erasure written by
     # hand, whatever interface was written or read, at both levels.
     for level in -O0 -O2; do

@@ -1,10 +1,9 @@
 // cross_tu/client.cpp with every C++L construct erased by hand, declaring the
 // functions of library.cpp and middle.cpp as ordinary C++ does. tests/e2e/
-// cross_tu.sh compiles this with Clang alone and requires the same code as
-// client.cpp compiled by cppl with both interfaces imported: using another
-// unit's contract changes nothing that runs (SPEC.md TUBOUND-003, ERASE-010).
-#include <cstdio>
-
+// cross_tu.sh compiles this with Clang alone and requires the same text and the
+// same code as client.cpp compiled by cppl with both interfaces imported: using
+// another unit's contract changes nothing that runs (SPEC.md TUBOUND-003,
+// ERASE-010). The headers' declarations stand where client.cpp includes them.
 using Small = unsigned;
 
 unsigned clamp4(unsigned x);
@@ -22,6 +21,8 @@ template <unsigned N> unsigned bound(unsigned x);
 template <> unsigned bound<4u>(unsigned x);
 
 unsigned doubled(unsigned y);
+
+#include <cstdio>
 
 unsigned clamped(unsigned y) {
     return clamp4(y);
