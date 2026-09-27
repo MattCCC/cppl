@@ -1,5 +1,7 @@
-// Two proofs that each use the other. Neither ever reaches the kernel: this
-// formal core has no induction rule, so circular evidence is not evidence.
+// Two proofs that each use the other. Neither ever reaches the kernel:
+// circular evidence is not evidence, and an induction hypothesis comes only from
+// `induction` and its principle, never from proofs naming each other (SPEC.md
+// 21.4, PROOFSRC-007).
 
 #include <iostream>
 

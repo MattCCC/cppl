@@ -259,9 +259,36 @@ struct ProductStep {
     std::vector<ProofStep> steps;
 };
 
+// `induction x { zero => { ... } successor(pred) => { ... } }`, or `induction x;`
+// for automation in every case (SPEC.md 21, GRAMMAR.md 5.8).
+//
+// The subject is a parameter of the proof whose type is an unsigned machine
+// integer, and what is recorded is where its quantifier stands, never its
+// name: `level` is the parameter's position less the parameters enclosing zero
+// arms have already consumed, which is the number of binders the goal leads
+// with in front of the subject's. The obligation layer states the induction
+// over exactly that quantifier and hands the kernel the rule's two premises,
+// which the kernel derives again for itself (FOUNDATIONS.md 74).
+//
+// Inside an arm the subject is out of scope. Every expression an arm's steps
+// hold has already been stated for the binders that stand there: in the zero
+// arm the subject's quantifier is gone and the parameters after it moved in by
+// one; in the successor arm the predecessor stands where the subject stood.
+struct InductionStep {
+    std::uint32_t level = 0;
+    std::string subject;
+    Type type;
+    // `induction x;`: no arms were written, and each case is left to automation.
+    bool automatic = false;
+    std::vector<ProofStep> zero;
+    std::vector<ProofStep> successor;
+    source::SourceLocation zero_location;
+    source::SourceLocation successor_location;
+};
+
 struct ProofStep {
     std::variant<ReflexivityStep, ExactStep, ApplyStep, AssumeStep, RewriteStep, ContradictionStep, CasesStep,
-                 ProductStep>
+                 ProductStep, InductionStep>
         node;
     source::SourceLocation location;
 };

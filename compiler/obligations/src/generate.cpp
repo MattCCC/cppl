@@ -1362,6 +1362,10 @@ struct Body {
     // standing premises: `assume` cannot name one and `contradiction` does not
     // reason from one unless a statement names it as evidence (TRUSTED-008).
     const std::vector<TrustedPremise>* trusted = nullptr;
+
+    // Where `induction x;` asks for evidence for each of its cases (SPEC.md
+    // INDUCT-005). Absent, the short form is refused rather than guessed.
+    const CaseAutomation* automation = nullptr;
 };
 
 // Where a trusted premise stands among the hypotheses in scope. The trusted
@@ -1911,6 +1915,174 @@ std::optional<kernel::ProofTerm> prove_cases(Body& body, const vir::ProofStep& s
     return quantify(binders, std::move(*evidence));
 }
 
+// One case of `induction x;`, closed by automation (SPEC.md INDUCT-005).
+//
+// The case is stated as a claim of its own, closed over every binder and every
+// premise standing where the statement is written, so automation sees exactly
+// what a written arm would and nothing more: no trusted law is among the
+// premises, because no strategy ever supposes one. The candidate is checked by
+// the kernel against that claim here, and is then used by eliminating it at
+// the binders and premises it was closed over, so what the whole proof rests on
+// is checked again with it.
+std::optional<kernel::ProofTerm> automatic_case(const Body& body, const kernel::Proposition& goal,
+                                                const std::string& label, const vir::InductionStep& induction,
+                                                const source::SourceLocation& location, diagnostics::Engine& engine) {
+    kernel::Proposition closed = goal;
+    for (std::size_t index = body.assumptions.size(); index > 0; --index) {
+        closed = kernel::Proposition::implication(body.assumptions[index - 1].second, std::move(closed));
+    }
+    for (const kernel::Type& binder : std::views::reverse(body.binders)) {
+        closed = kernel::Proposition::for_all(binder, std::move(closed));
+    }
+
+    std::optional<kernel::ProofTerm> candidate;
+    if (body.automation != nullptr && *body.automation) {
+        candidate = (*body.automation)(body.context, closed);
+    }
+    if (!candidate.has_value() || !kernel::check(body.context, closed, *candidate, kernel::CoreLimits{})) {
+        report(engine, diagnostics::Category::ProofFailure, location,
+               "automation does not establish the '" + label + "' case of induction over '" + induction.subject + "'",
+               "the case to prove is " + kernel::describe(goal) + "; write the arms to prove it explicitly");
+        return std::nullopt;
+    }
+
+    kernel::ProofTerm term = std::move(*candidate);
+    kernel::Proposition current = std::move(closed);
+    for (std::size_t position = 0; position < body.binders.size(); ++position) {
+        const kernel::Term argument = kernel::Term::variable(kernel::parameter_reference(body.depth, position));
+        kernel::Proposition instance = kernel::instantiate(*std::get<kernel::Forall>(current.node).body, argument);
+        term = kernel::ProofTerm::forall_elimination(std::move(current), std::move(term), argument);
+        current = std::move(instance);
+    }
+    for (std::size_t position = 0; position < body.assumptions.size(); ++position) {
+        kernel::Proposition conclusion = *std::get<kernel::Implies>(current.node).conclusion;
+        term = kernel::ProofTerm::implication_elimination(
+            std::move(current), std::move(term),
+            kernel::ProofTerm::hypothesis(
+                kernel::HypothesisIndex{static_cast<std::uint32_t>(body.assumptions.size() - 1 - position)}));
+        current = std::move(conclusion);
+    }
+    return term;
+}
+
+// `induction x { zero => ... successor(pred) => ... }` and `induction x;`
+// (SPEC.md 21, GRAMMAR.md 5.8).
+//
+// The subject names the quantifier `induction.level` binders into the goal. The
+// binders in front of it are introduced as a universal introduction would, and
+// the quantifier itself is established by the kernel's unsigned induction rule
+// (FOUNDATIONS.md 74). Its two premises are stated here by the kernel's own
+// functions, which the kernel calls again when it checks the evidence: the
+// zero arm proves the goal at 0, and the successor arm proves it at the
+// predecessor plus one with the range premise and the induction hypothesis
+// standing as premises `assume` can name (INDUCT-001, INDUCT-003). Those two
+// premises are the step's own implication introductions, so neither exists
+// outside the successor arm (FOUNDATIONS.md 10).
+//
+// The quantifier must still stand in the goal: a statement that has already
+// introduced it, such as an earlier `assume`, leaves a variable, and induction
+// over a variable would need the premises mentioning it generalized first,
+// which this implementation does not do. That is refused rather than read as
+// induction over something else.
+std::optional<kernel::ProofTerm> prove_induction(Body& body, const vir::ProofStep& step,
+                                                 const vir::InductionStep& induction, const kernel::Proposition& goal,
+                                                 diagnostics::Engine& engine) {
+    if (body.depth > induction.level) {
+        report(engine, diagnostics::Category::ProofFailure, step.location,
+               "induction over '" + induction.subject + "' comes after a statement that already introduced it",
+               "write 'induction' before any 'assume', 'rewrite', 'cases' or 'apply' that introduces the "
+               "quantifiers the goal leads with");
+        return std::nullopt;
+    }
+
+    std::vector<kernel::Type> binders;
+    const kernel::Proposition* at = &goal;
+    while (body.depth + binders.size() < induction.level) {
+        const auto* leading = std::get_if<kernel::Forall>(&at->node);
+        if (leading == nullptr) {
+            break;
+        }
+        binders.push_back(leading->binder);
+        at = &*leading->body;
+    }
+    const auto* quantified = std::get_if<kernel::Forall>(&at->node);
+    const std::optional<kernel::Type> subject = lower_type(induction.type);
+    if (body.depth + binders.size() != induction.level || quantified == nullptr || !subject.has_value() ||
+        !(*subject == quantified->binder)) {
+        report(engine, diagnostics::Category::ProofFailure, step.location,
+               "the goal here does not quantify over '" + induction.subject + "'",
+               "the goal is " + kernel::describe(goal));
+        return std::nullopt;
+    }
+    if (!subject->is_integer() || subject->integer_type().signedness != kernel::Signedness::Unsigned) {
+        report(engine, diagnostics::Category::ProofFailure, step.location,
+               "induction over '" + induction.subject + "' has no principle for " + kernel::describe(*subject));
+        return std::nullopt;
+    }
+    const kernel::IntType& type = subject->integer_type();
+    const kernel::Proposition base = kernel::induction_base(type, *quantified->body);
+    const kernel::Proposition successor = kernel::induction_step(type, *quantified->body);
+
+    Body scoped = body;
+    scoped.depth += binders.size();
+    scoped.binders.insert(scoped.binders.end(), binders.begin(), binders.end());
+    for (auto& assumption : scoped.assumptions)
+        assumption.second = kernel::shift(assumption.second, static_cast<std::uint32_t>(binders.size()));
+
+    std::optional<kernel::ProofTerm> zero;
+    std::optional<kernel::ProofTerm> next;
+    if (induction.automatic) {
+        zero = automatic_case(scoped, base, "zero", induction, step.location, engine);
+        if (!zero)
+            return std::nullopt;
+        next = automatic_case(scoped, successor, "successor", induction, step.location, engine);
+        if (!next)
+            return std::nullopt;
+    } else {
+        const auto arm = [&](Body context, const std::vector<vir::ProofStep>& steps,
+                             const source::SourceLocation& location,
+                             const kernel::Proposition& case_goal) -> std::optional<kernel::ProofTerm> {
+            context.steps = &steps;
+            context.cursor = 0;
+            context.body_location = location;
+            auto evidence = prove(context, case_goal, engine);
+            if (evidence && context.cursor != steps.size()) {
+                report(engine, diagnostics::Category::ProofFailure, steps[context.cursor].location,
+                       "induction arm has already closed its goal");
+                return std::nullopt;
+            }
+            return evidence;
+        };
+        zero = arm(scoped, induction.zero, induction.zero_location, base);
+        if (!zero)
+            return std::nullopt;
+
+        // forall n. n < max -> P(n) -> P(n + 1): the arm stands under `n`, with
+        // the range premise and the hypothesis supposed in that order.
+        const auto& stepped = std::get<kernel::Forall>(successor.node);
+        const auto& range = std::get<kernel::Implies>(stepped.body->node);
+        const auto& hypothesis = std::get<kernel::Implies>(range.conclusion->node);
+        constexpr auto anonymous = std::numeric_limits<std::uint32_t>::max();
+        Body under = scoped;
+        under.depth += 1;
+        under.binders.push_back(stepped.binder);
+        for (auto& assumption : under.assumptions)
+            assumption.second = kernel::shift(assumption.second, 1);
+        under.assumptions.emplace_back(anonymous, *range.premise);
+        under.assumptions.emplace_back(anonymous, *hypothesis.premise);
+        auto closed = arm(under, induction.successor, induction.successor_location, *hypothesis.conclusion);
+        if (!closed)
+            return std::nullopt;
+        next = kernel::ProofTerm::forall_introduction(
+            stepped.binder,
+            kernel::ProofTerm::implication_introduction(
+                *range.premise, kernel::ProofTerm::implication_introduction(*hypothesis.premise, std::move(*closed))));
+    }
+
+    return quantify(binders,
+                    kernel::ProofTerm::unsigned_induction(quantified->binder, std::move(*zero), std::move(*next)));
+}
+
 std::optional<kernel::ProofTerm> prove(Body& body, const kernel::Proposition& goal, diagnostics::Engine& engine) {
     const vir::Proof& proof = body.proof;
 
@@ -1943,6 +2115,9 @@ std::optional<kernel::ProofTerm> prove(Body& body, const kernel::Proposition& go
 
     if (const auto* cases = std::get_if<vir::CasesStep>(&step.node))
         return prove_cases(body, step, *cases, goal, engine);
+
+    if (const auto* induction = std::get_if<vir::InductionStep>(&step.node))
+        return prove_induction(body, step, *induction, goal, engine);
 
     if (std::holds_alternative<vir::ReflexivityStep>(step.node)) {
         return definitional_evidence(goal);
@@ -2053,7 +2228,7 @@ std::optional<kernel::ProofTerm> prove(Body& body, const kernel::Proposition& go
 // the claimed proposition itself, and `apply` must offer a conclusion that
 // proposition can accept. Both then go to the kernel like any other evidence.
 void lower_proofs(const vir::Module& module, const elaboration::Result& elaborated, const DefinitionMap& definitions,
-                  Program& program, diagnostics::Engine& engine) {
+                  Program& program, diagnostics::Engine& engine, const CaseAutomation& automation) {
     program.refused_proofs = elaborated.laws_with_refused_proofs;
 
     std::map<std::uint32_t, const Obligation*> goals;
@@ -2118,6 +2293,10 @@ void lower_proofs(const vir::Module& module, const elaboration::Result& elaborat
                     if (const auto* cases = std::get_if<vir::CasesStep>(&step.node))
                         for (const auto& arm : cases->arms)
                             self(self, arm.steps);
+                    if (const auto* induction = std::get_if<vir::InductionStep>(&step.node)) {
+                        self(self, induction->zero);
+                        self(self, induction->successor);
+                    }
                 }
             };
             collect(collect, proof.steps);
@@ -2202,6 +2381,7 @@ void lower_proofs(const vir::Module& module, const elaboration::Result& elaborat
             Body body{proof, program.context, definitions, program.proofs, lowered, {}, 0, 0};
             body.omissions = &omissions;
             body.trusted = &assumptions;
+            body.automation = &automation;
             std::optional<kernel::ProofTerm> term = prove(body, *claimed, engine);
             // The proof is closed over the trusted laws it rests on, so what the
             // kernel checks is its claim relative to exactly those.
@@ -2268,7 +2448,8 @@ void lower_proofs(const vir::Module& module, const elaboration::Result& elaborat
     for (const vir::Proof* proof : pending) {
         report(engine, diagnostics::Category::ProofFailure, proof->steps.front().location,
                "proof '" + proof->name + "' depends on itself through the proofs it uses",
-               "this formal core has no induction rule, so written proofs must be acyclic");
+               "circular evidence is not evidence: an induction hypothesis comes only from 'induction' and its "
+               "principle, never from a proof naming itself (SPEC.md 21.4)");
         if (proof->law)
             program.refused_proofs.push_back(*proof->law);
     }
@@ -2516,7 +2697,7 @@ ObligationId identify_impossibility(Origin origin, const kernel::Context& contex
 }
 
 Program generate(const vir::Module& module, const elaboration::Result& elaborated, diagnostics::Engine& engine,
-                 const Imports& imports) {
+                 const Imports& imports, const CaseAutomation& automation) {
     Program program;
     DefinitionMap definitions;
     std::map<std::string, Failure> deferred;
@@ -2800,7 +2981,7 @@ Program generate(const vir::Module& module, const elaboration::Result& elaborate
         program.obligations.push_back(std::move(obligation));
     }
 
-    lower_proofs(module, elaborated, definitions, program, engine);
+    lower_proofs(module, elaborated, definitions, program, engine, automation);
     discharge_path_claims(program, engine);
     return program;
 }

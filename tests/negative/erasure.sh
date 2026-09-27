@@ -50,9 +50,10 @@ refuse() {
     done
 }
 
-# `old` and induction are specified and not implemented, and loop clauses
-# written outside their place are not recognized. Each keeps its C++ reading or
-# is refused by name; none is erased as though checked. Ghost state that code
+# `old` is specified and not implemented, induction over a signed integer has
+# no principle, and loop clauses written outside their place are not
+# recognized. Each keeps its C++ reading or is refused by name; none is erased
+# as though checked. Ghost state that code
 # would give runtime storage, and a contract resting on what an unsafe block
 # did, are refused, and nothing is erased around them.
 refuse ghost_runtime_storage \
@@ -60,7 +61,8 @@ refuse ghost_runtime_storage \
 refuse unsafe_false_postcondition \
     "unsafe_false_postcondition.cpp:12:12: error [kernel-rejection]: return path 'bumped path 1' does not satisfy its contract"
 refuse unsupported_old_value "unsupported_old_value.cpp:8:19: error [cpp-semantic]: use of undeclared identifier 'old'"
-refuse unsupported_induction "unsupported_induction.cpp:15:5: error [proof-failure]: proof" "uses induction over 'x'"
+refuse induction_signed_subject \
+    "induction_signed_subject.cpp:16:5: error [proof-failure]: induction over 'x' has no principle"
 refuse misplaced_loop_clauses \
     "misplaced_loop_clauses.cpp:11:9: error [cpp-semantic]: use of undeclared identifier 'invariant'" \
     "misplaced_loop_clauses.cpp:22:20: error [cpp-semantic]: expected ';' after do/while statement"

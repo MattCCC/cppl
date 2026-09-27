@@ -12,6 +12,8 @@
 #include "cppl/frontend/projection.hpp"
 #include "cppl/frontend/syntax.hpp"
 #include "cppl/frontend/token.hpp"
+#include "cppl/kernel/context.hpp"
+#include "cppl/kernel/proof.hpp"
 #include "cppl/kernel/proposition.hpp"
 #include "cppl/obligations/contracts.hpp"
 #include "cppl/obligations/generate.hpp"
@@ -281,8 +283,17 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
     }
 
     static const obligations::Imports none;
-    const obligations::Program program = obligations::generate(elaborated.module, elaborated, engine,
-                                                               request.imports != nullptr ? *request.imports : none);
+    // The short form of `induction` asks automation for each case; what it
+    // proposes is checked by the kernel there and again with the whole proof.
+    const obligations::CaseAutomation cases = [](const kernel::Context& context,
+                                                 const kernel::Proposition& claim) -> std::optional<kernel::ProofTerm> {
+        std::optional<automation::Evidence> evidence = automation::propose(context, claim);
+        if (!evidence.has_value())
+            return std::nullopt;
+        return std::move(evidence->proof);
+    };
+    const obligations::Program program = obligations::generate(
+        elaborated.module, elaborated, engine, request.imports != nullptr ? *request.imports : none, cases);
     if (!engine.has_errors() && program.proofs.size() != syntax.proofs.size()) {
         report(engine, diagnostics::Category::Internal, "not every written proof produced explicit evidence");
     }

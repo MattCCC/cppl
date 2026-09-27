@@ -651,6 +651,31 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
                     }
                     continue;
                 }
+                // `induction x { ... }` (GRAMMAR.md 5.8). The subject is resolved
+                // by Clang like a case subject, so an undeclared name is Clang's
+                // error at the statement. An arm's binder, the predecessor in
+                // `successor(pred)`, is declared with the subject's own type:
+                // `decltype` of a parameter is its declared type, so nothing is
+                // converted on the way. Which labels and binders are admitted is
+                // the principle's business, decided in elaboration.
+                if (statement.kind == ProofStatementKind::Induction) {
+                    expression_probe(statement.proposition, statement.location, projected.case_names, "case_");
+                    for (const ProofArm& arm : statement.arms) {
+                        Generated scoped = parameters;
+                        for (const std::string& binder : arm.binders) {
+                            if (!scoped.empty())
+                                scoped += ", ";
+                            scoped += "typename ";
+                            scoped += binding_helper;
+                            scoped += "<decltype(";
+                            scoped += at_written_position(stream, statement.proposition);
+                            scoped += ")>::type ";
+                            scoped += binder;
+                        }
+                        self(self, arm.statements, scoped);
+                    }
+                    continue;
+                }
                 for (const ProofArgument& argument : statement.arguments)
                     expression_probe(argument.span, argument.location, projected.argument_names, "argument_");
                 if (statement.kind != ProofStatementKind::Assume)

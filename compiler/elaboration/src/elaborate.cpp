@@ -1248,16 +1248,68 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
     // A residual binder is an alias for the subject's underlying value. Probe
     // parameters give it C++ lookup/type checking; this map removes those
     // analysis-only parameters before formal lowering, including under binders.
+    //
+    // Aliases are kept as they were resolved, with every position counted as
+    // though no induction had consumed a parameter; `relevel` below restates a
+    // converted expression for the binders that stand where it is written, once,
+    // after its aliases are in place.
     std::vector<vir::Expr> aliases;
+
+    // The induction statements whose arms enclose the statement being converted,
+    // outermost first (SPEC.md 21.4). An arm states its goal without the
+    // subject's quantifier: in the zero arm it is gone and the parameters after
+    // it move in by one, and in the successor arm the predecessor stands where
+    // the subject stood. The subject itself is out of scope in both, so a
+    // statement naming it is refused rather than read as zero, as the
+    // predecessor, or as a parameter that has moved into its place.
+    struct InductionFrame {
+        std::uint32_t subject = 0;
+        std::string name;
+        bool zero = false;
+        // The alias standing for the predecessor, in a successor arm.
+        std::optional<std::size_t> predecessor;
+    };
+    std::vector<InductionFrame> inductions;
+    std::optional<std::string> out_of_scope;
+    const auto mentions = [](auto&& self, const vir::Expr& expression, std::uint32_t position) -> bool {
+        if (const auto* parameter = std::get_if<vir::ParameterRef>(&expression.node))
+            return parameter->parameter == position;
+        return std::visit(
+            [&](const auto& node) {
+                if constexpr (requires { node.operands; }) {
+                    return std::ranges::any_of(node.operands,
+                                               [&](const vir::Expr& child) { return self(self, child, position); });
+                } else if constexpr (requires { node.arguments; }) {
+                    return std::ranges::any_of(node.arguments,
+                                               [&](const vir::Expr& child) { return self(self, child, position); });
+                } else if constexpr (requires { node.body; }) {
+                    return std::ranges::any_of(node.body,
+                                               [&](const vir::Expr& child) { return self(self, child, position); });
+                } else {
+                    return false;
+                }
+            },
+            expression.node);
+    };
     const auto remap = [&](auto&& self, vir::Expr& expression) -> void {
         if (auto* parameter = std::get_if<vir::ParameterRef>(&expression.node)) {
             if (parameter->parameter >= parameter_count) {
                 const auto index = parameter->parameter - parameter_count;
                 if (index < aliases.size()) {
+                    // A binder's value that mentions an induction subject would
+                    // carry the subject into an arm where it is out of scope; the
+                    // predecessor is the one alias that stands for that position.
+                    for (const InductionFrame& frame : inductions) {
+                        if (frame.predecessor != index && mentions(mentions, aliases[index], frame.subject))
+                            out_of_scope = frame.name;
+                    }
                     expression = aliases[index];
                 } else {
                     parameter->parameter -= static_cast<std::uint32_t>(aliases.size());
                 }
+            } else if (const auto frame = std::ranges::find(inductions, parameter->parameter, &InductionFrame::subject);
+                       frame != inductions.end()) {
+                out_of_scope = frame->name;
             }
             return;
         }
@@ -1276,14 +1328,66 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
             },
             expression.node);
     };
+    // Each zero arm enclosing the expression removed one quantifier, so every
+    // position after its subject moves in by one. A reference to the subject of
+    // a zero arm has no position left to denote.
+    const auto relevel = [&](auto&& self, vir::Expr& expression) -> void {
+        if (auto* parameter = std::get_if<vir::ParameterRef>(&expression.node)) {
+            std::uint32_t consumed = 0;
+            for (const InductionFrame& frame : inductions) {
+                if (!frame.zero)
+                    continue;
+                if (parameter->parameter == frame.subject)
+                    out_of_scope = frame.name;
+                if (parameter->parameter > frame.subject)
+                    ++consumed;
+            }
+            parameter->parameter -= consumed;
+            return;
+        }
+        std::visit(
+            [&](auto& node) {
+                if constexpr (requires { node.operands; }) {
+                    for (auto& child : node.operands)
+                        self(self, child);
+                } else if constexpr (requires { node.arguments; }) {
+                    for (auto& child : node.arguments)
+                        self(self, child);
+                } else if constexpr (requires { node.body; }) {
+                    for (auto& child : node.body)
+                        self(self, child);
+                }
+            },
+            expression.node);
+    };
+    // `restated` is false only for a case subject, whose resolved form the
+    // provider decomposes into aliases; those stay as resolved, and the subject
+    // is restated for the step separately.
     const auto convert_probe = [&](const std::vector<std::string>& names, std::size_t& next,
-                                   const source::SourceLocation& location) -> std::optional<vir::Expr> {
+                                   const source::SourceLocation& location,
+                                   bool restated = true) -> std::optional<vir::Expr> {
         if (next >= names.size())
             return std::nullopt;
         auto expression = convert_projected(request, names[next++], location, next_expression_id,
                                             "statement of proof '" + declaration.name + "'", engine);
-        if (expression)
-            remap(remap, *expression);
+        if (!expression)
+            return expression;
+        out_of_scope.reset();
+        remap(remap, *expression);
+        if (restated)
+            relevel(relevel, *expression);
+        if (out_of_scope.has_value()) {
+            report(engine, diagnostics::Category::Elaboration, location,
+                   "'" + *out_of_scope + "' is not in scope inside the arms of its own induction",
+                   "the zero arm proves the claim at 0 and the successor arm at the predecessor plus one; name the "
+                   "predecessor the successor arm binds (SPEC.md 21.4)");
+            return std::nullopt;
+        }
+        return expression;
+    };
+    const auto restate = [&](vir::Expr expression) {
+        out_of_scope.reset();
+        relevel(relevel, expression);
         return expression;
     };
     const auto convert_steps =
@@ -1297,9 +1401,16 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
 
             if (statement.kind == frontend::ProofStatementKind::Cases ||
                 statement.kind == frontend::ProofStatementKind::Decompose) {
-                auto subject = convert_probe(projected.case_names, next_case, statement.location);
+                auto subject = convert_probe(projected.case_names, next_case, statement.location, false);
                 if (!subject)
                     return std::nullopt;
+                const vir::Expr stated_subject = restate(*subject);
+                if (out_of_scope.has_value()) {
+                    report(engine, diagnostics::Category::Elaboration, statement.location,
+                           "'" + *out_of_scope + "' is not in scope inside the arms of its own induction",
+                           "name the predecessor the successor arm binds (SPEC.md 21.4)");
+                    return std::nullopt;
+                }
 
                 // What the states are is the representation's business, not the
                 // engine's. A representation no provider models fails here, at
@@ -1338,7 +1449,7 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
                     assumed_at.resize(outer_assumed);
                     if (!nested)
                         return std::nullopt;
-                    step.node = vir::ProductStep{*subject, std::move(*nested)};
+                    step.node = vir::ProductStep{stated_subject, std::move(*nested)};
                     steps.push_back(std::move(step));
                     continue;
                 }
@@ -1350,7 +1461,7 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
                 const auto& sum = std::get<decomposition::SumDecomposition>(decomposed);
                 const decomposition::Provider& provider = *decomposition::provider_for(subject->type);
 
-                vir::CasesStep cases{*subject, {}};
+                vir::CasesStep cases{stated_subject, {}};
                 Coverage coverage{std::vector<bool>(sum.cases.size(), false), false};
 
                 for (const auto& arm : statement.arms) {
@@ -1426,19 +1537,129 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
                 continue;
             }
 
-            // The syntax recognizes 'induction' (GRAMMAR.md 5.8) so the
-            // formatter can lay out its arms, but this formal core has no
-            // induction rule (SPEC.md 21) - the same rejection every other
-            // self-referential proof dependency already receives below, made
-            // explicit here rather than left to fall through to evidence
-            // lookup, where the induction subject's own identifier would
-            // otherwise be looked up as if it were a proof/premise name.
+            // `induction x { zero => ... successor(pred) => ... }` or
+            // `induction x;` (GRAMMAR.md 5.8, SPEC.md 21). The subject is a
+            // parameter of the proof, which is a quantifier the claim states;
+            // Clang resolves the name, and which parameter it resolved to is
+            // what is recorded. Its type must have a principle: the unsigned
+            // machine integers are the only domain this implementation gives
+            // one (INDUCT-002, INDUCT-004).
             if (statement.kind == frontend::ProofStatementKind::Induction) {
-                report(engine, diagnostics::Category::ProofFailure, statement.location,
-                       "proof '" + declaration.name + "' uses induction over '" + statement.reference + "'",
-                       "this formal core has no induction rule, so a proof cannot depend on "
-                       "an induction principle");
-                return std::nullopt;
+                if (next_case >= projected.case_names.size()) {
+                    return std::nullopt;
+                }
+                const std::optional<vir::Expr> resolved = convert_projected(
+                    request, projected.case_names[next_case++], statement.location, next_expression_id,
+                    "the subject of induction in proof '" + declaration.name + "'", engine);
+                if (!resolved) {
+                    return std::nullopt;
+                }
+                const auto* named = std::get_if<vir::ParameterRef>(&resolved->node);
+                if (named == nullptr || named->parameter >= parameter_count) {
+                    report(engine, diagnostics::Category::Elaboration, statement.location,
+                           "induction is over a parameter of proof '" + declaration.name + "', and '" +
+                               statement.reference + "' is not one",
+                           "an induction principle applies to a quantifier the claim states; an arm binder, a "
+                           "quantifier binder or any other expression has none (SPEC.md INDUCT-004)");
+                    return std::nullopt;
+                }
+                const std::uint32_t position = named->parameter;
+                if (std::ranges::find(inductions, position, &InductionFrame::subject) != inductions.end()) {
+                    report(engine, diagnostics::Category::Elaboration, statement.location,
+                           "'" + statement.reference + "' is not in scope inside the arms of its own induction",
+                           "name the predecessor the successor arm binds (SPEC.md 21.4)");
+                    return std::nullopt;
+                }
+                const vir::Type& type = parameters[position].type;
+                if (!type.is_integer() || type.integer_type().is_signed || type.representation.is_known() ||
+                    type.is_refined()) {
+                    report(engine, diagnostics::Category::ProofFailure, statement.location,
+                           "induction over '" + statement.reference + "' has no principle: its type '" +
+                               vir::spelled(type) + "' is not an unsigned integer type",
+                           "C++L defines induction over the unsigned machine integers, from zero by successor below "
+                           "the type's maximum; signed integers, enumerations, refinements, pointers and classes "
+                           "acquire no principle from their type (SPEC.md INDUCT-003, INDUCT-004)");
+                    return std::nullopt;
+                }
+
+                vir::InductionStep induction;
+                induction.subject = statement.reference;
+                induction.type = type;
+                induction.automatic = statement.arms.empty();
+                induction.level = position;
+                for (const InductionFrame& frame : inductions) {
+                    if (frame.zero && frame.subject < position)
+                        --induction.level;
+                }
+
+                bool has_zero = false;
+                bool has_successor = false;
+                for (const frontend::ProofArm& arm : statement.arms) {
+                    const bool zero = arm.spelling == "zero";
+                    if (!zero && arm.spelling != "successor") {
+                        report(engine, diagnostics::Category::ProofFailure, arm.location,
+                               "induction over an unsigned integer has the cases 'zero' and 'successor(pred)', and '" +
+                                   arm.spelling + "' is not one",
+                               "there is no wildcard arm (SPEC.md INDUCT-003)");
+                        return std::nullopt;
+                    }
+                    if (zero ? has_zero : has_successor) {
+                        report(engine, diagnostics::Category::ProofFailure, arm.location,
+                               "duplicate case '" + arm.spelling + "'");
+                        return std::nullopt;
+                    }
+                    (zero ? has_zero : has_successor) = true;
+                    if (arm.binders.size() != (zero ? 0u : 1u)) {
+                        report(engine, diagnostics::Category::ProofFailure, arm.location,
+                               zero ? "'zero' binds nothing: the case is the value 0"
+                                    : "'successor' binds exactly one name, the predecessor",
+                               "an induction hypothesis and a range premise are premises, named with 'assume' "
+                               "(SPEC.md 21.4)");
+                        return std::nullopt;
+                    }
+                    if (!zero && std::ranges::find(value_names, arm.binders[0]) != value_names.end()) {
+                        report(engine, diagnostics::Category::Elaboration, arm.location,
+                               "induction binder '" + arm.binders[0] + "' duplicates an enclosing value name");
+                        return std::nullopt;
+                    }
+
+                    const auto enclosing_assumed = assumed.size();
+                    const auto enclosing_aliases = aliases.size();
+                    InductionFrame frame{position, statement.reference, zero, std::nullopt};
+                    if (!zero) {
+                        // The predecessor stands at the subject's own position.
+                        vir::Expr predecessor;
+                        predecessor.type = type;
+                        predecessor.provenance.range.begin = arm.location;
+                        predecessor.node = vir::ParameterRef{position, arm.binders[0]};
+                        frame.predecessor = aliases.size();
+                        aliases.push_back(std::move(predecessor));
+                        value_names.push_back(arm.binders[0]);
+                    }
+                    inductions.push_back(std::move(frame));
+                    auto nested = self(self, arm.statements);
+                    inductions.pop_back();
+                    aliases.resize(enclosing_aliases);
+                    value_names.resize(parameter_count + enclosing_aliases);
+                    assumed.resize(enclosing_assumed);
+                    assumed_types.resize(enclosing_assumed);
+                    assumed_at.resize(enclosing_assumed);
+                    if (!nested)
+                        return std::nullopt;
+                    (zero ? induction.zero : induction.successor) = std::move(*nested);
+                    (zero ? induction.zero_location : induction.successor_location) = arm.location;
+                }
+                if (!induction.automatic && (!has_zero || !has_successor)) {
+                    report(engine, diagnostics::Category::ProofFailure, statement.location,
+                           std::string("non-exhaustive induction: '") + (has_zero ? "successor" : "zero") +
+                               "' has no arm",
+                           "every case must prove the goal; write both arms, or 'induction " + statement.reference +
+                               ";' to leave both to automation (SPEC.md INDUCT-005)");
+                    return std::nullopt;
+                }
+                step.node = std::move(induction);
+                steps.push_back(std::move(step));
+                continue;
             }
 
             if (statement.kind == frontend::ProofStatementKind::Assume) {
@@ -1524,8 +1745,8 @@ std::optional<std::vector<vir::ProofStep>> convert_statements(
                 if (statement.reference == declaration.name) {
                     report(engine, diagnostics::Category::ProofFailure, statement.location,
                            "proof '" + declaration.name + "' uses itself as its own evidence",
-                           "this formal core has no induction rule, so a proof cannot depend on "
-                           "itself");
+                           "a proof never obtains an induction hypothesis by naming itself; 'induction' supplies "
+                           "one from its principle (SPEC.md 21.4)");
                     return std::nullopt;
                 }
                 evidence = vir::Reference{vir::ProofRef{vir::ProofId{static_cast<std::uint32_t>(target->second)}},
