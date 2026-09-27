@@ -28,7 +28,7 @@ artifact::Interface sample() {
     artifact::Interface recorded;
     recorded.configuration.compiler = "0.0.1";
     recorded.configuration.build = hash_bytes("the compiler");
-    recorded.configuration.semantics = "cppl-verification-1";
+    recorded.configuration.semantics = "cppl-verification-2";
     recorded.configuration.verifier = hash_bytes("the verifier sources");
     recorded.configuration.kernel = "cppl-kernel-0.7.0";
     recorded.configuration.core = "cppl-core-0.7.0";
@@ -348,7 +348,7 @@ CPPL_TEST(a_status_other_than_proven_is_refused) {
 CPPL_TEST(missing_unknown_and_misplaced_fields_are_refused) {
     const std::string body = body_of(text_of(sample()));
     expect_refused(resealed(replaced(body, "kernel cppl-kernel-0.7.0\n", "")), "where 'kernel' was expected");
-    expect_refused(resealed(replaced(body, "semantics cppl-verification-1\n", "")), "where 'semantics' was expected");
+    expect_refused(resealed(replaced(body, "semantics cppl-verification-2\n", "")), "where 'semantics' was expected");
     expect_refused(resealed(replaced(body, "verifier ", "verifier x")), "malformed digest");
     expect_refused(resealed(replaced(body, "status proven\n", "")), "where 'status' was expected");
     expect_refused(resealed(replaced(body, "status proven\n", "status proven\nstatus proven\n")),
