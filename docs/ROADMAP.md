@@ -294,7 +294,10 @@ engine: writing a `std::optional` or `std::variant`, reassigning a pointer local
 and reading a local aggregate as one value are storage-model work, and a split
 over them follows as soon as they exist.
 
-None of this delivers induction or recursive proof admission.
+Induction over an unsigned machine integer parameter is implemented, as the
+kernel's fifteenth rule (`STATUS.md`, Case analysis and induction status). None
+of this delivers induction over signed integers or structures, or recursive
+proof admission.
 
 Implement, over ordinary C++ types:
 

@@ -364,8 +364,11 @@ with C++L syntax, a name beginning with `__cppl_`, the prefix of every
 declaration C++L generates, is refused, since the body lowering reads a
 declaration so named as generated.
 
-This slice does **not** implement induction, structural recursion without a
-measure, proof `let`, solvers, proof caching, or a general model of C++ memory:
+This slice implements induction over unsigned machine integers only (see
+[Case analysis and induction status](#case-analysis-and-induction-status)). It
+does **not** implement induction over signed integers, structures, pointer
+structures or the `@` domains, structural recursion without a measure, proof
+`let`, solvers, proof caching, or a general model of C++ memory:
 what exists is the storage model of places, versions and capabilities
 (`SPEC.md` 12.10) and the storage generations of the standard container subset
 (RFC 0020), described below. The rest remains `SPECIFIED`. `trusted law` and `unsafe` are
@@ -554,7 +557,7 @@ The project should not claim broad language implementation before the proof sema
 | Kernel termination checker (recursive kernel definitions) | `NOT STARTED` |
 | Serialized proof certificate format  | `NOT STARTED` |
 | Kernel fuzzing (in-suite, structural) | `PROTOTYPE`  |
-| Kernel fuzzing (persistent fuzz target) | `NOT STARTED` |
+| Kernel fuzzing (persistent fuzz target) | `PROTOTYPE` |
 | Kernel property testing              | `PARTIAL`     |
 | Kernel rejection tests               | `PROTOTYPE`   |
 | Mechanized core calculus             | `NOT STARTED` |
@@ -604,9 +607,15 @@ comparison from facts whose evidence it checks, by checking a certificate
 against the integer constraint system it states for them (`SPEC.md` 7.5). It
 concludes `False` when the certificate refutes the facts alone, and falsity
 elimination then closes any goal from that (`FOUNDATIONS.md` 26).
-Property testing currently covers the normal form only: random terms and their
-normal forms are evaluated by an independent evaluator on every assignment of
-small types.
+Property testing checks every acceptance against an independent finite model
+of the core (`tests/support/kernel`, `tests/kernel/model_oracle_test.cpp`):
+derivations built rule by rule with deliberate defects, arithmetic certificates
+proposed by the untrusted refutation search, and automation's evidence, each
+accepted goal evaluated at every assignment of small types and at sampled
+values of wide ones; and normalization, substitution and shifting, each checked
+to keep a term's value. It is `PARTIAL` because the model's carriers are finite
+and wide types are sampled, so a finding is a defect while its absence proves
+nothing.
 
 Universal elimination instantiates quantified evidence at a term. The kernel
 checks the evidence against the proposition it is eliminated from, derives the
@@ -661,9 +670,13 @@ Serialized proof certificate format    artifact     linear-arithmetic certificat
                                                     written to or read from a file
 Kernel fuzzing                         test         tests/kernel/proof_fuzz_test.cpp
                                                     fuzzes every proof constructor from
-                                                    a fixed seed inside the suite; there
-                                                    is no persistent libFuzzer target
-                                                    for kernel input yet
+                                                    a fixed seed inside the suite; the
+                                                    libFuzzer targets kernel_proof,
+                                                    kernel_arithmetic, kernel_terms and
+                                                    kernel_certificate (tests/fuzz) put
+                                                    the same model oracle to inputs no
+                                                    one chose, replayed over their
+                                                    corpora in every build
 ```
 
 ---
@@ -2250,13 +2263,28 @@ See [TRUST.md](./TRUST.md).
 | ---------------------------------------------------- | ------------- |
 | Proof-soundness issues classified as security issues | `SPECIFIED`   |
 | Responsible disclosure policy                        | `SPECIFIED`   |
-| Kernel fuzzing                                       | `NOT STARTED` |
-| Parser fuzzing                                       | `NOT STARTED` |
-| Proof-certificate fuzzing                            | `NOT STARTED` |
-| Erasure fuzzing                                      | `NOT STARTED` |
+| Kernel fuzzing                                       | `PROTOTYPE`   |
+| Parser fuzzing                                       | `PROTOTYPE`   |
+| Proof-certificate fuzzing                            | `PROTOTYPE`   |
+| Erasure fuzzing                                      | `PROTOTYPE`   |
 | Reproducible release metadata                        | `PARTIAL`     |
 
 See [SECURITY.md](../SECURITY.md).
+
+The fuzzing rows are `PROTOTYPE`: each is a libFuzzer target that CI's Fuzzing
+job searches under AddressSanitizer and UndefinedBehaviorSanitizer and that
+every build replays over its corpus (`tests/fuzz`, `docs/CI.md`, "Fuzzing").
+Kernel fuzzing is `kernel_proof`, `kernel_arithmetic` and `kernel_terms`, whose
+oracle is the independent model of the core described under [Proof system
+status](#proof-system-status); proof-certificate fuzzing is `kernel_certificate`,
+which puts integer systems and certificates decoded from bytes to the checker
+and searches for a point that a certificate it accepted should have excluded.
+Parser and erasure fuzzing are `frontend`: lexing tiles the input, projection
+is deterministic and only blanks characters, and erasure of what recognition
+accepted only deletes text, keeps every line and reports no error. That is a
+structural check of erasure, not of runtime equivalence, which the erasure
+equivalence fixtures test (Proof erasure status). A target that finds nothing
+proves nothing.
 
 `cppl --cppl-version` is the release record (`docs/INSTALL.md`): the compiler
 version, the Git commit, tag and tree state it was built from, the compiler
