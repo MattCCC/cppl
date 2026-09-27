@@ -5420,7 +5420,8 @@ struct BodyLowering {
             bool writable = false;
         };
         std::vector<Position> positions;
-        if (callee_receiver.has_value()) {
+        // The receiver and the object are resolved together, or neither is.
+        if (callee_receiver.has_value() && object.has_value()) {
             for (std::size_t leaf = 0; leaf < callee_receiver->leaves.size(); ++leaf) {
                 std::vector<PlaceStep> path = object->path;
                 path.insert(path.end(), callee_receiver->leaves[leaf].path.begin(),
@@ -5550,7 +5551,7 @@ struct BodyLowering {
         // else the object holds -- an element formed at a term, a member the
         // callee does not track -- is unknown after the call rather than kept
         // (SPEC.md CLASS-011).
-        if (object.has_value() && (callee_receiver->writes() || through_pointer)) {
+        if (object.has_value() && callee_receiver.has_value() && (callee_receiver->writes() || through_pointer)) {
             for (std::size_t other = 0; other < state.size(); ++other) {
                 const Local& entry = state[other];
                 if (entry.referent || entry.is_deref() != object->through_pointer ||
@@ -5585,16 +5586,18 @@ struct BodyLowering {
         // reason, which a stale view of it names, whether or not the loop above
         // already gave it its post-call version (STDMODEL-015).
         for (const std::size_t target : targets) {
-            if (!state[target].sequence.has_value()) {
+            const auto& held = state[target].sequence;
+            if (!held.has_value()) {
                 continue;
             }
+            const auto invalidated_by = held->invalidated;
             for (std::size_t other = 0; other < state.size(); ++other) {
                 if (other == target || state[other].referent.has_value() ||
                     std::ranges::find(targets, other) != targets.end() || !may_alias(state[target], state[other])) {
                     continue;
                 }
-                if (state[other].sequence.has_value()) {
-                    state[other].sequence->invalidated = state[target].sequence->invalidated;
+                if (auto& sequence = state[other].sequence; sequence.has_value()) {
+                    sequence->invalidated = invalidated_by;
                 }
                 if (std::ranges::find(invalidated, other) == invalidated.end()) {
                     state[other].version = next_version++;

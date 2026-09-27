@@ -12,7 +12,6 @@
 #include <span>
 #include <string>
 #include <type_traits>
-#include <utility>
 #include <variant>
 #include <vector>
 
@@ -112,7 +111,8 @@ Wide subtract(const k::IntType& type, Wide lhs, Wide rhs) {
 Wide multiply(const k::IntType& type, Wide lhs, Wide rhs) {
     // Unsigned 64-bit multiplication is exact modulo 2^64, and so modulo
     // 2^width for every supported width.
-    return wrap(type, static_cast<Wide>(low_bits(lhs) * low_bits(rhs)));
+    const std::uint64_t product = low_bits(lhs) * low_bits(rhs);
+    return wrap(type, static_cast<Wide>(product));
 }
 
 Wide quotient(const k::IntType& type, Wide lhs, Wide rhs) {

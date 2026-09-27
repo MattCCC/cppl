@@ -71,6 +71,7 @@ k::ArithmeticCertificate certificate(gen::Choices& choices, std::uint32_t variab
     if (shape == 1) {
         std::vector<std::pair<std::uint32_t, std::int64_t>> terms;
         const std::uint32_t count = choices.below(variables + 2);
+        terms.reserve(count);
         for (std::uint32_t index = 0; index < count; ++index) {
             terms.emplace_back(choices.below(variables + 1), static_cast<std::int64_t>(choices.below(7)) - 3);
         }

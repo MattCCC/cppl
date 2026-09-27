@@ -8,9 +8,11 @@
 #include "cppl/testing/kernel_generator.hpp"
 
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <variant>
 
 namespace cppl::testing::kernel_oracle {
 

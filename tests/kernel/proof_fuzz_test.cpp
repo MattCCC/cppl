@@ -41,6 +41,8 @@ k::Term term(Random& random) {
         case 2:
             return k::Term::literal(k::IntType{0, k::Signedness::Unsigned}, 0);
         case 3:
+            // An operation the kernel does not define, deliberately: it must refuse it.
+            // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
             return k::Term::primitive(static_cast<k::PrimOp>(random.below(255)), type.integer_type(), {});
         default:
             return literal(random.below(8));

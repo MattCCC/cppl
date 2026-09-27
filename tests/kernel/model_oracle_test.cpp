@@ -20,10 +20,12 @@
 #include "cppl/testing/kernel_oracle.hpp"
 #include "cppl/testing/test.hpp"
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
 #include <optional>
+#include <span>
 #include <string>
 
 namespace {
@@ -199,11 +201,12 @@ CPPL_TEST(normalization_substitution_and_shifting_preserve_meaning) {
 // The byte-driven choices the fuzz targets use terminate on any input,
 // including none, and decide the same sample from the same bytes.
 CPPL_TEST(byte_choices_are_total_and_deterministic) {
-    const std::uint8_t bytes[] = {3, 200, 17, 0, 255, 9, 42, 42, 1};
-    for (std::size_t length = 0; length <= sizeof bytes; ++length) {
+    constexpr std::array<std::uint8_t, 9> bytes{3, 200, 17, 0, 255, 9, 42, 42, 1};
+    const std::span<const std::uint8_t> all(bytes);
+    for (std::size_t length = 0; length <= all.size(); ++length) {
         for (std::uint32_t mode = 0; mode < gen::kModeCount; ++mode) {
-            gen::ByteChoices first({bytes, length});
-            gen::ByteChoices second({bytes, length});
+            gen::ByteChoices first(all.first(length));
+            gen::ByteChoices second(all.first(length));
             const auto a = gen::generate(first, static_cast<gen::Mode>(mode));
             const auto b = gen::generate(second, static_cast<gen::Mode>(mode));
             CPPL_CHECK(a.goal == b.goal);

@@ -15,8 +15,10 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <ranges>
 #include <span>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -79,8 +81,6 @@ k::ProofTerm lift(const k::ProofTerm& proof, std::uint32_t amount, std::uint32_t
                 }
             } else if constexpr (std::is_same_v<Node, k::ForallIntroduction>) {
                 copy.body = again(node.body, cutoff);
-            } else if constexpr (std::is_same_v<Node, k::ForallElimination>) {
-                copy.evidence = again(node.evidence, cutoff);
             } else if constexpr (std::is_same_v<Node, k::ImplicationIntroduction>) {
                 // The premise this introduces is index 0 underneath it.
                 copy.body = again(node.body, cutoff + 1);
@@ -100,7 +100,8 @@ k::ProofTerm lift(const k::ProofTerm& proof, std::uint32_t amount, std::uint32_t
             } else if constexpr (std::is_same_v<Node, k::ConjunctionIntroduction>) {
                 copy.left = again(node.left, cutoff);
                 copy.right = again(node.right, cutoff);
-            } else if constexpr (std::is_same_v<Node, k::ConjunctionElimination> ||
+            } else if constexpr (std::is_same_v<Node, k::ForallElimination> ||
+                                 std::is_same_v<Node, k::ConjunctionElimination> ||
                                  std::is_same_v<Node, k::DisjunctionIntroduction> ||
                                  std::is_same_v<Node, k::FalsityElimination>) {
                 copy.evidence = again(node.evidence, cutoff);
@@ -536,15 +537,21 @@ class Generator {
                 if (auto passed = variable(definition.parameters, value_v())) {
                     definition.result = value_v();
                     definition.body = *passed;
-                    (void)context_.define(std::move(definition));
+                    admit(std::move(definition));
                     continue;
                 }
             }
             const k::IntType result = one_in(4) ? any_integer() : small_integer();
             definition.result = as_type(result);
             definition.body = integer_term(definition.parameters, result, 3);
-            (void)context_.define(std::move(definition));
+            admit(std::move(definition));
         }
+    }
+
+    // Offers a definition to the context, which admits it or not. A sample only
+    // ever calls a definition the context holds, so one it refuses is dropped.
+    void admit(k::Definition definition) {
+        [[maybe_unused]] const auto admitted = context_.define(std::move(definition));
     }
 
     // ---- rewriting that preserves meaning ----------------------------------
@@ -1694,19 +1701,21 @@ class Generator {
     k::Proposition automation_goal() {
         std::vector<k::Type> locals;
         const std::uint32_t binders = below(3);
+        locals.reserve(binders);
         for (std::uint32_t index = 0; index < binders; ++index) {
             locals.push_back(as_type(small_integer()));
         }
         std::vector<k::Proposition> premises;
         const std::uint32_t count = below(3);
+        premises.reserve(count);
         for (std::uint32_t index = 0; index < count; ++index) {
             premises.push_back(comparison_proposition(locals, 2));
         }
         k::Proposition goal = one_in(4) ? k::Proposition::disjunction(comparison_proposition(locals, 2),
                                                                       comparison_proposition(locals, 2))
                                         : comparison_proposition(locals, 2);
-        for (auto premise = premises.rbegin(); premise != premises.rend(); ++premise) {
-            goal = k::Proposition::implication(*premise, std::move(goal));
+        for (const k::Proposition& premise : std::ranges::reverse_view(premises)) {
+            goal = k::Proposition::implication(premise, std::move(goal));
         }
         while (!locals.empty()) {
             goal = k::Proposition::for_all(locals.back(), std::move(goal));

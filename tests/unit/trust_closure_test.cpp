@@ -432,6 +432,7 @@ CPPL_TEST(only_a_crossing_established_statically_is_not_a_site) {
     const auto* found = claim(closure, o::ClaimKind::Contract, "f80");
     CPPL_CHECK(found != nullptr);
     std::vector<std::uint32_t> lines;
+    lines.reserve(found->runtime.size());
     for (const o::RuntimeCheck& check : found->runtime) {
         lines.push_back(check.location.line);
     }
