@@ -310,7 +310,7 @@ ci-clean:
 ## release: Build production configuration
 release:
 	@test -n "$(VERSION)" || (echo "ERROR: VERSION is required (example: make release VERSION=0.3.0)" && exit 1)
-	@./tools/release "$(VERSION)"
+	@./tools/release.sh "$(VERSION)"
 
 ## install: Install selected build
 install: build

@@ -9,63 +9,76 @@ permissions:
   contents: read
 
 jobs:
+  # A release archive is published only for a platform whose release build,
+  # tests and installed-package smoke test (integration_installed_package)
+  # have been run: Linux x86_64. macOS and Windows are built and tested by CI
+  # (ci.yml), but no release configuration of theirs has been validated, so
+  # none is published (docs/STATUS.md, "V1 closure: delivery").
   build:
-    name: Build ${{ matrix.target }}
+    name: Build linux-x86_64
 
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: linux-x86_64
-            os: ubuntu-latest
-
-          - target: macos-arm64
-            os: macos-latest
-
-          - target: windows-x86_64
-            os: windows-latest
-
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
 
     permissions:
       contents: read
       id-token: write
       attestations: write
 
+    env:
+      CPPL_LLVM_MAJOR: "22"
+
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # The release record names the tag at the released commit.
+          fetch-depth: 0
+          persist-credentials: false
 
-      - name: Install LLVM/Clang 18
+      - name: Install LLVM/Clang
         run: |
-          sudo apt-get update
+          wget -q https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh "${CPPL_LLVM_MAJOR}"
           sudo apt-get install -y \
-            clang-18 \
-            llvm-18-dev \
-            libclang-18-dev
+            "llvm-${CPPL_LLVM_MAJOR}-dev" \
+            "libclang-${CPPL_LLVM_MAJOR}-dev" \
+            "clang-format-${CPPL_LLVM_MAJOR}" \
+            "clang-tidy-${CPPL_LLVM_MAJOR}"
+          echo "LLVM_ROOT=/usr/lib/llvm-${CPPL_LLVM_MAJOR}" >> "$GITHUB_ENV"
+          echo "CC=/usr/lib/llvm-${CPPL_LLVM_MAJOR}/bin/clang" >> "$GITHUB_ENV"
+          echo "CXX=/usr/lib/llvm-${CPPL_LLVM_MAJOR}/bin/clang++" >> "$GITHUB_ENV"
 
       - name: Configure
         run: cmake --preset release
 
       - name: Build
-        run: cmake --build --preset release --parallel
+        run: cmake --build --preset release
 
       - name: Test
-        run: ctest --preset release --output-on-failure
+        run: ctest --preset release
 
       - name: Package
         run: cmake --build --preset release --target package
 
+      - name: Check the release record
+        run: |
+          build/release/bin/cppl --cppl-version | tee record
+          grep -Fxq "Source revision:             ${GITHUB_SHA}" record
+          grep -Fxq "Source tag:                  ${GITHUB_REF_NAME}" record
+          grep -Fxq "Source tree:                 clean" record
+          cd build/release/packages && sha256sum -c ./*.sha256
+
       - name: Attest artifacts
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
         with:
-          subject-path: build/release/package/*
+          subject-path: build/release/packages/cppl-*
 
       - name: Upload artifacts
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: ${{ matrix.target }}
-          path: build/release/package/*
+          name: linux-x86_64
+          path: build/release/packages/cppl-*
           if-no-files-found: error
 
   release:

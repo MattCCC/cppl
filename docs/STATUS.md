@@ -1825,6 +1825,19 @@ AI output must always be independently verified.
 | Proof navigation                     | `PROTOTYPE`   |
 | Counterexample UI                    | `NOT STARTED` |
 | Structured diagnostics               | `PROTOTYPE`   |
+| Installed package and archive        | `PARTIAL`     |
+
+`cmake --install` installs `cppl`, `cppl-lsp` and `cppl-format`, relocatable
+and naming no file of the source or build tree; the canonical formatting style
+is built into the formatter. An installation uses the LLVM it was built against,
+found by the paths recorded at build time (`docs/INSTALL.md`). The release
+archive holds exactly the install, with its SHA-256 beside it.
+`integration_installed_package` installs to a fresh prefix, moves it, and from
+an environment with nothing but a minimal `PATH` prints the release record,
+compiles ordinary C++ and verified C++L, has a false Law refused, formats a
+file and drives `cppl-lsp` through `initialize`, a refused document,
+`shutdown` and `exit`. It is `PARTIAL` because only Linux x86_64 with LLVM 22
+has been installed and tested; no archive is produced for another platform.
 
 The driver is Clang-compatible rather than subcommand-based: `cppl` takes the
 arguments `clang++` takes. Trust reporting exists as `--cppl-trust-report`; the
@@ -2159,9 +2172,22 @@ See [TRUST.md](./TRUST.md).
 | Parser fuzzing                                       | `NOT STARTED` |
 | Proof-certificate fuzzing                            | `NOT STARTED` |
 | Erasure fuzzing                                      | `NOT STARTED` |
-| Reproducible release metadata                        | `NOT STARTED` |
+| Reproducible release metadata                        | `PARTIAL`     |
 
 See [SECURITY.md](../SECURITY.md).
+
+`cppl --cppl-version` is the release record (`docs/INSTALL.md`): the compiler
+version, the Git commit, tag and tree state it was built from, the compiler
+that built it, the verification semantics and their digest, the kernel, formal
+core and interface format versions, the libclang that analyses and the Clang
+driver that compiles, and the target, language mode and standard library that
+driver selects for the arguments given. It names no path and no time, and a
+driver that cannot be asked makes it fail
+(`tests/integration/release_metadata.sh`). Release archives carry a SHA-256
+file each, checked by `integration_installed_package` and `tools/release.sh`.
+It is `PARTIAL`: the archive's own bytes are not reproducible, since it records
+file times, and nothing signs an archive outside GitHub's attestation step,
+which has not been run here.
 
 ---
 

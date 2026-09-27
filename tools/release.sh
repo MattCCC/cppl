@@ -20,12 +20,12 @@ info() {
 usage() {
     cat <<'EOF'
 Usage:
-  tools/release [--verify-only] VERSION
+  tools/release.sh [--verify-only] VERSION
 
 Examples:
-  tools/release 0.3.0
-  tools/release 0.4.0-rc.1
-  tools/release --verify-only 0.3.0
+  tools/release.sh 0.3.0
+  tools/release.sh 0.4.0-rc.1
+  tools/release.sh --verify-only 0.3.0
 
 Options:
   --verify-only   Run all release checks, build, tests, and packaging,
@@ -141,6 +141,42 @@ info "Running clean release workflow"
 
 cmake -E remove_directory build/release
 cmake --workflow --preset release
+
+# The release record names the commit being released, from a clean tree
+# (docs/INSTALL.md, "The release record").
+info "Checking the release record"
+
+RECORD="$(build/release/bin/cppl --cppl-version)" ||
+    fail "the release build cannot print its release record"
+readonly RECORD
+
+printf '%s\n' "${RECORD}"
+
+grep -Fxq "Source revision:             ${LOCAL_HEAD}" <<< "${RECORD}" ||
+    fail "the release record does not name ${LOCAL_HEAD}"
+
+grep -Fxq "Source tree:                 clean" <<< "${RECORD}" ||
+    fail "the release record does not name a clean tree"
+
+grep -Eq "^C\+\+L compiler: +${VERSION%%-*}$" <<< "${RECORD}" ||
+    fail "the release build is not version ${VERSION%%-*} (CMakeLists.txt project VERSION)"
+
+# Every archive has its checksum beside it, and matches it.
+info "Checking package checksums"
+
+shopt -s nullglob
+readonly ARCHIVES=(build/release/packages/cppl-*.tar.gz build/release/packages/cppl-*.zip)
+shopt -u nullglob
+
+[[ ${#ARCHIVES[@]} -gt 0 ]] || fail "the release workflow wrote no archive"
+
+for archive in "${ARCHIVES[@]}"; do
+    [[ -f "${archive}.sha256" ]] || fail "${archive} has no checksum"
+    recorded="$(cut -d ' ' -f 1 "${archive}.sha256")"
+    actual="$(cmake -E sha256sum "${archive}" | cut -d ' ' -f 1)"
+    [[ "${recorded}" == "${actual}" ]] || fail "${archive} does not match its checksum"
+    printf '%s  %s\n' "${actual}" "${archive}"
+done
 
 # Builds/checks must never mutate tracked source state.
 if [[ -n "$(git status --porcelain)" ]]; then

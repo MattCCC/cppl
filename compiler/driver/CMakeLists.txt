@@ -11,7 +11,8 @@ add_library(cppl_driver STATIC
     src/options.cpp
     src/pipeline.cpp
     src/process.cpp
-    src/scratch.cpp)
+    src/scratch.cpp
+    src/version.cpp)
 
 target_include_directories(cppl_driver PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
@@ -48,6 +49,28 @@ add_custom_command(
 add_custom_target(cppl_verifier_semantics DEPENDS "${cppl_semantics_stamp}")
 add_dependencies(cppl_driver cppl_verifier_semantics)
 target_include_directories(cppl_driver PRIVATE "${cppl_semantics_generated}")
+
+# The commit the tree is at and whether a tracked file differs from it, which
+# `cppl --cppl-version` reports (cmake/SourceIdentity.cmake). Asked on every
+# build, since a commit changes nothing CMake watches; the header is rewritten
+# only when the answer changes, and only src/version.cpp includes it.
+find_program(CPPL_GIT_EXECUTABLE NAMES git)
+mark_as_advanced(CPPL_GIT_EXECUTABLE)
+set(cppl_identity_header "${cppl_semantics_generated}/cppl/driver/source_identity.hpp")
+set(cppl_git "")
+if(CPPL_GIT_EXECUTABLE)
+    set(cppl_git "${CPPL_GIT_EXECUTABLE}")
+endif()
+add_custom_target(cppl_source_identity
+    COMMAND "${CMAKE_COMMAND}"
+            "-DCPPL_SOURCE_ROOT=${PROJECT_SOURCE_DIR}"
+            "-DCPPL_GIT=${cppl_git}"
+            "-DCPPL_OUTPUT=${cppl_identity_header}"
+            -P "${PROJECT_SOURCE_DIR}/cmake/SourceIdentity.cmake"
+    BYPRODUCTS "${cppl_identity_header}"
+    COMMENT "Recording the source identity of this build"
+    VERBATIM)
+add_dependencies(cppl_driver cppl_source_identity)
 
 add_library(cppl::driver ALIAS cppl_driver)
 

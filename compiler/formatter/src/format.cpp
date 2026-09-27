@@ -3,6 +3,7 @@
 #include "cppl/diagnostics/diagnostic.hpp"
 #include "cppl/driver/process.hpp"
 #include "cppl/driver/scratch.hpp"
+#include "cppl/formatter/canonical_style.hpp"
 #include "cppl/frontend/syntax.hpp"
 #include "cppl/frontend/token.hpp"
 #include "cppl/source/location.hpp"
@@ -28,10 +29,6 @@
 #define CPPL_DEFAULT_CLANG_FORMAT "clang-format"
 #endif
 
-#ifndef CPPL_REPO_CLANG_FORMAT_CONFIG
-#define CPPL_REPO_CLANG_FORMAT_CONFIG ""
-#endif
-
 namespace cppl::formatter {
 
 namespace {
@@ -53,6 +50,23 @@ std::optional<std::string> read_file(const std::filesystem::path& path) {
     std::ostringstream buffer;
     buffer << stream.rdbuf();
     return buffer.str();
+}
+
+// The `-style` argument clang-format is run with in `scratch`: the file a
+// request names, or the canonical C++L style, which is built into the formatter
+// so that an installed `cppl-format` or `cppl-lsp` formats the same way as the
+// build tree does, with no file of the source tree to find (`.clang-format`,
+// embedded by compiler/formatter/CMakeLists.txt). Nothing when that style
+// cannot be written.
+std::optional<std::string> style_argument(const std::string& style_config, const std::filesystem::path& scratch) {
+    if (!style_config.empty()) {
+        return "-style=file:" + style_config;
+    }
+    const std::filesystem::path canonical = scratch / "canonical.clang-format";
+    if (!driver::write_scratch_file(canonical, kCanonicalStyle)) {
+        return std::nullopt;
+    }
+    return "-style=file:" + canonical.string();
 }
 
 // A declaration or loop header's clause block: the span to replace, the
@@ -989,10 +1003,15 @@ std::vector<FormatEdit> format_ordinary_cpp_lines(std::string_view text,
         return {};
     }
 
-    const std::string style = style_config.empty() ? "-style=LLVM" : "-style=file:" + style_config;
+    const std::optional<std::string> style = style_argument(style_config, scratch.path());
+    if (!style.has_value()) {
+        report(out, diagnostics::Severity::Error, diagnostics::Category::Internal,
+               "could not write the canonical style for '" + stem + "'");
+        return {};
+    }
     const std::string tool = clang_format.empty() ? std::string{CPPL_DEFAULT_CLANG_FORMAT} : clang_format;
 
-    const std::vector<std::string> arguments{style, "--output-replacements-xml", source_path.string()};
+    const std::vector<std::string> arguments{*style, "--output-replacements-xml", source_path.string()};
 
     const driver::ProcessResult result =
         driver::run_capturing_stdout(tool, arguments, scratch.path() / "replacements.xml");
@@ -1069,10 +1088,15 @@ std::vector<FormatEdit> format_expression_spans(std::string_view text, const std
         return {};
     }
 
-    const std::string style = style_config.empty() ? "-style=LLVM" : "-style=file:" + style_config;
+    const std::optional<std::string> style = style_argument(style_config, scratch.path());
+    if (!style.has_value()) {
+        report(out, diagnostics::Severity::Error, diagnostics::Category::Internal,
+               "could not write the canonical style for '" + stem + "'");
+        return {};
+    }
     const std::string tool = clang_format.empty() ? std::string{CPPL_DEFAULT_CLANG_FORMAT} : clang_format;
 
-    std::vector<std::string> arguments{style, "--output-replacements-xml"};
+    std::vector<std::string> arguments{*style, "--output-replacements-xml"};
     for (source::ByteSpan span : spans) {
         arguments.push_back("--offset=" + std::to_string(span.offset));
         arguments.push_back("--length=" + std::to_string(span.length));
@@ -1181,8 +1205,7 @@ FormatResult format_ranges_once(const FormatRequest& request, const std::vector<
     if (stem.empty()) {
         stem = "buffer.cpp";
     }
-    const std::string style_config =
-        request.style_config.empty() ? std::string{CPPL_REPO_CLANG_FORMAT_CONFIG} : request.style_config;
+    const std::string& style_config = request.style_config;
 
     // Every predicate this pass may relocate, reformatted through Clang in one
     // batched call (AGENTS.md 14: never reimplement C++ expression spacing).

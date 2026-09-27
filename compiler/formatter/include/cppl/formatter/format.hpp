@@ -21,7 +21,7 @@ namespace cppl::formatter {
 struct FormatRequest {
     std::string text;
     std::string clang_format; // the clang-format executable to shell out to
-    std::string style_config; // path to a .clang-format file; empty uses the repo default
+    std::string style_config; // path to a .clang-format file; empty uses the canonical C++L style
     std::string virtual_path; // used only for scratch file naming and diagnostics
 };
 

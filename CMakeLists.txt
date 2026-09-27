@@ -462,19 +462,64 @@ endif()
 # Installation
 # -----------------------------------------------------------------------------
 #
-# Only the public C++L executable is installed.
+# The three tools a user runs: the compiler, the language server and the
+# formatter. Internal libraries, tests, VIR components and build-system
+# artifacts remain inside the build tree.
 #
-# Internal libraries, tests, VIR components and build-system artifacts remain
-# inside the build tree.
+# An installed C++L is a client of the LLVM installation it was built against,
+# as the build tree is (docs/INSTALL.md). It does not ship LLVM:
+#
+#   - the Clang driver `cppl` preprocesses and compiles with, and the
+#     `clang-format` the formatter runs, are recorded by absolute path, and can
+#     be named instead with `cppl --cppl-clang=`, `cppl-lsp --clang` and
+#     `cppl-format --clang-format=`;
+#   - libclang, the Clang that resolves C++ semantics, is found through the
+#     runtime search path recorded below, the directory the build linked it
+#     from, and otherwise through the dynamic loader's own search path.
+#
+# `cppl --cppl-version` names both Clangs and warns when they are not one
+# release. Nothing the tools read at run time comes from the source or build
+# tree (tests/integration/installed_package.sh).
+
+include(GNUInstallDirs)
+
+get_filename_component(
+    CPPL_LIBCLANG_DIR
+    "${LibClang_LIBRARY}"
+    DIRECTORY
+)
+
+set_target_properties(
+    cppl
+    cppl-lsp
+    cppl-format
+    PROPERTIES
+        INSTALL_RPATH "${CPPL_LIBCLANG_DIR}"
+)
 
 install(
-    TARGETS cppl
-    RUNTIME DESTINATION bin
+    TARGETS cppl cppl-lsp cppl-format
+    RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+)
+
+install(
+    FILES
+        README.md
+        LICENSE.md
+        docs/INSTALL.md
+    DESTINATION "${CMAKE_INSTALL_DOCDIR}"
 )
 
 # -----------------------------------------------------------------------------
 # Packaging
 # -----------------------------------------------------------------------------
+#
+# `cmake --build --preset release --target package` writes the archive and,
+# beside it, `<archive>.sha256`, its SHA-256 in the form `sha256sum -c` reads.
+# The archive is stripped: debug information names the build machine's paths,
+# and a user runs the tools, not a debugger over them. Its file name names the
+# version and the platform it was built on, which is the only platform it is
+# claimed for (docs/STATUS.md, "V1 closure: delivery").
 
 set(
     CPACK_PACKAGE_NAME
@@ -494,6 +539,26 @@ set(
 set(
     CPACK_PACKAGE_DIRECTORY
     "${CMAKE_BINARY_DIR}/packages"
+)
+
+set(
+    CPACK_PACKAGE_FILE_NAME
+    "cppl-${PROJECT_VERSION}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}"
+)
+
+set(
+    CPACK_PACKAGE_CHECKSUM
+    "SHA256"
+)
+
+set(
+    CPACK_STRIP_FILES
+    ON
+)
+
+set(
+    CPACK_RESOURCE_FILE_LICENSE
+    "${PROJECT_SOURCE_DIR}/LICENSE.md"
 )
 
 if(WIN32)

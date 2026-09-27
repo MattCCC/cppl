@@ -18,6 +18,7 @@
 #include "cppl/source/representation.hpp"
 #include "interface_io.hpp"
 #include "pipeline.hpp"
+#include "version.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -635,14 +636,7 @@ int run_driver(int argc, const char* const* argv) {
     // What this compiler's verification results are bound to (SPEC.md
     // TUBOUND-005). `--version` stays Clang's.
     if (options.version) {
-        std::cout << "C++L compiler:               " << CPPL_VERSION << "\n";
-        std::cout << "Verification semantics:      " << kVerificationSemanticsVersion << "\n";
-        std::cout << "Verifier-semantics digest:   " << kVerifierSemanticsDigest << "\n";
-        std::cout << "Kernel version:              " << kernel::kKernelVersion << "\n";
-        std::cout << "Formal core version:         " << kernel::kFormalCoreVersion << "\n";
-        std::cout << "Interface format version:    " << artifact::kFormatVersion << "\n";
-        std::cout << "Clang:                       " << clangbridge::clang_version() << "\n";
-        return 0;
+        return detail::print_version(options.clang, base_arguments(options), options.standard);
     }
 
     // An interface records what one unit proved, so it is written for a command

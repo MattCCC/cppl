@@ -509,6 +509,25 @@ set_tests_properties(architecture_verifier_semantics PROPERTIES
     LABELS "architecture;script"
     TIMEOUT ${CPPL_TEST_TIMEOUT})
 
+# The installed tools, used from a fresh, relocated prefix in a clean
+# environment, and the release archive with its checksum (docs/INSTALL.md).
+add_test(NAME integration_installed_package
+         COMMAND bash "${CPPL_BOUNDED}" bash "${CMAKE_CURRENT_SOURCE_DIR}/integration/installed_package.sh"
+                 "${CMAKE_COMMAND}" "${CMAKE_CPACK_COMMAND}" "${CMAKE_BINARY_DIR}" "${CMAKE_SOURCE_DIR}"
+                 "${CPPL_TEST_WORK}")
+set_tests_properties(integration_installed_package PROPERTIES
+    LABELS "integration;package;script"
+    TIMEOUT ${CPPL_TEST_TIMEOUT})
+
+# `cppl --cppl-version` is the record a release is traced by: complete,
+# reproducible, and refused rather than guessed when the driver cannot answer.
+add_test(NAME integration_release_metadata
+         COMMAND bash "${CPPL_BOUNDED}" bash "${CMAKE_CURRENT_SOURCE_DIR}/integration/release_metadata.sh"
+                 $<TARGET_FILE:cppl> "${CMAKE_SOURCE_DIR}" "${CPPL_TEST_WORK}" "${CPPL_DEFAULT_CLANG}")
+set_tests_properties(integration_release_metadata PROPERTIES
+    LABELS "integration;script"
+    TIMEOUT ${CPPL_TEST_TIMEOUT})
+
 # The executables C++L ships carry the mitigations cmake/Hardening.cmake asks
 # for. A target that stops linking cppl_project_options would lose them
 # without a build error, so the linked files are read. Windows reports its
