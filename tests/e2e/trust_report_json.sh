@@ -155,6 +155,11 @@ compile trusted -std=c++20 "$FIXTURES/trust_closure.cpp" -o "$run/trusted"
 grep -q '^      "kind": "proposition",$' "$run/trusted.json" || fail "a trusted law does not say it states a proposition"
 grep -q '^  "interface_provenance": "none_imported"$' "$run/trusted.json" ||
     fail "a compile that imports nothing does not say so"
+# TRUST.md 7 to 17, 29 -- every claim is relative to the translation to the
+# core, which both reports state is trusted and not verified.
+grep -q '^    "verified": false,$' "$run/trusted.json" || fail "the JSON report does not state the translation unverified"
+grep -q '^Trusted translation: *not verified: ' "$run/trusted.report" ||
+    fail "the text report does not state the translation unverified"
 # TRUST.md Annex C.2 -- each claim names the proven claims its proof uses
 # directly: the proofs its evidence names, and a contract's verified callees.
 [ "$(uses "$run/trusted.json" third_link)" = "proof second_link" ] ||

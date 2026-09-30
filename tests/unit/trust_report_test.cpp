@@ -178,6 +178,11 @@ CPPL_TEST(an_empty_summary_is_a_complete_document) {
     }
     CPPL_CHECK(member(report, "unverified_ffi_boundaries").as_string() == "not_analysed");
     CPPL_CHECK(member(report, "interface_provenance").as_string() == "none_imported");
+    // TRUST.md 7 to 17, 29: the translation to the core is stated as trusted
+    // and not verified, in every report.
+    const j::Value& translation = member(report, "trusted_translation");
+    CPPL_CHECK(!member(translation, "verified").as_boolean());
+    CPPL_CHECK(member(translation, "components").as_array().size() == 5);
     for (const auto& [key, value] : member(report, "counts").as_object()) {
         CPPL_CHECK(value.as_number() == 0.0);
     }
