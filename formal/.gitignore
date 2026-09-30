@@ -1,0 +1,7 @@
+# Coq outputs, when the model is compiled in place rather than by tools/formal/check.sh.
+*.vo
+*.vok
+*.vos
+*.glob
+.*.aux
+.lia.cache

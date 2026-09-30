@@ -1520,7 +1520,12 @@ memory capability calculus soundness
 
 **[TCB-META-003]** External proof assistants/toolchains used to certify meta-theory have their own trust bases; those dependencies SHOULD be documented when claims rely on them.
 
-Nothing is mechanized yet. The plan, milestone by milestone and bound to these three rules, is `KERNEL.md` 17.
+What is mechanized, and what it does not remove from the TCB, is stated here and in `KERNEL.md` 17.
+
+- **Model and version (TCB-META-001).** `formal/coq` states the core `cppl-core-0.9.0`. `tests/architecture/formal_model.sh` fails if the kernel's core version, or its number of term formers, primitives or evidence formers, differs from the model's.
+- **Proof assistant (TCB-META-003).** Coq 8.18.0. Every audited theorem is reported by `Print Assumptions` as closed under the global context: it rests on Coq's kernel and on no axiom, and no proof in the model is admitted (`tools/formal/check.sh` fails otherwise).
+- **What is proven.** `check_sound`: evidence the model's checker accepts, well formed or not, establishes a proposition true in every interpretation and environment, provided normalization preserves the meaning of typed terms and an accepted arithmetic step's facts entail its goal. `syntactic_consistency` and `syntactic_soundness` discharge both provisions for the checker whose reflexivity compares terms as written and which has no arithmetic step: rules 2 to 8 and 10 to 15 cannot establish `False`, unconditionally. `check_certificate_sound`: an accepted linear-arithmetic certificate leaves its system with no integer solution.
+- **What stays trusted (TCB-META-002).** The C++ kernel remains the logical TCB. The correspondence between `formal/coq/Checker.v` and `kernel/src/check.cpp` is a rule-by-rule transcription checked by review and by the drift test, not a verified refinement. Normalization (TCB-CORE-004) and the translation of arithmetic facts into constraints are premises of `check_sound`, not theorems; the independent finite model and the fuzz targets (`KERNEL.md` 16) remain their evidence. Trust moves from the C++ kernel to the mechanized checker only through `KERNEL.md` 17 M5 and M6, which are not started.
 
 ---
 

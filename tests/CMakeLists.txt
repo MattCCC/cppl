@@ -538,6 +538,27 @@ set_tests_properties(architecture_verifier_semantics PROPERTIES
     LABELS "architecture;script"
     TIMEOUT ${CPPL_TEST_TIMEOUT})
 
+# The mechanized model of the kernel states the core the kernel implements,
+# with as many term, primitive and evidence formers (docs/KERNEL.md 17).
+add_test(NAME architecture_formal_model
+         COMMAND bash "${CPPL_BOUNDED}" bash "${CMAKE_CURRENT_SOURCE_DIR}/architecture/formal_model.sh"
+                 "${CMAKE_SOURCE_DIR}")
+set_tests_properties(architecture_formal_model PROPERTIES
+    LABELS "architecture;script"
+    TIMEOUT ${CPPL_TEST_TIMEOUT})
+
+# The model itself, compiled by Coq, with every theorem resting on no axiom.
+# CI's Formal model job installs Coq and runs the same script.
+find_program(CPPL_COQC_EXECUTABLE NAMES coqc)
+if(CPPL_COQC_EXECUTABLE)
+    add_test(NAME formal_kernel_model
+             COMMAND ${CPPL_BOUNDED_PREFIX} ${CMAKE_COMMAND} -E env "COQC=${CPPL_COQC_EXECUTABLE}"
+                     sh "${CMAKE_SOURCE_DIR}/tools/formal/check.sh" "${CPPL_TEST_WORK}/formal")
+    set_tests_properties(formal_kernel_model PROPERTIES
+        LABELS "formal;kernel"
+        TIMEOUT ${CPPL_TEST_TIMEOUT})
+endif()
+
 add_test(NAME architecture_draft_boundaries
          COMMAND bash "${CPPL_BOUNDED}" bash "${CMAKE_CURRENT_SOURCE_DIR}/architecture/draft_boundaries.sh"
                  "${CMAKE_SOURCE_DIR}")

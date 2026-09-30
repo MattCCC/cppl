@@ -560,8 +560,8 @@ The project should not claim broad language implementation before the proof sema
 | Kernel fuzzing (persistent fuzz target) | `PROTOTYPE` |
 | Kernel property testing              | `PARTIAL`     |
 | Kernel rejection tests               | `PROTOTYPE`   |
-| Mechanized core calculus             | `NOT STARTED` |
-| Meta-theory / soundness proofs       | `NOT STARTED` |
+| Mechanized core calculus             | `PARTIAL`     |
+| Meta-theory / soundness proofs       | `PARTIAL`     |
 
 The kernel implements fifteen rules:
 
@@ -584,8 +584,15 @@ The kernel implements fifteen rules:
     from P(0) and the step below the type's maximum, both stated by the kernel)
 ```
 
-`KERNEL.md` states each rule with its side conditions exactly, and the plan for
-mechanizing them.
+`KERNEL.md` states each rule with its side conditions exactly, and how far they
+are mechanized. The two mechanization rows are `PARTIAL`: a Coq model of the
+checking judgment (`formal/coq`, KERNEL.md 17) proves that whatever evidence it
+accepts establishes a true proposition, relative to two stated premises,
+normalization preserving meaning and the arithmetic translation being exact;
+proves the certificate checker sound; and proves, with no premise, that rules
+2 to 8 and 10 to 15 cannot establish `False`. It rests on no axiom. The C++
+kernel is not proven to implement the model, so it stays in the logical TCB
+(`TRUST.md` 41).
 
 They act over propositions built from equality, universal quantification,
 implication, conjunction, disjunction and `False`. `False` has no introduction
@@ -701,7 +708,7 @@ Kernel fuzzing                         test         tests/kernel/proof_fuzz_test
 | Formal reduction rules          | `SPECIFIED`   |
 | Formal substitution rules       | `SPECIFIED`   |
 | Formal erasure theorem          | `NOT STARTED` |
-| Mechanized soundness model      | `NOT STARTED` |
+| Mechanized soundness model      | `PARTIAL`     |
 
 This table records the mathematical theory as written down in `FOUNDATIONS.md`,
 `SPEC.md` and `KERNEL.md`, not the implementation: `Refinement typing` and
@@ -712,8 +719,9 @@ the kernel implements, `cppl-core-0.9.0`: `KERNEL.md` states its types, terms,
 typing, substitution and shifting, normalization, rules, arithmetic translation
 and certificate checking exactly. The parts of `FOUNDATIONS.md` that core does
 not implement, such as existential quantification and the `@` domains, are
-stated mathematically but not as exact rules, and nothing is mechanized
-(`KERNEL.md` 17).
+stated mathematically but not as exact rules. The mechanized soundness model
+is `PARTIAL`: the checking judgment is mechanized and proven sound relative to
+normalization and the arithmetic translation, which are not (`KERNEL.md` 17).
 
 ---
 
