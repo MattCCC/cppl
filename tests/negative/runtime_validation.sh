@@ -1,14 +1,17 @@
 #!/usr/bin/env bash
-# A runtime check establishes a refinement only on the path where it held
-# (SPEC.md 28, RUNTIMECHECK-002 to RUNTIMECHECK-007, EDGECASE-079).
+# A condition or a validation establishes a refinement only on the path where
+# it held (SPEC.md 28, RUNTIMECHECK-002 to RUNTIMECHECK-021, EDGECASE-079).
 #
-# Each program here moves a value into a refined type where no check on its
-# path establishes the predicate: on the failure path, before the check, after
-# a write, call or unsafe block that replaced the checked version, through a
-# route a disjunction or a failed conjunction selects, after a loop's condition
-# stopped holding, or for another value than the one checked. Each is refused
-# for that crossing, and no program is produced. The accepted twin of each is
-# in `fixtures/runtime_validation.cpp`, driven by `e2e/runtime_validation.sh`.
+# Each program here moves a value into a refined type where nothing on its path
+# establishes the predicate: on the failure path, before the test, after a
+# write, call or unsafe block that replaced the tested version, through a route
+# a disjunction or a failed conjunction selects, after a loop's condition
+# stopped holding, or for another value than the one tested. Each is refused for
+# that crossing and never made a runtime validation site (RUNTIMECHECK-013), and
+# no program is produced. So is a validation expression the verifier cannot
+# check, and one that is ordinary C++ because the unit gives `validate` a
+# meaning of its own. The accepted twin of each is in
+# `fixtures/runtime_validation.cpp`, driven by `e2e/runtime_validation.sh`.
 set -euo pipefail
 
 CPPL="$1"
@@ -87,4 +90,44 @@ refuse runtime_check_and_false_route \
 refuse runtime_check_loop_exit \
     "runtime_check_loop_exit.cpp:16:15: error [kernel-rejection]: this value is not shown to satisfy refinement type 'Small'"
 
-echo 'every refinement a runtime check did not establish on its path is refused'
+# SPEC: RUNTIMECHECK-007, RUNTIMECHECK-011, RUNTIMECHECK-013 -- a validation
+# supposes nothing where it failed, and a crossing it did not establish is
+# refused, never made a site.
+refuse validation_failure_path \
+    "validation_failure_path.cpp:13:20: error [kernel-rejection]: this value is not shown to satisfy refinement type 'Percentage'"
+# SPEC: RUNTIMECHECK-012 -- a validation fact belongs to the version tested.
+refuse validation_stale_after_write \
+    "validation_stale_after_write.cpp:14:18: error [kernel-rejection]: this value is not shown to satisfy refinement type 'Positive'"
+refuse validation_other_value \
+    "validation_other_value.cpp:11:22: error [kernel-rejection]: this value is not shown to satisfy refinement type 'Positive'"
+refuse validation_wrong_refinement \
+    "validation_wrong_refinement.cpp:12:24: error [kernel-rejection]: this value is not shown to satisfy refinement type 'Percentage'"
+refuse validation_or_route \
+    "validation_or_route.cpp:11:22: error [kernel-rejection]: this value is not shown to satisfy refinement type 'Positive'"
+
+# SPEC: RUNTIMECHECK-018 to RUNTIMECHECK-020, WORD-013 -- what a validation
+# expression may be.
+refuse validation_outside_verified \
+    "validation_outside_verified.cpp:6:12: error [unsupported-semantics]: a validation expression is checked only in the body of a verified function"
+refuse validation_in_contract \
+    "validation_in_contract.cpp:7:14: error [unsupported-semantics]: a validation expression is checked only in the body of a verified function"
+refuse validation_in_invariant \
+    "validation_in_invariant.cpp:12:20: error [unsupported-semantics]: a loop clause states a proposition, and a validation expression is runtime code"
+refuse validation_in_unsafe \
+    "validation_in_unsafe.cpp:11:13: error [unsupported-semantics]: a validation expression inside an unsafe block would not be checked"
+refuse validation_unknown_refinement \
+    "validation_unknown_refinement.cpp:9:9: error [unsupported-semantics]: 'Count' does not name a refinement type this translation unit declares"
+refuse validation_qualified_name \
+    "validation_qualified_name.cpp:11:9: error [unsupported-semantics]: a validation names the refinement type it tests by the name its declaration gives it"
+refuse validation_indexed \
+    "validation_indexed.cpp:8:9: error [unsupported-semantics]: validating a value against the indexed refinement type 'Index' is not supported"
+refuse validation_formal_predicate \
+    "validation_formal_predicate.cpp:4:20: error [unsupported-semantics]: refinement type 'Bounded' states a formal predicate, which no validation can evaluate at run time"
+refuse validation_undefined_predicate \
+    "refinement type 'Below' cannot be validated at run time: its predicate evaluates an operation C++ defines only under a condition on its operands"
+refuse validation_layered \
+    "validation_layered.cpp:11:9: error [unsupported-semantics]: verified function 'percentage_or_zero' cannot be stated to the formal core: refinement type 'Percentage' cannot be validated at run time: its base type is itself a refinement type"
+refuse validation_word_in_use \
+    "validation_word_in_use.cpp:15:9: warning [cppl-syntax]: 'validate' is also a name in this translation unit, so this expression is ordinary C++, not a validation"
+
+echo 'every refinement nothing on its path established is refused, and never made a runtime validation site'

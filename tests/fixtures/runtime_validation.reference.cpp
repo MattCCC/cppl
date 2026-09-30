@@ -1,14 +1,21 @@
 // Ordinary C++: `runtime_validation.cpp` erased by hand as SPEC.md 36.3, 36.5
 // and Annex M say it erases. Each refinement is the alias of its base type and
-// every contract and loop clause is gone; every runtime check stays exactly as
-// written, since validation written as ordinary C++ is runtime behavior
-// (SPEC.md ERASE-012, RUNTIMECHECK-009).
+// every contract and loop clause is gone; every ordinary check stays exactly as
+// written, and every validation expression calls the validator its
+// refinement lowers to beside the alias (SPEC.md ERASE-012, RUNTIMECHECK-009,
+// RUNTIMECHECK-021).
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
 
 using Percentage = int;
+[[maybe_unused]] static inline bool __cppl_validate_0(int self) {
+    return static_cast<bool>(self >= 0 && self <= 100);
+}
 using Positive = int;
+[[maybe_unused]] static inline bool __cppl_validate_1(int self) {
+    return static_cast<bool>(self > 0);
+}
 using Small = unsigned;
 template <unsigned n> using Index = unsigned;
 
@@ -185,6 +192,84 @@ void clobber(int* target) {
     *target = *target - 1;
 }
 
+int validated_percentage(int raw) {
+    if (__cppl_validate_0(raw)) {
+        Percentage p = raw;
+        return p;
+    }
+    return 0;
+}
+
+int validated_or_one(int raw) {
+    if (!__cppl_validate_1(raw)) {
+        return 1;
+    }
+    Positive p = raw;
+    return p;
+}
+
+int validated_below(int raw) {
+    if (raw < 1000 && __cppl_validate_1(raw)) {
+        Positive p = raw;
+        return p;
+    }
+    return 1;
+}
+
+int validated_later(int raw) {
+    const bool positive = __cppl_validate_1(raw);
+    if (positive) {
+        Positive p = raw;
+        return p;
+    }
+    return 1;
+}
+
+int revalidated(int raw) {
+    int value = raw;
+    if (!__cppl_validate_1(value)) {
+        return 1;
+    }
+    value = value - 1;
+    if (!__cppl_validate_1(value)) {
+        return 2;
+    }
+    Positive p = value;
+    return p;
+}
+
+int through_validation(int raw) {
+    return validated_or_one(raw);
+}
+
+int validated_halvings(int raw) {
+    int x = raw;
+    int steps = 0;
+    while (__cppl_validate_1(x)) {
+        Positive p = x;
+        x = p / 2;
+        if (steps < 100) {
+            steps = steps + 1;
+        }
+    }
+    return steps;
+}
+
+bool is_percentage(int value) {
+    if (value >= 0 && value <= 100) {
+        return true;
+    }
+    return false;
+}
+
+int checked_by_helper(int raw) {
+    if (is_percentage(raw)) {
+        Percentage p = raw;
+        return p;
+    }
+    return 0;
+}
+
 int main(int argc, char** argv) {
     const int raw = argc > 1 ? std::atoi(argv[1]) : 0;
     const unsigned wide = raw < 0 ? 0u : static_cast<unsigned>(raw);
@@ -192,5 +277,8 @@ int main(int argc, char** argv) {
                 checked_result(raw), checked_argument(raw), checked_conditional(raw), last_small(wide),
                 checked_index(wide), checked_member(raw), checked_elements(raw), static_under_check(raw),
                 from_precondition(raw > 0 ? raw : 1), rechecked(raw), through_call(raw));
+    std::printf("%d %d %d %d %d %d %d\n", validated_percentage(raw), validated_or_one(raw), validated_below(raw),
+                validated_later(raw), revalidated(raw), through_validation(raw), validated_halvings(raw));
+    std::printf("%d\n", checked_by_helper(raw));
     return 0;
 }

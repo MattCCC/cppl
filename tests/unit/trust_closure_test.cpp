@@ -49,9 +49,6 @@ k::Proposition fact(std::int64_t value) {
 struct Builder {
     o::Program program;
     std::vector<o::ObligationResult> results;
-    // Which refinement crossings the kernel established without the runtime
-    // conditions of their paths; any other is a runtime validation site.
-    std::vector<o::CrossingVerdict> verdicts;
 
     // Declares trusted law `law`, which is assumed and never proven.
     o::TrustedPremise trusted(std::uint32_t law) {
@@ -134,7 +131,7 @@ struct Builder {
     }
 
     [[nodiscard]] o::TrustClosure close() const {
-        return o::close_trust(program, results, verdicts);
+        return o::close_trust(program, results);
     }
 };
 
@@ -359,23 +356,19 @@ CPPL_TEST(an_unsafe_block_reaches_every_caller_and_the_claims_of_its_body) {
     CPPL_CHECK(claim(closure, o::ClaimKind::Contract, "f33")->unsafe.empty());
 }
 
-// A refinement crossing of contract `contract`'s body at `line`, on a path
-// runtime conditions select.
-void cross(Builder& unit, std::size_t contract, std::uint32_t line, const std::string& refinement = "Positive") {
-    o::RefinementCrossing crossing;
-    crossing.refinement = refinement;
-    crossing.predicate = "(self > 0)";
-    crossing.location = cppl::source::SourceLocation{"unit.cpp", line, 9};
-    crossing.unguarded = fact(line);
-    unit.program.contracts[contract].crossings.push_back(crossing);
+// A validation expression of contract `contract`'s body at `line`.
+void validate(Builder& unit, std::size_t contract, std::uint32_t line, const std::string& refinement = "Positive") {
+    o::ValidationSite site;
+    site.refinement = refinement;
+    site.predicate = "(self > 0)";
+    site.location = cppl::source::SourceLocation{"unit.cpp", line, 9};
+    unit.program.contracts[contract].validations.push_back(site);
 }
 
 // SPEC: RUNTIMECHECK-011, RUNTIMECHECK-012, RUNTIMECHECK-014
-// A crossing a runtime check establishes travels the same edges as an unsafe
-// block: every caller, through a recursive call graph too, and a claim that a
-// path of the body holding it cannot occur rests on it. It is never a trusted
-// law, and it is listed once, as its own function's, however many claims rest
-// on it.
+// A validation site travels the same edges as an unsafe block: every caller, through a recursive call graph too, and a
+// claim that a path of the body holding it cannot occur rests on it. It is never a trusted law, and it is listed once,
+// as its own function's, however many claims rest on it.
 CPPL_TEST(a_runtime_check_reaches_every_caller_and_the_claims_of_its_body) {
     Builder unit;
     const auto a = unit.proven(o::Origin::ReturnPath, "f70 path");
@@ -387,7 +380,7 @@ CPPL_TEST(a_runtime_check_reaches_every_caller_and_the_claims_of_its_body) {
     unit.partial_contract(71, {b}, {0});          // f71 calls f70
     unit.partial_contract(72, {c}, {1});          // f72 calls f71
     unit.partial_contract(73, {d});               // f73 calls nothing
-    cross(unit, 1, 40);
+    validate(unit, 1, 40);
 
     const auto closure = unit.close();
 
@@ -411,20 +404,20 @@ CPPL_TEST(a_runtime_check_reaches_every_caller_and_the_claims_of_its_body) {
     CPPL_CHECK(closure.runtime_sites.front().direct && closure.runtime_sites.front().function == "f71");
 }
 
-// SPEC: RUNTIMECHECK-012
-// Only the kernel's acceptance of a crossing's unguarded membership keeps it
-// off the list; a crossing no verdict names is a site, since that errs toward
-// the weaker report. A crossing written once and walked on two paths is one
-// site if either path needed the check.
-CPPL_TEST(only_a_crossing_established_statically_is_not_a_site) {
+// SPEC: RUNTIMECHECK-010, RUNTIMECHECK-011, RUNTIMECHECK-013
+// A site is a validation expression the body holds, and nothing else: a
+// contract whose body holds none rests on none, whatever conditions its paths
+// were selected by. One written once and reached on two paths is one site, and
+// two refinements tested at one place are two.
+CPPL_TEST(only_a_validation_expression_is_a_site) {
     Builder unit;
     const auto a = unit.proven(o::Origin::ReturnPath, "f80 path");
+    const auto b = unit.proven(o::Origin::ReturnPath, "f81 path");
     unit.partial_contract(80, {a});
-    cross(unit, 0, 10); // established statically
-    cross(unit, 0, 20); // on two paths: statically on one, by its check on the other
-    cross(unit, 0, 20);
-    cross(unit, 0, 30); // no verdict
-    unit.verdicts = {{0, 0, true}, {0, 1, true}, {0, 2, false}};
+    unit.partial_contract(81, {b});
+    validate(unit, 0, 20);
+    validate(unit, 0, 20);
+    validate(unit, 0, 30);
 
     const auto closure = unit.close();
 
@@ -438,25 +431,14 @@ CPPL_TEST(only_a_crossing_established_statically_is_not_a_site) {
     }
     CPPL_CHECK(lines == (std::vector<std::uint32_t>{20, 30}));
     CPPL_CHECK_EQ(closure.runtime_sites.size(), std::size_t{2});
+    CPPL_CHECK(claim(closure, o::ClaimKind::Contract, "f81")->runtime.empty());
 
-    // Two refinements entered at one place are two sites.
     Builder twice;
-    const auto b = twice.proven(o::Origin::ReturnPath, "f81 path");
-    twice.partial_contract(81, {b});
-    cross(twice, 0, 10, "Positive");
-    cross(twice, 0, 10, "Small");
+    const auto c = twice.proven(o::Origin::ReturnPath, "f82 path");
+    twice.partial_contract(82, {c});
+    validate(twice, 0, 10, "Positive");
+    validate(twice, 0, 10, "Small");
     CPPL_CHECK_EQ(twice.close().runtime_sites.size(), std::size_t{2});
-}
-
-CPPL_TEST(a_verdict_naming_a_crossing_that_does_not_exist_is_a_fault) {
-    Builder unit;
-    const auto a = unit.proven(o::Origin::ReturnPath, "f90 path");
-    unit.partial_contract(90, {a});
-    cross(unit, 0, 10);
-    unit.verdicts = {{0, 1, true}};
-    CPPL_CHECK(faulted(unit.close(), "names a crossing that does not exist"));
-    unit.verdicts = {{1, 0, true}};
-    CPPL_CHECK(faulted(unit.close(), "names a crossing that does not exist"));
 }
 
 CPPL_TEST(an_unproven_contract_is_not_a_claim) {

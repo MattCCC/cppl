@@ -8,20 +8,19 @@
 feature: runtime-validation
 
 summary: >
-  An unknown runtime value enters a refined type through ordinary C++: a
-  condition the program evaluates and a crossing on the path where it held.
-  The crossing owes its predicate under its whole path like any other, so a
-  crossing on the failure path, before the check, of another value, or after
-  a write, call or unsafe block that replaced the checked version is refused.
-  Each crossing a runtime condition selects is also stated without its path's
-  runtime conditions; only where the kernel accepts evidence for that is it
-  established statically, and every other is a runtime validation site,
-  reported RUNTIME-CHECKED with its location, refinement, predicate and
-  function. Every claim resting on a site, in its own body, through verified
-  calls or through an imported contract, names it and stays PROVEN; a site is
-  not a trusted assumption. A verification interface records sites as a
-  category of their own, part of the record's result identity. The check is
-  ordinary code and erasure keeps it.
+  An unknown runtime value comes to satisfy a refinement in one of two ways,
+  kept apart. An ordinary C++ condition selects a path, and a crossing on it is
+  proven from the path's facts: static proof, PROVEN, with no site and no
+  runtime code of C++L's. A validation expression, validate<R>(e), asks the
+  program to test the value against R's predicate: it lowers to a validator the
+  refinement's declaration lowers to beside its alias, erasure keeps it, and
+  what its success establishes is RUNTIME-CHECKED at that site. Every crossing
+  owes its predicate under its whole path, validations passed included, and one
+  the kernel does not accept is refused, never made a site. Every claim resting
+  on a site, in its own body, through verified calls or through an imported
+  contract, names it and stays PROVEN; a site is not a trusted assumption. A
+  verification interface records sites as a category of their own, part of the
+  record's result identity.
 
 normative_sources:
   spec:
@@ -60,6 +59,11 @@ rules:
   - RUNTIMECHECK-015
   - RUNTIMECHECK-016
   - RUNTIMECHECK-017
+  - RUNTIMECHECK-018
+  - RUNTIMECHECK-019
+  - RUNTIMECHECK-020
+  - RUNTIMECHECK-021
+  - WORD-013
   - ERASE-012
   - ORTHOCHECK-001
   - ORTHOCHECK-002
@@ -67,6 +71,7 @@ rules:
   - INTERACT-023
   - EDGECASE-079
   - REFINE-005
+  - REFINE-017
   - REFINE-018
 
 depends_on:
@@ -77,6 +82,16 @@ depends_on:
   - erasure
 
 implementation:
+  frontend:
+    - compiler/frontend/include/cppl/frontend/syntax.hpp
+    - compiler/frontend/src/recognizer.cpp
+    - compiler/frontend/include/cppl/frontend/projection.hpp
+    - compiler/frontend/src/projection.cpp
+  bridge:
+    - clang/src/bridge.cpp
+    - compiler/elaboration/src/elaborate.cpp
+  erasure:
+    - compiler/erasure/src/erase.cpp
   obligations:
     - compiler/obligations/include/cppl/obligations/contracts.hpp
     - compiler/obligations/src/contracts.cpp
@@ -85,8 +100,8 @@ implementation:
     - compiler/obligations/src/interface.cpp
     - compiler/obligations/src/generate.cpp
   automation:
-    - compiler/automation/include/cppl/automation/evidence.hpp
-    - compiler/automation/src/evidence.cpp
+    - compiler/obligations/src/status.cpp
+    - compiler/automation/src/arithmetic.cpp
   artifact:
     - compiler/artifact/include/cppl/artifact/interface.hpp
     - compiler/artifact/src/interface.cpp
@@ -101,7 +116,9 @@ interactions:
   - call post-states entering refined storage
   - conditional initializers and short-circuit conditions
   - loop conditions and loop invariants
+  - checked helpers returning bool, whose postcondition is a path fact
   - preconditions, which establish a crossing statically
+  - validation expressions in conditions, bool locals and loop conditions
   - writes, verified calls and unsafe blocks between check and crossing
   - verified-call composition and recursion groups
   - verification interfaces across units
@@ -130,6 +147,22 @@ tests:
     - tests/fixtures/negative/runtime_check_or_route.cpp
     - tests/fixtures/negative/runtime_check_and_false_route.cpp
     - tests/fixtures/negative/runtime_check_loop_exit.cpp
+    - tests/fixtures/negative/validation_failure_path.cpp
+    - tests/fixtures/negative/validation_stale_after_write.cpp
+    - tests/fixtures/negative/validation_other_value.cpp
+    - tests/fixtures/negative/validation_wrong_refinement.cpp
+    - tests/fixtures/negative/validation_or_route.cpp
+    - tests/fixtures/negative/validation_outside_verified.cpp
+    - tests/fixtures/negative/validation_in_contract.cpp
+    - tests/fixtures/negative/validation_in_invariant.cpp
+    - tests/fixtures/negative/validation_in_unsafe.cpp
+    - tests/fixtures/negative/validation_unknown_refinement.cpp
+    - tests/fixtures/negative/validation_qualified_name.cpp
+    - tests/fixtures/negative/validation_indexed.cpp
+    - tests/fixtures/negative/validation_formal_predicate.cpp
+    - tests/fixtures/negative/validation_layered.cpp
+    - tests/fixtures/negative/validation_undefined_predicate.cpp
+    - tests/fixtures/negative/validation_word_in_use.cpp
   unit:
     - tests/unit/trust_closure_test.cpp
     - tests/unit/interface_test.cpp
@@ -137,20 +170,20 @@ tests:
     - tests/e2e/runtime_validation.sh
 
 required_test_categories:
-  - every crossing form established by a check, and the program run on valid and invalid input
+  - every crossing form proven from path facts, with no site, and the program run on valid and invalid input
   - the failure path constructs nothing, in every crossing form
-  - a check made too late, too weak, of another value, or made stale
+  - a check or validation made too late, too weak, of another value, or made stale
   - short-circuit routes and loop exits
-  - a crossing a check selects but does not need is not a site
-  - a crossing a precondition establishes is not a site
+  - a checked helper returning bool establishes a path fact
+  - every validation position a verified body allows, and every one it refuses
   - sites listed whole; claims resting on them, directly and through calls
   - a site is never shown PROVEN and never counted as an assumption
-  - erasure keeps every check; identical code against the hand erasure
+  - erasure keeps every check and lowers every validation to its validator; identical code against the hand erasure
   - sites cross units in their own interface category and result identity
 
 completion_requires:
-  - no crossing is reported established statically without kernel-accepted evidence
-  - no obligation is added, removed or weakened by the classification
+  - only a validation expression is a runtime validation site
+  - an unproven crossing is refused, never made a site
   - every claim resting on a site names it, across units too
   - a site adds no trusted assumption
-  - the check survives erasure unchanged
+  - every check survives erasure unchanged, and every validation calls its validator

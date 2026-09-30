@@ -103,9 +103,15 @@ Erased erase(const frontend::TokenStream& stream, const frontend::Syntax& syntax
     // alias it means, recomputed here from the declaration so that nothing the
     // projector produced is taken on trust (SPEC.md 17.8).
     std::vector<Lowering> lowerings;
-    lowerings.reserve(syntax.refinement_types.size() + syntax.path_splits.size());
+    lowerings.reserve(syntax.refinement_types.size() + syntax.validations.size() + syntax.path_splits.size());
     for (const frontend::RefinementType& refinement : syntax.refinement_types) {
         lowerings.push_back(Lowering{refinement.range.span, frontend::canonical_lowering(stream, refinement)});
+    }
+    // A validation expression stays runtime code; only `validate<R>` becomes the
+    // name of the validator its refinement lowers to (SPEC.md RUNTIMECHECK-021,
+    // ERASE-012).
+    for (const frontend::ValidationExpression& validation : syntax.validations) {
+        lowerings.push_back(Lowering{validation.callee, frontend::lowered_validation(stream, syntax, validation)});
     }
     // A case split on a runtime path becomes an empty statement, so whatever
     // statement it was the body of still has one (SPEC.md CASE-017, ERASE-016).

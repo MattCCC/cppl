@@ -2952,6 +2952,20 @@ Program generate(const vir::Module& module, const elaboration::Result& elaborate
             continue;
         }
         stated.predicate = std::move(*predicate);
+        // A validation runs the predicate on whatever value it is given, so an
+        // operation C++ defines only under a condition on its operands would
+        // make the test itself undefined for some value (SPEC.md
+        // RUNTIMECHECK-020, ARITH-010).
+        if (detail::first_definedness_site(refinement.predicate).has_value()) {
+            stated.unvalidatable = "its predicate evaluates an operation C++ defines only under a condition on its "
+                                   "operands, so testing some value would have undefined behavior";
+        }
+        // A validation tests the predicate this declaration states, which is
+        // membership only where the base type adds none of its own.
+        if (!refinement.base.refinements.empty()) {
+            stated.unvalidatable = "its base type is itself a refinement type, whose predicate a validation of '" +
+                                   refinement.name + "' would not test";
+        }
         program.refinements.push_back(std::move(stated));
     }
 

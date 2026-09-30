@@ -90,8 +90,7 @@ std::string describe(ClaimKind kind) {
     return "claim";
 }
 
-TrustClosure close_trust(const Program& program, const std::vector<ObligationResult>& results,
-                         const std::vector<CrossingVerdict>& crossings) {
+TrustClosure close_trust(const Program& program, const std::vector<ObligationResult>& results) {
     TrustClosure closure;
     closure.memory_assumptions = program.memory_assumptions;
 
@@ -363,24 +362,12 @@ TrustClosure close_trust(const Program& program, const std::vector<ObligationRes
     };
 
     // The runtime validation sites each contract rests on travel the same
-    // edges: a caller proven from a callee's contract rests on the checks that
-    // callee's proof took facts from as surely as the callee does (SPEC.md
-    // RUNTIMECHECK-014). A crossing is a site unless the kernel established it
-    // without its path's runtime conditions; one the verdicts do not name is a
-    // site, since that errs toward the weaker report (RUNTIMECHECK-012). A
-    // crossing written once may stand on several paths, and it is a site if
-    // any of them needed a check.
-    std::set<std::pair<std::size_t, std::size_t>> established_statically;
-    for (const CrossingVerdict& verdict : crossings) {
-        if (verdict.contract >= program.contracts.size() ||
-            verdict.crossing >= program.contracts[verdict.contract].crossings.size()) {
-            closure.faults.emplace_back("a refinement crossing verdict names a crossing that does not exist");
-            continue;
-        }
-        if (verdict.statically) {
-            established_statically.emplace(verdict.contract, verdict.crossing);
-        }
-    }
+    // edges: a caller proven from a callee's contract rests on the validations
+    // that callee's proof may have taken facts from as surely as the callee
+    // does (SPEC.md RUNTIMECHECK-014). A site is a validation expression the
+    // body evaluates, and only that: a crossing proven from path facts is
+    // proven statically (RUNTIMECHECK-010), and nothing unproven is ever made
+    // a site (RUNTIMECHECK-013).
     using Sites = std::map<std::tuple<std::string, std::uint32_t, std::uint32_t, std::string>, RuntimeCheck>;
     const auto site_key = [](const RuntimeCheck& check) {
         return std::tuple{check.location.file, check.location.line, check.location.column, check.refinement};
@@ -388,11 +375,7 @@ TrustClosure close_trust(const Program& program, const std::vector<ObligationRes
     std::vector<Sites> sites(program.contracts.size());
     for (std::size_t index = 0; index < program.contracts.size(); ++index) {
         const ContractVerification& contract = program.contracts[index];
-        for (std::size_t crossing = 0; crossing < contract.crossings.size(); ++crossing) {
-            if (established_statically.contains({index, crossing})) {
-                continue;
-            }
-            const RefinementCrossing& found = contract.crossings[crossing];
+        for (const ValidationSite& found : contract.validations) {
             RuntimeCheck check{found.location, found.refinement, found.predicate, contract.name, true};
             sites[index].emplace(site_key(check), std::move(check));
         }
@@ -472,7 +455,7 @@ TrustClosure close_trust(const Program& program, const std::vector<ObligationRes
             ordered(std::move(contracts[index])), listed(regions[index]), contract.total, imported_list(through[index]),
             contract.symbol, listed_models(models[index]), listed_sites(sites[index])});
         // Its own sites are the unit's, listed once whatever else rests on
-        // them (SPEC.md RUNTIMECHECK-013).
+        // them (SPEC.md RUNTIMECHECK-014).
         for (const auto& [where, check] : sites[index]) {
             if (check.direct) {
                 closure.runtime_sites.push_back(check);

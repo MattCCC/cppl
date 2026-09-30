@@ -457,6 +457,23 @@ struct RefinementType {
 
     source::ByteSpan predicate; // the expression inside `where ( ... )`
     source::SourceLocation predicate_location;
+
+    // The function a validation expression of this unit calls to test a value
+    // against the predicate at run time (SPEC.md RUNTIMECHECK-021), empty when
+    // no validation expression names this refinement. The declaration lowers to
+    // it beside its alias only then.
+    std::string validator = {};
+};
+
+// A validation expression `validate<R>(e)` in a verified body (SPEC.md 28.1,
+// RUNTIMECHECK-018): an explicit runtime test of a value against a refinement's
+// predicate. It is runtime code; only what the verifier reads from its outcome
+// is proof.
+struct ValidationExpression {
+    std::size_t function_index = 0;   // the verified function whose body holds it
+    std::size_t refinement_index = 0; // into Syntax::refinement_types
+    source::ByteSpan callee;          // `validate<R>`, which the lowering replaces
+    source::SourceLocation location;
 };
 
 // The `pure` declaration specifier and the function it applies to (SPEC.md 13).
@@ -506,6 +523,7 @@ struct Syntax {
     std::vector<UnsafeBlock> unsafe_blocks;
     std::vector<UnsafeFunction> unsafe_functions;
     std::vector<GhostDeclaration> ghost_declarations;
+    std::vector<ValidationExpression> validations;
 
     // A specification clause written on a function that is not 'verified'
     // (GRAMMAR.md 6 permits the syntax; this implementation does not check
@@ -521,7 +539,7 @@ struct Syntax {
         return laws.empty() && proofs.empty() && pure_markers.empty() && verified_functions.empty() && loops.empty() &&
                path_contradictions.empty() && path_splits.empty() && refinement_types.empty() &&
                unchecked_clauses.empty() && unsafe_blocks.empty() && unsafe_functions.empty() &&
-               ghost_declarations.empty();
+               ghost_declarations.empty() && validations.empty();
     }
 };
 

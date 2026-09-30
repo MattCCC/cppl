@@ -2396,7 +2396,7 @@ rests on, each kind apart:
   "string_encoding": "percent",
   "build": {
     "compiler": "0.0.1",
-    "verification_semantics": "cppl-verification-2",
+    "verification_semantics": "cppl-verification-3",
     "kernel": "cppl-kernel-0.9.0",
     "formal_core": "cppl-core-0.9.0",
     "target": "x86_64-unknown-linux-gnu",
@@ -2633,8 +2633,16 @@ user input
 
 C++L must not pretend to prove such values before execution.
 
-Runtime validation is performed using ordinary C++ control flow. C++L does not
-require a special `validate<T>()` language construct or standard runtime validator. C++L ships no required runtime support library and injects no verification runtime into the executable.
+A value from outside the program comes to satisfy a refinement in one of two
+ways. The program tests it with ordinary C++ control flow, and the verifier
+proves the crossing from the facts of the path that test selects: that proof is
+static, `PROVEN`, and adds no runtime code. Or the program asks for the
+refinement's own test with a validation expression, `validate<R>(value)`, and
+what its success establishes is `RUNTIME-CHECKED` at that site (`SPEC.md` 28).
+C++L ships no required runtime support library and injects no verification
+runtime into the executable: a validation is lowered to a function its
+refinement's declaration lowers to in the same unit, and only where the program
+writes one.
 
 For example:
 
@@ -2649,7 +2657,7 @@ if (raw >= 0 && raw <= 100) {
 }
 ```
 
-The runtime `if` performs the actual validation.
+The runtime `if` performs the test.
 
 On the successful branch, C++L may use the path facts:
 
@@ -2658,7 +2666,9 @@ raw >= 0
 raw <= 100
 ```
 
-to establish that `raw` satisfies the refinement predicate for `Percentage`.
+to establish that `raw` satisfies the refinement predicate for `Percentage`. That
+is a proof from path facts: the crossing is `PROVEN`, and no validation site is
+reported for it (`SPEC.md` RUNTIMECHECK-010).
 
 The normal flow is therefore:
 
@@ -2697,8 +2707,13 @@ unless the current proof context already establishes the refinement predicate.
 This distinction is fundamental:
 
 ```text
+path fact
+    = the outcome of an ordinary C++ condition on the path it selects,
+      a premise of static proof
+
 runtime validation
-    = ordinary C++ execution establishes facts on a runtime path
+    = validate<R>(e): the program tests the value against R at run time,
+      and its success establishes membership, RUNTIME-CHECKED at that site
 
 refinement introduction
     = C++L verifies that the required predicate is known on that path
@@ -2725,9 +2740,12 @@ or a helper function with a checked contract:
 
 ```cpp
 verified bool is_percentage(int value)
-    ensures (result == (value >= 0 && value <= 100))
+    ensures (result <-> (value >= 0 && value <= 100))
 {
-    return value >= 0 && value <= 100;
+    if (value >= 0 && value <= 100) {
+        return true;
+    }
+    return false;
 }
 ```
 
@@ -2739,23 +2757,36 @@ if (is_percentage(raw)) {
 }
 ```
 
-The verifier may use the checked postcondition of `is_percentage` to recover the
-corresponding path fact.
+The verifier uses the checked postcondition of `is_percentage` as the
+corresponding path fact, so this crossing is proven too.
 
-There is no requirement that validation use one particular helper API.
+Or the program can ask for the refinement's own test:
+
+```cpp
+if (validate<Percentage>(raw)) {
+    Percentage percentage = raw;
+}
+```
+
+The validation is runtime code the program requested. It lowers to a call of a
+function returning the predicate as `Percentage` declares it, erasure keeps it,
+and the trust report lists it as a `RUNTIME-CHECKED` site with every claim
+resting on it. It is well formed only in the body of a verified function
+(`SPEC.md` RUNTIMECHECK-018 to RUNTIMECHECK-021).
 
 The important rule is:
 
 ```text
-ordinary C++ performs the runtime check
+ordinary C++ performs the runtime check, or validate<R>(e) does
 
 C++L verifies what becomes known on each resulting path
 
-a refined value may be introduced only when its predicate is established
+a refined value may be introduced only when its predicate is established;
+a crossing C++L cannot prove is refused, never turned into a runtime check
 ```
 
-This keeps runtime validation explicit and avoids introducing a separate C++L
-validation framework into the core language.
+This keeps runtime validation explicit: the only runtime checks are the ones
+the program writes.
 
 ### 13.2. Defined C++ behavior is part of verification
 

@@ -20,8 +20,11 @@ namespace cppl::obligations {
 // TUBOUND-013), and the version is maintained by hand. It MUST change with any
 // change that could make a recorded result mean something else to a consumer;
 // keeping it honest is an obligation of the reuse TCB (TRUST.md TCB-XTU-008,
-// TCB-VERSION-003). Version 2 records runtime validation sites.
-inline constexpr std::string_view kVerificationSemanticsVersion = "cppl-verification-2";
+// TCB-VERSION-003). Version 2 records runtime validation sites. Version 3
+// records as sites only explicit validation expressions: a refinement crossing
+// proven from path facts is proven statically and is no site (SPEC.md
+// RUNTIMECHECK-010, RUNTIMECHECK-011).
+inline constexpr std::string_view kVerificationSemanticsVersion = "cppl-verification-3";
 
 // A contract another translation unit proved, offered to this one by the
 // verification interface that recorded it (SPEC.md TUBOUND-003).

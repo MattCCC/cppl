@@ -1,7 +1,7 @@
 cppl-verification-interface 3
 compiler 0.0.1
 build 2045b830beb9090694d5730c1cdb8ff6d29e8d60594f5b993185148f2544bd4c
-semantics cppl-verification-2
+semantics cppl-verification-3
 verifier 0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0
 kernel cppl-kernel-0.9.0
 core cppl-core-0.9.0

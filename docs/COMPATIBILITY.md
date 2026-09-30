@@ -1740,12 +1740,13 @@ merely because verification was used.
 
 # 70. Runtime validation libraries
 
-C++L does not require a standard `validate<T>()` runtime API.
-
-Runtime validation may be implemented using ordinary C++ appropriate to the
-application.
-
-The verifier reasons about successful runtime paths.
+C++L requires no runtime validation library. Runtime validation may be
+implemented using ordinary C++ appropriate to the application, and the verifier
+reasons about the paths it selects. A program may also write a validation
+expression, `validate<R>(value)`, which lowers to a function its refinement's
+declaration lowers to in the same translation unit (`SPEC.md` 28.1); where a
+unit declares or uses `validate` for anything else, that meaning comes first
+(WORD-013).
 
 Compatibility with existing validation libraries is ordinary C++ library
 compatibility.

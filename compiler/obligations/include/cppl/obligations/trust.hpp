@@ -1,7 +1,6 @@
 #pragma once
 
 #include "cppl/artifact/interface.hpp"
-#include "cppl/obligations/contracts.hpp"
 #include "cppl/obligations/obligation.hpp"
 #include "cppl/obligations/status.hpp"
 #include "cppl/source/digest.hpp"
@@ -191,7 +190,7 @@ struct TrustClosure {
 
     // Every runtime validation site of a proven contract of this unit, ordered
     // by location, each once and in its own function's body, whether or not
-    // another claim rests on it (SPEC.md RUNTIMECHECK-013).
+    // another claim rests on it (SPEC.md RUNTIMECHECK-014).
     std::vector<RuntimeCheck> runtime_sites;
 
     // Dependencies that could not be attributed to a claim. Any one means the
@@ -200,12 +199,10 @@ struct TrustClosure {
     std::vector<std::string> faults;
 };
 
-// `crossings` says which refinement crossings of the unit's verified bodies
-// the kernel established without the runtime conditions of their paths. A
-// crossing it does not name as established so is a runtime validation site:
-// the classification errs toward the weaker report, never the stronger
-// (SPEC.md RUNTIMECHECK-012, TRUST.md TCB-REPORT-006).
-[[nodiscard]] TrustClosure close_trust(const Program& program, const std::vector<ObligationResult>& results,
-                                       const std::vector<CrossingVerdict>& crossings);
+// Every claim's closure. A claim about a verified body rests on the body's
+// validation expressions, and on those of every body whose contract it was
+// proven through; a refinement crossing proven from path facts is not a site
+// (SPEC.md RUNTIMECHECK-010, RUNTIMECHECK-014).
+[[nodiscard]] TrustClosure close_trust(const Program& program, const std::vector<ObligationResult>& results);
 
 } // namespace cppl::obligations

@@ -1,11 +1,12 @@
-// A contract whose proof rests on a runtime check, recorded in this unit's
-// verification interface with the site it rests on (SPEC.md RUNTIMECHECK-015).
+// A contract whose proof rests on a validation expression, recorded in this
+// unit's verification interface with the site it rests on (SPEC.md
+// RUNTIMECHECK-015).
 #include "validate.hpp"
 
 verified int positive_or_one(int raw)
     ensures (result > 0)
 {
-    if (raw <= 0) {
+    if (!validate<Positive>(raw)) {
         return 1;
     }
     Positive checked = raw;

@@ -459,8 +459,7 @@ CPPL_TEST(a_model_a_recorded_contract_rests_on_reaches_every_claim_proven_throug
         CPPL_CHECK(!generated.engine.has_errors());
         cppl::diagnostics::Engine verified;
         const std::vector<o::ObligationResult> results = cppl::automation::verify(generated.program, verified);
-        const o::TrustClosure closure =
-            o::close_trust(generated.program, results, cppl::automation::classify_crossings(generated.program));
+        const o::TrustClosure closure = o::close_trust(generated.program, results);
         CPPL_CHECK(closure.faults.empty());
         const auto claim = std::ranges::find(closure.claims, caller, &o::ClaimClosure::symbol);
         CPPL_CHECK(claim != closure.claims.end());
@@ -490,8 +489,7 @@ CPPL_TEST(a_model_a_body_uses_is_recorded_with_its_contract) {
     CPPL_CHECK(!generated.engine.has_errors());
     cppl::diagnostics::Engine verified;
     const std::vector<o::ObligationResult> results = cppl::automation::verify(generated.program, verified);
-    const o::TrustClosure closure =
-        o::close_trust(generated.program, results, cppl::automation::classify_crossings(generated.program));
+    const o::TrustClosure closure = o::close_trust(generated.program, results);
     const std::vector<artifact::Entry> exported = o::exported_contracts(generated.program, closure);
     const auto uses_entry = std::ranges::find(exported, std::string("c:@F@uses#i#"), &artifact::Entry::symbol);
     const auto plain_entry = std::ranges::find(exported, std::string("c:@F@plain#i#"), &artifact::Entry::symbol);
@@ -525,8 +523,7 @@ CPPL_TEST(a_record_carries_every_category_of_what_the_record_it_rests_on_rests_o
         CPPL_CHECK(!generated.engine.has_errors());
         cppl::diagnostics::Engine verified;
         const std::vector<o::ObligationResult> results = cppl::automation::verify(generated.program, verified);
-        const o::TrustClosure closure =
-            o::close_trust(generated.program, results, cppl::automation::classify_crossings(generated.program));
+        const o::TrustClosure closure = o::close_trust(generated.program, results);
         CPPL_CHECK(closure.faults.empty());
         const auto claim = std::ranges::find(closure.claims, caller, &o::ClaimClosure::symbol);
         CPPL_CHECK(claim != closure.claims.end());

@@ -1,6 +1,6 @@
 // Uses validate.cpp's contracts through its verification interface. The claim
-// proven through positive_or_one rests on the runtime check validate.cpp's
-// proof took the fact from, named with where it is (SPEC.md RUNTIMECHECK-014,
+// proven through positive_or_one rests on the validation validate.cpp's proof
+// took the fact from, named with where it is (SPEC.md RUNTIMECHECK-014,
 // RUNTIMECHECK-015); the one proven through always_two rests on none.
 #include "consume.hpp"
 

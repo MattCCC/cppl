@@ -31,30 +31,14 @@ struct ImportedContract {
     std::vector<artifact::RuntimeCheck> runtime = {};
 };
 
-// A value entering a refinement type on a path that runtime conditions select
-// (SPEC.md RUNTIMECHECK-010). Its membership is owed under the whole path like
-// that of any crossing, by an ordinary obligation; what this records is the
-// same membership closed over the path without the outcomes of the `if`,
-// `?:`, `&&`, `||` and loop conditions that led to it. Where the kernel accepts
-// evidence for that, the crossing is established statically; where it does
-// not, the value's membership was established by executing those conditions,
-// and the site is RUNTIME-CHECKED (RUNTIMECHECK-011, RUNTIMECHECK-012).
-//
-// Deciding which only ever reports a crossing as weaker than it is: nothing
-// here is supposed, owed or discharged, and no obligation depends on it.
-struct RefinementCrossing {
-    std::string refinement; // the refinement the value enters, as written
-    std::string predicate;  // what membership states, for the report
+// A validation expression of a verified body, `validate<R>(e)` (SPEC.md
+// RUNTIMECHECK-011): an explicit runtime test of a value against R's predicate.
+// What the path supposes from its outcome is RUNTIME-CHECKED at this site, and
+// every claim about the body rests on it (RUNTIMECHECK-014).
+struct ValidationSite {
+    std::string refinement; // the refinement tested, as declared
+    std::string predicate;  // what its predicate states, for the report
     source::SourceLocation location;
-    kernel::Proposition unguarded;
-};
-
-// Whether one crossing of one verified body was established without the
-// runtime conditions of its path (SPEC.md RUNTIMECHECK-012).
-struct CrossingVerdict {
-    std::size_t contract = 0; // into Program::contracts
-    std::size_t crossing = 0; // into that contract's crossings
-    bool statically = false;
 };
 
 // One precondition of the callee, instantiated at a call: the obligation that
@@ -182,11 +166,11 @@ struct ContractVerification {
     // reported as resting on them, and so is every claim calling this one.
     std::vector<source::RepresentationKind> library_models;
 
-    // Every value this body moves into a refinement type on a path that runtime
-    // conditions select, once per path it does so on, in the order the paths
-    // were walked (SPEC.md RUNTIMECHECK-010). A crossing no condition selects
-    // is established by its own obligation and is not listed.
-    std::vector<RefinementCrossing> crossings;
+    // Every validation expression this body evaluates, each once, in the order
+    // its paths were walked (SPEC.md RUNTIMECHECK-011). A refinement crossing
+    // proven from path facts is established statically and is not listed: only
+    // an explicit validation is a runtime validation site (RUNTIMECHECK-010).
+    std::vector<ValidationSite> validations;
 
     // The fields below are byte-aligned, and stand together so the record
     // carries little padding.

@@ -34,6 +34,7 @@
 #include <ranges>
 #include <set>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -141,40 +142,6 @@ std::expected<std::optional<kernel::Proposition>, Failure> membership(const Prog
     return required;
 }
 
-// A value entering `type` at `at`, on a path that runtime conditions select,
-// with its membership closed over that path without them (SPEC.md
-// RUNTIMECHECK-010). What the report names it by: the refinement as written,
-// its indices included, and what membership states.
-RefinementCrossing crossing(const Program& program, const vir::Type& type, const source::SourceLocation& at,
-                            kernel::Proposition unguarded) {
-    RefinementCrossing found;
-    found.location = at;
-    found.unguarded = std::move(unguarded);
-    if (type.refinements.empty()) {
-        // A record whose refined members the value must satisfy.
-        found.refinement = vir::describe(type);
-        found.predicate = "each refined member of '" + found.refinement + "' satisfies its refinement";
-        return found;
-    }
-    for (const vir::Refinement& refinement : type.refinements) {
-        std::string name = refinement.name;
-        if (!refinement.arguments.empty()) {
-            name += "<";
-            for (std::size_t index = 0; index < refinement.arguments.size(); ++index) {
-                name += (index == 0 ? "" : ", ") + std::to_string(refinement.arguments[index]);
-            }
-            name += ">";
-        }
-        const RefinementPredicate* stated =
-            program.refinement(refinement.identity.empty() ? refinement.name : refinement.identity);
-        const std::string statement =
-            stated != nullptr && !stated->statement.empty() ? stated->statement : "the predicate of " + name;
-        found.refinement = found.refinement.empty() ? name : found.refinement;
-        found.predicate += (found.predicate.empty() ? "" : " && ") + statement;
-    }
-    return found;
-}
-
 kernel::Proposition postcondition_at(const ContractVerification& callee, std::vector<kernel::Term> arguments,
                                      kernel::Term value) {
     std::vector<kernel::Type> parameters = callee.parameters;
@@ -226,8 +193,9 @@ void collect_calls(const vir::Expr& expression, const Contracts& contracts, std:
             collect_calls(argument, contracts, calls);
         }
         // A library call is evaluated like a verified one, against its
-        // trusted summary rather than a contract (RFC 0020 §6).
-        if (contracts.contains(call->callee.usr) || call->library.has_value()) {
+        // trusted summary rather than a contract (RFC 0020 §6), and so is a
+        // validation, against the test it performs (SPEC.md RUNTIMECHECK-011).
+        if (contracts.contains(call->callee.usr) || call->library.has_value() || call->validation.has_value()) {
             calls.push_back(&expression);
         }
     } else if (const auto* returned = std::get_if<vir::ReturnState>(&expression.node)) {
@@ -273,6 +241,42 @@ void collect_calls(const vir::Expr& expression, const Contracts& contracts, std:
         for (const auto& operand : region->operands)
             collect_calls(operand, contracts, calls);
     }
+}
+
+// Whether the condition selecting a path makes a verified call. The total walk
+// lowers such a call to its callee's definition and supposes nothing its
+// contract proves, so no fact of that contract would reach an obligation the
+// path owes; the conditions walk supposes the postcondition where the call is
+// made (SPEC.md RUNTIMECHECK-006, VERIFIED-014).
+bool calls_in_condition(const vir::Expr& expression, const Contracts& contracts) {
+    bool found = false;
+    const auto visit = [&](const auto& operands) {
+        for (const auto& operand : operands) {
+            found = found || calls_in_condition(operand, contracts);
+        }
+    };
+    std::visit(
+        [&](const auto& node) {
+            using Node = std::decay_t<decltype(node)>;
+            if constexpr (std::is_same_v<Node, vir::Call>) {
+                visit(node.arguments);
+            } else if constexpr (std::is_same_v<Node, vir::ElementBound>) {
+                visit(node.extent);
+                visit(node.operands);
+            } else if constexpr (std::is_same_v<Node, vir::Conditional>) {
+                std::vector<const vir::Expr*> calls;
+                collect_calls(node.operands.front(), contracts, calls);
+                found = std::ranges::any_of(calls, [](const vir::Expr* site) {
+                    const auto& call = std::get<vir::Call>(site->node);
+                    return !call.library.has_value() && !call.validation.has_value();
+                });
+                visit(node.operands);
+            } else if constexpr (requires { node.operands; }) {
+                visit(node.operands);
+            }
+        },
+        expression.node);
+    return found;
 }
 
 bool requires_conditions(const vir::Expr& expression) {
@@ -493,8 +497,7 @@ std::expected<void, Failure> append_calls(const vir::Expr& expression, const vir
                                           ReturnPath& path, CallBindings& bindings, const VersionBindings& versions,
                                           const DefinitionMap& pure_definitions, const DefinitionMap& definitions,
                                           const std::map<std::string, std::size_t>& established, const Program& program,
-                                          std::vector<Obligation>& obligations,
-                                          std::vector<RefinementCrossing>& crossings) {
+                                          std::vector<Obligation>& obligations) {
     std::vector<const vir::Expr*> sites;
     collect_calls(expression, contracts, sites);
     for (const auto* site : sites) {
@@ -537,25 +540,6 @@ std::expected<void, Failure> append_calls(const vir::Expr& expression, const vir
                                                        specialize(precondition, callee.parameters, call.arguments)),
                                                  required.reasoning_goal));
             call.preconditions.push_back(std::move(required));
-        }
-        // An argument entering a refined parameter is a crossing like any
-        // other, owed among the preconditions above; on a path runtime
-        // conditions select, it is recorded (SPEC.md RUNTIMECHECK-010).
-        if (const auto declared = contracts.find(call_expression.callee.usr);
-            call.conditions > 0 && declared != contracts.end() &&
-            declared->second->parameters.size() == call.arguments.size()) {
-            for (std::size_t index = 0; index < call.arguments.size(); ++index) {
-                const vir::Type& parameter = declared->second->parameters[index].type;
-                const auto admitted = membership(program, parameter, call.arguments[index]);
-                if (!admitted) {
-                    return std::unexpected(admitted.error());
-                }
-                if (admitted->has_value()) {
-                    crossings.push_back(crossing(program, parameter,
-                                                 call_expression.arguments[index].provenance.range.begin,
-                                                 close(plan, path, 0, 0, false, **admitted)));
-                }
-            }
         }
         for (auto& argument : abstract_arguments)
             argument = kernel::shift(argument, 1);
@@ -727,7 +711,7 @@ std::expected<ContractVerification, Failure> build(const vir::Function& function
         VersionBindings versions;
         for (const auto& step : leaf.steps) {
             auto calls = append_calls(*step.value, function, contracts, plan, path, bindings, versions,
-                                      pure_definitions, definitions, established, program, obligations, plan.crossings);
+                                      pure_definitions, definitions, established, program, obligations);
             if (!calls)
                 return std::unexpected(calls.error());
             if (step.binding != nullptr) {
@@ -753,13 +737,6 @@ std::expected<ContractVerification, Failure> build(const vir::Function& function
                             step.value->provenance.range,
                             close(plan, path, 0, path.conditions.size(), false, **required),
                             close(plan, path, path.calls.size(), path.conditions.size(), true, **reasoning)));
-                        // Every condition of a route here is one C++ evaluates
-                        // at run time (SPEC.md RUNTIMECHECK-010).
-                        if (!path.conditions.empty()) {
-                            plan.crossings.push_back(crossing(program, step.binding->declared,
-                                                              step.value->provenance.range.begin,
-                                                              close(plan, path, 0, 0, false, **required)));
-                        }
                     }
                 }
                 if (!versions.emplace(step.binding->version, step.value).second) {
@@ -776,7 +753,7 @@ std::expected<ContractVerification, Failure> build(const vir::Function& function
                                                     kernel::predicate(*abstract, step.positive), path.calls.size()});
         }
         auto calls = append_calls(*leaf.returned, function, contracts, plan, path, bindings, versions, pure_definitions,
-                                  definitions, established, program, obligations, plan.crossings);
+                                  definitions, established, program, obligations);
         if (!calls)
             return std::unexpected(calls.error());
         auto actual_return = lower_value(*leaf.returned, definitions, plan.parameters.size(), nullptr, &versions);
@@ -786,19 +763,6 @@ std::expected<ContractVerification, Failure> build(const vir::Function& function
             return std::unexpected(!actual_return ? actual_return.error() : abstract_return.error());
         }
         path.returned_value = std::move(*actual_return);
-        // A refined result is owed with the postcondition; the value entering
-        // it on a path runtime conditions select is a crossing of its own
-        // (SPEC.md RUNTIMECHECK-010).
-        if (!path.conditions.empty()) {
-            const auto entering = membership(program, function.result, path.returned_value);
-            if (!entering) {
-                return std::unexpected(entering.error());
-            }
-            if (entering->has_value()) {
-                plan.crossings.push_back(crossing(program, function.result, leaf.returned->provenance.range.begin,
-                                                  close(plan, path, 0, 0, false, **entering)));
-            }
-        }
         const auto abstract_post = kernel::shift(plan.postcondition, static_cast<std::uint32_t>(path.calls.size()), 1);
         path.reasoning_goal = close(plan, path, path.calls.size(), path.conditions.size(), true,
                                     kernel::instantiate(abstract_post, *abstract_return));
@@ -935,25 +899,18 @@ class Conditions {
     // Every loop a path of the body enters that states no measure, each once.
     // Its termination is not established, so neither is the body's.
     std::vector<source::SourceLocation> unmeasured_loops;
-    // Every value moved into a refinement type on a path runtime conditions
-    // select, once per path (SPEC.md RUNTIMECHECK-010).
-    std::vector<RefinementCrossing> crossings;
+    // Every validation expression a path of the body evaluates, each once, in
+    // the order the walk meets them (SPEC.md RUNTIMECHECK-011).
+    std::vector<ValidationSite> validations;
 
   private:
-    // The outcome of a condition C++ evaluates at run time -- an `if`, a `?:`,
-    // an operand of `&&` or `||`, a loop's condition -- supposed on the path
-    // it selects. It is supposed exactly as any fact is; it is kept apart only
-    // so a crossing can be stated without it (SPEC.md RUNTIMECHECK-011). A case
-    // split's arm is not one: the split runs nothing, and its arms together
-    // cover every state.
-    struct Guard {
-        kernel::Proposition condition;
-    };
-
     // After the parameters, a path binds fresh values and supposes facts, in
     // the order it meets them. A step is one or the other, never both, so the
-    // alternative carries that exclusivity instead of a pair of optionals.
-    using Event = std::variant<kernel::Type, kernel::Proposition, Guard>;
+    // alternative carries that exclusivity instead of a pair of optionals. The
+    // outcome of a condition C++ evaluates at run time is a fact like any
+    // other: a crossing proven from it is proven statically (SPEC.md
+    // RUNTIMECHECK-010).
+    using Event = std::variant<kernel::Type, kernel::Proposition>;
 
     struct Scope {
         std::vector<kernel::Type> binders; // the parameters, then each fresh value
@@ -976,32 +933,16 @@ class Conditions {
         return std::unexpected(Failure{std::move(reason), location, {}});
     }
 
-    // `goal` under everything the path supposes. Without `guards`, the
-    // outcomes of the runtime conditions that selected the path are left out;
-    // a supposition binds nothing, so every binder stays where it was.
-    [[nodiscard]] kernel::Proposition close(const Scope& scope, kernel::Proposition goal, bool guards = true) const {
+    // `goal` under everything the path supposes.
+    [[nodiscard]] kernel::Proposition close(const Scope& scope, kernel::Proposition goal) const {
         for (const auto& event : std::ranges::reverse_view(scope.events)) {
             if (const auto* binder = std::get_if<kernel::Type>(&event)) {
                 goal = kernel::Proposition::for_all(*binder, std::move(goal));
-            } else if (const auto* fact = std::get_if<kernel::Proposition>(&event)) {
-                goal = kernel::Proposition::implication(*fact, std::move(goal));
-            } else if (guards) {
-                goal = kernel::Proposition::implication(std::get<Guard>(event).condition, std::move(goal));
+            } else {
+                goal = kernel::Proposition::implication(std::get<kernel::Proposition>(event), std::move(goal));
             }
         }
         return quantify(plan_.parameters, std::move(goal));
-    }
-
-    // A value entering `type` at `at`, whose membership `required` states: on
-    // a path runtime conditions select, it is recorded with that membership
-    // closed over the path without them (SPEC.md RUNTIMECHECK-010).
-    void cross(const Scope& scope, const vir::Type& type, const source::SourceLocation& at,
-               const kernel::Proposition& required) {
-        if (std::ranges::none_of(scope.events,
-                                 [](const Event& event) { return std::holds_alternative<Guard>(event); })) {
-            return;
-        }
-        crossings.push_back(crossing(program_, type, at, close(scope, required, false)));
     }
 
     [[nodiscard]] std::expected<kernel::Term, Failure> lower(const vir::Expr& expression, const Scope& scope) const {
@@ -1287,6 +1228,31 @@ class Conditions {
                 }
                 arguments.push_back(std::move(*lowered));
             }
+            // A validation tests its argument against a refinement's predicate
+            // at run time (SPEC.md RUNTIMECHECK-018). Nothing proves what it
+            // returns: the path supposes, of a fresh result, that a true one
+            // means the value tested satisfies the refinement, and that fact is
+            // RUNTIME-CHECKED at this site (RUNTIMECHECK-011, RUNTIMECHECK-012).
+            // On the path where it is false, nothing is supposed.
+            if (call.validation.has_value()) {
+                auto tested = validation_test(call, *site);
+                if (!tested) {
+                    return std::unexpected(tested.error());
+                }
+                if (auto supposed = suppose_call(call, *site, {tested->base}, kernel::Type{kernel::kBoolean},
+                                                 std::move(arguments), tested->postcondition, scope);
+                    !supposed) {
+                    return supposed;
+                }
+                posts.push_back(Supposed{site, scope.events.size() - 1});
+                if (std::ranges::none_of(validations, [&](const ValidationSite& known) {
+                        return known.location == site->provenance.range.begin;
+                    })) {
+                    validations.push_back(
+                        ValidationSite{tested->name, tested->predicate, site->provenance.range.begin});
+                }
+                continue;
+            }
             // A library operation is evaluated against its trusted summary
             // exactly as a verified call is against its contract: its
             // preconditions are owed here, and its postcondition is supposed of
@@ -1331,21 +1297,6 @@ class Conditions {
                 emit(scope, Origin::CallPrecondition, function_.qualified_name + " -> " + call.callee_name,
                      site->provenance.range, specialize(precondition, callee.parameters, arguments));
             }
-            // An argument entering a refined parameter is a crossing, owed among
-            // the preconditions above (SPEC.md RUNTIMECHECK-010).
-            if (const auto declared = contracts_.find(call.callee.usr);
-                declared != contracts_.end() && declared->second->parameters.size() == arguments.size()) {
-                for (std::size_t index = 0; index < arguments.size(); ++index) {
-                    const vir::Type& parameter = declared->second->parameters[index].type;
-                    const auto required = membership(program_, parameter, arguments[index]);
-                    if (!required) {
-                        return std::unexpected(required.error());
-                    }
-                    if (required->has_value()) {
-                        cross(scope, parameter, call.arguments[index].provenance.range.begin, **required);
-                    }
-                }
-            }
             // A call within the recursion group supposes the callee's contract
             // as the induction hypothesis, which holds only at a smaller
             // measure (SPEC.md TERMINATION-007).
@@ -1366,6 +1317,49 @@ class Conditions {
             }
         }
         return {};
+    }
+
+    // What a validation expression's test is: the base type it takes, and the
+    // postcondition its result supposes, `result -> R(value)`, stated over the
+    // parameter and then the result like any contract's (SPEC.md
+    // RUNTIMECHECK-011). Its refinement's predicate must be one the program can
+    // evaluate on every value (RUNTIMECHECK-020).
+    struct ValidationTest {
+        kernel::Type base;
+        kernel::Proposition postcondition;
+        std::string name;
+        std::string predicate;
+    };
+    [[nodiscard]] std::expected<ValidationTest, Failure> validation_test(const vir::Call& call,
+                                                                         const vir::Expr& site) const {
+        const source::SourceLocation& location = site.provenance.range.begin;
+        if (!call.validation.has_value()) {
+            return fail("a call that is no validation was read as one", location);
+        }
+        const RefinementPredicate* stated = program_.refinement(*call.validation);
+        if (stated == nullptr || stated->parameters.size() != 1) {
+            return fail("a validation names a refinement with no resolved predicate over one value", location);
+        }
+        if (stated->unvalidatable.has_value()) {
+            return fail("refinement type '" + stated->name +
+                            "' cannot be validated at run time: " + *stated->unvalidatable,
+                        location);
+        }
+        if (call.arguments.size() != 1 ||
+            core_type(call.arguments.front().type) != std::optional{stated->parameters[0]}) {
+            return fail("a validation of '" + stated->name + "' tests one value of its base type", location);
+        }
+        if (core_type(site.type) != std::optional{kernel::Type{kernel::kBoolean}}) {
+            return fail("a validation of '" + stated->name + "' is a bool", location);
+        }
+        // Over the parameter and then the result: the parameter is #1, the
+        // result #0.
+        const kernel::Term value = kernel::Term::variable(kernel::VarIndex{1});
+        const kernel::Term result = kernel::Term::variable(kernel::VarIndex{0});
+        kernel::Proposition holds = specialize(stated->predicate, stated->parameters, {value});
+        return ValidationTest{stated->parameters[0],
+                              kernel::Proposition::implication(kernel::predicate(result, true), std::move(holds)),
+                              stated->name, stated->statement};
     }
 
     // What a call leaves on its path once its entry obligations are owed: a
@@ -1426,7 +1420,6 @@ class Conditions {
                 emit(scope, Origin::RefinementIntroduction,
                      function_.qualified_name + " -> " + effect.declared.refinements.front().name,
                      site.provenance.range, **required);
-                cross(scope, effect.declared, site.provenance.range.begin, **required);
             }
         }
         return {};
@@ -1488,8 +1481,6 @@ class Conditions {
             auto value = lower(result, scope);
             if (!value)
                 return std::unexpected(value.error());
-            if (auto entered = cross_result(scope, result, *value); !entered)
-                return entered;
             emit(scope, Origin::ReturnPath, function_.qualified_name + " path " + std::to_string(++paths_),
                  expression.provenance.range, owed_at_return(plan_, std::move(arguments), *value));
             return {};
@@ -1516,7 +1507,6 @@ class Conditions {
                 emit(scope, Origin::RefinementIntroduction,
                      function_.qualified_name + " -> " + bound->declared.refinements.front().name,
                      bound->operands[0].provenance.range, **required);
-                cross(scope, bound->declared, bound->operands[0].provenance.range.begin, **required);
             }
             scope.versions.emplace(bound->version, &bound->operands[0]);
             return walk(bound->operands[1], std::move(scope), loops);
@@ -1587,11 +1577,11 @@ class Conditions {
                 return std::unexpected(condition.error());
             }
             Scope when_true = scope;
-            when_true.events.emplace_back(Guard{kernel::predicate(*condition, true)});
+            when_true.events.emplace_back(kernel::predicate(*condition, true));
             if (auto walked = walk(branch->operands[1], std::move(when_true), loops); !walked) {
                 return walked;
             }
-            scope.events.emplace_back(Guard{kernel::predicate(*condition, false)});
+            scope.events.emplace_back(kernel::predicate(*condition, false));
             return walk(branch->operands[2], std::move(scope), loops);
         }
 
@@ -2148,26 +2138,9 @@ class Conditions {
         if (!value) {
             return std::unexpected(value.error());
         }
-        if (auto entered = cross_result(scope, expression, *value); !entered) {
-            return entered;
-        }
         const auto fresh = static_cast<std::uint32_t>(scope.binders.size() - plan_.parameters.size());
         emit(scope, Origin::ReturnPath, function_.qualified_name + " path " + std::to_string(++paths_),
              expression.provenance.range, kernel::instantiate(kernel::shift(plan_.postcondition, fresh, 1), *value));
-        return {};
-    }
-
-    // A returned value entering a refined result, owed with the postcondition
-    // at the return (SPEC.md RUNTIMECHECK-010).
-    std::expected<void, Failure> cross_result(const Scope& scope, const vir::Expr& returned,
-                                              const kernel::Term& value) {
-        const auto entering = membership(program_, function_.result, value);
-        if (!entering) {
-            return std::unexpected(entering.error());
-        }
-        if (entering->has_value()) {
-            cross(scope, function_.result, returned.provenance.range.begin, **entering);
-        }
         return {};
     }
 
@@ -2208,7 +2181,7 @@ std::expected<source::Digest, Failure> fill_conditions(const vir::Function& func
     plan.conditions = std::move(generated.conditions);
     plan.unsafe_regions = std::move(generated.unsafe_regions);
     plan.unmeasured_loops = std::move(generated.unmeasured_loops);
-    plan.crossings = std::move(generated.crossings);
+    plan.validations = std::move(generated.validations);
     for (Obligation& obligation : generated.obligations) {
         program.obligations.push_back(std::move(obligation));
     }
@@ -2653,6 +2626,7 @@ void generate_contracts(const vir::Module& module, const DefinitionMap& pure_def
         std::vector<std::size_t> callees;               // the candidates those calls reach, each once
         std::vector<std::string> external = {};         // the functions defined elsewhere they reach, each once
         bool library = false;                           // whether the body calls a library summary
+        bool validates = false;                         // whether the body holds a validation expression
         std::optional<Failure> unstated = std::nullopt; // a library call no summary could be stated for
     };
     std::vector<Candidate> candidates;
@@ -2666,7 +2640,7 @@ void generate_contracts(const vir::Module& module, const DefinitionMap& pure_def
         }
         if (function.contract.has_value() && function.returned_value.has_value()) {
             contracts.emplace(function.symbol.usr, &function);
-            candidates.push_back({&function, &function.returned_value.value(), {}, {}, {}, false, std::nullopt});
+            candidates.push_back({&function, &function.returned_value.value(), {}, {}, {}, false, false, std::nullopt});
         } else if (function.contract.has_value() && function.defined_elsewhere) {
             contracts.emplace(function.symbol.usr, &function);
             externals.push_back(&function);
@@ -2683,6 +2657,13 @@ void generate_contracts(const vir::Module& module, const DefinitionMap& pure_def
         collect_calls(*candidate.returned_value, contracts, candidate.calls);
         std::erase_if(candidate.calls, [&](const vir::Expr* site) {
             const auto& call = std::get<vir::Call>(site->node);
+            // A validation calls no function of the program: the test it
+            // performs is supposed where the path makes it (SPEC.md
+            // RUNTIMECHECK-011).
+            if (call.validation.has_value()) {
+                candidate.validates = true;
+                return true;
+            }
             if (!call.library.has_value()) {
                 return false;
             }
@@ -3049,8 +3030,13 @@ void generate_contracts(const vir::Module& module, const DefinitionMap& pure_def
             // owed where the path evaluates the operation, and the contract
             // rests on it (SPEC.md ARITH-009). So does a library operation,
             // which has no definition to unfold: only its summary is known,
-            // supposed where the path makes it (RFC 0020 §6).
-            const bool partial = candidate.library || requires_conditions(*candidate.returned_value) ||
+            // supposed where the path makes it (RFC 0020 §6). So does a
+            // validation, whose test is supposed the same way, and a verified
+            // call a condition makes, whose postcondition is a fact of the
+            // path it selects.
+            const bool partial = candidate.library || candidate.validates ||
+                                 requires_conditions(*candidate.returned_value) ||
+                                 calls_in_condition(*candidate.returned_value, contracts) ||
                                  first_definedness_site(*candidate.returned_value).has_value() ||
                                  std::ranges::any_of(candidate.calls, [&](const vir::Expr* call) {
                                      const std::string& callee = std::get<vir::Call>(call->node).callee.usr;

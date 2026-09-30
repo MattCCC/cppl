@@ -297,6 +297,26 @@ Index declarations are typed; applications use `Index<4>`. Indices are in scope
 in the predicate. There is no alternate untyped index or call-style application.
 Dependent names and template substitution use Clang's ordinary C++ rules.
 
+### 16.1 Validation expressions
+
+```ebnf
+validation-expression ::= "validate" "<" identifier ">" "(" expression ")"
+```
+
+```cpp
+if (validate<Positive>(raw)) {
+    Positive p = raw;
+}
+```
+
+The identifier is the name a refinement declaration without indices gives its
+type; the expression has that refinement's base type, and the validation has
+type `bool` (SPEC.md RUNTIMECHECK-018). It is runtime code: it stands only in
+the body of a verified function, outside every unsafe block, and never in a
+contract clause, loop clause, Law, proof or refinement predicate
+(RUNTIMECHECK-019). Where the translation unit declares or uses `validate` for
+anything else, the spelling is ordinary C++ (SPEC.md WORD-013).
+
 ## 17. Data types
 
 Use ordinary C++ enums, classes, structs and standard-library types. C++L

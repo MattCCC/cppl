@@ -781,31 +781,37 @@ is refused.
 
 Manifest: `features/runtime-validation.yaml`
 
-Normative sources: `RUNTIMECHECK-001`–`RUNTIMECHECK-017` (SPEC §28, §28.5),
-`ERASE-012`, `ORTHOCHECK-*`, `INTERACT-022`, `INTERACT-023`, `EDGECASE-079`;
-`TRUST.md` §26.3, §31.1, §36; RFC 0021.
+Normative sources: `RUNTIMECHECK-001`–`RUNTIMECHECK-021` (SPEC §28, §28.1,
+§28.5), `WORD-013`, `ERASE-012`, `ORTHOCHECK-*`, `INTERACT-022`, `INTERACT-023`,
+`EDGECASE-079`, `REFINE-017`, `REFINE-018`; `GRAMMAR.md` 16.1; `TRUST.md` §26.3,
+§31.1, §36; RFC 0021.
 
 ### Components
 
 | Component | Responsibility | Paths |
 | --- | --- | --- |
-| obligations | Record every refinement crossing a runtime condition selects, in both body walkers, with its membership closed over the path without the runtime conditions; keep `if`, `?:`, `&&`, `||` and loop-condition outcomes as guard events and case facts as ordinary facts. | `compiler/obligations/src/contracts.cpp`, `compiler/obligations/include/cppl/obligations/contracts.hpp` |
-| automation | Offer each unguarded membership the strategies and let the kernel decide; only acceptance makes a crossing static. | `compiler/automation/src/evidence.cpp` |
-| trust closure | Attribute sites to their contract, to every caller to a fixed point, and to path and case claims of those bodies; a crossing without a static verdict is a site. | `compiler/obligations/src/trust.cpp`, `compiler/obligations/include/cppl/obligations/trust.hpp` |
+| recognizer | Find every `validate<R>(e)` over the unit; refuse one outside a verified body, in a loop clause or unsafe block, or naming anything but one refinement without indices; leave every one ordinary C++ where the unit uses `validate` otherwise. | `compiler/frontend/src/recognizer.cpp`, `compiler/frontend/include/cppl/frontend/syntax.hpp` |
+| projection | Give the analysis text the refinement's probe in the validation's place, and the runtime text a call of the validator the declaration lowers to beside its alias; refuse a validator for a formal predicate. | `compiler/frontend/src/projection.cpp`, `compiler/frontend/include/cppl/frontend/projection.hpp` |
+| bridge, elaboration | Mark a call of a probe as a validation of that refinement; never a callee of the program. | `clang/src/bridge.cpp`, `compiler/elaboration/src/elaborate.cpp` |
+| obligations | Suppose `result -> P(value)` of a validation's fresh result where the path makes it, and record the site; refuse a partially defined predicate; route a body with a validation, or a verified call in a condition, to the conditions walk. Every crossing owes its predicate under its whole path. | `compiler/obligations/src/contracts.cpp`, `compiler/obligations/src/generate.cpp`, `compiler/obligations/include/cppl/obligations/contracts.hpp` |
+| automation | Chain an available implication whose premise is available, so a validation's or a helper's fact reaches the crossing. | `compiler/obligations/src/status.cpp`, `compiler/automation/src/arithmetic.cpp` |
+| erasure | Recompute the alias, the validator and each validation's lowering, and compare them with the text compiled. | `compiler/erasure/src/erase.cpp` |
+| trust closure | Attribute sites to their contract, to every caller to a fixed point, and to path and case claims of those bodies. | `compiler/obligations/src/trust.cpp`, `compiler/obligations/include/cppl/obligations/trust.hpp` |
 | interface | Record sites as their own category, in the result identity; carry imported sites on. | `compiler/artifact/src/interface.cpp`, `compiler/obligations/src/interface.cpp` |
 | driver | List every site `RUNTIME-CHECKED` and every claim resting on one; never count a site as an assumption. | `compiler/driver/src/driver.cpp`, `compiler/driver/src/pipeline.cpp` |
 
 ### Required behavior
 
 ```text
-a crossing on a path a runtime  owes its predicate under the whole path, as
-condition selects               every crossing does
-the same crossing without its   kernel-accepted -> established statically;
-runtime conditions              otherwise a runtime validation site
-a site                          RUNTIME-CHECKED, never PROVEN, never an assumption
-a claim resting on a site       PROVEN, and names every site it rests on,
-                                through calls and units
-the check                       ordinary runtime code erasure keeps
+a crossing a condition selects   owes its predicate under the whole path;
+                                 kernel-accepted -> PROVEN, no site
+a crossing not accepted          refused, never a site
+validate<R>(e)                   the validator's call, kept by erasure; true
+                                 supposes e's value satisfies R there
+a site                           RUNTIME-CHECKED, never PROVEN, never an assumption
+a claim resting on a site        PROVEN, and names every site it rests on,
+                                 through calls and units
+the check                        ordinary runtime code erasure keeps
 ```
 
 ### Interactions
@@ -826,6 +832,7 @@ runtime validation x erasure              ERASE-012, RUNTIMECHECK-009
 tests/fixtures/runtime_validation.cpp        every accepted crossing form
 tests/e2e/runtime_validation.sh              sites, claims, runtime behavior, erasure, three units
 tests/negative/runtime_validation.sh         every refused twin, in tests/fixtures/negative/runtime_check_*.cpp
+                                             and tests/fixtures/negative/validation_*.cpp
 ```
 
 Not built: a checked helper returning `bool` (RUNTIMECHECK-006) is refused,

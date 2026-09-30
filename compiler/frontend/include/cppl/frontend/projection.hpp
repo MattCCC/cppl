@@ -251,11 +251,21 @@ struct ProjectionOptions {
 //     type R = T where (P);              ->  using R = T;
 //     type R(I i) = T where (P);         ->  template <I i> using R = T;
 //
+// A declaration a validation expression of the unit names also lowers to its
+// validator, on the same line: `static inline bool V(T self) { return P; }`
+// (SPEC.md RUNTIMECHECK-021).
+//
 // Deterministic and derived from the declaration alone, so erasure can check the
 // runtime program against it without trusting the projector. The result carries
 // one newline per newline in the declaration, so no line moves. An index written
 // without a type takes the base type.
 [[nodiscard]] std::string canonical_lowering(const TokenStream& stream, const RefinementType& refinement);
+
+// The canonical C++ a validation expression's `validate<R>` lowers to: the name
+// of the validator R's declaration lowers to (SPEC.md RUNTIMECHECK-021), with a
+// newline for each one the spelling had.
+[[nodiscard]] std::string lowered_validation(const TokenStream& stream, const Syntax& syntax,
+                                             const ValidationExpression& validation);
 
 // The canonical C++ a case split on a runtime path lowers to: an empty statement
 // where the split was written, so whatever statement it was the body of still

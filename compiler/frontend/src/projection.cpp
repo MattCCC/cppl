@@ -248,9 +248,30 @@ std::string canonical_lowering(const TokenStream& stream, const RefinementType& 
         text += "template <" + spelled_indices(stream, refinement) + "> ";
     }
     text += "using " + refinement.name + " = " + spelled_tokens(stream, refinement.base) + ";";
+    // A validation expression of this unit tests values against the predicate
+    // at run time, so the program keeps the predicate as the body of the one
+    // function every such expression calls, stated where the declaration stands
+    // so its names mean what they mean there (SPEC.md RUNTIMECHECK-021).
+    if (!refinement.validator.empty()) {
+        text += " [[maybe_unused]] static inline bool " + refinement.validator + "(" +
+                spelled_tokens(stream, refinement.base) + " self) { return static_cast<bool>(" +
+                spelled_tokens(stream, refinement.predicate) + "); }";
+    }
     // Every line of the declaration stays a line of the program, so nothing
     // below it moves.
     for (const char character : stream.spelling(refinement.range.span)) {
+        if (character == '\n') {
+            text += '\n';
+        }
+    }
+    return text;
+}
+
+std::string lowered_validation(const TokenStream& stream, const Syntax& syntax,
+                               const ValidationExpression& validation) {
+    std::string text = syntax.refinement_types[validation.refinement_index].validator;
+    // A `validate<R>` written across lines keeps every line.
+    for (const char character : stream.spelling(validation.callee)) {
         if (character == '\n') {
             text += '\n';
         }
@@ -493,7 +514,7 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
             const std::size_t base = lowering.find(" = ", lowering.find("using ")) + 3;
             replacement.copies.push_back(Projection::Copy{replacement.size() + base, written});
         }
-        replacement += lowering.substr(0, lowering.find_last_of(';') + 1);
+        replacement += lowering.substr(0, lowering.find(';') + 1); // the alias alone
         replacement += "\n";
         replacement += line_directive(refinement.predicate_location.line, refinement.keyword_location.file);
         replacement += "[[maybe_unused]] static bool " + probe.probe + "(" + parameters + ")";
@@ -519,8 +540,40 @@ Projection project(const TokenStream& stream, const Syntax& syntax, const Projec
         replacement += "); }\n";
         replacement += line_directive(refinement.end_line, refinement.keyword_location.file);
 
+        // A validation runs the predicate as written, so it must be an ordinary
+        // C++ expression (SPEC.md RUNTIMECHECK-020).
+        if (!refinement.validator.empty() && !formula.failure &&
+            formula.shape.kind != source::ProjectionKind::Expression) {
+            diagnostics::Diagnostic diagnostic;
+            diagnostic.severity = diagnostics::Severity::Error;
+            diagnostic.category = diagnostics::Category::UnsupportedSemantics;
+            diagnostic.location = refinement.predicate_location;
+            diagnostic.message = "refinement type '" + refinement.name +
+                                 "' states a formal predicate, which no validation can evaluate at run time";
+            projection.diagnostics.push_back(std::move(diagnostic));
+        }
+
         projection.refinement_probes.push_back(std::move(probe));
         edits.push_back(generated_edit(refinement.range.span, std::move(replacement), std::nullopt, index));
+    }
+
+    // A validation expression calls the refinement's probe in the analysis
+    // text, so Clang resolves its argument against the base type and the bridge
+    // reads it as a test of that refinement; the runtime text calls the
+    // validator the declaration lowers to (SPEC.md RUNTIMECHECK-018,
+    // RUNTIMECHECK-021).
+    for (const ValidationExpression& validation : syntax.validations) {
+        const std::string suffix =
+            std::to_string(validation.refinement_index) + (options.unit_key.empty() ? "" : "_" + options.unit_key);
+        std::string probe = options.generated_prefix + "refinement_" + suffix;
+        for (const char character : stream.spelling(validation.callee)) {
+            if (character == '\n') {
+                probe += '\n';
+            }
+        }
+        edits.push_back(Edit{validation.callee, std::move(probe)});
+        projection.runtime_lowerings.push_back(
+            RuntimeLowering{validation.callee, lowered_validation(stream, syntax, validation)});
     }
 
     for (std::size_t index = 0; index < syntax.laws.size(); ++index) {

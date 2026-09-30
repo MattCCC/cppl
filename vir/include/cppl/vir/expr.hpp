@@ -76,6 +76,14 @@ struct Call {
     // library's implementation is ever unfolded or verified.
     std::optional<source::LibraryCall> library = std::nullopt;
 
+    // Set when the call is a validation expression, `validate<R>(e)` (SPEC.md
+    // RUNTIMECHECK-018): the identity of the refinement R. Its result is true
+    // only where the one argument's value satisfies R's predicate, which the
+    // program tests at run time; nothing about it is proven, and what a path
+    // supposes from it is RUNTIME-CHECKED at the call (RUNTIMECHECK-011,
+    // RUNTIMECHECK-012).
+    std::optional<std::string> validation = std::nullopt;
+
     friend bool operator==(const Call&, const Call&) = default;
 };
 

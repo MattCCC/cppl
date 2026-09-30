@@ -3210,6 +3210,14 @@ Expr build_expression(CXCursor cursor, const Signature& signature, const Locals&
         Call call;
         call.callee_usr = take(clang_getCursorUSR(referenced));
         call.callee_name = qualified_name_of(referenced);
+        // A validation expression reaches the analysis text as a call of its
+        // refinement's predicate probe, a declaration only the projector can
+        // name (SPEC.md RUNTIMECHECK-018, WORD-013).
+        if (const std::string spelled = take(clang_getCursorSpelling(referenced));
+            !member && spelled.starts_with("__cppl_refinement_")) {
+            call.validation = spelled;
+            call.callee_name = "validate";
+        }
 
         // The implicit object's arguments come first, in the order of the
         // callee's leaves, each the object's own storage at that path.
