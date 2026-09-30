@@ -116,11 +116,11 @@ struct UnsafeBlock {
     friend bool operator==(const UnsafeBlock&, const UnsafeBlock&) = default;
 };
 
-// A runtime validation site a recorded contract rests on: a place in a
-// verified body where a value entered a refinement type because the runtime
-// conditions of its path held, rather than by anything proven of every
-// execution (SPEC.md RUNTIMECHECK-011, RUNTIMECHECK-015). Its identity is where
-// it is and what it enters; the predicate is recorded only to be shown.
+// A runtime validation site a recorded contract rests on: a validation
+// expression, `validate<R>(e)`, in a verified body, whose success the proof
+// took the fact that a value satisfies R from (SPEC.md RUNTIMECHECK-011,
+// RUNTIMECHECK-015). Its identity is where it is and what it tests; the
+// predicate is recorded only to be shown.
 struct RuntimeCheck {
     std::string file;
     std::uint32_t line = 0;
