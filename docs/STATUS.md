@@ -1662,8 +1662,8 @@ RFC.
 The rest of the test fixtures are held to the same standard. Every fixture the
 compiler accepts has a refused twin, the same program with one thing false,
 listed in `tests/fixtures/negative/twins/manifest.tsv` and checked by
-`negative_refused_twins`: 51 are written out there and compiled beside their
-fixture, units they import included; 45 are refused fixtures written out before
+`negative_refused_twins`: 52 are written out there and compiled beside their
+fixture, units they import included; 47 are refused fixtures written out before
 and run by the negative script that owns them; eight fixtures are exempt, each
 with its reason, because they state no claim (ordinary C++ clients, tampered
 erasures, a C++ type error). A fixture added without a row fails the test.
@@ -2129,8 +2129,12 @@ document writes, what became of its obligations in the last compile, and hover
 over any of them lists each obligation's status, goal, trusted premises and
 evidence, or why it is not proven. The compile copies these out of the
 verdicts after the kernel has decided (`driver::ObligationRecord`), so an
-editor says `PROVEN` only where the trust report would; a verdict is shown only
-for the buffer version it was computed for. This is the goal of each
+editor says `PROVEN` only where the trust report would. It also names, beside a
+PROVEN verdict, everything the report says the claim rests on, wherever that
+arrives from. That means its trusted laws, the imported contracts, the library
+models, the unsafe blocks and the runtime validations, including those that
+come through a proof it uses or a verified function it calls (`TRUST.md` 36.3).
+A verdict is shown only for the buffer version it was computed for. This is the goal of each
 obligation, not an interactive proof state: the goal a proof has reached after
 each of its statements is not reported. Counterexamples are not reported
 because nothing in the compiler produces one.
@@ -2597,6 +2601,330 @@ That subset must be explicit. It is: see [Verified C++ subset status](#verified-
 Unsupported C++ may remain executable as ordinary/unverified C++.
 
 It must never silently count as formally verified.
+
+---
+
+# V1 closure
+
+This section is the release-gate record for V1. `ROADMAP.md`, "V1 release
+gates", states each gate's pass condition and points here; this section gives
+each gate's status, the evidence behind it and what is still open. A gate's
+status judges the behavior V1 requires, within the scope RFC 0022 fixes. The
+rows elsewhere in this file judge the full specified semantics, which is why a
+row may read `PROTOTYPE` or `PARTIAL` while its gate reads `IMPLEMENTED`: the
+row covers semantics V1 does not claim, such as induction over the `@` domains,
+or semantics not yet frozen. A gate is met only when its status is
+`IMPLEMENTED` or `VERIFIED` and its pass condition holds.
+
+**V1 is not met.** Gates G13, G14, G17 and G18 are open, and the project stays
+**Production ready: No**.
+
+| Gate | What it covers | Status | Met |
+| --- | --- | --- | --- |
+| G1 | C++L syntax | `IMPLEMENTED` | yes |
+| G2 | Laws and kernel-checked proofs | `IMPLEMENTED` | yes |
+| G3 | Dependent and indexed relationships | `IMPLEMENTED` | yes |
+| G4 | Refinement types, static and runtime-checked construction | `IMPLEMENTED` | yes |
+| G5 | Equality | `IMPLEMENTED` | yes |
+| G6 | Induction | `IMPLEMENTED` | yes |
+| G7 | Termination | `IMPLEMENTED` | yes |
+| G8 | Contracts, within and across translation units | `IMPLEMENTED` | yes |
+| G9 | Explicit unsafe and trusted boundaries | `IMPLEMENTED` | yes |
+| G10 | C++ safety semantics of the verified subset | `IMPLEMENTED` | yes |
+| G11 | Proof erasure and native output | `IMPLEMENTED` | yes |
+| G12 | Trust reporting | `IMPLEMENTED` | yes |
+| G13 | Kernel assurance: mechanized model | `PARTIAL` | no |
+| G14 | Kernel and verifier assurance: adversarial testing | `PARTIAL` | no |
+| G15 | Correspondence TCB | `IMPLEMENTED` | yes |
+| G16 | Artifact provenance | `IMPLEMENTED` | yes |
+| G17 | Stability of the specification and the proof system | `PARTIAL` | no |
+| G18 | Delivery: platforms, ABI and release | `PARTIAL` | no |
+
+Post-V1 by decision, each refused wherever it would be used, so none can
+silently count as verified:
+
+- existential quantification and its proof surface (`SPEC.md` 9);
+- proof `let`;
+- the proof-only `@` domains and conversions into them;
+- induction over them and over pointer structures;
+- kernel type families;
+- shifts and bitwise operators;
+- the constructs RFC 0022 lists as refused;
+- a serialized proof-term format and evidence identity in the trust report.
+
+None of these is in the V1 release criteria. Each would enlarge the kernel or
+the trusted computing base, and a later RFC adds it with its kernel change and
+mutation-tested rules.
+
+## V1 closure: syntax (G1)
+
+`IMPLEMENTED`. `GRAMMAR.md` is the normative grammar of the V1 surface, and the
+recognizer implements it with the C++-first contextual-word rule (WORD-001 to
+WORD-013): a program that uses a C++L word as a C++ name keeps its C++ meaning,
+and is warned.
+
+Evidence:
+
+- `conformance_contextual_identifiers`, `conformance_readme_examples` and
+  `conformance_guide_examples`;
+- `unit_recognizer_test`;
+- the `fuzz_frontend` corpus;
+- the mutation entries `declarator-list-ends-clauses` and
+  `verified-specifier-span`.
+
+## V1 closure: Laws and kernel-checked proofs (G2)
+
+`IMPLEMENTED`. Every PROVEN claim comes from a kernel acceptance of exactly its
+goal (`TRUST.md` 36.3). The kernel checks 15 rules and adds no axiom
+(cppl-kernel-0.9.0, cppl-core-0.9.0, `KERNEL.md`).
+
+Evidence:
+
+- tests: `kernel_check_test`, `kernel_malformed_test`, `kernel_adversarial_test`,
+  `kernel_substitution_property_test`, `kernel_evidence_regression_test`,
+  `e2e_valid_law`, `e2e_invalid_law` and `negative_written_proofs`;
+- mutation entries: one for each rule's check.
+
+## V1 closure: dependent and indexed relationships (G3)
+
+`IMPLEMENTED` within RFC 0022:
+
+- indexed refinements applied at a constant;
+- contracts and propositions whose meaning depends on parameters, including
+  quantified and implicational ones;
+- indexed observation with its bound as a separate obligation (RFC 0016).
+
+Kernel type families are post-V1. Evidence: `e2e_refinement_types`,
+`e2e_quantified_propositions`, `negative_quantified_propositions`,
+`e2e_safety_subset`, and `kernel_paths_test`.
+
+## V1 closure: refinement types (G4)
+
+`IMPLEMENTED`. A value enters a refinement type only on a static proof, which
+may use the facts of its path and adds no runtime code (RUNTIMECHECK-010).
+Otherwise it enters only through an explicit validation `validate<R>(e)`, whose
+validator the program keeps and whose site the claim names
+(RUNTIMECHECK-011 to RUNTIMECHECK-021, RFC 0021). Anything else is refused.
+
+Evidence: `e2e_refinement_types`, `e2e_refinement_flow`,
+`e2e_runtime_validation` and `negative_runtime_validation`, and the
+`validation-*` and `runtime-check-*` mutation entries.
+
+## V1 closure: equality (G5)
+
+`IMPLEMENTED`. Covered: definitional equality by the kernel's normalization,
+propositional `Eq<T>`, and `rewrite` by capture-safe substitution. Evidence:
+`e2e_formal_equality`, `negative_formal_equality` and `e2e_rewritten_proof`,
+and the `transport-result` and `substitution-capture` mutation entries.
+
+## V1 closure: induction (G6)
+
+`IMPLEMENTED` over unsigned machine integers, which is the V1 scope (RFC 0022).
+It covers the short form and explicit arms. It is checked by the kernel's
+induction rule, with the range premise in the successor arm (INDUCT-001 to
+INDUCT-005). Every other subject is refused.
+
+Evidence: `kernel_induction_test`, `e2e_induction` and `negative_induction`.
+
+## V1 closure: termination (G7)
+
+`IMPLEMENTED`, as described under [Termination status](#termination-status).
+Evidence: `e2e_termination`, `negative_termination`, and the mutation entries
+`recursion-needs-measure`, `recursive-call-descent-owed`,
+`totality-through-callees` and `totality-unmeasured-loop`.
+
+## V1 closure: contracts (G8)
+
+`IMPLEMENTED` for the verified subset:
+
+- preconditions and postconditions;
+- paths, locals, loops with invariants, and verified calls;
+- non-virtual member functions (RFC 0018);
+- contracts across translation units through verification interfaces
+  (RFC 0017), with cycles across units refused.
+
+Evidence: `e2e_verified_*` and `negative_verified_*`, `e2e_cross_tu`,
+`negative_cross_tu`, `e2e_integration_ledger` and `e2e_cross_feature`, and the
+`xtu-*` mutation entries.
+
+## V1 closure: unsafe and trusted boundaries (G9)
+
+`IMPLEMENTED`. See [Unsafe and trusted boundary status](#unsafe-and-trusted-boundary-status)
+and `TRUST.md` 36.3. Evidence: `e2e_unsafe_boundary`,
+`negative_unsafe_boundary`, `e2e_trusted_assumptions`, `e2e_trust_closure`
+and `negative_trusted_dependencies`, and the `unsafe-*` mutation entries.
+
+## V1 closure: C++ safety semantics (G10)
+
+`IMPLEMENTED` for the explicit subset: RFC 0022 and
+[Verified C++ subset status](#verified-c-subset-status). All 151 constructs of
+Annex X are classified: 84 are verified, each with a refused twin, and 67 are
+refused, each with its diagnostic.
+
+Evidence:
+
+- defined behavior of arithmetic (RFC 0019);
+- memory capabilities, aliasing and lifetime of scalars and the sequence subset
+  (RFC 0014, RFC 0020), including the adversarial storage and bounds attacks
+  of `negative_sequence_attacks`;
+- a refused twin for every accepted fixture (`negative_refused_twins`).
+
+## V1 closure: proof erasure and native output (G11)
+
+`IMPLEMENTED`. The runtime text is checked against the analysed text with every
+proof-only span blanked and every lowering recomputed (`TRUST.md` 29). It is
+compiled by Clang to ordinary native code with the same assembly as a
+hand-erased twin at `-O0` and `-O2`, in each standard mode the fixtures name.
+
+Evidence:
+
+- `e2e_erasure_equivalence`, `e2e_erasure_equivalence_providers`,
+  `e2e_erasure_equivalence_programs` and `e2e_abi_equivalence`;
+- `e2e_erasure_source_mapping` and `negative_erasure`;
+- the `erasure-*` mutation entries.
+
+The formal erasure theorem is not started. The checker is the V1 guarantee, and
+it is trusted (G15).
+
+## V1 closure: trust reporting (G12)
+
+`IMPLEMENTED`. Every claim's closure covers trusted laws, library models, unsafe
+code, imported contracts with their interface provenance, and runtime
+validation sites. The text report, the JSON report and the editor name each
+category, and a proven claim with no closure is an internal error.
+
+Evidence:
+
+- `TRUST.md` 36.3;
+- `unit_trust_closure_test`, `unit_trust_report_test`,
+  `e2e_trust_report_json`, `lsp_verification_test` and
+  `lsp_interfaces_test`;
+- the `trust-*` and `lsp-*` mutation entries.
+
+The rows "Trust reporting (closures, categories)" and "Trust report output"
+stay `PARTIAL` for what V1 does not claim. There is no evidence identity, since
+proof terms have no serialized form, and trusted memory propositions are not
+consumable.
+
+## V1 closure: kernel assurance, mechanized model (G13)
+
+`PARTIAL`. The checking judgment is mechanized in Coq, and `check_sound` is
+proven relative to two hypotheses (`KERNEL.md` 17): that normalization
+preserves meaning (M2), and that the arithmetic translation is sound (M3).
+`syntactic_consistency` is unconditional for rules 2 to 8 and 10 to 15.
+
+Open:
+
+- M2 normalization and M3 translation;
+- M5, a reference checker;
+- M6, re-checkable evidence.
+
+Pass condition: `check_sound` with no hypothesis, audited closed by
+`tools/formal/check.sh`.
+
+## V1 closure: adversarial testing (G14)
+
+`PARTIAL`. Every kernel rule, primitive and verifier check named in
+`TRUST.md` 36.3 has adversarial tests and a mutation entry; there are 225
+entries (`MUTATION_TESTING.md`). Persistent fuzz targets exist for kernel
+proofs, terms, certificates and arithmetic, and for the recognizer, the
+verification-interface decoder and the language server.
+
+Open: the full mutation suite, and the ASan, UBSan and fuzz profiles, have to
+be recorded green on the release candidate (G18 lists the runs).
+
+## V1 closure: correspondence TCB (G15)
+
+`IMPLEMENTED` as a stated boundary. The Clang bridge, elaboration, obligation
+construction and the erasure checker are trusted (`TRUST.md` 7 to 17, 29). They
+are tested by positive tests, refused twins and mutation entries, and none of
+them is verified. V1 states them as TCB wherever a PROVEN claim is described:
+
+- the text trust report's `Trusted translation` line;
+- the JSON report's `trusted_translation`;
+- the editor's hover;
+- `INSTALL.md`, "What a release claims".
+
+Guarded by `e2e_trust_report_json`, `unit_trust_report_test` and
+`lsp_verification_test`, and by `trust-translation-stated-text`,
+`trust-translation-stated-json` and `lsp-hover-states-translation`.
+Mechanizing the translation is not started, and it is not a V1 criterion.
+
+## V1 closure: artifact provenance (G16)
+
+`IMPLEMENTED` as a stated boundary. Verification interfaces are checked for
+integrity, compatibility and staleness (`TRUST.md` 31.1). Every text and JSON
+report that imports one states its provenance as unauthenticated. No claim
+through a record is assumption-free (TCB-XTU-010).
+
+Guarded by `e2e_cross_tu`, `negative_cross_tu` and `lsp_interfaces_test`, and
+by `xtu-provenance-stated` and `xtu-import-not-assumption-free`.
+
+Interface provenance stays TCB: authentication is not implemented
+(`TRUST.md` 32.2), and no ad hoc scheme stands in for it.
+
+## V1 closure: stability (G17)
+
+`PARTIAL`. The header of this file states that neither the language
+specification nor the proof system is frozen. V1 requires both frozen at a
+tagged version.
+
+## V1 closure: delivery
+
+`PARTIAL`: one platform is built and tested, and no ABI is guaranteed.
+
+### Tested platform
+
+What has been built and tested, and nothing else, is supported (`INSTALL.md`).
+
+| Component | Tested |
+| --- | --- |
+| OS and architecture | Linux x86_64 (Ubuntu 24.04) |
+| LLVM / Clang | 22.1.8, the upstream release build (`LLVM-22.1.8-Linux-X64`) |
+| C++ standard library of compiled programs | libstdc++ of GCC 13.3, which that Clang selects |
+| Compiler of C++L itself | Clang 22.1.8, and GCC 13.3 (`ci-linux-gcc`) |
+| Standard modes verified | `c++17`, `c++20`, `c++23` (the suite names each) |
+| Build | CMake 3.28, Ninja 1.11 |
+| Formal model | Coq 8.18.0 |
+
+| Not tested | Note |
+| --- | --- |
+| macOS, Windows | CI configurations exist (`CI.md`); no run of them has been validated, and no release archive is produced for them |
+| Linux AArch64 and other architectures | never built |
+| Other LLVM majors | not supported: the build accepts only LLVM 22 unless `LibClang_PREFERRED_MAJOR` is overridden (`cmake/FindLibClang.cmake`) |
+| libc++ as the standard library of compiled programs | the sequence subset names no library's layout, but no libc++ run has been recorded on this platform |
+| `-std=c++98` to `c++14` | `NOT STARTED` (see "C++ standard compatibility") |
+
+### Profiles on the release candidate
+
+| Profile | Result |
+| --- | --- |
+| `ci-linux-clang` | recorded below when run on the candidate |
+| `ci-linux-gcc` | recorded below when run on the candidate |
+| `ci-quality` | recorded below when run on the candidate |
+| `ci-asan`, `ci-ubsan`, `ci-fuzz` | recorded below when run on the candidate |
+| Full mutation suite | recorded below when run on the candidate |
+
+### ABI
+
+No ABI guarantee beyond Clang's own is made (**ABI guarantees: No**).
+`e2e_abi_equivalence` shows, on the tested platform and in each standard mode,
+three things. C++L metadata changes no mangled name, layout or calling
+convention. Erased output links with ordinary C++ compiled by the same Clang.
+Its code is identical to its hand erasure. That is evidence for this platform,
+not a guarantee for others (`COMPATIBILITY.md`).
+
+### Release
+
+`INSTALL.md` covers two things:
+
+- what a release archive contains, how to check its `.sha256` and its build
+  attestation, and the release record;
+- "What a release claims", which covers what a release guarantees, the trust
+  closure a user inherits, and what it does not claim.
+
+`tools/release.sh` and `.github/workflows/release.yml` build, test, package and
+attest Linux x86_64 only.
 
 ---
 
