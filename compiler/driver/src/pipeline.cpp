@@ -1,6 +1,7 @@
 #include "pipeline.hpp"
 
 #include "cppl/analysis/analyze.hpp"
+#include "cppl/artifact/interface.hpp"
 #include "cppl/automation/evidence.hpp"
 #include "cppl/clang/ast.hpp"
 #include "cppl/clang/bridge.hpp"
@@ -23,10 +24,12 @@
 #include "cppl/obligations/trust.hpp"
 #include "cppl/source/digest.hpp"
 #include "cppl/source/location.hpp"
+#include "cppl/source/representation.hpp"
 #include "cppl/vir/module.hpp"
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <expected>
 #include <filesystem>
 #include <fstream>
@@ -35,6 +38,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -426,16 +430,57 @@ PipelineOutcome run_pipeline(const PipelineRequest& request, diagnostics::Engine
         return static_cast<std::size_t>(
             std::ranges::count(outcome.counters.closure.claims, kind, &obligations::ClaimClosure::kind));
     };
-    // What each claim rests on in other units, for an editor to name beside
-    // its verdict as the trust report names it. A claim's location is its
+    // What each claim rests on, for an editor to name beside its verdict as the
+    // trust report names it, including what reaches it only through a proof it
+    // uses, a verified function it calls or another unit's contract (TRUST.md
+    // TCB-REPORT-002, TCB-REPORT-004, TCB-REPORT-005). A claim's location is its
     // anchoring obligation's, which may be one of its paths.
+    const auto add = [](std::vector<std::string>& to, std::string value) {
+        if (std::ranges::find(to, value) == to.end()) {
+            to.push_back(std::move(value));
+        }
+    };
+    const auto at = [](const std::string& file, std::uint32_t line) {
+        return file + ":" + std::to_string(line);
+    };
+    const auto model = [](std::string name) {
+        constexpr std::string_view suffix = " model";
+        if (name.ends_with(suffix)) {
+            name.resize(name.size() - suffix.size());
+        }
+        return name;
+    };
     for (const obligations::ClaimClosure& claim : outcome.counters.closure.claims) {
         for (ObligationRecord& record : outcome.obligations) {
             if (!(record.location == claim.location)) {
                 continue;
             }
+            for (const obligations::TrustedPremise& premise : claim.premises) {
+                add(record.premises, premise.name);
+            }
+            for (const obligations::LibraryDependency& library : claim.library) {
+                add(record.models, std::string(source::describe_model(library.model)));
+            }
+            for (const obligations::UnsafeDependency& block : claim.unsafe) {
+                add(record.unsafe, at(block.location.file, block.location.line));
+            }
+            for (const obligations::RuntimeCheck& site : claim.runtime) {
+                add(record.validations, site.refinement + " at " + at(site.location.file, site.location.line));
+            }
             for (const obligations::ImportedDependency& imported : claim.imported) {
                 record.imported.push_back(ImportedRecord{imported.name, imported.origin});
+                for (const artifact::Premise& premise : imported.premises) {
+                    add(record.premises, premise.name);
+                }
+                for (const artifact::Model& recorded : imported.models) {
+                    add(record.models, model(recorded.name));
+                }
+                for (const artifact::UnsafeBlock& block : imported.unsafe) {
+                    add(record.unsafe, at(block.file, block.line));
+                }
+                for (const artifact::RuntimeCheck& site : imported.runtime) {
+                    add(record.validations, site.refinement + " at " + at(site.file, site.line));
+                }
             }
         }
     }

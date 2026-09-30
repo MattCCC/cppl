@@ -169,6 +169,42 @@ CPPL_TEST(a_trusted_law_is_trusted_and_what_rests_on_it_says_so) {
     CPPL_CHECK(has(first, "sensor_identity"));
 }
 
+// SPEC: TUBOUND-014, STDMODEL-018, RUNTIMECHECK-014
+// TRUST.md TCB-REPORT-002, TCB-REPORT-004, TCB-REPORT-005
+// A claim is shown with everything the trust report says it rests on, including
+// what arrives only through a proof it uses or a verified function it calls:
+// the editor never shows a bare PROVEN where the report names a dependency.
+CPPL_TEST(a_proven_claim_names_what_it_rests_on_through_what_it_uses) {
+    Server server = make_server();
+    const std::string trust = read_fixture("trust_closure.cpp");
+    open(server, "file:///trust_closure.cpp", trust);
+    const std::vector<CodeLens> trusted = lenses(server, "file:///trust_closure.cpp");
+    const std::string second = lens_at(trusted, position_of(trust, "proof second_link", 6));
+    CPPL_CHECK(second.starts_with("PROVEN relative to trusted "));
+    CPPL_CHECK(has(second, "sensor_identity"));
+    const std::string calls = lens_at(trusted, position_of(trust, "verified unsigned calls_never_seven", 18));
+    CPPL_CHECK(has(calls, "relative to trusted broken_counter"));
+
+    const std::string unsafe = read_fixture("unsafe_boundary.cpp");
+    open(server, "file:///unsafe_boundary.cpp", unsafe);
+    const std::string passes = lens_at(lenses(server, "file:///unsafe_boundary.cpp"),
+                                       position_of(unsafe, "verified unsigned passes_reading", 18));
+    CPPL_CHECK(has(passes, "the unsafe block at "));
+
+    const std::string sequences = read_fixture("containers.cpp");
+    open(server, "file:///containers.cpp", sequences);
+    const std::string via =
+        lens_at(lenses(server, "file:///containers.cpp"), position_of(sequences, "verified std::size_t via_call", 21));
+    CPPL_CHECK(has(via, "the std::vector model"));
+
+    const std::string validation = read_fixture("runtime_validation.cpp");
+    open(server, "file:///runtime_validation.cpp", validation);
+    const std::string through = lens_at(lenses(server, "file:///runtime_validation.cpp"),
+                                        position_of(validation, "verified int through_validation", 13));
+    CPPL_CHECK(has(through, "the runtime validation of Positive at "));
+    CPPL_CHECK(!has(through, "RUNTIME-CHECKED"));
+}
+
 CPPL_TEST(a_verified_function_sums_up_its_obligations) {
     Server server = make_server();
     const std::string text = read_fixture("verified_functions.cpp");
@@ -180,6 +216,9 @@ CPPL_TEST(a_verified_function_sums_up_its_obligations) {
         hover_text(server, "file:///verified_functions.cpp", position_of(text, "verified unsigned inc", 18));
     CPPL_CHECK(has(shown, "**verified function** `inc`"));
     CPPL_CHECK(has(shown, "**PROVEN** "));
+    // TRUST.md 7 to 17: what PROVEN is relative to beyond the claim's closure.
+    CPPL_CHECK(
+        has(shown, "PROVEN relative to the translation from C++ to the core, which is trusted and not verified."));
 }
 
 CPPL_TEST(a_compile_that_stopped_before_verification_verifies_nothing) {
