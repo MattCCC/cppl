@@ -479,7 +479,8 @@ families:
 | Windows         | x86_64                        | Microsoft C++ ABI               | Clang/LLVM in MSVC-compatible mode |
 
 A particular development revision may implement fewer profiles; that is recorded
-in `STATUS.md`.
+in `STATUS.md`, "V1 closure: delivery", with the platform tested and every
+profile not tested.
 
 A release MUST test every profile it advertises.
 

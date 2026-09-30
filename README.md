@@ -697,6 +697,11 @@ value may cross into stronger verified code
 
 This creates a clean bridge between the static proof world and real external input.
 
+In code, the validation is an expression, `validate<Percentage>(raw)`, and only
+that expression is `RUNTIME-CHECKED`. A test such as `if (raw >= 0 && raw <= 100)`
+lets C++L prove the crossing statically on the path it selects, which is `PROVEN`
+and adds no runtime code (`docs/SPEC.md` 28).
+
 C++L keeps the distinction visible:
 
 ```text
