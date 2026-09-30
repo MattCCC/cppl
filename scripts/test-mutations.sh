@@ -582,6 +582,12 @@ if [ -n "$reuse" ]; then
     fi
 fi
 
+# The copy is not a Git checkout. Under the checkout's build directory Git
+# would otherwise find the checkout's repository above it, and a commit made
+# there during the run would change the source identity the copy's build and
+# tests read (integration_release_metadata).
+export GIT_CEILING_DIRECTORIES="$run"
+
 # A green control run establishes that a later test failure was introduced by
 # the mutation rather than being there all along. An LLVM_ROOT the caller
 # names is the LLVM it builds against, as the ci-* presets read it.
