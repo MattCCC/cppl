@@ -39,19 +39,18 @@ struct UnsafeDependency {
 };
 
 // A runtime validation site a proven claim rests on (SPEC.md RUNTIMECHECK-011,
-// RUNTIMECHECK-014): where a value entered a refinement type because the
-// runtime conditions of its path held, and not by anything proven of every
-// execution. That the value satisfies the predicate there is RUNTIME-CHECKED,
-// a fact about each concrete value that passed the check, and is never shown
-// as a universal proof (TRUST.md TCB-REPORT-004). The claim itself is proven of
-// every execution, each of which reaches the site only past the check; what it
-// rests on is that the executable performs the check as written, which is
-// ordinary runtime code erasure keeps (SPEC.md ERASE-012, TCB-RUNTIMECHK-003).
-// It is not a trusted assumption and adds none (SPEC.md INTERACT-023).
+// RUNTIMECHECK-014): a validation expression, `validate<R>(e)`, whose success
+// the claim's proof took the fact that a value satisfies R from. That fact is
+// RUNTIME-CHECKED, a fact about each concrete value that passed the test, and
+// is never shown as a universal proof (TRUST.md TCB-REPORT-004). The claim
+// itself is proven of every execution; what it rests on is that the executable
+// performs the validation as its lowering states, which erasure keeps (SPEC.md
+// ERASE-012, RUNTIMECHECK-021, TCB-RUNTIMECHK-006). It is not a trusted
+// assumption and adds none (SPEC.md INTERACT-023).
 struct RuntimeCheck {
     source::SourceLocation location;
-    std::string refinement; // the refinement the value enters
-    std::string predicate;  // what the check established, for the report
+    std::string refinement; // the refinement the value was tested against
+    std::string predicate;  // what the validation tested, for the report
     std::string function;   // the verified function whose body holds it
     // Whether the site is in the claim's own body, rather than in the body of
     // a verified function it calls.
@@ -95,6 +94,18 @@ struct LibraryDependency {
     // Whether the contract's own body or contract uses the model, rather than
     // the body of a verified function it calls.
     bool direct = false;
+};
+
+// A proven claim of this unit whose evidence a claim's own proof uses directly
+// (TRUST.md Annex C.2, proof dependencies): a written proof its evidence names,
+// or for a contract, a verified function of this unit whose contract it was
+// proven through. What that claim uses in turn is its own to list, so the
+// dependencies of a claim are discoverable transitively. Trusted laws, unsafe
+// code, models, validations and imported contracts are listed apart.
+struct ClaimUse {
+    ClaimKind kind = ClaimKind::Proof; // Proof or Contract
+    std::string name;
+    source::SourceLocation location;
 };
 
 // A proven claim and the trusted laws it rests on: its trust closure (TRUST.md
@@ -144,6 +155,10 @@ struct ClaimClosure {
     // that a path or a case of a verified body cannot occur rests on those of
     // that body's contract (SPEC.md RUNTIMECHECK-014).
     std::vector<RuntimeCheck> runtime = {};
+
+    // The proven claims its proof uses directly, proofs first in the order met
+    // and then contracts by name.
+    std::vector<ClaimUse> uses = {};
 };
 
 // Whether a claim rests on a trusted law, of this unit or of another unit whose

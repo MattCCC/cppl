@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <iterator>
 #include <map>
 #include <optional>
 #include <set>
@@ -170,6 +171,30 @@ TrustClosure close_trust(const Program& program, const std::vector<ObligationRes
     // contract that is is kept until those are known.
     std::vector<Premises> contracts(program.contracts.size());
     std::vector<std::pair<std::size_t, std::size_t>> path_claims;
+    // The written proofs each claim's evidence names (TRUST.md Annex C.2). A
+    // law's is that of the proof that closes it, a proof declaration's its own,
+    // and an omitted case's or impossible path's the one its contradiction
+    // names; a contract's, those its body's claims name.
+    const auto proofs_used = [](const std::vector<ProofUse>& named, std::vector<ClaimUse>& uses) {
+        for (const ProofUse& use : named) {
+            if (std::ranges::none_of(uses, [&use](const ClaimUse& known) {
+                    return known.kind == ClaimKind::Proof && known.name == use.name;
+                })) {
+                uses.push_back(ClaimUse{ClaimKind::Proof, use.name, use.location});
+            }
+        }
+    };
+    const auto written_uses = [&program](const Obligation& obligation) -> const std::vector<ProofUse>& {
+        for (const WrittenProof& written : program.proofs) {
+            if ((obligation.proof.has_value() && written.id == *obligation.proof) ||
+                (obligation.origin == Origin::LawProposition && obligation.law.has_value() && written.closes_law &&
+                 written.law == obligation.law)) {
+                return written.uses;
+            }
+        }
+        return obligation.uses;
+    };
+    std::vector<std::vector<ClaimUse>> contract_uses(program.contracts.size());
     for (std::size_t index = 0; index < results.size(); ++index) {
         const ObligationResult& result = results[index];
         if (!result.verdict.is_proven()) {
@@ -184,8 +209,10 @@ TrustClosure close_trust(const Program& program, const std::vector<ObligationRes
         if (kind.has_value()) {
             closure.claims.push_back(
                 ClaimClosure{*kind, obligation.subject, obligation.range.begin, obligation.id, premises});
+            proofs_used(written_uses(obligation), closure.claims.back().uses);
         }
         if (const auto contract = owner.find(index); contract != owner.end()) {
+            proofs_used(obligation.uses, contract_uses[contract->second]);
             if (kind.has_value()) {
                 path_claims.emplace_back(closure.claims.size() - 1, contract->second);
             }
@@ -208,6 +235,7 @@ TrustClosure close_trust(const Program& program, const std::vector<ObligationRes
                                               detail::identify_goal(program.context, "proof:" + written.name,
                                                                     relative_to(written.assumptions, written.goal)),
                                               written.assumptions});
+        proofs_used(written.uses, closure.claims.back().uses);
     }
 
     // Each contract rests on what the contracts it calls rest on (TRUST.md
@@ -411,6 +439,15 @@ TrustClosure close_trust(const Program& program, const std::vector<ObligationRes
         closure.claims[claim].runtime = listed_sites(sites[contract]);
     }
 
+    // Where a contract is reported: the first obligation of its body.
+    const auto contract_location = [&](std::size_t index) {
+        const ContractVerification& contract = program.contracts[index];
+        const std::size_t anchor =
+            contract.partial ? (contract.conditions.empty() ? results.size() : contract.conditions.front().obligation)
+                             : contract.obligation;
+        return anchor < results.size() ? program.obligations[anchor].range.begin : source::SourceLocation{};
+    };
+
     // A contract of a recursion group holds only with the whole group, each
     // member's proof supposing the others' as its induction hypothesis.
     const auto conditions_proven = [&](const ContractVerification& contract) {
@@ -445,15 +482,23 @@ TrustClosure close_trust(const Program& program, const std::vector<ObligationRes
                                      unknown[index] + "', whose trusted laws cannot be known");
             continue;
         }
-        const std::size_t anchor =
-            contract.partial ? (contract.conditions.empty() ? results.size() : contract.conditions.front().obligation)
-                             : contract.obligation;
         closure.claims.push_back(ClaimClosure{
-            ClaimKind::Contract, contract.name,
-            anchor < results.size() ? program.obligations[anchor].range.begin : source::SourceLocation{},
+            ClaimKind::Contract, contract.name, contract_location(index),
             contract.partial ? ObligationId{contract.identity} : program.obligations[contract.obligation].id,
             ordered(std::move(contracts[index])), listed(regions[index]), contract.total, imported_list(through[index]),
-            contract.symbol, listed_models(models[index]), listed_sites(sites[index])});
+            contract.symbol, listed_models(models[index]), listed_sites(sites[index]),
+            std::move(contract_uses[index])});
+        // The contracts of this unit it was proven through, by name; another
+        // unit's are listed with what they rest on (`imported`).
+        std::vector<ClaimUse> called;
+        for (const std::size_t callee : callees[index]) {
+            if (callee != index && !program.contracts[callee].imported.has_value()) {
+                called.push_back(
+                    ClaimUse{ClaimKind::Contract, program.contracts[callee].name, contract_location(callee)});
+            }
+        }
+        std::ranges::sort(called, {}, &ClaimUse::name);
+        std::ranges::move(called, std::back_inserter(closure.claims.back().uses));
         // Its own sites are the unit's, listed once whatever else rests on
         // them (SPEC.md RUNTIMECHECK-014).
         for (const auto& [where, check] : sites[index]) {

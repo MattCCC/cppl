@@ -54,6 +54,20 @@ claims() {
     ' "$1"
 }
 
+# The proof dependencies of one claim of the document, by subject, one
+# "kind name" per line: the proven claims its proof uses directly.
+uses() {
+    awk -v subject="$2" '
+        /^  "claims": \[$/ { inside = 1; next }
+        inside && /^  \]/ { inside = 0 }
+        inside && /^      "subject": / { current = $0; sub(/^      "subject": "/, "", current); sub(/",$/, "", current) }
+        inside && current == subject && /^      "proof_dependencies": \[$/ { deps = 1; next }
+        deps && /^      \]/ { deps = 0 }
+        deps && /^          "kind": / { kind = $2; gsub(/[",]/, "", kind) }
+        deps && /^          "name": / { name = $2; gsub(/[",]/, "", name); print kind, name }
+    ' "$1"
+}
+
 # The identities of the claims one section of the text report lists.
 listed() {
     sed -n "/^$2/,/^$3/p" "$1" | sed -n 's/^  [^ ].*, identity \([0-9a-f]\{16\}\)$/\1/p' | sort
@@ -141,6 +155,17 @@ compile trusted -std=c++20 "$FIXTURES/trust_closure.cpp" -o "$run/trusted"
 grep -q '^      "kind": "proposition",$' "$run/trusted.json" || fail "a trusted law does not say it states a proposition"
 grep -q '^  "interface_provenance": "none_imported"$' "$run/trusted.json" ||
     fail "a compile that imports nothing does not say so"
+# TRUST.md Annex C.2 -- each claim names the proven claims its proof uses
+# directly: the proofs its evidence names, and a contract's verified callees.
+[ "$(uses "$run/trusted.json" third_link)" = "proof second_link" ] ||
+    fail "the proof third_link does not name the proof it uses"
+[ "$(uses "$run/trusted.json" mixed)" = $'proof outright\nproof third_link' ] ||
+    fail "the proof mixed does not name both proofs it uses"
+[ "$(uses "$run/trusted.json" calls_never_seven)" = "contract never_seven" ] ||
+    fail "a contract does not name the contract it was proven through"
+[ "$(uses "$run/trusted.json" never_seven)" = "proof counter_is_one" ] ||
+    fail "a contract does not name the proof its impossible path names"
+[ -z "$(uses "$run/trusted.json" first_link)" ] || fail "a proof that names no proof lists one"
 
 compile unsafe -std=c++20 "$FIXTURES/unsafe_boundary.cpp" -o "$run/unsafe"
 [ "$(json_count "$run/unsafe.json" unsafe_dependent_claims)" -gt 0 ] || fail "unsafe_boundary.cpp rests on no unsafe code"

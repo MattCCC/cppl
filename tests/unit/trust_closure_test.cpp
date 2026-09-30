@@ -302,6 +302,50 @@ CPPL_TEST(a_caller_rests_on_what_the_contracts_it_calls_rest_on) {
     CPPL_CHECK(laws(claim(closure, o::ClaimKind::Contract, "f4")).empty());
 }
 
+// TRUST.md Annex C.2: each claim names the proven claims its proof uses
+// directly -- a proof instance the proofs it names, a contract the proofs its
+// body's claims name and the contracts of this unit it calls -- and nothing
+// it reaches only through them.
+CPPL_TEST(each_claim_names_the_claims_its_proof_uses_directly) {
+    Builder unit;
+    o::WrittenProof instance;
+    instance.name = "instance";
+    instance.law = cppl::vir::LawId{0};
+    instance.uses = {o::ProofUse{"helper", {"unit.cpp", 3, 1}}, o::ProofUse{"other", {"unit.cpp", 5, 1}}};
+    unit.program.proofs.push_back(instance);
+
+    const auto callee = unit.proven(o::Origin::FunctionContract, "f1");
+    unit.total_contract(1, callee);
+    const auto caller = unit.proven(o::Origin::FunctionContract, "f2");
+    const auto impossible = unit.proven(o::Origin::ImpossiblePath, "f2 path 1");
+    unit.program.obligations[impossible].uses = {o::ProofUse{"nothing", {"unit.cpp", 9, 1}}};
+    unit.total_contract(2, caller, {1}, impossible);
+    const auto outer = unit.proven(o::Origin::FunctionContract, "f3");
+    unit.total_contract(3, outer, {2});
+
+    const auto closure = unit.close();
+
+    CPPL_CHECK(closure.faults.empty());
+    const auto names = [](const o::ClaimClosure* found) {
+        std::vector<std::string> named;
+        named.reserve(found->uses.size());
+        for (const o::ClaimUse& use : found->uses) {
+            named.push_back(o::describe(use.kind) + " " + use.name);
+        }
+        return named;
+    };
+    const std::string proof = o::describe(o::ClaimKind::Proof);
+    const std::string contract = o::describe(o::ClaimKind::Contract);
+    CPPL_CHECK(names(claim(closure, o::ClaimKind::LawInstance, "instance")) ==
+               (std::vector<std::string>{proof + " helper", proof + " other"}));
+    CPPL_CHECK(names(claim(closure, o::ClaimKind::ImpossiblePath, "f2 path 1")) ==
+               std::vector<std::string>{proof + " nothing"});
+    CPPL_CHECK(names(claim(closure, o::ClaimKind::Contract, "f2")) ==
+               (std::vector<std::string>{proof + " nothing", contract + " f1"}));
+    CPPL_CHECK(names(claim(closure, o::ClaimKind::Contract, "f3")) == std::vector<std::string>{contract + " f2"});
+    CPPL_CHECK(names(claim(closure, o::ClaimKind::Contract, "f1")).empty());
+}
+
 // TRUST.md TCB-PROV-005: cycle-safe and deterministic.
 CPPL_TEST(a_recursive_call_graph_is_closed_to_a_fixed_point) {
     Builder unit;
