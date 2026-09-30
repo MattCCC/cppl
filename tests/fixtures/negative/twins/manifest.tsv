@@ -43,6 +43,7 @@ twin	rewritten_proof.cpp	negative/twins/rewritten_proof.cpp	error \[kernel-rejec
 twin	runtime_validation_cross_tu/consume.cpp	negative/twins/runtime_validation_cross_tu_consume.cpp	error \[kernel-rejection\]: return path 'through_interface path [0-9]+' does not satisfy its contract	runtime_validation_cross_tu/validate.cpp	-
 twin	runtime_validation_cross_tu/relay.cpp	negative/twins/runtime_validation_cross_tu_relay.cpp	error \[kernel-rejection\]: return path 'relayed path [0-9]+' does not satisfy its contract	runtime_validation_cross_tu/validate.cpp,runtime_validation_cross_tu/consume.cpp	-
 twin	runtime_validation_cross_tu/validate.cpp	negative/twins/runtime_validation_cross_tu_validate.cpp	error \[kernel-rejection\]: this value is not shown to satisfy refinement type 'Positive'	-	-
+twin	sequence_attacks_cross_tu/storage.cpp	negative/twins/sequence_attacks_cross_tu_storage.cpp	error \[kernel-rejection\]: return path 'last_index path [0-9]+' does not satisfy its contract	-	-
 twin	verified_arithmetic.cpp	negative/twins/verified_arithmetic.cpp	error \[proof-failure\]: return path 'bounded_difference path [0-9]+' does not satisfy its contract	-	-
 twin	verified_calls.cpp	negative/twins/verified_calls.cpp	error \[proof-failure\]: call-site precondition for 'two_from_zero -> bump_one' is not proven	-	-
 twin	verified_functions.cpp	negative/twins/verified_functions.cpp	error \[proof-failure\]: verified function 'equal_inputs' does not satisfy its contract	-	-
@@ -75,6 +76,8 @@ covered	memory_capabilities.cpp	negative/memory_capability_empty_region.cpp	nega
 covered	omitted_case.cpp	negative/rejected_omissions.cpp	negative/contradictions.sh	-	-
 covered	post_state_calls.cpp	negative/post_state_after_returned_call.cpp	negative/verified_storage.sh	-	-
 covered	runtime_validation.cpp	negative/runtime_check_failure_path.cpp	negative/runtime_validation.sh	-	-
+covered	sequence_attacks.cpp	negative/sequence_attack_stale_after_reserve.cpp	negative/sequence_attacks.sh	-	-
+covered	sequence_attacks_cross_tu/client.cpp	negative/sequence_attack_xtu_stale.cpp	negative/sequence_attacks.sh	-	-
 covered	signed_arithmetic.cpp	negative/arith_call_site_precondition.cpp	negative/signed_arithmetic.sh	-	-
 covered	structural_cases.cpp	negative/cases_on_product.cpp	negative/case_providers.sh	-	-
 covered	trust_closure.cpp	negative/memory_law_untrusted.cpp	negative/trusted_dependencies.sh	-	-
