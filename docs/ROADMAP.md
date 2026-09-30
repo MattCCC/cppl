@@ -708,6 +708,38 @@ contracts and indexed observation; no kernel type families).
 
 It is not acceptable to silently call them verified.
 
+## V1 release gates
+
+The criteria above are release gates. A 1.0.0 release is cut only when every
+gate's pass condition holds on the release candidate, the commit the release
+would tag. Each gate's status and evidence are recorded in `STATUS.md`, "V1
+closure", in the subsection the gate names. A gate is never passed by wording:
+its condition is a check that runs, or a stated fact another reader can confirm.
+
+In the conditions below, "green" means that every test the named profile
+registers passes on the release candidate built from a clean tree.
+
+| Gate | Criterion | Pass condition | `STATUS.md` |
+| --- | --- | --- | --- |
+| G1 | real C++L syntax | `GRAMMAR.md` describes every accepted form. The conformance tests (`conformance_*`) and `unit_recognizer_test` are green. | "V1 closure: syntax" |
+| G2 | Laws, mechanically checked proofs | PROVEN is reachable only through a kernel acceptance of the claim's goal (`TRUST.md` 36.3). The `kernel_*` tests are green. | "V1 closure: Laws and kernel-checked proofs" |
+| G3 | dependent or indexed relationships | Every RFC 0022 dependent construct has a verified fixture and a refused twin, and `e2e_safety_subset` is green. | "V1 closure: dependent and indexed relationships" |
+| G4 | refinement types | A refinement is entered only by static proof or by `validate<R>(e)` (RUNTIMECHECK-013). `e2e_runtime_validation` and `negative_runtime_validation` are green. | "V1 closure: refinement types" |
+| G5 | equality | `e2e_formal_equality` and `negative_formal_equality` are green. | "V1 closure: equality" |
+| G6 | induction | Induction over unsigned machine integers is checked by the kernel rule. `e2e_induction` and `negative_induction` are green. | "V1 closure: induction" |
+| G7 | termination | `e2e_termination` and `negative_termination` are green. | "V1 closure: termination" |
+| G8 | contracts | The `e2e_verified_*`, `negative_verified_*`, `e2e_cross_tu` and `negative_cross_tu` tests are green. | "V1 closure: contracts" |
+| G9 | explicit unsafe/trusted boundaries | `e2e_unsafe_boundary`, `negative_unsafe_boundary` and `e2e_trust_closure` are green. | "V1 closure: unsafe and trusted boundaries" |
+| G10 | C++ safety semantics | Every Annex X construct is classified. `e2e_safety_subset`, `negative_refused_twins` and `negative_sequence_attacks` are green. | "V1 closure: C++ safety semantics" |
+| G11 | proof erasure, native output | The erasure and ABI equivalence tests are green in every standard mode they name. | "V1 closure: proof erasure and native output" |
+| G12 | trust reporting | The text report, the JSON report and the editor name every category of every claim's closure, and `TRUST.md` 36.3 is current. | "V1 closure: trust reporting" |
+| G13 | kernel assurance | `check_sound` holds with no hypothesis, audited closed by `tools/formal/check.sh`. | "V1 closure: kernel assurance, mechanized model" |
+| G14 | adversarial testing | The full mutation suite kills every entry, or classifies it equivalent under `MUTATION_TESTING.md` 5. `ci-asan`, `ci-ubsan` and `ci-fuzz` are green. | "V1 closure: adversarial testing" |
+| G15 | correspondence TCB | The trusted translation layer is either verified, or stated as TCB in every document and report that describes a PROVEN claim. | "V1 closure: correspondence TCB" |
+| G16 | artifact provenance | Interface provenance is authenticated, or is stated as TCB in every report that uses an interface. | "V1 closure: artifact provenance" |
+| G17 | stability | `SPEC.md`, `GRAMMAR.md` and `KERNEL.md` are frozen at the release version, and `STATUS.md` says so. | "V1 closure: stability" |
+| G18 | delivery | The release archive is built, tested, attested and installed on every platform the release claims (`integration_installed_package`). `INSTALL.md` names exactly those platforms. The ABI statement matches `COMPATIBILITY.md`. | "V1 closure: delivery" |
+
 ---
 
 # Guiding rule
