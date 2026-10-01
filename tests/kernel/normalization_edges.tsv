@@ -1,0 +1,152 @@
+# Closed terms at the edges of every primitive, and the literal each normalizes
+# to. Read by kernel_normalization_edges_test, which normalizes each with the
+# kernel, and by tools/formal/check.sh, which states each as a Coq Example about
+# the model's normalizer (formal/coq/Normalize.v) proven by computation. The two
+# agreeing on every row is evidence that the model computes what the kernel
+# computes on these terms (docs/KERNEL.md 17); neither side reads the other.
+#
+# An operand or result written vN:type is the variable of de Bruijn index N,
+# whose value no row knows: those rows pin folds that hold for every value.
+#
+# primitive	type of the primitive	operands, each type:value	result type:value
+AddWrap	u1	u1:1 u1:1	u1:0
+AddWrap	u1	u1:1 u1:0	u1:1
+AddWrap	u8	u8:255 u8:1	u8:0
+AddWrap	u8	u8:200 u8:100	u8:44
+AddWrap	i8	i8:127 i8:1	i8:-128
+AddWrap	i8	i8:-128 i8:-1	i8:127
+AddWrap	i8	i8:-1 i8:1	i8:0
+AddWrap	u16	u16:65535 u16:65535	u16:65534
+AddWrap	u32	u32:4294967295 u32:1	u32:0
+AddWrap	i32	i32:2147483647 i32:1	i32:-2147483648
+AddWrap	u64	u64:18446744073709551615 u64:1	u64:0
+AddWrap	u64	u64:18446744073709551615 u64:18446744073709551615	u64:18446744073709551614
+AddWrap	i64	i64:9223372036854775807 i64:1	i64:-9223372036854775808
+AddWrap	i64	i64:-9223372036854775808 i64:-9223372036854775808	i64:0
+SubWrap	u1	u1:0 u1:1	u1:1
+SubWrap	u8	u8:0 u8:1	u8:255
+SubWrap	u8	u8:5 u8:10	u8:251
+SubWrap	i8	i8:-128 i8:1	i8:127
+SubWrap	i8	i8:127 i8:-1	i8:-128
+SubWrap	u64	u64:0 u64:1	u64:18446744073709551615
+SubWrap	i64	i64:-9223372036854775808 i64:1	i64:9223372036854775807
+SubWrap	i64	i64:0 i64:-9223372036854775808	i64:-9223372036854775808
+MulWrap	u8	u8:16 u8:16	u8:0
+MulWrap	u8	u8:255 u8:255	u8:1
+MulWrap	i8	i8:-128 i8:-1	i8:-128
+MulWrap	i8	i8:-1 i8:-1	i8:1
+MulWrap	i8	i8:64 i8:2	i8:-128
+MulWrap	u32	u32:65536 u32:65536	u32:0
+MulWrap	u64	u64:18446744073709551615 u64:18446744073709551615	u64:1
+MulWrap	i64	i64:-9223372036854775808 i64:-1	i64:-9223372036854775808
+MulWrap	i64	i64:9223372036854775807 i64:9223372036854775807	i64:1
+Equal	u8	u8:255 u8:255	u1:1
+Equal	u8	u8:0 u8:255	u1:0
+Equal	i8	i8:-128 i8:127	u1:0
+Equal	i8	i8:-1 i8:-1	u1:1
+Equal	u64	u64:18446744073709551615 u64:18446744073709551615	u1:1
+Equal	i64	i64:-9223372036854775808 i64:9223372036854775807	u1:0
+NotEqual	u8	u8:1 u8:2	u1:1
+NotEqual	i64	i64:-9223372036854775808 i64:-9223372036854775808	u1:0
+Less	i8	i8:-128 i8:127	u1:1
+Less	i8	i8:127 i8:-128	u1:0
+Less	u8	u8:0 u8:255	u1:1
+Less	u8	u8:255 u8:0	u1:0
+Less	u8	u8:5 u8:5	u1:0
+Less	u64	u64:0 u64:18446744073709551615	u1:1
+Less	i64	i64:-9223372036854775808 i64:9223372036854775807	u1:1
+Less	i64	i64:9223372036854775807 i64:-9223372036854775808	u1:0
+LessEqual	u8	u8:5 u8:5	u1:1
+LessEqual	i8	i8:-1 i8:-128	u1:0
+Greater	i32	i32:-1 i32:-2	u1:1
+Greater	u32	u32:0 u32:4294967295	u1:0
+GreaterEqual	i64	i64:-9223372036854775808 i64:-9223372036854775808	u1:1
+GreaterEqual	u64	u64:0 u64:18446744073709551615	u1:0
+Not	u1	u1:0	u1:1
+Not	u1	u1:1	u1:0
+Select	u32	u1:1 u32:7 u32:9	u32:7
+Select	u32	u1:0 u32:7 u32:9	u32:9
+Select	i8	u1:1 i8:-128 i8:127	i8:-128
+Select	u64	u1:0 u64:0 u64:18446744073709551615	u64:18446744073709551615
+AddFits	i8	i8:127 i8:1	u1:0
+AddFits	i8	i8:126 i8:1	u1:1
+AddFits	i8	i8:-128 i8:-1	u1:0
+AddFits	i8	i8:-64 i8:-64	u1:1
+AddFits	u8	u8:255 u8:1	u1:0
+AddFits	u8	u8:255 u8:0	u1:1
+AddFits	i64	i64:9223372036854775807 i64:1	u1:0
+AddFits	u64	u64:18446744073709551615 u64:1	u1:0
+SubFits	u8	u8:0 u8:1	u1:0
+SubFits	u8	u8:1 u8:1	u1:1
+SubFits	i8	i8:-128 i8:1	u1:0
+SubFits	i8	i8:0 i8:-128	u1:0
+SubFits	i8	i8:-1 i8:127	u1:1
+SubFits	i64	i64:0 i64:-9223372036854775808	u1:0
+MulFits	i8	i8:-128 i8:-1	u1:0
+MulFits	i8	i8:-64 i8:2	u1:1
+MulFits	i8	i8:64 i8:2	u1:0
+MulFits	u8	u8:16 u8:16	u1:0
+MulFits	u8	u8:15 u8:17	u1:1
+MulFits	i64	i64:-9223372036854775808 i64:-1	u1:0
+MulFits	u64	u64:4294967296 u64:4294967296	u1:0
+MulFits	u64	u64:4294967295 u64:4294967297	u1:1
+Quotient	i8	i8:-128 i8:-1	i8:-128
+Quotient	i8	i8:7 i8:-2	i8:-3
+Quotient	i8	i8:-7 i8:2	i8:-3
+Quotient	i8	i8:-7 i8:-2	i8:3
+Quotient	u8	u8:255 u8:16	u8:15
+Quotient	i32	i32:5 i32:0	i32:0
+Quotient	i64	i64:-9223372036854775808 i64:-1	i64:-9223372036854775808
+Quotient	u64	u64:18446744073709551615 u64:1	u64:18446744073709551615
+Remainder	i8	i8:7 i8:-2	i8:1
+Remainder	i8	i8:-7 i8:2	i8:-1
+Remainder	i8	i8:-7 i8:-2	i8:-1
+Remainder	i8	i8:-128 i8:-1	i8:0
+Remainder	u8	u8:255 u8:16	u8:15
+Remainder	i32	i32:5 i32:0	i32:5
+Remainder	i64	i64:-9223372036854775808 i64:-1	i64:0
+Remainder	u64	u64:18446744073709551615 u64:10	u64:5
+Convert	i8	u8:255	i8:-1
+Convert	u8	i8:-1	u8:255
+Convert	u8	i8:-128	u8:128
+Convert	u64	i64:-1	u64:18446744073709551615
+Convert	i64	u64:18446744073709551615	i64:-1
+Convert	i32	i64:2147483648	i32:-2147483648
+Convert	u16	u32:65536	u16:0
+Convert	u16	u32:65537	u16:1
+Convert	i64	i8:-1	i64:-1
+Convert	u64	i8:-1	u64:18446744073709551615
+Convert	u8	u64:256	u8:0
+Convert	u1	u8:2	u1:0
+Convert	u1	u8:3	u1:1
+Convert	u32	u1:1	u32:1
+Convert	i16	i16:-32768	i16:-32768
+SubWrap	u8	v0:u8 v0:u8	u8:0
+SubWrap	i64	v0:i64 v0:i64	i64:0
+AddWrap	u8	v0:u8 u8:0	v0:u8
+MulWrap	u8	v0:u8 u8:1	v0:u8
+MulWrap	u8	v0:u8 u8:0	u8:0
+MulWrap	u8	u8:0 v0:u8	u8:0
+MulWrap	i64	v0:i64 i64:1	v0:i64
+AddWrap	u1	v0:u1 v0:u1	u1:0
+MulWrap	u8	v0:u8 u8:256	u8:0
+Equal	u8	v0:u8 v0:u8	u1:1
+NotEqual	u8	v0:u8 v0:u8	u1:0
+Less	u8	v0:u8 v0:u8	u1:0
+Less	u8	v0:u8 u8:0	u1:0
+Less	i8	v0:i8 i8:-128	u1:0
+Less	u8	u8:255 v0:u8	u1:0
+Less	i8	i8:127 v0:i8	u1:0
+Less	u64	u64:18446744073709551615 v0:u64	u1:0
+Less	i64	v0:i64 i64:-9223372036854775808	u1:0
+LessEqual	u8	v0:u8 v0:u8	u1:1
+GreaterEqual	u8	v0:u8 u8:0	u1:1
+GreaterEqual	i8	i8:127 v0:i8	u1:1
+Select	u8	v1:u1 v0:u8 v0:u8	v0:u8
+Quotient	u8	v0:u8 u8:1	v0:u8
+Remainder	u8	v0:u8 u8:1	u8:0
+Quotient	u8	v0:u8 u8:0	u8:0
+Remainder	u8	v0:u8 u8:0	v0:u8
+Quotient	i8	i8:0 v0:i8	i8:0
+Remainder	u8	u8:0 v0:u8	u8:0
+Remainder	i8	v0:i8 i8:-1	i8:0
