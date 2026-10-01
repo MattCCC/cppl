@@ -21,6 +21,8 @@
 #   exempt    the fixture states no claim a twin could make false, for the
 #             reason the row gives.
 set -euo pipefail
+# shellcheck source=../support/parallel.sh
+source "$(dirname "$0")/../support/parallel.sh"
 
 CPPL="$1"
 FIXTURES="$2"
@@ -65,9 +67,11 @@ compile() {
         -I"$(dirname "$FIXTURES/$fixture")" -c "$FIXTURES/$source" -o "$output.o" "$@" > "$output.report" 2> "$output.err"
 }
 
-twins=0
-covered=0
-while IFS=$'\t' read -r kind fixture counterpart detail imports flags; do
+# row <kind> <fixture> <counterpart> <detail> <imports> <flags>: checks one row.
+# Each row compiles into a directory of its own, so the rows run side by side
+# (support/parallel.sh) and are counted where they are started.
+row() {
+    local kind="$1" fixture="$2" counterpart="$3" detail="$4" imports="$5" flags="$6"
     case "$kind" in
         twin)
             stem="$run/$(printf '%s' "$fixture" | tr '/.' '__')"
@@ -103,7 +107,6 @@ while IFS=$'\t' read -r kind fixture counterpart detail imports flags; do
                 cat "$stem.twin.err" >&2
                 fail "$counterpart is refused, but not with '$detail'"
             fi
-            twins=$((twins + 1))
             ;;
         covered | refused)
             [ -f "$FIXTURES/$counterpart" ] || fail "$fixture: its counterpart $counterpart does not exist"
@@ -114,7 +117,6 @@ while IFS=$'\t' read -r kind fixture counterpart detail imports flags; do
             [ "$kind" = covered ] || refused_half="$fixture"
             grep -q -- "$(basename "$refused_half" .cpp)" "$TESTS/$detail" ||
                 fail "$fixture: $detail does not compile $refused_half"
-            covered=$((covered + 1))
             ;;
         exempt)
             [ -n "$detail" ] && [ "$detail" != - ] || fail "$fixture is exempt without a reason"
@@ -123,6 +125,18 @@ while IFS=$'\t' read -r kind fixture counterpart detail imports flags; do
             fail "$fixture: unknown kind '$kind'"
             ;;
     esac
+}
+
+twins=0
+covered=0
+cases_begin "$run/cases"
+while IFS=$'\t' read -r kind fixture counterpart detail imports flags; do
+    case "$kind" in
+        twin) twins=$((twins + 1)) ;;
+        covered | refused) covered=$((covered + 1)) ;;
+    esac
+    case_run row "$kind" "$fixture" "$counterpart" "$detail" "$imports" "$flags"
 done < <(rows)
+cases_end
 
 echo "refused twins: $twins compiled here, $covered run by the scripts that own them"
