@@ -4297,7 +4297,9 @@ struct BodyLowering {
             if (entry.symbolic && !entry.index_value.empty() && !entry.extent.empty()) {
                 Expr bound;
                 bound.type = body.type;
-                bound.location = entry.index_value.front().location;
+                bound.location = entry.index_value.front().location.is_valid()
+                                     ? entry.index_value.front().location
+                                     : presumed_location(clang_getCursorLocation(at));
                 bound.node = ElementBound{entry.extent, {entry.index_value.front(), std::move(body)}};
                 body = std::move(bound);
             }

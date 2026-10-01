@@ -1558,8 +1558,11 @@ class Conditions {
                 return std::unexpected(extent.error());
             }
             const kernel::IntType integer = type->integer_type();
-            emit(scope, Origin::ElementBounds, function_.qualified_name + " element index",
-                 bounded->operands[0].provenance.range,
+            // A constant index the bridge folded has no source of its own.
+            const source::SourceRange& subscript = bounded->operands[0].provenance.range.begin.is_valid()
+                                                       ? bounded->operands[0].provenance.range
+                                                       : expression.provenance.range;
+            emit(scope, Origin::ElementBounds, function_.qualified_name + " element index", subscript,
                  kernel::predicate(kernel::Term::primitive(kernel::PrimOp::Less, integer, {*index, std::move(*extent)}),
                                    true));
             return walk(bounded->operands[1], std::move(scope), loops);
