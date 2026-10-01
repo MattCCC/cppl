@@ -493,6 +493,8 @@ cppl_add_script_test(e2e_verified_methods e2e/verified_methods.sh)
 # (SPEC.md XTU-*, RFC 0017).
 cppl_add_script_test(e2e_cross_tu e2e/cross_tu.sh)
 cppl_add_script_test(negative_cross_tu negative/cross_tu.sh)
+cppl_add_script_test(negative_interface_integrity negative/interface_integrity.sh)
+cppl_add_script_test(negative_interface_fields negative/interface_fields.sh)
 
 # Cross-TU contracts, member functions, signed arithmetic and the sequence
 # models in one multi-unit parser-and-ledger program, with matched refused twins
