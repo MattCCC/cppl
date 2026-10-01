@@ -161,7 +161,8 @@ compiler does what `STATUS.md` records as implemented, with the trust boundary
 - **What it does not claim.** A release does not claim:
   - that C++ outside the verified subset (RFC 0022) is verified;
   - that the kernel's rules are mechanically proven sound: the Coq model proves
-    the checking judgment sound relative to two hypotheses (`KERNEL.md` 17);
+    a model of the checking judgment, with its normalization and arithmetic,
+    sound (`KERNEL.md` 17), but the C++ kernel is not proven to implement it;
   - an ABI guarantee beyond Clang's own;
   - any platform other than Linux x86_64;
   - that the language or proof system is frozen.

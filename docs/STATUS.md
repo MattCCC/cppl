@@ -589,11 +589,12 @@ are mechanized. The two mechanization rows are `PARTIAL`: a Coq model of the
 checking judgment (`formal/coq`, KERNEL.md 17) proves that whatever evidence it
 accepts establishes a true proposition, relative to two stated premises,
 normalization preserving meaning and the arithmetic translation being exact;
-discharges the first for a model of the kernel's normalization; proves the
-certificate checker sound; and proves, with no premise, that rules
-2 to 8 and 10 to 15 cannot establish `False`. It rests on no axiom. The C++
-kernel is not proven to implement the model, so it stays in the logical TCB
-(`TRUST.md` 41).
+discharges both for models of the kernel's normalization, its arithmetic
+translation and its certificate checker (`check_sound_closed`), leaving only
+conditions on the interpretation and the definitions; and proves, with no
+premise, that rules 2 to 8 and 10 to 15 cannot establish `False`. It rests on
+no axiom. The C++ kernel is not proven to implement the model, so it stays in
+the logical TCB (`TRUST.md` 41).
 
 They act over propositions built from equality, universal quantification,
 implication, conjunction, disjunction and `False`. `False` has no introduction
@@ -721,8 +722,11 @@ typing, substitution and shifting, normalization, rules, arithmetic translation
 and certificate checking exactly. The parts of `FOUNDATIONS.md` that core does
 not implement, such as existential quantification and the `@` domains, are
 stated mathematically but not as exact rules. The mechanized soundness model
-is `PARTIAL`: the checking judgment is mechanized and proven sound relative to
-normalization and the arithmetic translation, which are not (`KERNEL.md` 17).
+is `PARTIAL`: the checking judgment, normalization, the arithmetic translation
+and certificate checking are mechanized, and the checker is proven sound with
+no premise about normalization or arithmetic (`KERNEL.md` 17); the C++ kernel
+is not proven to implement the model, and the reference checker and
+re-checkable evidence (M5, M6) are not started.
 
 ---
 
@@ -2617,7 +2621,7 @@ row covers semantics V1 does not claim, such as induction over the `@` domains,
 or semantics not yet frozen. A gate is met only when its status is
 `IMPLEMENTED` or `VERIFIED` and its pass condition holds.
 
-**V1 is not met.** Gates G13, G14, G17 and G18 are open, and the project stays
+**V1 is not met.** Gates G14, G17 and G18 are open, and the project stays
 **Production ready: No**.
 
 | Gate | What it covers | Status | Met |
@@ -2634,7 +2638,7 @@ or semantics not yet frozen. A gate is met only when its status is
 | G10 | C++ safety semantics of the verified subset | `IMPLEMENTED` | yes |
 | G11 | Proof erasure and native output | `IMPLEMENTED` | yes |
 | G12 | Trust reporting | `IMPLEMENTED` | yes |
-| G13 | Kernel assurance: mechanized model | `PARTIAL` | no |
+| G13 | Kernel assurance: mechanized model | `IMPLEMENTED` | yes |
 | G14 | Kernel and verifier assurance: adversarial testing | `PARTIAL` | no |
 | G15 | Correspondence TCB | `IMPLEMENTED` | yes |
 | G16 | Artifact provenance | `IMPLEMENTED` | yes |
@@ -2822,19 +2826,51 @@ consumable.
 
 ## V1 closure: kernel assurance, mechanized model (G13)
 
-`PARTIAL`. The checking judgment is mechanized in Coq, and `check_sound` is
+`IMPLEMENTED`; the gate is met. `kernel_sound` (`Linear.v`) is the pass
+condition: for every context of definitions as the kernel admits them and every
+model of it, evidence the checker of all fifteen rules accepts establishes a
+proposition that holds in that model. Its only premise is that the checker
+accepted. A model is an interpretation of the context, one that gives every
+observation, element and call a value of its type and every definition the
+meaning of its body; those conditions are what a model is, not premises about
+the checker, and `check_sound_closed` states the same theorem with them
+written out. `kernel_consistent`: no evidence establishes `False`. Both are
+audited closed under the global context, with no axiom and no admitted proof,
+by `tools/formal/check.sh`.
+
+The checking judgment is mechanized in Coq, and `check_sound` is
 proven relative to two hypotheses (`KERNEL.md` 17): that normalization
 preserves meaning (M2), and that the arithmetic translation is sound (M3).
-M2 is discharged: `Normalize.v` models the kernel's normalization, `nf_sound`
-proves that it keeps the meaning of every typed term, and
-`check_sound_normalized` instantiates `check_sound` with it, audited closed.
-`syntactic_consistency` is unconditional for rules 2 to 8 and 10 to 15.
+Both are discharged for models of the kernel's procedures:
 
-Open:
+- M2: `Normalize.v` models the kernel's normalization, `nf_sound` proves that
+  it keeps the meaning of every typed term, and `check_sound_normalized`
+  instantiates `check_sound` with it.
+- M3: `Linear.v` models the translation of arithmetic facts into constraints,
+  and `lin_sound_model` proves, with `check_certificate_sound` (`Certificate.v`),
+  that an accepted arithmetic step's facts entail its goal.
 
-- M3, the translation of arithmetic facts into constraints;
-- M5, a reference checker;
-- M6, re-checkable evidence.
+`check_sound_closed` (`Linear.v`) is `check_sound` with reflexivity deciding
+by the modeled normalization and linear arithmetic by the modeled translation
+and certificate checker. It has no premise about the checker. Its premises are
+conditions on the interpretation and the definitions: that the interpretation
+gives every observation, element and call a value of its type and every
+admitted definition the meaning of its body (`proj_ok`, `elem_ok`, `call_ok`,
+`call_body`), and that every definition has a supported result type and a body
+of that type (`sig_ok`, `body_typed`). `check_consistent_closed`: no evidence
+establishes `False` in that checker. `syntactic_consistency` is unconditional
+for rules 2 to 8 and 10 to 15.
+
+Evidence: `formal/coq/Linear.v`; `formal/coq/Audit.v` prints the assumptions
+of `lin_sound_model`, `check_sound_closed`, `check_consistent_closed`,
+`kernel_sound` and `kernel_consistent` with the earlier theorems, and
+`tools/formal/check.sh` requires each to be closed under the global context (CTest `formal_kernel_model`, CI job *Formal model*).
+
+The C++ kernel corresponds to the model by transcription and stays in the
+logical TCB (`TRUST.md` 41).
+
+Beyond the gate, and open: M5, a reference checker, and M6, re-checkable
+evidence, through which trust would move from the C++ kernel to the model.
 
 Pass condition: `check_sound` with no hypothesis, audited closed by
 `tools/formal/check.sh`.

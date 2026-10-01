@@ -597,7 +597,8 @@ condition evaluates to the other literal.
 
 Every constraint is implied by the machine semantics of section 4 for the
 valuation it describes, so a system with no integer solution means no machine
-valuation makes the facts true and the goal false.
+valuation makes the facts true and the goal false. `formal/coq/Linear.v`
+proves this of a model of the translation (section 17).
 
 ---
 
@@ -739,16 +740,17 @@ to rest on nothing but Coq's kernel: no axiom and no admitted proof
 | --- | --- | --- |
 | M1 syntax and semantics | done | `Syntax.v`, `Semantics.v`: types, terms, propositions, evidence; machine integers, every primitive, `wrap` in range and exact on representable values, `rem` in range |
 | M2 term operations | done | `Semantics.v` (`eval_shift`, `eval_inst`, `holds_pshift`, `holds_pinst`), `Typing.v` (typing preserved by both), `Normalize.v` (`nf_sound`: normalization keeps the type and the meaning of every typed term) |
-| M3 arithmetic | certificate checking done; translation not started | `Certificate.v` (`check_certificate_sound`) |
-| M4 the rules | done relative to M3 | `Checker.v` (`check_sound`, `check_consistent`), `Consistency.v`, `Normalize.v` (`check_sound_normalized`) |
+| M3 arithmetic | done | `Linear.v` (`lin_sound_model`: the translation of section 12), `Certificate.v` (`check_certificate_sound`: certificate checking, section 13) |
+| M4 the rules | done, with no premise about normalization or arithmetic left | `Checker.v` (`check_sound`, `check_consistent`), `Consistency.v`, `Normalize.v` (`check_sound_normalized`), `Linear.v` (`check_sound_closed`, `check_consistent_closed`, `kernel_sound`, `kernel_consistent`) |
 | M5 reference checker | not started | |
 | M6 re-checkable evidence | not started | |
 
 `check_sound` is the soundness theorem of M4: if `check` accepts evidence `e`
-for `P`, `P` holds in every interpretation and every environment. Its only
-premises are that normalization preserves the meaning of a typed term (M2,
-discharged by `Normalize.v` below) and that an accepted arithmetic step's facts
-entail its goal (M3), stated as hypotheses. Everything else the rules do is defined in the model and proven:
+for `P`, `P` holds in every interpretation and every environment. It takes the
+two procedures the rules call as parameters, each with the one property the
+proof needs of it, stated as a hypothesis: that normalization preserves the
+meaning of a typed term (M2) and that an accepted arithmetic step's facts entail
+its goal (M3). Everything else the rules do is defined in the model and proven:
 typing and well-formedness, structural comparison, capture-safe substitution
 and shifting, the hypothesis context and its scope, the premises the kernel
 states for conditional elimination and for induction, and the goal staying well
@@ -756,9 +758,10 @@ formed wherever the checker reaches it. `syntactic_consistency` discharges both
 premises for the checker whose reflexivity compares terms as written and which
 has no arithmetic step, which is rules 2 to 8 and 10 to 15 exactly: no
 evidence, well formed or not, establishes `False` in it, unconditionally.
-`check_certificate_sound` proves the certificate checker of section 13: an
-accepted certificate leaves the system with no integer solution. What remains
-of rule 9 is the translation of section 12.
+`Normalize.v` discharges the M2 premise for the kernel's normalization and
+`Linear.v` the M3 premise for its arithmetic, both below: `check_sound_closed`
+is `check_sound` for the checker of all fifteen rules, with no premise about
+either procedure left.
 
 `Normalize.v` models the normalization of section 9 (`normalize_impl` in
 `kernel/src/context.cpp`, `normalize_primitive` and the polynomial reader in
@@ -786,17 +789,62 @@ the domains of observations and elements, so its normal forms can differ in
 placement from the kernel's; that bears on which reflexivity steps the two
 accept, not on soundness, since placement never changes a value.
 
+`Linear.v` models the translation of section 12 (`arithmetic_system` and its
+`Builder` in `kernel/src/linear.cpp`) step for step: `value`, `variable`,
+`define_conversion`, `define_division` and `truth` as one recursion, `fact`,
+`refuted` and `arithmetic_system` over them, and rule 9's check, `lin_ok`, as
+the system it builds refuted by the certificate checker of `Certificate.v`. The
+loop over monomials and the constraints of a division (`each_var`,
+`same_sign`, `known_divisor`, `unknown_divisor`) are lifted out of the
+recursion as functions that compute what the kernel computes. Variables and
+constraints are made in the kernel's order, and one normal term at one type
+gets one variable, so a certificate naming the kernel's positions and
+variables names the model's. `lin_sound_model` proves for this translation
+what `Checker.v` supposes as `lin_sound`: if `lin_ok` accepts, every fact and
+the goal are well formed, the environment is well typed and every fact holds,
+then the goal holds. A valuation making the facts true and the goal false gives
+an integer assignment, in which a value variable takes its term's machine value
+and a wrap variable the multiple of `2^w` its term wrapped by, that satisfies
+every constraint and disjunction of the system (`translation_sound`, by
+induction on fuel over the five functions); `check_certificate_sound` says an
+accepted certificate leaves the system no integer solution, so no such
+valuation exists. `check_sound_closed` is `check_sound` with reflexivity
+deciding by the model's normalizer and linear arithmetic by this translation
+and the certificate checker, and `check_consistent_closed` is its corollary
+that no evidence establishes `False`. `kernel_sound` and `kernel_consistent`
+state the two with the acceptance of the evidence as the only premise: they
+quantify over every `context`, the definitions with the conditions on which
+section 6 admits them, and every `model` of it, an interpretation with the
+conditions below. What they leave are conditions on the
+interpretation and on the definitions, not on the checker: the interpretation
+gives each observation, element and call a value of its type and each admitted
+definition the meaning of its body (`proj_ok`, `elem_ok`, `call_ok`,
+`call_body`), and each definition has a supported result type and a body of
+that type (`sig_ok`, `body_typed`), two of the conditions on which section 6
+admits it. A coefficient list in the model may repeat a variable or hold a zero
+coefficient where the kernel's map would not; the constraint means the same.
+Where the two normal forms differ in placement, the sharing of variables can
+differ too, which bears on which certificates the two accept, not on
+soundness.
+
 The model omits the resource limits of section 14. They only reject, so the
 model accepts at least what the kernel accepts, and a bound on what it accepts
-bounds the kernel's. Its arithmetic is unbounded where the kernel's is 128-bit
-and rejects on overflow, with the same effect.
+bounds the kernel's. Its recursion is bounded by fuel instead: the
+translation's by `max_linear_depth`, 4096 levels, where it descends three for
+each level of a term and the kernel bounds a term's depth by `max_term_depth`.
+Its arithmetic, in the translation and in certificate checking, is unbounded
+where the kernel's is 128-bit and rejects on overflow, with the same effect.
 
-What the model does not establish is that `kernel/src/check.cpp` implements it.
-The model's checker is transcribed rule by rule from `check_under`, with the
-C++ function each definition restates named beside it, and the drift test
-catches a changed set of formers, not a changed rule. The C++ kernel therefore
-stays in the logical TCB (TCB-META-002) until M5 runs an extracted checker
-beside it and M6 lets it re-check a build's evidence.
+What the model does not establish is that the C++ kernel implements it. The
+model's checker is transcribed rule by rule from `check_under`, with the C++
+function each definition restates named beside it, and its normalizer and its
+translation are transcribed the same way from `kernel/src/context.cpp`,
+`kernel/src/arithmetic.cpp` and `kernel/src/linear.cpp`. The drift test
+catches a changed set of formers, not a changed rule, and the edge table checks
+normalization on its rows only; no test compares the systems the kernel and
+the model build. The C++ kernel therefore stays in the logical TCB
+(TCB-META-002) until M5 runs an extracted checker beside it and M6 lets it
+re-check a build's evidence.
 
 The milestones as planned:
 
