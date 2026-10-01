@@ -21,6 +21,8 @@
 # `negative/cross_tu.sh`. The integrity of the interface is
 # `negative/interface_integrity.sh`.
 set -euo pipefail
+# shellcheck source=../support/parallel.sh
+source "$(dirname "$0")/../support/parallel.sh"
 CPPL="$1"
 FIXTURES="$2"
 WORK="$3"
@@ -50,10 +52,14 @@ cp producer.cppli resealed.cppli
     { cat client.log >&2; fail "the client is refused with the untouched interfaces"; }
 
 # --- Every field edited, the checksum recomputed ----------------------------
-# reseal <entry or -> <field> <variant>: producer.cppli with the first <field>
-# line (of that entry, or of the header) edited as <variant> says, and its
-# checksum recomputed.
+# reseal <entry or -> <field> <variant> <directory>: <directory>/resealed.cppli,
+# producer.cppli with the first <field> line (of that entry, or of the header)
+# edited as <variant> says, and its checksum recomputed. Each edit is resealed
+# into a directory of its own, so the edits are checked side by side
+# (support/parallel.sh).
 reseal() {
+    local resealed="$4"
+    mkdir -p "$resealed"
     sed '$d' producer.cppli | awk -v entry="$1" -v field="$2" -v variant="$3" '
         function flip(hex) { return (substr(hex, 1, 1) == "0" ? "1" : "0") substr(hex, 2) }
         $1 == "entry" { current = $2 }
@@ -80,37 +86,46 @@ reseal() {
         }
         { print }
         END { if (!done) { print "no " field " line in " entry > "/dev/stderr"; exit 1 } }
-    ' > resealed.body
-    sed '$d' producer.cppli | cmp -s - resealed.body && fail "the edit $1 $2 $3 changed nothing"
-    { cat resealed.body; printf 'checksum %s\n' "$(sha256 < resealed.body)"; } > resealed.cppli
+    ' > "$resealed/resealed.body"
+    sed '$d' producer.cppli | cmp -s - "$resealed/resealed.body" && fail "the edit $1 $2 $3 changed nothing"
+    { cat "$resealed/resealed.body"; printf 'checksum %s\n' "$(sha256 < "$resealed/resealed.body")"; } \
+        > "$resealed/resealed.cppli"
 }
 
-# client: the client unit, importing the edited producer interface and the
-# middle unit's, whose records rest on the producer's.
+# client <directory>: the client unit, importing the edited producer interface
+# in <directory> and the middle unit's, whose records rest on the producer's.
 client() {
-    "$CPPL" -std=c++20 -c client.cpp -o client.o --cppl-import-interface=resealed.cppli \
-        --cppl-import-interface=middle.cppli --cppl-trust-report > client.log 2>&1
+    "$CPPL" -std=c++20 -c client.cpp -o "$1/client.o" "--cppl-import-interface=$1/resealed.cppli" \
+        --cppl-import-interface=middle.cppli --cppl-trust-report > "$1/client.log" 2>&1
+}
+
+# edit <entry> <field> <variant> <outcome> <directory>: one edit, and what the
+# client makes of it.
+edit() {
+    local entry="$1" field="$2" variant="$3" outcome="$4" resealed="$5"
+    reseal "$entry" "$field" "$variant" "$resealed"
+    if [ "$outcome" = accepted ]; then
+        client "$resealed" || { cat "$resealed/client.log" >&2; fail "editing $field ($variant) of $entry, which is provenance, made the interface unusable"; }
+        grep -Eq '^Function contracts imported: +8$' "$resealed/client.log" ||
+            { cat "$resealed/client.log" >&2; fail "the client does not use every record after editing $field ($variant) of $entry"; }
+    else
+        client "$resealed" && { cat "$resealed/client.log" >&2; fail "editing $field ($variant) of $entry was not detected"; }
+        if [ "$outcome" = transitive ]; then
+            grep -qF "it was proven through the contract of '$entry', and no imported interface records that contract as it was" "$resealed/client.log" ||
+                { cat "$resealed/client.log" >&2; fail "editing $field ($variant) of $entry left a record proven through it usable"; }
+        else
+            grep -qF -- "$outcome" "$resealed/client.log" ||
+                { cat "$resealed/client.log" >&2; fail "editing $field ($variant) of $entry was not refused as: $outcome"; }
+        fi
+    fi
 }
 
 edits=0
+cases_begin "$run/cases"
 while IFS='|' read -r entry field variant outcome; do
     [ -n "$entry" ] || continue
-    reseal "$entry" "$field" "$variant"
     edits=$((edits + 1))
-    if [ "$outcome" = accepted ]; then
-        client || { cat client.log >&2; fail "editing $field ($variant) of $entry, which is provenance, made the interface unusable"; }
-        grep -Eq '^Function contracts imported: +8$' client.log ||
-            { cat client.log >&2; fail "the client does not use every record after editing $field ($variant) of $entry"; }
-    else
-        client && { cat client.log >&2; fail "editing $field ($variant) of $entry was not detected"; }
-        if [ "$outcome" = transitive ]; then
-            grep -qF "it was proven through the contract of '$entry', and no imported interface records that contract as it was" client.log ||
-                { cat client.log >&2; fail "editing $field ($variant) of $entry left a record proven through it usable"; }
-        else
-            grep -qF -- "$outcome" client.log ||
-                { cat client.log >&2; fail "editing $field ($variant) of $entry was not refused as: $outcome"; }
-        fi
-    fi
+    case_run edit "$entry" "$field" "$variant" "$outcome" "edits/$edits"
 done <<'EDITS'
 -|cppl-verification-interface|version|it is format version '4', and this compiler reads only version 3
 -|compiler|value|it was produced by another C++L compiler version
@@ -174,4 +189,5 @@ c:@F@imported_validation#I#|runtime|refinement|transitive
 c:@F@imported_validation#I#|runtime|predicate|accepted
 c:@F@imported_validation#I#|runtime|removed|transitive
 EDITS
+cases_end
 echo "every one of $edits field edits is refused where it changes what was verified, and only there"
