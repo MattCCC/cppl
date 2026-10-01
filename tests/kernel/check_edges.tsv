@@ -1,0 +1,107 @@
+# A proposition, evidence for it, and whether the checker accepts it. Read by
+# kernel_check_edges_test, which checks each with the kernel, and by
+# tools/formal/check.sh, which states each verdict as a Coq Example about the
+# model's checker (formal/coq/Checker.v with the normalizer of Normalize.v and
+# the arithmetic of Linear.v) proven by computation. The two agreeing on every
+# row is evidence that the model checks what the kernel checks: every rule, its
+# acceptances and its near misses (docs/KERNEL.md 17); neither side reads the
+# other.
+#
+# Prefix notation, tokens separated by spaces. A type is uN or iN. A term is vN
+# (the Nth binder from the innermost), type:value, or a primitive's name, its
+# type and its operands. A proposition is eq type term term, all type P,
+# imp P P, and P P, or P P, or false. Evidence is refl, alli type E,
+# alle P E term, hyp N (the Nth hypothesis from the newest), impi P E,
+# impe P E E, eqe type term term P E E (the motive's hole is v0),
+# cond type term term term P E E, lin N followed by N facts each P E and a
+# certificate, andi E E, ande P E side, ori E side, ore P E E E, falsee E, or
+# ind type E E; a side is left or right. A certificate is farkas N followed by
+# N position:multiplier pairs, split N followed by N variable:coefficient pairs,
+# a constant and two certificates, or cases N followed by two certificates.
+#
+# proposition	evidence	verdict
+all u32 eq u32 AddWrap u32 v0 u32:0 v0	alli u32 refl	accept
+all u32 eq u32 AddWrap u32 v0 u32:1 v0	alli u32 refl	refuse
+eq u8 AddWrap u8 u8:200 u8:100 u8:44	refl	accept
+eq u8 u8:1 u8:2	refl	refuse
+all i32 all i32 eq i32 AddWrap i32 v0 v1 AddWrap i32 v1 v0	alli i32 alli i32 refl	accept
+all u32 eq u32 MulWrap u32 v0 u32:2 AddWrap u32 v0 v0	alli u32 refl	accept
+all u32 eq u32 MulWrap u32 v0 u32:3 AddWrap u32 v0 v0	alli u32 refl	refuse
+eq u1 Less u8 u8:3 u8:5 u1:1	refl	accept
+eq u1 Less i8 i8:3 i8:-5 u1:1	refl	refuse
+eq u32 u8:1 u8:1	refl	refuse
+eq u32 v0 v0	refl	refuse
+all u64 eq u64 SubWrap u64 v0 v0 u64:0	alli u64 refl	accept
+all i8 eq i8 Quotient i8 v0 i8:1 v0	alli i8 refl	accept
+all u8 eq u8 Remainder u8 v0 u8:0 v0	alli u8 refl	accept
+eq i64 Convert i64 u64:18446744073709551615 i64:-1	refl	accept
+eq u1 MulFits i8 i8:-128 i8:-1 u1:0	refl	accept
+eq u1 MulFits i8 i8:-128 i8:-1 u1:1	refl	refuse
+all u8 eq u8 Select u8 Less u8 v0 u8:5 v0 v0 v0	alli u8 refl	accept
+all u32 eq u32 v0 v0	alli u8 refl	refuse
+all u32 eq u32 v0 v0	refl	refuse
+eq u32 u32:0 u32:0	alli u32 refl	refuse
+eq u32 u32:5 u32:5	alle all u32 eq u32 v0 v0 alli u32 refl u32:5	accept
+eq u32 u32:5 u32:5	alle all u32 eq u32 v0 v0 alli u32 refl u8:5	refuse
+eq u32 u32:5 u32:5	alle eq u32 u32:5 u32:5 refl u32:5	refuse
+eq u32 u32:6 u32:6	alle all u32 eq u32 v0 v0 alli u32 refl u32:5	refuse
+eq u32 u32:5 u32:5	alle all u32 eq u32 v0 v0 alli u8 refl u32:5	refuse
+imp eq u32 u32:1 u32:2 eq u32 u32:1 u32:2	impi eq u32 u32:1 u32:2 hyp 0	accept
+imp eq u32 u32:1 u32:2 eq u32 u32:1 u32:2	impi eq u32 u32:1 u32:2 hyp 1	refuse
+imp eq u32 u32:1 u32:2 imp eq u32 u32:3 u32:4 eq u32 u32:1 u32:2	impi eq u32 u32:1 u32:2 impi eq u32 u32:3 u32:4 hyp 1	accept
+imp eq u32 u32:1 u32:2 imp eq u32 u32:3 u32:4 eq u32 u32:1 u32:2	impi eq u32 u32:1 u32:2 impi eq u32 u32:3 u32:4 hyp 0	refuse
+imp eq u32 u32:1 u32:2 eq u32 u32:1 u32:2	impi eq u32 u32:3 u32:4 hyp 0	refuse
+imp eq u32 u32:1 u32:2 all u32 eq u32 u32:1 u32:2	impi eq u32 u32:1 u32:2 alli u32 hyp 0	accept
+all u32 imp eq u32 v0 u32:2 all u8 eq u32 v1 u32:2	alli u32 impi eq u32 v0 u32:2 alli u8 hyp 0	accept
+all u32 imp eq u32 v0 u32:2 all u32 eq u32 v0 u32:2	alli u32 impi eq u32 v0 u32:2 alli u32 hyp 0	refuse
+eq u32 u32:1 u32:2	hyp 0	refuse
+imp eq u32 u32:1 u32:2 eq u32 u32:1 u32:2	hyp 0	refuse
+eq u32 u32:7 u32:7	impe imp eq u32 u32:1 u32:1 eq u32 u32:7 u32:7 impi eq u32 u32:1 u32:1 refl refl	accept
+eq u32 u32:7 u32:7	impe imp eq u32 u32:1 u32:2 eq u32 u32:7 u32:7 impi eq u32 u32:1 u32:2 refl refl	refuse
+eq u32 u32:8 u32:8	impe imp eq u32 u32:1 u32:1 eq u32 u32:7 u32:7 impi eq u32 u32:1 u32:1 refl refl	refuse
+eq u32 u32:7 u32:7	impe eq u32 u32:7 u32:7 refl refl	refuse
+and eq u8 u8:1 u8:1 eq u8 u8:2 u8:2	andi refl refl	accept
+and eq u8 u8:1 u8:1 eq u8 u8:2 u8:3	andi refl refl	refuse
+eq u8 u8:1 u8:1	ande and eq u8 u8:1 u8:1 eq u8 u8:2 u8:2 andi refl refl left	accept
+eq u8 u8:2 u8:2	ande and eq u8 u8:1 u8:1 eq u8 u8:2 u8:2 andi refl refl right	accept
+eq u8 u8:1 u8:1	ande and eq u8 u8:1 u8:1 eq u8 u8:2 u8:2 andi refl refl right	refuse
+eq u8 u8:1 u8:1	ande eq u8 u8:1 u8:1 refl left	refuse
+or eq u8 u8:1 u8:2 eq u8 u8:3 u8:3	ori refl right	accept
+or eq u8 u8:1 u8:2 eq u8 u8:3 u8:3	ori refl left	refuse
+eq u8 u8:5 u8:5	ore or eq u8 u8:1 u8:1 eq u8 u8:2 u8:2 ori refl left impi eq u8 u8:1 u8:1 refl impi eq u8 u8:2 u8:2 refl	accept
+eq u8 u8:5 u8:5	ore or eq u8 u8:1 u8:1 eq u8 u8:2 u8:2 ori refl left impi eq u8 u8:2 u8:2 refl impi eq u8 u8:1 u8:1 refl	refuse
+eq u8 u8:5 u8:6	ore or eq u8 u8:1 u8:1 eq u8 u8:2 u8:2 ori refl left impi eq u8 u8:1 u8:1 refl impi eq u8 u8:2 u8:2 refl	refuse
+imp false eq u32 u32:1 u32:2	impi false falsee hyp 0	accept
+eq u32 u32:1 u32:2	falsee refl	refuse
+false	refl	refuse
+all u32 all u32 imp eq u32 v1 v0 eq u32 v0 v1	alli u32 alli u32 impi eq u32 v1 v0 eqe u32 v1 v0 eq u32 v1 v0 hyp 0 refl	accept
+all u32 all u32 imp eq u32 v1 v0 eq u32 v0 v1	alli u32 alli u32 impi eq u32 v1 v0 eqe u32 v1 v0 eq u32 v0 v1 hyp 0 refl	refuse
+all u32 all u32 imp eq u32 v1 v0 eq u32 v0 v1	alli u32 alli u32 impi eq u32 v1 v0 eqe u32 v0 v1 eq u32 v1 v0 hyp 0 refl	refuse
+all u32 all u32 eq u32 v0 v1	alli u32 alli u32 eqe u32 v1 v0 eq u32 v1 v0 refl refl	refuse
+all u32 eq u1 LessEqual u32 Select u32 Less u32 v0 u32:10 v0 u32:10 u32:10 u1:1	alli u32 cond u32 Less u32 v0 u32:10 v0 u32:10 eq u1 LessEqual u32 v0 u32:10 u1:1 impi eq u1 Less u32 v0 u32:10 u1:1 lin 1 eq u1 Less u32 v0 u32:10 u1:1 hyp 0 farkas 2 2:1 3:1 impi eq u1 Less u32 v0 u32:10 u1:0 refl	accept
+all u32 eq u1 LessEqual u32 Select u32 Less u32 v0 u32:10 v0 u32:10 u32:10 u1:1	alli u32 cond u32 Less u32 v0 u32:10 v0 u32:10 eq u1 LessEqual u32 v0 u32:10 u1:1 impi eq u1 Less u32 v0 u32:10 u1:1 lin 1 eq u1 Less u32 v0 u32:10 u1:1 hyp 0 farkas 1 2:1 impi eq u1 Less u32 v0 u32:10 u1:0 refl	refuse
+all u32 eq u1 LessEqual u32 Select u32 Less u32 v0 u32:10 v0 u32:10 u32:10 u1:1	alli u32 cond u32 Less u32 v0 u32:10 v0 u32:10 eq u1 LessEqual u32 v0 u32:10 u1:1 impi eq u1 Less u32 v0 u32:10 u1:0 refl impi eq u1 Less u32 v0 u32:10 u1:1 lin 1 eq u1 Less u32 v0 u32:10 u1:1 hyp 0 farkas 2 2:1 3:1	refuse
+all u32 eq u1 LessEqual u32 Select u32 Less u32 v0 u32:10 v0 u32:10 u32:10 u1:1	alli u32 cond u32 Less u32 v0 u32:10 u32:10 v0 eq u1 LessEqual u32 v0 u32:10 u1:1 impi eq u1 Less u32 v0 u32:10 u1:1 lin 1 eq u1 Less u32 v0 u32:10 u1:1 hyp 0 farkas 2 2:1 3:1 impi eq u1 Less u32 v0 u32:10 u1:0 refl	refuse
+all u32 imp eq u1 LessEqual u32 v0 u32:10 u1:1 eq u1 Less u32 v0 u32:20 u1:1	alli u32 impi eq u1 LessEqual u32 v0 u32:10 u1:1 lin 1 eq u1 LessEqual u32 v0 u32:10 u1:1 hyp 0 farkas 2 2:1 3:1	accept
+all u32 imp eq u1 LessEqual u32 v0 u32:10 u1:1 eq u1 Less u32 v0 u32:20 u1:1	alli u32 impi eq u1 LessEqual u32 v0 u32:10 u1:1 lin 1 eq u1 LessEqual u32 v0 u32:10 u1:1 hyp 0 farkas 2 2:1 3:2	refuse
+all u32 imp eq u1 LessEqual u32 v0 u32:10 u1:1 eq u1 Less u32 v0 u32:20 u1:1	alli u32 impi eq u1 LessEqual u32 v0 u32:10 u1:1 lin 1 eq u1 LessEqual u32 v0 u32:10 u1:1 hyp 0 farkas 1 2:1	refuse
+all u32 imp eq u1 LessEqual u32 v0 u32:10 u1:1 eq u1 Less u32 v0 u32:20 u1:1	alli u32 impi eq u1 LessEqual u32 v0 u32:10 u1:1 lin 0 farkas 2 2:1 3:1	refuse
+all u32 imp eq u1 LessEqual u32 v0 u32:10 u1:1 eq u1 Less u32 v0 u32:20 u1:1	alli u32 impi eq u1 LessEqual u32 v0 u32:10 u1:1 lin 1 eq u1 LessEqual u32 v0 u32:10 u1:1 refl farkas 2 2:1 3:1	refuse
+all u32 imp eq u1 LessEqual u32 v0 u32:10 u1:1 and eq u1 Less u32 v0 u32:20 u1:1 eq u1 Less u32 v0 u32:20 u1:1	alli u32 impi eq u1 LessEqual u32 v0 u32:10 u1:1 lin 1 eq u1 LessEqual u32 v0 u32:10 u1:1 hyp 0 farkas 2 2:1 3:1	refuse
+imp eq u32 u32:1 u32:2 false	impi eq u32 u32:1 u32:2 lin 1 eq u32 u32:1 u32:2 hyp 0 farkas 1 1:1	accept
+imp eq u32 u32:1 u32:2 false	impi eq u32 u32:1 u32:2 lin 1 eq u32 u32:1 u32:2 hyp 0 farkas 1 0:1	refuse
+imp and eq u32 u32:1 u32:2 eq u32 u32:1 u32:2 false	impi and eq u32 u32:1 u32:2 eq u32 u32:1 u32:2 lin 1 and eq u32 u32:1 u32:2 eq u32 u32:1 u32:2 hyp 0 farkas 1 1:1	refuse
+all u32 all u32 imp eq u1 NotEqual u32 v0 v1 u1:1 imp eq u32 v0 v1 false	alli u32 alli u32 impi eq u1 NotEqual u32 v0 v1 u1:1 impi eq u32 v0 v1 lin 2 eq u1 NotEqual u32 v0 v1 u1:1 hyp 1 eq u32 v0 v1 hyp 0 cases 0 farkas 2 4:1 8:1 split 1 2:1 1 farkas 3 5:1 7:1 9:4294967296 farkas 3 6:1 8:1 9:4294967296	accept
+all u32 all u32 imp eq u1 NotEqual u32 v0 v1 u1:1 imp eq u32 v0 v1 false	alli u32 alli u32 impi eq u1 NotEqual u32 v0 v1 u1:1 impi eq u32 v0 v1 lin 2 eq u1 NotEqual u32 v0 v1 u1:1 hyp 1 eq u32 v0 v1 hyp 0 cases 0 farkas 2 4:1 8:1 split 1 2:1 1 farkas 3 5:1 7:1 9:4294967295 farkas 3 6:1 8:1 9:4294967296	refuse
+all u32 all u32 imp eq u1 NotEqual u32 v0 v1 u1:1 imp eq u32 v0 v1 false	alli u32 alli u32 impi eq u1 NotEqual u32 v0 v1 u1:1 impi eq u32 v0 v1 lin 2 eq u1 NotEqual u32 v0 v1 u1:1 hyp 1 eq u32 v0 v1 hyp 0 cases 0 farkas 2 4:1 8:1 split 1 3:1 1 farkas 3 5:1 7:1 9:4294967296 farkas 3 6:1 8:1 9:4294967296	refuse
+all u32 all u32 imp eq u1 NotEqual u32 v0 v1 u1:1 imp eq u32 v0 v1 false	alli u32 alli u32 impi eq u1 NotEqual u32 v0 v1 u1:1 impi eq u32 v0 v1 lin 2 eq u1 NotEqual u32 v0 v1 u1:1 hyp 1 eq u32 v0 v1 hyp 0 cases 0 farkas 2 5:1 6:1 farkas 2 5:1 6:1	refuse
+all u32 all u32 imp eq u1 NotEqual u32 v0 v1 u1:1 imp eq u32 v0 v1 false	alli u32 alli u32 impi eq u1 NotEqual u32 v0 v1 u1:1 impi eq u32 v0 v1 lin 2 eq u1 NotEqual u32 v0 v1 u1:1 hyp 1 eq u32 v0 v1 hyp 0 cases 1 farkas 2 5:1 6:1 farkas 2 4:1 6:1	refuse
+all u8 eq u1 LessEqual u8 u8:0 v0 u1:1	ind u8 refl alli u8 impi eq u1 Less u8 v0 u8:255 u1:1 impi eq u1 LessEqual u8 u8:0 v0 u1:1 refl	accept
+all i8 eq u1 LessEqual i8 i8:0 v0 u1:1	ind i8 refl alli i8 impi eq u1 Less i8 v0 i8:127 u1:1 impi eq u1 LessEqual i8 i8:0 v0 u1:1 refl	refuse
+all u8 eq u1 LessEqual u8 u8:0 v0 u1:1	ind u16 refl alli u8 impi eq u1 Less u8 v0 u8:255 u1:1 impi eq u1 LessEqual u8 u8:0 v0 u1:1 refl	refuse
+all u8 eq u1 LessEqual u8 u8:0 v0 u1:1	ind u8 refl alli u8 impi eq u1 Less u8 v0 u8:254 u1:1 impi eq u1 LessEqual u8 u8:0 v0 u1:1 refl	refuse
+all u8 eq u1 LessEqual u8 u8:0 v0 u1:1	ind u8 refl alli u8 impi eq u1 LessEqual u8 u8:0 v0 u1:1 impi eq u1 Less u8 v0 u8:255 u1:1 refl	refuse
+all u8 eq u8 v0 u8:0	ind u8 refl alli u8 impi eq u1 Less u8 v0 u8:255 u1:1 impi eq u8 v0 u8:0 refl	refuse
+eq u7 u7:1 u7:1	refl	accept
+eq u65 u65:1 u65:1	refl	refuse
+eq u8 u8:256 u8:256	refl	refuse

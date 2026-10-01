@@ -177,6 +177,114 @@ awk -F '\t' '
 "${coqc}" -Q . CppL TranslationEdges.v
 translations=$(grep -c '^Example ' TranslationEdges.v)
 
+# The kernel's rule table (tests/kernel/check_edges.tsv), which
+# kernel_check_edges_test checks of the kernel, stated of the model's checker:
+# each row an Example proven by computation that the model's check, with its
+# normalizer and its arithmetic, gives the row's verdict.
+awk -F '\t' '
+    function ty(name) { return "(TInt " substr(name, 2) " " (substr(name, 1, 1) == "i" ? "true" : "false") ")" }
+    function bare(name) { return substr(name, 2) " " (substr(name, 1, 1) == "i" ? "true" : "false") }
+    function num(value) { return substr(value, 1, 1) == "-" ? "(" value ")" : value }
+    function fail(message) { print message > "/dev/stderr"; failed = 1; exit 1 }
+    function term(    token, parts, name, arity, i, args) {
+        token = tok[pos++]
+        if (token ~ /^v[0-9]+$/) return "(Var " substr(token, 2) ")"
+        if (index(token, ":") > 0) { split(token, parts, ":"); return "(Lit " bare(parts[1]) " " num(parts[2]) ")" }
+        if (!(token in op)) fail("unknown primitive " token)
+        name = tok[pos++]
+        arity = (token == "Not" || token == "Convert") ? 1 : (token == "Select" ? 3 : 2)
+        args = ""
+        for (i = 1; i <= arity; i++) args = args (i > 1 ? "; " : "") term()
+        return "(Prim " op[token] " " bare(name) " [" args "])"
+    }
+    function prop(    token, name, a, b) {
+        token = tok[pos++]
+        if (token == "eq") { name = tok[pos++]; a = term(); b = term(); return "(PEq " ty(name) " " a " " b ")" }
+        if (token == "all") { name = tok[pos++]; a = prop(); return "(PAll " ty(name) " " a ")" }
+        if (token == "imp") { a = prop(); b = prop(); return "(PImp " a " " b ")" }
+        if (token == "and") { a = prop(); b = prop(); return "(PAnd " a " " b ")" }
+        if (token == "or") { a = prop(); b = prop(); return "(POr " a " " b ")" }
+        if (token == "false") return "PFalse"
+        fail("unknown proposition " token)
+    }
+    function side(    token) {
+        token = tok[pos++]
+        if (token != "left" && token != "right") fail("unknown side " token)
+        return token == "right" ? "true" : "false"
+    }
+    function pairs(n,    i, pair, out) {
+        out = ""
+        for (i = 1; i <= n; i++) { split(tok[pos++], pair, ":"); out = out (i > 1 ? "; " : "") "(" pair[1] "%nat, " num(pair[2]) ")" }
+        return "[" out "]"
+    }
+    function cert(    token, n, items, k, a, b) {
+        token = tok[pos++]
+        if (token == "farkas") { n = tok[pos++]; return "(FarkasSum " pairs(n) ")" }
+        if (token == "split") { n = tok[pos++]; items = pairs(n); k = num(tok[pos++]); a = cert(); b = cert(); return "(IntegerSplit " items " " k " " a " " b ")" }
+        if (token == "cases") { n = tok[pos++]; a = cert(); b = cert(); return "(DisjunctionCases " n " " a " " b ")" }
+        fail("unknown certificate " token)
+    }
+    function evid(    token, name, a, b, c, p, e1, e2, e3, n, i, facts, k) {
+        token = tok[pos++]
+        if (token == "refl") return "ERefl"
+        if (token == "alli") { name = tok[pos++]; e1 = evid(); return "(EAllI " ty(name) " " e1 ")" }
+        if (token == "alle") { p = prop(); e1 = evid(); a = term(); return "(EAllE " p " " e1 " " a ")" }
+        if (token == "hyp") return "(EHyp " tok[pos++] ")"
+        if (token == "impi") { p = prop(); e1 = evid(); return "(EImpI " p " " e1 ")" }
+        if (token == "impe") { p = prop(); e1 = evid(); e2 = evid(); return "(EImpE " p " " e1 " " e2 ")" }
+        if (token == "eqe") { name = tok[pos++]; a = term(); b = term(); p = prop(); e1 = evid(); e2 = evid(); return "(EEqE " ty(name) " " a " " b " " p " " e1 " " e2 ")" }
+        if (token == "cond") { name = tok[pos++]; a = term(); b = term(); c = term(); p = prop(); e1 = evid(); e2 = evid(); return "(ECond " ty(name) " " a " " b " " c " " p " " e1 " " e2 ")" }
+        if (token == "lin") {
+            n = tok[pos++]
+            facts = ""
+            for (i = 1; i <= n; i++) { p = prop(); e1 = evid(); facts = facts (i > 1 ? "; " : "") "(" p ", " e1 ")" }
+            k = cert()
+            return "(ELin [" facts "] " k ")"
+        }
+        if (token == "andi") { e1 = evid(); e2 = evid(); return "(EAndI " e1 " " e2 ")" }
+        if (token == "ande") { p = prop(); e1 = evid(); return "(EAndE " p " " e1 " " side() ")" }
+        if (token == "ori") { e1 = evid(); return "(EOrI " e1 " " side() ")" }
+        if (token == "ore") { p = prop(); e1 = evid(); e2 = evid(); e3 = evid(); return "(EOrE " p " " e1 " " e2 " " e3 ")" }
+        if (token == "falsee") { e1 = evid(); return "(EFalseE " e1 ")" }
+        if (token == "ind") { name = tok[pos++]; e1 = evid(); e2 = evid(); return "(EInd " ty(name) " " e1 " " e2 ")" }
+        fail("unknown evidence " token)
+    }
+    BEGIN {
+        op["AddWrap"] = "AddWrap"; op["SubWrap"] = "SubWrap"; op["MulWrap"] = "MulWrap"
+        op["Equal"] = "OEq"; op["NotEqual"] = "ONe"; op["Less"] = "OLt"; op["LessEqual"] = "OLe"
+        op["Greater"] = "OGt"; op["GreaterEqual"] = "OGe"; op["Not"] = "ONot"; op["Select"] = "OSelect"
+        op["AddFits"] = "AddFits"; op["SubFits"] = "SubFits"; op["MulFits"] = "MulFits"
+        op["Quotient"] = "OQuot"; op["Remainder"] = "ORem"; op["Convert"] = "OConvert"
+        print "(* Generated by tools/formal/check.sh from tests/kernel/check_edges.tsv. *)"
+        print "From Coq Require Import ZArith List Bool."
+        print "Import ListNotations."
+        print "From CppL Require Import Syntax Checker Normalize Certificate Linear."
+        print "Open Scope Z_scope."
+        print "Arguments ERefl {cert}. Arguments EAllI {cert}. Arguments EAllE {cert}. Arguments EHyp {cert}."
+        print "Arguments EImpI {cert}. Arguments EImpE {cert}. Arguments EEqE {cert}. Arguments ECond {cert}."
+        print "Arguments ELin {cert}. Arguments EAndI {cert}. Arguments EAndE {cert}. Arguments EOrI {cert}."
+        print "Arguments EOrE {cert}. Arguments EFalseE {cert}. Arguments EInd {cert}."
+        print "Definition closed_check : prop -> evid certificate -> bool :="
+        print "  check (fun _ => None) (nf (fun _ => None) (fun _ => None)) certificate (lin_ok (fun _ => None) (fun _ => None))."
+    }
+    /^#/ || NF == 0 { next }
+    {
+        if (NF != 3) fail("a rule row has " NF " fields")
+        if ($3 != "accept" && $3 != "refuse") fail("unknown verdict " $3)
+        split($1, tok, " "); pos = 1; goal = prop()
+        split($2, tok, " "); pos = 1; evidence = evid()
+        rows++
+        if ($3 == "accept") accepted++
+        printf "Example check_%d : closed_check %s %s = %s.\nProof. vm_compute. reflexivity. Qed.\n", rows, goal, evidence, ($3 == "accept" ? "true" : "false")
+    }
+    END {
+        if (failed) exit 1
+        if (rows < 60 || accepted < 25) { print "the rule table has " rows " rows, " accepted " accepted" > "/dev/stderr"; exit 1 }
+    }
+' "${root}/tests/kernel/check_edges.tsv" > CheckEdges.v
+"${coqc}" -Q . CppL CheckEdges.v
+rules=$(grep -c '^Example ' CheckEdges.v)
+
 "${coqc}" -Q . CppL Audit.v > audit.txt
 cat audit.txt
 
@@ -193,4 +301,4 @@ if grep -nE '\b(Admitted|admit|Axiom|Parameter|Conjecture)\b' "${root}"/formal/c
     exit 1
 fi
 
-echo "formal model: ${theorems} theorems checked, none resting on an axiom; ${edges} normalization edges and ${translations} translations computed"
+echo "formal model: ${theorems} theorems checked, none resting on an axiom; ${edges} normalization edges, ${translations} translations and ${rules} verdicts computed"
