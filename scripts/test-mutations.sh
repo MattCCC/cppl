@@ -89,6 +89,7 @@ sequence-mutator-new-generation	clang/src/bridge.cpp	effects.push_back(new_gener
 unsafe-block-new-generation	clang/src/bridge.cpp	new_generation(state[index], "the unsafe block at " + at);	(void)state[index];	^negative_containers$|^negative_sequence_attacks$
 container-span-capability	clang/src/bridge.cpp	if (region->parameter.has_value() && !granted(*region->parameter, required)) {	if (false && region->parameter.has_value() && !granted(*region->parameter, required)) {	^negative_containers$
 container-call-disjointness	clang/src/bridge.cpp	if (other == root || may_alias(state[other], state[root])) {	if (false && (other == root || may_alias(state[other], state[root]))) {	^negative_containers$
+span-copy-hands-storage	clang/src/bridge.cpp	return handed_storage(call->arguments.front(), state);	return std::nullopt;	^negative_sequence_boundaries$
 container-refined-writable-view	clang/src/bridge.cpp	if (!state[root].sequence->element.refinements.empty()) {	if (false && !state[root].sequence->element.refinements.empty()) {	^negative_containers$
 container-mutable-call-aliases	clang/src/bridge.cpp	!may_alias(state[target], state[other])) {	true) {	^negative_containers$|^negative_cross_feature$
 container-copy-refinement	clang/src/bridge.cpp	if (auto gap = refinement_gap(root, declaring[*origin])) {	if (auto gap = refinement_gap(root, declaring[*origin]); false) {	^negative_containers$
