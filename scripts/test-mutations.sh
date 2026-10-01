@@ -550,7 +550,9 @@ echo "Mutation artifacts: $run"
 # The copy leaves the checkout untouched. find prunes what builds and tools
 # write, matching each name at any depth, and tar carries everything else with
 # its mode, times and links. Both are on every POSIX host; rsync, which this
-# once used, is not, and the Linux CI image does not install it.
+# once used, is not, and the Linux CI image does not install it. The pax format
+# keeps each time to the nanosecond, so a copied file's time equals the
+# checkout's and a reused build rebuilds only what changed.
 mkdir -p "$source_copy"
 copied() {
     find . \( -name .git -o -name build -o -name 'build-*' -o -name tmp \
@@ -575,7 +577,7 @@ if [ -n "$reuse" ]; then
         fi
     done
 fi
-(cd "$root" && copied -print0 | tar --null --no-recursion -T - -cf -) |
+(cd "$root" && copied -print0 | tar --null --no-recursion -T - --format=pax -cf -) |
     (cd "$source_copy" && tar -xf -)
 if [ -s "$changed" ]; then
     (cd "$source_copy" && xargs -0 touch < "$changed")
