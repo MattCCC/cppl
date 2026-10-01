@@ -13,6 +13,11 @@
      13), used by linear arithmetic, must accept only when the facts entail
      the goal.
 
+   Normalize.v discharges the first for a model of the kernel's normalization
+   (check_sound_normalized), and Linear.v the second for a model of its
+   translation with the certificate checker of Certificate.v:
+   check_sound_closed is check_sound with neither left as a premise.
+
    Everything else the rules do - typing, well-formedness, structural
    comparison, shifting, substitution, the hypothesis context, the premises
    of induction and of the conditional rule - is defined here and proven. *)
@@ -223,11 +228,14 @@ Hypothesis elem_ok : forall U k v X x,
 Hypothesis call_ok : forall d ps R args,
   sig d = Some (ps, R) -> Forall2 (dom Abs I) ps args -> dom Abs I R (i_call Abs I d args).
 
-(* M2: normalization preserves the meaning of a typed term. *)
+(* M2: normalization preserves the meaning of a typed term. Normalize.v
+   proves it of its model of the kernel's normalization (nf_sound). *)
 Hypothesis nf_sound : forall G rho t T,
   env_ok Abs I G rho -> type_of sig G t = Some T -> eval Abs I rho (nf t) = eval Abs I rho t.
 
-(* M3: an accepted certificate means the facts entail the goal. *)
+(* M3: an accepted certificate means the facts entail the goal. Linear.v
+   proves it of its model of the kernel's translation and certificate check
+   (lin_sound_model). *)
 Hypothesis lin_sound : forall G Fs P k rho,
   lin_ok G Fs P k = true ->
   Forall (fun F => valid sig G F = true) Fs -> valid sig G P = true ->

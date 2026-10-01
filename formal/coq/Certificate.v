@@ -5,8 +5,9 @@
    This is the second half of what rule 9 rests on. The first half, that the
    translation of facts and a negated goal into a system keeps every machine
    valuation making the facts true and the goal false as an integer solution
-   (KERNEL.md 12), is not mechanized; Checker.v takes the two halves together
-   as its lin_sound hypothesis.
+   (KERNEL.md 12), is proven in Linear.v. Checker.v takes the two halves
+   together as its lin_sound hypothesis, and Linear.v discharges it
+   (lin_sound_model, check_sound_closed).
 
    The kernel's arithmetic is 128-bit and rejects on overflow; this model's is
    unbounded, so it accepts at least what the kernel accepts. *)
