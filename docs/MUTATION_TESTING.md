@@ -171,3 +171,13 @@ scripts/test-mutations.sh --list                         # every entry's name
 
 `--only` runs the named entries, after checking their anchors and the same
 control run; the pre-commit check for a new entry is `--only` with its name.
+
+`--reuse <run directory>` builds in the copy an earlier run left, brought up to
+date with the checkout, so the build is incremental. A file the copy holds that
+the checkout does not is refused. Every file whose content or time differs from
+the checkout's is touched after the copy, so no object built from a mutation an
+interrupted run left applied, or restored without rebuilding, survives; the copy
+is written in pax format, which keeps each time to the nanosecond, so an
+unchanged file keeps its time and is not rebuilt. The control run is repeated on
+every invocation, so a run interrupted part way is resumed soundly by running,
+with `--reuse` and `--only`, the entries that have no outcome yet.
