@@ -147,6 +147,8 @@ tests:
     - tests/fixtures/negative/xtu_total_request.cpp
     - tests/fixtures/negative/xtu_changed_pure_definition.cpp
     - tests/negative/cross_tu.sh
+    - tests/negative/interface_integrity.sh
+    - tests/negative/interface_fields.sh
     - tests/fixtures/negative/xtu_false_postcondition.cpp
     - tests/fixtures/negative/xtu_missing_precondition.cpp
     - tests/fixtures/negative/xtu_refined_result_stronger.cpp

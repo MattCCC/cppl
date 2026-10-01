@@ -1405,7 +1405,7 @@ No path turns a failure to prove into a site: an unproved refinement crossing is
 
 **External verified dependency (an imported contract).** A contract of another unit is used only through a record of an interface the build imports. Every check in 31.1 guards that use: integrity, format and configuration, verification semantics and verifier digest, staleness of the unit's sources, conflicting records, and cycles across units. Only a PROVEN record is exported. A claim through an imported record is counted apart, is never assumption-free, carries every category the record names, and is reported with interface provenance stated as unauthenticated.
 
-- Tests: `e2e_cross_tu`, `negative_cross_tu`, `unit_interface_test`, `unit_cross_unit_contracts_test`, `lsp_interfaces_test`.
+- Tests: `e2e_cross_tu`, `negative_cross_tu`, `negative_interface_integrity`, `negative_interface_fields`, `unit_interface_test`, `unit_cross_unit_contracts_test`, `e2e_provenance_matrix`, `lsp_interfaces_test`.
 - Mutation entries: `xtu-checksum-verified`, `xtu-configuration-compared`, `xtu-semantics-compared`, `xtu-verifier-digest-compared`, `xtu-stale-sources`, `xtu-conflicting-records`, `xtu-status-proven-only`, the `xtu-recursion-*` set, `xtu-import-not-assumption-free`, `xtu-provenance-stated`, `lsp-imported-contract-recorded`, `lsp-lens-names-imported-contract`.
 
 **Library model dependency.** A trusted library summary (TRUST.md 28.1) produces it. The closure carries the model to every claim through verified calls and imported records, and a claim that rests on a model is never assumption-free.

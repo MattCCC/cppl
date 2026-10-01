@@ -2897,7 +2897,13 @@ report that imports one states its provenance as unauthenticated. No claim
 through a record is assumption-free (TCB-XTU-010).
 
 Guarded by `e2e_cross_tu`, `negative_cross_tu` and `lsp_interfaces_test`, and
-by `xtu-provenance-stated` and `xtu-import-not-assumption-free`.
+by `xtu-provenance-stated` and `xtu-import-not-assumption-free`. The checks
+themselves are audited exhaustively on real interfaces whose records rest on
+every kind of dependency: every line edited without its checksum, every cut at
+a line and within one (`negative_interface_integrity`), and 61 edits of every
+field with the checksum recomputed, each refused exactly where the field is
+part of what was verified or of the configuration and staleness checks, and
+accepted where it is provenance only (`negative_interface_fields`).
 
 Interface provenance stays TCB: authentication is not implemented
 (`TRUST.md` 32.2), and no ad hoc scheme stands in for it.
