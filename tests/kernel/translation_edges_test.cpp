@@ -5,9 +5,10 @@
 // (formal/coq/Linear.v), so the two are checked against one table
 // (docs/KERNEL.md 17).
 //
-// Run with CPPL_TRANSLATION_EDGES_PRINT=1 to print the system the kernel builds
-// for each row.
+// A failing row names the system the kernel built, so a new row can be written
+// with any system and corrected from the failure.
 
+#include "cppl/kernel/context.hpp"
 #include "cppl/kernel/linear.hpp"
 #include "cppl/kernel/proposition.hpp"
 #include "cppl/kernel/term.hpp"
@@ -16,9 +17,7 @@
 
 #include <cstddef>
 #include <cstdint>
-#include <cstdlib>
 #include <fstream>
-#include <iostream>
 #include <map>
 #include <span>
 #include <sstream>
@@ -112,6 +111,7 @@ class Reader {
         const k::IntType type = type_of(next());
         const std::size_t arity = token == "Not" || token == "Convert" ? 1u : token == "Select" ? 3u : 2u;
         std::vector<k::Term> operands;
+        operands.reserve(arity);
         for (std::size_t index = 0; index < arity; ++index) {
             operands.push_back(term());
         }
@@ -179,7 +179,6 @@ std::string squeeze(const std::string& text) {
 CPPL_TEST(every_translation_row_builds_the_system_it_states) {
     std::ifstream table(CPPL_TRANSLATION_EDGES);
     CPPL_CHECK(table.good());
-    const bool print = std::getenv("CPPL_TRANSLATION_EDGES_PRINT") != nullptr;
     std::size_t rows = 0;
     std::string line;
     while (std::getline(table, line)) {
@@ -203,11 +202,13 @@ CPPL_TEST(every_translation_row_builds_the_system_it_states) {
         const auto system =
             k::arithmetic_system({}, facts, proposition_of(row[2]), k::CoreLimits{}, std::span<const k::Type>(locals));
         const std::string built = system.has_value() ? render(*system) : "refused";
-        if (print) {
-            std::cout << row[0] << '\t' << row[1] << '\t' << row[2] << '\t' << built << '\n';
-        } else if (built != squeeze(row[3])) {
-            ::cppl::testing::fail(__FILE__, __LINE__,
-                                  "the kernel translates '" + line + "' to '" + built + "', not the system it states");
+        if (built != squeeze(row[3])) {
+            std::string message = "the kernel translates '";
+            message += line;
+            message += "' to '";
+            message += built;
+            message += "', not the system it states";
+            ::cppl::testing::fail(__FILE__, __LINE__, message);
         }
         ++rows;
     }
