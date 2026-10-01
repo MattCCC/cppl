@@ -2847,6 +2847,28 @@ entries (`MUTATION_TESTING.md`). Persistent fuzz targets exist for kernel
 proofs, terms, certificates and arithmetic, and for the recognizer, the
 verification-interface decoder and the language server.
 
+The audit's edges are tested exhaustively rather than by example, each refusal
+attributed to its own case by source location and each accepted twin run:
+
+- the sequence subset: every storage event against every view kind, every
+  bound, alias, call form, unmodeled member and content invariant
+  (`negative_sequence_generations`, `negative_sequence_boundaries` and their
+  e2e twins; 316 refusals and 328 accepted twins);
+- runtime validation: every admitted position, every route, write, call, alias
+  and loop after which a validation's fact no longer holds, and every position
+  and predicate no program can run (`e2e_runtime_validation_matrix`,
+  `negative_runtime_validation_matrix`; 46 refusals and 21 twins run on valid,
+  invalid and boundary input);
+- trust reporting: the exact closure of 52 claims across every dependency kind
+  and path, agreeing in the text report, the JSON report and the editor
+  (`e2e_provenance_matrix`);
+- normalization: 141 edge terms the kernel and the Coq model's normalizer both
+  compute (`kernel_normalization_edges_test`, `formal_kernel_model`).
+
+The matrices found one soundness defect, fixed with permanent regressions and a
+mutation entry (`TRUST.md` 36.3: a span passed by value was not followed to the
+storage it views).
+
 Open: the full mutation suite, and the ASan, UBSan and fuzz profiles, have to
 be recorded green on the release candidate (G18 lists the runs).
 
