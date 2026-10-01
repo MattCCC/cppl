@@ -184,6 +184,7 @@ tests:
   kernel:
     - tests/kernel/definedness_test.cpp
     - tests/kernel/arithmetic_test.cpp
+    - tests/kernel/normalization_edges_test.cpp
   unit:
     - tests/unit/definedness_arithmetic_test.cpp
     - tests/unit/arithmetic_test.cpp

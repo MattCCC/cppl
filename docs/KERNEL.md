@@ -772,7 +772,16 @@ by it, so the M2 premise is discharged. Its remaining conditions are on the
 interpretation, not the checker: it gives each admitted definition the meaning
 of its body, as it already gives each observation and call a value of its type.
 Termination is by construction: unfolding is bounded by fuel, where the kernel
-bounds it by the limits of section 14. The model's term order does not compare
+bounds it by the limits of section 14. One table of 141 terms,
+`tests/kernel/normalization_edges.tsv`, ties the model's computation to the
+kernel's: every primitive at widths 1 to 64, signed and unsigned, at the edges
+of its type (wrapping at the maximum and minimum, the least signed value over
+-1, division and remainder by zero, narrowing and sign-changing conversion), and
+the folds that hold for every value of a variable (`x - x`, `x * 0`, `x + x` at
+width 1, comparisons against the bounds, equal selection arms, `x / 1`, `x % 0`).
+`kernel_normalization_edges_test` normalizes each with the kernel, and
+`tools/formal/check.sh` states each as an `Example` of the model's normalizer
+proven by computation, so either side disagreeing with a row fails. The model's term order does not compare
 the domains of observations and elements, so its normal forms can differ in
 placement from the kernel's; that bears on which reflexivity steps the two
 accept, not on soundness, since placement never changes a value.
