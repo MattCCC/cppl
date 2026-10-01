@@ -589,7 +589,8 @@ are mechanized. The two mechanization rows are `PARTIAL`: a Coq model of the
 checking judgment (`formal/coq`, KERNEL.md 17) proves that whatever evidence it
 accepts establishes a true proposition, relative to two stated premises,
 normalization preserving meaning and the arithmetic translation being exact;
-proves the certificate checker sound; and proves, with no premise, that rules
+discharges the first for a model of the kernel's normalization; proves the
+certificate checker sound; and proves, with no premise, that rules
 2 to 8 and 10 to 15 cannot establish `False`. It rests on no axiom. The C++
 kernel is not proven to implement the model, so it stays in the logical TCB
 (`TRUST.md` 41).
@@ -2811,11 +2812,14 @@ consumable.
 `PARTIAL`. The checking judgment is mechanized in Coq, and `check_sound` is
 proven relative to two hypotheses (`KERNEL.md` 17): that normalization
 preserves meaning (M2), and that the arithmetic translation is sound (M3).
+M2 is discharged: `Normalize.v` models the kernel's normalization, `nf_sound`
+proves that it keeps the meaning of every typed term, and
+`check_sound_normalized` instantiates `check_sound` with it, audited closed.
 `syntactic_consistency` is unconditional for rules 2 to 8 and 10 to 15.
 
 Open:
 
-- M2 normalization and M3 translation;
+- M3, the translation of arithmetic facts into constraints;
 - M5, a reference checker;
 - M6, re-checkable evidence.
 
