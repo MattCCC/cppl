@@ -117,6 +117,12 @@ interactions:
 tests:
   positive:
     - tests/fixtures/trust_closure.cpp
+    - tests/fixtures/provenance_matrix.cpp
+    - tests/fixtures/provenance_matrix_cross_tu/producer.hpp
+    - tests/fixtures/provenance_matrix_cross_tu/producer.cpp
+    - tests/fixtures/provenance_matrix_cross_tu/middle.hpp
+    - tests/fixtures/provenance_matrix_cross_tu/middle.cpp
+    - tests/fixtures/provenance_matrix_cross_tu/client.cpp
   negative:
     - tests/negative/trusted_dependencies.sh
     - tests/fixtures/negative/trusted_premise_still_owed.cpp
@@ -129,6 +135,10 @@ tests:
     - tests/fixtures/negative/trusted_memory_law_named.cpp
     - tests/fixtures/negative/memory_law_untrusted.cpp
     - tests/fixtures/negative/memory_proposition_proof.cpp
+    - tests/fixtures/negative/twins/provenance_matrix.cpp
+    - tests/fixtures/negative/twins/provenance_matrix_cross_tu_producer.cpp
+    - tests/fixtures/negative/twins/provenance_matrix_cross_tu_middle.cpp
+    - tests/fixtures/negative/twins/provenance_matrix_cross_tu_client.cpp
   unit:
     - tests/unit/trust_closure_test.cpp
     - tests/unit/trust_report_test.cpp
@@ -136,6 +146,7 @@ tests:
   end_to_end:
     - tests/e2e/trust_closure.sh
     - tests/e2e/trust_report_json.sh
+    - tests/e2e/provenance_matrix.sh
     - tests/e2e/trusted_assumptions.sh
     - tests/e2e/omitted_case.sh
 
