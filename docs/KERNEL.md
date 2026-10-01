@@ -827,6 +827,25 @@ Where the two normal forms differ in placement, the sharing of variables can
 differ too, which bears on which certificates the two accept, not on
 soundness.
 
+A second table, `tests/kernel/translation_edges.tsv`, ties the model's
+translation to the kernel's as the first ties normalization: 82 steps, each its
+binders' types, its facts and its goal, with the system the translation builds
+from them, its number of variables and every constraint and disjunction in the
+kernel's order, which is what a certificate's positions name. The rows cover
+every path of the translation: a constant, a single variable and a wrapped sum
+at every width from 1 to 64, signed and unsigned, at the edges of each type;
+every comparison held and refuted, with the literal on either side, under
+negation and as an equality of two conditions; representability exact,
+decided by the operands' ranges either way, and left to its value; widening,
+narrowing and sign-changing conversion; division and remainder by a literal of
+either sign, by one of the folded divisors, by an unknown divisor, signed and
+unsigned, and sharing one division; a goal of `False`, of a condition and of
+an equality. `kernel_translation_edges_test` translates each with the kernel,
+and `tools/formal/check.sh` states each as an `Example` of the model's
+`arithmetic_system` proven by computation, comparing each constraint as the
+kernel keeps it, its variables merged, in increasing order and with nonzero
+coefficients; either side disagreeing with a row fails.
+
 The model omits the resource limits of section 14. They only reject, so the
 model accepts at least what the kernel accepts, and a bound on what it accepts
 bounds the kernel's. Its recursion is bounded by fuel instead: the
@@ -840,9 +859,9 @@ model's checker is transcribed rule by rule from `check_under`, with the C++
 function each definition restates named beside it, and its normalizer and its
 translation are transcribed the same way from `kernel/src/context.cpp`,
 `kernel/src/arithmetic.cpp` and `kernel/src/linear.cpp`. The drift test
-catches a changed set of formers, not a changed rule, and the edge table checks
-normalization on its rows only; no test compares the systems the kernel and
-the model build. The C++ kernel therefore stays in the logical TCB
+catches a changed set of formers, not a changed rule, and the two edge tables
+check normalization and translation on their rows only. The C++ kernel
+therefore stays in the logical TCB
 (TCB-META-002) until M5 runs an extracted checker beside it and M6 lets it
 re-check a build's evidence.
 
