@@ -10,6 +10,8 @@
 # all alike and each read only through the checksum, the first is edited. The
 # fields, edited with the checksum recomputed, are `negative/interface_fields.sh`.
 set -euo pipefail
+# shellcheck source=../support/parallel.sh
+source "$(dirname "$0")/../support/parallel.sh"
 CPPL="$1"
 FIXTURES="$2"
 WORK="$3"
@@ -36,17 +38,19 @@ cd "$run"
 echo 'int main() { return 0; }' > probe.cpp
 
 # probe <interface> <reason>...: importing the interface into a unit that uses
-# nothing from it is refused, for one of the reasons given.
+# nothing from it is refused, for one of the reasons given. Each tampered
+# interface is a file of its own, probed into an object and a log of its own,
+# so the probes run side by side (support/parallel.sh).
 probe() {
     local interface="$1" reason
     shift
-    if "$CPPL" -std=c++20 -c probe.cpp -o probe.o "--cppl-import-interface=$interface" > probe.log 2>&1; then
+    if "$CPPL" -std=c++20 -c probe.cpp -o "$interface.o" "--cppl-import-interface=$interface" > "$interface.log" 2>&1; then
         fail "$interface was accepted"
     fi
     for reason in "$@"; do
-        grep -qF -- "$reason" probe.log && return 0
+        grep -qF -- "$reason" "$interface.log" && return 0
     done
-    cat probe.log >&2
+    cat "$interface.log" >&2
     fail "$interface was not refused as $*"
 }
 "$CPPL" -std=c++20 -c probe.cpp -o probe.o --cppl-import-interface=producer.cppli > /dev/null 2>&1 ||
@@ -57,7 +61,8 @@ probe() {
 # source line naming a system header is edited only the first time, since the
 # rest are the same kind of line, each read only through the checksum.
 exhaust() {
-    local interface="$1" lines at kept size bytes edited=0 system=0
+    local interface="$1" lines at size bytes edited=0 system=0 tampered="$1.tampered"
+    mkdir -p "$tampered"
     lines=$(wc -l < "$interface" | tr -d ' ')
     for at in $(seq 1 "$lines"); do
         if sed -n "${at}p" "$interface" | grep -qE '^source [0-9a-f]+ /(usr|opt)/|^source [0-9a-f]+ .*/lib/clang/'; then
@@ -66,21 +71,23 @@ exhaust() {
         fi
         awk -v at="$at" 'NR == at {
             if ($1 == "checksum") { $2 = (substr($2, 1, 1) == "0" ? "1" : "0") substr($2, 2) } else { $0 = $0 "x" }
-        } { print }' "$interface" > edited.cppli
-        probe edited.cppli "it is corrupt" "it is format version"
+        } { print }' "$interface" > "$tampered/edited-$at.cppli"
+        case_run probe "$tampered/edited-$at.cppli" "it is corrupt" "it is format version"
         edited=$((edited + 1))
-        head -n "$((at - 1))" "$interface" > cut.cppli
-        probe cut.cppli "it is truncated" "it is corrupt" "it is empty" "it is format version" \
-            "it is not a C++L verification interface"
+        head -n "$((at - 1))" "$interface" > "$tampered/cut-before-line-$at.cppli"
+        case_run probe "$tampered/cut-before-line-$at.cppli" "it is truncated" "it is corrupt" "it is empty" \
+            "it is format version" "it is not a C++L verification interface"
     done
     size=$(wc -c < "$interface" | tr -d ' ')
     for bytes in $(seq 1 499 "$((size - 1))"); do
-        head -c "$bytes" "$interface" > cut.cppli
-        probe cut.cppli "it is truncated" "it is corrupt" "it is empty" "it is format version" \
-            "it is not a C++L verification interface"
+        head -c "$bytes" "$interface" > "$tampered/cut-at-byte-$bytes.cppli"
+        case_run probe "$tampered/cut-at-byte-$bytes.cppli" "it is truncated" "it is corrupt" "it is empty" \
+            "it is format version" "it is not a C++L verification interface"
     done
+    cases_end
     echo "$interface: each of $edited lines edited, and every cut at a line and within one, is refused"
 }
 
+cases_begin "$run/cases"
 exhaust middle.cppli
 exhaust producer.cppli

@@ -48,6 +48,13 @@ going. `make test` runs CTest itself under the same limits, which caps the log
 it keeps. Windows has no such limit to set, so there the CTest timeout is the
 only bound.
 
+The heaviest script tests run their independent cases side by side through
+`tests/support/parallel.sh`, one per online processor or `CPPL_TEST_JOBS` of
+them (`CPPL_TEST_JOBS=1` runs them one at a time). A case has its own inputs and
+outputs, so this changes only when each case runs: every case still runs, and
+the test still fails on the first failing case in the order it names them, with
+that case's own messages.
+
 ---
 
 # 2. What each CI preset corresponds to
