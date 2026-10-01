@@ -133,6 +133,7 @@ tests:
     - tests/fixtures/runtime_validation_cross_tu/relay.cpp
   negative:
     - tests/negative/runtime_validation.sh
+    - tests/negative/runtime_validation_matrix.sh
     - tests/fixtures/negative/runtime_check_failure_path.cpp
     - tests/fixtures/negative/runtime_check_result_unchecked.cpp
     - tests/fixtures/negative/runtime_check_argument_unchecked.cpp
@@ -168,6 +169,7 @@ tests:
     - tests/unit/interface_test.cpp
   end_to_end:
     - tests/e2e/runtime_validation.sh
+    - tests/e2e/runtime_validation_matrix.sh
 
 required_test_categories:
   - every crossing form proven from path facts, with no site, and the program run on valid and invalid input
