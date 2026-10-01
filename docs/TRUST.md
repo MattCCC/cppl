@@ -1400,7 +1400,7 @@ No path turns a failure to prove into a site: an unproved refinement crossing is
 
 **UNSAFE.** Only an `unsafe` block produces it. The bridge models the block as unknown writes to everything it can reach: every capability it can reach is revoked, and every sequence it can reach gets a new storage generation. Control does not leave the block. A block in a `pure` function or in a contract clause is refused, and so is a call to a function declared `unsafe` outside a block. The closure carries the block to every claim through verified calls and imported records. A claim that rests on a block is never assumption-free, and a block the closure names that the unit does not declare is an internal error.
 
-- Tests: `e2e_unsafe_boundary`, `negative_unsafe_boundary`, `negative_sequence_attacks`.
+- Tests: `e2e_unsafe_boundary`, `negative_unsafe_boundary`, `negative_sequence_attacks`, `negative_sequence_generations`.
 - Mutation entries: `unsafe-block-havoc`, `unsafe-names-escape`, `unsafe-revokes-capabilities`, `unsafe-revokes-call-capabilities`, `unsafe-control-stays-in-block`, `unsafe-block-new-generation`, `unsafe-pure-refused`, `unsafe-contract-refused`, `unsafe-call-outside-block`, `unsafe-closure-through-calls`, `unsafe-not-assumption-free`, `xtu-unsafe-through-import`, `lsp-unsafe-recorded`, `lsp-lens-names-unsafe`.
 
 **External verified dependency (an imported contract).** A contract of another unit is used only through a record of an interface the build imports. Every check in 31.1 guards that use: integrity, format and configuration, verification semantics and verifier digest, staleness of the unit's sources, conflicting records, and cycles across units. Only a PROVEN record is exported. A claim through an imported record is counted apart, is never assumption-free, carries every category the record names, and is reported with interface provenance stated as unauthenticated.
@@ -1410,7 +1410,7 @@ No path turns a failure to prove into a site: an unproved refinement crossing is
 
 **Library model dependency.** A trusted library summary (TRUST.md 28.1) produces it. The closure carries the model to every claim through verified calls and imported records, and a claim that rests on a model is never assumption-free.
 
-- Tests: `e2e_containers`, `negative_containers`, `e2e_sequence_attacks`, `negative_sequence_attacks`.
+- Tests: `e2e_containers`, `negative_containers`, `e2e_sequence_attacks`, `negative_sequence_attacks`, `e2e_sequence_generations`, `negative_sequence_generations`, `e2e_sequence_boundaries`, `negative_sequence_boundaries`.
 - Mutation entries: `library-model-closure-through-calls`, `library-model-not-assumption-free`, the `xtu-models-*` set, `lsp-models-recorded`, `lsp-lens-names-models`.
 
 **Assumption-free.** One predicate decides it for the text and the JSON report (`driver::assumption_free`). The claim must rest on no imported record, no trusted law, no unsafe block and no library model. Runtime validation sites do not remove a claim from the category: a site adds no assumption, only the TCB obligation that the executable performs the validation (TCB-RUNTIMECHK-006). Guarded by `unit_trust_report_test` and `e2e_trust_report_json`, and by `trust-json-assumption-free-flag`, `trust-json-closure-flag`, `unsafe-not-assumption-free`, `library-model-not-assumption-free` and `xtu-import-not-assumption-free`.
@@ -1421,6 +1421,23 @@ No path turns a failure to prove into a site: an unproved refinement crossing is
 
 - Regression test: `a_proven_claim_names_what_it_rests_on_through_what_it_uses` in `lsp_verification_test`.
 - Mutation entries: `lsp-premises-through-uses`, `lsp-models-recorded`, `lsp-unsafe-recorded`, `lsp-validations-recorded`, and the `lsp-lens-names-*` set.
+
+**Finding, fixed: a soundness defect in the bridge.** Exhausting the sequence subset (STDMODEL-010 to STDMODEL-027) against every event, view kind, bound and call form found that a span passed to a verified call by value was not followed to the storage it views when it was a copy of a span local or a span parameter. The bridge followed a container converted to a span in the call, but a copy of a span local named no container, so the call was treated as handing over no storage:
+
+- a span local and its own container passed by mutable reference in one call were accepted, and a callee that appends to the container and then writes through the span, itself proven, wrote freed storage (a heap use-after-free under AddressSanitizer) while both contracts were reported PROVEN (STDMODEL-016);
+- a call that may write through such a span left the caller's elements, its element references and the span's own elements at their old values, so a contract stating the old value was PROVEN and false at runtime (STDMODEL-017);
+- the same call could store a value outside a refined element type in a `std::vector<Positive>`, after which `0u < v[0]` was PROVEN and false (STDMODEL-027);
+- a span parameter passed on to a writing call kept its elements' old values in the same way.
+
+`handed_storage` (`clang/src/bridge.cpp`) now follows a copied span to the storage the copied span designates. Every case is a permanent regression in `negative_sequence_boundaries` (`x_span_local_*`, `x_span_param_passed_on`, `c_span_local_writable_call`), and the mutation entry `span-copy-hands-storage` restores the defect and must be caught.
+
+**Findings, fixed: completeness and diagnostics.** None of these could produce a false PROVEN; each refused a program the specification admits, or refused one without saying where.
+
+- One container handed to one call as two writable spans was refused with the internal message "malformed mutation version": the second view havocked the elements the first had already made unknown. It is now accepted, with every element unknown after the call (`x_two_writable_same`), and a contract on an element's old value is still refused (`x_two_writable_same_elements`).
+- A call statement whose argument is a container copied into a by-value parameter was refused as an unmodeled `UnexposedExpr`, although the same call as an initializer was accepted (STDMODEL-023). It is now lowered as a call, and the caller's container is unchanged by it (the `vector_kept_copy_call__*` cases).
+- A refused subscript at a constant index had no source location: the bounds obligation took its location from the index, which the bridge folds to a constant. It now takes the subscript's statement, and the matrix tests require every refusal to carry a location.
+
+Refusals left as they are, each fail-closed and each a completeness limit rather than a defect: a symbolic index into a by-value `std::array` parameter, `std::array<T, 0>`, a call statement whose argument is a moved-from container, and a string element read from a literal initializer, which STDMODEL-013 models by its length only.
 
 **What stays trusted.** This audit checks the layers between the kernel and the reports. It does not verify them: the Clang bridge, elaboration and obligation construction remain correspondence TCB (7 to 17), and only the kernel's checking judgment is mechanized (41).
 
