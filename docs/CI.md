@@ -33,6 +33,16 @@ belong to `make ci`.
 
 Use `make check-full` for the `check` set with whole-repository lint.
 
+A one-file change relinks every executable that depends on it, most of the
+test binaries among them, so an incremental build is mostly linking. On Linux
+the executables are therefore linked with LLVM's lld wherever the compiler
+driver can find it (`cmake/Linker.cmake`): Clang finds `ld.lld` beside itself,
+GCC on the `PATH`. It is probed at configure time, the banner names the linker
+chosen, and a toolchain without lld keeps its default linker. lld reads the
+same options GNU ld does, so the hardening `architecture_hardening` reads back
+is unchanged. `-DCPPL_LINK_WITH_LLD=OFF` keeps the default linker. macOS and
+Windows keep their platform linkers.
+
 Lint covers headers as well as source files. Each header is in the compilation
 database as a unit of its own, compiled with its owning component's flags, so
 `misc-include-cleaner` holds it to the includes it states: it must compile

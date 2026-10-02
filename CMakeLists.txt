@@ -114,6 +114,12 @@ option(
     OFF
 )
 
+option(
+    CPPL_LINK_WITH_LLD
+    "Link with LLVM's lld where the toolchain provides it (cmake/Linker.cmake)"
+    ON
+)
+
 # -----------------------------------------------------------------------------
 # CI host-environment isolation
 # -----------------------------------------------------------------------------
@@ -296,6 +302,22 @@ if(CPPL_ENABLE_HARDENING)
     include(Hardening)
     cppl_enable_hardening(cppl_project_options)
 endif()
+
+# -----------------------------------------------------------------------------
+# Linker
+# -----------------------------------------------------------------------------
+#
+# Every executable, not only those linking cppl_project_options: an
+# incremental build is mostly relinking, and the linker is the same program
+# for all of them.
+
+include(Linker)
+cppl_select_linker()
+
+message(
+    STATUS
+    "C++L: linker       ${CPPL_LINKER}"
+)
 
 # -----------------------------------------------------------------------------
 # Fuzzing

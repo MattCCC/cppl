@@ -34,6 +34,7 @@ function(cppl_ci_report_environment)
     message(STATUS "  C++ compiler    ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
     message(STATUS "                  ${CMAKE_CXX_COMPILER}")
     message(STATUS "  C++ standard    ${CMAKE_CXX_STANDARD}")
+    message(STATUS "  linker          ${CPPL_LINKER}")
 
     message(STATUS "  libclang        ${LibClang_VERSION}")
     message(STATUS "                  ${LibClang_LIBRARY}")
