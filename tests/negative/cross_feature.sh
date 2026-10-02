@@ -25,6 +25,9 @@ FIXTURES="$2"
 WORK="$3"
 NEGATIVE="$FIXTURES/negative"
 
+# shellcheck source=../support/parallel.sh
+source "$(dirname "$0")/../support/parallel.sh"
+
 mkdir -p "$WORK"
 run=$(mktemp -d "$WORK/cross-feature-refused.XXXXXX")
 cp "$FIXTURES"/cross_feature/* "$run/"
@@ -54,20 +57,28 @@ refuse() {
 "$CPPL" -std=c++20 -c buffers.cpp -o buffers.o --cppl-emit-interface=buffers.cppli > /dev/null
 "$CPPL" -std=c++20 -c client.cpp -o client.o --cppl-import-interface=buffers.cppli > /dev/null
 
+# Each refusal is a case of its own, in files of its own, so they run side by
+# side (support/parallel.sh).
+cases_begin "$run/cases"
+
 # SPEC: STDMODEL-015, CLASS-011 -- a member call taking the vector by mutable
 # reference ends the span's generation.
-refuse span_after_mutating_call "'view' views the storage of 'v', which may have been reallocated or ended by passing it by mutable reference to 'Cursor::emit'" \
+case_run refuse span_after_mutating_call "'view' views the storage of 'v', which may have been reallocated or ended by passing it by mutable reference to 'Cursor::emit'" \
     "$NEGATIVE/cross_feature_span_after_mutating_call.cpp" --cppl-import-interface=buffers.cppli
 # SPEC: ARITH-006 -- an unguarded element sum may overflow.
-refuse unguarded_sum "signed overflow: 'total#2 \\+ value#5' on the signed type 'long long' is not shown to stay within 'long long'" \
+case_run refuse unguarded_sum "signed overflow: 'total#2 \\+ value#5' on the signed type 'long long' is not shown to stay within 'long long'" \
     "$NEGATIVE/cross_feature_unguarded_sum.cpp"
 # SPEC: CLASS-008, CLASS-015 -- a container member is not tracked storage.
-refuse container_member "this member of the implicit object is not tracked storage: its type is not one this implementation models" \
+case_run refuse container_member "this member of the implicit object is not tracked storage: its type is not one this implementation models" \
     "$NEGATIVE/cross_feature_container_member.cpp"
 # SPEC: STDMODEL-015, CLASS-011 -- a view over a vector that may be the one a
 # call grows is stale after it, and the refusal names that call.
-refuse alias_view_after_call "'view' views the storage of 'b', which may have been reallocated or ended by passing it by mutable reference to 'grow'" \
+case_run refuse alias_view_after_call "'view' views the storage of 'b', which may have been reallocated or ended by passing it by mutable reference to 'grow'" \
     "$NEGATIVE/cross_feature_alias_view_after_call.cpp"
+
+# Every refusal above is reported before the next unit is compiled, as it would
+# be one at a time.
+cases_end
 
 # SPEC: CLASS-011, REFINE-060, TUBOUND-003 -- another unit's contract writing a
 # refined member through a plain reference: the caller is charged at the call.
@@ -78,17 +89,19 @@ charged() {
     refuse "$name" "cross_feature_$name\\.cpp:$line: error \\[kernel-rejection\\]: this value is not shown to satisfy refinement type '$refinement'" \
         "$NEGATIVE/cross_feature_$name.cpp" "$@"
 }
-charged imported_unrefined_effect 15:9 Small --cppl-import-interface=effects.cppli
+case_run charged imported_unrefined_effect 15:9 Small --cppl-import-interface=effects.cppli
 # SPEC: CLASS-010, UNSAFE-005, LOOP-005, REFINE-061 -- the value leaving a loop
 # is the one at its head, and an unsafe write inside it is charged at return.
-charged loop_unsafe_refined_member 24:6 Small
+case_run charged loop_unsafe_refined_member 24:6 Small
 # SPEC: LOOP-001, REFINE-061 -- a `break` leaves with what the block wrote.
-charged loop_break_refined_member 28:6 Small
+case_run charged loop_break_refined_member 28:6 Small
 # SPEC: REFINE-061 -- and so does a `return` inside the loop.
-charged loop_return_refined_reference 19:13 Small
+case_run charged loop_return_refined_reference 19:13 Small
 # SPEC: CLASS-010, STDMODEL-015 -- a `push_back` through a reference argument
 # may reach the object, and nothing establishes its refined member afterwards.
-charged refined_receiver_push 20:9 Position
+case_run charged refined_receiver_push 20:9 Position
+
+cases_end
 
 echo 'cross-feature twins fail closed: a stale view, an unguarded sum, a container member, and every route' \
      'that could leave a refined place unchecked'
