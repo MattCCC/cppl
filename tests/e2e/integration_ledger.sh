@@ -33,6 +33,8 @@ WORK="$3"
 CLANG="$4"
 # shellcheck source=../support/equivalence.sh
 source "$(dirname "$0")/../support/equivalence.sh"
+# shellcheck source=../support/parallel.sh
+source "$(dirname "$0")/../support/parallel.sh"
 
 mkdir -p "$WORK"
 run=$(mktemp -d "$WORK/integration-ledger.XXXXXX")
@@ -73,7 +75,14 @@ if command -v g++ > /dev/null 2>&1 && g++ --version 2>/dev/null | grep -q 'Free 
     gnu_cxx=g++
 fi
 
-for standard in c++20 c++23; do
+# Each standard is a case of its own, in a copy of its own, so the two are
+# checked side by side (support/parallel.sh).
+in_standard() {
+    local standard="$1"
+    mkdir "$run/$standard"
+    cp "$FIXTURES"/integration/* "$run/$standard/"
+    cd "$run/$standard"
+
     text="text-$standard"
     ledger="ledger-$standard"
     statement="statement-$standard"
@@ -190,7 +199,13 @@ for standard in c++20 c++23; do
         "$gnu_cxx" "text-gnu-$standard.o" "ledger-gnu-$standard.o" "statement-gnu-$standard.o" -o "gnu-$standard"
         [ "$("./gnu-$standard")" = "$expected" ] || fail "the hand-erased units built by GCC ran differently"
     fi
+}
+
+cases_begin "$run/cases"
+for standard in c++20 c++23; do
+    case_run in_standard "$standard"
 done
+cases_end
 
 if [ -z "$gnu_cxx" ]; then
     echo "GCC is not on this host: the hand-erased units were built with Clang only"
