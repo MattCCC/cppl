@@ -20,6 +20,9 @@ FIXTURES="$2"
 WORK="$3"
 NEGATIVE="$FIXTURES/negative"
 
+# shellcheck source=../support/parallel.sh
+source "$(dirname "$0")/../support/parallel.sh"
+
 mkdir -p "$WORK"
 run=$(mktemp -d "$WORK/integration-refused.XXXXXX")
 cp "$FIXTURES"/integration/* "$run/"
@@ -57,55 +60,60 @@ refuse() {
     fi
 }
 
-accept text text.cpp --cppl-emit-interface=text.cppli
-accept ledger ledger.cpp --cppl-emit-interface=ledger.cppli
+# Each compile below is a case of its own, in files of its own, so they run side
+# by side (support/parallel.sh), once both interfaces they import are written.
+cases_begin "$run/cases"
+
+case_run accept text text.cpp --cppl-emit-interface=text.cppli
+case_run accept ledger ledger.cpp --cppl-emit-interface=ledger.cppli
+cases_end
 both=(--cppl-import-interface=text.cppli --cppl-import-interface=ledger.cppli)
 # The accepted twins, with the interfaces the refused ones import.
-accept statement statement.cpp "${both[@]}"
+case_run accept statement statement.cpp "${both[@]}"
 
 # SPEC: STDMODEL-012 -- an index one past the end is not bounded by any
 # imported contract.
-refuse off_by_one "law 'statement_total element index' is not proven" \
+case_run refuse off_by_one "law 'statement_total element index' is not proven" \
     "$NEGATIVE/integration_off_by_one.cpp" "${both[@]}"
 # SPEC: STDMODEL-020, REFINE-060 -- an amount enters a Money element only where
 # it is shown to be one.
-refuse unguarded_amount "this value is not shown to satisfy refinement type 'Money'" \
+case_run refuse unguarded_amount "this value is not shown to satisfy refinement type 'Money'" \
     "$NEGATIVE/integration_unguarded_amount.cpp" "${both[@]}"
 # SPEC: STDMODEL-015 -- a span formed before a push_back is not read after it.
-refuse stale_span "'parsed' views the storage of 'amounts', which may have been reallocated or ended" \
+case_run refuse stale_span "'parsed' views the storage of 'amounts', which may have been reallocated or ended" \
     "$NEGATIVE/integration_stale_span.cpp" "${both[@]}"
 # SPEC: TUBOUND-003, CLASS-011 -- an imported member function's contract gives
 # what it states and nothing more.
-refuse false_room "return path 'room_after path 1' does not satisfy its contract" \
+case_run refuse false_room "return path 'room_after path 1' does not satisfy its contract" \
     "$NEGATIVE/integration_false_room.cpp" "${both[@]}"
 # SPEC: ARITH-006, DEFINEDBEHAVIOR-001 -- a product of two ints owes that it fits
 # an int.
-refuse narrow_product "signed overflow: 'quantity#1 \\* unit_price#2' on the signed type 'int'" \
+case_run refuse narrow_product "signed overflow: 'quantity#1 \\* unit_price#2' on the signed type 'int'" \
     "$NEGATIVE/integration_narrow_product.cpp"
 # SPEC: TRUSTED-002 -- without the trusted assumption, the room may be negative.
-refuse untrusted_page "return path 'page_room path 1' does not satisfy its contract" \
+case_run refuse untrusted_page "return path 'page_room path 1' does not satisfy its contract" \
     "$NEGATIVE/integration_untrusted_page.cpp"
 # SPEC: CASE-004 -- a case the precondition admits is not omitted.
-refuse debit_omitted "omitted case 'Direction::debit' of verified function 'directed' is not shown to be impossible" \
+case_run refuse debit_omitted "omitted case 'Direction::debit' of verified function 'directed' is not shown to be impossible" \
     "$NEGATIVE/integration_debit_omitted.cpp"
 # SPEC: LOOP-002, ARITH-006 -- digits accumulated without their guard leave the
 # bound the invariant states.
-refuse unguarded_digits "loop invariant 'read_number loop at line [0-9]+ invariant 4' is not preserved by an iteration" \
+case_run refuse unguarded_digits "loop invariant 'read_number loop at line [0-9]+ invariant 4' is not preserved by an iteration" \
     "$NEGATIVE/integration_unguarded_digits.cpp"
 # SPEC: VERIFIED-045, CLASS-013 -- a claim in an out-of-line member definition
 # is refused, never read as C++ and never assumed.
-refuse out_of_line_claim "a claim that a path cannot occur is checked only in a verified function" \
+case_run refuse out_of_line_claim "a claim that a path cannot occur is checked only in a verified function" \
     "$NEGATIVE/integration_out_of_line_claim.cpp"
 
 # SPEC: TUBOUND-003 -- without the ledger's interface, a declaration is no
 # evidence of its contract.
-refuse missing_interface "'Ledger::line_amount' is declared but not defined in this translation unit, and no imported verification interface records its contract" \
+case_run refuse missing_interface "'Ledger::line_amount' is declared but not defined in this translation unit, and no imported verification interface records its contract" \
     statement.cpp --cppl-import-interface=text.cppli
 
 # SPEC: TUBOUND-005 -- the tokenizer edited after its interface was written.
-mkdir stale
-cp text.hpp text.cpp ledger.hpp statement.cpp text.cppli ledger.cppli stale/
-(
+stale_interface() {
+    mkdir stale
+    cp text.hpp text.cpp ledger.hpp statement.cpp text.cppli ledger.cppli stale/
     cd stale
     "$CPPL" -std=c++20 -c text.cpp -o text.o --cppl-emit-interface=text.cppli
     cp "$NEGATIVE/integration_text_changed.cpp" text.cpp
@@ -115,7 +123,9 @@ cp text.hpp text.cpp ledger.hpp statement.cpp text.cppli ledger.cppli stale/
     fi
     grep -Eq "cannot use verification interface 'text.cppli': it is stale: '.*/stale/text.cpp' has changed since it was produced" stale.err ||
         { cat stale.err >&2; fail "the stale interface was refused for another reason"; }
-)
+}
+case_run stale_interface
+cases_end
 
 echo 'the integration twins fail closed: out of bounds, unguarded, stale, overclaimed, narrow, untrusted,' \
      'omitted, unbounded, unchecked, missing and stale interfaces'
