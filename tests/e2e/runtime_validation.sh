@@ -37,6 +37,8 @@ WORK="$3"
 CLANG="$4"
 # shellcheck source=../support/equivalence.sh
 source "$(dirname "$0")/../support/equivalence.sh"
+# shellcheck source=../support/parallel.sh
+source "$(dirname "$0")/../support/parallel.sh"
 
 mkdir -p "$WORK"
 run=$(mktemp -d "$WORK/runtime-validation.XXXXXX")
@@ -49,7 +51,10 @@ fail() {
 fixture="$FIXTURES/runtime_validation.cpp"
 reference="$FIXTURES/runtime_validation.reference.cpp"
 
-for standard in c++17 c++20 c++23; do
+# Each standard is a case of its own, in files of its own, and so are the units
+# below, so they are checked side by side (support/parallel.sh).
+in_standard() {
+    local standard="$1"
     base="$run/runtime-validation-$standard"
     "$CPPL" "-std=$standard" "$fixture" -o "$base" --cppl-trust-report "--cppl-emit-projection=$base.runtime.ii" \
         > "$base.report"
@@ -71,8 +76,8 @@ for standard in c++17 c++20 c++23; do
     # -- every validation expression, whole, and nothing else: no crossing an
     # ordinary condition selects is a site.
     sed -e "s|$FIXTURES/||g" "$report" | sed -n '/^Runtime validation sites:/,/^Unverified FFI boundaries:/p' \
-        > "$run/sites.actual"
-    cat > "$run/sites.expected" <<'REPORT'
+        > "$base.sites.actual"
+    cat > "$base.sites.expected" <<'REPORT'
 Runtime validation sites:    7
   RUNTIME-CHECKED:           runtime_validation.cpp:231:9, validates a value against Percentage, where ((self >= 0) && (self <= 100)), in verified function validated_percentage
   RUNTIME-CHECKED:           runtime_validation.cpp:243:10, validates a value against Positive, where (self > 0), in verified function validated_or_one
@@ -83,15 +88,15 @@ Runtime validation sites:    7
   RUNTIME-CHECKED:           runtime_validation.cpp:310:12, validates a value against Positive, where (self > 0), in verified function validated_halvings
 Unverified FFI boundaries:   not analysed
 REPORT
-    if ! diff -u "$run/sites.expected" "$run/sites.actual" >&2; then
+    if ! diff -u "$base.sites.expected" "$base.sites.actual" >&2; then
         fail "the runtime validation sites differ ($standard)"
     fi
 
     # SPEC: RUNTIMECHECK-014 -- every claim resting on a site, with each site,
     # its own or a verified callee's.
     sed -e "s|$FIXTURES/||g" "$report" | sed -E -e 's/, identity [0-9a-f]{16}$//' |
-        sed -n '/^Runtime-check-dependent claims:/,/^Unsafe regions:/p' > "$run/claims.actual"
-    cat > "$run/claims.expected" <<'REPORT'
+        sed -n '/^Runtime-check-dependent claims:/,/^Unsafe regions:/p' > "$base.claims.actual"
+    cat > "$base.claims.expected" <<'REPORT'
 Runtime-check-dependent claims: 7
   contract of validated_percentage (runtime_validation.cpp:232)
     rests on the validation of Percentage (runtime_validation.cpp:231:9), in its own body
@@ -110,7 +115,7 @@ Runtime-check-dependent claims: 7
     rests on the validation of Positive (runtime_validation.cpp:310:12), in its own body
 Unsafe regions:              2
 REPORT
-    if ! diff -u "$run/claims.expected" "$run/claims.actual" >&2; then
+    if ! diff -u "$base.claims.expected" "$base.claims.actual" >&2; then
         fail "the claims resting on validations differ ($standard)"
     fi
     # A site's fact is never shown as a universal proof (TCB-REPORT-004).
@@ -162,57 +167,66 @@ REPORT
         assembly "$base$level.reference" "$CLANG" "-std=$standard" "$level" "$reference"
         same_code "runtime_validation ($standard, $level)" "$base$level.cppl" "$base$level.reference"
     done
-done
+}
 
 # SPEC: RUNTIMECHECK-015, TUBOUND-006, TUBOUND-009 -- a site crosses units.
-units="$run/units"
-mkdir -p "$units"
-cp "$FIXTURES"/runtime_validation_cross_tu/* "$units/"
-cd "$units"
-"$CPPL" -std=c++20 -c validate.cpp -o validate.o --cppl-emit-interface=validate.cppli --cppl-trust-report \
-    > validate.report
-check_line=$(grep -n 'validate<Positive>(raw)' validate.cpp | cut -d: -f1)
-check_column=$(( $(grep 'validate<Positive>(raw)' validate.cpp | awk '{print index($0, "validate<")}') ))
-grep -qx "runtime $check_line $check_column validate.cpp Positive (self%20>%200)" validate.cppli ||
-    fail "the interface does not record the site positive_or_one rests on"
-[ "$(grep -c '^runtime ' validate.cppli)" = 1 ] || fail "the interface records a site always_two does not rest on"
+cross_units() {
+    units="$run/units"
+    mkdir -p "$units"
+    cp "$FIXTURES"/runtime_validation_cross_tu/* "$units/"
+    cd "$units"
+    "$CPPL" -std=c++20 -c validate.cpp -o validate.o --cppl-emit-interface=validate.cppli --cppl-trust-report \
+        > validate.report
+    check_line=$(grep -n 'validate<Positive>(raw)' validate.cpp | cut -d: -f1)
+    check_column=$(( $(grep 'validate<Positive>(raw)' validate.cpp | awk '{print index($0, "validate<")}') ))
+    grep -qx "runtime $check_line $check_column validate.cpp Positive (self%20>%200)" validate.cppli ||
+        fail "the interface does not record the site positive_or_one rests on"
+    [ "$(grep -c '^runtime ' validate.cppli)" = 1 ] || fail "the interface records a site always_two does not rest on"
 
-"$CPPL" -std=c++20 -c consume.cpp -o consume.o --cppl-import-interface=validate.cppli \
-    --cppl-emit-interface=consume.cppli --cppl-trust-report > consume.report
-grep -Eq '^Runtime-check-dependent claims: 1$' consume.report || fail "the client does not count the claim"
-grep -q "^    rests on the validation of Positive (validate.cpp:$check_line:$check_column), through the imported contract of positive_or_one \[c:@F@positive_or_one#I#\], imported from validate.cppli, entry [0-9a-f]\{16\}$" \
-    consume.report || fail "the client's claim does not name the site of the contract it was proven through"
-grep -q "^      whose proof rests on the validation of Positive (validate.cpp:$check_line:$check_column)$" consume.report ||
-    fail "the imported contract does not name its site"
-grep -Eq '^Runtime validation sites: +0$' consume.report || fail "another unit's site was listed as this unit's"
-# The site is carried on to a unit proven through this one.
-grep -qx "runtime $check_line $check_column validate.cpp Positive (self%20>%200)" consume.cppli ||
-    fail "the client's interface does not carry the site on"
-"$CPPL" validate.o consume.o -o program
-[ "$(./program -4)" = '1 2' ] && [ "$(./program 9)" = '9 2' ] || fail "the program built from two units misbehaves"
+    "$CPPL" -std=c++20 -c consume.cpp -o consume.o --cppl-import-interface=validate.cppli \
+        --cppl-emit-interface=consume.cppli --cppl-trust-report > consume.report
+    grep -Eq '^Runtime-check-dependent claims: 1$' consume.report || fail "the client does not count the claim"
+    grep -q "^    rests on the validation of Positive (validate.cpp:$check_line:$check_column), through the imported contract of positive_or_one \[c:@F@positive_or_one#I#\], imported from validate.cppli, entry [0-9a-f]\{16\}$" \
+        consume.report || fail "the client's claim does not name the site of the contract it was proven through"
+    grep -q "^      whose proof rests on the validation of Positive (validate.cpp:$check_line:$check_column)$" consume.report ||
+        fail "the imported contract does not name its site"
+    grep -Eq '^Runtime validation sites: +0$' consume.report || fail "another unit's site was listed as this unit's"
+    # The site is carried on to a unit proven through this one.
+    grep -qx "runtime $check_line $check_column validate.cpp Positive (self%20>%200)" consume.cppli ||
+        fail "the client's interface does not carry the site on"
+    "$CPPL" validate.o consume.o -o program
+    [ "$(./program -4)" = '1 2' ] && [ "$(./program 9)" = '9 2' ] || fail "the program built from two units misbehaves"
 
-# A unit proven through consume.cpp's contract rests on the site two units
-# away, named where it is.
-"$CPPL" -std=c++20 -c relay.cpp -o relay.o --cppl-import-interface=validate.cppli \
-    --cppl-import-interface=consume.cppli --cppl-trust-report > relay.report
-grep -Eq '^Runtime-check-dependent claims: 1$' relay.report || fail "the relay does not count the claim"
-grep -q "^    rests on the validation of Positive (validate.cpp:$check_line:$check_column), through the imported contract of through_interface \[c:@F@through_interface#I#\], imported from consume.cppli, entry [0-9a-f]\{16\}$" \
-    relay.report || fail "the relay's claim does not name the site two units away"
+    # A unit proven through consume.cpp's contract rests on the site two units
+    # away, named where it is.
+    "$CPPL" -std=c++20 -c relay.cpp -o relay.o --cppl-import-interface=validate.cppli \
+        --cppl-import-interface=consume.cppli --cppl-trust-report > relay.report
+    grep -Eq '^Runtime-check-dependent claims: 1$' relay.report || fail "the relay does not count the claim"
+    grep -q "^    rests on the validation of Positive (validate.cpp:$check_line:$check_column), through the imported contract of through_interface \[c:@F@through_interface#I#\], imported from consume.cppli, entry [0-9a-f]\{16\}$" \
+        relay.report || fail "the relay's claim does not name the site two units away"
 
-# SPEC: TUBOUND-009 -- a record whose site was edited away, with its checksum
-# recomputed, is no longer the record a unit proven through it recorded, so
-# neither is used.
-sed -e '/^runtime /d' -e '$d' validate.cppli > dropped.body
-grep -q '^runtime ' dropped.body && fail "the site was not edited away"
-{
-    cat dropped.body
-    printf 'checksum %s\n' "$( (command -v sha256sum > /dev/null && sha256sum || shasum -a 256) < dropped.body | cut -d' ' -f1)"
-} > dropped.cppli
-if "$CPPL" -std=c++20 -c relay.cpp -o again.o --cppl-import-interface=dropped.cppli \
-    --cppl-import-interface=consume.cppli > again.out 2> again.err; then
-    fail "a record whose runtime site was removed was used beside a record proven through it"
-fi
-[ ! -e again.o ] || fail "an object was produced from the edited record"
-grep -q 'positive_or_one' again.err || fail "the edited record was refused for another reason"
+    # SPEC: TUBOUND-009 -- a record whose site was edited away, with its checksum
+    # recomputed, is no longer the record a unit proven through it recorded, so
+    # neither is used.
+    sed -e '/^runtime /d' -e '$d' validate.cppli > dropped.body
+    grep -q '^runtime ' dropped.body && fail "the site was not edited away"
+    {
+        cat dropped.body
+        printf 'checksum %s\n' "$( (command -v sha256sum > /dev/null && sha256sum || shasum -a 256) < dropped.body | cut -d' ' -f1)"
+    } > dropped.cppli
+    if "$CPPL" -std=c++20 -c relay.cpp -o again.o --cppl-import-interface=dropped.cppli \
+        --cppl-import-interface=consume.cppli > again.out 2> again.err; then
+        fail "a record whose runtime site was removed was used beside a record proven through it"
+    fi
+    [ ! -e again.o ] || fail "an object was produced from the edited record"
+    grep -q 'positive_or_one' again.err || fail "the edited record was refused for another reason"
+}
+
+cases_begin "$run/cases"
+for standard in c++17 c++20 c++23; do
+    case_run in_standard "$standard"
+done
+case_run cross_units
+cases_end
 
 echo 'only validation expressions are RUNTIME-CHECKED sites, each reported where it is with every claim resting on it, in every unit; path facts are proven statically'
