@@ -127,12 +127,17 @@ What is never equivalent:
   check is guarding the future. A fixture that reaches it is written, or the
   check is removed as dead code; it is not declared equivalent.
 
-The one equivalent entry today is `call-precondition-gate`: the gate refuses an
-unproven callee precondition early, `Composition::spend` refuses the same
-dependency before reading its evidence (caught as `spend-dependency-proven`), and
-`an_unproven_dependency_is_refused_before_its_evidence_is_read` in
-`tests/unit/contracts_test.cpp` states the invariant directly. Adding a second
-equivalent entry needs the same three parts and review as a soundness change.
+No entry is equivalent today. The nearest is `call-precondition-gate`, and it
+shows the diagnostic rule at work. The gate refuses a stage composed after a
+call whose precondition is unproven. `Composition::spend` refuses the same
+dependency before reading its evidence (caught as `spend-dependency-proven`), so
+removing the gate changes no verdict. It does change the refusal: the gate names
+the callee whose precondition is unproven, where `spend` names an obligation
+number. That diagnostic is pinned by
+`a_stage_after_a_call_with_an_unproven_precondition_is_refused_naming_the_callee`
+in `tests/unit/contracts_test.cpp` and by the `blocked` cases of
+`tests/negative/verified_calls.sh`, so the entry is caught. An equivalent entry
+needs all three parts above and review as a soundness change.
 
 ## 6. Survivors
 
